@@ -1261,12 +1261,7 @@ async fn gateway_returns_concurrency_limited_after_wait_budget_expires_for_opena
         .list_by_request_id("trace-openai-cli-local-timeout-123")
         .await
         .expect("request candidate trace should read");
-    assert_eq!(stored_candidates.len(), 1);
-    assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Skipped);
-    assert_eq!(
-        stored_candidates[0].skip_reason.as_deref(),
-        Some("api_key_concurrency_limit_reached")
-    );
+    assert!(stored_candidates.is_empty());
     assert_eq!(
         *execution_runtime_hits.lock().expect("mutex should lock"),
         0

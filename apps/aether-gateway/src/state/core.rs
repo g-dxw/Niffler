@@ -36,6 +36,7 @@ use super::super::fallback_metrics;
 use super::super::fallback_metrics::{GatewayFallbackMetricKind, GatewayFallbackReason};
 use super::super::model_fetch::spawn_model_fetch_worker;
 use super::super::rate_limit::{FrontdoorUserRpmConfig, FrontdoorUserRpmLimiter};
+use super::super::request_candidate_runtime::RequestCandidateStatusWriteQueue;
 use super::super::router::RequestAdmissionError;
 use super::super::{control::GatewayControlDecision, error::GatewayError};
 use super::super::{provider_transport, usage};
@@ -229,6 +230,7 @@ impl AppState {
             data: Arc::clone(&data),
             runtime_state: runtime_state.clone(),
             usage_runtime: Arc::new(usage::UsageRuntime::disabled()),
+            request_candidate_status_write_queue: Arc::new(RequestCandidateStatusWriteQueue::new()),
             video_tasks: Arc::new(VideoTaskService::new(
                 VideoTaskTruthSourceMode::PythonSyncReport,
             )),

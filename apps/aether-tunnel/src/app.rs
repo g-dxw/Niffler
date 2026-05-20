@@ -105,7 +105,7 @@ pub async fn run(mut config: Config, servers: Vec<ServerEntry>) -> anyhow::Resul
         if let Ok(proxy) = crate::egress_proxy::UpstreamProxyConfig::parse(proxy_url) {
             info!(
                 aether_outbound_proxy_url = %proxy.redacted_url(),
-                "Aether control and tunnel egress proxy configured"
+                "Niffler control and tunnel egress proxy configured"
             );
         }
     }
@@ -193,7 +193,7 @@ pub async fn run(mut config: Config, servers: Vec<ServerEntry>) -> anyhow::Resul
         upstream_client::UpstreamClientPool::new(Arc::clone(&config), Arc::clone(&dns_cache));
     let resource_monitor = Arc::new(hardware::RuntimeResourceMonitor::new());
 
-    // Register with each Aether server and build per-server contexts.
+    // Register with each Niffler server and build per-server contexts.
     // Wrapped in Arc<Mutex> so retry_failed_registrations can append later.
     let server_contexts: Arc<Mutex<Vec<Arc<ServerContext>>>> = Arc::new(Mutex::new(Vec::new()));
     let mut failed_entries: Vec<(String, ServerEntry)> = Vec::new();

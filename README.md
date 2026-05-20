@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="frontend/public/aether_adaptive.svg" width="120" height="120" alt="Aether Logo">
+  <img src="frontend/public/aether_adaptive.svg" width="120" height="120" alt="Niffler Logo">
 </p>
 
-<h1 align="center">Aether</h1>
+<h1 align="center">Niffler</h1>
 
 <p align="center">
   <strong>一站式 AI 基础设施平台</strong><br>
@@ -21,17 +21,17 @@
 
 ## 简介
 
-Aether 是一个自托管的 AI API 网关，为团队和个人提供多租户管理、智能负载均衡、成本配额控制和健康监控能力。通过统一的 API 入口，可以无缝对接 Claude、OpenAI、Gemini 等主流 AI 服务及其 CLI 工具。
+Niffler 是一个自托管的 AI API 网关，为团队和个人提供多租户管理、智能负载均衡、成本配额控制和健康监控能力。通过统一的 API 入口，可以无缝对接 Claude、OpenAI、Gemini 等主流 AI 服务及其 CLI 工具。
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/architecture-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/architecture/architecture-light.svg">
-    <img src="docs/architecture/architecture-light.svg" width="680" alt="Aether Architecture">
+    <img src="docs/architecture/architecture-light.svg" width="680" alt="Niffler Architecture">
   </picture>
 </p>
 
-页面预览: https://fawney19.github.io/Aether/
+页面预览: https://ryfinez.github.io/Niffler/
 
 ## 部署
 
@@ -39,8 +39,8 @@ Aether 是一个自托管的 AI API 网关，为团队和个人提供多租户�
 
 ```bash
 # 1. 克隆代码
-git clone https://github.com/fawney19/Aether.git
-cd Aether
+git clone https://github.com/ryfineZ/Niffler.git
+cd Niffler
 
 # 2. 配置环境变量
 cp .env.example .env
@@ -58,8 +58,8 @@ docker compose -f docker-compose.single-node.yml pull && docker compose -f docke
 ### 一键安装（默认 Single Node：Linux systemd / macOS launchd + SQLite）
 
 ```bash
-cd Aether && cd Aether
-curl -fsSL https://raw.githubusercontent.com/fawney19/Aether/main/install.sh | sudo bash
+cd Niffler
+curl -fsSL https://raw.githubusercontent.com/ryfineZ/Niffler/main/install.sh | sudo bash
 ```
 
 ## 本地开发
@@ -73,9 +73,9 @@ make dev
 `make dev` 会同时启动后端 `aether-gateway` 和前端 `frontend` 的 Vite dev server。需要单独启动时可使用 `make dev-backend` 或 `make dev-frontend`。
 Postgres / Redis 本地依赖未就绪时，`make dev` 会自动执行 `docker compose up -d postgres redis`。
 
-## Aether Tunnel (可选)
+## Niffler Tunnel (可选)
 
-Aether Tunnel 是配套的正向代理节点，部署在海外 VPS 上，为墙内的 Aether 实例中转 API 流量。
+Niffler Tunnel 是配套的正向代理节点，部署在海外 VPS 上，为墙内的 Niffler 实例中转 API 流量。
 
 - Docker Compose 部署或下载预编译二进制直接运行
 - 提供 macOS/Linux 与 Windows 一键脚本，自动下载最新 `tunnel-v*` 制品并向现有 `aether-tunnel.toml` 追加 `[[servers]]`
@@ -105,7 +105,7 @@ Aether Tunnel 是配套的正向代理节点，部署在海外 VPS 上，为墙�
 
 ## 许可证
 
-本项目采用 [Aether 非商业开源许可证](LICENSE)。允许个人学习、教育研究、非盈利组织及企业内部非盈利性质的使用；禁止用于盈利目的。商业使用请联系获取商业许可。
+本项目采用 [Niffler 非商业开源许可证](LICENSE)。允许个人学习、教育研究、非盈利组织及企业内部非盈利性质的使用；禁止用于盈利目的。商业使用请联系获取商业许可。
 
 ## 联系作者
 
@@ -117,4 +117,4 @@ Aether Tunnel 是配套的正向代理节点，部署在海外 VPS 上，为墙�
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=fawney19/Aether&type=Date)](https://star-history.com/#fawney19/Aether&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=ryfineZ/Niffler&type=Date)](https://star-history.com/#ryfineZ/Niffler&Date)

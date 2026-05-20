@@ -25,7 +25,7 @@ pub(super) fn build_admin_billing_presets_payload() -> serde_json::Value {
             {
                 "name": "aether-core",
                 "version": "1.0",
-                "description": "Aether built-in dimension collectors for common api_formats/task_types.",
+                "description": "Niffler built-in dimension collectors for common api_formats/task_types.",
                 "collector_count": build_admin_billing_aether_core_collectors().len(),
             }
         ],

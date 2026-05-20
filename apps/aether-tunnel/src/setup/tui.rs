@@ -70,12 +70,12 @@ impl ServerTab {
         Self {
             fields: vec![
                 Field {
-                    label: "Aether URL",
+                    label: "Niffler URL",
                     key: "aether_url",
                     value: String::new(),
                     kind: FieldKind::Text,
                     required: true,
-                    help: "Aether URL (e.g. https://aether.example.com)",
+                    help: "Niffler URL (e.g. https://aether.example.com)",
                 },
                 Field {
                     label: "Management Token",
@@ -83,7 +83,7 @@ impl ServerTab {
                     value: String::new(),
                     kind: FieldKind::Secret,
                     required: true,
-                    help: "Aether Management Token (ae_xxx)",
+                    help: "Niffler Management Token (ae_xxx)",
                 },
                 Field {
                     label: "Node Name",
@@ -91,7 +91,7 @@ impl ServerTab {
                     value: String::new(),
                     kind: FieldKind::Text,
                     required: true,
-                    help: "Node name for identification in Aether dashboard",
+                    help: "Node name for identification in Niffler dashboard",
                 },
             ],
         }
@@ -145,7 +145,7 @@ impl App {
                     kind: FieldKind::Text,
                     required: false,
                     help:
-                        "Optional egress proxy for Aether tunnel/API and provider requests, e.g. http://127.0.0.1:8080 or socks5h://127.0.0.1:1080",
+                        "Optional egress proxy for Niffler tunnel/API and provider requests, e.g. http://127.0.0.1:8080 or socks5h://127.0.0.1:1080",
                 },
                 Field {
                     label: "Install Service",
@@ -733,9 +733,9 @@ fn ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
     let title = if app.modified {
-        " Aether Tunnel Setup [*] "
+        " Niffler Tunnel Setup [*] "
     } else {
-        " Aether Tunnel Setup "
+        " Niffler Tunnel Setup "
     };
 
     let outer = Block::default()

@@ -26,7 +26,7 @@ use crate::model_fetch::ModelFetchRuntimeState;
 use crate::provider_transport::{GatewayProviderTransportSnapshot, LocalResolvedOAuthRequestAuth};
 use crate::request_candidate_runtime::{
     RequestCandidateRuntimeCapabilityReader, RequestCandidateRuntimeReader,
-    RequestCandidateRuntimeWriter,
+    RequestCandidateRuntimeWriter, RequestCandidateStatusWriteQueue,
 };
 use crate::scheduler::state::SchedulerRuntimeState;
 use crate::{execution_runtime, provider_transport};
@@ -273,6 +273,18 @@ impl RequestCandidateRuntimeCapabilityReader for AppState {
 impl RequestCandidateRuntimeWriter for AppState {
     fn has_request_candidate_data_writer(&self) -> bool {
         AppState::has_request_candidate_data_writer(self)
+    }
+
+    fn request_candidate_status_write_queue(
+        &self,
+    ) -> Option<std::sync::Arc<RequestCandidateStatusWriteQueue>> {
+        Some(self.request_candidate_status_write_queue.clone())
+    }
+
+    fn clone_request_candidate_writer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn RequestCandidateRuntimeWriter>> {
+        Some(std::sync::Arc::new(self.clone()))
     }
 
     async fn upsert_request_candidate(

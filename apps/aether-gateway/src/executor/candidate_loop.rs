@@ -21,7 +21,7 @@ use crate::log_ids::short_request_id;
 use crate::orchestration::local_execution_candidate_metadata_from_report_context;
 use crate::privacy::RedactionExecutionCandidateId;
 use crate::request_candidate_runtime::{
-    record_local_request_candidate_status, RequestCandidateRuntimeWriter,
+    submit_local_request_candidate_status, RequestCandidateRuntimeWriter,
 };
 use crate::{AppState, GatewayError};
 
@@ -442,7 +442,7 @@ where
         if should_skip_unused_persistence_from_metadata(&metadata) {
             continue;
         }
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             state,
             plan_and_report.execution_plan(),
             report_context.as_ref(),
@@ -512,7 +512,7 @@ where
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "-".to_string());
             let timeout_ms = u64::try_from(timeout_duration.as_millis()).unwrap_or(u64::MAX);
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 plan,
                 report_context,
@@ -563,7 +563,7 @@ pub(crate) async fn mark_unused_local_candidate_items<T, FPlan, FContext>(
         if should_skip_unused_persistence(report_context) {
             continue;
         }
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             state,
             plan(&item),
             report_context,

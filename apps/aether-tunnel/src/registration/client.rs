@@ -30,7 +30,7 @@ pub struct RegisterResponse {
     pub node_id: String,
 }
 
-/// Remote configuration pushed by the Aether management backend.
+/// Remote configuration pushed by the Niffler management backend.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RemoteConfig {
     pub node_name: Option<String>,
@@ -44,7 +44,7 @@ struct UnregisterRequest {
     node_id: String,
 }
 
-/// Aether API client for tunnel node lifecycle management.
+/// Niffler API client for tunnel node lifecycle management.
 pub struct AetherClient {
     http: Client,
     base_url: String,
@@ -89,9 +89,9 @@ impl AetherClient {
         }
     }
 
-    /// Register this node with Aether (idempotent upsert by ip:port).
+    /// Register this node with Niffler (idempotent upsert by ip:port).
     ///
-    /// Returns the stable node_id assigned by Aether.
+    /// Returns the stable node_id assigned by Niffler.
     pub async fn register(
         &self,
         config: &Config,
@@ -118,7 +118,7 @@ impl AetherClient {
             url = %url,
             name = %body.name,
             ip = %body.ip,
-            "registering with Aether"
+            "registering with Niffler"
         );
 
         let resp = self
@@ -150,14 +150,14 @@ impl AetherClient {
         Ok(data.node_id)
     }
 
-    /// Unregister this node from Aether (graceful shutdown).
+    /// Unregister this node from Niffler (graceful shutdown).
     pub async fn unregister(&self, node_id: &str) -> anyhow::Result<()> {
         let url = format!("{}/api/admin/proxy-nodes/unregister", self.base_url);
         let body = UnregisterRequest {
             node_id: node_id.to_string(),
         };
 
-        info!(node_id = %node_id, "unregistering from Aether");
+        info!(node_id = %node_id, "unregistering from Niffler");
 
         let resp = self
             .send_with_retry(
@@ -223,7 +223,7 @@ impl AetherClient {
                             status = %resp.status(),
                             sleep_ms = sleep_for.as_millis(),
                             label,
-                            "Aether request retrying"
+                            "Niffler request retrying"
                         );
                         sleep(sleep_for).await;
                         continue;
@@ -238,7 +238,7 @@ impl AetherClient {
                             error = %e,
                             sleep_ms = sleep_for.as_millis(),
                             label,
-                            "Aether request retrying"
+                            "Niffler request retrying"
                         );
                         sleep(sleep_for).await;
                         continue;

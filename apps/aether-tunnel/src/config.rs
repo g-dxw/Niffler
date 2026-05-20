@@ -247,19 +247,19 @@ impl From<TunnelLogRotationArg> for LogRotation {
     }
 }
 
-/// Aether tunnel agent.
+/// Niffler tunnel agent.
 ///
-/// Deployed on overseas VPS to relay API traffic for Aether instances
-/// behind the GFW. Connects to Aether via WebSocket tunnel, registers
-/// with Aether, and relays upstream requests.
+/// Deployed on overseas VPS to relay API traffic for Niffler instances
+/// behind the GFW. Connects to Niffler via WebSocket tunnel, registers
+/// with Niffler, and relays upstream requests.
 #[derive(Parser, Debug, Clone)]
 #[command(version, about)]
 pub struct Config {
-    /// Aether server URL (e.g. https://aether.example.com)
+    /// Niffler server URL (e.g. https://aether.example.com)
     #[arg(long, env = "AETHER_TUNNEL_AETHER_URL")]
     pub aether_url: String,
 
-    /// Management Token for Aether admin API (ae_xxx)
+    /// Management Token for Niffler admin API (ae_xxx)
     #[arg(long, env = "AETHER_TUNNEL_MANAGEMENT_TOKEN")]
     pub management_token: String,
 
@@ -300,7 +300,7 @@ pub struct Config {
     )]
     pub allow_private_targets: bool,
 
-    /// Aether API request timeout in seconds
+    /// Niffler API request timeout in seconds
     #[arg(
         long,
         env = "AETHER_TUNNEL_AETHER_REQUEST_TIMEOUT",
@@ -308,7 +308,7 @@ pub struct Config {
     )]
     pub aether_request_timeout_secs: u64,
 
-    /// Aether API connect timeout in seconds
+    /// Niffler API connect timeout in seconds
     #[arg(
         long,
         env = "AETHER_TUNNEL_AETHER_CONNECT_TIMEOUT",
@@ -316,7 +316,7 @@ pub struct Config {
     )]
     pub aether_connect_timeout_secs: u64,
 
-    /// Aether API max idle connections per host
+    /// Niffler API max idle connections per host
     #[arg(
         long,
         env = "AETHER_TUNNEL_AETHER_POOL_MAX_IDLE_PER_HOST",
@@ -324,7 +324,7 @@ pub struct Config {
     )]
     pub aether_pool_max_idle_per_host: usize,
 
-    /// Aether API idle timeout in seconds
+    /// Niffler API idle timeout in seconds
     #[arg(
         long,
         env = "AETHER_TUNNEL_AETHER_POOL_IDLE_TIMEOUT",
@@ -332,24 +332,24 @@ pub struct Config {
     )]
     pub aether_pool_idle_timeout_secs: u64,
 
-    /// Aether API TCP keepalive in seconds (0 disables)
+    /// Niffler API TCP keepalive in seconds (0 disables)
     #[arg(long, env = "AETHER_TUNNEL_AETHER_TCP_KEEPALIVE", default_value_t = 60)]
     pub aether_tcp_keepalive_secs: u64,
 
-    /// Aether API TCP_NODELAY
+    /// Niffler API TCP_NODELAY
     #[arg(long, env = "AETHER_TUNNEL_AETHER_TCP_NODELAY", default_value_t = true)]
     pub aether_tcp_nodelay: bool,
 
-    /// Enable HTTP/2 when talking to Aether API
+    /// Enable HTTP/2 when talking to Niffler API
     #[arg(long, env = "AETHER_TUNNEL_AETHER_HTTP2", default_value_t = true)]
     pub aether_http2: bool,
 
-    /// Optional egress proxy used for Aether API registration and WebSocket tunnel reconnects.
+    /// Optional egress proxy used for Niffler API registration and WebSocket tunnel reconnects.
     /// Supported schemes: http, socks5, socks5h.
     #[arg(long, env = "AETHER_TUNNEL_AETHER_OUTBOUND_PROXY_URL")]
     pub aether_outbound_proxy_url: Option<String>,
 
-    /// Aether API retry attempts (including initial)
+    /// Niffler API retry attempts (including initial)
     #[arg(
         long,
         env = "AETHER_TUNNEL_AETHER_RETRY_MAX_ATTEMPTS",
@@ -357,7 +357,7 @@ pub struct Config {
     )]
     pub aether_retry_max_attempts: u32,
 
-    /// Aether API retry base delay in milliseconds
+    /// Niffler API retry base delay in milliseconds
     #[arg(
         long,
         env = "AETHER_TUNNEL_AETHER_RETRY_BASE_DELAY_MS",
@@ -365,7 +365,7 @@ pub struct Config {
     )]
     pub aether_retry_base_delay_ms: u64,
 
-    /// Aether API retry max delay in milliseconds
+    /// Niffler API retry max delay in milliseconds
     #[arg(
         long,
         env = "AETHER_TUNNEL_AETHER_RETRY_MAX_DELAY_MS",
@@ -977,7 +977,7 @@ pub struct ConfigFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tunnel_scale_down_grace_secs: Option<u64>,
 
-    /// Multi-server config: each entry connects to a separate Aether instance.
+    /// Multi-server config: each entry connects to a separate Niffler instance.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub servers: Vec<ServerEntry>,
 }

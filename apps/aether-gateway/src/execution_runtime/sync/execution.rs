@@ -65,8 +65,8 @@ use crate::orchestration::{
 };
 use crate::provider_pool_demand::acquire_provider_pool_in_flight_guard;
 use crate::request_candidate_runtime::{
-    ensure_execution_request_candidate_slot, record_local_request_candidate_extra_data,
-    record_local_request_candidate_status,
+    ensure_execution_request_candidate_slot, submit_local_request_candidate_extra_data,
+    submit_local_request_candidate_status, RequestCandidateRuntimeWriter,
 };
 use crate::usage::{spawn_sync_report, submit_sync_report};
 use crate::video_tasks::VideoTaskSyncReportMode;
@@ -200,7 +200,7 @@ async fn record_sync_attempt_forced_terminal_state(
     let error_message = error_message.into();
     let terminal_unix_ms = current_request_candidate_unix_ms();
     let latency_ms = terminal_unix_ms.saturating_sub(candidate_started_unix_ms);
-    record_local_request_candidate_status(
+    submit_local_request_candidate_status(
         &state,
         &plan,
         report_context.as_ref(),
@@ -243,13 +243,10 @@ async fn record_sync_attempt_forced_terminal_state(
     usage_data.client_response_headers = Some(json!({"content-type": "application/json"}));
     usage_data.client_response_body = Some(error_body);
 
-    state
-        .usage_runtime
-        .record_terminal_event_direct(
-            state.data.as_ref(),
-            UsageEvent::new(usage_event_type, plan.request_id.clone(), usage_data),
-        )
-        .await;
+    state.usage_runtime.submit_terminal_event(
+        state.data.as_ref(),
+        UsageEvent::new(usage_event_type, plan.request_id.clone(), usage_data),
+    );
 }
 
 impl SyncExecutionFailure {
@@ -474,6 +471,32 @@ impl OpenAiImageSyncProgressSnapshot {
     }
 }
 
+fn spawn_openai_image_sync_progress_persist(
+    state: AppState,
+    plan: ExecutionPlan,
+    report_context: Option<Value>,
+    status: RequestCandidateStatus,
+    status_code: Option<u16>,
+    latency_ms: Option<u64>,
+    progress_json: Value,
+) {
+    if !state.has_request_candidate_data_writer() {
+        return;
+    }
+    tokio::spawn(async move {
+        submit_local_request_candidate_extra_data(
+            &state,
+            &plan,
+            report_context.as_ref(),
+            status,
+            status_code,
+            latency_ms,
+            json!({ "image_progress": progress_json }),
+        )
+        .await;
+    });
+}
+
 impl<'a> OpenAiImageSyncProgressRecorder<'a> {
     fn new(
         state: &'a AppState,
@@ -508,19 +531,15 @@ impl<'a> OpenAiImageSyncProgressRecorder<'a> {
             return;
         }
         let snapshot = self.snapshot.lock().await.clone();
-        let extra_data = json!({
-            "image_progress": snapshot.to_json(),
-        });
-        record_local_request_candidate_extra_data(
-            self.state,
-            self.plan,
-            self.report_context,
+        spawn_openai_image_sync_progress_persist(
+            self.state.clone(),
+            self.plan.clone(),
+            self.report_context.cloned(),
             status,
             status_code,
             latency_ms,
-            extra_data,
-        )
-        .await;
+            snapshot.to_json(),
+        );
         self.last_persist_at = Some(now);
     }
 
@@ -661,16 +680,15 @@ impl OpenAiImageSyncJsonHeartbeatContext {
             "upstream_connecting" => RequestCandidateStatus::Pending,
             _ => RequestCandidateStatus::Streaming,
         };
-        record_local_request_candidate_extra_data(
-            &self.state,
-            &self.plan,
-            self.report_context.as_ref(),
+        spawn_openai_image_sync_progress_persist(
+            self.state.clone(),
+            self.plan.clone(),
+            self.report_context.clone(),
             status,
             None,
             Some(elapsed_ms),
-            json!({ "image_progress": progress_json }),
-        )
-        .await;
+            progress_json,
+        );
         debug!(
             event_name = "openai_image_sync_json_heartbeat_sent",
             log_type = "event",
@@ -1290,7 +1308,7 @@ async fn execute_execution_runtime_sync_impl(
     state
         .usage_runtime
         .record_pending(state.data.as_ref(), lifecycle_seed);
-    record_local_request_candidate_status(
+    submit_local_request_candidate_status(
         state,
         &plan,
         report_context.as_ref(),
@@ -1364,7 +1382,7 @@ async fn execute_execution_runtime_sync_impl(
                                 "gateway in-process sync execution unavailable"
                             );
                             let terminal_unix_secs = current_request_candidate_unix_ms();
-                            record_local_request_candidate_status(
+                            submit_local_request_candidate_status(
                                 state,
                                 &plan,
                                 report_context.as_ref(),
@@ -1398,7 +1416,7 @@ async fn execute_execution_runtime_sync_impl(
                             "gateway ChatGPT-Web image execution unavailable"
                         );
                         let terminal_unix_secs = current_request_candidate_unix_ms();
-                        record_local_request_candidate_status(
+                        submit_local_request_candidate_status(
                             state,
                             &plan,
                             report_context.as_ref(),
@@ -1435,7 +1453,7 @@ async fn execute_execution_runtime_sync_impl(
                     "gateway Grok execution unavailable"
                 );
                 let terminal_unix_secs = current_request_candidate_unix_ms();
-                record_local_request_candidate_status(
+                submit_local_request_candidate_status(
                     state,
                     &plan,
                     report_context.as_ref(),
@@ -1475,7 +1493,7 @@ async fn execute_execution_runtime_sync_impl(
                         "gateway test sync execution override failed"
                     );
                     let terminal_unix_secs = current_request_candidate_unix_ms();
-                    record_local_request_candidate_status(
+                    submit_local_request_candidate_status(
                         state,
                         &plan,
                         report_context.as_ref(),
@@ -1544,7 +1562,7 @@ async fn execute_execution_runtime_sync_impl(
                                 "gateway in-process sync execution unavailable"
                             );
                             let terminal_unix_secs = current_request_candidate_unix_ms();
-                            record_local_request_candidate_status(
+                            submit_local_request_candidate_status(
                                 state,
                                 &plan,
                                 report_context.as_ref(),
@@ -1578,7 +1596,7 @@ async fn execute_execution_runtime_sync_impl(
                             "gateway ChatGPT-Web image execution unavailable"
                         );
                         let terminal_unix_secs = current_request_candidate_unix_ms();
-                        record_local_request_candidate_status(
+                        submit_local_request_candidate_status(
                             state,
                             &plan,
                             report_context.as_ref(),
@@ -1614,7 +1632,7 @@ async fn execute_execution_runtime_sync_impl(
                         "gateway Grok execution unavailable"
                     );
                     let terminal_unix_secs = current_request_candidate_unix_ms();
-                    record_local_request_candidate_status(
+                    submit_local_request_candidate_status(
                         state,
                         &plan,
                         report_context.as_ref(),
@@ -1846,7 +1864,7 @@ async fn execute_execution_runtime_sync_impl(
             local_failover_response_text.as_deref(),
             local_failover_analysis,
         );
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             state,
             &plan,
             error_trace_report_context
@@ -1924,7 +1942,7 @@ async fn execute_execution_runtime_sync_impl(
             local_failover_response_text.as_deref(),
             local_failover_analysis,
         );
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             state,
             &plan,
             error_trace_report_context
@@ -1958,7 +1976,7 @@ async fn execute_execution_runtime_sync_impl(
             )
         })
         .flatten();
-    record_local_request_candidate_status(
+    submit_local_request_candidate_status(
         state,
         &plan,
         error_flow_report_context
@@ -2350,7 +2368,7 @@ async fn execute_sync_via_remote_execution_runtime(
                 "gateway remote execution runtime sync unavailable"
             );
             let terminal_unix_secs = current_request_candidate_unix_ms();
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 plan,
                 report_context,
@@ -2371,7 +2389,7 @@ async fn execute_sync_via_remote_execution_runtime(
 
     if response.status() != http::StatusCode::OK {
         let terminal_unix_secs = current_request_candidate_unix_ms();
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             state,
             plan,
             report_context,
@@ -2515,7 +2533,7 @@ mod tests {
             state.data.as_ref(),
             build_lifecycle_usage_seed(&plan, report_context.as_ref()),
         );
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             &state,
             &plan,
             report_context.as_ref(),

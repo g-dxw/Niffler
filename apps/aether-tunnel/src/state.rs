@@ -36,11 +36,11 @@ pub struct AppState {
     pub distributed_stream_gate: Option<Arc<RuntimeSemaphore>>,
 }
 
-/// Per-server state: one instance per Aether server connection.
+/// Per-server state: one instance per Niffler server connection.
 pub struct ServerContext {
     /// Human-readable label for logging (e.g. "server-0").
     pub server_label: String,
-    /// Aether server URL for this connection.
+    /// Niffler server URL for this connection.
     pub aether_url: String,
     /// Management token for this server.
     pub management_token: String,
@@ -48,7 +48,7 @@ pub struct ServerContext {
     /// After startup, the active node_name is read from `dynamic` (may be updated remotely).
     #[allow(dead_code)]
     pub node_name: String,
-    /// Node ID assigned by this Aether server.
+    /// Node ID assigned by this Niffler server.
     pub node_id: Arc<RwLock<String>>,
     /// API client for this server.
     pub aether_client: Arc<AetherClient>,
@@ -79,7 +79,7 @@ impl ServerContext {
     }
 }
 
-/// Aggregate metrics for reporting to Aether.
+/// Aggregate metrics for reporting to Niffler.
 pub struct TunnelRequestMetrics {
     pub total_requests: AtomicU64,
     /// Cumulative connection-establishment latency in nanoseconds
@@ -592,7 +592,7 @@ fn classify_tunnel_error(category: &str, _message: &str) -> TunnelErrorDiagnosti
             component: "tunnel_connect",
             summary: "Tunnel connection attempt failed",
             operator_action:
-                "Check Aether URL reachability, DNS, TLS, management token validity, and any configured AETHER_TUNNEL_AETHER_OUTBOUND_PROXY_URL.",
+                "Check Niffler URL reachability, DNS, TLS, management token validity, and any configured AETHER_TUNNEL_AETHER_OUTBOUND_PROXY_URL.",
         },
         "frame_decode_error" => TunnelErrorDiagnostic {
             severity: "error",

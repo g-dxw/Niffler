@@ -6,8 +6,8 @@
 ### 1. 预构建镜像 (Docker Compose)
 ```markdown
 # 1. 克隆代码
-git clone https://github.com/fawney19/Aether.git
-cd Aether
+git clone https://github.com/ryfineZ/Niffler.git
+cd Niffler
 
 # 2. 配置环境变量
 cp .env.example .env
@@ -99,12 +99,12 @@ make dev
 
 ## 代理配置
 
-1. **Aether-Proxy**
+1. **Niffler-Proxy**
    Rust实现, 超小资源占有, 适合性能低的vps直接使用。
-   [https://github.com/fawney19/Aether/tree/main/aether-tunnel](https://github.com/fawney19/Aether/tree/main/aether-tunnel)
+   [https://github.com/ryfineZ/Niffler/tree/main/apps/aether-tunnel](https://github.com/ryfineZ/Niffler/tree/main/apps/aether-tunnel)
 
 2. **代理节点**
-   在模块管理中, 开启代理模块后可以添加和使用代理功能, 包括手动添加和Aether-Proxy自动连接。
+   在模块管理中, 开启代理模块后可以添加和使用代理功能, 包括手动添加和Niffler-Proxy自动连接。
 
 3. **多级代理**
    优先级: Key代理 > 提供商代理 > 全局代理

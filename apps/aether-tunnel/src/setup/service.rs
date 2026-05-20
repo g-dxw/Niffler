@@ -295,7 +295,7 @@ fn install_systemd_service(config_path: &Path) -> anyhow::Result<()> {
 
     let unit_content = format!(
         "[Unit]\n\
-         Description=Aether Tunnel\n\
+         Description=Niffler Tunnel\n\
          After=network.target\n\
          \n\
          [Service]\n\
@@ -426,7 +426,7 @@ stop() {{
 "#,
         openrc_run_bin(),
         shell_quote(SERVICE_NAME),
-        shell_quote("Aether Tunnel"),
+        shell_quote("Niffler Tunnel"),
         shell_quote(exe_str),
         shell_quote(working_dir),
         shell_quote(OPENRC_PID_PATH),

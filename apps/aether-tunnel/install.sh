@@ -1,14 +1,14 @@
 #!/bin/sh
 set -eu
 
-REPO="${AETHER_TUNNEL_RELEASE_REPO:-fawney19/Aether}"
+REPO="${AETHER_TUNNEL_RELEASE_REPO:-ryfineZ/Niffler}"
 TAG="${AETHER_TUNNEL_RELEASE_TAG:-}"
 INSTALL_DIR="${AETHER_TUNNEL_INSTALL_DIR:-}"
 CONFIG_PATH="${AETHER_TUNNEL_CONFIG:-}"
 TMP_DIR=""
 
-say() { printf '%s\n' "[Aether Tunnel] $1"; }
-fail() { printf '%s\n' "[Aether Tunnel] $1" >&2; exit 1; }
+say() { printf '%s\n' "[Niffler Tunnel] $1"; }
+fail() { printf '%s\n' "[Niffler Tunnel] $1" >&2; exit 1; }
 
 cleanup() {
   if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
@@ -209,7 +209,7 @@ append_server_config() {
     if [ -f "$CONFIG_PATH" ] && [ -s "$CONFIG_PATH" ]; then
       printf '\n'
     fi
-    printf '# Added by Aether Tunnel one-click installer. Existing config is preserved.\n'
+    printf '# Added by Niffler Tunnel one-click installer. Existing config is preserved.\n'
     printf '[[servers]]\n'
     printf 'aether_url = %s\n' "$quoted_url"
     printf 'management_token = %s\n' "$quoted_token"
@@ -224,7 +224,7 @@ main() {
   need_cmd tar
   choose_paths
 
-  aether_url=$(prompt_if_empty AETHER_TUNNEL_AETHER_URL "${AETHER_TUNNEL_AETHER_URL:-}" "Aether URL: ")
+  aether_url=$(prompt_if_empty AETHER_TUNNEL_AETHER_URL "${AETHER_TUNNEL_AETHER_URL:-}" "Niffler URL: ")
   management_token=$(prompt_if_empty AETHER_TUNNEL_MANAGEMENT_TOKEN "${AETHER_TUNNEL_MANAGEMENT_TOKEN:-}" "Management token (ae_xxx): ")
   node_name=$(prompt_if_empty AETHER_TUNNEL_NODE_NAME "${AETHER_TUNNEL_NODE_NAME:-}" "Node name: ")
 

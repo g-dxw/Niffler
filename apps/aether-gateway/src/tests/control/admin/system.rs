@@ -514,7 +514,7 @@ async fn gateway_handles_admin_system_config_export_locally_with_trusted_admin_p
                         .expect("smtp secret should encrypt")
                 ),
             ),
-            ("site_name".to_string(), json!("Aether Test")),
+            ("site_name".to_string(), json!("Niffler Test")),
         ]);
 
     let (upstream_url, upstream_handle) = start_server(upstream).await;
@@ -980,7 +980,7 @@ async fn gateway_handles_admin_system_email_templates_locally_with_trusted_admin
             "email_template_verification_html".to_string(),
             json!("<div>{{ app_name }} - {{ code }}</div>"),
         ),
-        ("smtp_from_name".to_string(), json!("Aether Mail")),
+        ("smtp_from_name".to_string(), json!("Niffler Mail")),
     ]);
     let (upstream_url, upstream_handle) = start_server(upstream).await;
     let gateway = build_router_with_state(
@@ -1074,7 +1074,7 @@ async fn gateway_handles_admin_system_email_templates_locally_with_trusted_admin
     assert_eq!(preview_payload["variables"]["code"], "654321");
     assert!(preview_payload["html"]
         .as_str()
-        .is_some_and(|html| html.contains("Aether Mail: 654321")));
+        .is_some_and(|html| html.contains("Niffler Mail: 654321")));
 
     let reset_response = client
         .post(format!(
@@ -1197,7 +1197,7 @@ async fn gateway_handles_admin_system_configs_locally_with_trusted_admin_princip
             "turnstile_secret_key".to_string(),
             json!("encrypted-turnstile-secret"),
         ),
-        ("site_name".to_string(), json!("Aether Test")),
+        ("site_name".to_string(), json!("Niffler Test")),
     ]);
     let (upstream_url, upstream_handle) = start_server(upstream).await;
     let gateway = build_router_with_state(

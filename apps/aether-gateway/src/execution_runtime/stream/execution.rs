@@ -101,8 +101,8 @@ use crate::provider_pool_demand::{
     acquire_provider_pool_in_flight_guard, ProviderPoolInFlightGuard,
 };
 use crate::request_candidate_runtime::{
-    ensure_execution_request_candidate_slot, record_local_request_candidate_status,
-    record_local_request_candidate_status_snapshot, snapshot_local_request_candidate_status,
+    ensure_execution_request_candidate_slot, snapshot_local_request_candidate_status,
+    submit_local_request_candidate_status, submit_local_request_candidate_status_snapshot,
 };
 use crate::usage::submit_stream_report;
 use crate::usage::{GatewayStreamReportRequest, GatewaySyncReportRequest};
@@ -758,23 +758,20 @@ pub(crate) async fn execute_execution_runtime_stream(
         .record_pending(state.data.as_ref(), lifecycle_seed.clone());
     let candidate_started_unix_secs = current_request_candidate_unix_ms();
     if let Some(snapshot) = request_candidate_status_snapshot.clone() {
-        let state_bg = state.clone();
-        tokio::spawn(async move {
-            record_local_request_candidate_status_snapshot(
-                &state_bg,
-                &snapshot,
-                SchedulerRequestCandidateStatusUpdate {
-                    status: RequestCandidateStatus::Pending,
-                    status_code: None,
-                    error_type: None,
-                    error_message: None,
-                    latency_ms: None,
-                    started_at_unix_ms: Some(candidate_started_unix_secs),
-                    finished_at_unix_ms: None,
-                },
-            )
-            .await;
-        });
+        submit_local_request_candidate_status_snapshot(
+            state,
+            &snapshot,
+            SchedulerRequestCandidateStatusUpdate {
+                status: RequestCandidateStatus::Pending,
+                status_code: None,
+                error_type: None,
+                error_message: None,
+                latency_ms: None,
+                started_at_unix_ms: Some(candidate_started_unix_secs),
+                finished_at_unix_ms: None,
+            },
+        )
+        .await;
     }
     let plan_request_id_for_log = short_request_id(plan.request_id.as_str());
     let provider_name = plan
@@ -830,7 +827,7 @@ pub(crate) async fn execute_execution_runtime_stream(
                 "gateway Grok stream execution unavailable"
             );
             let terminal_unix_secs = current_request_candidate_unix_ms();
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 &plan,
                 report_context.as_ref(),
@@ -882,7 +879,7 @@ pub(crate) async fn execute_execution_runtime_stream(
                 "gateway Kiro web_search MCP execution unavailable"
             );
             let terminal_unix_secs = current_request_candidate_unix_ms();
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 &plan,
                 report_context.as_ref(),
@@ -934,7 +931,7 @@ pub(crate) async fn execute_execution_runtime_stream(
                 "gateway ChatGPT-Web image stream execution unavailable"
             );
             let terminal_unix_secs = current_request_candidate_unix_ms();
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 &plan,
                 report_context.as_ref(),
@@ -979,7 +976,7 @@ pub(crate) async fn execute_execution_runtime_stream(
                     "gateway in-process stream execution unavailable"
                 );
                 let terminal_unix_secs = current_request_candidate_unix_ms();
-                record_local_request_candidate_status(
+                submit_local_request_candidate_status(
                     state,
                     &plan,
                     report_context.as_ref(),
@@ -1044,7 +1041,7 @@ pub(crate) async fn execute_execution_runtime_stream(
                         "gateway in-process stream execution unavailable"
                     );
                     let terminal_unix_secs = current_request_candidate_unix_ms();
-                    record_local_request_candidate_status(
+                    submit_local_request_candidate_status(
                         state,
                         &plan,
                         report_context.as_ref(),
@@ -1099,7 +1096,7 @@ pub(crate) async fn execute_execution_runtime_stream(
                     "gateway remote execution runtime stream unavailable"
                 );
                 let terminal_unix_secs = current_request_candidate_unix_ms();
-                record_local_request_candidate_status(
+                submit_local_request_candidate_status(
                     state,
                     &plan,
                     report_context.as_ref(),
@@ -1120,7 +1117,7 @@ pub(crate) async fn execute_execution_runtime_stream(
 
         if response.status() != http::StatusCode::OK {
             let terminal_unix_secs = current_request_candidate_unix_ms();
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 &plan,
                 report_context.as_ref(),
@@ -1531,7 +1528,7 @@ async fn execute_stream_from_frame_stream(
         .await
         {
             let terminal_unix_secs = current_request_candidate_unix_ms();
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 &plan,
                 report_context.as_ref(),
@@ -1691,7 +1688,7 @@ async fn execute_stream_from_frame_stream(
                 error_response_text.as_deref(),
                 failover_analysis,
             );
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 &plan,
                 error_trace_report_context
@@ -1743,7 +1740,7 @@ async fn execute_stream_from_frame_stream(
                 error_response_text.as_deref(),
                 failover_analysis,
             );
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 state,
                 &plan,
                 error_trace_report_context
@@ -1811,7 +1808,7 @@ async fn execute_stream_from_frame_stream(
         );
         record_sync_terminal_usage(state, &plan, payload.report_context.as_ref(), &payload);
         let terminal_unix_secs = current_request_candidate_unix_ms();
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             state,
             &plan,
             payload.report_context.as_ref(),
@@ -2236,26 +2233,23 @@ async fn execute_stream_from_frame_stream(
         prefetched_telemetry.as_ref(),
     );
     if let Some(snapshot) = request_candidate_status_snapshot {
-        let state_bg = state.clone();
         let latency_ms = prefetched_telemetry
             .as_ref()
             .and_then(|telemetry| telemetry.elapsed_ms);
-        tokio::spawn(async move {
-            record_local_request_candidate_status_snapshot(
-                &state_bg,
-                &snapshot,
-                SchedulerRequestCandidateStatusUpdate {
-                    status: RequestCandidateStatus::Streaming,
-                    status_code: Some(status_code),
-                    error_type: None,
-                    error_message: None,
-                    latency_ms,
-                    started_at_unix_ms: Some(candidate_started_unix_secs),
-                    finished_at_unix_ms: None,
-                },
-            )
-            .await;
-        });
+        submit_local_request_candidate_status_snapshot(
+            state,
+            &snapshot,
+            SchedulerRequestCandidateStatusUpdate {
+                status: RequestCandidateStatus::Streaming,
+                status_code: Some(status_code),
+                error_type: None,
+                error_message: None,
+                latency_ms,
+                started_at_unix_ms: Some(candidate_started_unix_secs),
+                finished_at_unix_ms: None,
+            },
+        )
+        .await;
     }
 
     apply_endpoint_response_header_rules(state, &plan, &mut headers, None).await?;
@@ -3148,7 +3142,7 @@ async fn execute_stream_from_frame_stream(
                 &usage_payload,
                 true,
             );
-            record_local_request_candidate_status(
+            submit_local_request_candidate_status(
                 &state_for_report,
                 &plan_for_report,
                 usage_payload.report_context.as_ref(),
@@ -3255,7 +3249,7 @@ async fn execute_stream_from_frame_stream(
             &usage_payload,
             false,
         );
-        record_local_request_candidate_status(
+        submit_local_request_candidate_status(
             &state_for_report,
             &plan_for_report,
             usage_payload.report_context.as_ref(),

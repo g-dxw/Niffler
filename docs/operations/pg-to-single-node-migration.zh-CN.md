@@ -1,8 +1,8 @@
-# Postgres 到 Aether Single Node 迁移
+# Postgres 到 Niffler Single Node 迁移
 
 英文版：[pg-to-single-node-migration.md](pg-to-single-node-migration.md)
 
-本文档用于把现有 Docker Compose Postgres 部署迁移到 Aether
+本文档用于把现有 Docker Compose Postgres 部署迁移到 Niffler
 single-node。当前版本里，**single-node** 指默认 SQLite 安装模式：
 `install.sh --mode single-node`，也就是系统服务加 SQLite。Docker Compose
 单机模板是 `docker-compose.single-node.yml`，安装脚本入口是
@@ -39,14 +39,14 @@ install.sh
 # 迁移到新的 single-node Docker Compose 目录
 install.sh \
   --mode compose-single-node \
-  --migrate-from-compose /root/Aether/docker-compose.yml \
+  --migrate-from-compose /root/Niffler/docker-compose.yml \
   --compose-dir /opt/aether-single \
   --replace-existing
 
 # 迁移到系统服务 + SQLite
 sudo install.sh \
   --mode single-node \
-  --migrate-from-compose /root/Aether/docker-compose.yml \
+  --migrate-from-compose /root/Niffler/docker-compose.yml \
   --replace-existing
 ```
 
@@ -94,7 +94,7 @@ PG Compose 文件，并确认该 Compose 配置里存在默认的 `app` 和 `pos
 
 ```bash
 sudo scripts/migrate-pg-to-single-node.sh \
-  --source-compose /root/Aether/docker-compose.yml \
+  --source-compose /root/Niffler/docker-compose.yml \
   --replace-existing
 ```
 
@@ -102,7 +102,7 @@ sudo scripts/migrate-pg-to-single-node.sh \
 
 ```bash
 scripts/migrate-pg-compose-to-single-node.sh \
-  --source-compose /root/Aether/docker-compose.yml \
+  --source-compose /root/Niffler/docker-compose.yml \
   --replace-existing
 ```
 
@@ -111,7 +111,7 @@ scripts/migrate-pg-compose-to-single-node.sh \
 ```bash
 install.sh \
   --mode compose-single-node \
-  --migrate-from-compose /root/Aether/docker-compose.yml \
+  --migrate-from-compose /root/Niffler/docker-compose.yml \
   --compose-dir /opt/aether-single \
   --replace-existing
 ```
@@ -120,7 +120,7 @@ install.sh \
 
 ```bash
 scripts/migrate-pg-compose-to-single-node.sh \
-  --source-compose /root/Aether/docker-compose.yml \
+  --source-compose /root/Niffler/docker-compose.yml \
   --target-compose /opt/aether-single/docker-compose.single-node.yml \
   --target-env /opt/aether-single/.env.single-node \
   --target-db /opt/aether-single/data/aether.db \
@@ -151,7 +151,7 @@ scripts/migrate-pg-compose-to-single-node.sh \
 
 ```bash
 sudo systemctl stop aether-gateway
-cd /root/Aether
+cd /root/Niffler
 docker compose -f docker-compose.yml up -d app
 ```
 

@@ -665,7 +665,7 @@ impl GatewayLoggingArgs {
 #[derive(Parser, Debug)]
 #[command(
     name = "aether-gateway",
-    about = "Phase 3a Rust ingress gateway for Aether"
+    about = "Phase 3a Rust ingress gateway for Niffler"
 )]
 struct Args {
     #[command(subcommand)]

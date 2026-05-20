@@ -1,7 +1,7 @@
 //! Runtime-mutable configuration that can be updated remotely via heartbeat.
 //!
 //! Fields in [`DynamicConfig`] are initially populated from the static
-//! [`Config`](crate::config::Config) and may be overridden by the Aether
+//! [`Config`](crate::config::Config) and may be overridden by the Niffler
 //! management backend through the heartbeat response.
 
 use std::collections::HashSet;

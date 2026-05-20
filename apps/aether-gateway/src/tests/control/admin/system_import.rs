@@ -180,7 +180,7 @@ fn sample_system_import_payload() -> Value {
         "system_configs": [
             {
                 "key": "site_name",
-                "value": "Imported Aether",
+                "value": "Imported Niffler",
                 "description": "Site name"
             },
             {
@@ -470,7 +470,7 @@ async fn gateway_imports_admin_system_config_locally_and_persists_data() {
         .iter()
         .find(|entry| entry["key"] == "smtp_password")
         .expect("smtp_password should exist");
-    assert_eq!(exported_site_name["value"], "Imported Aether");
+    assert_eq!(exported_site_name["value"], "Imported Niffler");
     assert_eq!(exported_smtp_password["value"], "smtp-secret");
 
     gateway_handle.abort();

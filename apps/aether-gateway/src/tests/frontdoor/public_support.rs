@@ -676,7 +676,7 @@ async fn gateway_handles_public_catalog_site_info_without_proxying_upstream() {
             .with_data_state_for_tests(
                 crate::data::GatewayDataState::disabled().with_system_config_values_for_tests(
                     vec![
-                        ("site_name".to_string(), json!("Aether Local")),
+                        ("site_name".to_string(), json!("Niffler Local")),
                         ("site_subtitle".to_string(), json!("Rust Only")),
                     ],
                 ),
@@ -692,7 +692,7 @@ async fn gateway_handles_public_catalog_site_info_without_proxying_upstream() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
-    assert_eq!(payload["site_name"], "Aether Local");
+    assert_eq!(payload["site_name"], "Niffler Local");
     assert_eq!(payload["site_subtitle"], "Rust Only");
     assert_eq!(payload.as_object().map(|object| object.len()), Some(2));
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
@@ -8867,7 +8867,7 @@ async fn gateway_handles_auth_send_verification_code_locally_without_proxying_up
                         vec![
                             ("smtp_host".to_string(), json!("smtp.example.com")),
                             ("smtp_from_email".to_string(), json!("noreply@example.com")),
-                            ("smtp_from_name".to_string(), json!("Aether Mail")),
+                            ("smtp_from_name".to_string(), json!("Niffler Mail")),
                         ],
                     ),
                 )
@@ -8991,7 +8991,7 @@ async fn gateway_verifies_turnstile_token_before_auth_send_verification_code() {
                             .with_system_config_values_for_tests(vec![
                                 ("smtp_host".to_string(), json!("smtp.example.com")),
                                 ("smtp_from_email".to_string(), json!("noreply@example.com")),
-                                ("smtp_from_name".to_string(), json!("Aether Mail")),
+                                ("smtp_from_name".to_string(), json!("Niffler Mail")),
                                 ("turnstile_enabled".to_string(), json!(true)),
                                 ("turnstile_site_key".to_string(), json!("site-key-123")),
                                 ("turnstile_secret_key".to_string(), json!("secret-key-123")),

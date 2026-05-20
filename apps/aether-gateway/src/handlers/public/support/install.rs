@@ -16,9 +16,9 @@ const INSTALL_SESSION_TTL_SECS: u64 = 15 * 60;
 const INSTALL_SESSION_KEY_PREFIX: &str = "install:session:";
 const TUNNEL_INSTALL_SESSION_KEY_PREFIX: &str = "tunnel-install:session:";
 const TUNNEL_INSTALL_UNIX_SCRIPT_URL: &str =
-    "https://raw.githubusercontent.com/fawney19/Aether/main/apps/aether-tunnel/install.sh";
+    "https://raw.githubusercontent.com/ryfineZ/Niffler/main/apps/aether-tunnel/install.sh";
 const TUNNEL_INSTALL_POWERSHELL_SCRIPT_URL: &str =
-    "https://raw.githubusercontent.com/fawney19/Aether/main/apps/aether-tunnel/install.ps1";
+    "https://raw.githubusercontent.com/ryfineZ/Niffler/main/apps/aether-tunnel/install.ps1";
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -178,7 +178,7 @@ if command -v curl >/dev/null 2>&1; then
 elif command -v wget >/dev/null 2>&1; then
   wget -qO- {script_url} | sh
 else
-  printf '%s\n' "[Aether Tunnel] 需要 curl 或 wget 下载安装脚本" >&2
+  printf '%s\n' "[Niffler Tunnel] 需要 curl 或 wget 下载安装脚本" >&2
   exit 1
 fi
 "###,
@@ -261,8 +261,8 @@ CLI_LABEL={label}
 CLI_BIN={binary}
 NPM_PACKAGE={npm_package}
 
-say() {{ printf '%s\n' "[Aether] $1"; }}
-fail() {{ printf '%s\n' "[Aether] $1" >&2; exit 1; }}
+say() {{ printf '%s\n' "[Niffler] $1"; }}
+fail() {{ printf '%s\n' "[Niffler] $1" >&2; exit 1; }}
 
 os="$(uname -s 2>/dev/null || printf unknown)"
 case "$os" in
@@ -276,7 +276,7 @@ if [ "$TARGET_SYSTEM" = "windows" ]; then
   fail "该 install code 绑定 Windows，请复制 PowerShell 命令执行。"
 fi
 if [ "$TARGET_SYSTEM" != "auto" ] && [ "$TARGET_SYSTEM" != "$actual_system" ]; then
-  fail "所选系统 $TARGET_SYSTEM 与当前系统 $actual_system 不一致，请回到 Aether 重新选择目标系统。"
+  fail "所选系统 $TARGET_SYSTEM 与当前系统 $actual_system 不一致，请回到 Niffler 重新选择目标系统。"
 fi
 
 say "准备安装/复用 $CLI_LABEL"
@@ -353,9 +353,9 @@ while result and result[-1].strip() == '':
 if result:
     result.append('')
 result.extend([
-    '# Managed by Aether',
+    '# Managed by Niffler',
     '[model_providers.aether]',
-    'name = "Aether"',
+    'name = "Niffler"',
     f'base_url = {{quote_toml(base_url)}}',
     'wire_api = "responses"',
     'requires_openai_auth = false',
@@ -384,7 +384,7 @@ PY
     ;;
 esac
 
-say "$CLI_LABEL 已配置到 Aether。执行 $CLI_BIN --version 验证安装。"
+say "$CLI_LABEL 已配置到 Niffler。执行 $CLI_BIN --version 验证安装。"
 "###,
         target_cli = target_cli,
         target_system = target_system,
@@ -412,8 +412,8 @@ $CliLabel = {label}
 $CliBin = {binary}
 $NpmPackage = {npm_package}
 
-function Say($Message) {{ Write-Host "[Aether] $Message" }}
-function Fail($Message) {{ Write-Error "[Aether] $Message"; exit 1 }}
+function Say($Message) {{ Write-Host "[Niffler] $Message" }}
+function Fail($Message) {{ Write-Error "[Niffler] $Message"; exit 1 }}
 
 if ($TargetSystem -ne 'auto' -and $TargetSystem -ne 'windows') {{ Fail "该 install code 绑定 $TargetSystem，请复制 macOS/Linux 命令执行。" }}
 
@@ -476,9 +476,9 @@ if ($TargetCli -eq 'claude_code') {{
   if ($Result.Count -gt 0) {{ $Result.Add('') }}
   $EscapedBaseUrl = ($AetherBaseUrl.TrimEnd('/') + '/v1').Replace('\', '\\').Replace('"', '\"')
   $EscapedApiKey = $AetherApiKey.Replace('\', '\\').Replace('"', '\"')
-  $Result.Add('# Managed by Aether')
+  $Result.Add('# Managed by Niffler')
   $Result.Add('[model_providers.aether]')
-  $Result.Add('name = "Aether"')
+  $Result.Add('name = "Niffler"')
   $Result.Add("base_url = `"$EscapedBaseUrl`"")
   $Result.Add('wire_api = "responses"')
   $Result.Add('requires_openai_auth = false')
@@ -493,7 +493,7 @@ if ($TargetCli -eq 'claude_code') {{
   $Data | ConvertTo-Json -Depth 8 | Set-Content $Path -Encoding UTF8
 }}
 
-Say "$CliLabel 已配置到 Aether。执行 $CliBin --version 验证安装。"
+Say "$CliLabel 已配置到 Niffler。执行 $CliBin --version 验证安装。"
 "###,
         target_cli = powershell_single_quote(target_cli),
         target_system = powershell_single_quote(match session.target_system {
@@ -922,7 +922,7 @@ mod tests {
         assert!(script.contains("export AETHER_TUNNEL_MANAGEMENT_TOKEN='ae-test-token'"));
         assert!(script.contains("export AETHER_TUNNEL_NODE_NAME='jp-proxy-01'"));
         assert!(script.contains(
-            "https://raw.githubusercontent.com/fawney19/Aether/main/apps/aether-tunnel/install.sh"
+            "https://raw.githubusercontent.com/ryfineZ/Niffler/main/apps/aether-tunnel/install.sh"
         ));
         assert!(!script.contains("aether-rust-pioneer"));
         assert!(!script.contains("[[servers]]"));
@@ -936,7 +936,7 @@ mod tests {
         assert!(script.contains("$env:AETHER_TUNNEL_MANAGEMENT_TOKEN = 'ae-test-token'"));
         assert!(script.contains("$env:AETHER_TUNNEL_NODE_NAME = 'jp-proxy-01'"));
         assert!(script.contains(
-            "https://raw.githubusercontent.com/fawney19/Aether/main/apps/aether-tunnel/install.ps1"
+            "https://raw.githubusercontent.com/ryfineZ/Niffler/main/apps/aether-tunnel/install.ps1"
         ));
         assert!(!script.contains("aether-rust-pioneer"));
         assert!(!script.contains("[[servers]]"));

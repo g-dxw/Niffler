@@ -1,12 +1,12 @@
 $ErrorActionPreference = 'Stop'
 
-$Repo = if ($env:AETHER_TUNNEL_RELEASE_REPO) { $env:AETHER_TUNNEL_RELEASE_REPO } else { 'fawney19/Aether' }
+$Repo = if ($env:AETHER_TUNNEL_RELEASE_REPO) { $env:AETHER_TUNNEL_RELEASE_REPO } else { 'ryfineZ/Niffler' }
 $ReleaseTag = $env:AETHER_TUNNEL_RELEASE_TAG
 $InstallDir = $env:AETHER_TUNNEL_INSTALL_DIR
 $ConfigPath = $env:AETHER_TUNNEL_CONFIG
 
-function Say([string]$Message) { Write-Host "[Aether Tunnel] $Message" }
-function Fail([string]$Message) { throw "[Aether Tunnel] $Message" }
+function Say([string]$Message) { Write-Host "[Niffler Tunnel] $Message" }
+function Fail([string]$Message) { throw "[Niffler Tunnel] $Message" }
 
 function Prompt-IfEmpty([string]$Name, [string]$Value, [string]$Prompt) {
   if (-not [string]::IsNullOrWhiteSpace($Value)) { return $Value }
@@ -128,7 +128,7 @@ function Add-ServerConfig([string]$AetherUrl, [string]$ManagementToken, [string]
 
   $Prefix = if ((Test-Path $script:ConfigPath) -and ((Get-Item $script:ConfigPath).Length -gt 0)) { "`n" } else { '' }
   $Block = @(
-    "$Prefix# Added by Aether Tunnel one-click installer. Existing config is preserved.",
+    "$Prefix# Added by Niffler Tunnel one-click installer. Existing config is preserved.",
     '[[servers]]',
     "aether_url = $QuotedUrl",
     "management_token = $QuotedToken",
@@ -140,7 +140,7 @@ function Add-ServerConfig([string]$AetherUrl, [string]$ManagementToken, [string]
 
 function Main {
   Initialize-Paths
-  $AetherUrl = Prompt-IfEmpty 'AETHER_TUNNEL_AETHER_URL' $env:AETHER_TUNNEL_AETHER_URL 'Aether URL'
+  $AetherUrl = Prompt-IfEmpty 'AETHER_TUNNEL_AETHER_URL' $env:AETHER_TUNNEL_AETHER_URL 'Niffler URL'
   $ManagementToken = Prompt-IfEmpty 'AETHER_TUNNEL_MANAGEMENT_TOKEN' $env:AETHER_TUNNEL_MANAGEMENT_TOKEN 'Management token (ae_xxx)'
   $NodeName = Prompt-IfEmpty 'AETHER_TUNNEL_NODE_NAME' $env:AETHER_TUNNEL_NODE_NAME 'Node name'
 

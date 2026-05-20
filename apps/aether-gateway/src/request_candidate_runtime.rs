@@ -1,3 +1,7 @@
+use std::future::Future;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
+
 use aether_contracts::ExecutionPlan;
 use aether_data_contracts::repository::candidates::{
     RequestCandidateStatus, StoredRequestCandidate, UpsertRequestCandidateRecord,
@@ -14,12 +18,19 @@ use aether_scheduler_core::{
 use aether_usage_runtime::build_locally_actionable_report_context_from_request_candidate;
 use async_trait::async_trait;
 use serde_json::Value;
+use tokio::sync::{mpsc, Notify};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::clock::current_unix_ms;
 use crate::log_ids::short_request_id;
 use crate::GatewayError;
+
+const REQUEST_CANDIDATE_STATUS_WRITE_QUEUE_CAPACITY: usize = 4096;
+const REQUEST_CANDIDATE_STATUS_BACKGROUND_RUNTIME_THREADS: usize = 1;
+const REQUEST_CANDIDATE_STATUS_BACKGROUND_RUNTIME_STACK_BYTES: usize = 4 * 1024 * 1024;
+const REQUEST_CANDIDATE_STATUS_BACKGROUND_RUNTIME_THREAD_NAME: &str =
+    "aether-request-candidate-writer";
 
 #[derive(Debug, Clone)]
 pub(crate) struct LocalRequestCandidateStatusSnapshot {
@@ -43,13 +54,149 @@ pub(crate) trait RequestCandidateRuntimeReader {
 }
 
 #[async_trait]
-pub(crate) trait RequestCandidateRuntimeWriter {
+pub(crate) trait RequestCandidateRuntimeWriter: Send + Sync {
     fn has_request_candidate_data_writer(&self) -> bool;
+
+    fn request_candidate_status_write_queue(
+        &self,
+    ) -> Option<Arc<RequestCandidateStatusWriteQueue>> {
+        None
+    }
+
+    fn clone_request_candidate_writer(&self) -> Option<Arc<dyn RequestCandidateRuntimeWriter>> {
+        None
+    }
 
     async fn upsert_request_candidate(
         &self,
         candidate: UpsertRequestCandidateRecord,
     ) -> Result<Option<StoredRequestCandidate>, GatewayError>;
+}
+
+struct RequestCandidateStatusWriteJob {
+    writer: Arc<dyn RequestCandidateRuntimeWriter>,
+    record: UpsertRequestCandidateRecord,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RequestCandidateStatusWriteQueueError {
+    Closed,
+}
+
+impl std::fmt::Display for RequestCandidateStatusWriteQueueError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Closed => formatter.write_str("request candidate status write queue is closed"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RequestCandidateStatusWriteQueue {
+    sender: mpsc::Sender<RequestCandidateStatusWriteJob>,
+    pending: Arc<AtomicUsize>,
+    pending_drained: Arc<Notify>,
+}
+
+impl RequestCandidateStatusWriteQueue {
+    pub(crate) fn new() -> Self {
+        let (sender, receiver) = mpsc::channel(REQUEST_CANDIDATE_STATUS_WRITE_QUEUE_CAPACITY);
+        let pending = Arc::new(AtomicUsize::new(0));
+        let pending_drained = Arc::new(Notify::new());
+        spawn_on_request_candidate_status_background_runtime(
+            run_request_candidate_status_write_worker(
+                receiver,
+                Arc::clone(&pending),
+                Arc::clone(&pending_drained),
+            ),
+        );
+        Self {
+            sender,
+            pending,
+            pending_drained,
+        }
+    }
+
+    pub(crate) async fn submit_record(
+        &self,
+        writer: Arc<dyn RequestCandidateRuntimeWriter>,
+        record: UpsertRequestCandidateRecord,
+    ) -> Result<
+        (),
+        (
+            RequestCandidateStatusWriteQueueError,
+            UpsertRequestCandidateRecord,
+        ),
+    > {
+        self.pending.fetch_add(1, Ordering::AcqRel);
+        match self
+            .sender
+            .send(RequestCandidateStatusWriteJob { writer, record })
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                if self.pending.fetch_sub(1, Ordering::AcqRel) == 1 {
+                    self.pending_drained.notify_waiters();
+                }
+                Err((
+                    RequestCandidateStatusWriteQueueError::Closed,
+                    error.0.record,
+                ))
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn flush(&self) {
+        loop {
+            let notified = self.pending_drained.notified();
+            if self.pending.load(Ordering::Acquire) == 0 {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+async fn run_request_candidate_status_write_worker(
+    mut receiver: mpsc::Receiver<RequestCandidateStatusWriteJob>,
+    pending: Arc<AtomicUsize>,
+    pending_drained: Arc<Notify>,
+) {
+    while let Some(job) = receiver.recv().await {
+        persist_local_request_candidate_status_record(job.writer.as_ref(), job.record).await;
+        if pending.fetch_sub(1, Ordering::AcqRel) == 1 {
+            pending_drained.notify_waiters();
+        }
+    }
+}
+
+fn spawn_on_request_candidate_status_background_runtime<F>(
+    task: F,
+) -> tokio::task::JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    request_candidate_status_background_runtime()
+        .handle()
+        .spawn(task)
+}
+
+fn request_candidate_status_background_runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceLock<&'static tokio::runtime::Runtime> = OnceLock::new();
+
+    RUNTIME.get_or_init(|| {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .worker_threads(REQUEST_CANDIDATE_STATUS_BACKGROUND_RUNTIME_THREADS)
+            .thread_name(REQUEST_CANDIDATE_STATUS_BACKGROUND_RUNTIME_THREAD_NAME)
+            .thread_stack_size(REQUEST_CANDIDATE_STATUS_BACKGROUND_RUNTIME_STACK_BYTES)
+            .build()
+            .expect("request candidate status background runtime should build");
+        Box::leak(Box::new(runtime))
+    })
 }
 
 #[async_trait]
@@ -256,6 +403,31 @@ async fn persist_local_request_candidate_status_record(
     }
 }
 
+async fn submit_local_request_candidate_status_record(
+    state: &(impl RequestCandidateRuntimeWriter + ?Sized),
+    record: UpsertRequestCandidateRecord,
+) -> Result<(), UpsertRequestCandidateRecord> {
+    let Some(queue) = state.request_candidate_status_write_queue() else {
+        return Err(record);
+    };
+    let Some(writer) = state.clone_request_candidate_writer() else {
+        return Err(record);
+    };
+
+    match queue.submit_record(writer, record).await {
+        Ok(()) => Ok(()),
+        Err((err, record)) => {
+            warn!(
+                event_name = "request_candidate_status_queue_submit_failed",
+                log_type = "event",
+                error = %err,
+                "gateway request candidate status queue rejected update; writing inline"
+            );
+            Err(record)
+        }
+    }
+}
+
 pub(crate) async fn record_local_request_candidate_status(
     state: &(impl RequestCandidateRuntimeWriter + ?Sized),
     plan: &ExecutionPlan,
@@ -272,6 +444,26 @@ pub(crate) async fn record_local_request_candidate_status(
         return;
     };
     persist_local_request_candidate_status_record(state, record).await;
+}
+
+pub(crate) async fn submit_local_request_candidate_status(
+    state: &(impl RequestCandidateRuntimeWriter + ?Sized),
+    plan: &ExecutionPlan,
+    report_context: Option<&Value>,
+    status_update: SchedulerRequestCandidateStatusUpdate,
+) {
+    let Some(record) =
+        build_local_request_candidate_status_record(LocalRequestCandidateStatusRecordInput {
+            plan,
+            report_context,
+            status_update,
+        })
+    else {
+        return;
+    };
+    if let Err(record) = submit_local_request_candidate_status_record(state, record).await {
+        persist_local_request_candidate_status_record(state, record).await;
+    }
 }
 
 pub(crate) async fn record_local_request_candidate_extra_data(
@@ -313,6 +505,49 @@ pub(crate) async fn record_local_request_candidate_extra_data(
         finished_at_unix_ms: None,
     };
     persist_local_request_candidate_status_record(state, record).await;
+}
+
+pub(crate) async fn submit_local_request_candidate_extra_data(
+    state: &(impl RequestCandidateRuntimeWriter + ?Sized),
+    plan: &ExecutionPlan,
+    report_context: Option<&Value>,
+    status: RequestCandidateStatus,
+    status_code: Option<u16>,
+    latency_ms: Option<u64>,
+    extra_data: Value,
+) {
+    let Some(snapshot) = snapshot_local_request_candidate_status(plan, report_context) else {
+        return;
+    };
+    let record = UpsertRequestCandidateRecord {
+        id: snapshot.candidate_id.clone(),
+        request_id: snapshot.request_id.clone(),
+        user_id: snapshot.user_id.clone(),
+        api_key_id: snapshot.api_key_id.clone(),
+        username: None,
+        api_key_name: None,
+        candidate_index: snapshot.candidate_index,
+        retry_index: snapshot.retry_index,
+        provider_id: Some(snapshot.provider_id.clone()),
+        endpoint_id: Some(snapshot.endpoint_id.clone()),
+        key_id: Some(snapshot.key_id.clone()),
+        status,
+        skip_reason: None,
+        is_cached: None,
+        status_code,
+        error_type: None,
+        error_message: None,
+        latency_ms,
+        concurrent_requests: None,
+        extra_data: Some(extra_data),
+        required_capabilities: None,
+        created_at_unix_ms: None,
+        started_at_unix_ms: None,
+        finished_at_unix_ms: None,
+    };
+    if let Err(record) = submit_local_request_candidate_status_record(state, record).await {
+        persist_local_request_candidate_status_record(state, record).await;
+    }
 }
 
 pub(crate) async fn record_local_request_candidate_status_snapshot(
@@ -358,6 +593,51 @@ pub(crate) async fn record_local_request_candidate_status_snapshot(
     persist_local_request_candidate_status_record(state, record).await;
 }
 
+pub(crate) async fn submit_local_request_candidate_status_snapshot(
+    state: &(impl RequestCandidateRuntimeWriter + ?Sized),
+    snapshot: &LocalRequestCandidateStatusSnapshot,
+    status_update: SchedulerRequestCandidateStatusUpdate,
+) {
+    let SchedulerRequestCandidateStatusUpdate {
+        status,
+        status_code,
+        error_type,
+        error_message,
+        latency_ms,
+        started_at_unix_ms,
+        finished_at_unix_ms,
+    } = status_update;
+    let record = UpsertRequestCandidateRecord {
+        id: snapshot.candidate_id.clone(),
+        request_id: snapshot.request_id.clone(),
+        user_id: snapshot.user_id.clone(),
+        api_key_id: snapshot.api_key_id.clone(),
+        username: None,
+        api_key_name: None,
+        candidate_index: snapshot.candidate_index,
+        retry_index: snapshot.retry_index,
+        provider_id: Some(snapshot.provider_id.clone()),
+        endpoint_id: Some(snapshot.endpoint_id.clone()),
+        key_id: Some(snapshot.key_id.clone()),
+        status,
+        skip_reason: None,
+        is_cached: None,
+        status_code,
+        error_type,
+        error_message,
+        latency_ms,
+        concurrent_requests: None,
+        extra_data: None,
+        required_capabilities: None,
+        created_at_unix_ms: None,
+        started_at_unix_ms,
+        finished_at_unix_ms,
+    };
+    if let Err(record) = submit_local_request_candidate_status_record(state, record).await {
+        persist_local_request_candidate_status_record(state, record).await;
+    }
+}
+
 pub(crate) async fn record_report_request_candidate_status(
     state: &(impl RequestCandidateRuntimeReader + RequestCandidateRuntimeWriter + ?Sized),
     report_context: Option<&Value>,
@@ -379,44 +659,59 @@ pub(crate) async fn record_report_request_candidate_status(
     let candidate_id = record.id.clone();
     let status = record.status;
 
-    match state.upsert_request_candidate(record).await {
-        Ok(Some(stored)) => {
-            debug!(
-                event_name = "request_candidate_report_status_persisted",
-                log_type = "event",
-                request_id = %request_id_for_log,
-                candidate_id = %stored.id,
-                candidate_index,
-                retry_index,
-                status = request_candidate_status_label(status),
-                source = "report_status",
-                "gateway persisted report-driven request candidate status update"
-            );
+    if let Err(record) = submit_local_request_candidate_status_record(state, record).await {
+        let candidate_id = record.id.clone();
+        match state.upsert_request_candidate(record).await {
+            Ok(Some(stored)) => {
+                debug!(
+                    event_name = "request_candidate_report_status_persisted",
+                    log_type = "event",
+                    request_id = %request_id_for_log,
+                    candidate_id = %stored.id,
+                    candidate_index,
+                    retry_index,
+                    status = request_candidate_status_label(status),
+                    source = "report_status",
+                    "gateway persisted report-driven request candidate status update"
+                );
+            }
+            Ok(None) => {
+                warn!(
+                    event_name = "request_candidate_writer_unavailable",
+                    log_type = "event",
+                    request_id = %request_id_for_log,
+                    candidate_id = %candidate_id,
+                    candidate_index,
+                    retry_index,
+                    status = request_candidate_status_label(status),
+                    source = "report_status",
+                    "gateway skipped request candidate persistence because writer is unavailable"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    event_name = "request_candidate_report_status_persist_failed",
+                    log_type = "event",
+                    request_id = %request_id_for_log,
+                    candidate_index,
+                    retry_index,
+                    error = ?err,
+                    "gateway failed to persist report-driven request candidate status update"
+                );
+            }
         }
-        Ok(None) => {
-            warn!(
-                event_name = "request_candidate_writer_unavailable",
-                log_type = "event",
-                request_id = %request_id_for_log,
-                candidate_id = %candidate_id,
-                candidate_index,
-                retry_index,
-                status = request_candidate_status_label(status),
-                source = "report_status",
-                "gateway skipped request candidate persistence because writer is unavailable"
-            );
-        }
-        Err(err) => {
-            warn!(
-                event_name = "request_candidate_report_status_persist_failed",
-                log_type = "event",
-                request_id = %request_id_for_log,
-                candidate_index,
-                retry_index,
-                error = ?err,
-                "gateway failed to persist report-driven request candidate status update"
-            );
-        }
+    } else {
+        debug!(
+            event_name = "request_candidate_report_status_queued",
+            log_type = "event",
+            request_id = %request_id_for_log,
+            candidate_id = %candidate_id,
+            candidate_index,
+            retry_index,
+            status = request_candidate_status_label(status),
+            source = "report_status",
+            "gateway queued report-driven request candidate status update"
+        );
     }
 }
 
@@ -438,20 +733,18 @@ pub(crate) async fn ensure_execution_request_candidate_slot(
         );
         return;
     }
-    if plan
+    let generated_candidate_id = plan
         .candidate_id
         .as_deref()
         .map(str::trim)
-        .is_some_and(|value| !value.is_empty())
-    {
-        return;
-    }
-
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let seed = build_execution_request_candidate_seed(
         plan,
         report_context.as_ref(),
         current_unix_ms(),
-        Uuid::new_v4().to_string(),
+        generated_candidate_id,
     );
     let generated_candidate_id = seed.upsert_record.id.clone();
     let request_id = short_request_id(plan.request_id.as_str());
@@ -725,9 +1018,19 @@ async fn resolve_report_request_candidate_slot(
 }
 
 #[cfg(test)]
+pub(crate) async fn flush_request_candidate_status_writes(
+    state: &(impl RequestCandidateRuntimeWriter + ?Sized),
+) {
+    if let Some(queue) = state.request_candidate_status_write_queue() {
+        queue.flush().await;
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use aether_contracts::{ExecutionPlan, RequestBody};
     use aether_data::repository::auth::{
@@ -737,17 +1040,21 @@ mod tests {
     use aether_data::repository::usage::InMemoryUsageReadRepository;
     use aether_data_contracts::repository::candidates::{
         RequestCandidateReadRepository, RequestCandidateStatus, StoredRequestCandidate,
+        UpsertRequestCandidateRecord,
     };
     use aether_scheduler_core::SchedulerMinimalCandidateSelectionCandidate;
+    use async_trait::async_trait;
     use serde_json::json;
+    use tokio::sync::Mutex;
 
     use super::{
-        ensure_execution_request_candidate_slot, persist_available_local_candidate,
-        record_report_request_candidate_status, resolve_request_candidate_required_capabilities,
-        SchedulerRequestCandidateStatusUpdate,
+        ensure_execution_request_candidate_slot, flush_request_candidate_status_writes,
+        persist_available_local_candidate, record_report_request_candidate_status,
+        resolve_request_candidate_required_capabilities, RequestCandidateRuntimeWriter,
+        RequestCandidateStatusWriteQueue, SchedulerRequestCandidateStatusUpdate,
     };
     use crate::data::GatewayDataState;
-    use crate::AppState;
+    use crate::{AppState, GatewayError};
 
     fn build_test_state(repository: Arc<InMemoryRequestCandidateRepository>) -> AppState {
         AppState::new()
@@ -821,6 +1128,87 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct RecordingRequestCandidateWriter {
+        statuses: Mutex<Vec<RequestCandidateStatus>>,
+    }
+
+    #[async_trait]
+    impl RequestCandidateRuntimeWriter for RecordingRequestCandidateWriter {
+        fn has_request_candidate_data_writer(&self) -> bool {
+            true
+        }
+
+        async fn upsert_request_candidate(
+            &self,
+            candidate: UpsertRequestCandidateRecord,
+        ) -> Result<Option<StoredRequestCandidate>, GatewayError> {
+            if candidate.status == RequestCandidateStatus::Pending {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            self.statuses.lock().await.push(candidate.status);
+            Ok(None)
+        }
+    }
+
+    fn status_record(status: RequestCandidateStatus) -> UpsertRequestCandidateRecord {
+        UpsertRequestCandidateRecord {
+            id: "candidate-queue-order".to_string(),
+            request_id: "request-queue-order".to_string(),
+            user_id: None,
+            api_key_id: None,
+            username: None,
+            api_key_name: None,
+            candidate_index: 0,
+            retry_index: 0,
+            provider_id: Some("provider-queue-order".to_string()),
+            endpoint_id: Some("endpoint-queue-order".to_string()),
+            key_id: Some("key-queue-order".to_string()),
+            status,
+            skip_reason: None,
+            is_cached: None,
+            status_code: None,
+            error_type: None,
+            error_message: None,
+            latency_ms: None,
+            concurrent_requests: None,
+            extra_data: None,
+            required_capabilities: None,
+            created_at_unix_ms: None,
+            started_at_unix_ms: None,
+            finished_at_unix_ms: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn request_candidate_status_queue_preserves_enqueue_order_when_first_write_is_slow() {
+        let queue = RequestCandidateStatusWriteQueue::new();
+        let writer = Arc::new(RecordingRequestCandidateWriter::default());
+        let writer_trait: Arc<dyn RequestCandidateRuntimeWriter> = writer.clone();
+
+        queue
+            .submit_record(
+                Arc::clone(&writer_trait),
+                status_record(RequestCandidateStatus::Pending),
+            )
+            .await
+            .expect("pending status should be queued");
+        queue
+            .submit_record(writer_trait, status_record(RequestCandidateStatus::Success))
+            .await
+            .expect("success status should be queued");
+        queue.flush().await;
+
+        let statuses = writer.statuses.lock().await.clone();
+        assert_eq!(
+            statuses,
+            vec![
+                RequestCandidateStatus::Pending,
+                RequestCandidateStatus::Success
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn seeds_execution_request_candidate_slot_for_plan_without_candidate_id() {
         let repository = Arc::new(InMemoryRequestCandidateRepository::default());
@@ -879,30 +1267,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn does_not_reseed_execution_request_candidate_slot_when_plan_already_has_candidate_id() {
+    async fn seeds_execution_request_candidate_slot_with_existing_candidate_id() {
         let repository = Arc::new(InMemoryRequestCandidateRepository::default());
         let state = build_test_state(Arc::clone(&repository));
         let mut plan = sample_plan();
         plan.candidate_id = Some("cand-existing-123".to_string());
         let mut report_context = Some(json!({
-            "request_id": "req-request-candidate-seed-123"
+            "request_id": "req-request-candidate-seed-123",
+            "candidate_index": 2,
+            "client_api_format": "openai:chat"
         }));
 
         ensure_execution_request_candidate_slot(&state, &mut plan, &mut report_context).await;
 
         assert_eq!(plan.candidate_id.as_deref(), Some("cand-existing-123"));
+        let report_context = report_context.expect("report context should be populated");
+        assert_eq!(
+            report_context
+                .get("candidate_id")
+                .and_then(|value| value.as_str()),
+            Some("cand-existing-123")
+        );
         let stored = repository
             .list_by_request_id("req-request-candidate-seed-123")
             .await
             .expect("request candidates should read");
-        assert!(stored.is_empty());
-        assert_eq!(
-            report_context
-                .as_ref()
-                .and_then(|value| value.get("candidate_id"))
-                .and_then(|value| value.as_str()),
-            None
-        );
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].id, "cand-existing-123");
+        assert_eq!(stored[0].status, RequestCandidateStatus::Pending);
+        assert_eq!(stored[0].candidate_index, 2);
     }
 
     #[tokio::test]
@@ -961,6 +1354,7 @@ mod tests {
             },
         )
         .await;
+        flush_request_candidate_status_writes(&state).await;
 
         let stored = repository
             .list_by_request_id("req-report-123")

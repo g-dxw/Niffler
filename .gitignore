@@ -243,5 +243,7 @@ src/_version.py
 
 # Analysis folder (third-party code for reference)
 analysis/
+!docs/analysis/
+!docs/analysis/*.md
 new-api/
 apps/aether-tunnel/aether-tunnel.toml

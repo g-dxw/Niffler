@@ -42,7 +42,7 @@ vi.mock('@/composables/useToast', () => ({
 
 vi.mock('@/composables/useSiteInfo', () => ({
   useSiteInfo: () => ({
-    siteName: 'Aether',
+    siteName: 'Niffler',
   }),
 }))
 

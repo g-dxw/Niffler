@@ -24,7 +24,7 @@ pub enum TunnelOutcome {
     Disconnected,
 }
 
-/// Connect to Aether's WebSocket tunnel endpoint and run until disconnected.
+/// Connect to Niffler's WebSocket tunnel endpoint and run until disconnected.
 ///
 /// `conn_idx` identifies which connection in the pool this is (0-based).
 /// Only connection 0 sends heartbeats to avoid resetting shared metrics.
@@ -307,12 +307,12 @@ async fn connect_tunnel_tcp(
 ) -> Result<TcpStream, anyhow::Error> {
     if let Some(proxy_url) = state.config.effective_aether_outbound_proxy_url() {
         let proxy = UpstreamProxyConfig::parse(proxy_url)
-            .map_err(|err| anyhow::anyhow!("Aether outbound proxy URL invalid: {err}"))?;
+            .map_err(|err| anyhow::anyhow!("Niffler outbound proxy URL invalid: {err}"))?;
         debug!(
             proxy_url = %proxy.redacted_url(),
             host = %host,
             port = port,
-            "connecting tunnel via Aether egress proxy"
+            "connecting tunnel via Niffler egress proxy"
         );
         return tokio::time::timeout(
             connect_timeout,

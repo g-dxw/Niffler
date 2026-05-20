@@ -52,6 +52,8 @@ pub struct AppState {
     pub(crate) data: Arc<GatewayDataState>,
     pub(crate) runtime_state: Arc<RuntimeState>,
     pub(crate) usage_runtime: Arc<usage::UsageRuntime>,
+    pub(crate) request_candidate_status_write_queue:
+        Arc<crate::request_candidate_runtime::RequestCandidateStatusWriteQueue>,
     pub(crate) video_tasks: Arc<VideoTaskService>,
     pub(crate) video_task_poller: Option<VideoTaskPollerConfig>,
     pub(crate) request_gate: Option<Arc<ConcurrencyGate>>,

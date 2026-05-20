@@ -455,7 +455,7 @@ pub(super) async fn read_auth_smtp_config(
         use_ssl: system_config_bool(smtp_use_ssl.as_ref(), false),
         from_email,
         from_name: system_config_string(smtp_from_name.as_ref())
-            .unwrap_or_else(|| "Aether".to_string()),
+            .unwrap_or_else(|| "Niffler".to_string()),
     }))
 }
 
@@ -470,7 +470,7 @@ pub(super) async fn auth_email_app_name(state: &AppState) -> Result<String, Gate
     Ok(system_config_string(email_app_name.as_ref())
         .or_else(|| system_config_string(site_name.as_ref()))
         .or_else(|| system_config_string(smtp_from_name.as_ref()))
-        .unwrap_or_else(|| "Aether".to_string()))
+        .unwrap_or_else(|| "Niffler".to_string()))
 }
 
 pub(super) async fn build_auth_verification_email(

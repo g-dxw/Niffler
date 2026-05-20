@@ -41,7 +41,7 @@ describe('useConfigExportImport file size limits', () => {
   })
 
   it('accepts config import files larger than the old 10MB limit', async () => {
-    const state = useConfigExportImport(ref({ site_name: 'Aether' }))
+    const state = useConfigExportImport(ref({ site_name: 'Niffler' }))
     const file = makeSizedFile(
       JSON.stringify({
         version: '1',
@@ -66,7 +66,7 @@ describe('useConfigExportImport file size limits', () => {
   })
 
   it('shows the updated config import limit when the file is too large', () => {
-    const state = useConfigExportImport(ref({ site_name: 'Aether' }))
+    const state = useConfigExportImport(ref({ site_name: 'Niffler' }))
     const file = makeSizedFile('{}', 501 * 1024 * 1024)
 
     state.handleConfigFileSelect(buildFileInputEvent(file))

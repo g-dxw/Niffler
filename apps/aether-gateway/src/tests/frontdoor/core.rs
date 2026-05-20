@@ -127,7 +127,7 @@ async fn gateway_serves_frontend_routes_and_assets_without_shadowing_public_api(
     fs::create_dir_all(&assets_dir).expect("static assets dir should be created");
     fs::write(
         static_dir.join("index.html"),
-        "<!doctype html><html><body>Aether Frontend</body></html>",
+        "<!doctype html><html><body>Niffler Frontend</body></html>",
     )
     .expect("index.html should be written");
     fs::write(assets_dir.join("app.js"), "console.log('frontend asset');")
@@ -153,7 +153,7 @@ async fn gateway_serves_frontend_routes_and_assets_without_shadowing_public_api(
         .to_string();
     let body = response.text().await.expect("html body should be readable");
     assert!(content_type.starts_with("text/html"));
-    assert!(body.contains("Aether Frontend"));
+    assert!(body.contains("Niffler Frontend"));
 
     let response = client
         .get(format!("{gateway_url}/guide"))
@@ -162,7 +162,7 @@ async fn gateway_serves_frontend_routes_and_assets_without_shadowing_public_api(
         .expect("spa request should succeed");
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.text().await.expect("spa body should be readable");
-    assert!(body.contains("Aether Frontend"));
+    assert!(body.contains("Niffler Frontend"));
 
     let response = client
         .get(format!("{gateway_url}/assets/app.js"))
@@ -186,7 +186,7 @@ async fn gateway_serves_frontend_routes_and_assets_without_shadowing_public_api(
 
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
-    assert_eq!(payload["site_name"], "Aether");
+    assert_eq!(payload["site_name"], "Niffler");
     assert_eq!(payload["site_subtitle"], "AI Gateway");
 
     let response = client
@@ -199,7 +199,7 @@ async fn gateway_serves_frontend_routes_and_assets_without_shadowing_public_api(
         .text()
         .await
         .expect("install error body should be readable");
-    assert!(!body.contains("Aether Frontend"));
+    assert!(!body.contains("Niffler Frontend"));
     assert!(body.contains("install code"));
 
     let response = client
@@ -214,7 +214,7 @@ async fn gateway_serves_frontend_routes_and_assets_without_shadowing_public_api(
         .text()
         .await
         .expect("powershell install error body should be readable");
-    assert!(!body.contains("Aether Frontend"));
+    assert!(!body.contains("Niffler Frontend"));
     assert!(body.contains("install code"));
 
     gateway_handle.abort();

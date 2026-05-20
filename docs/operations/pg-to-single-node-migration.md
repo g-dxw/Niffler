@@ -1,8 +1,8 @@
-# Postgres to Aether Single Node Migration
+# Postgres to Niffler Single Node Migration
 
 Chinese version: [pg-to-single-node-migration.zh-CN.md](pg-to-single-node-migration.zh-CN.md)
 
-This runbook migrates an existing Docker Compose Postgres deployment to Aether
+This runbook migrates an existing Docker Compose Postgres deployment to Niffler
 single-node. In this repository, **single-node** means the default SQLite installer mode:
 `install.sh --mode single-node`, a system service backed by SQLite. The Docker Compose
 single-node template is `docker-compose.single-node.yml`, exposed through `--mode compose-single-node`.
@@ -41,14 +41,14 @@ install.sh
 # Migrate into a new single-node Docker Compose directory.
 install.sh \
   --mode compose-single-node \
-  --migrate-from-compose /root/Aether/docker-compose.yml \
+  --migrate-from-compose /root/Niffler/docker-compose.yml \
   --compose-dir /opt/aether-single \
   --replace-existing
 
 # Migrate into the system service + SQLite layout.
 sudo install.sh \
   --mode single-node \
-  --migrate-from-compose /root/Aether/docker-compose.yml \
+  --migrate-from-compose /root/Niffler/docker-compose.yml \
   --replace-existing
 ```
 
@@ -103,7 +103,7 @@ Before production cutover, take a normal server backup or snapshot. Then run:
 
 ```bash
 sudo scripts/migrate-pg-to-single-node.sh \
-  --source-compose /root/Aether/docker-compose.yml \
+  --source-compose /root/Niffler/docker-compose.yml \
   --replace-existing
 ```
 
@@ -111,7 +111,7 @@ For Docker Compose single-node cutover instead of a system service:
 
 ```bash
 scripts/migrate-pg-compose-to-single-node.sh \
-  --source-compose /root/Aether/docker-compose.yml \
+  --source-compose /root/Niffler/docker-compose.yml \
   --replace-existing
 ```
 
@@ -121,7 +121,7 @@ can be different. For example:
 ```bash
 install.sh \
   --mode compose-single-node \
-  --migrate-from-compose /root/Aether/docker-compose.yml \
+  --migrate-from-compose /root/Niffler/docker-compose.yml \
   --compose-dir /opt/aether-single \
   --replace-existing
 ```
@@ -130,7 +130,7 @@ Equivalently, call the lower-level script and pass each target path explicitly:
 
 ```bash
 scripts/migrate-pg-compose-to-single-node.sh \
-  --source-compose /root/Aether/docker-compose.yml \
+  --source-compose /root/Niffler/docker-compose.yml \
   --target-compose /opt/aether-single/docker-compose.single-node.yml \
   --target-env /opt/aether-single/.env.single-node \
   --target-db /opt/aether-single/data/aether.db \
@@ -163,7 +163,7 @@ finishes but you need to roll back:
 
 ```bash
 sudo systemctl stop aether-gateway
-cd /root/Aether
+cd /root/Niffler
 docker compose -f docker-compose.yml up -d app
 ```
 

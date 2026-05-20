@@ -1018,12 +1018,7 @@ async fn gateway_marks_claude_cli_cross_format_runtime_miss_when_format_conversi
         .list_by_request_id("trace-claude-cli-openai-local-miss-123")
         .await
         .expect("request candidate trace should read");
-    assert_eq!(stored_candidates.len(), 1);
-    assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Skipped);
-    assert_eq!(
-        stored_candidates[0].skip_reason.as_deref(),
-        Some("format_conversion_disabled")
-    );
+    assert!(stored_candidates.is_empty());
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();

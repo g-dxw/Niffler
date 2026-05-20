@@ -1716,8 +1716,6 @@ fn ai_serving_candidate_materialization_owns_affinity_and_candidate_runtime_pers
         "impl AiSkippedCandidatePersistencePort for GatewaySkippedCandidatePersistencePort",
         "run_ai_available_candidate_persistence(&port",
         "run_ai_skipped_candidate_persistence(&port",
-        "ai_should_persist_available_candidate_for_pool_key(",
-        "ai_should_persist_skipped_candidate_for_pool_membership(",
         "ai_candidate_extra_data_with_ranking(",
         "persist_available_local_execution_candidates",
         "persist_available_local_execution_candidates_with_context",
