@@ -285,7 +285,7 @@ write_single_node_env() {
   app_port="$(env_file_get "$SOURCE_ENV" "APP_PORT")"
   app_port="${app_port:-8084}"
   app_image="${APP_IMAGE:-$(env_file_get "$SOURCE_ENV" "APP_IMAGE")}"
-  app_image="${app_image:-ghcr.io/fawney19/aether:latest}"
+  app_image="${app_image:-ghcr.io/ryfinez/niffler:latest}"
   jwt_key="$(env_file_get "$SOURCE_ENV" "JWT_SECRET_KEY")"
   encryption_key="$(env_file_get "$SOURCE_ENV" "ENCRYPTION_KEY")"
 

@@ -14,7 +14,7 @@ SERVICE_GROUP="aether"
 SERVICE_USER_EXPLICIT="false"
 SERVICE_GROUP_EXPLICIT="false"
 INSTALLER="./install.sh"
-IMAGE_REPO="ghcr.io/fawney19/aether"
+IMAGE_REPO="ghcr.io/ryfinez/niffler"
 APP_IMAGE=""
 REPLACE_EXISTING="false"
 DRY_RUN="false"
@@ -64,7 +64,7 @@ Options:
   --service-group NAME        Single Node service group for SQLite ownership (default: aether)
   --installer PATH            install.sh path (default: ./install.sh)
   --app-image IMAGE           App image used for direct Postgres-to-SQLite copy
-  --image-repo IMAGE          Image repository when --app-image is omitted (default: ghcr.io/fawney19/aether)
+  --image-repo IMAGE          Image repository when --app-image is omitted (default: ghcr.io/ryfinez/niffler)
   --install-channel CHANNEL   Pass --channel to install.sh
   --install-version VERSION   Pass --version to install.sh
   --install-archive PATH      Pass --archive to install.sh
