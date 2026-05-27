@@ -65,6 +65,7 @@ COPY crates/ ./crates/
 RUN --mount=type=cache,id=aether-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=aether-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=aether-cargo-target-local,target=/build/target,sharing=locked \
+    cargo clean --release -p aether-gateway -p aether-scheduler-core -p aether-data -p aether-admin -p aether-billing -p aether-data-contracts && \
     cargo build --release --locked -p aether-gateway && \
     cp target/release/aether-gateway /tmp/aether-gateway
 
