@@ -104,7 +104,11 @@ export async function importProviderRefreshToken(
   data: {
     refresh_token?: string
     access_token?: string
+    id_token?: string
     expires_at?: number
+    expired?: number | string
+    disabled?: boolean
+    last_refresh?: string
     name?: string
     proxy_node_id?: string
     email?: string

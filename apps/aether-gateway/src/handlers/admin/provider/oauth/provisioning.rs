@@ -114,6 +114,7 @@ pub(crate) async fn create_provider_oauth_catalog_key(
     api_formats: &[String],
     proxy: Option<serde_json::Value>,
     expires_at_unix_secs: Option<u64>,
+    is_active: bool,
 ) -> Result<Option<StoredProviderCatalogKey>, GatewayError> {
     let Some(encrypted_api_key) = state.encrypt_catalog_secret_with_fallbacks(access_token) else {
         return Ok(None);
@@ -136,7 +137,7 @@ pub(crate) async fn create_provider_oauth_catalog_key(
         name.to_string(),
         "oauth".to_string(),
         None,
-        true,
+        is_active,
     )
     .map_err(|err| GatewayError::Internal(err.to_string()))?
     .with_transport_fields(
@@ -181,6 +182,7 @@ pub(crate) async fn update_existing_provider_oauth_catalog_key(
     api_formats: &[String],
     proxy: Option<serde_json::Value>,
     expires_at_unix_secs: Option<u64>,
+    is_active: bool,
 ) -> Result<Option<StoredProviderCatalogKey>, GatewayError> {
     let Some(encrypted_api_key) = state.encrypt_catalog_secret_with_fallbacks(access_token) else {
         return Ok(None);
@@ -201,7 +203,7 @@ pub(crate) async fn update_existing_provider_oauth_catalog_key(
     updated.encrypted_api_key = Some(encrypted_api_key);
     updated.encrypted_auth_config = Some(encrypted_auth_config);
     updated.api_formats = provider_oauth_catalog_key_api_formats(provider_type, api_formats);
-    updated.is_active = true;
+    updated.is_active = is_active;
     updated.expires_at_unix_secs = expires_at_unix_secs;
     updated.oauth_invalid_at_unix_secs = None;
     updated.oauth_invalid_reason = None;

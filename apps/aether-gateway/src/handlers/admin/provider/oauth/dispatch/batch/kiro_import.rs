@@ -247,6 +247,7 @@ pub(super) async fn execute_admin_provider_oauth_kiro_batch_import(
                 &api_formats,
                 key_proxy.clone(),
                 refreshed_auth_config.expires_at,
+                true,
             )
             .await?
             {
@@ -290,6 +291,7 @@ pub(super) async fn execute_admin_provider_oauth_kiro_batch_import(
                 &api_formats,
                 key_proxy.clone(),
                 refreshed_auth_config.expires_at,
+                true,
             )
             .await?
             {

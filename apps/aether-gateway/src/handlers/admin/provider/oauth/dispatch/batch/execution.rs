@@ -286,6 +286,7 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
             expires_at,
         } = resolved_import;
         apply_admin_provider_oauth_batch_import_hints(provider_type, entry, &mut auth_config);
+        let is_active = !entry.disabled;
 
         let duplicate =
             match find_duplicate_provider_oauth_key(state, provider_id, &auth_config, None).await {
@@ -321,6 +322,7 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
                 &api_formats,
                 key_proxy.clone(),
                 expires_at,
+                is_active,
             )
             .await?
             {
@@ -360,6 +362,7 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
                 &api_formats,
                 key_proxy.clone(),
                 expires_at,
+                is_active,
             )
             .await?
             {
@@ -385,12 +388,14 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
             }
         };
 
-        spawn_provider_oauth_account_state_refresh_after_update(
-            state.cloned_app(),
-            provider.clone(),
-            persisted_key.id.clone(),
-            request_proxy.clone(),
-        );
+        if is_active {
+            spawn_provider_oauth_account_state_refresh_after_update(
+                state.cloned_app(),
+                provider.clone(),
+                persisted_key.id.clone(),
+                request_proxy.clone(),
+            );
+        }
 
         success += 1;
         results.push(json!({
@@ -400,6 +405,7 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
             "key_name": key_name,
             "error": serde_json::Value::Null,
             "replaced": replaced,
+            "disabled": entry.disabled,
         }));
         maybe_report_admin_provider_oauth_batch_import_progress(
             &mut progress,

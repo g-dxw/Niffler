@@ -562,6 +562,7 @@ pub(super) async fn handle_admin_provider_oauth_device_poll(
                 &api_formats,
                 key_proxy.clone(),
                 Some(expires_at),
+                true,
             )
             .await?
         {
@@ -588,6 +589,7 @@ pub(super) async fn handle_admin_provider_oauth_device_poll(
                 &api_formats,
                 key_proxy,
                 Some(expires_at),
+                true,
             )
             .await?
         {
@@ -853,6 +855,7 @@ async fn handle_admin_provider_oauth_kiro_social_device_poll(
                 &api_formats,
                 key_proxy.clone(),
                 Some(expires_at),
+                true,
             )
             .await?
         {
@@ -880,6 +883,7 @@ async fn handle_admin_provider_oauth_kiro_social_device_poll(
                 &api_formats,
                 key_proxy,
                 Some(expires_at),
+                true,
             )
             .await?
         {

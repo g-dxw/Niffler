@@ -1,6 +1,8 @@
 use super::super::token_import::{import_tokens_from_raw_token, normalize_provider_import_tokens};
 use crate::handlers::admin::provider::oauth::errors::build_internal_control_error_response;
-use crate::handlers::admin::provider::oauth::state::{current_unix_secs, json_u64_value};
+use crate::handlers::admin::provider::oauth::state::{
+    current_unix_secs, enrich_admin_provider_oauth_auth_config, json_u64_value,
+};
 use axum::{
     body::{to_bytes, Body, Bytes},
     http,
@@ -8,7 +10,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Map, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -21,7 +23,9 @@ pub(super) struct AdminProviderOAuthBatchImportRequest {
 pub(super) struct AdminProviderOAuthBatchImportEntry {
     pub refresh_token: Option<String>,
     pub access_token: Option<String>,
+    pub id_token: Option<String>,
     pub expires_at: Option<u64>,
+    pub disabled: bool,
     pub account_id: Option<String>,
     pub account_user_id: Option<String>,
     pub plan_type: Option<String>,
@@ -34,6 +38,7 @@ pub(super) struct AdminProviderOAuthBatchImportEntry {
     pub cf_clearance: Option<String>,
     pub user_agent: Option<String>,
     pub browser_profile: Option<String>,
+    pub last_refresh: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +77,60 @@ fn coerce_admin_provider_oauth_import_str(value: Option<&serde_json::Value>) -> 
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn admin_provider_oauth_import_expiry_value(value: Option<&serde_json::Value>) -> Option<u64> {
+    match value? {
+        serde_json::Value::Number(number) => number.as_u64(),
+        serde_json::Value::String(value) => {
+            let normalized = value.trim();
+            if normalized.is_empty() {
+                return None;
+            }
+            normalized.parse::<u64>().ok().or_else(|| {
+                chrono::DateTime::parse_from_rfc3339(normalized)
+                    .ok()
+                    .and_then(|value| u64::try_from(value.timestamp()).ok())
+            })
+        }
+        _ => None,
+    }
+}
+
+fn admin_provider_oauth_import_bool_value(value: Option<&serde_json::Value>) -> Option<bool> {
+    match value? {
+        serde_json::Value::Bool(value) => Some(*value),
+        serde_json::Value::Number(value) => value.as_u64().map(|value| value != 0),
+        serde_json::Value::String(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" | "y" => Some(true),
+            "false" | "0" | "no" | "n" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn admin_provider_oauth_import_identity_hints_from_id_token(
+    provider_type: &str,
+    id_token: Option<&str>,
+) -> Map<String, Value> {
+    let mut auth_config = Map::new();
+    let Some(id_token) = id_token.map(str::trim).filter(|value| !value.is_empty()) else {
+        return auth_config;
+    };
+    enrich_admin_provider_oauth_auth_config(
+        provider_type,
+        &mut auth_config,
+        &json!({ "id_token": id_token }),
+    );
+    auth_config
+}
+
+fn admin_provider_oauth_import_hint_string(
+    hints: &Map<String, Value>,
+    field: &str,
+) -> Option<String> {
+    coerce_admin_provider_oauth_import_str(hints.get(field))
 }
 
 fn grok_cookie_value(raw: &str, name: &str) -> Option<String> {
@@ -143,7 +202,9 @@ fn extract_admin_provider_oauth_batch_import_entry(
                 Some(AdminProviderOAuthBatchImportEntry {
                     refresh_token,
                     access_token,
+                    id_token: None,
                     expires_at: None,
+                    disabled: false,
                     account_id: None,
                     account_user_id: None,
                     plan_type: None,
@@ -156,6 +217,7 @@ fn extract_admin_provider_oauth_batch_import_entry(
                     cf_clearance: grok_cookie_value(raw_token, "cf_clearance"),
                     user_agent: None,
                     browser_profile: None,
+                    last_refresh: None,
                 })
             }
         }
@@ -169,6 +231,9 @@ fn extract_admin_provider_oauth_batch_import_entry(
                 object
                     .get("access_token")
                     .or_else(|| object.get("accessToken")),
+            );
+            let id_token = coerce_admin_provider_oauth_import_str(
+                object.get("id_token").or_else(|| object.get("idToken")),
             );
             let grok_token_alias = if provider_type.trim().eq_ignore_ascii_case("grok") {
                 object.get("token")
@@ -201,22 +266,39 @@ fn extract_admin_provider_oauth_batch_import_entry(
             if refresh_token.is_none() && access_token.is_none() {
                 return None;
             }
-            let expires_at =
-                json_u64_value(object.get("expires_at").or_else(|| object.get("expiresAt")));
+            let id_token_hints = admin_provider_oauth_import_identity_hints_from_id_token(
+                provider_type,
+                id_token.as_deref(),
+            );
+            let expires_at = admin_provider_oauth_import_expiry_value(
+                object
+                    .get("expires_at")
+                    .or_else(|| object.get("expiresAt"))
+                    .or_else(|| object.get("expired"))
+                    .or_else(|| object.get("expire"))
+                    .or_else(|| object.get("expiry"))
+                    .or_else(|| object.get("expires")),
+            );
+            let disabled =
+                admin_provider_oauth_import_bool_value(object.get("disabled")).unwrap_or(false);
             let account_id = coerce_admin_provider_oauth_import_str(
                 object
                     .get("account_id")
                     .or_else(|| object.get("accountId"))
                     .or_else(|| object.get("chatgpt_account_id"))
                     .or_else(|| object.get("chatgptAccountId")),
-            );
+            )
+            .or_else(|| admin_provider_oauth_import_hint_string(&id_token_hints, "account_id"));
             let account_user_id = coerce_admin_provider_oauth_import_str(
                 object
                     .get("account_user_id")
                     .or_else(|| object.get("accountUserId"))
                     .or_else(|| object.get("chatgpt_account_user_id"))
                     .or_else(|| object.get("chatgptAccountUserId")),
-            );
+            )
+            .or_else(|| {
+                admin_provider_oauth_import_hint_string(&id_token_hints, "account_user_id")
+            });
             let plan_type = coerce_admin_provider_oauth_import_str(
                 object
                     .get("plan_type")
@@ -224,6 +306,7 @@ fn extract_admin_provider_oauth_batch_import_entry(
                     .or_else(|| object.get("chatgpt_plan_type"))
                     .or_else(|| object.get("chatgptPlanType")),
             )
+            .or_else(|| admin_provider_oauth_import_hint_string(&id_token_hints, "plan_type"))
             .map(|value| value.to_ascii_lowercase());
             let pool_tier = coerce_admin_provider_oauth_import_str(
                 object
@@ -239,17 +322,20 @@ fn extract_admin_provider_oauth_batch_import_entry(
                     .or_else(|| object.get("chatgpt_user_id"))
                     .or_else(|| object.get("chatgptUserId")),
             )
+            .or_else(|| admin_provider_oauth_import_hint_string(&id_token_hints, "user_id"))
             .or_else(|| {
                 grok_cookie
                     .as_deref()
                     .and_then(|cookie| grok_cookie_value(cookie, "x-userid"))
             });
-            let email = coerce_admin_provider_oauth_import_str(object.get("email"));
+            let email = coerce_admin_provider_oauth_import_str(object.get("email"))
+                .or_else(|| admin_provider_oauth_import_hint_string(&id_token_hints, "email"));
             let account_name = coerce_admin_provider_oauth_import_str(
                 object
                     .get("account_name")
                     .or_else(|| object.get("accountName")),
-            );
+            )
+            .or_else(|| admin_provider_oauth_import_hint_string(&id_token_hints, "account_name"));
             let sso_rw_token = coerce_admin_provider_oauth_import_str(
                 object
                     .get("sso_rw_token")
@@ -284,10 +370,19 @@ fn extract_admin_provider_oauth_batch_import_entry(
                     .or_else(|| object.get("browser"))
                     .or_else(|| object.get("impersonate")),
             );
+            let last_refresh = coerce_admin_provider_oauth_import_str(
+                object
+                    .get("last_refresh")
+                    .or_else(|| object.get("lastRefresh"))
+                    .or_else(|| object.get("last_refreshed_at"))
+                    .or_else(|| object.get("lastRefreshedAt")),
+            );
             Some(AdminProviderOAuthBatchImportEntry {
                 refresh_token,
                 access_token,
+                id_token,
                 expires_at,
+                disabled,
                 account_id,
                 account_user_id,
                 plan_type,
@@ -300,6 +395,7 @@ fn extract_admin_provider_oauth_batch_import_entry(
                 cf_clearance,
                 user_agent,
                 browser_profile,
+                last_refresh,
             })
         }
         _ => None,
@@ -366,6 +462,16 @@ pub(super) fn apply_admin_provider_oauth_batch_import_hints(
     if !matches!(provider_type.as_str(), "codex" | "chatgpt_web" | "grok") {
         return;
     }
+    if let Some(id_token) = entry.id_token.as_ref() {
+        enrich_admin_provider_oauth_auth_config(
+            &provider_type,
+            auth_config,
+            &json!({ "id_token": id_token }),
+        );
+        auth_config
+            .entry("id_token".to_string())
+            .or_insert_with(|| json!(id_token));
+    }
     if let Some(account_id) = entry.account_id.as_ref() {
         auth_config
             .entry("account_id".to_string())
@@ -425,6 +531,16 @@ pub(super) fn apply_admin_provider_oauth_batch_import_hints(
         auth_config
             .entry("browser_profile".to_string())
             .or_insert_with(|| json!(browser_profile));
+    }
+    if let Some(last_refresh) = entry.last_refresh.as_ref() {
+        auth_config
+            .entry("last_refresh".to_string())
+            .or_insert_with(|| json!(last_refresh));
+    }
+    if entry.disabled {
+        auth_config
+            .entry("disabled".to_string())
+            .or_insert_with(|| json!(true));
     }
 }
 
@@ -538,6 +654,56 @@ mod tests {
         assert_eq!(entries[0].expires_at, Some(2_100_000_000));
         assert_eq!(entries[0].account_id.as_deref(), Some("acc-1"));
         assert_eq!(entries[0].email.as_deref(), Some("u@example.com"));
+    }
+
+    #[test]
+    fn parses_cpa_codex_auth_json() {
+        let id_token = unsigned_jwt(json!({
+                "email": "cpa@example.com",
+                "https://api.openai.com/auth": {
+                    "chatgpt_account_id": "acc-cpa",
+                    "chatgpt_account_user_id": "account-user-cpa",
+                    "chatgpt_user_id": "user-cpa",
+                    "chatgpt_plan_type": "plus"
+                }
+        }));
+        let entries = parse_admin_provider_oauth_batch_import_entries(
+            "codex",
+            &json!({
+                "type": "codex",
+                "email": "cpa@example.com",
+                "account_id": "acc-cpa",
+                "chatgpt_account_id": "acc-cpa",
+                "chatgpt_account_user_id": "account-user-cpa",
+                "chatgpt_plan_type": "plus",
+                "id_token": id_token,
+                "access_token": "access-cpa",
+                "refresh_token": "refresh-cpa",
+                "last_refresh": "2026-05-27T20:10:51.855318Z",
+                "expired": "2026-06-05T20:17:17Z",
+                "disabled": true
+            })
+            .to_string(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].refresh_token.as_deref(), Some("refresh-cpa"));
+        assert_eq!(entries[0].access_token.as_deref(), Some("access-cpa"));
+        assert_eq!(entries[0].id_token.as_deref(), Some(id_token.as_str()));
+        assert_eq!(entries[0].expires_at, Some(1_780_690_637));
+        assert!(entries[0].disabled);
+        assert_eq!(entries[0].account_id.as_deref(), Some("acc-cpa"));
+        assert_eq!(
+            entries[0].account_user_id.as_deref(),
+            Some("account-user-cpa")
+        );
+        assert_eq!(entries[0].user_id.as_deref(), Some("user-cpa"));
+        assert_eq!(entries[0].plan_type.as_deref(), Some("plus"));
+        assert_eq!(entries[0].email.as_deref(), Some("cpa@example.com"));
+        assert_eq!(
+            entries[0].last_refresh.as_deref(),
+            Some("2026-05-27T20:10:51.855318Z")
+        );
     }
 
     #[test]

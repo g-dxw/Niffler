@@ -182,6 +182,7 @@ pub(super) async fn handle_admin_provider_oauth_complete_provider(
                 &api_formats,
                 key_proxy.clone(),
                 expires_at,
+                true,
             )
             .await?
         {
@@ -224,6 +225,7 @@ pub(super) async fn handle_admin_provider_oauth_complete_provider(
                 &api_formats,
                 key_proxy.clone(),
                 expires_at,
+                true,
             )
             .await?
         {

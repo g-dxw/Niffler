@@ -11,8 +11,8 @@ use super::super::runtime::{
 };
 use super::super::state::{
     admin_provider_oauth_template, build_admin_provider_oauth_backend_unavailable_response,
-    exchange_admin_provider_oauth_refresh_token, is_fixed_provider_type_for_provider_oauth,
-    json_u64_value,
+    enrich_admin_provider_oauth_auth_config, exchange_admin_provider_oauth_refresh_token,
+    is_fixed_provider_type_for_provider_oauth, json_u64_value,
 };
 use super::helpers::admin_provider_oauth_key_name_from_auth_config;
 use super::token_import::{
@@ -67,6 +67,47 @@ fn import_payload_u64(
     json_u64_value(payload.get(snake_case).or_else(|| payload.get(camel_case)))
 }
 
+fn import_payload_bool_any(
+    payload: &serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Option<bool> {
+    keys.iter()
+        .find_map(|key| payload.get(*key))
+        .and_then(|value| match value {
+            serde_json::Value::Bool(value) => Some(*value),
+            serde_json::Value::Number(value) => value.as_u64().map(|value| value != 0),
+            serde_json::Value::String(value) => match value.trim().to_ascii_lowercase().as_str() {
+                "true" | "1" | "yes" | "y" => Some(true),
+                "false" | "0" | "no" | "n" => Some(false),
+                _ => None,
+            },
+            _ => None,
+        })
+}
+
+fn import_payload_expiry_unix_secs(
+    payload: &serde_json::Map<String, serde_json::Value>,
+) -> Option<u64> {
+    let value = payload
+        .get("expires_at")
+        .or_else(|| payload.get("expiresAt"))
+        .or_else(|| payload.get("expired"))
+        .or_else(|| payload.get("expire"))
+        .or_else(|| payload.get("expiry"))
+        .or_else(|| payload.get("expires"))?;
+    json_u64_value(Some(value)).or_else(|| {
+        value
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|value| {
+                chrono::DateTime::parse_from_rfc3339(value)
+                    .ok()
+                    .and_then(|value| u64::try_from(value.timestamp()).ok())
+            })
+    })
+}
+
 fn apply_single_import_hints(
     provider_type: &str,
     payload: &serde_json::Map<String, serde_json::Value>,
@@ -75,6 +116,17 @@ fn apply_single_import_hints(
     let provider_type = provider_type.trim().to_ascii_lowercase();
     if !matches!(provider_type.as_str(), "codex" | "chatgpt_web" | "grok") {
         return;
+    }
+
+    if let Some(id_token) = import_payload_string_any(payload, &["id_token", "idToken"]) {
+        enrich_admin_provider_oauth_auth_config(
+            &provider_type,
+            auth_config,
+            &json!({ "id_token": id_token }),
+        );
+        auth_config
+            .entry("id_token".to_string())
+            .or_insert_with(|| json!(id_token));
     }
 
     for (target, keys) in [
@@ -128,6 +180,15 @@ fn apply_single_import_hints(
             ][..],
         ),
         ("pool_tier", &["pool_tier", "poolTier", "tier"][..]),
+        (
+            "last_refresh",
+            &[
+                "last_refresh",
+                "lastRefresh",
+                "last_refreshed_at",
+                "lastRefreshedAt",
+            ][..],
+        ),
     ] {
         let Some(value) = import_payload_string_any(payload, keys) else {
             continue;
@@ -139,6 +200,11 @@ fn apply_single_import_hints(
                 json!(value)
             }
         });
+    }
+    if let Some(disabled) = import_payload_bool_any(payload, &["disabled"]) {
+        auth_config
+            .entry("disabled".to_string())
+            .or_insert_with(|| json!(disabled));
     }
 }
 
@@ -300,7 +366,8 @@ pub(super) async fn handle_admin_provider_oauth_import_refresh_token(
         &raw_payload,
         &["access_token", "accessToken", "sso_token", "ssoToken"],
     );
-    let imported_expires_at = import_payload_u64(&raw_payload, "expires_at", "expiresAt");
+    let imported_expires_at = import_payload_expiry_unix_secs(&raw_payload);
+    let import_disabled = import_payload_bool_any(&raw_payload, &["disabled"]).unwrap_or(false);
     let name = raw_payload
         .get("name")
         .and_then(serde_json::Value::as_str)
@@ -421,6 +488,7 @@ pub(super) async fn handle_admin_provider_oauth_import_refresh_token(
                 &api_formats,
                 key_proxy.clone(),
                 expires_at,
+                !import_disabled,
             )
             .await?
         {
@@ -446,6 +514,7 @@ pub(super) async fn handle_admin_provider_oauth_import_refresh_token(
                 &api_formats,
                 key_proxy.clone(),
                 expires_at,
+                !import_disabled,
             )
             .await?
         {
@@ -459,18 +528,21 @@ pub(super) async fn handle_admin_provider_oauth_import_refresh_token(
         }
     };
 
-    spawn_provider_oauth_account_state_refresh_after_update(
-        state.cloned_app(),
-        provider.clone(),
-        persisted_key.id.clone(),
-        request_proxy.clone(),
-    );
+    if !import_disabled {
+        spawn_provider_oauth_account_state_refresh_after_update(
+            state.cloned_app(),
+            provider.clone(),
+            persisted_key.id.clone(),
+            request_proxy.clone(),
+        );
+    }
 
     Ok(Json(json!({
         "key_id": persisted_key.id,
         "provider_type": provider_type,
         "expires_at": expires_at,
         "has_refresh_token": has_refresh_token,
+        "disabled": import_disabled,
         "temporary": auth_config
             .get("access_token_import_temporary")
             .and_then(serde_json::Value::as_bool)
