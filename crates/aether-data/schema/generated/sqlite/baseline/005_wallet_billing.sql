@@ -243,6 +243,21 @@ CREATE TABLE IF NOT EXISTS entitlement_usage_ledgers (
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_user_date ON entitlement_usage_ledgers (user_id, usage_date);
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_entitlement_date ON entitlement_usage_ledgers (user_entitlement_id, usage_date);
 
+CREATE TABLE IF NOT EXISTS entitlement_usage_windows (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_entitlement_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    window_scope TEXT NOT NULL,
+    window_key TEXT NOT NULL,
+    window_started_at INTEGER NOT NULL,
+    window_ends_at INTEGER NOT NULL,
+    used_usd REAL NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (user_entitlement_id, window_scope)
+);
+CREATE INDEX IF NOT EXISTS idx_entitlement_usage_windows_user_scope ON entitlement_usage_windows (user_id, window_scope, window_ends_at);
+
 CREATE TABLE IF NOT EXISTS refund_requests (
     id TEXT PRIMARY KEY NOT NULL,
     refund_no TEXT NOT NULL,
@@ -315,4 +330,3 @@ CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch_created ON redeem_codes (batch
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_status ON redeem_codes (status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_redeemed_user ON redeem_codes (redeemed_by_user_id, redeemed_at);
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_redeemed_order ON redeem_codes (redeemed_payment_order_id);
-

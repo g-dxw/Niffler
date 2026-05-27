@@ -8,6 +8,10 @@ use super::{
 };
 use crate::driver::sqlite::{sqlite_optional_real, sqlite_real, SqlitePool};
 use crate::error::SqlResultExt;
+use crate::repository::billing::quota::{
+    usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, UsageQuotaGrant,
+    QUOTA_SCOPE_FIVE_HOUR,
+};
 use crate::DataLayerError;
 
 const FIND_USAGE_FOR_SETTLEMENT_SQL: &str = r#"
@@ -157,64 +161,6 @@ struct DailyQuotaDebitResult {
     insufficient: bool,
 }
 
-#[derive(Debug)]
-struct DailyQuotaGrant {
-    entitlement_id: String,
-    daily_quota_usd: f64,
-    usage_date: String,
-    allow_wallet_overage: bool,
-}
-
-fn daily_quota_usage_date(
-    reset_timezone: Option<&str>,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<String, DataLayerError> {
-    let timezone = reset_timezone
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Asia/Shanghai")
-        .parse::<chrono_tz::Tz>()
-        .map_err(|err| DataLayerError::InvalidInput(format!("invalid reset_timezone: {err}")))?;
-    Ok(now.with_timezone(&timezone).date_naive().to_string())
-}
-
-fn daily_quota_grants_from_entitlement(
-    entitlement_id: &str,
-    entitlements: &serde_json::Value,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<Vec<DailyQuotaGrant>, DataLayerError> {
-    let mut grants = Vec::new();
-    let Some(items) = entitlements.as_array() else {
-        return Ok(grants);
-    };
-    for item in items {
-        if item.get("type").and_then(serde_json::Value::as_str) != Some("daily_quota") {
-            continue;
-        }
-        let daily_quota_usd = item
-            .get("daily_quota_usd")
-            .and_then(serde_json::Value::as_f64)
-            .unwrap_or(0.0);
-        if !daily_quota_usd.is_finite() || daily_quota_usd <= 0.0 {
-            continue;
-        }
-        grants.push(DailyQuotaGrant {
-            entitlement_id: entitlement_id.to_string(),
-            daily_quota_usd,
-            usage_date: daily_quota_usage_date(
-                item.get("reset_timezone")
-                    .and_then(serde_json::Value::as_str),
-                now,
-            )?,
-            allow_wallet_overage: item
-                .get("allow_wallet_overage")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false),
-        });
-    }
-    Ok(grants)
-}
-
 async fn consume_daily_quota_sqlite(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     user_id: &str,
@@ -229,7 +175,7 @@ async fn consume_daily_quota_sqlite(
     }
     let rows = sqlx::query(
         r#"
-SELECT id, entitlements_snapshot
+SELECT id, starts_at, entitlements_snapshot
 FROM user_plan_entitlements
 WHERE user_id = ?
   AND status = 'active'
@@ -248,6 +194,11 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
     let mut grants = Vec::new();
     for row in rows {
         let entitlement_id: String = row.try_get("id").map_sql_err()?;
+        let entitlement_started_at =
+            chrono::DateTime::from_timestamp(row.try_get::<i64, _>("starts_at").map_sql_err()?, 0)
+                .ok_or_else(|| {
+                    DataLayerError::UnexpectedValue("invalid entitlement start".to_string())
+                })?;
         let entitlements_raw: String = row.try_get("entitlements_snapshot").map_sql_err()?;
         let entitlements =
             serde_json::from_str::<serde_json::Value>(&entitlements_raw).map_err(|err| {
@@ -255,37 +206,43 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
                     "user_plan_entitlements.entitlements_snapshot invalid json: {err}"
                 ))
             })?;
-        grants.extend(daily_quota_grants_from_entitlement(
+        let stored_five_hour =
+            find_usage_quota_window_sqlite(tx, &entitlement_id, QUOTA_SCOPE_FIVE_HOUR).await?;
+        grants.extend(usage_quota_grants_from_entitlement(
             &entitlement_id,
             &entitlements,
             now,
+            entitlement_started_at,
+            stored_five_hour.as_ref(),
         )?);
     }
     if grants.is_empty() {
         return Ok(DailyQuotaDebitResult::default());
     }
 
-    let mut grants_with_remaining = Vec::new();
+    let mut grants_by_entitlement: std::collections::BTreeMap<String, Vec<(UsageQuotaGrant, f64)>> =
+        std::collections::BTreeMap::new();
     let mut total_remaining = 0.0;
     let mut allow_wallet_overage = true;
     for grant in grants {
         allow_wallet_overage &= grant.allow_wallet_overage;
-        let used = sqlx::query_scalar::<_, f64>(
-            r#"
-SELECT CAST(COALESCE(SUM(amount_usd), 0) AS REAL)
-FROM entitlement_usage_ledgers
-WHERE user_entitlement_id = ?
-  AND usage_date = ?
-"#,
-        )
-        .bind(&grant.entitlement_id)
-        .bind(&grant.usage_date)
-        .fetch_one(&mut **tx)
-        .await
-        .map_sql_err()?;
-        let remaining = (grant.daily_quota_usd - used).max(0.0);
-        total_remaining += remaining;
-        grants_with_remaining.push((grant, remaining));
+        let used = upsert_usage_quota_window_sqlite(tx, user_id, &grant, now_unix_secs).await?;
+        let remaining = (grant.limit_usd - used).max(0.0);
+        grants_by_entitlement
+            .entry(grant.entitlement_id.clone())
+            .or_default()
+            .push((grant, remaining));
+    }
+    let mut entitlement_remaining = Vec::new();
+    for grants in grants_by_entitlement.into_values() {
+        let remaining = grants
+            .iter()
+            .map(|(_, remaining)| *remaining)
+            .fold(f64::INFINITY, f64::min);
+        if remaining.is_finite() {
+            total_remaining += remaining.max(0.0);
+            entitlement_remaining.push((grants, remaining.max(0.0)));
+        }
     }
     if !allow_wallet_overage && total_remaining + 0.000_000_01 < total_cost_usd {
         return Ok(DailyQuotaDebitResult {
@@ -307,12 +264,16 @@ WHERE user_entitlement_id = ?
 
     let mut remaining_cost = total_cost_usd;
     let mut debited = 0.0;
-    for (grant, balance_before) in grants_with_remaining {
+    for (grants, balance_before) in entitlement_remaining {
         if remaining_cost <= 0.000_000_01 || balance_before <= 0.0 {
             continue;
         }
         let amount = remaining_cost.min(balance_before);
         let balance_after = balance_before - amount;
+        for (grant, _) in &grants {
+            increment_usage_quota_window_sqlite(tx, grant, amount, now_unix_secs).await?;
+        }
+        let primary_grant = &grants[0].0;
         sqlx::query(
             r#"
 INSERT OR IGNORE INTO entitlement_usage_ledgers (
@@ -323,13 +284,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 "#,
         )
         .bind(uuid::Uuid::new_v4().to_string())
-        .bind(&grant.entitlement_id)
+        .bind(&primary_grant.entitlement_id)
         .bind(user_id)
         .bind(request_id)
         .bind(amount)
         .bind(balance_before)
         .bind(balance_after)
-        .bind(&grant.usage_date)
+        .bind(&primary_grant.window_key)
         .bind(now_unix_secs)
         .execute(&mut **tx)
         .await
@@ -341,6 +302,146 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         debited_usd: debited,
         insufficient: false,
     })
+}
+
+async fn find_usage_quota_window_sqlite(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    entitlement_id: &str,
+    scope: &str,
+) -> Result<Option<StoredUsageQuotaWindow>, DataLayerError> {
+    let row = sqlx::query(
+        r#"
+SELECT window_key, window_started_at, window_ends_at, used_usd
+FROM entitlement_usage_windows
+WHERE user_entitlement_id = ?
+  AND window_scope = ?
+LIMIT 1
+        "#,
+    )
+    .bind(entitlement_id)
+    .bind(scope)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_sql_err()?;
+    row.map(|row| {
+        Ok(StoredUsageQuotaWindow {
+            window_key: row.try_get("window_key").map_sql_err()?,
+            window_started_at: chrono::DateTime::from_timestamp(
+                row.try_get::<i64, _>("window_started_at").map_sql_err()?,
+                0,
+            )
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue("invalid quota window start".to_string())
+            })?,
+            window_ends_at: chrono::DateTime::from_timestamp(
+                row.try_get::<i64, _>("window_ends_at").map_sql_err()?,
+                0,
+            )
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue("invalid quota window end".to_string())
+            })?,
+        })
+    })
+    .transpose()
+}
+
+async fn upsert_usage_quota_window_sqlite(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: &str,
+    grant: &UsageQuotaGrant,
+    now_unix_secs: i64,
+) -> Result<f64, DataLayerError> {
+    let existing = sqlx::query(
+        r#"
+SELECT window_key, window_ends_at, used_usd
+FROM entitlement_usage_windows
+WHERE user_entitlement_id = ?
+  AND window_scope = ?
+LIMIT 1
+        "#,
+    )
+    .bind(&grant.entitlement_id)
+    .bind(grant.scope)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_sql_err()?;
+
+    if let Some(row) = existing {
+        let ends_at: i64 = row.try_get("window_ends_at").map_sql_err()?;
+        if ends_at > now_unix_secs {
+            return row.try_get("used_usd").map_sql_err();
+        }
+        sqlx::query(
+            r#"
+UPDATE entitlement_usage_windows
+SET window_key = ?,
+    window_started_at = ?,
+    window_ends_at = ?,
+    used_usd = 0,
+    updated_at = ?
+WHERE user_entitlement_id = ?
+  AND window_scope = ?
+            "#,
+        )
+        .bind(&grant.window_key)
+        .bind(grant.window_started_at.timestamp())
+        .bind(grant.window_ends_at.timestamp())
+        .bind(now_unix_secs)
+        .bind(&grant.entitlement_id)
+        .bind(grant.scope)
+        .execute(&mut **tx)
+        .await
+        .map_sql_err()?;
+        return Ok(0.0);
+    }
+
+    sqlx::query(
+        r#"
+INSERT INTO entitlement_usage_windows (
+  id, user_entitlement_id, user_id, window_scope, window_key,
+  window_started_at, window_ends_at, used_usd, created_at, updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        "#,
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&grant.entitlement_id)
+    .bind(user_id)
+    .bind(grant.scope)
+    .bind(&grant.window_key)
+    .bind(grant.window_started_at.timestamp())
+    .bind(grant.window_ends_at.timestamp())
+    .bind(now_unix_secs)
+    .bind(now_unix_secs)
+    .execute(&mut **tx)
+    .await
+    .map_sql_err()?;
+    Ok(0.0)
+}
+
+async fn increment_usage_quota_window_sqlite(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    grant: &UsageQuotaGrant,
+    amount: f64,
+    now_unix_secs: i64,
+) -> Result<(), DataLayerError> {
+    sqlx::query(
+        r#"
+UPDATE entitlement_usage_windows
+SET used_usd = used_usd + ?,
+    updated_at = ?
+WHERE user_entitlement_id = ?
+  AND window_scope = ?
+        "#,
+    )
+    .bind(amount)
+    .bind(now_unix_secs)
+    .bind(&grant.entitlement_id)
+    .bind(grant.scope)
+    .execute(&mut **tx)
+    .await
+    .map_sql_err()?;
+    Ok(())
 }
 
 #[async_trait]
@@ -910,6 +1011,97 @@ mod tests {
         .await
         .expect("quota ledger should load");
         assert_eq!(quota_used, 3.0);
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_applies_five_hour_and_weekly_package_limits() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        seed_quota_covered_settlement_rows(&pool).await;
+        sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET entitlements_snapshot =
+  '[{"type":"daily_quota","daily_quota_usd":10.0,"five_hour_quota_usd":4.0,"weekly_quota_usd":5.0,"reset_timezone":"Asia/Shanghai","allow_wallet_overage":false}]'
+WHERE id = 'entitlement-quota'
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("entitlement should update");
+
+        let repository = SqliteSettlementRepository::new(pool.clone());
+        let settlement = repository
+            .settle_usage(UsageSettlementInput {
+                request_id: "request-quota-covered".to_string(),
+                user_id: Some("user-quota".to_string()),
+                api_key_id: Some("key-quota".to_string()),
+                api_key_is_standalone: false,
+                provider_id: None,
+                status: "completed".to_string(),
+                billing_status: "pending".to_string(),
+                total_cost_usd: 3.0,
+                actual_total_cost_usd: 2.0,
+                finalized_at_unix_secs: Some(1_260),
+            })
+            .await
+            .expect("settlement should run")
+            .expect("usage should exist");
+
+        assert_eq!(settlement.billing_status, "settled");
+        let five_hour_used: f64 = sqlx::query_scalar(
+            "SELECT used_usd FROM entitlement_usage_windows WHERE user_entitlement_id = 'entitlement-quota' AND window_scope = 'five_hour'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("five hour window should load");
+        assert_eq!(five_hour_used, 3.0);
+        let weekly_used: f64 = sqlx::query_scalar(
+            "SELECT used_usd FROM entitlement_usage_windows WHERE user_entitlement_id = 'entitlement-quota' AND window_scope = 'weekly'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("weekly window should load");
+        assert_eq!(weekly_used, 3.0);
+
+        sqlx::query(
+            r#"
+INSERT INTO "usage" (
+  request_id, user_id, api_key_id, status, billing_status,
+  total_cost_usd, actual_total_cost_usd
+) VALUES (
+  'request-quota-over-weekly', 'user-quota', 'key-quota', 'completed',
+  'pending', 3.0, 2.0
+)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("second usage should seed");
+        let settlement = repository
+            .settle_usage(UsageSettlementInput {
+                request_id: "request-quota-over-weekly".to_string(),
+                user_id: Some("user-quota".to_string()),
+                api_key_id: Some("key-quota".to_string()),
+                api_key_is_standalone: false,
+                provider_id: None,
+                status: "completed".to_string(),
+                billing_status: "pending".to_string(),
+                total_cost_usd: 3.0,
+                actual_total_cost_usd: 2.0,
+                finalized_at_unix_secs: Some(1_320),
+            })
+            .await
+            .expect("settlement should run")
+            .expect("usage should exist");
+
+        assert_eq!(settlement.billing_status, "insufficient_quota");
     }
 
     async fn seed_settlement_rows(pool: &sqlx::SqlitePool) {

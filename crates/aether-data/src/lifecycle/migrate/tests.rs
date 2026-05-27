@@ -310,6 +310,7 @@ fn empty_database_snapshot_covers_current_cutoff_versions() {
             20260519000000,
             20260519120000,
             20260519130000,
+            20260527120000,
         ]
     );
 }
@@ -373,6 +374,14 @@ fn empty_database_snapshot_sql_includes_usage_body_blobs_and_audit_admin_role() 
         "CREATE TABLE IF NOT EXISTS public.stats_user_daily_cost_savings_model_provider"
     ));
     assert!(
+        EMPTY_DATABASE_SNAPSHOT_SQL.contains("CREATE TABLE IF NOT EXISTS public.routing_groups")
+    );
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL
+        .contains("CREATE TABLE IF NOT EXISTS public.routing_group_bindings"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL
+        .contains("CREATE TABLE IF NOT EXISTS public.routing_group_versions"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("routing_groups_system_default_idx"));
+    assert!(
         EMPTY_DATABASE_SNAPSHOT_SQL.contains("successful_response_time_sum_ms double precision")
     );
     assert!(
@@ -416,6 +425,7 @@ fn provider_api_keys_api_formats_remains_nullable_in_baselines() {
         .contains("api_formats json DEFAULT '[]'::json NOT NULL"));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("api_formats json,"));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("concurrent_limit integer,"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("concurrent_limit_mode text DEFAULT 'inherit'"));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("allow_auth_channel_mismatch_formats json,"));
     assert!(!EMPTY_DATABASE_SNAPSHOT_SQL.contains("api_formats json DEFAULT '[]'::json NOT NULL"));
 
@@ -605,6 +615,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260519000000,
             20260519120000,
             20260519130000,
+            20260527120000,
         ]
     );
     assert_eq!(
@@ -626,6 +637,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260519000000,
             20260519120000,
             20260519130000,
+            20260527120000,
         ]
     );
 }
@@ -1147,6 +1159,7 @@ fn pending_migrations_from_applied_skips_versions_already_applied() {
             20260519000000,
             20260519120000,
             20260519130000,
+            20260527120000,
         ]
     );
 }

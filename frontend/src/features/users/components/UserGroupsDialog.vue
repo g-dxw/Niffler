@@ -222,6 +222,33 @@
                 </div>
               </div>
             </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm font-medium">并发上限</Label>
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div class="flex w-full items-center sm:w-auto sm:shrink-0">
+                  <Switch
+                    :model-value="form.concurrent_limit_mode === 'system'"
+                    @update:model-value="(v) => (form.concurrent_limit_mode = v ? 'system' : 'custom')"
+                  />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <Input
+                    :model-value="form.concurrent_limit ?? ''"
+                    type="number"
+                    min="0"
+                    max="10000"
+                    class="h-10"
+                    :disabled="form.concurrent_limit_mode === 'system'"
+                    :placeholder="form.concurrent_limit_mode === 'system' ? '使用系统默认' : '0 = 不限制'"
+                    @update:model-value="(value) => form.concurrent_limit = parseNumberInput(value, { min: 0, max: 10000 })"
+                  />
+                </div>
+              </div>
+              <p class="text-xs text-muted-foreground">
+                用于套餐分组。同一用户同时进行中的请求数达到上限后，新请求会被拒绝；0 表示不限制。
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -308,6 +335,8 @@ const form = ref({
   allowed_models: [] as string[],
   rate_limit_mode: 'system' as RateLimitPolicyMode,
   rate_limit: undefined as number | undefined,
+  concurrent_limit_mode: 'system' as RateLimitPolicyMode,
+  concurrent_limit: undefined as number | undefined,
 })
 
 const selectedGroup = computed(() => groups.value.find((group) => group.id === editingGroupId.value) ?? null)
@@ -368,6 +397,8 @@ async function selectGroup(groupId: string): Promise<void> {
     allowed_models: group.allowed_models ? [...group.allowed_models] : [],
     rate_limit_mode: normalizeRateMode(group.rate_limit_mode),
     rate_limit: group.rate_limit ?? undefined,
+    concurrent_limit_mode: normalizeRateMode(group.concurrent_limit_mode),
+    concurrent_limit: group.concurrent_limit ?? undefined,
   }
   try {
     const members = await usersStore.listUserGroupMembers(group.id)
@@ -398,6 +429,8 @@ function startCreate(): void {
     allowed_models: [],
     rate_limit_mode: 'system',
     rate_limit: undefined,
+    concurrent_limit_mode: 'system',
+    concurrent_limit: undefined,
   }
   memberUserIds.value = []
 }
@@ -450,6 +483,10 @@ function buildPayload(): UpsertUserGroupRequest {
     rate_limit_mode: form.value.rate_limit_mode,
     rate_limit: form.value.rate_limit_mode === 'custom'
       ? (form.value.rate_limit ?? 0)
+      : null,
+    concurrent_limit_mode: form.value.concurrent_limit_mode,
+    concurrent_limit: form.value.concurrent_limit_mode === 'custom'
+      ? (form.value.concurrent_limit ?? 0)
       : null,
   }
 }

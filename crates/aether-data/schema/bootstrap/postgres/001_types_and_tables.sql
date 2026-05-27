@@ -297,6 +297,54 @@ CREATE TABLE IF NOT EXISTS public.global_models (
 );
 
 
+--
+-- Name: routing_groups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.routing_groups (
+    id character varying(64) NOT NULL,
+    name character varying(255) NOT NULL,
+    description text,
+    enabled boolean DEFAULT true NOT NULL,
+    is_system_default boolean DEFAULT false NOT NULL,
+    config_json jsonb NOT NULL,
+    version bigint DEFAULT 1 NOT NULL,
+    created_at bigint NOT NULL,
+    updated_at bigint NOT NULL,
+    published_at bigint
+);
+
+
+--
+-- Name: routing_group_bindings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.routing_group_bindings (
+    id character varying(64) NOT NULL,
+    group_id character varying(64) NOT NULL,
+    subject_type character varying(32) NOT NULL,
+    subject_id character varying(64) NOT NULL,
+    is_default boolean DEFAULT false NOT NULL,
+    allow_explicit_select boolean DEFAULT true NOT NULL,
+    created_at bigint NOT NULL,
+    updated_at bigint NOT NULL
+);
+
+
+--
+-- Name: routing_group_versions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.routing_group_versions (
+    id character varying(64) NOT NULL,
+    group_id character varying(64) NOT NULL,
+    version bigint NOT NULL,
+    config_json jsonb NOT NULL,
+    created_at bigint NOT NULL,
+    created_by character varying(64)
+);
+
+
 
 --
 -- Name: ldap_configs; Type: TABLE; Schema: public; Owner: -
@@ -557,6 +605,24 @@ CREATE TABLE IF NOT EXISTS public.entitlement_usage_ledgers (
     balance_after numeric(20,8) NOT NULL,
     usage_date character varying(16) NOT NULL,
     created_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: entitlement_usage_windows; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.entitlement_usage_windows (
+    id character varying(64) NOT NULL,
+    user_entitlement_id character varying(64) NOT NULL,
+    user_id character varying(64) NOT NULL,
+    window_scope character varying(32) NOT NULL,
+    window_key character varying(64) NOT NULL,
+    window_started_at timestamp with time zone NOT NULL,
+    window_ends_at timestamp with time zone NOT NULL,
+    used_usd numeric(20,8) DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
 );
 
 
@@ -1498,6 +1564,8 @@ CREATE TABLE IF NOT EXISTS public.user_groups (
     allowed_models_mode text DEFAULT 'inherit'::text NOT NULL,
     rate_limit integer,
     rate_limit_mode text DEFAULT 'inherit'::text NOT NULL,
+    concurrent_limit integer,
+    concurrent_limit_mode text DEFAULT 'inherit'::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );

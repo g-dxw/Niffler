@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS user_groups (
     `allowed_models_mode` VARCHAR(32) NOT NULL DEFAULT 'inherit',
     `rate_limit` INT,
     `rate_limit_mode` VARCHAR(32) NOT NULL DEFAULT 'inherit',
+    `concurrent_limit` INT,
+    `concurrent_limit_mode` VARCHAR(32) NOT NULL DEFAULT 'inherit',
     `created_at` BIGINT NOT NULL,
     `updated_at` BIGINT NOT NULL,
     PRIMARY KEY (`id`),
@@ -216,4 +218,3 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     KEY user_sessions_user_active_idx (`user_id`, `revoked_at`, `expires_at`),
     KEY user_sessions_user_device_idx (`user_id`, `client_device_id`)
 );
-

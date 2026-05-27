@@ -113,6 +113,8 @@ export interface UserGroupExport {
   allowed_models_mode?: 'inherit' | 'unrestricted' | 'specific' | 'deny_all'
   rate_limit?: number | null
   rate_limit_mode?: 'inherit' | 'system' | 'custom'
+  concurrent_limit?: number | null
+  concurrent_limit_mode?: 'inherit' | 'system' | 'custom'
 }
 
 export interface UserExport {

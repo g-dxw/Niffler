@@ -1455,12 +1455,17 @@ import { useAuthStore } from '@/stores/auth'
 import { usersApi, type User, type ApiKey, type UserSession, type UserBatchActionResponse, type UserBatchSelectionFilters, type UserGroup, type AdminUserPlanEntitlement } from '@/api/users'
 import { formatSessionMeta } from '@/types/session'
 import { adminWalletApi, type AdminWallet } from '@/api/admin-wallets'
-import { adminBillingPlansApi, type BillingEntitlement, type BillingPlan } from '@/api/billing'
+import { adminBillingPlansApi, type BillingPlan, type DailyQuotaEntitlement } from '@/api/billing'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useClipboard } from '@/composables/useClipboard'
 import { adminApi } from '@/api/admin'
 import { walletStatusBadge, walletStatusLabel } from '@/utils/walletDisplay'
+import {
+  hasPackageBillingEntitlement,
+  normalizeBillingEntitlements,
+  type BillingEntitlementsInput,
+} from '@/utils/billingEntitlements'
 
 // UI 组件
 import {
@@ -1766,13 +1771,13 @@ function formatPlanDuration(plan: BillingPlan): string {
   return `${Number(plan.duration_value || 1)}${unit}`
 }
 
-function entitlementLabels(items: BillingEntitlement[] | undefined): string[] {
-  return (items || []).map((item) => {
+function entitlementLabels(items: BillingEntitlementsInput): string[] {
+  return normalizeBillingEntitlements(items).map((item) => {
     if (item.type === 'wallet_credit') {
       return `附赠余额 $${Number(item.amount_usd || 0).toFixed(2)}`
     }
     if (item.type === 'daily_quota') {
-      return `每日额度 $${Number(item.daily_quota_usd || 0).toFixed(2)}`
+      return quotaEntitlementLabel(item)
     }
     if (item.type === 'membership_group') {
       return '会员权益'
@@ -1781,8 +1786,22 @@ function entitlementLabels(items: BillingEntitlement[] | undefined): string[] {
   })
 }
 
-function hasPackageEntitlement(items: BillingEntitlement[] | undefined): boolean {
-  return (items || []).some((item) => item.type === 'daily_quota' || item.type === 'membership_group')
+function hasPackageEntitlement(items: BillingEntitlementsInput): boolean {
+  return hasPackageBillingEntitlement(items)
+}
+
+function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
+  const limits = item.limits || {}
+  const parts = []
+  const daily = Number(item.daily_quota_usd ?? limits.daily_limit_usd ?? 0)
+  const fiveHour = Number(item.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
+  const weekly = Number(item.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
+  const monthly = Number(item.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
+  if (daily > 0) parts.push(`每日 $${daily.toFixed(2)}`)
+  if (fiveHour > 0) parts.push(`5H $${fiveHour.toFixed(2)}`)
+  if (weekly > 0) parts.push(`每周 $${weekly.toFixed(2)}`)
+  if (monthly > 0) parts.push(`每月 $${monthly.toFixed(2)}`)
+  return parts.join(' / ') || '用量额度'
 }
 
 async function loadUserWallets(options: { cacheTtlMs?: number } = {}) {

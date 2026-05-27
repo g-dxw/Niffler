@@ -54,7 +54,7 @@
             v-else
             class="text-xs text-muted-foreground"
           >
-            开通每日额度套餐后会优先消耗这里的额度。
+            开通周期额度套餐后会优先消耗这里的额度。
           </div>
         </Card>
 

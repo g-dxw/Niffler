@@ -255,6 +255,22 @@ CREATE TABLE IF NOT EXISTS entitlement_usage_ledgers (
     KEY idx_entitlement_usage_entitlement_date (`user_entitlement_id`, `usage_date`)
 );
 
+CREATE TABLE IF NOT EXISTS entitlement_usage_windows (
+    `id` VARCHAR(64) NOT NULL,
+    `user_entitlement_id` VARCHAR(64) NOT NULL,
+    `user_id` VARCHAR(64) NOT NULL,
+    `window_scope` VARCHAR(32) NOT NULL,
+    `window_key` VARCHAR(64) NOT NULL,
+    `window_started_at` BIGINT NOT NULL,
+    `window_ends_at` BIGINT NOT NULL,
+    `used_usd` DOUBLE NOT NULL DEFAULT 0,
+    `created_at` BIGINT NOT NULL,
+    `updated_at` BIGINT NOT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY uq_entitlement_usage_window (`user_entitlement_id`, `window_scope`),
+    KEY idx_entitlement_usage_windows_user_scope (`user_id`, `window_scope`, `window_ends_at`)
+);
+
 CREATE TABLE IF NOT EXISTS refund_requests (
     `id` VARCHAR(64) NOT NULL,
     `refund_no` VARCHAR(128) NOT NULL,
@@ -330,4 +346,3 @@ CREATE TABLE IF NOT EXISTS redeem_codes (
     KEY idx_redeem_codes_redeemed_user (`redeemed_by_user_id`, `redeemed_at`),
     KEY idx_redeem_codes_redeemed_order (`redeemed_payment_order_id`)
 );
-

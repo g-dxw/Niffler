@@ -158,6 +158,8 @@ SELECT
   allowed_models_mode,
   rate_limit,
   rate_limit_mode,
+  concurrent_limit,
+  concurrent_limit_mode,
   created_at,
   updated_at
 FROM user_groups
@@ -421,9 +423,9 @@ INSERT INTO user_groups (
   allowed_providers, allowed_providers_mode,
   allowed_api_formats, allowed_api_formats_mode,
   allowed_models, allowed_models_mode,
-  rate_limit, rate_limit_mode, created_at, updated_at
+  rate_limit, rate_limit_mode, concurrent_limit, concurrent_limit_mode, created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 "#,
         )
         .bind(&id)
@@ -443,6 +445,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         .bind(record.allowed_models_mode)
         .bind(record.rate_limit)
         .bind(record.rate_limit_mode)
+        .bind(record.concurrent_limit)
+        .bind(record.concurrent_limit_mode)
         .bind(now)
         .bind(now)
         .execute(&self.pool)
@@ -479,6 +483,8 @@ SET name = ?,
     allowed_models_mode = ?,
     rate_limit = ?,
     rate_limit_mode = ?,
+    concurrent_limit = ?,
+    concurrent_limit_mode = ?,
     updated_at = ?
 WHERE id = ?
 "#,
@@ -499,6 +505,8 @@ WHERE id = ?
         .bind(record.allowed_models_mode)
         .bind(record.rate_limit)
         .bind(record.rate_limit_mode)
+        .bind(record.concurrent_limit)
+        .bind(record.concurrent_limit_mode)
         .bind(now)
         .bind(group_id)
         .execute(&self.pool)
@@ -1978,6 +1986,8 @@ fn map_user_group_row(row: &SqliteRow) -> Result<StoredUserGroup, DataLayerError
         row.try_get("allowed_models_mode").map_sql_err()?,
         row.try_get("rate_limit").map_sql_err()?,
         row.try_get("rate_limit_mode").map_sql_err()?,
+        row.try_get("concurrent_limit").map_sql_err()?,
+        row.try_get("concurrent_limit_mode").map_sql_err()?,
         optional_datetime_from_unix_secs(row.try_get("created_at").map_sql_err()?),
         optional_datetime_from_unix_secs(row.try_get("updated_at").map_sql_err()?),
     )

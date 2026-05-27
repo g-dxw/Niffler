@@ -180,6 +180,13 @@ CREATE INDEX IF NOT EXISTS idx_entitlement_usage_user_date ON public.entitlement
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_entitlement_date ON public.entitlement_usage_ledgers USING btree (user_entitlement_id, usage_date);
 
 
+--
+-- Name: idx_entitlement_usage_windows_user_scope; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_entitlement_usage_windows_user_scope ON public.entitlement_usage_windows USING btree (user_id, window_scope, window_ends_at);
+
+
 
 --
 -- Name: idx_provider_api_keys_provider_active; Type: INDEX; Schema: public; Owner: -
@@ -970,6 +977,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_global_models_name ON public.global_models 
 --
 
 CREATE INDEX IF NOT EXISTS ix_global_models_usage_count ON public.global_models USING btree (usage_count);
+
+
+--
+-- Name: routing_groups_system_default_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS routing_groups_system_default_idx ON public.routing_groups USING btree (is_system_default, enabled);
+
+
+--
+-- Name: routing_group_bindings_group_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS routing_group_bindings_group_id_idx ON public.routing_group_bindings USING btree (group_id);
+
+
+--
+-- Name: routing_group_bindings_subject_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS routing_group_bindings_subject_idx ON public.routing_group_bindings USING btree (subject_type, subject_id);
+
+
+--
+-- Name: routing_group_versions_group_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS routing_group_versions_group_id_idx ON public.routing_group_versions USING btree (group_id);
 
 
 

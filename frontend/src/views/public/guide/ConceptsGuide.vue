@@ -72,7 +72,7 @@ import { BookOpen } from 'lucide-vue-next'
             <strong class="text-[#262624] dark:text-[#f1ead8] font-medium">计费类型：</strong>
             <ul class="list-disc pl-5 mt-1 space-y-1">
               <li>按量付费：持续使用</li>
-              <li>月卡额度：按周期(天)限额</li>
+              <li>周期额度：按购买后的有效期限额</li>
               <li>免费套餐：不计入成本即倍率为0</li>
             </ul>
           </li>

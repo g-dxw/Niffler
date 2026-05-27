@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS public.user_groups (
     allowed_models_mode character varying(32) DEFAULT 'inherit' NOT NULL,
     rate_limit integer,
     rate_limit_mode character varying(32) DEFAULT 'inherit' NOT NULL,
+    concurrent_limit integer,
+    concurrent_limit_mode character varying(32) DEFAULT 'inherit' NOT NULL,
     created_at bigint NOT NULL,
     updated_at bigint NOT NULL
 );
@@ -226,4 +228,3 @@ CREATE TABLE IF NOT EXISTS public.user_sessions (
 ALTER TABLE ONLY public.user_sessions ADD CONSTRAINT user_sessions_pkey PRIMARY KEY (id);
 CREATE INDEX IF NOT EXISTS user_sessions_user_active_idx ON public.user_sessions USING btree (user_id, revoked_at, expires_at);
 CREATE INDEX IF NOT EXISTS user_sessions_user_device_idx ON public.user_sessions USING btree (user_id, client_device_id);
-

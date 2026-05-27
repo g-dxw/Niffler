@@ -1,6 +1,7 @@
 mod memory;
 mod mysql;
 mod postgres;
+pub(crate) mod quota;
 mod sqlite;
 
 #[allow(unused_imports)]

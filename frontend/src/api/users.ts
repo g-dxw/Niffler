@@ -173,6 +173,8 @@ export interface UserGroup {
   allowed_models_mode: ListPolicyMode
   rate_limit?: number | null
   rate_limit_mode: RateLimitPolicyMode
+  concurrent_limit?: number | null
+  concurrent_limit_mode: RateLimitPolicyMode
   is_default?: boolean
   created_at?: string | null
   updated_at?: string | null
@@ -189,6 +191,8 @@ export interface UpsertUserGroupRequest {
   allowed_models_mode?: ListPolicyMode
   rate_limit?: number | null
   rate_limit_mode?: RateLimitPolicyMode
+  concurrent_limit?: number | null
+  concurrent_limit_mode?: RateLimitPolicyMode
 }
 
 export interface UserGroupMember {

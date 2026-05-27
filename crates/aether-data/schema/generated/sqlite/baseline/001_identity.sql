@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS user_groups (
     allowed_models_mode TEXT NOT NULL DEFAULT 'inherit',
     rate_limit INTEGER,
     rate_limit_mode TEXT NOT NULL DEFAULT 'inherit',
+    concurrent_limit INTEGER,
+    concurrent_limit_mode TEXT NOT NULL DEFAULT 'inherit',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     UNIQUE (normalized_name)
@@ -207,4 +209,3 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 CREATE INDEX IF NOT EXISTS user_sessions_user_active_idx ON user_sessions (user_id, revoked_at, expires_at);
 CREATE INDEX IF NOT EXISTS user_sessions_user_device_idx ON user_sessions (user_id, client_device_id);
-

@@ -61,6 +61,7 @@ const WALLET_SAFE_GATEWAY_RESPONSE_KEYS: &[&str] = &[
     "pay_amount",
     "pay_currency",
     "payment_channel",
+    "provider_order_status",
     "manual_credit",
 ];
 

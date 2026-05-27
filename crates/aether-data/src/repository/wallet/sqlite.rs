@@ -5337,7 +5337,7 @@ mod tests {
 
         let plan_snapshot = json!({
             "id": "active-period-plan",
-            "title": "每日额度月卡",
+            "title": "周期额度套餐",
             "duration_unit": "month",
             "duration_value": 1,
             "max_active_per_user": 1,
@@ -5360,7 +5360,7 @@ INSERT INTO billing_plans (
 "#,
         )
         .bind("active-period-plan")
-        .bind("每日额度月卡")
+        .bind("周期额度套餐")
         .bind(100.0_f64)
         .bind("CNY")
         .bind("month")

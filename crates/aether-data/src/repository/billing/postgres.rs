@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 use async_trait::async_trait;
 use sqlx::{PgPool, Row};
 
 use super::{
+    quota::{usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, QUOTA_SCOPE_FIVE_HOUR},
     AdminBillingCollectorRecord, AdminBillingCollectorWriteInput, AdminBillingMutationOutcome,
     AdminBillingPresetApplyResult, AdminBillingRuleRecord, AdminBillingRuleWriteInput,
     BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository, PaymentGatewayConfigRecord,
@@ -1003,7 +1006,7 @@ ORDER BY expires_at ASC, created_at ASC
     ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
         let rows = sqlx::query(
             r#"
-SELECT id, entitlements_snapshot
+SELECT id, starts_at, entitlements_snapshot
 FROM user_plan_entitlements
 WHERE user_id = $1
   AND status = 'active'
@@ -1020,38 +1023,76 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
         let mut grants = Vec::new();
         for row in rows {
             let entitlement_id: String = row.try_get("id").map_postgres_err()?;
+            let entitlement_started_at: chrono::DateTime<chrono::Utc> =
+                row.try_get("starts_at").map_postgres_err()?;
             let entitlements: serde_json::Value =
                 row.try_get("entitlements_snapshot").map_postgres_err()?;
-            grants.extend(daily_quota_grants_from_entitlement(
+            let stored_five_hour = find_usage_quota_window_postgres(
+                &self.pool,
+                &entitlement_id,
+                QUOTA_SCOPE_FIVE_HOUR,
+            )
+            .await?;
+            grants.extend(usage_quota_grants_from_entitlement(
                 &entitlement_id,
                 &entitlements,
                 now,
+                entitlement_started_at,
+                stored_five_hour.as_ref(),
             )?);
         }
 
-        let mut total_quota_usd = 0.0;
-        let mut used_usd = 0.0;
-        let mut remaining_usd = 0.0;
+        let mut grouped_limits: BTreeMap<String, (Option<f64>, Option<f64>)> = BTreeMap::new();
         let mut allow_wallet_overage = true;
         for grant in &grants {
             allow_wallet_overage &= grant.allow_wallet_overage;
             let used = sqlx::query_scalar::<_, Option<f64>>(
                 r#"
-SELECT CAST(COALESCE(SUM(amount_usd), 0) AS DOUBLE PRECISION)
-FROM entitlement_usage_ledgers
-WHERE user_entitlement_id = $1
-  AND usage_date = $2
+SELECT COALESCE(
+  (
+    SELECT CAST(used_usd AS DOUBLE PRECISION)
+    FROM entitlement_usage_windows
+    WHERE user_entitlement_id = $1
+      AND window_scope = $2
+      AND window_key = $3
+    LIMIT 1
+  ),
+  (
+    SELECT CAST(COALESCE(SUM(amount_usd), 0) AS DOUBLE PRECISION)
+    FROM entitlement_usage_ledgers
+    WHERE user_entitlement_id = $1
+      AND usage_date = $3
+  )
+)
                 "#,
             )
             .bind(&grant.entitlement_id)
-            .bind(&grant.usage_date)
+            .bind(grant.scope)
+            .bind(&grant.window_key)
             .fetch_one(&self.pool)
             .await
             .map_postgres_err()?
             .unwrap_or(0.0);
-            total_quota_usd += grant.daily_quota_usd;
-            used_usd += used.min(grant.daily_quota_usd).max(0.0);
-            remaining_usd += (grant.daily_quota_usd - used).max(0.0);
+            let remaining = (grant.limit_usd - used).max(0.0);
+            let entry = grouped_limits
+                .entry(grant.entitlement_id.clone())
+                .or_insert((None, None));
+            entry.0 = Some(
+                entry
+                    .0
+                    .map_or(grant.limit_usd, |value| value.min(grant.limit_usd)),
+            );
+            entry.1 = Some(entry.1.map_or(remaining, |value| value.min(remaining)));
+        }
+        let mut total_quota_usd = 0.0;
+        let mut used_usd = 0.0;
+        let mut remaining_usd = 0.0;
+        for (limit, remaining) in grouped_limits.values() {
+            let limit = limit.unwrap_or(0.0);
+            let remaining = remaining.unwrap_or(0.0);
+            total_quota_usd += limit;
+            used_usd += (limit - remaining).max(0.0);
+            remaining_usd += remaining;
         }
         let has_active_daily_quota = !grants.is_empty();
         Ok(Some(UserDailyQuotaAvailabilityRecord {
@@ -1134,62 +1175,40 @@ fn read_count(row: sqlx::postgres::PgRow) -> Result<u64, DataLayerError> {
     Ok(row.try_get::<i64, _>("total").map_postgres_err()?.max(0) as u64)
 }
 
-#[derive(Debug)]
-struct DailyQuotaGrant {
-    entitlement_id: String,
-    daily_quota_usd: f64,
-    usage_date: String,
-    allow_wallet_overage: bool,
-}
-
-fn daily_quota_usage_date(
-    reset_timezone: Option<&str>,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<String, DataLayerError> {
-    let timezone = reset_timezone
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Asia/Shanghai")
-        .parse::<chrono_tz::Tz>()
-        .map_err(|err| DataLayerError::InvalidInput(format!("invalid reset_timezone: {err}")))?;
-    Ok(now.with_timezone(&timezone).date_naive().to_string())
-}
-
-fn daily_quota_grants_from_entitlement(
+async fn find_usage_quota_window_postgres<'e, E>(
+    executor: E,
     entitlement_id: &str,
-    entitlements: &serde_json::Value,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<Vec<DailyQuotaGrant>, DataLayerError> {
-    let mut grants = Vec::new();
-    let Some(items) = entitlements.as_array() else {
-        return Ok(grants);
-    };
-    for item in items {
-        if item.get("type").and_then(serde_json::Value::as_str) != Some("daily_quota") {
-            continue;
-        }
-        let daily_quota_usd = item
-            .get("daily_quota_usd")
-            .and_then(serde_json::Value::as_f64)
-            .unwrap_or(0.0);
-        if !daily_quota_usd.is_finite() || daily_quota_usd <= 0.0 {
-            continue;
-        }
-        grants.push(DailyQuotaGrant {
-            entitlement_id: entitlement_id.to_string(),
-            daily_quota_usd,
-            usage_date: daily_quota_usage_date(
-                item.get("reset_timezone")
-                    .and_then(serde_json::Value::as_str),
-                now,
-            )?,
-            allow_wallet_overage: item
-                .get("allow_wallet_overage")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false),
-        });
-    }
-    Ok(grants)
+    scope: &str,
+) -> Result<Option<StoredUsageQuotaWindow>, DataLayerError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let row = sqlx::query(
+        r#"
+SELECT
+  window_key,
+  window_started_at,
+  window_ends_at,
+  CAST(used_usd AS DOUBLE PRECISION) AS used_usd
+FROM entitlement_usage_windows
+WHERE user_entitlement_id = $1
+  AND window_scope = $2
+LIMIT 1
+        "#,
+    )
+    .bind(entitlement_id)
+    .bind(scope)
+    .fetch_optional(executor)
+    .await
+    .map_postgres_err()?;
+    row.map(|row| {
+        Ok(StoredUsageQuotaWindow {
+            window_key: row.try_get("window_key").map_postgres_err()?,
+            window_started_at: row.try_get("window_started_at").map_postgres_err()?,
+            window_ends_at: row.try_get("window_ends_at").map_postgres_err()?,
+        })
+    })
+    .transpose()
 }
 
 fn map_payment_gateway_config_row(

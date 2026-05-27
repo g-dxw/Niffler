@@ -117,39 +117,72 @@ fn validate_entitlements(value: &serde_json::Value) -> Result<(), String> {
                     }
                 }
             }
-            "daily_quota" => {
-                let amount = item
-                    .get("daily_quota_usd")
-                    .and_then(|value| value.as_f64())
-                    .ok_or_else(|| "daily_quota.daily_quota_usd is required".to_string())?;
-                if !amount.is_finite() || amount <= 0.0 {
-                    return Err("daily_quota.daily_quota_usd must be positive".to_string());
+            "daily_quota" | "usage_quota" => {
+                let has_positive_quota = [
+                    "daily_quota_usd",
+                    "five_hour_quota_usd",
+                    "weekly_quota_usd",
+                    "monthly_quota_usd",
+                ]
+                .iter()
+                .any(|field| {
+                    item.get(*field)
+                        .and_then(|value| value.as_f64())
+                        .is_some_and(|value| value.is_finite() && value > 0.0)
+                });
+                if !has_positive_quota {
+                    return Err(format!(
+                        "{kind} must include at least one positive quota amount"
+                    ));
+                }
+                for field in [
+                    "daily_quota_usd",
+                    "five_hour_quota_usd",
+                    "weekly_quota_usd",
+                    "monthly_quota_usd",
+                ] {
+                    if let Some(value) = item.get(field) {
+                        let amount = value
+                            .as_f64()
+                            .ok_or_else(|| format!("{kind}.{field} must be a number"))?;
+                        if !amount.is_finite() || amount < 0.0 {
+                            return Err(format!("{kind}.{field} must be non-negative"));
+                        }
+                    }
                 }
                 if let Some(reset_timezone) = item.get("reset_timezone") {
                     let reset_timezone = reset_timezone
                         .as_str()
-                        .ok_or_else(|| "daily_quota.reset_timezone must be a string".to_string())?
+                        .ok_or_else(|| format!("{kind}.reset_timezone must be a string"))?
                         .trim();
                     if reset_timezone.is_empty() {
-                        return Err("daily_quota.reset_timezone must not be empty".to_string());
+                        return Err(format!("{kind}.reset_timezone must not be empty"));
                     }
-                    reset_timezone.parse::<chrono_tz::Tz>().map_err(|_| {
-                        "daily_quota.reset_timezone must be a valid timezone".to_string()
-                    })?;
+                    reset_timezone
+                        .parse::<chrono_tz::Tz>()
+                        .map_err(|_| format!("{kind}.reset_timezone must be a valid timezone"))?;
                 }
                 if let Some(carry_over) = item.get("carry_over") {
                     let carry_over = carry_over
                         .as_bool()
-                        .ok_or_else(|| "daily_quota.carry_over must be a boolean".to_string())?;
+                        .ok_or_else(|| format!("{kind}.carry_over must be a boolean"))?;
                     if carry_over {
-                        return Err("daily_quota.carry_over is not supported".to_string());
+                        return Err(format!("{kind}.carry_over is not supported"));
                     }
                 }
                 if item
                     .get("allow_wallet_overage")
                     .is_some_and(|value| !value.is_boolean())
                 {
-                    return Err("daily_quota.allow_wallet_overage must be a boolean".to_string());
+                    return Err(format!("{kind}.allow_wallet_overage must be a boolean"));
+                }
+                if let Some(rpm_limit) = item.get("rpm_limit") {
+                    let rpm_limit = rpm_limit
+                        .as_i64()
+                        .ok_or_else(|| format!("{kind}.rpm_limit must be an integer"))?;
+                    if rpm_limit < 0 {
+                        return Err(format!("{kind}.rpm_limit must be non-negative"));
+                    }
                 }
             }
             "membership_group" => {
@@ -176,7 +209,7 @@ fn validate_entitlements(value: &serde_json::Value) -> Result<(), String> {
         }
     }
     if !entitlements_include_package_rights(items) {
-        return Err("套餐至少需要包含每日额度或会员分组；钱包充值请使用充值功能".to_string());
+        return Err("套餐至少需要包含周期额度或会员分组；钱包充值请使用充值功能".to_string());
     }
     Ok(())
 }
@@ -185,15 +218,57 @@ fn entitlements_include_package_rights(items: &[serde_json::Value]) -> bool {
     items.iter().any(|item| {
         matches!(
             item.get("type").and_then(|value| value.as_str()),
-            Some("daily_quota" | "membership_group")
+            Some("daily_quota" | "usage_quota" | "membership_group")
         )
     })
 }
 
-fn normalize_plan_input(payload: BillingPlanRequest) -> Result<BillingPlanWriteInput, String> {
-    if !payload.price_amount.is_finite() || payload.price_amount <= 0.0 {
+enum PlanPriceRule {
+    Create,
+    UpdateExistingZero { existing_price_amount: f64 },
+}
+
+fn validate_plan_price_amount(price_amount: f64, rule: PlanPriceRule) -> Result<(), String> {
+    if !price_amount.is_finite() || price_amount < 0.0 {
         return Err("price_amount must be positive".to_string());
     }
+    if price_amount == 0.0 {
+        match rule {
+            PlanPriceRule::Create => return Err("price_amount must be positive".to_string()),
+            PlanPriceRule::UpdateExistingZero {
+                existing_price_amount,
+            } if existing_price_amount == 0.0 => {}
+            PlanPriceRule::UpdateExistingZero { .. } => {
+                return Err("price_amount must be positive".to_string())
+            }
+        }
+    }
+    Ok(())
+}
+
+fn normalize_plan_input_for_create(
+    payload: BillingPlanRequest,
+) -> Result<BillingPlanWriteInput, String> {
+    normalize_plan_input(payload, PlanPriceRule::Create)
+}
+
+fn normalize_plan_input_for_update(
+    payload: BillingPlanRequest,
+    existing: &BillingPlanRecord,
+) -> Result<BillingPlanWriteInput, String> {
+    normalize_plan_input(
+        payload,
+        PlanPriceRule::UpdateExistingZero {
+            existing_price_amount: existing.price_amount,
+        },
+    )
+}
+
+fn normalize_plan_input(
+    payload: BillingPlanRequest,
+    price_rule: PlanPriceRule,
+) -> Result<BillingPlanWriteInput, String> {
+    validate_plan_price_amount(payload.price_amount, price_rule)?;
     if payload.duration_value <= 0 {
         return Err("duration_value must be positive".to_string());
     }
@@ -294,7 +369,7 @@ pub(super) async fn maybe_build_local_admin_billing_plans_response(
                     )))
                 }
             };
-            let input = match normalize_plan_input(payload) {
+            let input = match normalize_plan_input_for_create(payload) {
                 Ok(value) => value,
                 Err(detail) => return Ok(Some(build_admin_billing_bad_request_response(detail))),
             };
@@ -322,7 +397,12 @@ pub(super) async fn maybe_build_local_admin_billing_plans_response(
                     )))
                 }
             };
-            let input = match normalize_plan_input(payload) {
+            let Some(existing) = state.app().find_billing_plan(&plan_id).await? else {
+                return Ok(Some(build_admin_billing_not_found_response(
+                    "Billing plan not found",
+                )));
+            };
+            let input = match normalize_plan_input_for_update(payload, &existing) {
                 Ok(value) => value,
                 Err(detail) => return Ok(Some(build_admin_billing_bad_request_response(detail))),
             };
@@ -390,5 +470,89 @@ pub(super) async fn maybe_build_local_admin_billing_plans_response(
             }
         }
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_plan_request(price_amount: f64) -> BillingPlanRequest {
+        BillingPlanRequest {
+            title: "同步套餐".to_string(),
+            description: Some("从旧系统同步".to_string()),
+            price_amount,
+            price_currency: "CNY".to_string(),
+            duration_unit: "day".to_string(),
+            duration_value: 30,
+            enabled: true,
+            sort_order: 0,
+            max_active_per_user: 1,
+            purchase_limit_scope: "active_period".to_string(),
+            entitlements: json!([
+                {
+                    "type": "daily_quota",
+                    "daily_quota_usd": 10.0,
+                    "reset_timezone": "Asia/Shanghai",
+                    "carry_over": false
+                }
+            ]),
+        }
+    }
+
+    #[test]
+    fn create_plan_rejects_zero_price() {
+        let error = normalize_plan_input_for_create(sample_plan_request(0.0))
+            .expect_err("zero price rejected");
+
+        assert_eq!(error, "price_amount must be positive");
+    }
+
+    #[test]
+    fn update_existing_zero_price_plan_allows_zero_price() {
+        let existing = BillingPlanRecord {
+            id: "sub2api-plan-group-1".to_string(),
+            title: "旧套餐".to_string(),
+            description: None,
+            price_amount: 0.0,
+            price_currency: "CNY".to_string(),
+            duration_unit: "day".to_string(),
+            duration_value: 30,
+            enabled: true,
+            sort_order: 0,
+            max_active_per_user: 1,
+            purchase_limit_scope: "active_period".to_string(),
+            entitlements_json: json!([]),
+            created_at_unix_secs: 1,
+            updated_at_unix_secs: 1,
+        };
+        let input = normalize_plan_input_for_update(sample_plan_request(0.0), &existing)
+            .expect("existing zero price saves");
+
+        assert_eq!(input.price_amount, 0.0);
+    }
+
+    #[test]
+    fn update_paid_plan_rejects_zero_price() {
+        let existing = BillingPlanRecord {
+            id: "paid-plan".to_string(),
+            title: "付费套餐".to_string(),
+            description: None,
+            price_amount: 100.0,
+            price_currency: "CNY".to_string(),
+            duration_unit: "month".to_string(),
+            duration_value: 1,
+            enabled: true,
+            sort_order: 0,
+            max_active_per_user: 1,
+            purchase_limit_scope: "active_period".to_string(),
+            entitlements_json: json!([]),
+            created_at_unix_secs: 1,
+            updated_at_unix_secs: 1,
+        };
+        let error = normalize_plan_input_for_update(sample_plan_request(0.0), &existing)
+            .expect_err("paid plan cannot become free");
+
+        assert_eq!(error, "price_amount must be positive");
     }
 }

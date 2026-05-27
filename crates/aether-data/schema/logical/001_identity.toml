@@ -237,6 +237,17 @@ length = 32
 default = "inherit"
 
 [[table.user_groups.columns]]
+name = "concurrent_limit"
+type = "int32"
+nullable = true
+
+[[table.user_groups.columns]]
+name = "concurrent_limit_mode"
+type = "text"
+length = 32
+default = "inherit"
+
+[[table.user_groups.columns]]
 name = "created_at"
 type = "unix_seconds"
 

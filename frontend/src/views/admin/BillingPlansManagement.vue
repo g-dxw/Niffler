@@ -2,7 +2,7 @@
   <PageContainer padding="lg">
     <PageHeader
       title="套餐管理"
-      description="配置每日额度、会员权益和混合套餐"
+      description="配置用量额度、会员权益和混合套餐"
     >
       <template #actions>
         <Button
@@ -186,8 +186,8 @@
             @click="applyTemplate('daily')"
           >
             <span>
-              <span class="block text-sm font-medium leading-5">每日额度月卡</span>
-              <span class="block text-xs font-normal leading-4 text-muted-foreground">周期内每天重置</span>
+              <span class="block text-sm font-medium leading-5">周期额度套餐</span>
+              <span class="block text-xs font-normal leading-4 text-muted-foreground">支付成功后开始计算</span>
             </span>
           </Button>
           <Button
@@ -283,7 +283,7 @@
                 id="plan-title"
                 v-model="form.title"
                 class="h-9 rounded-xl bg-muted/70"
-                placeholder="Pro 月卡"
+                placeholder="Pro 周套餐"
               />
             </div>
 
@@ -409,7 +409,7 @@
                         side="top"
                         class="max-w-72 text-xs"
                       >
-                        控制同一用户能否重复购买本套餐；不决定余额、每日额度或会员分组怎么发放。
+                        控制同一用户能否重复购买本套餐；不决定余额、周期额度或会员分组怎么发放。
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -541,7 +541,7 @@
                 {{ purchaseLimitSummaryText }}
               </div>
               <div class="xl:col-span-12 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-200">
-                同一用户只保留一个有效每日额度套餐、一个有效会员权益包。购买新的同类套餐后，旧同类套餐会自动失效；混合套餐会同时替换这两类旧权益。
+                同一用户只保留一个有效周期额度套餐、一个有效会员权益包。购买新的同类套餐后，旧同类套餐会自动失效；混合套餐会同时替换这两类旧权益。
               </div>
             </div>
           </section>
@@ -683,7 +683,7 @@
           >
             <div class="flex items-center justify-between gap-3">
               <div>
-                <Label class="text-sm font-medium">每日额度</Label>
+                <Label class="text-sm font-medium">用量额度</Label>
                 <p class="mt-1 text-xs text-muted-foreground">
                   {{ dailyQuotaSummaryText }}
                 </p>
@@ -695,11 +695,38 @@
               class="grid grid-cols-1 gap-3 md:grid-cols-2"
             >
               <div class="space-y-1.5">
-                <Label>每日额度 (USD)</Label>
+                <Label>24 小时额度 (USD)</Label>
                 <Input
                   v-model.number="form.daily_quota_usd"
                   type="number"
-                  min="0.01"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <Label>5 小时额度 (USD)</Label>
+                <Input
+                  v-model.number="form.five_hour_quota_usd"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <Label>7 天额度 (USD)</Label>
+                <Input
+                  v-model.number="form.weekly_quota_usd"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <Label>30 天额度 (USD)</Label>
+                <Input
+                  v-model.number="form.monthly_quota_usd"
+                  type="number"
+                  min="0"
                   step="0.01"
                 />
               </div>
@@ -708,6 +735,7 @@
                 <Input
                   v-model="form.reset_timezone"
                   placeholder="Asia/Shanghai"
+                  disabled
                 />
               </div>
               <div class="flex items-center justify-between rounded-xl border border-border/60 bg-card/50 p-3">
@@ -852,6 +880,11 @@ import { CardSection, PageContainer, PageHeader } from '@/components/layout'
 import { useToast } from '@/composables/useToast'
 import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
+import {
+  hasPackageBillingEntitlement,
+  normalizeBillingEntitlements,
+  type BillingEntitlementsInput,
+} from '@/utils/billingEntitlements'
 
 type TemplateKey = 'daily' | 'membership' | 'mixed'
 type PlanMode = 'empty' | 'wallet' | 'daily' | 'membership' | 'mixed'
@@ -879,6 +912,9 @@ interface PlanFormState {
   wallet_credit_balance_bucket: WalletCreditBucket
   daily_quota_enabled: boolean
   daily_quota_usd: number
+  five_hour_quota_usd: number
+  weekly_quota_usd: number
+  monthly_quota_usd: number
   reset_timezone: string
   carry_over: boolean
   allow_wallet_overage: boolean
@@ -912,10 +948,19 @@ const priceCurrencyOptions = computed(() => {
   return normalized && !options.includes(normalized) ? [...options, normalized] : options
 })
 
+const isEditingExistingZeroPricePlan = computed(() =>
+  editingPlan.value !== null && Number(editingPlan.value.price_amount) === 0
+)
+
+const hasValidPricePrecision = computed(() =>
+  /^\d+(\.\d{1,2})?$/.test(String(form.price_amount))
+)
+
 const hasValidPriceAmount = computed(() => {
   const value = Number(form.price_amount)
-  if (!Number.isFinite(value) || value <= 0) return false
-  return /^\d+(\.\d{1,2})?$/.test(String(form.price_amount))
+  if (!Number.isFinite(value) || value < 0) return false
+  if (value === 0 && !isEditingExistingZeroPricePlan.value) return false
+  return hasValidPricePrecision.value
 })
 
 const hasValidDuration = computed(() =>
@@ -981,7 +1026,7 @@ const planModeGuide = computed<PlanModeGuide>(() => {
       return {
         badge: '旧余额权益',
         title: '旧余额套餐',
-        description: '纯余额套餐已由钱包充值功能承接。建议停用该套餐，或补充每日额度/会员分组后作为混合套餐。',
+        description: '纯余额套餐已由钱包充值功能承接。建议停用该套餐，或补充周期额度/会员分组后作为混合套餐。',
         notes: [
           '新建套餐不再提供余额包模板',
           '钱包入账请使用充值功能',
@@ -991,12 +1036,12 @@ const planModeGuide = computed<PlanModeGuide>(() => {
     case 'daily':
       return {
         badge: '周期额度',
-        title: '每日额度套餐',
-        description: '适合月卡、季卡、年卡。周期内每天给用户独立 USD 额度，到期后不再生效。',
+        title: '周期额度套餐',
+        description: '适合日套餐、周套餐、月套餐。支付成功后开始计算有效期和额度窗口，到期后不再生效。',
         notes: [
-          '默认每天按重置时区刷新',
+          '日、周、月额度都从支付成功后开始滚动',
           '默认用完后拒绝继续消费',
-          '同一用户只保留一个有效每日额度套餐',
+          '同一用户只保留一个有效周期额度套餐',
         ],
       }
     case 'membership':
@@ -1014,9 +1059,9 @@ const planModeGuide = computed<PlanModeGuide>(() => {
       return {
         badge: '混合套餐',
         title: '组合权益套餐',
-        description: '适合同时包含每日额度和会员权限的产品，也可以按需附赠少量钱包余额。',
+        description: '适合同时包含周期额度和会员权限的产品，也可以按需附赠少量钱包余额。',
         notes: [
-          '会替换旧每日额度套餐和旧会员权益包',
+          '会替换旧周期额度套餐和旧会员权益包',
           '附赠余额发放后不随周期结束扣回',
           '限购会同时影响整套组合权益',
         ],
@@ -1025,9 +1070,9 @@ const planModeGuide = computed<PlanModeGuide>(() => {
       return {
         badge: '待配置',
         title: '选择一种套餐模板',
-        description: '先选择每日额度、会员分组或混合套餐，再配置价格、购买限制和权益配置。',
+        description: '先选择周期额度、会员分组或混合套餐，再配置价格、购买限制和权益配置。',
         notes: [
-          '每日额度和会员权益是周期权益',
+          '周期额度和会员权益是限时权益',
           '钱包充值已从套餐中拆出',
           '混合套餐可以附赠余额',
         ],
@@ -1089,14 +1134,14 @@ const walletCreditDetailText = computed(() => {
 
 const dailyQuotaSummaryText = computed(() =>
   planMode.value === 'mixed'
-    ? '组合套餐内的周期性每日 USD 消费用量'
-    : '每天独立 USD 消费用量，默认不结转'
+    ? '组合套餐内的周期性 USD 消费用量'
+    : '可配置 24 小时、5 小时、7 天和 30 天额度'
 )
 
 const dailyQuotaDetailText = computed(() =>
   form.allow_wallet_overage
-    ? '每日额度不足时会继续使用钱包余额，适合希望用户不中断请求的套餐。'
-    : '每日额度不足时不再继续扣钱包，适合严格封顶的月卡或体验卡。'
+    ? '套餐额度不足时会继续使用钱包余额，适合希望用户不中断请求的套餐。'
+    : '任意一个额度窗口不足时都会停止套餐扣费，适合严格封顶的周期套餐或体验卡。'
 )
 
 const membershipSummaryText = computed(() =>
@@ -1132,6 +1177,9 @@ function buildDefaultForm(): PlanFormState {
     wallet_credit_balance_bucket: 'recharge',
     daily_quota_enabled: false,
     daily_quota_usd: 50,
+    five_hour_quota_usd: 0,
+    weekly_quota_usd: 0,
+    monthly_quota_usd: 0,
     reset_timezone: 'Asia/Shanghai',
     carry_over: false,
     allow_wallet_overage: false,
@@ -1195,16 +1243,20 @@ function formFromPlan(plan: BillingPlan): PlanFormState {
   next.max_active_per_user = plan.max_active_per_user
   next.purchase_limit_scope = plan.purchase_limit_scope || 'active_period'
 
-  for (const entitlement of plan.entitlements || []) {
+  for (const entitlement of normalizeBillingEntitlements(plan.entitlements)) {
     if (entitlement.type === 'wallet_credit') {
       const wallet = entitlement as WalletCreditEntitlement
       next.wallet_credit_enabled = true
       next.wallet_credit_amount_usd = Number(wallet.amount_usd || next.wallet_credit_amount_usd)
       next.wallet_credit_balance_bucket = wallet.balance_bucket || 'recharge'
-    } else if (entitlement.type === 'daily_quota') {
+    } else if (entitlement.type === 'daily_quota' || (entitlement as DailyQuotaEntitlement).limits) {
       const quota = entitlement as DailyQuotaEntitlement
+      const limits = quota.limits || {}
       next.daily_quota_enabled = true
-      next.daily_quota_usd = Number(quota.daily_quota_usd || next.daily_quota_usd)
+      next.daily_quota_usd = Number(quota.daily_quota_usd ?? limits.daily_limit_usd ?? 0)
+      next.five_hour_quota_usd = Number(quota.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
+      next.weekly_quota_usd = Number(quota.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
+      next.monthly_quota_usd = Number(quota.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
       next.reset_timezone = quota.reset_timezone || 'Asia/Shanghai'
       next.carry_over = Boolean(quota.carry_over)
       next.allow_wallet_overage = Boolean(quota.allow_wallet_overage)
@@ -1222,21 +1274,27 @@ function formFromPlan(plan: BillingPlan): PlanFormState {
 function applyTemplate(template: TemplateKey) {
   const next = buildDefaultForm()
   if (template === 'daily') {
-    next.title = '100 RMB 月卡'
-    next.description = '每日 50 USD 独立额度，周期 1 个月'
+    next.title = 'Pro 周套餐'
+    next.description = '支付成功后 7 天内可用 50 USD 额度'
     next.daily_quota_enabled = true
-    next.daily_quota_usd = 50
+    next.duration_unit = 'day'
+    next.duration_value = 7
+    next.daily_quota_usd = 0
+    next.weekly_quota_usd = 50
     next.max_active_per_user = 1
   } else if (template === 'membership') {
-    next.title = 'Pro 月卡'
+    next.title = 'Pro 会员套餐'
     next.description = '动态授予 Pro 用户分组 1 个月'
     next.membership_group_enabled = true
     next.max_active_per_user = 1
   } else {
-    next.title = 'Pro 混合月卡'
-    next.description = '每日额度和会员分组组合'
+    next.title = 'Pro 混合套餐'
+    next.description = '周期额度和会员分组组合'
     next.daily_quota_enabled = true
-    next.daily_quota_usd = 50
+    next.duration_unit = 'day'
+    next.duration_value = 7
+    next.daily_quota_usd = 0
+    next.weekly_quota_usd = 50
     next.membership_group_enabled = true
     next.max_active_per_user = 1
   }
@@ -1253,13 +1311,17 @@ function buildEntitlements(): BillingEntitlement[] {
     })
   }
   if (form.daily_quota_enabled) {
-    entitlements.push({
+    const quota: DailyQuotaEntitlement = {
       type: 'daily_quota',
       daily_quota_usd: Number(form.daily_quota_usd),
+      five_hour_quota_usd: Number(form.five_hour_quota_usd),
+      weekly_quota_usd: Number(form.weekly_quota_usd),
+      monthly_quota_usd: Number(form.monthly_quota_usd),
       reset_timezone: form.reset_timezone.trim() || 'Asia/Shanghai',
       carry_over: false,
       allow_wallet_overage: Boolean(form.allow_wallet_overage),
-    })
+    }
+    entitlements.push(quota)
   }
   if (form.membership_group_enabled) {
     entitlements.push({
@@ -1290,8 +1352,8 @@ function normalizeActiveLimit() {
 
 function validatePlan(entitlements: BillingEntitlement[]): string | null {
   if (!form.title.trim()) return '请输入套餐名称'
-  if (!Number.isFinite(Number(form.price_amount)) || Number(form.price_amount) <= 0) return '价格必须大于 0'
-  if (!hasValidPriceAmount.value) return '价格最多支持两位小数'
+  if (!hasValidPricePrecision.value) return '价格最多支持两位小数'
+  if (!hasValidPriceAmount.value) return '价格必须大于 0，已有 0 元同步套餐可以继续保存为 0'
   if (!form.price_currency.trim()) return '请输入价格币种'
   if (!hasValidPurchaseLimitScope.value) return '重复购买限制必须是按周期限制、永久限制或不限购'
   if (showPurchaseLimitPeriod.value && !hasValidDurationUnit.value) return '周期窗口单位必须是日/月/年'
@@ -1300,11 +1362,20 @@ function validatePlan(entitlements: BillingEntitlement[]): string | null {
     return `${activeLimitFieldLabel.value}必须是正整数`
   }
   if (entitlements.length === 0) return '至少启用一种权益'
-  if (!hasPackageEntitlement(entitlements)) return '套餐至少需要包含每日额度或会员分组；钱包充值请使用充值功能'
+  if (!hasPackageEntitlement(entitlements)) return '套餐至少需要包含用量额度或会员分组；钱包充值请使用充值功能'
   if (form.wallet_credit_enabled && Number(form.wallet_credit_amount_usd) <= 0) return '附赠余额金额必须大于 0'
-  if (form.daily_quota_enabled && Number(form.daily_quota_usd) <= 0) return '每日额度必须大于 0'
+  if (form.daily_quota_enabled && !hasAnyUsageQuota()) return '用量额度至少填写一个大于 0 的金额'
   if (form.membership_group_enabled && form.grant_user_groups.length === 0) return '会员分组权益至少选择一个分组'
   return null
+}
+
+function hasAnyUsageQuota(): boolean {
+  return [
+    form.daily_quota_usd,
+    form.five_hour_quota_usd,
+    form.weekly_quota_usd,
+    form.monthly_quota_usd,
+  ].some((value) => Number(value) > 0)
 }
 
 function buildPlanPayload(): BillingPlanWriteRequest | null {
@@ -1416,10 +1487,10 @@ function formatPlanPeriod(plan: BillingPlan): string {
   return formatDuration(plan.duration_unit, plan.duration_value)
 }
 
-function resolvePlanModeFromEntitlements(entitlements: BillingEntitlement[] | undefined): PlanMode {
-  const items = entitlements || []
+function resolvePlanModeFromEntitlements(entitlements: BillingEntitlementsInput): PlanMode {
+  const items = normalizeBillingEntitlements(entitlements)
   const hasWallet = items.some((entitlement) => entitlement.type === 'wallet_credit')
-  const hasDaily = items.some((entitlement) => entitlement.type === 'daily_quota')
+  const hasDaily = items.some((entitlement) => entitlement.type === 'daily_quota' || Boolean((entitlement as DailyQuotaEntitlement).limits))
   const hasMembership = items.some((entitlement) => entitlement.type === 'membership_group')
   const enabledCount = [hasWallet, hasDaily, hasMembership].filter(Boolean).length
 
@@ -1435,7 +1506,7 @@ function planDurationHint(plan: BillingPlan): string {
   if (plan.purchase_limit_scope === 'lifetime') return '不按周期重置购买次数'
   const mode = resolvePlanModeFromEntitlements(plan.entitlements)
   if (mode === 'wallet') return '旧余额套餐，建议停用'
-  if (mode === 'daily') return '每日额度周期'
+  if (mode === 'daily') return '周期额度'
   if (mode === 'membership') return '会员权限周期'
   if (mode === 'mixed') return '组合权益周期'
   return '未配置权益'
@@ -1446,12 +1517,25 @@ function groupName(groupId: string): string {
 }
 
 function entitlementBadges(plan: BillingPlan): string[] {
-  return (plan.entitlements || []).map((entitlement) => {
+  return normalizeBillingEntitlements(plan.entitlements).map((entitlement) => {
     if (entitlement.type === 'wallet_credit') {
       return `附赠余额 $${Number(entitlement.amount_usd || 0).toFixed(2)}`
     }
     if (entitlement.type === 'daily_quota') {
-      return `每日 $${Number(entitlement.daily_quota_usd || 0).toFixed(2)}`
+      const parts = []
+      if (Number(entitlement.daily_quota_usd || 0) > 0) {
+        parts.push(`24小时 $${Number(entitlement.daily_quota_usd || 0).toFixed(2)}`)
+      }
+      if (Number(entitlement.five_hour_quota_usd || 0) > 0) {
+        parts.push(`5H $${Number(entitlement.five_hour_quota_usd || 0).toFixed(2)}`)
+      }
+      if (Number(entitlement.weekly_quota_usd || 0) > 0) {
+        parts.push(`7天 $${Number(entitlement.weekly_quota_usd || 0).toFixed(2)}`)
+      }
+      if (Number(entitlement.monthly_quota_usd || 0) > 0) {
+        parts.push(`30天 $${Number(entitlement.monthly_quota_usd || 0).toFixed(2)}`)
+      }
+      return parts.join(' / ') || '用量额度'
     }
     if (entitlement.type === 'membership_group') {
       const groups = entitlement.grant_user_groups.map(groupName).join(', ')
@@ -1461,9 +1545,7 @@ function entitlementBadges(plan: BillingPlan): string[] {
   })
 }
 
-function hasPackageEntitlement(entitlements: BillingEntitlement[] | undefined): boolean {
-  return (entitlements || []).some((entitlement) =>
-    entitlement.type === 'daily_quota' || entitlement.type === 'membership_group'
-  )
+function hasPackageEntitlement(entitlements: BillingEntitlementsInput): boolean {
+  return hasPackageBillingEntitlement(entitlements)
 }
 </script>

@@ -267,6 +267,23 @@ ALTER TABLE ONLY public.entitlement_usage_ledgers ADD CONSTRAINT uq_entitlement_
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_user_date ON public.entitlement_usage_ledgers USING btree (user_id, usage_date);
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_entitlement_date ON public.entitlement_usage_ledgers USING btree (user_entitlement_id, usage_date);
 
+CREATE TABLE IF NOT EXISTS public.entitlement_usage_windows (
+    id character varying(64) NOT NULL,
+    user_entitlement_id character varying(64) NOT NULL,
+    user_id character varying(64) NOT NULL,
+    window_scope character varying(32) NOT NULL,
+    window_key character varying(64) NOT NULL,
+    window_started_at bigint NOT NULL,
+    window_ends_at bigint NOT NULL,
+    used_usd double precision NOT NULL DEFAULT 0,
+    created_at bigint NOT NULL,
+    updated_at bigint NOT NULL
+);
+
+ALTER TABLE ONLY public.entitlement_usage_windows ADD CONSTRAINT entitlement_usage_windows_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.entitlement_usage_windows ADD CONSTRAINT uq_entitlement_usage_window UNIQUE (user_entitlement_id, window_scope);
+CREATE INDEX IF NOT EXISTS idx_entitlement_usage_windows_user_scope ON public.entitlement_usage_windows USING btree (user_id, window_scope, window_ends_at);
+
 CREATE TABLE IF NOT EXISTS public.refund_requests (
     id character varying(64) NOT NULL,
     refund_no character varying(128) NOT NULL,
@@ -345,4 +362,3 @@ CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch_created ON public.redeem_codes
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_status ON public.redeem_codes USING btree (status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_redeemed_user ON public.redeem_codes USING btree (redeemed_by_user_id, redeemed_at);
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_redeemed_order ON public.redeem_codes USING btree (redeemed_payment_order_id);
-

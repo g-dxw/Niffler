@@ -326,6 +326,34 @@ EXCEPTION
 END $mig$;
 
 
+--
+-- Name: entitlement_usage_windows entitlement_usage_windows_user_entitlement_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.entitlement_usage_windows
+    ADD CONSTRAINT entitlement_usage_windows_user_entitlement_id_fkey FOREIGN KEY (user_entitlement_id) REFERENCES public.user_plan_entitlements(id) ON DELETE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: entitlement_usage_windows entitlement_usage_windows_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.entitlement_usage_windows
+    ADD CONSTRAINT entitlement_usage_windows_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
 
 --
 -- Name: entitlement_usage_ledgers entitlement_usage_ledgers_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

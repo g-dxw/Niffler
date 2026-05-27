@@ -1,3 +1,7 @@
+use super::support_payment::payment_dodopay::{
+    create_dodopay_checkout, dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
+    DodopayCheckoutInput,
+};
 use super::support_payment::payment_epay::{
     build_epay_checkout_url, epay_callback_base_url, load_epay_config, resolve_epay_channel,
     EpayCheckoutInput,
@@ -56,15 +60,17 @@ fn normalize_checkout_request(
     let payment_provider = normalize_optional_checkout_string(payload.payment_provider, 30)
         .or_else(|| normalize_optional_checkout_string(payload.payment_method.clone(), 30))
         .unwrap_or_else(|| "epay".to_string());
-    if payment_provider != "epay" {
+    if payment_provider != "epay" && payment_provider != "dodopay" {
         return Err("unsupported payment_provider");
     }
     let payment_method = normalize_optional_checkout_string(payload.payment_method, 30)
-        .unwrap_or_else(|| "epay".to_string());
-    let payment_channel = normalize_optional_checkout_string(payload.payment_channel, 30)
-        .or_else(|| (payment_method != "epay").then_some(payment_method.clone()));
+        .unwrap_or_else(|| payment_provider.clone());
+    let payment_channel =
+        normalize_optional_checkout_string(payload.payment_channel, 30).or_else(|| {
+            (payment_provider == "epay" && payment_method != "epay").then_some(payment_method)
+        });
     Ok(NormalizedBillingPlanCheckoutRequest {
-        payment_method: "epay".to_string(),
+        payment_method: payment_provider.clone(),
         payment_provider,
         payment_channel,
     })
@@ -206,6 +212,27 @@ fn compute_plan_payment_amounts(
     Err("套餐币种与支付网关币种不匹配")
 }
 
+fn compute_dodopay_plan_payment_amounts(
+    plan: &aether_data_contracts::repository::billing::BillingPlanRecord,
+    usd_exchange_rate: f64,
+) -> Result<(f64, f64), &'static str> {
+    if !plan.price_amount.is_finite() || plan.price_amount <= 0.0 || usd_exchange_rate <= 0.0 {
+        return Err("套餐价格配置无效");
+    }
+    if plan.price_currency.eq_ignore_ascii_case("USD") {
+        let amount_usd = (plan.price_amount * 100_000_000.0).round() / 100_000_000.0;
+        let pay_amount = (plan.price_amount * usd_exchange_rate * 100.0).round() / 100.0;
+        return Ok((amount_usd, pay_amount));
+    }
+    if plan.price_currency.eq_ignore_ascii_case("CNY") {
+        let amount_usd =
+            (plan.price_amount / usd_exchange_rate * 100_000_000.0).round() / 100_000_000.0;
+        let pay_amount = (plan.price_amount * 100.0).round() / 100.0;
+        return Ok((amount_usd, pay_amount));
+    }
+    Err("套餐币种与支付网关币种不匹配")
+}
+
 pub(super) async fn handle_billing_plans_list(state: &AppState) -> Response<Body> {
     let plans = match state.list_billing_plans(false).await {
         Ok(Some(value)) => value,
@@ -320,51 +347,129 @@ pub(super) async fn handle_billing_plan_checkout(
             false,
         );
     }
-    let config = match load_epay_config(state).await {
-        Ok(value) => value,
-        Err(detail) => {
-            return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
-        }
-    };
-    let payment_channel =
-        match resolve_epay_channel(&config, checkout_request.payment_channel.as_deref()) {
-            Ok(value) => value,
-            Err(detail) => {
-                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
-            }
-        };
-    let (amount_usd, pay_amount) =
-        match compute_plan_payment_amounts(&plan, &config.pay_currency, config.usd_exchange_rate) {
+    let now = Utc::now();
+    let order_no = billing_order_no(now);
+    let expires_at = now + chrono::Duration::minutes(30);
+    let (
+        amount_usd,
+        pay_amount,
+        pay_currency,
+        exchange_rate,
+        payment_channel,
+        gateway_order_id,
+        checkout,
+    ) = if checkout_request.payment_provider == "dodopay" {
+        let config = match load_dodopay_config() {
             Ok(value) => value,
             Err(detail) => {
                 return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
             }
         };
-    let Some(callback_base_url) = epay_callback_base_url(
-        config.callback_base_url.as_deref(),
-        headers,
-        request_context,
-    ) else {
-        return build_auth_error_response(
-            http::StatusCode::BAD_REQUEST,
-            "epay callback_base_url is required",
-            false,
+        let (amount_usd, pay_amount) =
+            match compute_dodopay_plan_payment_amounts(&plan, config.usd_exchange_rate) {
+                Ok(value) => value,
+                Err(detail) => {
+                    return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
+                }
+            };
+        let Some(callback_base_url) = dodopay_callback_base_url(
+            config.callback_base_url.as_deref(),
+            headers,
+            request_context,
+        ) else {
+            return build_auth_error_response(
+                http::StatusCode::BAD_REQUEST,
+                "DODOPAY_CALLBACK_BASE_URL is required",
+                false,
+            );
+        };
+        let checkout = match create_dodopay_checkout(
+            &config,
+            &DodopayCheckoutInput {
+                order_no: order_no.clone(),
+                subject: plan.title.clone(),
+                pay_amount,
+                notify_url: format!("{callback_base_url}/api/payment/dodopay/notify"),
+                return_url: dodopay_return_url(&config, &callback_base_url),
+                metadata: json!({
+                    "kind": "plan_purchase",
+                    "plan_id": plan.id.clone(),
+                    "user_id": auth.user.id.clone(),
+                }),
+            },
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_GATEWAY, detail, false)
+            }
+        };
+        (
+            amount_usd,
+            checkout.pay_amount,
+            config.pay_currency,
+            config.usd_exchange_rate,
+            None,
+            checkout.gateway_order_id,
+            checkout.payment_instructions,
+        )
+    } else {
+        let config = match load_epay_config(state).await {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
+            }
+        };
+        let payment_channel =
+            match resolve_epay_channel(&config, checkout_request.payment_channel.as_deref()) {
+                Ok(value) => value,
+                Err(detail) => {
+                    return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
+                }
+            };
+        let (amount_usd, pay_amount) = match compute_plan_payment_amounts(
+            &plan,
+            &config.pay_currency,
+            config.usd_exchange_rate,
+        ) {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
+            }
+        };
+        let Some(callback_base_url) = epay_callback_base_url(
+            config.callback_base_url.as_deref(),
+            headers,
+            request_context,
+        ) else {
+            return build_auth_error_response(
+                http::StatusCode::BAD_REQUEST,
+                "epay callback_base_url is required",
+                false,
+            );
+        };
+        let checkout = build_epay_checkout_url(
+            &config,
+            &EpayCheckoutInput {
+                order_no: order_no.clone(),
+                channel: payment_channel.clone(),
+                subject: plan.title.clone(),
+                pay_amount,
+                notify_url: format!("{callback_base_url}/api/payment/epay/notify"),
+                return_url: format!("{callback_base_url}/api/payment/epay/return"),
+            },
         );
-    };
-    let now = Utc::now();
-    let order_no = billing_order_no(now);
-    let expires_at = now + chrono::Duration::minutes(30);
-    let checkout = build_epay_checkout_url(
-        &config,
-        &EpayCheckoutInput {
-            order_no: order_no.clone(),
-            channel: payment_channel.clone(),
-            subject: plan.title.clone(),
+        (
+            amount_usd,
             pay_amount,
-            notify_url: format!("{callback_base_url}/api/payment/epay/notify"),
-            return_url: format!("{callback_base_url}/api/payment/epay/return"),
-        },
-    );
+            config.pay_currency,
+            config.usd_exchange_rate,
+            Some(payment_channel),
+            order_no.clone(),
+            checkout,
+        )
+    };
     let outcome = match state
         .create_plan_purchase_order(
             aether_data::repository::wallet::CreatePlanPurchaseOrderInput {
@@ -372,12 +477,12 @@ pub(super) async fn handle_billing_plan_checkout(
                 user_id: auth.user.id.clone(),
                 amount_usd,
                 pay_amount,
-                pay_currency: config.pay_currency.clone(),
-                exchange_rate: config.usd_exchange_rate,
+                pay_currency,
+                exchange_rate,
                 payment_method: checkout_request.payment_method,
                 payment_provider: Some(checkout_request.payment_provider),
-                payment_channel: Some(payment_channel),
-                gateway_order_id: order_no.clone(),
+                payment_channel,
+                gateway_order_id,
                 gateway_response: checkout.clone(),
                 order_no,
                 product_id: plan.id.clone(),

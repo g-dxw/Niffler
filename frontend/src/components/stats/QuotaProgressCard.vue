@@ -22,7 +22,7 @@
     >
       <EmptyState
         title="暂无数据"
-        description="暂无月卡配额数据"
+        description="暂无周期额度数据"
       />
     </div>
     <div

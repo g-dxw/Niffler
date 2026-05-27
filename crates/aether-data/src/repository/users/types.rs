@@ -498,6 +498,8 @@ pub struct StoredUserGroup {
     pub allowed_models_mode: String,
     pub rate_limit: Option<i32>,
     pub rate_limit_mode: String,
+    pub concurrent_limit: Option<i32>,
+    pub concurrent_limit_mode: String,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -518,6 +520,8 @@ impl StoredUserGroup {
         allowed_models_mode: String,
         rate_limit: Option<i32>,
         rate_limit_mode: String,
+        concurrent_limit: Option<i32>,
+        concurrent_limit_mode: String,
         created_at: Option<DateTime<Utc>>,
         updated_at: Option<DateTime<Utc>>,
     ) -> Result<Self, crate::DataLayerError> {
@@ -568,6 +572,11 @@ impl StoredUserGroup {
                 &rate_limit_mode,
                 "user_groups.rate_limit_mode",
             )?,
+            concurrent_limit,
+            concurrent_limit_mode: normalize_rate_limit_policy_mode(
+                &concurrent_limit_mode,
+                "user_groups.concurrent_limit_mode",
+            )?,
             created_at,
             updated_at,
         })
@@ -608,6 +617,8 @@ pub struct UpsertUserGroupRecord {
     pub allowed_models_mode: String,
     pub rate_limit: Option<i32>,
     pub rate_limit_mode: String,
+    pub concurrent_limit: Option<i32>,
+    pub concurrent_limit_mode: String,
 }
 
 impl UpsertUserGroupRecord {

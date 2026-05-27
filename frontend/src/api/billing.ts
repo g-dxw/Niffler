@@ -1,5 +1,6 @@
 import apiClient from './client'
 import type { PaymentOrder } from './wallet'
+import type { BillingEntitlementsInput } from '@/utils/billingEntitlements'
 
 export type BillingDurationUnit = 'day' | 'month' | 'year' | 'custom'
 export type BillingPurchaseLimitScope = 'active_period' | 'lifetime' | 'unlimited'
@@ -50,10 +51,21 @@ export interface WalletCreditEntitlement {
 
 export interface DailyQuotaEntitlement {
   type: 'daily_quota'
-  daily_quota_usd: number
+  daily_quota_usd?: number
+  five_hour_quota_usd?: number
+  weekly_quota_usd?: number
+  monthly_quota_usd?: number
+  rpm_limit?: number
   reset_timezone?: string
   carry_over?: boolean
   allow_wallet_overage?: boolean
+  limits?: {
+    daily_limit_usd?: string | number
+    five_hour_limit_usd?: string | number
+    weekly_limit_usd?: string | number
+    monthly_limit_usd?: string | number
+    rpm_limit?: string | number
+  }
 }
 
 export interface MembershipGroupEntitlement {
@@ -78,7 +90,7 @@ export interface BillingPlan {
   sort_order: number
   max_active_per_user: number
   purchase_limit_scope: BillingPurchaseLimitScope
-  entitlements: BillingEntitlement[]
+  entitlements: BillingEntitlementsInput
   created_at?: number | null
   updated_at?: number | null
 }
@@ -94,7 +106,7 @@ export interface BillingPlanWriteRequest {
   sort_order: number
   max_active_per_user: number
   purchase_limit_scope: BillingPurchaseLimitScope
-  entitlements: BillingEntitlement[]
+  entitlements: BillingEntitlementsInput
 }
 
 export interface BillingPlanListResponse {
@@ -125,7 +137,7 @@ export interface UserPlanEntitlement {
   status: string
   starts_at: string | null
   expires_at: string | null
-  entitlements: BillingEntitlement[]
+  entitlements: BillingEntitlementsInput
   active?: boolean
   created_at?: string | null
   updated_at?: string | null

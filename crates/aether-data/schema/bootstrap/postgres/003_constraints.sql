@@ -161,6 +161,76 @@ EXCEPTION
 END $mig$;
 
 
+--
+-- Name: routing_groups routing_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.routing_groups
+    ADD CONSTRAINT routing_groups_pkey PRIMARY KEY (id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: routing_groups routing_groups_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.routing_groups
+    ADD CONSTRAINT routing_groups_name_key UNIQUE (name);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: routing_group_bindings routing_group_bindings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.routing_group_bindings
+    ADD CONSTRAINT routing_group_bindings_pkey PRIMARY KEY (id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: routing_group_versions routing_group_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.routing_group_versions
+    ADD CONSTRAINT routing_group_versions_pkey PRIMARY KEY (id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: routing_group_versions routing_group_versions_group_version_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.routing_group_versions
+    ADD CONSTRAINT routing_group_versions_group_version_key UNIQUE (group_id, version);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
 
 --
 -- Name: ldap_configs ldap_configs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -274,6 +344,34 @@ END $mig$;
 DO $mig$ BEGIN
   ALTER TABLE ONLY public.entitlement_usage_ledgers
     ADD CONSTRAINT entitlement_usage_ledgers_pkey PRIMARY KEY (id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: entitlement_usage_windows entitlement_usage_windows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.entitlement_usage_windows
+    ADD CONSTRAINT entitlement_usage_windows_pkey PRIMARY KEY (id);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: entitlement_usage_windows uq_entitlement_usage_window; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.entitlement_usage_windows
+    ADD CONSTRAINT uq_entitlement_usage_window UNIQUE (user_entitlement_id, window_scope);
 EXCEPTION
   WHEN duplicate_object THEN NULL;
   WHEN duplicate_table THEN NULL;
@@ -1144,6 +1242,20 @@ END $mig$;
 DO $mig$ BEGIN
   ALTER TABLE ONLY public.user_groups
     ADD CONSTRAINT user_groups_rate_limit_mode_check CHECK (rate_limit_mode IN ('inherit', 'system', 'custom'));
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: user_groups user_groups_concurrent_limit_mode_check; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.user_groups
+    ADD CONSTRAINT user_groups_concurrent_limit_mode_check CHECK (concurrent_limit_mode IN ('inherit', 'system', 'custom'));
 EXCEPTION
   WHEN duplicate_object THEN NULL;
   WHEN duplicate_table THEN NULL;

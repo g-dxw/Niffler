@@ -8,6 +8,10 @@ use super::{
 };
 use crate::driver::postgres::PostgresTransactionRunner;
 use crate::error::SqlxResultExt;
+use crate::repository::billing::quota::{
+    usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, UsageQuotaGrant,
+    QUOTA_SCOPE_FIVE_HOUR,
+};
 use crate::DataLayerError;
 
 const FIND_USAGE_FOR_SETTLEMENT_SQL: &str = r#"
@@ -247,65 +251,6 @@ struct DailyQuotaDebitResult {
     insufficient: bool,
 }
 
-#[derive(Debug)]
-struct DailyQuotaGrant {
-    entitlement_id: String,
-    daily_quota_usd: f64,
-    usage_date: String,
-    allow_wallet_overage: bool,
-}
-
-fn daily_quota_usage_date(
-    reset_timezone: Option<&str>,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<String, DataLayerError> {
-    let timezone = reset_timezone
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Asia/Shanghai")
-        .parse::<chrono_tz::Tz>()
-        .map_err(|err| DataLayerError::InvalidInput(format!("invalid reset_timezone: {err}")))?;
-    Ok(now.with_timezone(&timezone).date_naive().to_string())
-}
-
-fn daily_quota_grants_from_entitlement(
-    entitlement_id: &str,
-    entitlements: &serde_json::Value,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<Vec<DailyQuotaGrant>, DataLayerError> {
-    let mut grants = Vec::new();
-    let Some(items) = entitlements.as_array() else {
-        return Ok(grants);
-    };
-    for item in items {
-        if item.get("type").and_then(serde_json::Value::as_str) != Some("daily_quota") {
-            continue;
-        }
-        let daily_quota_usd = item
-            .get("daily_quota_usd")
-            .and_then(serde_json::Value::as_f64)
-            .unwrap_or(0.0);
-        if !daily_quota_usd.is_finite() || daily_quota_usd <= 0.0 {
-            continue;
-        }
-        let usage_date = daily_quota_usage_date(
-            item.get("reset_timezone")
-                .and_then(serde_json::Value::as_str),
-            now,
-        )?;
-        grants.push(DailyQuotaGrant {
-            entitlement_id: entitlement_id.to_string(),
-            daily_quota_usd,
-            usage_date,
-            allow_wallet_overage: item
-                .get("allow_wallet_overage")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false),
-        });
-    }
-    Ok(grants)
-}
-
 async fn consume_daily_quota_postgres(
     tx: &mut crate::driver::postgres::PostgresTransaction,
     user_id: &str,
@@ -320,7 +265,7 @@ async fn consume_daily_quota_postgres(
     let now = chrono::Utc::now();
     let entitlement_rows = sqlx::query(
         r#"
-SELECT id, entitlements_snapshot
+SELECT id, starts_at, entitlements_snapshot
 FROM user_plan_entitlements
 WHERE user_id = $1
   AND status = 'active'
@@ -337,40 +282,47 @@ FOR UPDATE
     let mut grants = Vec::new();
     for row in entitlement_rows {
         let entitlement_id: String = row.try_get("id").map_postgres_err()?;
+        let entitlement_started_at: chrono::DateTime<chrono::Utc> =
+            row.try_get("starts_at").map_postgres_err()?;
         let entitlements: serde_json::Value =
             row.try_get("entitlements_snapshot").map_postgres_err()?;
-        grants.extend(daily_quota_grants_from_entitlement(
+        let stored_five_hour =
+            find_usage_quota_window_postgres(tx, &entitlement_id, QUOTA_SCOPE_FIVE_HOUR).await?;
+        grants.extend(usage_quota_grants_from_entitlement(
             &entitlement_id,
             &entitlements,
             now,
+            entitlement_started_at,
+            stored_five_hour.as_ref(),
         )?);
     }
     if grants.is_empty() {
         return Ok(DailyQuotaDebitResult::default());
     }
 
-    let mut grants_with_remaining = Vec::new();
+    let mut grants_by_entitlement: std::collections::BTreeMap<String, Vec<(UsageQuotaGrant, f64)>> =
+        std::collections::BTreeMap::new();
     let mut total_remaining = 0.0;
     let mut allow_wallet_overage = true;
     for grant in grants {
         allow_wallet_overage &= grant.allow_wallet_overage;
-        let used = sqlx::query_scalar::<_, Option<f64>>(
-            r#"
-SELECT CAST(COALESCE(SUM(amount_usd), 0) AS DOUBLE PRECISION)
-FROM entitlement_usage_ledgers
-WHERE user_entitlement_id = $1
-  AND usage_date = $2
-            "#,
-        )
-        .bind(&grant.entitlement_id)
-        .bind(&grant.usage_date)
-        .fetch_one(&mut **tx)
-        .await
-        .map_postgres_err()?
-        .unwrap_or(0.0);
-        let remaining = (grant.daily_quota_usd - used).max(0.0);
-        total_remaining += remaining;
-        grants_with_remaining.push((grant, remaining));
+        let used = upsert_usage_quota_window_postgres(tx, user_id, &grant).await?;
+        let remaining = (grant.limit_usd - used).max(0.0);
+        grants_by_entitlement
+            .entry(grant.entitlement_id.clone())
+            .or_default()
+            .push((grant, remaining));
+    }
+    let mut entitlement_remaining = Vec::new();
+    for grants in grants_by_entitlement.into_values() {
+        let remaining = grants
+            .iter()
+            .map(|(_, remaining)| *remaining)
+            .fold(f64::INFINITY, f64::min);
+        if remaining.is_finite() {
+            total_remaining += remaining.max(0.0);
+            entitlement_remaining.push((grants, remaining.max(0.0)));
+        }
     }
 
     if !allow_wallet_overage && total_remaining + 0.000_000_01 < total_cost_usd {
@@ -393,12 +345,16 @@ WHERE user_entitlement_id = $1
 
     let mut remaining_cost = total_cost_usd;
     let mut debited = 0.0;
-    for (grant, balance_before) in grants_with_remaining {
+    for (grants, balance_before) in entitlement_remaining {
         if remaining_cost <= 0.000_000_01 || balance_before <= 0.0 {
             continue;
         }
         let amount = remaining_cost.min(balance_before);
         let balance_after = balance_before - amount;
+        for (grant, _) in &grants {
+            increment_usage_quota_window_postgres(tx, grant, amount).await?;
+        }
+        let primary_grant = &grants[0].0;
         sqlx::query(
             r#"
 INSERT INTO entitlement_usage_ledgers (
@@ -410,13 +366,13 @@ ON CONFLICT (user_entitlement_id, request_id) DO NOTHING
             "#,
         )
         .bind(uuid::Uuid::new_v4().to_string())
-        .bind(&grant.entitlement_id)
+        .bind(&primary_grant.entitlement_id)
         .bind(user_id)
         .bind(request_id)
         .bind(amount)
         .bind(balance_before)
         .bind(balance_after)
-        .bind(&grant.usage_date)
+        .bind(&primary_grant.window_key)
         .execute(&mut **tx)
         .await
         .map_postgres_err()?;
@@ -427,6 +383,113 @@ ON CONFLICT (user_entitlement_id, request_id) DO NOTHING
         debited_usd: debited,
         insufficient: false,
     })
+}
+
+async fn find_usage_quota_window_postgres(
+    tx: &mut crate::driver::postgres::PostgresTransaction,
+    entitlement_id: &str,
+    scope: &str,
+) -> Result<Option<StoredUsageQuotaWindow>, DataLayerError> {
+    let row = sqlx::query(
+        r#"
+SELECT
+  window_key,
+  window_started_at,
+  window_ends_at,
+  CAST(used_usd AS DOUBLE PRECISION) AS used_usd
+FROM entitlement_usage_windows
+WHERE user_entitlement_id = $1
+  AND window_scope = $2
+LIMIT 1
+        "#,
+    )
+    .bind(entitlement_id)
+    .bind(scope)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_postgres_err()?;
+    row.map(|row| {
+        Ok(StoredUsageQuotaWindow {
+            window_key: row.try_get("window_key").map_postgres_err()?,
+            window_started_at: row.try_get("window_started_at").map_postgres_err()?,
+            window_ends_at: row.try_get("window_ends_at").map_postgres_err()?,
+        })
+    })
+    .transpose()
+}
+
+async fn upsert_usage_quota_window_postgres(
+    tx: &mut crate::driver::postgres::PostgresTransaction,
+    user_id: &str,
+    grant: &crate::repository::billing::quota::UsageQuotaGrant,
+) -> Result<f64, DataLayerError> {
+    let row = sqlx::query(
+        r#"
+INSERT INTO entitlement_usage_windows (
+  id, user_entitlement_id, user_id, window_scope, window_key,
+  window_started_at, window_ends_at, used_usd, created_at, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 0, NOW(), NOW())
+ON CONFLICT (user_entitlement_id, window_scope)
+DO UPDATE SET
+  window_key = CASE
+    WHEN entitlement_usage_windows.window_ends_at <= NOW()
+      THEN EXCLUDED.window_key
+    ELSE entitlement_usage_windows.window_key
+  END,
+  window_started_at = CASE
+    WHEN entitlement_usage_windows.window_ends_at <= NOW()
+      THEN EXCLUDED.window_started_at
+    ELSE entitlement_usage_windows.window_started_at
+  END,
+  window_ends_at = CASE
+    WHEN entitlement_usage_windows.window_ends_at <= NOW()
+      THEN EXCLUDED.window_ends_at
+    ELSE entitlement_usage_windows.window_ends_at
+  END,
+  used_usd = CASE
+    WHEN entitlement_usage_windows.window_ends_at <= NOW()
+      THEN 0
+    ELSE entitlement_usage_windows.used_usd
+  END,
+  updated_at = NOW()
+RETURNING CAST(used_usd AS DOUBLE PRECISION) AS used_usd
+        "#,
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&grant.entitlement_id)
+    .bind(user_id)
+    .bind(grant.scope)
+    .bind(&grant.window_key)
+    .bind(grant.window_started_at)
+    .bind(grant.window_ends_at)
+    .fetch_one(&mut **tx)
+    .await
+    .map_postgres_err()?;
+    row.try_get("used_usd").map_postgres_err()
+}
+
+async fn increment_usage_quota_window_postgres(
+    tx: &mut crate::driver::postgres::PostgresTransaction,
+    grant: &crate::repository::billing::quota::UsageQuotaGrant,
+    amount: f64,
+) -> Result<(), DataLayerError> {
+    sqlx::query(
+        r#"
+UPDATE entitlement_usage_windows
+SET used_usd = used_usd + $3,
+    updated_at = NOW()
+WHERE user_entitlement_id = $1
+  AND window_scope = $2
+        "#,
+    )
+    .bind(&grant.entitlement_id)
+    .bind(grant.scope)
+    .bind(amount)
+    .execute(&mut **tx)
+    .await
+    .map_postgres_err()?;
+    Ok(())
 }
 
 #[async_trait]

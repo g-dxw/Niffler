@@ -2,7 +2,7 @@
   <PageContainer>
     <PageHeader
       title="套餐中心"
-      description="购买每日额度或会员权益"
+      description="购买周期额度或会员权益"
     />
 
     <div class="mt-6 space-y-6">
@@ -111,17 +111,17 @@
               <div class="mt-5 flex-1" />
 
               <div class="mt-5 space-y-3">
-                <Select v-model="selectedChannel">
+                <Select v-model="selectedPaymentOptionKey">
                   <SelectTrigger>
                     <SelectValue
-                      :placeholder="epayOptions.length ? '选择支付通道' : '暂无可用支付通道'"
+                      :placeholder="paymentOptions.length ? '选择支付方式' : '暂无可用支付方式'"
                     />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem
-                      v-for="option in epayOptions"
-                      :key="`${option.payment_channel}-${option.display_name}`"
-                      :value="option.payment_channel || ''"
+                      v-for="option in paymentOptions"
+                      :key="option.key"
+                      :value="option.key"
                     >
                       {{ option.display_name }}
                     </SelectItem>
@@ -131,8 +131,8 @@
                   class="w-full"
                   :disabled="
                     checkoutLoadingPlanId === plan.id
-                      || epayOptions.length === 0
-                      || !selectedChannel
+                      || paymentOptions.length === 0
+                      || !selectedPaymentOption
                   "
                   @click="checkoutPlan(plan)"
                 >
@@ -187,8 +187,8 @@ import { CreditCard } from 'lucide-vue-next'
 import {
   billingApi,
   type BillingDurationUnit,
-  type BillingEntitlement,
   type BillingCheckoutResponse,
+  type DailyQuotaEntitlement,
   type BillingPlan,
   type UserPlanEntitlement,
 } from '@/api/billing'
@@ -208,6 +208,11 @@ import { CardSection, PageContainer, PageHeader } from '@/components/layout'
 import { useToast } from '@/composables/useToast'
 import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
+import {
+  hasPackageBillingEntitlement,
+  normalizeBillingEntitlements,
+  type BillingEntitlementsInput,
+} from '@/utils/billingEntitlements'
 
 const { success, error: showError } = useToast()
 
@@ -215,16 +220,29 @@ const loading = ref(true)
 const plans = ref<BillingPlan[]>([])
 const entitlements = ref<UserPlanEntitlement[]>([])
 const rechargeOptions = ref<WalletRechargeOption[]>([])
-const selectedChannel = ref('')
+const selectedPaymentOptionKey = ref('')
 const checkoutLoadingPlanId = ref<string | null>(null)
 const latestCheckout = ref<BillingCheckoutResponse | null>(null)
 
-const epayOptions = computed(() =>
-  rechargeOptions.value.filter((option) =>
-    (option.payment_provider === 'epay' || option.payment_method === 'epay')
-    && Boolean(option.payment_channel)
-  )
+const paymentOptions = computed(() =>
+  rechargeOptions.value
+    .filter((option) => option.payment_provider === 'epay' || option.payment_method === 'epay' || option.payment_provider === 'dodopay' || option.payment_method === 'dodopay')
+    .map((option, index) => ({
+      ...option,
+      key: [
+        option.payment_provider || option.provider || option.payment_method,
+        option.payment_method,
+        option.payment_channel || '',
+        index,
+      ].join(':'),
+    }))
 )
+
+const selectedPaymentOption = computed(() => {
+  if (paymentOptions.value.length === 0) return null
+  return paymentOptions.value.find(option => option.key === selectedPaymentOptionKey.value)
+    || paymentOptions.value[0]
+})
 
 const activeEntitlements = computed(() =>
   entitlements.value.filter((item) =>
@@ -243,12 +261,10 @@ const latestPaymentUrl = computed(() => {
   return typeof value === 'string' && value ? value : ''
 })
 
-watch(epayOptions, (options) => {
-  const channels = options
-    .map(option => option.payment_channel || '')
-    .filter(Boolean)
-  if (!channels.includes(selectedChannel.value)) {
-    selectedChannel.value = channels[0] || ''
+watch(paymentOptions, (options) => {
+  const keys = options.map(option => option.key)
+  if (!keys.includes(selectedPaymentOptionKey.value)) {
+    selectedPaymentOptionKey.value = keys[0] || ''
   }
 }, { immediate: true })
 
@@ -285,8 +301,8 @@ async function loadRechargeOptions() {
   try {
     const response = await walletApi.listRechargeOptions()
     rechargeOptions.value = response.items
-    if (!selectedChannel.value && epayOptions.value.length > 0) {
-      selectedChannel.value = epayOptions.value[0].payment_channel || ''
+    if (!selectedPaymentOptionKey.value && paymentOptions.value.length > 0) {
+      selectedPaymentOptionKey.value = paymentOptions.value[0].key
     }
   } catch (err) {
     log.error('加载支付通道失败:', err)
@@ -301,10 +317,15 @@ async function checkoutPlan(plan: BillingPlan) {
   }
   checkoutLoadingPlanId.value = plan.id
   try {
+    const option = selectedPaymentOption.value
+    if (!option) {
+      showError('请选择支付方式')
+      return
+    }
     const response = await billingApi.checkout(plan.id, {
-      payment_method: 'epay',
-      payment_provider: 'epay',
-      payment_channel: selectedChannel.value,
+      payment_method: option.payment_method,
+      payment_provider: option.payment_provider || option.provider || option.payment_method,
+      payment_channel: option.payment_channel,
     })
     latestCheckout.value = response
     success('套餐订单已创建')
@@ -383,13 +404,13 @@ function replacementNotice(plan: BillingPlan): string {
   return `若已有有效${labels.join('和')}，购买成功后旧同类套餐会自动失效。`
 }
 
-function entitlementLabels(items: BillingEntitlement[]): string[] {
-  return (items || []).map((item) => {
+function entitlementLabels(items: BillingEntitlementsInput): string[] {
+  return normalizeBillingEntitlements(items).map((item) => {
     if (item.type === 'wallet_credit') {
       return `附赠余额 $${Number(item.amount_usd || 0).toFixed(2)}`
     }
     if (item.type === 'daily_quota') {
-      return `每日 $${Number(item.daily_quota_usd || 0).toFixed(2)}`
+      return quotaEntitlementLabel(item)
     }
     if (item.type === 'membership_group') {
       return `会员组 ${item.grant_user_groups.join(', ')}`
@@ -398,23 +419,37 @@ function entitlementLabels(items: BillingEntitlement[]): string[] {
   })
 }
 
-function hasPackageEntitlement(items: BillingEntitlement[] | undefined): boolean {
-  return (items || []).some((item) =>
-    item.type === 'daily_quota' || item.type === 'membership_group'
+function hasPackageEntitlement(items: BillingEntitlementsInput): boolean {
+  return hasPackageBillingEntitlement(items)
+}
+
+function hasDailyQuotaEntitlement(items: BillingEntitlementsInput): boolean {
+  return normalizeBillingEntitlements(items).some((item) =>
+    item.type === 'daily_quota' || Boolean((item as DailyQuotaEntitlement).limits)
   )
 }
 
-function hasDailyQuotaEntitlement(items: BillingEntitlement[] | undefined): boolean {
-  return (items || []).some((item) => item.type === 'daily_quota')
+function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
+  const limits = item.limits || {}
+  const parts = []
+  const daily = Number(item.daily_quota_usd ?? limits.daily_limit_usd ?? 0)
+  const fiveHour = Number(item.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
+  const weekly = Number(item.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
+  const monthly = Number(item.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
+  if (daily > 0) parts.push(`24小时 $${daily.toFixed(2)}`)
+  if (fiveHour > 0) parts.push(`5H $${fiveHour.toFixed(2)}`)
+  if (weekly > 0) parts.push(`7天 $${weekly.toFixed(2)}`)
+  if (monthly > 0) parts.push(`30天 $${monthly.toFixed(2)}`)
+  return parts.join(' / ') || '用量额度'
 }
 
-function hasMembershipEntitlement(items: BillingEntitlement[] | undefined): boolean {
-  return (items || []).some((item) => item.type === 'membership_group')
+function hasMembershipEntitlement(items: BillingEntitlementsInput): boolean {
+  return normalizeBillingEntitlements(items).some((item) => item.type === 'membership_group')
 }
 
-function replacementClassLabels(items: BillingEntitlement[] | undefined): string[] {
+function replacementClassLabels(items: BillingEntitlementsInput): string[] {
   const labels: string[] = []
-  if (hasDailyQuotaEntitlement(items)) labels.push('每日额度套餐')
+  if (hasDailyQuotaEntitlement(items)) labels.push('用量额度套餐')
   if (hasMembershipEntitlement(items)) labels.push('会员权益包')
   return labels
 }

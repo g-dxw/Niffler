@@ -134,6 +134,7 @@ pub struct ResolvedAuthApiKeySnapshot {
     pub user_is_active: bool,
     pub user_is_deleted: bool,
     pub user_rate_limit: Option<i32>,
+    pub user_concurrent_limit: Option<i32>,
     pub user_allowed_providers: Option<Vec<String>>,
     pub user_allowed_api_formats: Option<Vec<String>>,
     pub user_allowed_models: Option<Vec<String>>,
@@ -163,6 +164,7 @@ impl ResolvedAuthApiKeySnapshot {
             user_is_active: snapshot.user_is_active,
             user_is_deleted: snapshot.user_is_deleted,
             user_rate_limit: snapshot.user_rate_limit,
+            user_concurrent_limit: None,
             user_allowed_providers: snapshot.user_allowed_providers,
             user_allowed_api_formats: snapshot.user_allowed_api_formats,
             user_allowed_models: snapshot.user_allowed_models,
@@ -219,11 +221,13 @@ impl ResolvedAuthApiKeySnapshot {
         allowed_api_formats: Option<Vec<String>>,
         allowed_models: Option<Vec<String>>,
         rate_limit: Option<i32>,
+        concurrent_limit: Option<i32>,
     ) {
         self.user_allowed_providers = allowed_providers;
         self.user_allowed_api_formats = allowed_api_formats;
         self.user_allowed_models = allowed_models;
         self.user_rate_limit = rate_limit;
+        self.user_concurrent_limit = concurrent_limit;
         self.constrain_non_standalone_api_key_policy_to_user_policy();
     }
 
@@ -971,6 +975,7 @@ mod tests {
             Some(vec!["openai:chat".to_string()]),
             Some(vec!["gpt-5".to_string()]),
             Some(60),
+            None,
         );
 
         assert_eq!(

@@ -73,6 +73,7 @@ export function paymentMethodLabel(method: string | null | undefined): string {
     wechat: '微信支付',
     wxpay: '微信支付',
     epay: '易支付',
+    dodopay: 'DoDoPay',
     admin_manual: '人工充值',
     card_code: '充值卡',
     gift_code: '礼品卡',
