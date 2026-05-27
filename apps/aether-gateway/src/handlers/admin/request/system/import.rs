@@ -728,6 +728,11 @@ fn build_imported_user_group_record(
     let allowed_api_formats = normalize_imported_user_api_formats(group, "allowed_api_formats")?;
     let allowed_models = normalize_imported_user_string_list(group, "allowed_models")?;
     let rate_limit = imported_optional_i32(group.get("rate_limit"), "rate_limit")?;
+    let concurrent_limit =
+        imported_optional_i32(group.get("concurrent_limit"), "concurrent_limit")?;
+    if concurrent_limit.is_some_and(|value| value < 0) {
+        return Err(format!("{field_name}.concurrent_limit 必须是非负整数"));
+    }
 
     let allowed_providers_mode = imported_optional_list_policy_mode(
         group.get("allowed_providers_mode"),
@@ -771,6 +776,17 @@ fn build_imported_user_group_record(
                     "inherit".to_string()
                 }
             });
+    let concurrent_limit_mode = imported_optional_rate_limit_policy_mode(
+        group.get("concurrent_limit_mode"),
+        "concurrent_limit_mode",
+    )?
+    .unwrap_or_else(|| {
+        if group.contains_key("concurrent_limit") {
+            legacy_imported_rate_limit_policy_mode(concurrent_limit)
+        } else {
+            "inherit".to_string()
+        }
+    });
 
     let normalized_name = name.to_ascii_lowercase();
 
@@ -789,6 +805,8 @@ fn build_imported_user_group_record(
             allowed_models_mode,
             rate_limit,
             rate_limit_mode,
+            concurrent_limit,
+            concurrent_limit_mode,
         },
     ))
 }

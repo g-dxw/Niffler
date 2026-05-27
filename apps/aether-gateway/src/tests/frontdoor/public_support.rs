@@ -2871,6 +2871,8 @@ async fn gateway_handles_user_monitoring_rate_limit_status_locally_without_proxy
             allowed_models_mode: "unrestricted".to_string(),
             rate_limit: Some(80),
             rate_limit_mode: "custom".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
         })
         .await
         .expect("group should create")
@@ -9313,6 +9315,8 @@ async fn gateway_filters_users_me_available_models_by_group_policy_and_hides_mod
             allowed_models_mode: "specific".to_string(),
             rate_limit: None,
             rate_limit_mode: "system".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
         })
         .await
         .expect("group should create")
@@ -9409,6 +9413,8 @@ async fn gateway_returns_no_users_me_available_models_when_group_denies_all_mode
             allowed_models_mode: "deny_all".to_string(),
             rate_limit: None,
             rate_limit_mode: "system".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
         })
         .await
         .expect("group should create")

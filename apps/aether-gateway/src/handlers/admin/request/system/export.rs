@@ -235,6 +235,8 @@ impl<'a> AdminAppState<'a> {
                     "allowed_models_mode": group.allowed_models_mode.clone(),
                     "rate_limit": group.rate_limit,
                     "rate_limit_mode": group.rate_limit_mode.clone(),
+                    "concurrent_limit": group.concurrent_limit,
+                    "concurrent_limit_mode": group.concurrent_limit_mode.clone(),
                 })
             })
             .collect::<Vec<_>>();

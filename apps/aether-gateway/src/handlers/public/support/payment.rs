@@ -4,6 +4,8 @@ pub(super) use super::{
     build_auth_error_response, build_auth_json_response, AppState, GatewayPublicRequestContext,
 };
 
+#[path = "payment/dodopay.rs"]
+pub(super) mod payment_dodopay;
 #[path = "payment/epay.rs"]
 pub(super) mod payment_epay;
 #[path = "payment/gateway.rs"]

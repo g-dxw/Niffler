@@ -24,7 +24,15 @@ pub(super) fn classify_public_support_route(
     normalized_path: &str,
     public_models_auth_signature: &str,
 ) -> Option<ClassifiedRoute> {
-    if method == http::Method::GET && normalized_path == "/v1/models" {
+    if method == http::Method::GET && normalized_path == "/v1/usage" {
+        Some(classified(
+            "public_support",
+            "ccswitch",
+            "usage",
+            "key:usage",
+            false,
+        ))
+    } else if method == http::Method::GET && normalized_path == "/v1/models" {
         Some(classified(
             "public_support",
             "models",
@@ -459,6 +467,32 @@ pub(super) fn classify_public_support_route(
             "public_support",
             "payment_callback",
             "epay_return",
+            "public:payment",
+            false,
+        ))
+    } else if method == http::Method::POST
+        && matches!(
+            normalized_path,
+            "/api/payment/dodopay/notify" | "/api/payment/dodopay/notify/"
+        )
+    {
+        Some(classified(
+            "public_support",
+            "payment_callback",
+            "dodopay_notify",
+            "public:payment",
+            false,
+        ))
+    } else if method == http::Method::GET
+        && matches!(
+            normalized_path,
+            "/api/payment/dodopay/return" | "/api/payment/dodopay/return/"
+        )
+    {
+        Some(classified(
+            "public_support",
+            "payment_callback",
+            "dodopay_return",
             "public:payment",
             false,
         ))

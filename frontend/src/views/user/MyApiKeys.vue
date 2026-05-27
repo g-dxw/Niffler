@@ -204,6 +204,16 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
+                    :title="apiKey.is_locked ? '已锁定' : '导入 CC Switch'"
+                    :disabled="apiKey.is_locked"
+                    @click="openCcSwitchDialog(apiKey)"
+                  >
+                    <ExternalLink class="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-8 w-8"
                     :title="apiKey.is_locked ? '已锁定' : '编辑'"
                     :disabled="apiKey.is_locked"
                     @click="openEditApiKeyDialog(apiKey)"
@@ -290,6 +300,16 @@
                   @click="openInstallDialog(apiKey)"
                 >
                   <Terminal class="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-7 w-7"
+                  :title="apiKey.is_locked ? '已锁定' : '导入 CC Switch'"
+                  :disabled="apiKey.is_locked"
+                  @click="openCcSwitchDialog(apiKey)"
+                >
+                  <ExternalLink class="h-3.5 w-3.5" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -696,6 +716,120 @@
       </template>
     </Dialog>
 
+    <!-- 导入 CC Switch 对话框 -->
+    <Dialog
+      v-model="showCcSwitchDialog"
+      size="lg"
+    >
+      <template #header>
+        <div class="border-b border-border px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
+              <ExternalLink class="h-5 w-5 text-primary" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <h3 class="text-lg font-semibold text-foreground leading-tight">
+                导入 CC Switch
+              </h3>
+              <p class="text-xs text-muted-foreground truncate">
+                当前密钥：{{ selectedCcSwitchApiKey?.name || '未选择' }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <div class="space-y-5">
+        <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+          会使用当前页面地址生成导入链接。域名或 IP 以后变了，重新导入一次即可。
+        </div>
+
+        <div class="space-y-2">
+          <Label class="text-sm font-semibold">导入到</Label>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Button
+              v-for="option in ccSwitchAppOptions"
+              :key="option.value"
+              :variant="ccSwitchApp === option.value ? 'default' : 'outline'"
+              class="justify-start h-auto py-3"
+              @click="selectCcSwitchApp(option.value)"
+            >
+              <span class="flex flex-col items-start gap-0.5 text-left">
+                <span>{{ option.label }}</span>
+                <span class="text-xs opacity-70 font-normal">{{ option.description }}</span>
+              </span>
+            </Button>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <Label
+            for="ccswitch-provider-name"
+            class="text-sm font-semibold"
+          >名称</Label>
+          <Input
+            id="ccswitch-provider-name"
+            v-model="ccSwitchProviderName"
+            placeholder="Niffler"
+            class="h-11 border-border/60"
+            autocomplete="off"
+          />
+          <p class="text-xs text-muted-foreground">
+            这个名称会显示在 CC Switch 里，方便区分不同密钥。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <Label
+            for="ccswitch-model"
+            class="text-sm font-semibold"
+          >主模型（可选）</Label>
+          <Input
+            id="ccswitch-model"
+            v-model="ccSwitchModel"
+            placeholder="例如：gpt-5.4"
+            class="h-11 border-border/60"
+            autocomplete="off"
+          />
+          <p class="text-xs text-muted-foreground">
+            Codex 默认使用 gpt-5.4；Claude Code 和 Gemini CLI 可以留空。
+          </p>
+        </div>
+
+        <div class="rounded-lg border border-border/60 bg-background overflow-hidden">
+          <div class="border-b border-border/60 px-3 py-2 text-xs font-semibold text-muted-foreground">
+            将导入的服务地址
+          </div>
+          <pre class="max-h-24 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ ccSwitchEndpointPreview }}</pre>
+        </div>
+
+        <p class="text-xs text-muted-foreground">
+          导入时会读取完整 API Key，并通过本机协议交给 CC Switch；余额检查会访问 /v1/usage。
+        </p>
+      </div>
+
+      <template #footer>
+        <Button
+          variant="outline"
+          class="h-10 px-5"
+          @click="showCcSwitchDialog = false"
+        >
+          取消
+        </Button>
+        <Button
+          class="h-10 px-5 shadow-lg shadow-primary/20"
+          :disabled="ccSwitchImportLoading || !selectedCcSwitchApiKey"
+          @click="importToCcSwitch"
+        >
+          <Loader2
+            v-if="ccSwitchImportLoading"
+            class="animate-spin h-4 w-4 mr-2"
+          />
+          {{ ccSwitchImportLoading ? '准备中...' : '导入' }}
+        </Button>
+      </template>
+    </Dialog>
+
     <!-- 删除确认对话框 -->
     <AlertDialog
       v-model="showDeleteDialog"
@@ -730,13 +864,18 @@ import {
   TableRow
 } from '@/components/ui'
 import RefreshButton from '@/components/ui/refresh-button.vue'
-import { Plus, Key, Copy, Trash2, Loader2, Activity, CheckCircle, Power, SquarePen, Terminal } from 'lucide-vue-next'
+import { Plus, Key, Copy, Trash2, Loader2, Activity, CheckCircle, Power, SquarePen, Terminal, ExternalLink } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { log } from '@/utils/logger'
 import { parseApiError } from '@/utils/errorParser'
 import { formatRateLimitSimple } from '@/utils/format'
 import { parseNumberInput } from '@/utils/form'
 import { getErrorStatus } from '@/types/api-error'
+import {
+  buildCcSwitchImportUrl,
+  ccSwitchEndpoint,
+  type CcSwitchApp,
+} from '@/features/api-keys/utils/ccswitchImport'
 import {
   hasChatPiiRedactionFeatureSettings,
   mergeChatPiiRedactionFeatureSettings,
@@ -757,6 +896,12 @@ const installSystemOptions: Array<{ value: InstallSessionTargetSystem; label: st
   { value: 'windows', label: 'Windows' }
 ]
 
+const ccSwitchAppOptions: Array<{ value: CcSwitchApp; label: string; description: string }> = [
+  { value: 'claude', label: 'Claude Code', description: '根地址' },
+  { value: 'codex', label: 'Codex CLI', description: '自动加 /v1' },
+  { value: 'gemini', label: 'Gemini CLI', description: '根地址' },
+]
+
 const apiKeys = ref<ApiKey[]>([])
 const loading = ref(false)
 const creating = ref(false)
@@ -775,6 +920,7 @@ const showCreateDialog = ref(false)
 const showKeyDialog = ref(false)
 const showDeleteDialog = ref(false)
 const showInstallDialog = ref(false)
+const showCcSwitchDialog = ref(false)
 
 const newKeyName = ref('')
 const newKeyRateLimit = ref<number | undefined>(undefined)
@@ -792,6 +938,11 @@ const installSystem = ref<InstallSessionTargetSystem>('linux')
 const installSession = ref<ApiKeyInstallSession | null>(null)
 const installLoading = ref(false)
 const installCopied = ref(false)
+const selectedCcSwitchApiKey = ref<ApiKey | null>(null)
+const ccSwitchApp = ref<CcSwitchApp>('claude')
+const ccSwitchProviderName = ref('Niffler')
+const ccSwitchModel = ref('')
+const ccSwitchImportLoading = ref(false)
 let installCopiedResetTimer: ReturnType<typeof setTimeout> | null = null
 
 const installCommand = computed(() => {
@@ -806,6 +957,12 @@ const installCommandHint = computed(() => {
     return 'Windows 请在 PowerShell 中执行。install code 使用后立即失效，如需再次执行请重新生成。'
   }
   return 'macOS / Linux 请在 sh 兼容终端中执行。install code 使用后立即失效，如需再次执行请重新生成。'
+})
+
+const ccSwitchBaseUrl = computed(() => window.location.origin)
+
+const ccSwitchEndpointPreview = computed(() => {
+  return ccSwitchEndpoint(ccSwitchApp.value, ccSwitchBaseUrl.value)
 })
 
 onMounted(() => {
@@ -940,6 +1097,41 @@ async function copyInstallCommand() {
     installCopied.value = false
     installCopiedResetTimer = null
   }, 2000)
+}
+
+function openCcSwitchDialog(apiKey: ApiKey) {
+  selectedCcSwitchApiKey.value = apiKey
+  ccSwitchApp.value = 'claude'
+  ccSwitchProviderName.value = `Niffler - ${apiKey.name || 'API Key'}`
+  ccSwitchModel.value = ''
+  showCcSwitchDialog.value = true
+}
+
+function selectCcSwitchApp(value: CcSwitchApp) {
+  ccSwitchApp.value = value
+  ccSwitchModel.value = value === 'codex' ? (ccSwitchModel.value || 'gpt-5.4') : ''
+}
+
+async function importToCcSwitch() {
+  if (!selectedCcSwitchApiKey.value) return
+  ccSwitchImportLoading.value = true
+  try {
+    const response = await meApi.getFullApiKey(selectedCcSwitchApiKey.value.id)
+    const deeplink = buildCcSwitchImportUrl({
+      app: ccSwitchApp.value,
+      baseUrl: ccSwitchBaseUrl.value,
+      providerName: ccSwitchProviderName.value,
+      apiKey: response.key,
+      model: ccSwitchModel.value,
+    })
+    window.location.href = deeplink
+    success('已打开 CC Switch 导入')
+  } catch (error) {
+    log.error('导入 CC Switch 失败:', error)
+    showError(parseApiError(error, '导入 CC Switch 失败'))
+  } finally {
+    ccSwitchImportLoading.value = false
+  }
 }
 
 function closeCreatedKeyDialog() {

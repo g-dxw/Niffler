@@ -1791,6 +1791,8 @@ impl GatewayDataState {
                 (&group.allowed_models_mode, group.allowed_models.clone())
             });
         let user_rate_limit = resolve_effective_rate_limit_policy(None, "system", &groups);
+        let user_concurrent_limit =
+            resolve_effective_concurrent_limit_policy(None, "inherit", &groups);
         if !snapshot.api_key_is_standalone {
             constrain_api_key_list_policy_to_user_policy(
                 &mut allowed_providers,
@@ -1810,6 +1812,7 @@ impl GatewayDataState {
             allowed_api_formats,
             allowed_models,
             user_rate_limit,
+            user_concurrent_limit,
         );
         Ok(Some(snapshot))
     }
@@ -1939,6 +1942,7 @@ fn apply_admin_unrestricted_auth_snapshot(snapshot: &mut GatewayAuthApiKeySnapsh
     snapshot.user_allowed_api_formats = None;
     snapshot.user_allowed_models = None;
     snapshot.user_rate_limit = None;
+    snapshot.user_concurrent_limit = None;
     snapshot.api_key_allowed_providers = None;
     snapshot.api_key_allowed_api_formats = None;
     snapshot.api_key_allowed_models = None;
@@ -2006,6 +2010,21 @@ fn resolve_effective_rate_limit_policy(
         )
     });
     let user_policy = rate_limit_restriction_from_mode(user_mode, user_rate_limit);
+    rate_limit_policy_value(intersect_rate_limit_policies(group_policy, user_policy))
+}
+
+fn resolve_effective_concurrent_limit_policy(
+    user_concurrent_limit: Option<i32>,
+    user_mode: &str,
+    groups: &[aether_data::repository::users::StoredUserGroup],
+) -> Option<i32> {
+    let group_policy = groups.iter().fold(None, |effective, group| {
+        intersect_rate_limit_policies(
+            effective,
+            rate_limit_restriction_from_mode(&group.concurrent_limit_mode, group.concurrent_limit),
+        )
+    });
+    let user_policy = rate_limit_restriction_from_mode(user_mode, user_concurrent_limit);
     rate_limit_policy_value(intersect_rate_limit_policies(group_policy, user_policy))
 }
 
@@ -2195,6 +2214,8 @@ mod tests {
             allowed_models_mode: allowed_models_mode.to_string(),
             rate_limit,
             rate_limit_mode: rate_limit_mode.to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
             created_at: None,
             updated_at: None,
         }
@@ -2392,6 +2413,21 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_limit_policy_uses_most_restrictive_custom_limit() {
+        let mut fast_group = sample_group("fast", 10, None, "unrestricted", None, "system");
+        fast_group.concurrent_limit = Some(8);
+        fast_group.concurrent_limit_mode = "custom".to_string();
+        let mut strict_group = sample_group("strict", 20, None, "unrestricted", None, "system");
+        strict_group.concurrent_limit = Some(3);
+        strict_group.concurrent_limit_mode = "custom".to_string();
+
+        assert_eq!(
+            resolve_effective_concurrent_limit_policy(None, "inherit", &[fast_group, strict_group]),
+            Some(3)
+        );
+    }
+
+    #[test]
     fn api_key_specific_policy_cannot_expand_user_policy() {
         let mut user_policy = Some(vec!["gpt-5".to_string()]);
         let mut api_key_policy = Some(vec!["gpt-4.1".to_string()]);
@@ -2432,6 +2468,8 @@ mod tests {
                 allowed_models_mode: "specific".to_string(),
                 rate_limit: Some(1),
                 rate_limit_mode: "custom".to_string(),
+                concurrent_limit: Some(1),
+                concurrent_limit_mode: "custom".to_string(),
             })
             .await
             .expect("group should create")
@@ -2455,6 +2493,7 @@ mod tests {
         assert_eq!(resolved.user_rate_limit, None);
         assert_eq!(resolved.api_key_rate_limit, None);
         assert_eq!(resolved.api_key_concurrent_limit, None);
+        assert_eq!(resolved.user_concurrent_limit, None);
     }
 
     #[tokio::test]
@@ -2484,6 +2523,8 @@ mod tests {
                 allowed_models_mode: "specific".to_string(),
                 rate_limit: Some(30),
                 rate_limit_mode: "custom".to_string(),
+                concurrent_limit: Some(2),
+                concurrent_limit_mode: "custom".to_string(),
             })
             .await
             .expect("group should create")
@@ -2514,6 +2555,7 @@ mod tests {
             Some(&["claude-sonnet-4-5".to_string()][..])
         );
         assert_eq!(resolved.user_rate_limit, Some(30));
+        assert_eq!(resolved.user_concurrent_limit, Some(2));
     }
 
     #[tokio::test]

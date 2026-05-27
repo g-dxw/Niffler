@@ -584,9 +584,11 @@ pub(super) async fn resolve_data_backed_auth_context(
                 }));
             };
 
-            state
-                .touch_auth_api_key_last_used_best_effort(&snapshot.api_key_id)
-                .await;
+            if should_touch_data_backed_auth_context(signature) {
+                state
+                    .touch_auth_api_key_last_used_best_effort(&snapshot.api_key_id)
+                    .await;
+            }
 
             let wallet_access = resolve_wallet_auth_gate(state, &snapshot).await?;
             Ok(Some(
@@ -679,13 +681,14 @@ async fn build_data_backed_auth_context(
     let wallet_remaining = wallet_access
         .as_ref()
         .and_then(|decision| decision.remaining);
+    let skip_provider_and_format_gate = auth_endpoint_signature.trim() == "key:usage";
     let requested_provider = auth_endpoint_signature
         .split_once(':')
         .map(|(provider, _)| provider)
         .unwrap_or(auth_endpoint_signature)
         .trim();
-    let requested_provider_allowed =
-        auth_snapshot_allows_requested_provider(state, &snapshot, auth_endpoint_signature).await;
+    let requested_provider_allowed = skip_provider_and_format_gate
+        || auth_snapshot_allows_requested_provider(state, &snapshot, auth_endpoint_signature).await;
     let local_rejection = if invalid_api_key {
         Some(GatewayLocalAuthRejection::InvalidApiKey)
     } else if locked_api_key {
@@ -703,9 +706,10 @@ async fn build_data_backed_auth_context(
         Some(GatewayLocalAuthRejection::ProviderNotAllowed {
             provider: requested_provider.to_string(),
         })
-    } else if snapshot
-        .effective_allowed_api_formats()
-        .is_some_and(|allowed| !contains_api_format_or_alias(allowed, auth_endpoint_signature))
+    } else if !skip_provider_and_format_gate
+        && snapshot
+            .effective_allowed_api_formats()
+            .is_some_and(|allowed| !contains_api_format_or_alias(allowed, auth_endpoint_signature))
     {
         Some(GatewayLocalAuthRejection::ApiFormatNotAllowed {
             api_format: auth_endpoint_signature.to_string(),
@@ -729,6 +733,10 @@ async fn build_data_backed_auth_context(
         local_rejection,
         allowed_models,
     }
+}
+
+fn should_touch_data_backed_auth_context(auth_endpoint_signature: &str) -> bool {
+    auth_endpoint_signature.trim() != "key:usage"
 }
 
 fn contains_api_format_or_alias(items: &[String], target: &str) -> bool {

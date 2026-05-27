@@ -1,3 +1,7 @@
+use super::super::support_payment::payment_dodopay::{
+    create_dodopay_checkout, dodopay_callback_base_url, dodopay_configured, dodopay_return_url,
+    load_dodopay_config, DodopayCheckoutInput,
+};
 use super::super::support_payment::payment_epay::{
     build_epay_checkout_url, configured_epay_channels, epay_callback_base_url, load_epay_config,
     resolve_epay_channel, EpayCheckoutInput,
@@ -318,6 +322,8 @@ pub(super) async fn handle_wallet_create_recharge(
     let expires_at = now + chrono::Duration::minutes(30);
     let uses_epay =
         payload.payment_provider.as_deref() == Some("epay") || payload.payment_method == "epay";
+    let uses_dodopay = payload.payment_provider.as_deref() == Some("dodopay")
+        || payload.payment_method == "dodopay";
     if uses_epay {
         let config = match load_epay_config(state).await {
             Ok(value) => value,
@@ -415,6 +421,104 @@ pub(super) async fn handle_wallet_create_recharge(
             None,
         );
     }
+    if uses_dodopay {
+        let config = match load_dodopay_config() {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
+            }
+        };
+        if payload.amount_usd < config.min_recharge_usd {
+            return build_auth_error_response(
+                http::StatusCode::BAD_REQUEST,
+                "充值金额低于支付网关最小金额",
+                false,
+            );
+        }
+        let pay_amount = (payload.amount_usd * config.usd_exchange_rate * 100.0).round() / 100.0;
+        let Some(callback_base_url) = dodopay_callback_base_url(
+            config.callback_base_url.as_deref(),
+            headers,
+            request_context,
+        ) else {
+            return build_auth_error_response(
+                http::StatusCode::BAD_REQUEST,
+                "DODOPAY_CALLBACK_BASE_URL is required",
+                false,
+            );
+        };
+        let checkout = match create_dodopay_checkout(
+            &config,
+            &DodopayCheckoutInput {
+                order_no: order_no.clone(),
+                subject: "钱包充值".to_string(),
+                pay_amount,
+                notify_url: format!("{callback_base_url}/api/payment/dodopay/notify"),
+                return_url: dodopay_return_url(&config, &callback_base_url),
+                metadata: json!({
+                    "kind": "wallet_recharge",
+                    "user_id": auth.user.id.clone(),
+                }),
+            },
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_GATEWAY, detail, false)
+            }
+        };
+        let outcome = match state
+            .create_wallet_recharge_order(
+                aether_data::repository::wallet::CreateWalletRechargeOrderInput {
+                    preferred_wallet_id: wallet.as_ref().map(|value| value.id.clone()),
+                    user_id: auth.user.id.clone(),
+                    amount_usd: payload.amount_usd,
+                    pay_amount: Some(checkout.pay_amount),
+                    pay_currency: Some(config.pay_currency.clone()),
+                    exchange_rate: Some(config.usd_exchange_rate),
+                    payment_method: "dodopay".to_string(),
+                    payment_provider: Some("dodopay".to_string()),
+                    payment_channel: None,
+                    gateway_order_id: checkout.gateway_order_id,
+                    gateway_response: checkout.payment_instructions.clone(),
+                    order_no,
+                    expires_at_unix_secs: expires_at.timestamp().max(0) as u64,
+                },
+            )
+            .await
+        {
+            Ok(Some(value)) => value,
+            Ok(None) => return build_wallet_recharge_storage_unavailable_response(),
+            Err(err) => {
+                return build_auth_error_response(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("wallet recharge create failed: {err:?}"),
+                    false,
+                )
+            }
+        };
+        let order_payload = match outcome {
+            aether_data::repository::wallet::CreateWalletRechargeOrderOutcome::Created(order) => {
+                wallet_payment_order_payload_from_record(&order)
+            }
+            aether_data::repository::wallet::CreateWalletRechargeOrderOutcome::WalletInactive => {
+                return build_auth_error_response(
+                    http::StatusCode::BAD_REQUEST,
+                    "wallet is not active",
+                    false,
+                )
+            }
+        };
+        return build_auth_json_response(
+            http::StatusCode::OK,
+            json!({
+                "order": order_payload,
+                "payment_instructions": sanitize_wallet_gateway_response(Some(checkout.payment_instructions)),
+            }),
+            None,
+        );
+    }
     build_auth_error_response(
         http::StatusCode::BAD_REQUEST,
         format!("unsupported payment_method: {}", payload.payment_method),
@@ -438,6 +542,19 @@ pub(super) async fn handle_wallet_recharge_options(
                 "payment_provider": "epay",
                 "payment_channel": channel.channel,
                 "display_name": channel.display_name,
+                "pay_currency": config.pay_currency,
+                "usd_exchange_rate": config.usd_exchange_rate,
+                "min_recharge_usd": config.min_recharge_usd,
+            }));
+        }
+    }
+    if dodopay_configured() {
+        if let Ok(config) = load_dodopay_config() {
+            methods.push(json!({
+                "payment_method": "dodopay",
+                "payment_provider": "dodopay",
+                "payment_channel": serde_json::Value::Null,
+                "display_name": "DoDoPay",
                 "pay_currency": config.pay_currency,
                 "usd_exchange_rate": config.usd_exchange_rate,
                 "min_recharge_usd": config.min_recharge_usd,

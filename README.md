@@ -101,6 +101,16 @@ Niffler Tunnel 是配套的正向代理节点，部署在海外 VPS 上，为墙
 - `RUST_LOG`：Rust 日志过滤，例如 `aether_gateway=info`、`aether_gateway=debug,sqlx=warn`
 - Docker Compose 的 `DB_PASSWORD` / `REDIS_PASSWORD` 默认使用 `aether`
 
+### DoDoPay 支付
+
+配置 `DODOPAY_APP_ID` 和 `DODOPAY_APP_SECRET` 后，钱包充值和套餐购买会出现 DoDoPay 支付方式。
+
+- `DODOPAY_BASE_URL`：DoDoPay 服务地址，默认 `https://pay.dodododo.org`
+- `DODOPAY_CALLBACK_BASE_URL`：本站公网根地址，例如 `https://niffler.example.com`
+- `DODOPAY_RETURN_PATH`：支付后回到本站的页面，默认 `/dashboard/wallet`
+- `DODOPAY_USD_EXCHANGE_RATE`：按人民币收款时的美元汇率，默认 `7.2`
+- `DODOPAY_MIN_RECHARGE_USD`：最低充值金额，默认 `1`
+
 ---
 
 ## 许可证

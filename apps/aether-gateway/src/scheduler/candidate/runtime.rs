@@ -6,9 +6,9 @@ use aether_admin::provider::{
 use aether_data_contracts::repository::candidates::StoredRequestCandidate;
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogKey;
 use aether_scheduler_core::{
-    auth_api_key_concurrency_limit_reached, build_provider_concurrent_limit_map,
-    candidate_is_selectable_with_runtime_state, candidate_runtime_skip_reason_with_state,
-    CandidateRuntimeSelectabilityInput,
+    auth_api_key_concurrency_limit_reached, auth_user_concurrency_limit_reached,
+    build_provider_concurrent_limit_map, candidate_is_selectable_with_runtime_state,
+    candidate_runtime_skip_reason_with_state, CandidateRuntimeSelectabilityInput,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -76,25 +76,37 @@ pub(super) fn auth_snapshot_concurrency_limit_reached(
     snapshot: &CandidateRuntimeSelectionSnapshot,
     now_unix_secs: u64,
 ) -> bool {
-    auth_snapshot
-        .and_then(|snapshot| {
-            usize::try_from(snapshot.api_key_concurrent_limit?)
-                .ok()
-                .and_then(|limit| {
-                    if limit == 0 {
-                        return None;
-                    }
-                    Some((snapshot.api_key_id.as_str(), limit))
-                })
-        })
-        .is_some_and(|(api_key_id, limit)| {
-            auth_api_key_concurrency_limit_reached(
+    let Some(auth_snapshot) = auth_snapshot else {
+        return false;
+    };
+
+    if !auth_snapshot.api_key_is_standalone
+        && positive_limit(auth_snapshot.user_concurrent_limit).is_some_and(|limit| {
+            auth_user_concurrency_limit_reached(
                 &snapshot.recent_candidates,
                 now_unix_secs,
-                api_key_id,
+                auth_snapshot.user_id.as_str(),
                 limit,
             )
         })
+    {
+        return true;
+    }
+
+    positive_limit(auth_snapshot.api_key_concurrent_limit).is_some_and(|limit| {
+        auth_api_key_concurrency_limit_reached(
+            &snapshot.recent_candidates,
+            now_unix_secs,
+            auth_snapshot.api_key_id.as_str(),
+            limit,
+        )
+    })
+}
+
+fn positive_limit(limit: Option<i32>) -> Option<usize> {
+    limit
+        .filter(|value| *value > 0)
+        .and_then(|value| usize::try_from(value).ok())
 }
 
 pub(super) fn is_candidate_selectable(

@@ -19,6 +19,20 @@ pub fn auth_api_key_concurrency_limit_reached(
         >= concurrent_limit
 }
 
+pub fn auth_user_concurrency_limit_reached(
+    recent_candidates: &[StoredRequestCandidate],
+    now_unix_secs: u64,
+    user_id: &str,
+    concurrent_limit: usize,
+) -> bool {
+    if user_id.trim().is_empty() || concurrent_limit == 0 {
+        return false;
+    }
+
+    crate::count_recent_active_requests_for_user(recent_candidates, user_id, now_unix_secs)
+        >= concurrent_limit
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct CandidateRuntimeSelectabilityInput<'a> {
     pub candidate: &'a SchedulerMinimalCandidateSelectionCandidate,

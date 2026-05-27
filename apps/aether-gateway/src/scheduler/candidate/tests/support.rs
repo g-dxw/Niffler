@@ -115,6 +115,7 @@ pub(super) fn sample_auth_snapshot(api_key_id: &str) -> GatewayAuthApiKeySnapsho
         user_is_active: true,
         user_is_deleted: false,
         user_rate_limit: None,
+        user_concurrent_limit: None,
         user_allowed_providers: None,
         user_allowed_api_formats: None,
         user_allowed_models: None,

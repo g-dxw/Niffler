@@ -30,6 +30,14 @@ pub(super) async fn maybe_build_local_payment_callback_route_response(
         return Some(payment_epay::handle_epay_return(state, request_context, request_body).await);
     }
 
+    if decision.route_kind.as_deref() == Some("dodopay_notify") {
+        return Some(super::payment_dodopay::handle_dodopay_notify(state, request_body).await);
+    }
+
+    if decision.route_kind.as_deref() == Some("dodopay_return") {
+        return Some(super::payment_dodopay::handle_dodopay_return(request_context).await);
+    }
+
     if decision.route_kind.as_deref() != Some("callback") {
         return None;
     }

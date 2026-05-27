@@ -638,6 +638,8 @@ async fn gateway_handles_admin_system_users_export_locally_with_trusted_admin_pr
             allowed_models_mode: "specific".to_string(),
             rate_limit: Some(60),
             rate_limit_mode: "custom".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
         })
         .await
         .expect("user group should create")

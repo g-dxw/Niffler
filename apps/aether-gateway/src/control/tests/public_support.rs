@@ -21,6 +21,23 @@ fn classifies_models_list_as_public_support_route() {
 }
 
 #[test]
+fn classifies_ccswitch_usage_as_public_support_route() {
+    let headers = headers(&[("authorization", "Bearer sk-test")]);
+    let uri: Uri = "/v1/usage".parse().expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::GET, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("public_support"));
+    assert_eq!(decision.route_family.as_deref(), Some("ccswitch"));
+    assert_eq!(decision.route_kind.as_deref(), Some("usage"));
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("key:usage")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_v1beta_models_as_gemini_public_support_route() {
     let headers = headers(&[]);
     let uri: Uri = "/v1beta/models?pageSize=10"
@@ -529,6 +546,36 @@ fn classifies_epay_callback_routes_as_public_support_route() {
 }
 
 #[test]
+fn classifies_dodopay_callback_routes_as_public_support_route() {
+    let headers = headers(&[]);
+    for (method, uri, route_kind) in [
+        (
+            http::Method::POST,
+            "/api/payment/dodopay/notify",
+            "dodopay_notify",
+        ),
+        (
+            http::Method::GET,
+            "/api/payment/dodopay/return",
+            "dodopay_return",
+        ),
+    ] {
+        let uri: Uri = uri.parse().expect("uri should parse");
+        let decision =
+            classify_control_route(&method, &uri, &headers).expect("route should classify");
+
+        assert_eq!(decision.route_class.as_deref(), Some("public_support"));
+        assert_eq!(decision.route_family.as_deref(), Some("payment_callback"));
+        assert_eq!(decision.route_kind.as_deref(), Some(route_kind));
+        assert_eq!(
+            decision.auth_endpoint_signature.as_deref(),
+            Some("public:payment")
+        );
+        assert!(!decision.is_execution_runtime_candidate());
+    }
+}
+
+#[test]
 fn epay_post_callback_routes_buffer_request_body() {
     let headers = headers(&[]);
     for path in ["/api/payment/epay/notify", "/api/payment/epay/return"] {
@@ -548,6 +595,25 @@ fn epay_post_callback_routes_buffer_request_body() {
             "POST {path} should buffer request body"
         );
     }
+}
+
+#[test]
+fn dodopay_notify_route_buffers_request_body() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/payment/dodopay/notify"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::POST, &uri, &headers).expect("route should classify");
+    let context = GatewayPublicRequestContext::from_request_parts(
+        "trace-dodopay-callback",
+        &http::Method::POST,
+        &uri,
+        &headers,
+        Some(decision),
+    );
+
+    assert!(local_proxy_route_requires_buffered_body(&context));
 }
 
 #[test]

@@ -10,7 +10,42 @@ use crate::tests::{
     to_bytes, AppState, Arc, Body, Json, Mutex, Request, Router, StatusCode, EXECUTION_PATH_HEADER,
     EXECUTION_PATH_LOCAL_AI_PUBLIC, EXECUTION_PATH_LOCAL_EXECUTION_RUNTIME_MISS,
 };
+use aether_data::repository::wallet::{InMemoryWalletRepository, StoredWalletSnapshot};
+use aether_data_contracts::repository::billing::{
+    BillingReadRepository, StoredBillingModelContext, UserDailyQuotaAvailabilityRecord,
+};
+use aether_data_contracts::DataLayerError;
 use axum::response::IntoResponse;
+
+#[derive(Debug)]
+struct StaticDailyQuotaBillingRepository {
+    user_id: String,
+    quota: UserDailyQuotaAvailabilityRecord,
+}
+
+#[async_trait::async_trait]
+impl BillingReadRepository for StaticDailyQuotaBillingRepository {
+    async fn find_model_context(
+        &self,
+        provider_id: &str,
+        provider_api_key_id: Option<&str>,
+        global_model_name: &str,
+    ) -> Result<Option<StoredBillingModelContext>, DataLayerError> {
+        let _ = (provider_id, provider_api_key_id, global_model_name);
+        Ok(None)
+    }
+
+    async fn find_user_daily_quota_availability(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
+        if user_id == self.user_id {
+            Ok(Some(self.quota.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+}
 
 fn gemini_operation_status_label(status: VideoTaskStatus) -> &'static str {
     match status {
@@ -24,6 +59,77 @@ fn gemini_operation_status_label(status: VideoTaskStatus) -> &'static str {
         VideoTaskStatus::Expired => "Expired",
         VideoTaskStatus::Deleted => "Deleted",
     }
+}
+
+#[tokio::test]
+async fn gateway_handles_ccswitch_usage_without_touching_last_used() {
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+        Some(hash_api_key("sk-ccswitch-usage")),
+        unrestricted_models_snapshot("api-key-ccswitch-usage", "user-ccswitch-usage"),
+    )]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(vec![
+        StoredWalletSnapshot::new(
+            "wallet-ccswitch-usage".to_string(),
+            Some("user-ccswitch-usage".to_string()),
+            None,
+            12.5,
+            3.0,
+            "finite".to_string(),
+            "USD".to_string(),
+            "active".to_string(),
+            20.0,
+            4.5,
+            0.0,
+            0.0,
+            1_711_000_000,
+        )
+        .expect("wallet should build"),
+    ]));
+    let billing_repository = Arc::new(StaticDailyQuotaBillingRepository {
+        user_id: "user-ccswitch-usage".to_string(),
+        quota: UserDailyQuotaAvailabilityRecord {
+            has_active_daily_quota: true,
+            total_quota_usd: 10.0,
+            used_usd: 4.0,
+            remaining_usd: 6.0,
+            allow_wallet_overage: true,
+        },
+    });
+
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                crate::data::GatewayDataState::with_auth_billing_and_wallet_for_tests(
+                    auth_repository.clone(),
+                    billing_repository,
+                    wallet_repository,
+                ),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("{gateway_url}/v1/usage"))
+        .header("authorization", "Bearer sk-ccswitch-usage")
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["is_active"], true);
+    assert_eq!(payload["isValid"], true);
+    assert_eq!(payload["unit"], "USD");
+    assert_eq!(payload["wallet_balance"], 15.5);
+    assert_eq!(payload["package_balance"], 6.0);
+    assert_eq!(payload["total_available_balance"], 21.5);
+    assert_eq!(payload["remaining"], 21.5);
+    assert_eq!(payload["api_key"]["id"], "api-key-ccswitch-usage");
+    assert_eq!(payload["api_key"]["name"], "default");
+    assert_eq!(auth_repository.touch_count("api-key-ccswitch-usage"), 0);
+
+    gateway_handle.abort();
 }
 
 fn sample_gemini_video_task(

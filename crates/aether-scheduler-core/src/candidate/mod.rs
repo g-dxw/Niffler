@@ -11,8 +11,9 @@ pub use enumeration::{
     enumerate_minimal_candidate_selection_with_model_directives,
 };
 pub use selectability::{
-    auth_api_key_concurrency_limit_reached, candidate_is_selectable_with_runtime_state,
-    candidate_runtime_skip_reason_with_state, CandidateRuntimeSelectabilityInput,
+    auth_api_key_concurrency_limit_reached, auth_user_concurrency_limit_reached,
+    candidate_is_selectable_with_runtime_state, candidate_runtime_skip_reason_with_state,
+    CandidateRuntimeSelectabilityInput,
 };
 pub use types::{
     EnumerateMinimalCandidateSelectionInput, SchedulerMinimalCandidateSelectionCandidate,

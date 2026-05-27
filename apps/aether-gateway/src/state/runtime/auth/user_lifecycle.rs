@@ -910,6 +910,8 @@ mod tests {
             allowed_models_mode: allowed_models_mode.to_string(),
             rate_limit: None,
             rate_limit_mode: "inherit".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
         }
     }
 

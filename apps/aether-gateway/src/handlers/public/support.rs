@@ -28,6 +28,8 @@ mod support_announcements;
 mod support_auth;
 #[path = "support/billing.rs"]
 mod support_billing;
+#[path = "support/ccswitch_usage.rs"]
+mod support_ccswitch_usage;
 #[path = "support/dashboard.rs"]
 mod support_dashboard;
 #[path = "support/install.rs"]
@@ -65,6 +67,7 @@ use self::support_auth::{
     build_auth_settings_payload, extract_client_device_id, maybe_build_local_auth_response,
 };
 use self::support_billing::maybe_build_local_billing_response;
+use self::support_ccswitch_usage::maybe_build_local_ccswitch_usage_response;
 use self::support_dashboard::maybe_build_local_dashboard_response;
 pub(crate) use self::support_install::{
     build_api_key_install_session_response, build_proxy_node_install_session_response,
@@ -168,6 +171,10 @@ pub(crate) async fn maybe_build_local_public_support_response(
             return Some(response);
         }
         return Some(build_unhandled_public_support_response(request_context));
+    }
+
+    if decision.route_family.as_deref() == Some("ccswitch") {
+        return maybe_build_local_ccswitch_usage_response(state, request_context).await;
     }
 
     if decision.route_family.as_deref() == Some("users_me") {
