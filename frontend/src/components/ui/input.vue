@@ -19,6 +19,7 @@
       :name="shouldDisableAutofill ? randomName : undefined"
       v-bind="filteredAttrs"
       @input="handleInput"
+      @change="handleInput"
     >
     <button
       v-if="hasValue"
@@ -55,6 +56,7 @@
     :name="shouldDisableAutofill ? randomName : undefined"
     v-bind="filteredAttrs"
     @input="handleInput"
+    @change="handleInput"
   >
 </template>
 

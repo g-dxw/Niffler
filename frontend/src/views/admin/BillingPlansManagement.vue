@@ -52,7 +52,7 @@
                   价格
                 </TableHead>
                 <TableHead class="w-[18%] whitespace-nowrap">
-                  周期
+                  有效期
                 </TableHead>
                 <TableHead class="w-[20%]">
                   权益
@@ -381,7 +381,7 @@
           <section class="mt-5 space-y-3">
             <div class="border-b border-border/70 pb-2">
               <h3 class="text-sm font-semibold leading-5">
-                购买限制
+                有效期与购买限制
               </h3>
             </div>
             <div class="grid grid-cols-1 gap-x-4 gap-y-3 xl:grid-cols-12">
@@ -409,7 +409,7 @@
                         side="top"
                         class="max-w-72 text-xs"
                       >
-                        控制同一用户能否重复购买本套餐；不决定余额、周期额度或会员分组怎么发放。
+                        控制同一用户能否重复购买本套餐；不决定套餐能用多久。
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -436,7 +436,6 @@
               </div>
 
               <div
-                v-if="showPurchaseLimitPeriod"
                 class="space-y-1.5 xl:col-span-4"
               >
                 <Label
@@ -451,7 +450,7 @@
                         <button
                           type="button"
                           class="text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label="周期窗口说明"
+                          aria-label="套餐有效期说明"
                         >
                           <CircleHelp class="h-3.5 w-3.5" />
                         </button>
@@ -983,24 +982,20 @@ const hasSelectedPackageEntitlement = computed(() =>
   form.daily_quota_enabled || form.membership_group_enabled
 )
 
-const showPurchaseLimitPeriod = computed(() =>
-  form.purchase_limit_scope === 'active_period'
-)
-
 const showPurchaseLimitCount = computed(() =>
   form.purchase_limit_scope !== 'unlimited'
 )
 
 const purchaseLimitFieldSpanClass = computed(() =>
-  showPurchaseLimitPeriod.value ? 'xl:col-span-3' : showPurchaseLimitCount.value ? 'xl:col-span-4' : 'xl:col-span-6'
+  'xl:col-span-4'
 )
 
 const isSaveDisabled = computed(() =>
   !form.title.trim()
   || !form.price_currency.trim()
   || !hasValidPriceAmount.value
-  || (showPurchaseLimitPeriod.value && !hasValidDuration.value)
-  || (showPurchaseLimitPeriod.value && !hasValidDurationUnit.value)
+  || !hasValidDuration.value
+  || !hasValidDurationUnit.value
   || (showPurchaseLimitCount.value && !hasValidActiveLimit.value)
   || !hasValidPurchaseLimitScope.value
   || !hasSelectedPackageEntitlement.value
@@ -1080,13 +1075,13 @@ const planModeGuide = computed<PlanModeGuide>(() => {
   }
 })
 
-const durationFieldLabel = computed(() => '周期窗口')
+const durationFieldLabel = computed(() => '套餐有效期')
 
 const durationTooltipText = computed(() => {
   if (planMode.value === 'wallet') {
-    return '旧余额套餐仅按这个周期统计购买限制；建议改用钱包充值功能。'
+    return '用户购买或后台发放后，套餐在这段时间内有效；旧余额套餐建议改用钱包充值功能。'
   }
-  return '购买后周期权益生效这么久；同一用户在这个窗口内最多持有下方份数，窗口结束后释放名额。'
+  return '用户购买或后台发放后，周期额度和会员权益会在这段时间内有效，到期自动失效。'
 })
 
 const activeLimitFieldLabel = computed(() =>
@@ -1101,12 +1096,12 @@ const activeLimitTooltipText = computed(() =>
 
 const purchaseLimitSummaryText = computed(() => {
   if (form.purchase_limit_scope === 'unlimited') {
-    return '不检查同一用户的重复购买次数；每次支付成功都会按下方权益配置发放。'
+    return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；不限制同一用户重复购买。`
   }
   if (form.purchase_limit_scope === 'lifetime') {
-    return `同一用户历史成功购买本套餐达到 ${form.max_active_per_user || 1} 次后不能再买；适合首购特惠或一次性礼包。`
+    return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；同一用户历史成功购买本套餐达到 ${form.max_active_per_user || 1} 次后不能再买。`
   }
-  return `同一用户在 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)} 周期内最多同时生效 ${form.max_active_per_user || 1} 份；周期结束后可再次购买。`
+  return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；同一用户在有效期内最多同时生效 ${form.max_active_per_user || 1} 份。`
 })
 
 const showWalletCreditConfig = computed(() =>
@@ -1356,8 +1351,8 @@ function validatePlan(entitlements: BillingEntitlement[]): string | null {
   if (!hasValidPriceAmount.value) return '价格必须大于 0，已有 0 元同步套餐可以继续保存为 0'
   if (!form.price_currency.trim()) return '请输入价格币种'
   if (!hasValidPurchaseLimitScope.value) return '重复购买限制必须是按周期限制、永久限制或不限购'
-  if (showPurchaseLimitPeriod.value && !hasValidDurationUnit.value) return '周期窗口单位必须是日/月/年'
-  if (showPurchaseLimitPeriod.value && !hasValidDuration.value) return '周期窗口必须是正整数'
+  if (!hasValidDurationUnit.value) return '套餐有效期单位必须是日/月/年'
+  if (!hasValidDuration.value) return '套餐有效期必须是正整数'
   if (showPurchaseLimitCount.value && !hasValidActiveLimit.value) {
     return `${activeLimitFieldLabel.value}必须是正整数`
   }
@@ -1482,8 +1477,6 @@ function formatDuration(unit: BillingDurationUnit, value: number): string {
 }
 
 function formatPlanPeriod(plan: BillingPlan): string {
-  if (plan.purchase_limit_scope === 'unlimited') return '不限购'
-  if (plan.purchase_limit_scope === 'lifetime') return '永久限购'
   return formatDuration(plan.duration_unit, plan.duration_value)
 }
 
@@ -1502,14 +1495,17 @@ function resolvePlanModeFromEntitlements(entitlements: BillingEntitlementsInput)
 }
 
 function planDurationHint(plan: BillingPlan): string {
-  if (plan.purchase_limit_scope === 'unlimited') return '不限制重复购买'
-  if (plan.purchase_limit_scope === 'lifetime') return '不按周期重置购买次数'
   const mode = resolvePlanModeFromEntitlements(plan.entitlements)
-  if (mode === 'wallet') return '旧余额套餐，建议停用'
-  if (mode === 'daily') return '周期额度'
-  if (mode === 'membership') return '会员权限周期'
-  if (mode === 'mixed') return '组合权益周期'
-  return '未配置权益'
+  const modeText = (() => {
+    if (mode === 'wallet') return '旧余额套餐，建议停用'
+    if (mode === 'daily') return '周期额度'
+    if (mode === 'membership') return '会员权限'
+    if (mode === 'mixed') return '组合权益'
+    return '未配置权益'
+  })()
+  if (plan.purchase_limit_scope === 'unlimited') return `${modeText} · 不限购`
+  if (plan.purchase_limit_scope === 'lifetime') return `${modeText} · 永久限购`
+  return `${modeText} · 有效期内限购`
 }
 
 function groupName(groupId: string): string {
