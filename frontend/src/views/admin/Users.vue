@@ -991,6 +991,46 @@
             placeholder="备注（可选，例如：人工补偿、活动赠送）"
           />
 
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div class="space-y-1.5">
+              <Label class="text-xs font-medium text-muted-foreground">开始时间（可选）</Label>
+              <Input
+                v-model="grantStartsAt"
+                type="datetime-local"
+                class="h-9 rounded-md bg-muted/50 text-sm"
+              />
+              <p class="text-[11px] text-muted-foreground">
+                不填就是现在生效；填写后，额度周期从这个时间开始算。
+              </p>
+            </div>
+            <div class="space-y-1.5">
+              <Label class="text-xs font-medium text-muted-foreground">到期时间（可选）</Label>
+              <Input
+                v-model="grantExpiresAt"
+                type="datetime-local"
+                class="h-9 rounded-md bg-muted/50 text-sm"
+              />
+              <p class="text-[11px] text-muted-foreground">
+                不填就按套餐原本时长自动计算。
+              </p>
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <Label class="text-xs font-medium text-muted-foreground">初始剩余额度 USD（可选）</Label>
+            <Input
+              v-model="grantInitialRemainingQuotaUsd"
+              type="number"
+              min="0"
+              step="0.01"
+              class="h-9 rounded-md bg-muted/50 text-sm"
+              placeholder="例如：35.5"
+            />
+            <p class="text-[11px] text-muted-foreground">
+              用于迁移旧套餐剩余额度；系统只会降低套餐里的额度上限，不会提高原本更低的日额度或周额度。
+            </p>
+          </div>
+
           <div class="flex justify-end">
             <Button
               size="sm"
@@ -1554,6 +1594,9 @@ const userPlanEntitlements = ref<AdminUserPlanEntitlement[]>([])
 const availableBillingPlans = ref<BillingPlan[]>([])
 const selectedGrantPlanId = ref('')
 const grantReason = ref('')
+const grantStartsAt = ref('')
+const grantExpiresAt = ref('')
+const grantInitialRemainingQuotaUsd = ref('')
 const newApiKey = ref('')
 const creatingApiKey = ref(false)
 const loadingUserSessions = ref(false)
@@ -2024,6 +2067,9 @@ async function manageUserPlans(user: User) {
   showUserPlansDialog.value = true
   selectedGrantPlanId.value = ''
   grantReason.value = ''
+  grantStartsAt.value = ''
+  grantExpiresAt.value = ''
+  grantInitialRemainingQuotaUsd.value = ''
   await Promise.all([
     loadUserPlanEntitlements(user.id),
     loadAvailableBillingPlans(),
@@ -2065,16 +2111,61 @@ async function loadAvailableBillingPlans() {
   }
 }
 
+function datetimeLocalToIso(value: string): string | null | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const date = new Date(trimmed)
+  if (Number.isNaN(date.getTime())) return undefined
+  return date.toISOString()
+}
+
+function optionalUsdAmount(value: string): number | null | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const amount = Number(trimmed)
+  if (!Number.isFinite(amount) || amount < 0) return undefined
+  return amount
+}
+
 async function grantPlanToSelectedUser() {
   if (!selectedUser.value || !selectedGrantPlanId.value) return
+  const startsAt = datetimeLocalToIso(grantStartsAt.value)
+  const expiresAt = datetimeLocalToIso(grantExpiresAt.value)
+  const initialRemainingQuotaUsd = optionalUsdAmount(grantInitialRemainingQuotaUsd.value)
+  if (startsAt === undefined || expiresAt === undefined) {
+    error('时间格式不正确')
+    return
+  }
+  if (initialRemainingQuotaUsd === undefined) {
+    error('初始剩余额度必须是大于等于 0 的数字')
+    return
+  }
+  const now = Date.now()
+  if (startsAt && new Date(startsAt).getTime() > now) {
+    error('开始时间不能晚于现在')
+    return
+  }
+  if (expiresAt) {
+    const startsAtMs = startsAt ? new Date(startsAt).getTime() : now
+    if (new Date(expiresAt).getTime() <= startsAtMs) {
+      error('到期时间必须晚于开始时间')
+      return
+    }
+  }
   grantingUserPlan.value = true
   try {
     const response = await usersApi.grantUserPlan(selectedUser.value.id, {
       plan_id: selectedGrantPlanId.value,
       reason: grantReason.value.trim() || null,
+      starts_at: startsAt,
+      expires_at: expiresAt,
+      initial_remaining_quota_usd: initialRemainingQuotaUsd,
     })
     userPlanEntitlements.value = response.items
     grantReason.value = ''
+    grantStartsAt.value = ''
+    grantExpiresAt.value = ''
+    grantInitialRemainingQuotaUsd.value = ''
     success('套餐已发放')
   } catch (err) {
     error(parseApiError(err, '发放套餐失败'))

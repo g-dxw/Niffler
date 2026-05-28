@@ -10,9 +10,9 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
@@ -21,6 +21,19 @@ struct AdminGrantUserPlanRequest {
     plan_id: String,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    starts_at: Option<String>,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default)]
+    initial_remaining_quota_usd: Option<f64>,
+}
+
+#[derive(Debug)]
+struct AdminGrantPlanOverrides {
+    starts_at: Option<DateTime<Utc>>,
+    expires_at: Option<DateTime<Utc>>,
+    initial_remaining_quota_usd: Option<f64>,
 }
 
 fn admin_user_id_from_billing_path(request_path: &str, suffix: &str) -> Option<String> {
@@ -53,6 +66,72 @@ fn normalize_admin_grant_reason(value: Option<String>) -> Result<Option<String>,
         return Err("reason exceeds maximum length 512".to_string());
     }
     Ok(Some(value.to_string()))
+}
+
+fn parse_admin_grant_time(
+    value: Option<String>,
+    field_name: &str,
+) -> Result<Option<DateTime<Utc>>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|value| Some(value.with_timezone(&Utc)))
+        .map_err(|_| format!("{field_name} 格式不正确"))
+}
+
+fn default_plan_expires_at(plan: &BillingPlanRecord, starts_at: DateTime<Utc>) -> DateTime<Utc> {
+    let duration_value = plan.duration_value.max(1);
+    match plan.duration_unit.as_str() {
+        "day" => starts_at + chrono::Duration::days(duration_value),
+        "year" => starts_at + chrono::Duration::days(365 * duration_value),
+        "custom" => starts_at + chrono::Duration::days(duration_value),
+        _ => starts_at + chrono::Duration::days(30 * duration_value),
+    }
+}
+
+fn normalize_admin_grant_plan_overrides(
+    payload: &AdminGrantUserPlanRequest,
+    plan: &BillingPlanRecord,
+    now: DateTime<Utc>,
+) -> Result<AdminGrantPlanOverrides, String> {
+    let requested_starts_at = parse_admin_grant_time(payload.starts_at.clone(), "开始时间")?;
+    let requested_expires_at = parse_admin_grant_time(payload.expires_at.clone(), "到期时间")?;
+    let has_requested_starts_at = requested_starts_at.is_some();
+    let has_requested_expires_at = requested_expires_at.is_some();
+    let effective_starts_at = requested_starts_at.unwrap_or(now);
+    if effective_starts_at > now {
+        return Err("开始时间不能晚于现在".to_string());
+    }
+
+    let effective_expires_at =
+        requested_expires_at.unwrap_or_else(|| default_plan_expires_at(plan, effective_starts_at));
+    if effective_expires_at <= effective_starts_at {
+        return Err("到期时间必须晚于开始时间".to_string());
+    }
+    if effective_expires_at <= now {
+        return Err("按这个时间计算，套餐已经过期；请填写新的到期时间".to_string());
+    }
+    if effective_starts_at.timestamp() < 0 || effective_expires_at.timestamp() < 0 {
+        return Err("时间不能早于 1970-01-01".to_string());
+    }
+
+    let initial_remaining_quota_usd = match payload.initial_remaining_quota_usd {
+        Some(value) if value.is_finite() && value >= 0.0 => Some(value),
+        Some(_) => return Err("初始剩余额度不能为负数".to_string()),
+        None => None,
+    };
+
+    let has_time_override = has_requested_starts_at || has_requested_expires_at;
+    Ok(AdminGrantPlanOverrides {
+        starts_at: has_time_override.then_some(effective_starts_at),
+        expires_at: has_requested_expires_at.then_some(effective_expires_at),
+        initial_remaining_quota_usd,
+    })
 }
 
 fn admin_plan_grant_order_no(now: chrono::DateTime<Utc>) -> String {
@@ -95,6 +174,38 @@ fn billing_plan_snapshot(record: &BillingPlanRecord) -> serde_json::Value {
         "purchase_limit_scope": record.purchase_limit_scope,
         "entitlements": record.entitlements_json,
     })
+}
+
+fn billing_plan_snapshot_with_admin_grant_overrides(
+    record: &BillingPlanRecord,
+    overrides: &AdminGrantPlanOverrides,
+) -> Value {
+    let mut snapshot = billing_plan_snapshot(record);
+    let mut override_values = Map::new();
+    if let Some(starts_at) = overrides.starts_at.as_ref() {
+        override_values.insert(
+            "starts_at_unix_secs".to_string(),
+            json!(starts_at.timestamp().max(0)),
+        );
+    }
+    if let Some(expires_at) = overrides.expires_at.as_ref() {
+        override_values.insert(
+            "expires_at_unix_secs".to_string(),
+            json!(expires_at.timestamp().max(0)),
+        );
+    }
+    if let Some(value) = overrides.initial_remaining_quota_usd {
+        override_values.insert("initial_remaining_quota_usd".to_string(), json!(value));
+    }
+    if !override_values.is_empty() {
+        if let Some(map) = snapshot.as_object_mut() {
+            map.insert(
+                "admin_grant_overrides".to_string(),
+                Value::Object(override_values),
+            );
+        }
+    }
+    snapshot
 }
 
 fn plan_has_package_rights(record: &BillingPlanRecord) -> bool {
@@ -230,7 +341,7 @@ pub(in super::super) async fn build_admin_grant_user_billing_plan_response(
     if plan_id.is_empty() {
         return Ok(build_admin_users_bad_request_response("plan_id 不能为空"));
     }
-    let reason = match normalize_admin_grant_reason(payload.reason) {
+    let reason = match normalize_admin_grant_reason(payload.reason.clone()) {
         Ok(value) => value,
         Err(detail) => return Ok(build_admin_users_bad_request_response(detail)),
     };
@@ -248,6 +359,10 @@ pub(in super::super) async fn build_admin_grant_user_billing_plan_response(
     }
 
     let now = Utc::now();
+    let grant_overrides = match normalize_admin_grant_plan_overrides(&payload, &plan, now) {
+        Ok(value) => value,
+        Err(detail) => return Ok(build_admin_users_bad_request_response(detail)),
+    };
     let order_no = admin_plan_grant_order_no(now);
     let operator_id = admin_user_billing_operator_id(request_context);
     let gateway_response = json!({
@@ -255,6 +370,9 @@ pub(in super::super) async fn build_admin_grant_user_billing_plan_response(
         "operator_id": operator_id.as_deref(),
         "reason": reason,
         "granted_at": now.to_rfc3339(),
+        "starts_at": grant_overrides.starts_at.as_ref().map(|value| value.to_rfc3339()),
+        "expires_at": grant_overrides.expires_at.as_ref().map(|value| value.to_rfc3339()),
+        "initial_remaining_quota_usd": grant_overrides.initial_remaining_quota_usd,
     });
     let outcome = match state
         .app()
@@ -273,7 +391,10 @@ pub(in super::super) async fn build_admin_grant_user_billing_plan_response(
                 gateway_response,
                 order_no: order_no.clone(),
                 product_id: plan.id.clone(),
-                product_snapshot: billing_plan_snapshot(&plan),
+                product_snapshot: billing_plan_snapshot_with_admin_grant_overrides(
+                    &plan,
+                    &grant_overrides,
+                ),
                 expires_at_unix_secs: (now + chrono::Duration::minutes(30)).timestamp().max(0)
                     as u64,
             },

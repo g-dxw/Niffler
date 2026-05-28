@@ -251,6 +251,9 @@ export interface AdminUserPlanEntitlementsResponse {
 export interface GrantUserPlanRequest {
   plan_id: string
   reason?: string | null
+  starts_at?: string | null
+  expires_at?: string | null
+  initial_remaining_quota_usd?: number | null
 }
 
 export interface GrantUserPlanResponse extends AdminUserPlanEntitlementsResponse {

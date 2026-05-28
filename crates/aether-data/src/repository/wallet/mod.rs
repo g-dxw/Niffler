@@ -1,5 +1,6 @@
 mod memory;
 mod mysql;
+mod plan_overrides;
 mod postgres;
 mod sqlite;
 mod types;

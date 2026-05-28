@@ -1,9 +1,13 @@
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, TimeZone, Utc};
 use futures_util::{stream::TryStream, TryStreamExt};
 use sqlx::{postgres::PgRow, PgPool, Row};
 use uuid::Uuid;
 
+use super::plan_overrides::{
+    admin_grant_expires_at_unix_secs, admin_grant_starts_at_unix_secs,
+    entitlements_with_admin_grant_overrides,
+};
 use super::types::{
     redeem_code_credits_recharge_balance, redeem_code_payment_method,
     redeem_code_refundable_amount, AdjustWalletBalanceInput, AdminPaymentOrderListQuery,
@@ -2300,9 +2304,10 @@ FOR UPDATE
                                 .unwrap_or("unknown")
                                 .to_string()
                         });
-                        let entitlements = plan_entitlements_snapshot(&snapshot);
                         let now = Utc::now();
-                        let expires_at = plan_expires_at(&snapshot, now);
+                        let starts_at = plan_starts_at(&snapshot, now);
+                        let expires_at = plan_expires_at(&snapshot, starts_at);
+                        let entitlements = plan_entitlements_snapshot(&snapshot);
                         let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                             r#"
 SELECT id
@@ -2387,7 +2392,7 @@ VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, NOW(), NOW())
                             .bind(&user_id)
                             .bind(&plan_id)
                             .bind(&order_id)
-                            .bind(now)
+                            .bind(starts_at)
                             .bind(expires_at)
                             .bind(&entitlements)
                             .execute(&mut **tx)
@@ -4104,9 +4109,10 @@ FOR UPDATE
                                 .unwrap_or("unknown")
                                 .to_string()
                         });
-                        let entitlements = plan_entitlements_snapshot(&snapshot);
                         let now = Utc::now();
-                        let expires_at = plan_expires_at(&snapshot, now);
+                        let starts_at = plan_starts_at(&snapshot, now);
+                        let expires_at = plan_expires_at(&snapshot, starts_at);
+                        let entitlements = plan_entitlements_snapshot(&snapshot);
                         let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                             r#"
 SELECT id
@@ -4178,7 +4184,7 @@ VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, NOW(), NOW())
                             .bind(&user_id)
                             .bind(&plan_id)
                             .bind(&input.order_id)
-                            .bind(now)
+                            .bind(starts_at)
                             .bind(expires_at)
                             .bind(&entitlements)
                             .execute(&mut **tx)
@@ -5474,11 +5480,12 @@ fn mask_redeem_code(prefix: &str, suffix: &str) -> String {
 }
 
 fn plan_entitlements_snapshot(snapshot: &serde_json::Value) -> serde_json::Value {
-    snapshot
+    let entitlements = snapshot
         .get("entitlements")
         .or_else(|| snapshot.get("entitlements_json"))
         .cloned()
-        .unwrap_or_else(|| serde_json::json!([]))
+        .unwrap_or_else(|| serde_json::json!([]));
+    entitlements_with_admin_grant_overrides(snapshot, entitlements)
 }
 
 fn plan_max_active_per_user(snapshot: &serde_json::Value) -> i64 {
@@ -5575,10 +5582,19 @@ WHERE id = $2
     Ok(())
 }
 
-fn plan_expires_at(
-    snapshot: &serde_json::Value,
-    starts_at: chrono::DateTime<Utc>,
-) -> chrono::DateTime<Utc> {
+fn plan_starts_at(snapshot: &serde_json::Value, now: DateTime<Utc>) -> DateTime<Utc> {
+    admin_grant_starts_at_unix_secs(snapshot)
+        .and_then(|value| Utc.timestamp_opt(value, 0).single())
+        .unwrap_or(now)
+}
+
+fn plan_expires_at(snapshot: &serde_json::Value, starts_at: DateTime<Utc>) -> DateTime<Utc> {
+    if let Some(value) = admin_grant_expires_at_unix_secs(snapshot)
+        .and_then(|value| Utc.timestamp_opt(value, 0).single())
+        .filter(|value| *value > starts_at)
+    {
+        return value;
+    }
     let duration_value = snapshot
         .get("duration_value")
         .and_then(|value| value.as_i64())

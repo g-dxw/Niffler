@@ -1,3 +1,7 @@
+use super::plan_overrides::{
+    admin_grant_expires_at_unix_secs, admin_grant_starts_at_unix_secs,
+    entitlements_with_admin_grant_overrides,
+};
 use super::types::{
     redeem_code_credits_recharge_balance, redeem_code_payment_method, redeem_code_refundable_amount,
 };
@@ -1654,6 +1658,8 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
                     .unwrap_or("unknown")
                     .to_string()
             });
+            let starts_at = plan_starts_at_unix(&snapshot, now);
+            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
             let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
@@ -1730,8 +1736,8 @@ VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
                 .bind(&user_id)
                 .bind(&plan_id)
                 .bind(&order_id)
-                .bind(now)
-                .bind(plan_expires_at_unix(&snapshot, now))
+                .bind(starts_at)
+                .bind(expires_at)
                 .bind(json_string(
                     &entitlements,
                     "user_plan_entitlements.entitlements_snapshot",
@@ -2699,6 +2705,8 @@ WHERE id = ? AND wallet_id = ?
                     .unwrap_or("unknown")
                     .to_string()
             });
+            let starts_at = plan_starts_at_unix(&snapshot, now);
+            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
             let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
@@ -2766,8 +2774,8 @@ VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
                 .bind(&user_id)
                 .bind(&plan_id)
                 .bind(&input.order_id)
-                .bind(now)
-                .bind(plan_expires_at_unix(&snapshot, now))
+                .bind(starts_at)
+                .bind(expires_at)
                 .bind(json_string(
                     &entitlements,
                     "user_plan_entitlements.entitlements_snapshot",
@@ -3647,11 +3655,12 @@ fn json_string(value: &serde_json::Value, field_name: &str) -> Result<String, Da
 }
 
 fn plan_entitlements_snapshot(snapshot: &serde_json::Value) -> serde_json::Value {
-    snapshot
+    let entitlements = snapshot
         .get("entitlements")
         .or_else(|| snapshot.get("entitlements_json"))
         .cloned()
-        .unwrap_or_else(|| serde_json::json!([]))
+        .unwrap_or_else(|| serde_json::json!([]));
+    entitlements_with_admin_grant_overrides(snapshot, entitlements)
 }
 
 fn plan_max_active_per_user(snapshot: &serde_json::Value) -> i64 {
@@ -3755,7 +3764,16 @@ WHERE id = ?
     Ok(())
 }
 
+fn plan_starts_at_unix(snapshot: &serde_json::Value, now_unix_secs: i64) -> i64 {
+    admin_grant_starts_at_unix_secs(snapshot).unwrap_or(now_unix_secs)
+}
+
 fn plan_expires_at_unix(snapshot: &serde_json::Value, starts_at_unix_secs: i64) -> i64 {
+    if let Some(value) =
+        admin_grant_expires_at_unix_secs(snapshot).filter(|value| *value > starts_at_unix_secs)
+    {
+        return value;
+    }
     let duration_value = snapshot
         .get("duration_value")
         .and_then(|value| value.as_i64())
@@ -5458,6 +5476,162 @@ INSERT INTO billing_plans (
             .await
             .expect("wallet balance should query");
         assert_eq!(wallet_balance, 0.0);
+    }
+
+    #[tokio::test]
+    async fn sqlite_plan_manual_credit_uses_admin_grant_overrides() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+
+        let repository = SqliteWalletReadRepository::new(pool);
+        sqlx::query(
+            "INSERT INTO users (id, username, email, auth_source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind("user-admin-grant-1")
+        .bind("Admin Grant Buyer")
+        .bind("admin-grant@example.com")
+        .bind("local")
+        .bind(1_i64)
+        .bind(1_i64)
+        .execute(repository.pool())
+        .await
+        .expect("user should seed");
+
+        let _wallet_order = match repository
+            .create_wallet_recharge_order(CreateWalletRechargeOrderInput {
+                preferred_wallet_id: Some("wallet-admin-grant-1".to_string()),
+                user_id: "user-admin-grant-1".to_string(),
+                amount_usd: 1.0,
+                pay_amount: Some(1.0),
+                pay_currency: Some("USD".to_string()),
+                exchange_rate: Some(1.0),
+                payment_method: "bootstrap".to_string(),
+                payment_provider: None,
+                payment_channel: None,
+                gateway_order_id: "gateway-bootstrap-admin-grant-1".to_string(),
+                gateway_response: json!({ "bootstrap": true }),
+                order_no: "order-bootstrap-admin-grant-1".to_string(),
+                expires_at_unix_secs: 4_102_444_800,
+            })
+            .await
+            .expect("wallet should be created")
+        {
+            CreateWalletRechargeOrderOutcome::Created(order) => order,
+            CreateWalletRechargeOrderOutcome::WalletInactive => {
+                panic!("new wallet should be active")
+            }
+        };
+
+        let starts_at = 1_700_000_000_i64;
+        let expires_at = 1_710_000_000_i64;
+        let plan_snapshot = json!({
+            "id": "admin-grant-plan",
+            "title": "迁移套餐",
+            "duration_unit": "month",
+            "duration_value": 1,
+            "max_active_per_user": 1,
+            "purchase_limit_scope": "unlimited",
+            "admin_grant_overrides": {
+                "starts_at_unix_secs": starts_at,
+                "expires_at_unix_secs": expires_at,
+                "initial_remaining_quota_usd": 80.0
+            },
+            "entitlements": [
+                {
+                    "type": "daily_quota",
+                    "daily_quota_usd": 50.0,
+                    "weekly_quota_usd": 120.0,
+                    "monthly_quota_usd": 200.0
+                }
+            ]
+        });
+        sqlx::query(
+            r#"
+INSERT INTO billing_plans (
+  id, title, price_amount, price_currency, duration_unit, duration_value,
+  max_active_per_user, purchase_limit_scope, entitlements_json, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"#,
+        )
+        .bind("admin-grant-plan")
+        .bind("迁移套餐")
+        .bind(0.0_f64)
+        .bind("USD")
+        .bind("month")
+        .bind(1_i64)
+        .bind(1_i64)
+        .bind("unlimited")
+        .bind(plan_snapshot["entitlements"].to_string())
+        .bind(1_i64)
+        .bind(1_i64)
+        .execute(repository.pool())
+        .await
+        .expect("billing plan should seed");
+
+        let order = match repository
+            .create_plan_purchase_order(CreatePlanPurchaseOrderInput {
+                preferred_wallet_id: None,
+                user_id: "user-admin-grant-1".to_string(),
+                amount_usd: 0.0,
+                pay_amount: 0.0,
+                pay_currency: "USD".to_string(),
+                exchange_rate: 1.0,
+                payment_method: "admin_grant".to_string(),
+                payment_provider: Some("admin".to_string()),
+                payment_channel: Some("manual".to_string()),
+                gateway_order_id: "gateway-plan-admin-grant-1".to_string(),
+                gateway_response: json!({ "admin_grant": true }),
+                order_no: "order-plan-admin-grant-1".to_string(),
+                product_id: "admin-grant-plan".to_string(),
+                product_snapshot: plan_snapshot,
+                expires_at_unix_secs: 4_102_444_800,
+            })
+            .await
+            .expect("admin grant order should create")
+        {
+            CreatePlanPurchaseOrderOutcome::Created(order) => order,
+            other => panic!("admin grant order should be created, got {other:?}"),
+        };
+
+        let credited = repository
+            .credit_admin_payment_order(CreditAdminPaymentOrderInput {
+                order_id: order.id,
+                gateway_order_id: Some("gateway-plan-admin-grant-paid-1".to_string()),
+                pay_amount: Some(0.0),
+                pay_currency: Some("USD".to_string()),
+                exchange_rate: Some(1.0),
+                gateway_response_patch: Some(json!({ "settled": true })),
+                operator_id: Some("admin-1".to_string()),
+            })
+            .await
+            .expect("admin grant credit should run");
+        let WalletMutationOutcome::Applied((_credited_order, applied)) = credited else {
+            panic!("admin grant credit should be applied");
+        };
+        assert!(applied);
+
+        let row: (i64, i64, String) = sqlx::query_as(
+            "SELECT starts_at, expires_at, entitlements_snapshot FROM user_plan_entitlements WHERE user_id = ? AND plan_id = ?",
+        )
+        .bind("user-admin-grant-1")
+        .bind("admin-grant-plan")
+        .fetch_one(repository.pool())
+        .await
+        .expect("entitlement should query");
+        assert_eq!(row.0, starts_at);
+        assert_eq!(row.1, expires_at);
+
+        let entitlements: serde_json::Value =
+            serde_json::from_str(&row.2).expect("entitlements should decode");
+        assert_eq!(entitlements[0]["daily_quota_usd"], json!(50.0));
+        assert_eq!(entitlements[0]["weekly_quota_usd"], json!(80.0));
+        assert_eq!(entitlements[0]["monthly_quota_usd"], json!(80.0));
     }
 
     #[tokio::test]

@@ -3,6 +3,10 @@ use chrono::Utc;
 use sqlx::{mysql::MySqlRow, Row};
 
 use super::memory::WalletReadSeed;
+use super::plan_overrides::{
+    admin_grant_expires_at_unix_secs, admin_grant_starts_at_unix_secs,
+    entitlements_with_admin_grant_overrides,
+};
 use super::types::{
     redeem_code_credits_recharge_balance, redeem_code_payment_method, redeem_code_refundable_amount,
 };
@@ -1271,6 +1275,8 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
                     .unwrap_or("unknown")
                     .to_string()
             });
+            let starts_at = plan_starts_at_unix(&snapshot, now);
+            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
             let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
@@ -1351,8 +1357,8 @@ VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
                 .bind(&user_id)
                 .bind(&plan_id)
                 .bind(&order_id)
-                .bind(now)
-                .bind(plan_expires_at_unix(&snapshot, now))
+                .bind(starts_at)
+                .bind(expires_at)
                 .bind(json_string(
                     &entitlements,
                     "user_plan_entitlements.entitlements_snapshot",
@@ -2325,6 +2331,8 @@ WHERE id = ? AND wallet_id = ?
                     .unwrap_or("unknown")
                     .to_string()
             });
+            let starts_at = plan_starts_at_unix(&snapshot, now);
+            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
             let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
@@ -2391,8 +2399,8 @@ VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
                 .bind(&user_id)
                 .bind(&plan_id)
                 .bind(&input.order_id)
-                .bind(now)
-                .bind(plan_expires_at_unix(&snapshot, now))
+                .bind(starts_at)
+                .bind(expires_at)
                 .bind(json_string(
                     &entitlements,
                     "user_plan_entitlements.entitlements_snapshot",
@@ -3151,11 +3159,12 @@ fn json_string(value: &serde_json::Value, field_name: &str) -> Result<String, Da
 }
 
 fn plan_entitlements_snapshot(snapshot: &serde_json::Value) -> serde_json::Value {
-    snapshot
+    let entitlements = snapshot
         .get("entitlements")
         .or_else(|| snapshot.get("entitlements_json"))
         .cloned()
-        .unwrap_or_else(|| serde_json::json!([]))
+        .unwrap_or_else(|| serde_json::json!([]));
+    entitlements_with_admin_grant_overrides(snapshot, entitlements)
 }
 
 fn plan_max_active_per_user(snapshot: &serde_json::Value) -> i64 {
@@ -3259,7 +3268,16 @@ WHERE id = ?
     Ok(())
 }
 
+fn plan_starts_at_unix(snapshot: &serde_json::Value, now_unix_secs: i64) -> i64 {
+    admin_grant_starts_at_unix_secs(snapshot).unwrap_or(now_unix_secs)
+}
+
 fn plan_expires_at_unix(snapshot: &serde_json::Value, starts_at_unix_secs: i64) -> i64 {
+    if let Some(value) =
+        admin_grant_expires_at_unix_secs(snapshot).filter(|value| *value > starts_at_unix_secs)
+    {
+        return value;
+    }
     let duration_value = snapshot
         .get("duration_value")
         .and_then(|value| value.as_i64())
