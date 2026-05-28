@@ -420,6 +420,23 @@ fn strip_codex_hosted_tool_choice_name_for_backend(
     }
 }
 
+fn normalize_codex_responses_string_input(body_object: &mut serde_json::Map<String, Value>) {
+    let Some(Value::String(input)) = body_object.get("input").cloned() else {
+        return;
+    };
+
+    let normalized = if input.trim().is_empty() {
+        Value::Array(Vec::new())
+    } else {
+        json!([{
+            "type": "message",
+            "role": "user",
+            "content": input
+        }])
+    };
+    body_object.insert("input".to_string(), normalized);
+}
+
 pub fn apply_codex_openai_responses_special_body_edits(
     provider_request_body: &mut Value,
     provider_type: &str,
@@ -467,6 +484,7 @@ pub fn apply_codex_openai_responses_special_body_edits(
     }
     strip_codex_hosted_tool_names_for_backend(body_object);
     strip_codex_hosted_tool_choice_name_for_backend(body_object);
+    normalize_codex_responses_string_input(body_object);
     if is_openai_image_request(provider_api_format)
         || codex_openai_responses_tool_choice_references_image_generation(body_object)
     {
@@ -618,6 +636,51 @@ mod tests {
         );
         assert_eq!(provider_request_body["parallel_tool_calls"], json!(true));
         assert_eq!(provider_request_body["instructions"], json!(""));
+    }
+
+    #[test]
+    fn codex_responses_body_edits_convert_string_input_to_message_array() {
+        let mut provider_request_body = json!({
+            "input": "Hello, world!",
+            "model": "gpt-5.4",
+            "stream": true
+        });
+
+        apply_codex_openai_responses_special_body_edits(
+            &mut provider_request_body,
+            "codex",
+            "openai:responses",
+            None,
+            None,
+        );
+
+        assert_eq!(
+            provider_request_body["input"],
+            json!([{
+                "type": "message",
+                "role": "user",
+                "content": "Hello, world!"
+            }])
+        );
+    }
+
+    #[test]
+    fn codex_responses_body_edits_convert_blank_string_input_to_empty_array() {
+        let mut provider_request_body = json!({
+            "input": "   ",
+            "model": "gpt-5.4",
+            "stream": true
+        });
+
+        apply_codex_openai_responses_special_body_edits(
+            &mut provider_request_body,
+            "codex",
+            "openai:responses",
+            None,
+            None,
+        );
+
+        assert_eq!(provider_request_body["input"], json!([]));
     }
 
     #[test]
