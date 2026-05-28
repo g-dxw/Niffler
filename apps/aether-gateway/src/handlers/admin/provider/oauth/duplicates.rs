@@ -167,6 +167,23 @@ pub(crate) async fn find_duplicate_provider_oauth_key(
     auth_config: &serde_json::Map<String, serde_json::Value>,
     exclude_key_id: Option<&str>,
 ) -> Result<Option<StoredProviderCatalogKey>, String> {
+    find_duplicate_provider_oauth_key_with_replace_policy(
+        state,
+        provider_id,
+        auth_config,
+        exclude_key_id,
+        false,
+    )
+    .await
+}
+
+pub(crate) async fn find_duplicate_provider_oauth_key_with_replace_policy(
+    state: &AdminAppState<'_>,
+    provider_id: &str,
+    auth_config: &serde_json::Map<String, serde_json::Value>,
+    exclude_key_id: Option<&str>,
+    allow_active_replace: bool,
+) -> Result<Option<StoredProviderCatalogKey>, String> {
     let new_email = normalize_provider_oauth_identity_value(auth_config.get("email"));
     let new_user_id = normalize_provider_oauth_identity_value(auth_config.get("user_id"));
     let new_auth_method = normalize_provider_oauth_identity_value(auth_config.get("auth_method"));
@@ -255,7 +272,7 @@ pub(crate) async fn find_duplicate_provider_oauth_key(
         if !is_duplicate {
             continue;
         }
-        if existing_provider_oauth_key_is_replaceable(&existing_key) {
+        if allow_active_replace || existing_provider_oauth_key_is_replaceable(&existing_key) {
             return Ok(Some(existing_key));
         }
         let identifier =

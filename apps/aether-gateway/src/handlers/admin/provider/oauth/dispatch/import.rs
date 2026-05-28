@@ -1,4 +1,4 @@
-use super::super::duplicates::find_duplicate_provider_oauth_key;
+use super::super::duplicates::find_duplicate_provider_oauth_key_with_replace_policy;
 use super::super::errors::build_internal_control_error_response;
 use super::super::provisioning::{
     build_provider_oauth_auth_config_from_token_payload, create_provider_oauth_catalog_key,
@@ -380,6 +380,9 @@ pub(super) async fn handle_admin_provider_oauth_import_refresh_token(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned);
+    let replace_existing =
+        import_payload_bool_any(&raw_payload, &["replace_existing", "replaceExisting"])
+            .unwrap_or(false);
 
     let Some(provider) = state
         .read_provider_catalog_providers_by_ids(std::slice::from_ref(&provider_id))
@@ -464,9 +467,14 @@ pub(super) async fn handle_admin_provider_oauth_import_refresh_token(
         .is_some_and(|value| !value.is_empty());
 
     let api_formats = provider_oauth_active_api_formats(&endpoints);
-    let duplicate = match state
-        .find_duplicate_provider_oauth_key(&provider_id, &auth_config, None)
-        .await
+    let duplicate = match find_duplicate_provider_oauth_key_with_replace_policy(
+        state,
+        &provider_id,
+        &auth_config,
+        None,
+        replace_existing,
+    )
+    .await
     {
         Ok(duplicate) => duplicate,
         Err(detail) => {
