@@ -359,7 +359,7 @@ pub(super) async fn handle_billing_plan_checkout(
         gateway_order_id,
         checkout,
     ) = if checkout_request.payment_provider == "dodopay" {
-        let config = match load_dodopay_config() {
+        let config = match load_dodopay_config(state).await {
             Ok(value) => value,
             Err(detail) => {
                 return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)

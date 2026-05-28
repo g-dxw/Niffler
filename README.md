@@ -103,13 +103,9 @@ Niffler Tunnel 是配套的正向代理节点，部署在海外 VPS 上，为墙
 
 ### DoDoPay 支付
 
-配置 `DODOPAY_APP_ID` 和 `DODOPAY_APP_SECRET` 后，钱包充值和套餐购买会出现 DoDoPay 支付方式。
+管理员在后台 `支付配置` 中启用 DoDoPay，并保存服务地址、应用 ID、应用密钥、回调站点根地址、汇率和最低充值金额后，钱包充值和套餐购买会出现 DoDoPay 支付方式。
 
-- `DODOPAY_BASE_URL`：DoDoPay 服务地址，默认 `https://pay.dodododo.org`
-- `DODOPAY_CALLBACK_BASE_URL`：本站公网根地址，例如 `https://niffler.example.com`
-- `DODOPAY_RETURN_PATH`：支付后回到本站的页面，默认 `/dashboard/wallet`
-- `DODOPAY_USD_EXCHANGE_RATE`：按人民币收款时的美元汇率，默认 `7.2`
-- `DODOPAY_MIN_RECHARGE_USD`：最低充值金额，默认 `1`
+DoDoPay 应用密钥使用系统加密密钥保存到数据库，不应写入代码仓库。
 
 ---
 

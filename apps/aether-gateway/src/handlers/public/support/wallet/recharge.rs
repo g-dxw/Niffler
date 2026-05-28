@@ -1,6 +1,6 @@
 use super::super::support_payment::payment_dodopay::{
-    create_dodopay_checkout, dodopay_callback_base_url, dodopay_configured, dodopay_return_url,
-    load_dodopay_config, DodopayCheckoutInput,
+    create_dodopay_checkout, dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
+    DodopayCheckoutInput,
 };
 use super::super::support_payment::payment_epay::{
     build_epay_checkout_url, configured_epay_channels, epay_callback_base_url, load_epay_config,
@@ -422,7 +422,7 @@ pub(super) async fn handle_wallet_create_recharge(
         );
     }
     if uses_dodopay {
-        let config = match load_dodopay_config() {
+        let config = match load_dodopay_config(state).await {
             Ok(value) => value,
             Err(detail) => {
                 return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
@@ -548,18 +548,16 @@ pub(super) async fn handle_wallet_recharge_options(
             }));
         }
     }
-    if dodopay_configured() {
-        if let Ok(config) = load_dodopay_config() {
-            methods.push(json!({
-                "payment_method": "dodopay",
-                "payment_provider": "dodopay",
-                "payment_channel": serde_json::Value::Null,
-                "display_name": "DoDoPay",
-                "pay_currency": config.pay_currency,
-                "usd_exchange_rate": config.usd_exchange_rate,
-                "min_recharge_usd": config.min_recharge_usd,
-            }));
-        }
+    if let Ok(config) = load_dodopay_config(state).await {
+        methods.push(json!({
+            "payment_method": "dodopay",
+            "payment_provider": "dodopay",
+            "payment_channel": serde_json::Value::Null,
+            "display_name": "DoDoPay",
+            "pay_currency": config.pay_currency,
+            "usd_exchange_rate": config.usd_exchange_rate,
+            "min_recharge_usd": config.min_recharge_usd,
+        }));
     }
     build_auth_json_response(http::StatusCode::OK, json!({ "items": methods }), None)
 }

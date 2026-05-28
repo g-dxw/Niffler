@@ -3,7 +3,7 @@ use chrono::Utc;
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use serde_json::json;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -48,20 +48,6 @@ struct DodopayCreateOrderResponse {
     checkout_url: String,
 }
 
-fn env_trimmed(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn env_f64(name: &str, default: f64) -> f64 {
-    env_trimmed(name)
-        .and_then(|value| value.parse::<f64>().ok())
-        .filter(|value| value.is_finite() && *value > 0.0)
-        .unwrap_or(default)
-}
-
 fn normalize_base_url(value: &str) -> Option<String> {
     let trimmed = value.trim().trim_end_matches('/');
     let parsed = url::Url::parse(trimmed).ok()?;
@@ -80,35 +66,48 @@ fn forwarded_header_first(value: String) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-pub(crate) fn dodopay_configured() -> bool {
-    env_trimmed("DODOPAY_APP_ID").is_some() && env_trimmed("DODOPAY_APP_SECRET").is_some()
-}
-
-pub(crate) fn load_dodopay_config() -> Result<DodopayConfig, String> {
-    let app_id = env_trimmed("DODOPAY_APP_ID").ok_or("DODOPAY_APP_ID is not configured")?;
-    let app_secret =
-        env_trimmed("DODOPAY_APP_SECRET").ok_or("DODOPAY_APP_SECRET is not configured")?;
-    let base_url =
-        env_trimmed("DODOPAY_BASE_URL").unwrap_or_else(|| "https://pay.dodododo.org".to_string());
-    let Some(base_url) = normalize_base_url(&base_url) else {
-        return Err("DODOPAY_BASE_URL must be an absolute http(s) URL".to_string());
+pub(crate) async fn load_dodopay_config(state: &AppState) -> Result<DodopayConfig, String> {
+    let Some(record) = state
+        .find_payment_gateway_config("dodopay")
+        .await
+        .map_err(|err| format!("dodopay config lookup failed: {err:?}"))?
+    else {
+        return Err("DoDoPay 未配置".to_string());
     };
-    let callback_base_url = env_trimmed("DODOPAY_CALLBACK_BASE_URL");
+    if !record.enabled {
+        return Err("DoDoPay 未启用".to_string());
+    }
+    let Some(encrypted_secret) = record.merchant_key_encrypted.as_deref() else {
+        return Err("DoDoPay 应用密钥未配置".to_string());
+    };
+    let Some(app_secret) = crate::handlers::shared::decrypt_catalog_secret_with_fallbacks(
+        state.encryption_key(),
+        encrypted_secret,
+    ) else {
+        return Err("DoDoPay 应用密钥解密失败".to_string());
+    };
+    let app_id = record.merchant_id.trim();
+    if app_id.is_empty() {
+        return Err("DoDoPay 应用 ID 未配置".to_string());
+    }
+    let Some(base_url) = normalize_base_url(&record.endpoint_url) else {
+        return Err("DoDoPay 服务地址必须是 http(s) 绝对地址".to_string());
+    };
+    let callback_base_url = record.callback_base_url;
     if let Some(value) = callback_base_url.as_deref() {
         if normalize_base_url(value).is_none() {
-            return Err("DODOPAY_CALLBACK_BASE_URL must be an absolute http(s) URL".to_string());
+            return Err("DoDoPay 回调站点根地址必须是 http(s) 绝对地址".to_string());
         }
     }
     Ok(DodopayConfig {
         base_url,
-        app_id,
+        app_id: app_id.to_string(),
         app_secret,
         callback_base_url,
-        return_path: env_trimmed("DODOPAY_RETURN_PATH")
-            .unwrap_or_else(|| "/dashboard/wallet".to_string()),
-        pay_currency: env_trimmed("DODOPAY_PAY_CURRENCY").unwrap_or_else(|| "CNY".to_string()),
-        usd_exchange_rate: env_f64("DODOPAY_USD_EXCHANGE_RATE", 7.2),
-        min_recharge_usd: env_f64("DODOPAY_MIN_RECHARGE_USD", 1.0),
+        return_path: "/dashboard/wallet".to_string(),
+        pay_currency: record.pay_currency,
+        usd_exchange_rate: record.usd_exchange_rate,
+        min_recharge_usd: record.min_recharge_usd,
     })
 }
 
@@ -121,8 +120,9 @@ pub(crate) fn dodopay_callback_base_url(
         return Some(value);
     }
 
-    if let Some(value) = env_trimmed("AETHER_PUBLIC_BASE_URL")
-        .or_else(|| env_trimmed("PUBLIC_BASE_URL"))
+    if let Some(value) = std::env::var("AETHER_PUBLIC_BASE_URL")
+        .ok()
+        .or_else(|| std::env::var("PUBLIC_BASE_URL").ok())
         .and_then(|value| normalize_base_url(&value))
     {
         return Some(value);
@@ -348,7 +348,7 @@ pub(super) async fn handle_dodopay_notify(
     state: &AppState,
     request_body: Option<&axum::body::Bytes>,
 ) -> Response<Body> {
-    let config = match load_dodopay_config() {
+    let config = match load_dodopay_config(state).await {
         Ok(value) => value,
         Err(_) => return dodopay_plain(http::StatusCode::SERVICE_UNAVAILABLE, "fail"),
     };
@@ -520,7 +520,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dodopay_notify_rejects_missing_signature_with_non_2xx() {
+    async fn dodopay_notify_is_disabled_without_gateway_config() {
         let state = super::AppState::new().expect("state should build");
         let body = axum::body::Bytes::from(
             serde_json::to_vec(&json!({
@@ -539,12 +539,11 @@ mod tests {
             .expect("payload should encode"),
         );
 
-        std::env::set_var("DODOPAY_APP_ID", "app_test");
-        std::env::set_var("DODOPAY_APP_SECRET", "secret");
         let response = super::handle_dodopay_notify(&state, Some(&body)).await;
-        std::env::remove_var("DODOPAY_APP_ID");
-        std::env::remove_var("DODOPAY_APP_SECRET");
 
-        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 }

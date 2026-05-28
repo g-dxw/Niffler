@@ -11,8 +11,10 @@ export interface EpayChannelConfig {
   display_name: string
 }
 
-export interface EpayGatewayConfig {
-  provider: 'epay'
+export type PaymentGatewayProvider = 'epay' | 'dodopay'
+
+export interface PaymentGatewayConfig {
+  provider: PaymentGatewayProvider
   enabled: boolean
   endpoint_url?: string | null
   callback_base_url?: string | null
@@ -26,7 +28,10 @@ export interface EpayGatewayConfig {
   updated_at?: number | null
 }
 
-export interface UpdateEpayGatewayConfigRequest {
+export type EpayGatewayConfig = PaymentGatewayConfig & { provider: 'epay' }
+export type DodopayGatewayConfig = PaymentGatewayConfig & { provider: 'dodopay' }
+
+export interface UpdatePaymentGatewayConfigRequest {
   enabled: boolean
   endpoint_url: string
   callback_base_url?: string | null
@@ -37,6 +42,9 @@ export interface UpdateEpayGatewayConfigRequest {
   min_recharge_usd: number
   channels: EpayChannelConfig[]
 }
+
+export type UpdateEpayGatewayConfigRequest = UpdatePaymentGatewayConfigRequest
+export type UpdateDodopayGatewayConfigRequest = UpdatePaymentGatewayConfigRequest
 
 export interface GatewayTestResponse {
   ok: boolean
@@ -148,7 +156,7 @@ export interface UserPlanEntitlementsResponse {
   total: number
 }
 
-function normalizeChannels(channels: EpayGatewayConfig['channels']): EpayChannelConfig[] {
+function normalizeChannels(channels: PaymentGatewayConfig['channels']): EpayChannelConfig[] {
   return Array.isArray(channels)
     ? channels
       .map((item) => {
@@ -163,9 +171,12 @@ function normalizeChannels(channels: EpayGatewayConfig['channels']): EpayChannel
     : []
 }
 
-function normalizeGatewayConfig(config: EpayGatewayConfig): EpayGatewayConfig {
+function normalizeGatewayConfig(
+  config: PaymentGatewayConfig,
+  provider: PaymentGatewayProvider
+): PaymentGatewayConfig {
   return {
-    provider: 'epay',
+    provider,
     enabled: Boolean(config.enabled),
     endpoint_url: config.endpoint_url ?? '',
     callback_base_url: config.callback_base_url ?? '',
@@ -180,24 +191,54 @@ function normalizeGatewayConfig(config: EpayGatewayConfig): EpayGatewayConfig {
   }
 }
 
+function paymentGatewayApiFor(provider: PaymentGatewayProvider) {
+  return {
+    async get(): Promise<PaymentGatewayConfig> {
+      const response = await apiClient.get<PaymentGatewayConfig>(`/api/admin/payments/gateways/${provider}`)
+      return normalizeGatewayConfig(response.data, provider)
+    },
+
+    async update(payload: UpdatePaymentGatewayConfigRequest): Promise<PaymentGatewayConfig> {
+      const request: UpdatePaymentGatewayConfigRequest = {
+        ...payload,
+        channels: normalizeChannels(payload.channels),
+      }
+      const response = await apiClient.put<PaymentGatewayConfig>(`/api/admin/payments/gateways/${provider}`, request)
+      return normalizeGatewayConfig(response.data, provider)
+    },
+
+    async test(): Promise<GatewayTestResponse> {
+      const response = await apiClient.post<GatewayTestResponse>(`/api/admin/payments/gateways/${provider}/test`, {})
+      return response.data
+    },
+  }
+}
+
 export const epayGatewayApi = {
   async get(): Promise<EpayGatewayConfig> {
-    const response = await apiClient.get<EpayGatewayConfig>('/api/admin/payments/gateways/epay')
-    return normalizeGatewayConfig(response.data)
+    return paymentGatewayApiFor('epay').get() as Promise<EpayGatewayConfig>
   },
 
   async update(payload: UpdateEpayGatewayConfigRequest): Promise<EpayGatewayConfig> {
-    const request: UpdateEpayGatewayConfigRequest = {
-      ...payload,
-      channels: normalizeChannels(payload.channels),
-    }
-    const response = await apiClient.put<EpayGatewayConfig>('/api/admin/payments/gateways/epay', request)
-    return normalizeGatewayConfig(response.data)
+    return paymentGatewayApiFor('epay').update(payload) as Promise<EpayGatewayConfig>
   },
 
   async test(): Promise<GatewayTestResponse> {
-    const response = await apiClient.post<GatewayTestResponse>('/api/admin/payments/gateways/epay/test', {})
-    return response.data
+    return paymentGatewayApiFor('epay').test()
+  },
+}
+
+export const dodopayGatewayApi = {
+  async get(): Promise<DodopayGatewayConfig> {
+    return paymentGatewayApiFor('dodopay').get() as Promise<DodopayGatewayConfig>
+  },
+
+  async update(payload: UpdateDodopayGatewayConfigRequest): Promise<DodopayGatewayConfig> {
+    return paymentGatewayApiFor('dodopay').update(payload) as Promise<DodopayGatewayConfig>
+  },
+
+  async test(): Promise<GatewayTestResponse> {
+    return paymentGatewayApiFor('dodopay').test()
   },
 }
 

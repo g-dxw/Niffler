@@ -313,7 +313,11 @@ pub(crate) fn admin_proxy_local_requires_buffered_body(
                 | (Some("billing_manage"), http::Method::POST, Some("create_plan"))
                 | (Some("billing_manage"), http::Method::PUT, Some("update_plan"))
                 | (Some("billing_manage"), http::Method::PATCH, Some("set_plan_status"))
-                | (Some("payments_manage"), http::Method::PUT, Some("update_epay_gateway"))
+                | (
+                    Some("payments_manage"),
+                    http::Method::PUT,
+                    Some("update_epay_gateway" | "update_dodopay_gateway"),
+                )
                 | (Some("payments_manage"), http::Method::POST, Some("credit_order"))
                 | (Some("payments_manage"), http::Method::POST, Some("create_redeem_code_batch"))
                 | (Some("payments_manage"), http::Method::POST, Some("delete_redeem_code_batch"))

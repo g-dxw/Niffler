@@ -33,9 +33,16 @@ pub(super) async fn maybe_build_local_admin_payments_response(
         || (matches!(
             request_context.method(),
             &http::Method::GET | &http::Method::PUT
-        ) && path == "/api/admin/payments/gateways/epay")
+        ) && matches!(
+            path,
+            "/api/admin/payments/gateways/epay" | "/api/admin/payments/gateways/dodopay"
+        ))
         || (request_context.method() == http::Method::POST
-            && path == "/api/admin/payments/gateways/epay/test")
+            && matches!(
+                path,
+                "/api/admin/payments/gateways/epay/test"
+                    | "/api/admin/payments/gateways/dodopay/test"
+            ))
         || (request_context.method() == http::Method::GET
             && path.starts_with("/api/admin/payments/orders/")
             && path.matches('/').count() == 5)

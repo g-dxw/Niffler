@@ -13,8 +13,37 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PaymentGatewayProvider {
+    Epay,
+    Dodopay,
+}
+
+impl PaymentGatewayProvider {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Epay => "epay",
+            Self::Dodopay => "dodopay",
+        }
+    }
+
+    fn default_endpoint_url(self) -> &'static str {
+        match self {
+            Self::Epay => "",
+            Self::Dodopay => "https://pay.dodododo.org",
+        }
+    }
+
+    fn default_channels(self) -> serde_json::Value {
+        match self {
+            Self::Epay => default_epay_channels(),
+            Self::Dodopay => json!([]),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
-struct EpayGatewayConfigRequest {
+struct PaymentGatewayConfigRequest {
     #[serde(default)]
     enabled: bool,
     endpoint_url: String,
@@ -29,7 +58,7 @@ struct EpayGatewayConfigRequest {
     usd_exchange_rate: f64,
     #[serde(default = "default_min_recharge_usd")]
     min_recharge_usd: f64,
-    #[serde(default = "default_channels")]
+    #[serde(default)]
     channels: serde_json::Value,
 }
 
@@ -45,7 +74,7 @@ fn default_min_recharge_usd() -> f64 {
     1.0
 }
 
-fn default_channels() -> serde_json::Value {
+fn default_epay_channels() -> serde_json::Value {
     json!([
         {"channel": "alipay", "display_name": "支付宝"},
         {"channel": "wxpay", "display_name": "微信支付"}
@@ -100,27 +129,62 @@ fn gateway_config_payload(
     })
 }
 
+fn default_gateway_config_payload(provider: PaymentGatewayProvider) -> serde_json::Value {
+    json!({
+        "provider": provider.id(),
+        "enabled": false,
+        "endpoint_url": provider.default_endpoint_url(),
+        "callback_base_url": serde_json::Value::Null,
+        "merchant_id": "",
+        "has_secret": false,
+        "pay_currency": default_pay_currency(),
+        "usd_exchange_rate": default_usd_exchange_rate(),
+        "min_recharge_usd": default_min_recharge_usd(),
+        "channels": provider.default_channels(),
+    })
+}
+
+fn gateway_provider_from_route_kind(
+    route_kind: &str,
+) -> Option<(PaymentGatewayProvider, &'static str)> {
+    match route_kind {
+        "get_epay_gateway" => Some((PaymentGatewayProvider::Epay, "get")),
+        "update_epay_gateway" => Some((PaymentGatewayProvider::Epay, "update")),
+        "test_epay_gateway" => Some((PaymentGatewayProvider::Epay, "test")),
+        "get_dodopay_gateway" => Some((PaymentGatewayProvider::Dodopay, "get")),
+        "update_dodopay_gateway" => Some((PaymentGatewayProvider::Dodopay, "update")),
+        "test_dodopay_gateway" => Some((PaymentGatewayProvider::Dodopay, "test")),
+        _ => None,
+    }
+}
+
 pub(super) async fn maybe_build_local_admin_payment_gateways_response(
     state: &AdminAppState<'_>,
     _request_context: &AdminRequestContext<'_>,
     request_body: Option<&axum::body::Bytes>,
     route_kind: Option<&str>,
 ) -> Result<Option<Response<Body>>, GatewayError> {
-    match route_kind {
-        Some("get_epay_gateway") => {
-            let record = state.app().find_payment_gateway_config("epay").await?;
-            let payload = record.map(gateway_config_payload).unwrap_or_else(
-                || json!({"provider": "epay", "enabled": false, "has_secret": false}),
-            );
+    let Some((provider, action)) = route_kind.and_then(gateway_provider_from_route_kind) else {
+        return Ok(None);
+    };
+    match action {
+        "get" => {
+            let record = state
+                .app()
+                .find_payment_gateway_config(provider.id())
+                .await?;
+            let payload = record
+                .map(gateway_config_payload)
+                .unwrap_or_else(|| default_gateway_config_payload(provider));
             Ok(Some(Json(payload).into_response()))
         }
-        Some("update_epay_gateway") => {
+        "update" => {
             let Some(body) = request_body else {
                 return Ok(Some(build_admin_payments_bad_request_response(
                     "缺少请求体",
                 )));
             };
-            let payload = match serde_json::from_slice::<EpayGatewayConfigRequest>(body) {
+            let payload = match serde_json::from_slice::<PaymentGatewayConfigRequest>(body) {
                 Ok(value) => value,
                 Err(_) => {
                     return Ok(Some(build_admin_payments_bad_request_response(
@@ -171,7 +235,7 @@ pub(super) async fn maybe_build_local_admin_payment_gateways_response(
                 Err(detail) => return Ok(Some(build_admin_payments_bad_request_response(detail))),
             };
             let input = PaymentGatewayConfigWriteInput {
-                provider: "epay".to_string(),
+                provider: provider.id().to_string(),
                 enabled: payload.enabled,
                 endpoint_url,
                 callback_base_url,
@@ -181,7 +245,15 @@ pub(super) async fn maybe_build_local_admin_payment_gateways_response(
                 pay_currency,
                 usd_exchange_rate: payload.usd_exchange_rate,
                 min_recharge_usd: payload.min_recharge_usd,
-                channels_json: payload.channels,
+                channels_json: if provider == PaymentGatewayProvider::Epay
+                    && !payload.channels.is_null()
+                {
+                    payload.channels
+                } else if provider == PaymentGatewayProvider::Epay {
+                    provider.default_channels()
+                } else {
+                    json!([])
+                },
             };
             match state.app().upsert_payment_gateway_config(&input).await? {
                 LocalMutationOutcome::Applied(record) => {
@@ -192,8 +264,11 @@ pub(super) async fn maybe_build_local_admin_payment_gateways_response(
                 ))),
             }
         }
-        Some("test_epay_gateway") => {
-            let status = state.app().find_payment_gateway_config("epay").await?;
+        "test" => {
+            let status = state
+                .app()
+                .find_payment_gateway_config(provider.id())
+                .await?;
             let ok = status
                 .as_ref()
                 .is_some_and(|record| record.enabled && record.merchant_key_encrypted.is_some());
@@ -204,7 +279,7 @@ pub(super) async fn maybe_build_local_admin_payment_gateways_response(
                     } else {
                         http::StatusCode::BAD_REQUEST
                     },
-                    Json(json!({"ok": ok, "provider": "epay"})),
+                    Json(json!({"ok": ok, "provider": provider.id()})),
                 )
                     .into_response(),
             ))

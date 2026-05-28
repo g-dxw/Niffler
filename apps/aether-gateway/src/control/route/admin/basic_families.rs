@@ -598,6 +598,46 @@ pub(super) fn classify_admin_basic_family_route(
             false,
         ))
     } else if method == http::Method::GET
+        && matches!(
+            normalized_path,
+            "/api/admin/payments/gateways/dodopay" | "/api/admin/payments/gateways/dodopay/"
+        )
+    {
+        Some(classified(
+            "admin_proxy",
+            "payments_manage",
+            "get_dodopay_gateway",
+            "admin:payments",
+            false,
+        ))
+    } else if method == http::Method::PUT
+        && matches!(
+            normalized_path,
+            "/api/admin/payments/gateways/dodopay" | "/api/admin/payments/gateways/dodopay/"
+        )
+    {
+        Some(classified(
+            "admin_proxy",
+            "payments_manage",
+            "update_dodopay_gateway",
+            "admin:payments",
+            false,
+        ))
+    } else if method == http::Method::POST
+        && matches!(
+            normalized_path,
+            "/api/admin/payments/gateways/dodopay/test"
+                | "/api/admin/payments/gateways/dodopay/test/"
+        )
+    {
+        Some(classified(
+            "admin_proxy",
+            "payments_manage",
+            "test_dodopay_gateway",
+            "admin:payments",
+            false,
+        ))
+    } else if method == http::Method::GET
         && normalized_path_no_trailing.starts_with("/api/admin/payments/orders/")
         && normalized_path_no_trailing.matches('/').count() == 5
     {

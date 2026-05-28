@@ -2,7 +2,7 @@
   <PageContainer>
     <PageHeader
       title="支付配置"
-      description="配置易支付商户、回调地址、汇率和可用通道"
+      description="配置易支付和 DoDoPay 的商户信息、回调地址、汇率和启用状态"
     >
       <template #actions>
         <div class="flex items-center gap-2">
@@ -28,6 +28,19 @@
     </PageHeader>
 
     <div class="mt-6 space-y-6">
+      <div class="flex flex-wrap gap-2">
+        <Button
+          v-for="provider in providerTabs"
+          :key="provider.id"
+          :variant="activeProvider === provider.id ? 'default' : 'outline'"
+          size="sm"
+          :disabled="loading || saving"
+          @click="selectProvider(provider.id)"
+        >
+          {{ provider.name }}
+        </Button>
+      </div>
+
       <div
         v-if="loading"
         class="py-16"
@@ -50,7 +63,7 @@
           </Card>
           <Card class="p-5">
             <div class="text-xs uppercase tracking-wider text-muted-foreground">
-              商户密钥
+              {{ activeProviderMeta.secretLabel }}
             </div>
             <div class="mt-3">
               <Badge :variant="hasSecret ? 'success' : 'warning'">
@@ -69,23 +82,23 @@
         </div>
 
         <CardSection
-          title="易支付商户"
-          description="密钥留空会保留原密钥；回调地址留空时后端会使用当前 API 访问地址，生产环境建议显式填写公网根地址"
+          :title="`${activeProviderMeta.name} 商户`"
+          :description="activeProviderMeta.description"
         >
           <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
             <div class="space-y-1.5">
-              <Label for="epay-endpoint">易支付接口地址</Label>
+              <Label for="gateway-endpoint">{{ activeProviderMeta.endpointLabel }}</Label>
               <Input
-                id="epay-endpoint"
+                id="gateway-endpoint"
                 v-model="form.endpoint_url"
-                placeholder="https://pay.example.com/submit.php"
+                :placeholder="activeProviderMeta.endpointPlaceholder"
               />
             </div>
 
             <div class="space-y-1.5">
-              <Label for="epay-callback-base">回调站点根地址</Label>
+              <Label for="gateway-callback-base">回调站点根地址</Label>
               <Input
-                id="epay-callback-base"
+                id="gateway-callback-base"
                 v-model="form.callback_base_url"
                 :placeholder="defaultCallbackBaseUrl || 'https://aether.example.com'"
               />
@@ -95,27 +108,27 @@
             </div>
 
             <div class="space-y-1.5">
-              <Label for="epay-merchant-id">商户 ID</Label>
+              <Label for="gateway-merchant-id">{{ activeProviderMeta.merchantIdLabel }}</Label>
               <Input
-                id="epay-merchant-id"
+                id="gateway-merchant-id"
                 v-model="form.merchant_id"
-                placeholder="1000"
+                :placeholder="activeProviderMeta.merchantIdPlaceholder"
                 autocomplete="off"
               />
             </div>
 
             <div class="space-y-1.5">
-              <Label for="epay-merchant-key">
-                商户密钥
+              <Label for="gateway-merchant-key">
+                {{ activeProviderMeta.secretLabel }}
                 <span class="text-xs font-normal text-muted-foreground">
                   {{ hasSecret ? '（留空保持不变）' : '' }}
                 </span>
               </Label>
               <Input
-                id="epay-merchant-key"
+                id="gateway-merchant-key"
                 v-model="form.merchant_key"
                 masked
-                :placeholder="hasSecret ? '已设置，输入新密钥后覆盖' : '请输入商户密钥'"
+                :placeholder="hasSecret ? '已设置，输入新密钥后覆盖' : activeProviderMeta.secretPlaceholder"
               />
             </div>
           </div>
@@ -123,22 +136,22 @@
 
         <CardSection
           title="计费参数"
-          description="用户充值按美元金额下单，易支付按这里的币种和汇率收款"
+          description="用户充值按美元金额下单，支付网关按这里的币种和汇率收款"
         >
           <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
             <div class="space-y-1.5">
-              <Label for="epay-currency">支付币种</Label>
+              <Label for="gateway-currency">支付币种</Label>
               <Input
-                id="epay-currency"
+                id="gateway-currency"
                 v-model="form.pay_currency"
                 maxlength="16"
                 placeholder="CNY"
               />
             </div>
             <div class="space-y-1.5">
-              <Label for="epay-rate">USD 汇率</Label>
+              <Label for="gateway-rate">USD 汇率</Label>
               <Input
-                id="epay-rate"
+                id="gateway-rate"
                 v-model.number="form.usd_exchange_rate"
                 type="number"
                 min="0.0001"
@@ -146,9 +159,9 @@
               />
             </div>
             <div class="space-y-1.5">
-              <Label for="epay-min">最低充值金额 (USD)</Label>
+              <Label for="gateway-min">最低充值金额 (USD)</Label>
               <Input
-                id="epay-min"
+                id="gateway-min"
                 v-model.number="form.min_recharge_usd"
                 type="number"
                 min="0.01"
@@ -159,6 +172,7 @@
         </CardSection>
 
         <CardSection
+          v-if="activeProvider === 'epay'"
           title="支付通道"
           description="通道值会传给易支付 type 字段"
         >
@@ -224,7 +238,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { PlugZap, Plus, Save, Trash2 } from 'lucide-vue-next'
-import { epayGatewayApi, type EpayChannelConfig } from '@/api/billing'
+import {
+  dodopayGatewayApi,
+  epayGatewayApi,
+  type EpayChannelConfig,
+  type PaymentGatewayProvider,
+  type UpdatePaymentGatewayConfigRequest,
+} from '@/api/billing'
 import {
   Badge,
   Button,
@@ -246,6 +266,46 @@ const saving = ref(false)
 const testing = ref(false)
 const hasSecret = ref(false)
 const updatedAt = ref<number | null>(null)
+const activeProvider = ref<PaymentGatewayProvider>('epay')
+
+const providerTabs: Array<{
+  id: PaymentGatewayProvider
+  name: string
+  endpointLabel: string
+  endpointPlaceholder: string
+  merchantIdLabel: string
+  merchantIdPlaceholder: string
+  secretLabel: string
+  secretPlaceholder: string
+  description: string
+}> = [
+  {
+    id: 'epay',
+    name: '易支付',
+    endpointLabel: '易支付接口地址',
+    endpointPlaceholder: 'https://pay.example.com/submit.php',
+    merchantIdLabel: '商户 ID',
+    merchantIdPlaceholder: '1000',
+    secretLabel: '商户密钥',
+    secretPlaceholder: '请输入商户密钥',
+    description: '密钥留空会保留原密钥；回调地址留空时后端会使用当前 API 访问地址，生产环境建议显式填写公网根地址',
+  },
+  {
+    id: 'dodopay',
+    name: 'DoDoPay',
+    endpointLabel: 'DoDoPay 服务地址',
+    endpointPlaceholder: 'https://pay.dodododo.org',
+    merchantIdLabel: '应用 ID',
+    merchantIdPlaceholder: 'app_xxxxx',
+    secretLabel: '应用密钥',
+    secretPlaceholder: '请输入 DoDoPay 应用密钥',
+    description: '保存 DoDoPay 应用 ID 和应用密钥后，用户可以通过 DoDoPay 支付钱包充值和套餐订单',
+  },
+]
+
+const activeProviderMeta = computed(
+  () => providerTabs.find((provider) => provider.id === activeProvider.value) || providerTabs[0]
+)
 
 const form = reactive({
   enabled: false,
@@ -262,6 +322,10 @@ const form = reactive({
   ] as EpayChannelConfig[],
 })
 
+function activeGatewayApi() {
+  return activeProvider.value === 'dodopay' ? dodopayGatewayApi : epayGatewayApi
+}
+
 const updatedAtText = computed(() => {
   if (!updatedAt.value) return ''
   return new Date(updatedAt.value * 1000).toLocaleString('zh-CN')
@@ -276,10 +340,16 @@ onMounted(() => {
   void loadConfig()
 })
 
+async function selectProvider(provider: PaymentGatewayProvider) {
+  if (activeProvider.value === provider) return
+  activeProvider.value = provider
+  await loadConfig()
+}
+
 async function loadConfig() {
   loading.value = true
   try {
-    const config = await epayGatewayApi.get()
+    const config = await activeGatewayApi().get()
     form.enabled = config.enabled
     form.endpoint_url = config.endpoint_url || ''
     form.callback_base_url = config.callback_base_url || ''
@@ -290,15 +360,17 @@ async function loadConfig() {
     form.min_recharge_usd = Number(config.min_recharge_usd || 1)
     form.channels = config.channels?.length
       ? config.channels.map((item) => ({ ...item }))
-      : [
-          { channel: 'alipay', display_name: '支付宝' },
-          { channel: 'wxpay', display_name: '微信支付' },
-        ]
+      : activeProvider.value === 'epay'
+        ? [
+            { channel: 'alipay', display_name: '支付宝' },
+            { channel: 'wxpay', display_name: '微信支付' },
+          ]
+        : []
     hasSecret.value = config.has_secret
     updatedAt.value = config.updated_at ?? null
   } catch (err) {
-    log.error('加载易支付配置失败:', err)
-    showError(parseApiError(err, '加载易支付配置失败'))
+    log.error(`加载${activeProviderMeta.value.name}配置失败:`, err)
+    showError(parseApiError(err, `加载${activeProviderMeta.value.name}配置失败`))
   } finally {
     loading.value = false
   }
@@ -314,9 +386,11 @@ function normalizeChannels(): EpayChannelConfig[] {
 }
 
 function validateForm(): string | null {
-  if (!form.endpoint_url.trim()) return '请输入易支付接口地址'
-  if (!form.merchant_id.trim()) return '请输入商户 ID'
-  if (!hasSecret.value && !form.merchant_key.trim()) return '首次配置需要填写商户密钥'
+  if (!form.endpoint_url.trim()) return `请输入${activeProviderMeta.value.endpointLabel}`
+  if (!form.merchant_id.trim()) return `请输入${activeProviderMeta.value.merchantIdLabel}`
+  if (!hasSecret.value && !form.merchant_key.trim()) {
+    return `首次配置需要填写${activeProviderMeta.value.secretLabel}`
+  }
   if (!form.pay_currency.trim()) return '请输入支付币种'
   if (!Number.isFinite(Number(form.usd_exchange_rate)) || Number(form.usd_exchange_rate) <= 0) {
     return 'USD 汇率必须大于 0'
@@ -324,7 +398,7 @@ function validateForm(): string | null {
   if (!Number.isFinite(Number(form.min_recharge_usd)) || Number(form.min_recharge_usd) <= 0) {
     return '最低充值金额必须大于 0'
   }
-  if (normalizeChannels().length === 0) return '至少需要一个支付通道'
+  if (activeProvider.value === 'epay' && normalizeChannels().length === 0) return '至少需要一个支付通道'
   return null
 }
 
@@ -338,7 +412,7 @@ async function saveConfig() {
   saving.value = true
   try {
     const callbackBaseUrl = form.callback_base_url.trim()
-    const payload = {
+    const payload: UpdatePaymentGatewayConfigRequest = {
       enabled: form.enabled,
       endpoint_url: form.endpoint_url.trim(),
       callback_base_url: callbackBaseUrl || null,
@@ -346,18 +420,18 @@ async function saveConfig() {
       pay_currency: form.pay_currency.trim().toUpperCase(),
       usd_exchange_rate: Number(form.usd_exchange_rate),
       min_recharge_usd: Number(form.min_recharge_usd),
-      channels: normalizeChannels(),
+      channels: activeProvider.value === 'epay' ? normalizeChannels() : [],
       ...(form.merchant_key.trim() ? { merchant_key: form.merchant_key.trim() } : {}),
     }
-    const config = await epayGatewayApi.update(payload)
+    const config = await activeGatewayApi().update(payload)
     hasSecret.value = config.has_secret
     updatedAt.value = config.updated_at ?? null
     form.callback_base_url = config.callback_base_url || ''
     form.merchant_key = ''
-    success('支付配置已保存')
+    success(`${activeProviderMeta.value.name}配置已保存`)
   } catch (err) {
-    log.error('保存易支付配置失败:', err)
-    showError(parseApiError(err, '保存易支付配置失败'))
+    log.error(`保存${activeProviderMeta.value.name}配置失败:`, err)
+    showError(parseApiError(err, `保存${activeProviderMeta.value.name}配置失败`))
   } finally {
     saving.value = false
   }
@@ -366,11 +440,11 @@ async function saveConfig() {
 async function testGateway() {
   testing.value = true
   try {
-    await epayGatewayApi.test()
-    success('易支付配置可用')
+    await activeGatewayApi().test()
+    success(`${activeProviderMeta.value.name}配置可用`)
   } catch (err) {
-    log.error('测试易支付配置失败:', err)
-    showError(parseApiError(err, '测试易支付配置失败'))
+    log.error(`测试${activeProviderMeta.value.name}配置失败:`, err)
+    showError(parseApiError(err, `测试${activeProviderMeta.value.name}配置失败`))
   } finally {
     testing.value = false
   }
