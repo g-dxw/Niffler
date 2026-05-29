@@ -86,6 +86,46 @@ where
 }
 
 #[tokio::test]
+async fn gateway_does_not_record_usage_for_unauthenticated_ai_runtime_miss() {
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::default());
+    let execution_runtime = Router::new();
+    let (execution_runtime_url, execution_runtime_handle) = start_server(execution_runtime).await;
+    let gateway_state = build_state_with_execution_runtime_override(execution_runtime_url)
+        .with_data_state_for_tests(GatewayDataState::with_usage_repository_for_tests(
+            Arc::clone(&usage_repository),
+        ))
+        .with_usage_runtime_for_tests(UsageRuntimeConfig {
+            enabled: true,
+            ..UsageRuntimeConfig::default()
+        });
+    let gateway = build_router_with_state(gateway_state);
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{gateway_url}/v1/videos"))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(TRACE_ID_HEADER, "trace-unauth-ai-runtime-miss-usage-123")
+        .body("{\"model\":\"sora-2\"}")
+        .send()
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let stored_usage = usage_repository
+        .find_by_request_id("trace-unauth-ai-runtime-miss-usage-123")
+        .await
+        .expect("usage lookup should succeed");
+    assert!(
+        stored_usage.is_none(),
+        "unauthenticated AI requests should not appear in usage records"
+    );
+
+    gateway_handle.abort();
+    execution_runtime_handle.abort();
+}
+
+#[tokio::test]
 async fn gateway_handles_local_openai_chat_sync_report_with_local_reporting_when_usage_runtime_enabled(
 ) {
     let usage_repository = Arc::new(InMemoryUsageReadRepository::default());

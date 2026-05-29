@@ -2,7 +2,7 @@ use super::{
     any, build_router, build_router_with_execution_runtime_override, json, start_server, Arc, Body,
     HeaderValue, Json, Mutex, Request, Response, Router, StatusCode, DEPENDENCY_REASON_HEADER,
     EXECUTION_PATH_HEADER, EXECUTION_PATH_LOCAL_EXECUTION_RUNTIME_MISS,
-    LOCAL_EXECUTION_RUNTIME_MISS_REASON_HEADER, TRACE_ID_HEADER,
+    EXECUTION_PATH_LOCAL_RATE_LIMITED, LOCAL_EXECUTION_RUNTIME_MISS_REASON_HEADER, TRACE_ID_HEADER,
 };
 
 #[tokio::test]
@@ -136,6 +136,54 @@ async fn gateway_locally_denies_openai_chat_after_repeated_execution_runtime_mis
     gateway_handle.abort();
     execution_runtime_handle.abort();
     upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_rate_limits_unauthenticated_ai_requests_by_ip() {
+    let execution_runtime = Router::new();
+    let (execution_runtime_url, execution_runtime_handle) = start_server(execution_runtime).await;
+    let gateway = build_router_with_execution_runtime_override(execution_runtime_url);
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+    let client = reqwest::Client::new();
+
+    for index in 0..10 {
+        let response = client
+            .post(format!("{gateway_url}/v1/videos"))
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .header(
+                TRACE_ID_HEADER,
+                format!("trace-unauth-ai-rate-limit-{index}"),
+            )
+            .body("{\"model\":\"sora-2\"}")
+            .send()
+            .await
+            .expect("request should complete");
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    let response = client
+        .post(format!("{gateway_url}/v1/videos"))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(TRACE_ID_HEADER, "trace-unauth-ai-rate-limit-blocked")
+        .body("{\"model\":\"sora-2\"}")
+        .send()
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        response
+            .headers()
+            .get(EXECUTION_PATH_HEADER)
+            .and_then(|value| value.to_str().ok()),
+        Some(EXECUTION_PATH_LOCAL_RATE_LIMITED)
+    );
+    let payload: serde_json::Value = response.json().await.expect("body should parse");
+    assert_eq!(payload["error"]["type"], "rate_limit_exceeded");
+
+    gateway_handle.abort();
+    execution_runtime_handle.abort();
 }
 
 #[tokio::test]

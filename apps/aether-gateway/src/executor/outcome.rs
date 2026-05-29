@@ -22,6 +22,7 @@ use crate::constants::{
     EXECUTION_PATH_LOCAL_EXECUTION_RUNTIME_MISS, LOCAL_EXECUTION_RUNTIME_MISS_REASON_HEADER,
 };
 use crate::control::GatewayControlDecision;
+use crate::headers::header_value_str;
 use crate::state::LocalExecutionRuntimeMissDiagnostic;
 use crate::AppState;
 
@@ -283,6 +284,49 @@ pub(crate) async fn record_failed_usage_for_exhausted_request(
     );
 }
 
+fn record_unauthenticated_ai_security_log(
+    request_id: &str,
+    decision: Option<&GatewayControlDecision>,
+    diagnostic: Option<&LocalExecutionRuntimeMissDiagnostic>,
+    request_headers: &HeaderMap,
+    client_ip: Option<&str>,
+    request_body: Option<&Bytes>,
+    local_execution_runtime_miss_detail: &str,
+) {
+    let user_agent = header_value_str(request_headers, http::header::USER_AGENT.as_str())
+        .unwrap_or_else(|| "-".to_string());
+    let public_path = decision
+        .map(GatewayControlDecision::proxy_path_and_query)
+        .unwrap_or_else(|| "-".to_string());
+    warn!(
+        event_name = "unauthenticated_ai_request_blocked",
+        log_type = "security",
+        trace_id = %request_id,
+        client_ip = client_ip.unwrap_or("-"),
+        user_agent = user_agent.as_str(),
+        route_family = decision
+            .and_then(|value| value.route_family.as_deref())
+            .unwrap_or("unknown"),
+        route_kind = decision
+            .and_then(|value| value.route_kind.as_deref())
+            .unwrap_or("unknown"),
+        api_format = decision
+            .and_then(|value| value.auth_endpoint_signature.as_deref())
+            .unwrap_or("unknown"),
+        public_path = public_path.as_str(),
+        requested_model = diagnostic
+            .and_then(|value| value.requested_model.as_deref())
+            .unwrap_or("unknown"),
+        miss_reason = diagnostic
+            .map(|value| value.reason.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("unknown"),
+        request_body_bytes = request_body.map(Bytes::len).unwrap_or_default(),
+        detail = local_execution_runtime_miss_detail,
+        "blocked unauthenticated AI request without writing usage record"
+    );
+}
+
 pub(crate) async fn record_failed_usage_for_runtime_miss_request(
     state: &AppState,
     request_id: &str,
@@ -293,8 +337,32 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
     diagnostic: Option<&LocalExecutionRuntimeMissDiagnostic>,
     context: &LocalExecutionRuntimeMissContext,
     request_headers: &HeaderMap,
+    client_ip: Option<&str>,
     request_body: Option<&Bytes>,
 ) {
+    if context
+        .auth_user_id
+        .as_deref()
+        .unwrap_or_default()
+        .is_empty()
+        || context
+            .auth_api_key_id
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
+    {
+        record_unauthenticated_ai_security_log(
+            request_id,
+            decision,
+            diagnostic,
+            request_headers,
+            client_ip,
+            request_body,
+            local_execution_runtime_miss_detail,
+        );
+        return;
+    }
+
     if !state.usage_runtime.is_enabled() {
         return;
     }

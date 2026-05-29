@@ -312,7 +312,7 @@ async function loadRechargeOptions() {
 
 async function checkoutPlan(plan: BillingPlan) {
   if (hasMatchingActivePlan(plan)) {
-    const confirmed = window.confirm('购买成功后，同类旧套餐会自动失效。确定继续购买吗？')
+    const confirmed = window.confirm('购买后新套餐会立即生效，当前同类套餐会停止使用，剩余时间和额度不会叠加。确定继续购买吗？')
     if (!confirmed) return
   }
   checkoutLoadingPlanId.value = plan.id
@@ -399,9 +399,9 @@ function replacementNotice(plan: BillingPlan): string {
   const labels = replacementClassLabels(plan.entitlements)
   if (labels.length === 0) return ''
   if (hasMatchingActivePlan(plan)) {
-    return `你已有有效${labels.join('和')}，购买成功后旧同类套餐会自动失效。`
+    return `购买后新${labels.join('和')}会立即生效，当前同类套餐会停止使用，剩余时间和额度不会叠加。`
   }
-  return `若已有有效${labels.join('和')}，购买成功后旧同类套餐会自动失效。`
+  return `购买后立即生效；若你已有同类套餐，新套餐会替换旧套餐，剩余时间和额度不会叠加。`
 }
 
 function entitlementLabels(items: BillingEntitlementsInput): string[] {

@@ -93,6 +93,20 @@ const EXECUTION_PATH_TUNNEL_AFFINITY_FORWARD: &str = "tunnel_affinity_forward";
 const MANAGEMENT_TOKEN_PREFIX: &str = "ae-";
 const LEGACY_MANAGEMENT_TOKEN_PREFIX: &str = "ae_";
 
+fn client_ip_for_security_logs(
+    parts: &http::request::Parts,
+    remote_addr: &std::net::SocketAddr,
+) -> String {
+    parts
+        .extensions
+        .get::<crate::middleware::CfConnectingIp>()
+        .map(|value| value.0.clone())
+        .or_else(|| {
+            request_origin_from_headers_and_remote_addr(&parts.headers, remote_addr).client_ip
+        })
+        .unwrap_or_else(|| remote_addr.ip().to_string())
+}
+
 fn build_request_body_normalization_error_response(
     trace_id: &str,
     request_context: &GatewayPublicRequestContext,
@@ -986,6 +1000,55 @@ pub(crate) async fn proxy_request(
         &mut request_context,
     )
     .await?;
+    let client_ip = client_ip_for_security_logs(&parts, &remote_addr);
+    if let Some(rejection) = crate::rate_limit::check_unauthenticated_ai_ip_rate_limit(
+        &state,
+        request_context.control_decision.as_ref(),
+        client_ip.as_str(),
+    )
+    .await?
+    {
+        let path_and_query = parts
+            .uri
+            .path_and_query()
+            .map(|value| value.as_str())
+            .unwrap_or("/");
+        warn!(
+            event_name = "unauthenticated_ai_request_rate_limited",
+            log_type = "security",
+            trace_id = %trace_id,
+            method = %parts.method,
+            path = %path_and_query,
+            client_ip = %client_ip,
+            route_family = request_context
+                .control_decision
+                .as_ref()
+                .and_then(|decision| decision.route_family.as_deref())
+                .unwrap_or("unknown"),
+            route_kind = request_context
+                .control_decision
+                .as_ref()
+                .and_then(|decision| decision.route_kind.as_deref())
+                .unwrap_or("unknown"),
+            limit = rejection.limit,
+            retry_after = rejection.retry_after,
+            "gateway rate limited unauthenticated AI request"
+        );
+        let response = build_local_user_rpm_limited_response(
+            &trace_id,
+            request_context.control_decision.as_ref(),
+            &rejection,
+        )?;
+        return Ok(finalize_gateway_response_with_context(
+            &state,
+            response,
+            &remote_addr,
+            &request_context,
+            EXECUTION_PATH_LOCAL_RATE_LIMITED,
+            &started_at,
+            request_permit.take(),
+        ));
+    }
     let request_context_ms = request_context_started_at.elapsed().as_millis() as u64;
     if request_context
         .control_decision
@@ -1635,6 +1698,7 @@ pub(crate) async fn proxy_request(
                 local_execution_runtime_miss_diagnostic.as_ref(),
                 &local_execution_runtime_miss_context,
                 &parts.headers,
+                Some(client_ip.as_str()),
                 Some(buffered_body),
             )
             .await;

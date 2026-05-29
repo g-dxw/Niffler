@@ -14,6 +14,9 @@ use crate::{AppState, GatewayError};
 const SYSTEM_RPM_CONFIG_KEY: &str = "rate_limit_per_minute";
 const SYSTEM_RPM_CONFIG_CACHE_TTL: Duration = Duration::from_secs(15);
 const SYSTEM_RPM_CONFIG_CACHE_MAX_ENTRIES: usize = 8;
+const UNAUTHENTICATED_AI_RPM_LIMIT: u32 = 10;
+const UNAUTHENTICATED_AI_RPM_BUCKET_SECONDS: u64 = 60;
+const UNAUTHENTICATED_AI_RPM_TTL_SECONDS: u64 = 120;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrontdoorUserRpmConfig {
@@ -87,6 +90,62 @@ pub(crate) enum FrontdoorUserRpmOutcome {
     NotApplicable,
     Allowed,
     Rejected(FrontdoorUserRpmRejection),
+}
+
+pub(crate) async fn check_unauthenticated_ai_ip_rate_limit(
+    state: &AppState,
+    decision: Option<&GatewayControlDecision>,
+    client_ip: &str,
+) -> Result<Option<FrontdoorUserRpmRejection>, GatewayError> {
+    let Some(decision) = decision else {
+        return Ok(None);
+    };
+    if decision.route_class.as_deref() != Some("ai_public") {
+        return Ok(None);
+    }
+    if decision.auth_context.is_some() || decision.local_auth_rejection.is_some() {
+        return Ok(None);
+    }
+    let client_ip = client_ip.trim();
+    if client_ip.is_empty() {
+        return Ok(None);
+    }
+
+    let now_ts = current_unix_secs();
+    let bucket = now_ts / UNAUTHENTICATED_AI_RPM_BUCKET_SECONDS;
+    let retry_after = {
+        let elapsed = now_ts % UNAUTHENTICATED_AI_RPM_BUCKET_SECONDS;
+        (UNAUTHENTICATED_AI_RPM_BUCKET_SECONDS - elapsed).max(1)
+    };
+    let scope_key = format!("rpm:unauth_ai:ip:{client_ip}:{bucket}");
+    let outcome = state
+        .runtime_state
+        .check_and_consume_rate_limit(RateLimitInput {
+            user_key: scope_key.as_str(),
+            key_key: scope_key.as_str(),
+            bucket,
+            user_limit: UNAUTHENTICATED_AI_RPM_LIMIT,
+            key_limit: 0,
+            ttl_seconds: UNAUTHENTICATED_AI_RPM_TTL_SECONDS,
+        })
+        .await;
+
+    match outcome {
+        Ok(RateLimitCheck::Allowed { .. }) => Ok(None),
+        Ok(RateLimitCheck::Rejected { limit, .. }) => Ok(Some(FrontdoorUserRpmRejection {
+            scope: "ip",
+            limit,
+            retry_after,
+        })),
+        Err(err) => {
+            warn!(
+                error = ?err,
+                client_ip,
+                "unauthenticated AI IP rate limit check failed"
+            );
+            Ok(None)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
