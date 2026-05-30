@@ -740,47 +740,43 @@
                   :placeholder="loadingGlobalModels ? '正在加载模型...' : '选择这个套餐可以使用的模型'"
                   empty-text="暂无可选模型"
                 />
-                <div class="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-                  <Select
-                    v-model="selectedProviderModelSourceId"
-                    :disabled="loadingProviders || providerModelSourceOptions.length === 0"
+                <div
+                  v-if="loadingProviders || providerModelSourceOptions.length > 0"
+                  class="rounded-xl border border-border/60 bg-muted/20 p-3"
+                >
+                  <div class="mb-2 text-xs font-medium text-muted-foreground">
+                    按提供商快速勾选
+                  </div>
+                  <div
+                    v-if="loadingProviders"
+                    class="text-xs text-muted-foreground"
                   >
-                    <SelectTrigger class="h-9 rounded-xl bg-muted/70 px-3">
-                      <SelectValue :placeholder="loadingProviders ? '正在加载提供商...' : '按提供商批量选择'" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem
-                        v-for="provider in providerModelSourceOptions"
-                        :key="provider.value"
-                        :value="provider.value"
-                      >
-                        {{ provider.label }}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="h-9 rounded-xl"
-                    :disabled="providerModelIdsForSelection.length === 0"
-                    @click="addProviderModelsToPlan"
+                    正在加载提供商...
+                  </div>
+                  <div
+                    v-else
+                    class="flex flex-wrap gap-2"
                   >
-                    加入模型
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="h-9 rounded-xl"
-                    :disabled="providerModelIdsForSelection.length === 0"
-                    @click="replacePlanModelsWithProvider"
-                  >
-                    只用这些模型
-                  </Button>
+                    <button
+                      v-for="provider in providerModelSourceOptions"
+                      :key="provider.id"
+                      type="button"
+                      class="rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+                      :class="[
+                        provider.allSelected
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : provider.someSelected
+                            ? 'border-primary/60 bg-primary/10 text-primary'
+                            : 'border-border/60 bg-background text-muted-foreground hover:border-border hover:bg-muted/40'
+                      ]"
+                      @click="toggleProviderModels(provider)"
+                    >
+                      {{ provider.name }} · {{ provider.selectedCount }}/{{ provider.modelIds.length }}
+                    </button>
+                  </div>
                 </div>
                 <p class="text-xs leading-5 text-muted-foreground">
-                  这项只限制套餐额度。按提供商批量选择只是帮你勾选模型，保存后仍是固定模型列表。
+                  这里决定哪些模型可以使用这个套餐额度。点上面的提供商按钮，只是快速勾选或取消它下面的模型。
                 </p>
               </div>
               <div class="space-y-1.5">
@@ -993,7 +989,6 @@ const providers = ref<ProviderWithEndpointsSummary[]>([])
 const loadingGlobalModels = ref(false)
 const loadingProviders = ref(false)
 const manualGroupId = ref('')
-const selectedProviderModelSourceId = ref('')
 
 const form = reactive<PlanFormState>(buildDefaultForm())
 
@@ -1019,24 +1014,24 @@ const globalModelOptions = computed(() => {
   return [...loadedOptions, ...missingOptions]
 })
 
-const providerModelSourceOptions = computed(() =>
-  providers.value
-    .filter((provider) => provider.global_model_ids.length > 0)
-    .map((provider) => ({
-      value: provider.id,
-      label: `${provider.name} · ${provider.global_model_ids.length} 个模型`,
-    }))
-)
-
-const selectedProviderModelSource = computed(() =>
-  providers.value.find((provider) => provider.id === selectedProviderModelSourceId.value) || null
-)
-
-const providerModelIdsForSelection = computed(() => {
-  const provider = selectedProviderModelSource.value
-  if (!provider) return []
+const providerModelSourceOptions = computed(() => {
   const activeModelIds = new Set(globalModels.value.map((model) => model.id))
-  return provider.global_model_ids.filter((id) => activeModelIds.has(id))
+  const selectedModelIds = new Set(form.allowed_global_model_ids)
+
+  return providers.value
+    .map((provider) => {
+      const modelIds = provider.global_model_ids.filter((id) => activeModelIds.has(id))
+      const selectedCount = modelIds.filter((id) => selectedModelIds.has(id)).length
+      return {
+        id: provider.id,
+        name: provider.name,
+        modelIds,
+        selectedCount,
+        allSelected: modelIds.length > 0 && selectedCount === modelIds.length,
+        someSelected: selectedCount > 0,
+      }
+    })
+    .filter((provider) => provider.modelIds.length > 0)
 })
 
 const priceCurrencyOptions = computed(() => {
@@ -1332,12 +1327,6 @@ async function loadProviders() {
       { cacheTtlMs: 10 * 1000 },
     )
     providers.value = response.items
-    if (
-      selectedProviderModelSourceId.value
-      && !response.items.some((provider) => provider.id === selectedProviderModelSourceId.value)
-    ) {
-      selectedProviderModelSourceId.value = ''
-    }
   } catch (err) {
     log.error('加载提供商失败:', err)
     showError(parseApiError(err, '加载提供商失败'))
@@ -1346,23 +1335,24 @@ async function loadProviders() {
   }
 }
 
-function addProviderModelsToPlan() {
+function toggleProviderModels(provider: { modelIds: string[], allSelected: boolean }) {
   const nextIds = new Set(form.allowed_global_model_ids)
-  for (const modelId of providerModelIdsForSelection.value) {
-    nextIds.add(modelId)
+  if (provider.allSelected) {
+    for (const modelId of provider.modelIds) {
+      nextIds.delete(modelId)
+    }
+  } else {
+    for (const modelId of provider.modelIds) {
+      nextIds.add(modelId)
+    }
   }
   form.allowed_global_model_ids = Array.from(nextIds)
-}
-
-function replacePlanModelsWithProvider() {
-  form.allowed_global_model_ids = [...providerModelIdsForSelection.value]
 }
 
 function openCreateDialog() {
   editingPlan.value = null
   assignForm(buildDefaultForm())
   manualGroupId.value = ''
-  selectedProviderModelSourceId.value = ''
   dialogOpen.value = true
 }
 
@@ -1370,7 +1360,6 @@ function openEditDialog(plan: BillingPlan) {
   editingPlan.value = plan
   assignForm(formFromPlan(plan))
   manualGroupId.value = ''
-  selectedProviderModelSourceId.value = ''
   dialogOpen.value = true
 }
 

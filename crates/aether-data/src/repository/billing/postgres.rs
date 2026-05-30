@@ -1003,6 +1003,44 @@ ORDER BY expires_at ASC, created_at ASC
         ))
     }
 
+    async fn cancel_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+    ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET
+  status = 'cancelled',
+  expires_at = LEAST(expires_at, NOW()),
+  updated_at = NOW()
+WHERE id = $1
+  AND user_id = $2
+  AND status = 'active'
+  AND expires_at > NOW()
+RETURNING
+  id, user_id, plan_id, payment_order_id, status,
+  CAST(EXTRACT(EPOCH FROM starts_at) AS BIGINT) AS starts_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs,
+  entitlements_snapshot,
+  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM updated_at) AS BIGINT) AS updated_at_unix_secs
+            "#,
+        )
+        .bind(entitlement_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_postgres_err()?;
+        match row {
+            Some(row) => Ok(AdminBillingMutationOutcome::Applied(
+                map_user_plan_entitlement_row(&row)?,
+            )),
+            None => Ok(AdminBillingMutationOutcome::NotFound),
+        }
+    }
+
     async fn find_user_daily_quota_availability(
         &self,
         user_id: &str,

@@ -4,6 +4,7 @@ use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY}
 use aether_data::repository::auth::{
     InMemoryAuthApiKeySnapshotRepository, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
 };
+use aether_data::repository::billing::InMemoryBillingReadRepository;
 use aether_data::repository::usage::InMemoryUsageReadRepository;
 use aether_data::repository::users::{
     InMemoryUserReadRepository, StoredUserAuthRecord, StoredUserExportRow, UpsertUserGroupRecord,
@@ -11,6 +12,7 @@ use aether_data::repository::users::{
 };
 use aether_data::repository::wallet::InMemoryWalletRepository;
 use aether_data::repository::wallet::StoredWalletSnapshot;
+use aether_data_contracts::repository::billing::{BillingPlanRecord, UserPlanEntitlementRecord};
 use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
 use axum::body::Body;
 use axum::routing::{any, delete, get, patch, post, put};
@@ -128,6 +130,50 @@ fn sample_admin_wallet(user_id: &str, limit_mode: &str) -> StoredWalletSnapshot 
         1_710_000_000,
     )
     .expect("wallet should build")
+}
+
+fn sample_billing_plan(plan_id: &str) -> BillingPlanRecord {
+    BillingPlanRecord {
+        id: plan_id.to_string(),
+        title: "测试套餐".to_string(),
+        description: None,
+        price_amount: 9.9,
+        price_currency: "CNY".to_string(),
+        duration_unit: "day".to_string(),
+        duration_value: 1,
+        enabled: true,
+        sort_order: 0,
+        max_active_per_user: 1,
+        purchase_limit_scope: "same_entitlement_type".to_string(),
+        entitlements_json: json!([{
+            "type": "daily_quota",
+            "daily_quota_usd": 100.0
+        }]),
+        created_at_unix_secs: 1_711_000_000,
+        updated_at_unix_secs: 1_711_000_000,
+    }
+}
+
+fn sample_user_plan_entitlement(
+    entitlement_id: &str,
+    user_id: &str,
+    plan_id: &str,
+) -> UserPlanEntitlementRecord {
+    UserPlanEntitlementRecord {
+        id: entitlement_id.to_string(),
+        user_id: user_id.to_string(),
+        plan_id: plan_id.to_string(),
+        payment_order_id: format!("order-{entitlement_id}"),
+        status: "active".to_string(),
+        starts_at_unix_secs: 1_711_000_000,
+        expires_at_unix_secs: 4_102_444_800,
+        entitlements_snapshot: json!([{
+            "type": "daily_quota",
+            "daily_quota_usd": 100.0
+        }]),
+        created_at_unix_secs: 1_711_000_000,
+        updated_at_unix_secs: 1_711_000_000,
+    }
 }
 
 fn sample_usage_row(
@@ -449,6 +495,98 @@ async fn gateway_handles_admin_users_root_locally_with_trusted_admin_principal()
     );
 
     create_gateway_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_cancels_admin_user_plan_entitlement_locally() {
+    let upstream_hits = Arc::new(Mutex::new(0usize));
+    let upstream_hits_clone = Arc::clone(&upstream_hits);
+    let upstream = Router::new().fallback(any(move |_request: Request| {
+        let upstream_hits_inner = Arc::clone(&upstream_hits_clone);
+        async move {
+            *upstream_hits_inner.lock().expect("mutex should lock") += 1;
+            (StatusCode::OK, Body::from("unexpected upstream hit"))
+        }
+    }));
+
+    let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![
+        sample_admin_user("user-1"),
+    ]));
+    let billing_repository = Arc::new(
+        InMemoryBillingReadRepository::default()
+            .with_billing_plans(vec![sample_billing_plan("plan-1")])
+            .with_user_plan_entitlements(vec![sample_user_plan_entitlement(
+                "entitlement-1",
+                "user-1",
+                "plan-1",
+            )]),
+    );
+
+    let (upstream_url, upstream_handle) = start_server(upstream).await;
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_billing_reader_for_tests(billing_repository)
+                    .with_user_reader(user_repository),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+    let client = reqwest::Client::new();
+
+    let cancel_response = client
+        .delete(format!(
+            "{gateway_url}/api/admin/users/user-1/billing/entitlements/entitlement-1"
+        ))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(cancel_response.status(), StatusCode::OK);
+    let cancel_payload: serde_json::Value = cancel_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(cancel_payload["cancelled"]["id"], "entitlement-1");
+    assert_eq!(cancel_payload["cancelled"]["status"], "cancelled");
+    assert_eq!(cancel_payload["total"], 0);
+    assert_eq!(cancel_payload["items"], json!([]));
+
+    let list_response = client
+        .get(format!(
+            "{gateway_url}/api/admin/users/user-1/billing/entitlements"
+        ))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_payload: serde_json::Value =
+        list_response.json().await.expect("json body should parse");
+    assert_eq!(list_payload["total"], 0);
+
+    let second_cancel_response = client
+        .delete(format!(
+            "{gateway_url}/api/admin/users/user-1/billing/entitlements/entitlement-1"
+        ))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(second_cancel_response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
 }
 
 #[tokio::test]

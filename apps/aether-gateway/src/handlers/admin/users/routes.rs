@@ -1,10 +1,11 @@
 use super::{
-    build_admin_create_user_api_key_response, build_admin_create_user_group_response,
-    build_admin_create_user_response, build_admin_delete_user_api_key_response,
-    build_admin_delete_user_group_response, build_admin_delete_user_response,
-    build_admin_delete_user_session_response, build_admin_delete_user_sessions_response,
-    build_admin_get_user_response, build_admin_grant_user_billing_plan_response,
-    build_admin_list_user_api_keys_response, build_admin_list_user_billing_entitlements_response,
+    build_admin_cancel_user_billing_entitlement_response, build_admin_create_user_api_key_response,
+    build_admin_create_user_group_response, build_admin_create_user_response,
+    build_admin_delete_user_api_key_response, build_admin_delete_user_group_response,
+    build_admin_delete_user_response, build_admin_delete_user_session_response,
+    build_admin_delete_user_sessions_response, build_admin_get_user_response,
+    build_admin_grant_user_billing_plan_response, build_admin_list_user_api_keys_response,
+    build_admin_list_user_billing_entitlements_response,
     build_admin_list_user_group_members_response, build_admin_list_user_groups_response,
     build_admin_list_user_sessions_response, build_admin_list_users_response,
     build_admin_replace_user_group_members_response, build_admin_resolve_user_selection_response,
@@ -58,6 +59,10 @@ fn is_admin_users_route(request_context: &AdminRequestContext<'_>) -> bool {
             && path.starts_with("/api/admin/users/")
             && path.ends_with("/billing/grant-plan")
             && path.matches('/').count() == 6)
+        || (request_context.method() == http::Method::DELETE
+            && path.starts_with("/api/admin/users/")
+            && path.contains("/billing/entitlements/")
+            && path.matches('/').count() == 7)
         || ((request_context.method() == http::Method::GET
             || request_context.method() == http::Method::PUT
             || request_context.method() == http::Method::DELETE)
@@ -154,6 +159,9 @@ pub(super) async fn maybe_build_local_admin_users_routes_response(
         Some("grant_user_billing_plan") => Ok(Some(
             build_admin_grant_user_billing_plan_response(state, request_context, request_body)
                 .await?,
+        )),
+        Some("cancel_user_billing_entitlement") => Ok(Some(
+            build_admin_cancel_user_billing_entitlement_response(state, request_context).await?,
         )),
         Some("get_user") => Ok(Some(
             build_admin_get_user_response(state, request_context).await?,

@@ -270,6 +270,10 @@ export interface GrantUserPlanResponse extends AdminUserPlanEntitlementsResponse
   credited?: boolean
 }
 
+export interface CancelUserPlanResponse extends AdminUserPlanEntitlementsResponse {
+  cancelled?: AdminUserPlanEntitlement
+}
+
 export interface GetAllUsersOptions {
   search?: string
   role?: UserRole
@@ -418,6 +422,16 @@ export const usersApi = {
     const response = await apiClient.post<GrantUserPlanResponse>(
       `/api/admin/users/${userId}/billing/grant-plan`,
       payload
+    )
+    return response.data
+  },
+
+  async cancelUserPlanEntitlement(
+    userId: string,
+    entitlementId: string
+  ): Promise<CancelUserPlanResponse> {
+    const response = await apiClient.delete<CancelUserPlanResponse>(
+      `/api/admin/users/${userId}/billing/entitlements/${entitlementId}`
     )
     return response.data
   },

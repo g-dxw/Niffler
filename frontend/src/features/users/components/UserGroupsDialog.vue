@@ -136,7 +136,7 @@
                   step="0.01"
                   class="h-10"
                   placeholder="1 = 按官方价扣费"
-                  @update:model-value="(value) => form.sales_multiplier = parseNumberInput(value, { min: 0, max: 100 }) ?? 1"
+                  @update:model-value="(value) => form.sales_multiplier = parseNumberInput(value, { allowFloat: true, min: 0, max: 100 }) ?? 1"
                 />
               </div>
             </div>

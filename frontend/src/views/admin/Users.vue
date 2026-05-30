@@ -872,7 +872,7 @@
 
       <div class="max-h-[64vh] space-y-4 overflow-y-auto">
         <div class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100/90">
-          后台发放会立即生效；如果新套餐包含每日额度或会员权益，用户已有的同类旧套餐会自动失效。
+          后台发放会立即生效；取消套餐会立即停用额度和会员权益，不删除历史订单。
         </div>
 
         <section class="space-y-2.5">
@@ -936,9 +936,19 @@
                     </Badge>
                   </div>
                 </div>
-                <div class="text-left text-[11px] text-muted-foreground sm:text-right">
+                <div class="space-y-2 text-left text-[11px] text-muted-foreground sm:text-right">
                   <div>开始：{{ formatDateTime(item.starts_at) }}</div>
                   <div>到期：{{ formatDateTime(item.expires_at) }}</div>
+                  <Button
+                    v-if="item.active"
+                    variant="outline"
+                    size="sm"
+                    class="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                    :disabled="cancellingUserPlanEntitlementId === item.id"
+                    @click="cancelUserPlanEntitlement(item)"
+                  >
+                    {{ cancellingUserPlanEntitlementId === item.id ? '取消中...' : '取消套餐' }}
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1652,6 +1662,7 @@ const loadingUserSessions = ref(false)
 const loadingUserPlans = ref(false)
 const loadingBillingPlans = ref(false)
 const grantingUserPlan = ref(false)
+const cancellingUserPlanEntitlementId = ref<string | null>(null)
 const sessionDialogActionLoading = ref<string | null>(null)
 const apiKeyInput = ref<HTMLInputElement>()
 const editingUserApiKey = ref<ApiKey | null>(null)
@@ -2310,6 +2321,28 @@ async function grantPlanToSelectedUser() {
     error(parseApiError(err, '发放套餐失败'))
   } finally {
     grantingUserPlan.value = false
+  }
+}
+
+async function cancelUserPlanEntitlement(item: AdminUserPlanEntitlement): Promise<void> {
+  if (!selectedUser.value || !item.active) return
+  const planName = item.plan_title || item.plan?.title || item.plan_id
+  const confirmed = await confirmDanger(
+    `确定取消 ${selectedUser.value.username} 的「${planName}」吗？取消后额度和会员权益会立即停用，历史订单仍会保留。`,
+    '取消套餐',
+    '确认取消'
+  )
+  if (!confirmed) return
+
+  cancellingUserPlanEntitlementId.value = item.id
+  try {
+    const response = await usersApi.cancelUserPlanEntitlement(selectedUser.value.id, item.id)
+    userPlanEntitlements.value = response.items
+    success('套餐已取消')
+  } catch (err) {
+    error(parseApiError(err, '取消套餐失败'))
+  } finally {
+    cancellingUserPlanEntitlementId.value = null
   }
 }
 

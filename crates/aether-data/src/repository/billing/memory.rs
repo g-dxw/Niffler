@@ -45,6 +45,38 @@ impl InMemoryBillingReadRepository {
             entitlements_by_id: RwLock::new(BTreeMap::new()),
         }
     }
+
+    pub fn with_billing_plans<I>(self, plans: I) -> Self
+    where
+        I: IntoIterator<Item = BillingPlanRecord>,
+    {
+        {
+            let mut records = self
+                .billing_plans_by_id
+                .write()
+                .expect("billing repository lock");
+            for plan in plans {
+                records.insert(plan.id.clone(), plan);
+            }
+        }
+        self
+    }
+
+    pub fn with_user_plan_entitlements<I>(self, entitlements: I) -> Self
+    where
+        I: IntoIterator<Item = UserPlanEntitlementRecord>,
+    {
+        {
+            let mut records = self
+                .entitlements_by_id
+                .write()
+                .expect("billing repository lock");
+            for entitlement in entitlements {
+                records.insert(entitlement.id.clone(), entitlement);
+            }
+        }
+        self
+    }
 }
 
 fn current_unix_secs() -> u64 {
@@ -387,6 +419,31 @@ impl BillingReadRepository for InMemoryBillingReadRepository {
             .collect::<Vec<_>>();
         items.sort_by_key(|item| item.expires_at_unix_secs);
         Ok(Some(items))
+    }
+
+    async fn cancel_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+    ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, DataLayerError> {
+        let now = current_unix_secs();
+        let mut records = self
+            .entitlements_by_id
+            .write()
+            .expect("billing repository lock");
+        let Some(record) = records.get_mut(entitlement_id) else {
+            return Ok(AdminBillingMutationOutcome::NotFound);
+        };
+        if record.user_id != user_id
+            || record.status != "active"
+            || record.expires_at_unix_secs <= now
+        {
+            return Ok(AdminBillingMutationOutcome::NotFound);
+        }
+        record.status = "cancelled".to_string();
+        record.expires_at_unix_secs = record.expires_at_unix_secs.min(now);
+        record.updated_at_unix_secs = now;
+        Ok(AdminBillingMutationOutcome::Applied(record.clone()))
     }
 
     async fn find_user_daily_quota_availability(

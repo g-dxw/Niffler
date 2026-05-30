@@ -2,7 +2,7 @@ use super::{build_admin_users_bad_request_response, build_admin_users_data_unava
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::{attach_admin_audit_response, unix_secs_to_rfc3339};
 use crate::handlers::shared::unix_ms_to_rfc3339;
-use crate::GatewayError;
+use crate::{GatewayError, LocalMutationOutcome};
 use aether_data_contracts::repository::billing::{BillingPlanRecord, UserPlanEntitlementRecord};
 use axum::{
     body::{Body, Bytes},
@@ -45,6 +45,25 @@ fn admin_user_id_from_billing_path(request_path: &str, suffix: &str) -> Option<S
     } else {
         Some(user_id.to_string())
     }
+}
+
+fn admin_user_and_entitlement_id_from_billing_path(request_path: &str) -> Option<(String, String)> {
+    let trimmed = request_path.trim_end_matches('/');
+    let rest = trimmed.strip_prefix("/api/admin/users/")?;
+    let mut parts = rest.split('/');
+    let user_id = parts.next()?;
+    let billing = parts.next()?;
+    let entitlements = parts.next()?;
+    let entitlement_id = parts.next()?;
+    if parts.next().is_some()
+        || user_id.is_empty()
+        || entitlement_id.is_empty()
+        || billing != "billing"
+        || entitlements != "entitlements"
+    {
+        return None;
+    }
+    Some((user_id.to_string(), entitlement_id.to_string()))
 }
 
 fn admin_user_billing_operator_id(request_context: &AdminRequestContext<'_>) -> Option<String> {
@@ -311,6 +330,66 @@ pub(in super::super) async fn build_admin_list_user_billing_entitlements_respons
         Some(payload) => Ok(Json(payload).into_response()),
         None => Ok(build_admin_users_data_unavailable_response()),
     }
+}
+
+pub(in super::super) async fn build_admin_cancel_user_billing_entitlement_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    let Some((user_id, entitlement_id)) =
+        admin_user_and_entitlement_id_from_billing_path(request_context.path())
+    else {
+        return Ok(build_admin_users_bad_request_response("缺少套餐记录 ID"));
+    };
+    if state.find_user_auth_by_id(&user_id).await?.is_none() {
+        return Ok((
+            http::StatusCode::NOT_FOUND,
+            Json(json!({ "detail": "用户不存在" })),
+        )
+            .into_response());
+    }
+    let outcome = state
+        .app()
+        .cancel_user_plan_entitlement(&user_id, &entitlement_id)
+        .await?;
+    let cancelled = match outcome {
+        LocalMutationOutcome::Applied(value) => value,
+        LocalMutationOutcome::NotFound => {
+            return Ok((
+                http::StatusCode::NOT_FOUND,
+                Json(json!({ "detail": "套餐不存在或已经失效" })),
+            )
+                .into_response());
+        }
+        LocalMutationOutcome::Invalid(detail) => {
+            return Ok((
+                http::StatusCode::CONFLICT,
+                Json(json!({ "detail": detail })),
+            )
+                .into_response());
+        }
+        LocalMutationOutcome::Unavailable => {
+            return Ok(build_admin_users_data_unavailable_response());
+        }
+    };
+    let entitlements = match load_admin_user_entitlements_payload(state, &user_id).await? {
+        Some(value) => value,
+        None => return Ok(build_admin_users_data_unavailable_response()),
+    };
+    let now = Utc::now().timestamp().max(0) as u64;
+    Ok(attach_admin_audit_response(
+        Json(json!({
+            "cancelled": entitlement_payload(&cancelled, None, now),
+            "items": entitlements["items"].clone(),
+            "entitlements": entitlements["items"].clone(),
+            "total": entitlements["total"].clone(),
+        }))
+        .into_response(),
+        "admin_user_plan_cancelled",
+        "cancel_user_billing_entitlement",
+        "user",
+        &user_id,
+    ))
 }
 
 pub(in super::super) async fn build_admin_grant_user_billing_plan_response(
