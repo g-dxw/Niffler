@@ -1,5 +1,6 @@
 use axum::body::Bytes;
 use axum::http::Uri;
+use std::time::Duration;
 
 use super::super::GatewayControlDecision;
 use super::credentials::{contains_string, extract_requested_model};
@@ -7,6 +8,8 @@ use super::GatewayControlAuthContext;
 use crate::{AppState, GatewayError};
 
 const DAILY_QUOTA_EPSILON_USD: f64 = 0.000_000_01;
+const QUOTA_AVAILABILITY_CACHE_TTL_SECS: u64 = 3;
+const UNRESOLVED_REQUESTED_MODEL_QUOTA_SCOPE: &str = "__niffler_unresolved_requested_model__";
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GatewayLocalAuthRejection {
@@ -63,29 +66,48 @@ pub(crate) async fn request_model_local_rejection(
         return Ok(None);
     };
     let requested_model = extract_requested_model(decision, uri, headers, body);
+    let mut requested_global_model_id = None::<String>;
+    let mut scoped_quota = None;
     if let (Some(allowed_models), Some(requested_model)) = (
         auth_context.allowed_models.as_deref(),
         requested_model.as_deref(),
     ) {
-        if !contains_string(allowed_models, requested_model)
-            && !model_directive_base_model_is_allowed_for_request(
+        let group_allows_model = contains_string(allowed_models, requested_model)
+            || model_directive_base_model_is_allowed_for_request(
                 state,
                 decision,
                 requested_model,
                 allowed_models,
             )
             .await
-            && !request_model_resolves_to_allowed_model(
+            || request_model_resolves_to_allowed_model(
                 state,
                 decision,
                 requested_model,
                 allowed_models,
             )
+            .await?;
+        if !group_allows_model {
+            requested_global_model_id =
+                resolve_requested_global_model_id_for_request(state, decision, requested_model)
+                    .await?;
+            if requested_global_model_id.is_none() {
+                return Ok(Some(GatewayLocalAuthRejection::ModelNotAllowed {
+                    model: requested_model.to_string(),
+                }));
+            }
+            scoped_quota = load_user_daily_quota_availability(
+                state,
+                &auth_context.user_id,
+                requested_global_model_id.as_deref(),
+            )
             .await?
-        {
-            return Ok(Some(GatewayLocalAuthRejection::ModelNotAllowed {
-                model: requested_model.to_string(),
-            }));
+            .filter(|quota| quota.has_active_daily_quota);
+            if !quota_allows_plan_bypass(scoped_quota.as_ref()) {
+                return Ok(Some(GatewayLocalAuthRejection::ModelNotAllowed {
+                    model: requested_model.to_string(),
+                }));
+            }
         }
     }
 
@@ -94,10 +116,125 @@ pub(crate) async fn request_model_local_rejection(
         decision,
         auth_context,
         requested_model.as_deref(),
+        requested_global_model_id,
+        scoped_quota,
         headers,
         body,
     )
     .await
+}
+
+fn quota_allows_plan_bypass(
+    quota: Option<&aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord>,
+) -> bool {
+    quota.is_some_and(|quota| quota.remaining_usd > DAILY_QUOTA_EPSILON_USD)
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct CachedQuotaAvailability {
+    value: Option<aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord>,
+}
+
+async fn load_user_daily_quota_availability(
+    state: &AppState,
+    user_id: &str,
+    global_model_id: Option<&str>,
+) -> Result<
+    Option<aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord>,
+    GatewayError,
+> {
+    let cache_key = quota_availability_cache_key(user_id, global_model_id);
+    if let Ok(Some(payload)) = state.runtime_state.kv_get(&cache_key).await {
+        if let Ok(cached) = serde_json::from_str::<CachedQuotaAvailability>(&payload) {
+            return Ok(cached.value);
+        }
+    }
+
+    let value = state
+        .find_user_daily_quota_availability_for_global_model(user_id, global_model_id)
+        .await?;
+    if let Ok(payload) = serde_json::to_string(&CachedQuotaAvailability {
+        value: value.clone(),
+    }) {
+        let _ = state
+            .runtime_state
+            .kv_set(
+                &cache_key,
+                payload,
+                Some(Duration::from_secs(QUOTA_AVAILABILITY_CACHE_TTL_SECS)),
+            )
+            .await;
+    }
+    Ok(value)
+}
+
+fn quota_availability_cache_key(user_id: &str, global_model_id: Option<&str>) -> String {
+    format!(
+        "billing:daily_quota_availability:v1:{}:{}",
+        cache_key_component(user_id),
+        cache_key_component(global_model_id.unwrap_or("__all__"))
+    )
+}
+
+fn cache_key_component(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+}
+
+async fn ensure_requested_global_model_id(
+    state: &AppState,
+    decision: &GatewayControlDecision,
+    requested_model: Option<&str>,
+    requested_global_model_id: &mut Option<String>,
+) -> Result<(), GatewayError> {
+    if requested_global_model_id.is_some() {
+        return Ok(());
+    }
+    let Some(requested_model) = requested_model else {
+        return Ok(());
+    };
+    *requested_global_model_id =
+        resolve_requested_global_model_id_for_request(state, decision, requested_model).await?;
+    Ok(())
+}
+
+async fn scoped_quota_for_request(
+    state: &AppState,
+    decision: &GatewayControlDecision,
+    auth_context: &GatewayControlAuthContext,
+    requested_model: Option<&str>,
+    requested_global_model_id: &mut Option<String>,
+    preloaded_quota: Option<
+        aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord,
+    >,
+) -> Result<
+    Option<aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord>,
+    GatewayError,
+> {
+    if let Some(quota) = preloaded_quota {
+        return Ok(Some(quota).filter(|quota| quota.has_active_daily_quota));
+    }
+
+    ensure_requested_global_model_id(state, decision, requested_model, requested_global_model_id)
+        .await?;
+    let quota_global_model_id = requested_global_model_id.as_deref().or_else(|| {
+        requested_model
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|_| UNRESOLVED_REQUESTED_MODEL_QUOTA_SCOPE)
+    });
+    load_user_daily_quota_availability(state, &auth_context.user_id, quota_global_model_id)
+        .await
+        .map(|quota| quota.filter(|quota| quota.has_active_daily_quota))
 }
 
 async fn balance_capacity_rejection(
@@ -105,6 +242,10 @@ async fn balance_capacity_rejection(
     decision: &GatewayControlDecision,
     auth_context: &GatewayControlAuthContext,
     requested_model: Option<&str>,
+    mut requested_global_model_id: Option<String>,
+    preloaded_quota: Option<
+        aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord,
+    >,
     headers: &http::HeaderMap,
     body: &Bytes,
 ) -> Result<Option<GatewayLocalAuthRejection>, GatewayError> {
@@ -114,10 +255,15 @@ async fn balance_capacity_rejection(
     if auth_context.local_rejection.is_some() {
         return Ok(None);
     }
-    let quota = state
-        .find_user_daily_quota_availability(&auth_context.user_id)
-        .await?
-        .filter(|quota| quota.has_active_daily_quota);
+    let quota = scoped_quota_for_request(
+        state,
+        decision,
+        auth_context,
+        requested_model,
+        &mut requested_global_model_id,
+        preloaded_quota,
+    )
+    .await?;
     let wallet = state
         .read_wallet_snapshot_for_auth(
             &auth_context.user_id,
@@ -449,6 +595,82 @@ async fn request_model_resolves_to_allowed_model(
     Ok(false)
 }
 
+async fn resolve_requested_global_model_id_for_request(
+    state: &AppState,
+    decision: &GatewayControlDecision,
+    requested_model: &str,
+) -> Result<Option<String>, GatewayError> {
+    let Some(client_api_format) = decision
+        .auth_endpoint_signature
+        .as_deref()
+        .map(crate::ai_serving::normalize_api_format_alias)
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+
+    for api_format in candidate_api_formats_for_model_resolution(&client_api_format) {
+        let enable_model_directives =
+            crate::system_features::reasoning_model_directive_enabled_for_api_format_and_model(
+                state,
+                &api_format,
+                Some(requested_model),
+            )
+            .await;
+        let requested_rows = state
+            .list_minimal_candidate_selection_rows_for_api_format_and_requested_model(
+                &api_format,
+                requested_model,
+            )
+            .await?;
+        let mut matching_rows = requested_rows
+            .into_iter()
+            .filter(|row| {
+                aether_scheduler_core::row_supports_requested_model_with_model_directives(
+                    row,
+                    requested_model,
+                    &api_format,
+                    enable_model_directives,
+                )
+            })
+            .collect::<Vec<_>>();
+        if matching_rows.is_empty() {
+            matching_rows = state
+                .list_minimal_candidate_selection_rows_for_api_format(&api_format)
+                .await?
+                .into_iter()
+                .filter(|row| {
+                    aether_scheduler_core::row_supports_requested_model_with_model_directives(
+                        row,
+                        requested_model,
+                        &api_format,
+                        enable_model_directives,
+                    )
+                })
+                .collect::<Vec<_>>();
+        }
+        let Some(resolved_global_model) =
+            aether_scheduler_core::resolve_requested_global_model_name_with_model_directives(
+                &matching_rows,
+                requested_model,
+                &api_format,
+                enable_model_directives,
+            )
+        else {
+            continue;
+        };
+        if let Some(row) = matching_rows
+            .iter()
+            .find(|row| row.global_model_name == resolved_global_model)
+            .or_else(|| matching_rows.first())
+        {
+            return Ok(Some(row.global_model_id.clone()));
+        }
+    }
+
+    Ok(None)
+}
+
 fn candidate_api_formats_for_model_resolution(client_api_format: &str) -> Vec<String> {
     let mut api_formats = Vec::new();
     push_unique_api_format(&mut api_formats, client_api_format);
@@ -468,6 +690,7 @@ fn push_unique_api_format(api_formats: &mut Vec<String>, api_format: &str) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
     use aether_data::repository::candidate_selection::InMemoryMinimalCandidateSelectionReadRepository;
@@ -476,7 +699,9 @@ mod tests {
         BillingReadRepository, StoredBillingModelContext, UserDailyQuotaAvailabilityRecord,
     };
     use aether_data_contracts::repository::candidate_selection::{
-        StoredMinimalCandidateSelectionRow, StoredProviderModelMapping,
+        MinimalCandidateSelectionReadRepository, StoredMinimalCandidateSelectionRow,
+        StoredPoolKeyCandidateRowsByKeyIdsQuery, StoredPoolKeyCandidateRowsQuery,
+        StoredProviderModelMapping, StoredRequestedModelCandidateRowsQuery,
     };
     use aether_data_contracts::DataLayerError;
     use async_trait::async_trait;
@@ -590,11 +815,23 @@ mod tests {
         quota: UserDailyQuotaAvailabilityRecord,
         context: StoredBillingModelContext,
     ) -> AppState {
+        state_with_quota_wallet_and_counter(quota, context, None)
+    }
+
+    fn state_with_quota_wallet_and_counter(
+        quota: UserDailyQuotaAvailabilityRecord,
+        context: StoredBillingModelContext,
+        quota_lookup_count: Option<Arc<AtomicUsize>>,
+    ) -> AppState {
         let candidate_repository =
             Arc::new(InMemoryMinimalCandidateSelectionReadRepository::seed(vec![
                 sample_row(),
             ]));
-        let billing_repository = Arc::new(FixedBillingReadRepository { quota, context });
+        let billing_repository = Arc::new(FixedBillingReadRepository {
+            quota,
+            context,
+            quota_lookup_count,
+        });
         let data = GatewayDataState::with_minimal_candidate_selection_and_billing_for_tests(
             candidate_repository,
             billing_repository,
@@ -682,6 +919,7 @@ mod tests {
     struct FixedBillingReadRepository {
         quota: UserDailyQuotaAvailabilityRecord,
         context: StoredBillingModelContext,
+        quota_lookup_count: Option<Arc<AtomicUsize>>,
     }
 
     #[async_trait]
@@ -709,6 +947,67 @@ mod tests {
             _user_id: &str,
         ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
             Ok(Some(self.quota.clone()))
+        }
+
+        async fn find_user_daily_quota_availability_for_global_model(
+            &self,
+            _user_id: &str,
+            _global_model_id: Option<&str>,
+        ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
+            if let Some(counter) = &self.quota_lookup_count {
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(Some(self.quota.clone()))
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct PanicCandidateSelectionReadRepository;
+
+    #[async_trait]
+    impl MinimalCandidateSelectionReadRepository for PanicCandidateSelectionReadRepository {
+        async fn list_for_exact_api_format(
+            &self,
+            _api_format: &str,
+        ) -> Result<Vec<StoredMinimalCandidateSelectionRow>, DataLayerError> {
+            panic!("model resolution should not query candidates");
+        }
+
+        async fn list_for_exact_api_format_and_global_model(
+            &self,
+            _api_format: &str,
+            _global_model_name: &str,
+        ) -> Result<Vec<StoredMinimalCandidateSelectionRow>, DataLayerError> {
+            panic!("model resolution should not query candidates");
+        }
+
+        async fn list_for_exact_api_format_and_requested_model(
+            &self,
+            _api_format: &str,
+            _requested_model_name: &str,
+        ) -> Result<Vec<StoredMinimalCandidateSelectionRow>, DataLayerError> {
+            panic!("model resolution should not query candidates");
+        }
+
+        async fn list_for_exact_api_format_and_requested_model_page(
+            &self,
+            _query: &StoredRequestedModelCandidateRowsQuery,
+        ) -> Result<Vec<StoredMinimalCandidateSelectionRow>, DataLayerError> {
+            panic!("model resolution should not query candidates");
+        }
+
+        async fn list_pool_key_rows_for_group(
+            &self,
+            _query: &StoredPoolKeyCandidateRowsQuery,
+        ) -> Result<Vec<StoredMinimalCandidateSelectionRow>, DataLayerError> {
+            panic!("model resolution should not query candidates");
+        }
+
+        async fn list_pool_key_rows_for_group_key_ids(
+            &self,
+            _query: &StoredPoolKeyCandidateRowsByKeyIdsQuery,
+        ) -> Result<Vec<StoredMinimalCandidateSelectionRow>, DataLayerError> {
+            panic!("model resolution should not query candidates");
         }
     }
 
@@ -783,6 +1082,127 @@ mod tests {
                 model: "gpt-5.2".to_string(),
             })
         );
+    }
+
+    #[tokio::test]
+    async fn model_rejection_allows_plan_scoped_model_outside_api_key_group() {
+        let context = billing_context_with_pricing(
+            Some(json!({
+                "tiers": [{
+                    "up_to": null,
+                    "input_price_per_1m": 1.0,
+                    "output_price_per_1m": 2.0
+                }]
+            })),
+            None,
+            None,
+            None,
+        );
+        let state = state_with_quota_and_wallet(quota_availability(50.0, false), context);
+        let decision = decision_with_allowed_models(vec!["gpt-4.1".to_string()]);
+        let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
+        let body = Bytes::from_static(
+            br#"{"model":"gpt-5.2","messages":[{"role":"user","content":"hi"}],"max_tokens":1000}"#,
+        );
+
+        let rejection =
+            request_model_local_rejection(&state, Some(&decision), &uri, &json_headers(), &body)
+                .await
+                .expect("plan scoped model should resolve");
+
+        assert_eq!(rejection, None);
+    }
+
+    #[tokio::test]
+    async fn plan_scoped_model_reuses_quota_lookup_for_capacity_check() {
+        let context = billing_context_with_pricing(
+            Some(json!({
+                "tiers": [{
+                    "up_to": null,
+                    "input_price_per_1m": 1.0,
+                    "output_price_per_1m": 2.0
+                }]
+            })),
+            None,
+            None,
+            None,
+        );
+        let quota_lookup_count = Arc::new(AtomicUsize::new(0));
+        let state = state_with_quota_wallet_and_counter(
+            quota_availability(50.0, false),
+            context,
+            Some(quota_lookup_count.clone()),
+        );
+        let decision = decision_with_allowed_models(vec!["gpt-4.1".to_string()]);
+        let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
+        let body = Bytes::from_static(
+            br#"{"model":"gpt-5.2","messages":[{"role":"user","content":"hi"}],"max_tokens":1000}"#,
+        );
+
+        let rejection =
+            request_model_local_rejection(&state, Some(&decision), &uri, &json_headers(), &body)
+                .await
+                .expect("plan scoped model should resolve");
+
+        assert_eq!(rejection, None);
+        assert_eq!(quota_lookup_count.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn unresolved_model_does_not_use_aggregate_plan_quota_to_bypass_group() {
+        let candidate_repository = Arc::new(InMemoryMinimalCandidateSelectionReadRepository::seed(
+            Vec::new(),
+        ));
+        let billing_repository = Arc::new(FixedBillingReadRepository {
+            quota: quota_availability(50.0, false),
+            context: billing_context_with_pricing(None, None, None, None),
+            quota_lookup_count: None,
+        });
+        let data = GatewayDataState::with_minimal_candidate_selection_and_billing_for_tests(
+            candidate_repository,
+            billing_repository,
+        );
+        let state = AppState::new()
+            .expect("state should build")
+            .with_data_state_for_tests(data)
+            .with_auth_wallets_for_tests(vec![sample_wallet("user-1", 0.0)]);
+        let decision = decision_with_allowed_models(vec!["gpt-4.1".to_string()]);
+        let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
+        let body = Bytes::from_static(br#"{"model":"unknown-model","messages":[]}"#);
+
+        let rejection =
+            request_model_local_rejection(&state, Some(&decision), &uri, &json_headers(), &body)
+                .await
+                .expect("model rejection should resolve");
+
+        assert_eq!(
+            rejection,
+            Some(GatewayLocalAuthRejection::ModelNotAllowed {
+                model: "unknown-model".to_string(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn standalone_directly_allowed_model_does_not_resolve_global_model() {
+        let repository = Arc::new(PanicCandidateSelectionReadRepository);
+        let data = GatewayDataState::with_minimal_candidate_selection_reader_for_tests(repository);
+        let state = AppState::new()
+            .expect("state should build")
+            .with_data_state_for_tests(data);
+        let mut decision = decision_with_allowed_models(vec!["gpt-5".to_string()]);
+        if let Some(auth_context) = decision.auth_context.as_mut() {
+            auth_context.api_key_is_standalone = true;
+        }
+        let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
+        let body = Bytes::from_static(br#"{"model":"gpt-5","messages":[]}"#);
+
+        let rejection =
+            request_model_local_rejection(&state, Some(&decision), &uri, &json_headers(), &body)
+                .await
+                .expect("standalone key should not resolve global model");
+
+        assert_eq!(rejection, None);
     }
 
     #[tokio::test]

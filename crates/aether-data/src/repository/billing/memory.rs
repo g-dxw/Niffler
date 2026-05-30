@@ -3,6 +3,7 @@ use std::sync::RwLock;
 
 use async_trait::async_trait;
 
+use super::quota::entitlement_allows_global_model;
 use super::{
     AdminBillingMutationOutcome, BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository,
     PaymentGatewayConfigRecord, PaymentGatewayConfigWriteInput, StoredBillingModelContext,
@@ -76,6 +77,7 @@ fn billing_plan_from_input(
 fn daily_quota_availability_from_entitlements(
     entitlements: impl IntoIterator<Item = UserPlanEntitlementRecord>,
     now: u64,
+    global_model_id: Option<&str>,
 ) -> UserDailyQuotaAvailabilityRecord {
     let mut has_active_daily_quota = false;
     let mut total_quota_usd = 0.0;
@@ -94,6 +96,27 @@ fn daily_quota_availability_from_entitlements(
         };
         for item in items {
             if item.get("type").and_then(serde_json::Value::as_str) != Some("daily_quota") {
+                continue;
+            }
+            let allowed_global_model_ids = item
+                .get("allowed_global_model_ids")
+                .and_then(serde_json::Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToOwned::to_owned)
+                        .collect::<Vec<_>>()
+                })
+                .filter(|items| !items.is_empty());
+            if global_model_id.is_some()
+                && !entitlement_allows_global_model(
+                    allowed_global_model_ids.as_deref(),
+                    global_model_id,
+                )
+            {
                 continue;
             }
             let daily_quota_usd = item
@@ -370,6 +393,15 @@ impl BillingReadRepository for InMemoryBillingReadRepository {
         &self,
         user_id: &str,
     ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
+        self.find_user_daily_quota_availability_for_global_model(user_id, None)
+            .await
+    }
+
+    async fn find_user_daily_quota_availability_for_global_model(
+        &self,
+        user_id: &str,
+        global_model_id: Option<&str>,
+    ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
         let now = current_unix_secs();
         let entitlements = self
             .entitlements_by_id
@@ -382,6 +414,7 @@ impl BillingReadRepository for InMemoryBillingReadRepository {
         Ok(Some(daily_quota_availability_from_entitlements(
             entitlements,
             now,
+            global_model_id,
         )))
     }
 }

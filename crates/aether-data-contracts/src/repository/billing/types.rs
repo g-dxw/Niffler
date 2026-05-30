@@ -443,4 +443,13 @@ pub trait BillingReadRepository: Send + Sync {
         let _ = user_id;
         Ok(None)
     }
+
+    async fn find_user_daily_quota_availability_for_global_model(
+        &self,
+        user_id: &str,
+        global_model_id: Option<&str>,
+    ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, crate::DataLayerError> {
+        let _ = global_model_id;
+        self.find_user_daily_quota_availability(user_id).await
+    }
 }

@@ -17,6 +17,7 @@ pub(crate) struct UsageQuotaGrant {
     pub window_started_at: DateTime<Utc>,
     pub window_ends_at: DateTime<Utc>,
     pub allow_wallet_overage: bool,
+    pub allowed_global_model_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,26 +43,12 @@ pub(crate) fn usage_quota_grants_from_entitlement(
     stored_five_hour: Option<&StoredUsageQuotaWindow>,
 ) -> Result<Vec<UsageQuotaGrant>, DataLayerError> {
     let mut grants = Vec::new();
-    let single_item;
-    let items: Vec<&Value> = if let Some(items) = entitlements.as_array() {
-        items.iter().collect()
-    } else if entitlements.get("limits").is_some() {
-        single_item = entitlements;
-        vec![single_item]
-    } else {
-        return Ok(grants);
-    };
-    for item in items {
-        let entitlement_type = item.get("type").and_then(Value::as_str);
-        if !matches!(entitlement_type, Some("daily_quota" | "usage_quota"))
-            && item.get("limits").is_none()
-        {
-            continue;
-        }
+    for item in usage_quota_items(entitlements) {
         let allow_wallet_overage = item
             .get("allow_wallet_overage")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let allowed_global_model_ids = parse_allowed_global_model_ids(item);
         let limits = item.get("limits");
 
         push_grant(
@@ -75,6 +62,7 @@ pub(crate) fn usage_quota_grants_from_entitlement(
                 QUOTA_SCOPE_DAILY,
             ),
             allow_wallet_overage,
+            allowed_global_model_ids.as_deref(),
         );
         push_grant(
             &mut grants,
@@ -82,6 +70,7 @@ pub(crate) fn usage_quota_grants_from_entitlement(
             quota_value(item, limits, "five_hour_quota_usd", "five_hour_limit_usd"),
             five_hour_window(now, stored_five_hour),
             allow_wallet_overage,
+            allowed_global_model_ids.as_deref(),
         );
         push_grant(
             &mut grants,
@@ -94,6 +83,7 @@ pub(crate) fn usage_quota_grants_from_entitlement(
                 QUOTA_SCOPE_WEEKLY,
             ),
             allow_wallet_overage,
+            allowed_global_model_ids.as_deref(),
         );
         push_grant(
             &mut grants,
@@ -106,9 +96,88 @@ pub(crate) fn usage_quota_grants_from_entitlement(
                 QUOTA_SCOPE_MONTHLY,
             ),
             allow_wallet_overage,
+            allowed_global_model_ids.as_deref(),
         );
     }
     Ok(grants)
+}
+
+pub(crate) fn entitlements_snapshot_has_usage_quota_for_global_model(
+    entitlements: &Value,
+    global_model_id: Option<&str>,
+) -> bool {
+    usage_quota_items(entitlements).into_iter().any(|item| {
+        let allowed_global_model_ids = parse_allowed_global_model_ids(item);
+        entitlement_allows_global_model(allowed_global_model_ids.as_deref(), global_model_id)
+            && usage_quota_item_has_positive_limit(item)
+    })
+}
+
+pub(crate) fn entitlement_allows_global_model(
+    allowed_global_model_ids: Option<&[String]>,
+    request_global_model_id: Option<&str>,
+) -> bool {
+    let Some(allowed_global_model_ids) = allowed_global_model_ids else {
+        return true;
+    };
+    if allowed_global_model_ids.is_empty() {
+        return true;
+    }
+    let Some(request_global_model_id) = request_global_model_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+    allowed_global_model_ids
+        .iter()
+        .any(|id| id == request_global_model_id)
+}
+
+fn parse_allowed_global_model_ids(item: &Value) -> Option<Vec<String>> {
+    item.get("allowed_global_model_ids")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|items| !items.is_empty())
+}
+
+fn usage_quota_items(entitlements: &Value) -> Vec<&Value> {
+    let items = if let Some(items) = entitlements.as_array() {
+        items.iter().collect::<Vec<_>>()
+    } else if entitlements.get("limits").is_some() {
+        vec![entitlements]
+    } else {
+        Vec::new()
+    };
+    items
+        .into_iter()
+        .filter(|item| usage_quota_item_has_supported_shape(item))
+        .collect()
+}
+
+fn usage_quota_item_has_supported_shape(item: &Value) -> bool {
+    let entitlement_type = item.get("type").and_then(Value::as_str);
+    matches!(entitlement_type, Some("daily_quota" | "usage_quota")) || item.get("limits").is_some()
+}
+
+fn usage_quota_item_has_positive_limit(item: &Value) -> bool {
+    let limits = item.get("limits");
+    [
+        ("daily_quota_usd", "daily_limit_usd"),
+        ("five_hour_quota_usd", "five_hour_limit_usd"),
+        ("weekly_quota_usd", "weekly_limit_usd"),
+        ("monthly_quota_usd", "monthly_limit_usd"),
+    ]
+    .into_iter()
+    .any(|(standard_key, legacy_key)| quota_value(item, limits, standard_key, legacy_key) > 0.0)
 }
 
 fn quota_value(item: &Value, limits: Option<&Value>, standard_key: &str, legacy_key: &str) -> f64 {
@@ -137,6 +206,7 @@ fn push_grant(
     limit_usd: f64,
     window: UsageQuotaWindow,
     allow_wallet_overage: bool,
+    allowed_global_model_ids: Option<&[String]>,
 ) {
     if !limit_usd.is_finite() || limit_usd <= 0.0 {
         return;
@@ -149,6 +219,7 @@ fn push_grant(
         window_started_at: window.started_at,
         window_ends_at: window.ends_at,
         allow_wallet_overage,
+        allowed_global_model_ids: allowed_global_model_ids.map(|items| items.to_vec()),
     });
 }
 
@@ -206,9 +277,89 @@ mod tests {
     use serde_json::json;
 
     use super::{
+        entitlement_allows_global_model, entitlements_snapshot_has_usage_quota_for_global_model,
         usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, QUOTA_SCOPE_DAILY,
         QUOTA_SCOPE_FIVE_HOUR, QUOTA_SCOPE_MONTHLY, QUOTA_SCOPE_WEEKLY,
     };
+
+    #[test]
+    fn scoped_entitlement_allows_matching_global_model() {
+        assert!(entitlement_allows_global_model(
+            Some(&["global-codex".to_string()]),
+            Some("global-codex"),
+        ));
+    }
+
+    #[test]
+    fn scoped_entitlement_rejects_other_global_model() {
+        assert!(!entitlement_allows_global_model(
+            Some(&["global-codex".to_string()]),
+            Some("global-claude"),
+        ));
+    }
+
+    #[test]
+    fn scoped_entitlement_rejects_unknown_request_model() {
+        assert!(!entitlement_allows_global_model(
+            Some(&["global-codex".to_string()]),
+            None,
+        ));
+    }
+
+    #[test]
+    fn unscoped_entitlement_keeps_legacy_behavior() {
+        assert!(entitlement_allows_global_model(None, Some("global-claude")));
+    }
+
+    #[test]
+    fn entitlement_snapshot_model_filter_ignores_unrelated_model_before_window_lookup() {
+        let entitlements = json!([
+            {
+                "type": "daily_quota",
+                "daily_quota_usd": 100.0,
+                "allowed_global_model_ids": ["global-codex"]
+            }
+        ]);
+
+        assert!(entitlements_snapshot_has_usage_quota_for_global_model(
+            &entitlements,
+            Some("global-codex")
+        ));
+        assert!(!entitlements_snapshot_has_usage_quota_for_global_model(
+            &entitlements,
+            Some("global-claude")
+        ));
+    }
+
+    #[test]
+    fn entitlement_snapshot_model_filter_keeps_unscoped_and_positive_legacy_limits() {
+        let entitlements = json!({
+            "limits": {
+                "weekly_limit_usd": 25.0
+            }
+        });
+
+        assert!(entitlements_snapshot_has_usage_quota_for_global_model(
+            &entitlements,
+            Some("global-claude")
+        ));
+    }
+
+    #[test]
+    fn entitlement_snapshot_model_filter_ignores_zero_limit_items() {
+        let entitlements = json!([
+            {
+                "type": "daily_quota",
+                "daily_quota_usd": 0.0,
+                "allowed_global_model_ids": ["global-codex"]
+            }
+        ]);
+
+        assert!(!entitlements_snapshot_has_usage_quota_for_global_model(
+            &entitlements,
+            Some("global-codex")
+        ));
+    }
 
     #[test]
     fn five_hour_window_reuses_active_user_window() {

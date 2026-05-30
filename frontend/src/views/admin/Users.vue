@@ -971,7 +971,7 @@
                 <div class="flex min-w-0 items-center gap-2">
                   <span class="truncate">{{ plan.title }}</span>
                   <span class="shrink-0 text-xs text-muted-foreground">
-                    {{ formatPlanPrice(plan) }} · {{ formatPlanDuration(plan) }}
+                    {{ formatPlanPrice(plan) }} · {{ formatPlanDuration(plan) }} · {{ planModelScopeLabel(plan) }}
                   </span>
                   <span
                     v-if="!plan.enabled"
@@ -994,24 +994,30 @@
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
               <Label class="text-xs font-medium text-muted-foreground">开始时间（可选）</Label>
-              <Input
+              <input
                 v-model="grantStartsAt"
                 type="datetime-local"
-                class="h-9 rounded-md bg-muted/50 text-sm"
+                class="flex h-9 w-full rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-foreground ring-offset-background transition-all focus-visible:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                autocomplete="off"
+                @input="handleGrantStartsAtChanged"
+                @change="handleGrantStartsAtChanged"
               />
               <p class="text-[11px] text-muted-foreground">
-                不填就是现在生效；填写后，额度周期从这个时间开始算。
+                默认填当前时间；修改后，额度周期从这个时间开始算。
               </p>
             </div>
             <div class="space-y-1.5">
               <Label class="text-xs font-medium text-muted-foreground">到期时间（可选）</Label>
-              <Input
+              <input
                 v-model="grantExpiresAt"
                 type="datetime-local"
-                class="h-9 rounded-md bg-muted/50 text-sm"
+                class="flex h-9 w-full rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-foreground ring-offset-background transition-all focus-visible:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                autocomplete="off"
+                @input="handleGrantExpiresAtChanged"
+                @change="handleGrantExpiresAtChanged"
               />
               <p class="text-[11px] text-muted-foreground">
-                不填就按套餐原本时长自动计算。
+                默认按套餐有效期自动计算，也可以手动修改。
               </p>
             </div>
           </div>
@@ -1569,6 +1575,13 @@ import {
 } from '@/utils/featureSettings'
 import { log } from '@/utils/logger'
 import { useBatchSelection } from '@/composables/useBatchSelection'
+import {
+  addPlanDuration,
+  datetimeLocalToIso,
+  defaultGrantPlanTimeWindow,
+  formatDatetimeLocal,
+  parseDatetimeLocal,
+} from '@/features/users/utils/grantPlanTime'
 
 const { success, error } = useToast()
 const { confirmDanger } = useConfirm()
@@ -1596,6 +1609,7 @@ const selectedGrantPlanId = ref('')
 const grantReason = ref('')
 const grantStartsAt = ref('')
 const grantExpiresAt = ref('')
+const grantExpiresAtEdited = ref(false)
 const grantInitialRemainingQuotaUsd = ref('')
 const newApiKey = ref('')
 const creatingApiKey = ref(false)
@@ -1724,6 +1738,9 @@ const batchSelectionFilters = computed<UserBatchSelectionFilters>(() => {
 const grantableBillingPlans = computed(() =>
   availableBillingPlans.value.filter((plan) => hasPackageEntitlement(plan.entitlements))
 )
+const selectedGrantPlan = computed(() =>
+  grantableBillingPlans.value.find((plan) => plan.id === selectedGrantPlanId.value) || null
+)
 
 // Watch filter changes and reset to first page
 watch([searchQuery, filterRole, filterStatus, filterGroup], () => {
@@ -1732,6 +1749,10 @@ watch([searchQuery, filterRole, filterStatus, filterGroup], () => {
 })
 
 watch(paginatedUsers, (users) => rememberBatchPageUsers(users), { immediate: true })
+watch(selectedGrantPlanId, () => {
+  if (!showUserPlansDialog.value) return
+  applyDefaultGrantPlanTimeWindow()
+})
 
 function formatUserRole(role: string) {
   if (role === 'admin') return '管理员'
@@ -1844,7 +1865,26 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   if (fiveHour > 0) parts.push(`5H $${fiveHour.toFixed(2)}`)
   if (weekly > 0) parts.push(`每周 $${weekly.toFixed(2)}`)
   if (monthly > 0) parts.push(`每月 $${monthly.toFixed(2)}`)
-  return parts.join(' / ') || '用量额度'
+  const quotaText = parts.join(' / ') || '用量额度'
+  return `${quotaText} · ${quotaModelScopeLabel(item.allowed_global_model_ids)}`
+}
+
+function quotaModelScopeLabel(modelIds?: string[]): string {
+  if (!Array.isArray(modelIds) || modelIds.length === 0) {
+    return '全部模型'
+  }
+  return `可用模型 ${modelIds.length} 个`
+}
+
+function planModelScopeLabel(plan: BillingPlan): string {
+  const modelIds = new Set<string>()
+  for (const item of normalizeBillingEntitlements(plan.entitlements)) {
+    if (item.type !== 'daily_quota') continue
+    for (const modelId of item.allowed_global_model_ids || []) {
+      if (modelId.trim()) modelIds.add(modelId)
+    }
+  }
+  return modelIds.size > 0 ? `${modelIds.size} 个模型` : '全部模型'
 }
 
 async function loadUserWallets(options: { cacheTtlMs?: number } = {}) {
@@ -2069,6 +2109,7 @@ async function manageUserPlans(user: User) {
   grantReason.value = ''
   grantStartsAt.value = ''
   grantExpiresAt.value = ''
+  grantExpiresAtEdited.value = false
   grantInitialRemainingQuotaUsd.value = ''
   await Promise.all([
     loadUserPlanEntitlements(user.id),
@@ -2077,6 +2118,7 @@ async function manageUserPlans(user: User) {
   if (!selectedGrantPlanId.value && grantableBillingPlans.value.length > 0) {
     selectedGrantPlanId.value = grantableBillingPlans.value[0].id
   }
+  applyDefaultGrantPlanTimeWindow()
 }
 
 async function loadUserPlanEntitlements(userId: string) {
@@ -2111,12 +2153,46 @@ async function loadAvailableBillingPlans() {
   }
 }
 
-function datetimeLocalToIso(value: string): string | null | undefined {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  const date = new Date(trimmed)
-  if (Number.isNaN(date.getTime())) return undefined
-  return date.toISOString()
+function applyDefaultGrantPlanTimeWindow(plan = selectedGrantPlan.value): void {
+  if (!plan) {
+    grantStartsAt.value = ''
+    grantExpiresAt.value = ''
+    grantExpiresAtEdited.value = false
+    return
+  }
+  const window = defaultGrantPlanTimeWindow(plan)
+  grantStartsAt.value = window.startsAt
+  grantExpiresAt.value = window.expiresAt
+  grantExpiresAtEdited.value = false
+}
+
+function refreshGrantExpiresAtFromStart(): void {
+  const plan = selectedGrantPlan.value
+  if (!plan) return
+  const startsAt = parseDatetimeLocal(grantStartsAt.value)
+  if (!startsAt) {
+    grantExpiresAt.value = ''
+    return
+  }
+  grantExpiresAt.value = formatDatetimeLocal(addPlanDuration(startsAt, plan))
+}
+
+function handleGrantStartsAtChanged(event?: Event): void {
+  const value = (event?.target as HTMLInputElement | null)?.value
+  if (typeof value === 'string') {
+    grantStartsAt.value = value
+  }
+  if (!grantExpiresAtEdited.value) {
+    refreshGrantExpiresAtFromStart()
+  }
+}
+
+function handleGrantExpiresAtChanged(event?: Event): void {
+  const value = (event?.target as HTMLInputElement | null)?.value
+  if (typeof value === 'string') {
+    grantExpiresAt.value = value
+  }
+  grantExpiresAtEdited.value = true
 }
 
 function optionalUsdAmount(value: string): number | null | undefined {
@@ -2163,9 +2239,8 @@ async function grantPlanToSelectedUser() {
     })
     userPlanEntitlements.value = response.items
     grantReason.value = ''
-    grantStartsAt.value = ''
-    grantExpiresAt.value = ''
     grantInitialRemainingQuotaUsd.value = ''
+    applyDefaultGrantPlanTimeWindow()
     success('套餐已发放')
   } catch (err) {
     error(parseApiError(err, '发放套餐失败'))

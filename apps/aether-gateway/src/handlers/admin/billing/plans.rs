@@ -176,6 +176,23 @@ fn validate_entitlements(value: &serde_json::Value) -> Result<(), String> {
                 {
                     return Err(format!("{kind}.allow_wallet_overage must be a boolean"));
                 }
+                let allowed_global_model_ids = item
+                    .get("allowed_global_model_ids")
+                    .and_then(|value| value.as_array())
+                    .ok_or_else(|| format!("{kind}.allowed_global_model_ids is required"))?;
+                if allowed_global_model_ids.is_empty() {
+                    return Err(format!("{kind}.allowed_global_model_ids must not be empty"));
+                }
+                for id in allowed_global_model_ids {
+                    let id = id.as_str().ok_or_else(|| {
+                        format!("{kind}.allowed_global_model_ids must contain strings")
+                    })?;
+                    if id.trim().is_empty() {
+                        return Err(format!(
+                            "{kind}.allowed_global_model_ids must not contain empty strings"
+                        ));
+                    }
+                }
                 if let Some(rpm_limit) = item.get("rpm_limit") {
                     let rpm_limit = rpm_limit
                         .as_i64()
@@ -493,6 +510,7 @@ mod tests {
                 {
                     "type": "daily_quota",
                     "daily_quota_usd": 10.0,
+                    "allowed_global_model_ids": ["global-codex"],
                     "reset_timezone": "Asia/Shanghai",
                     "carry_over": false
                 }
@@ -554,5 +572,36 @@ mod tests {
             .expect_err("paid plan cannot become free");
 
         assert_eq!(error, "price_amount must be positive");
+    }
+
+    #[test]
+    fn usage_quota_requires_allowed_global_model_ids() {
+        let mut request = sample_plan_request(9.9);
+        request.entitlements = json!([{
+            "type": "daily_quota",
+            "daily_quota_usd": 100.0,
+            "allow_wallet_overage": false
+        }]);
+        let error =
+            normalize_plan_input_for_create(request).expect_err("model scope should be required");
+
+        assert!(error.contains("allowed_global_model_ids"));
+    }
+
+    #[test]
+    fn usage_quota_accepts_allowed_global_model_ids() {
+        let mut request = sample_plan_request(9.9);
+        request.entitlements = json!([{
+            "type": "daily_quota",
+            "daily_quota_usd": 100.0,
+            "allow_wallet_overage": false,
+            "allowed_global_model_ids": ["global-codex"]
+        }]);
+        let input = normalize_plan_input_for_create(request).expect("scoped quota should save");
+
+        assert_eq!(
+            input.entitlements_json[0]["allowed_global_model_ids"][0],
+            "global-codex"
+        );
     }
 }

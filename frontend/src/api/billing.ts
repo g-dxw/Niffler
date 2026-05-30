@@ -59,6 +59,7 @@ export interface WalletCreditEntitlement {
 
 export interface DailyQuotaEntitlement {
   type: 'daily_quota'
+  allowed_global_model_ids?: string[]
   daily_quota_usd?: number
   five_hour_quota_usd?: number
   weekly_quota_usd?: number

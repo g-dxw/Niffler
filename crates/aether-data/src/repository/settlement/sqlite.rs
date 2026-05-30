@@ -9,6 +9,7 @@ use super::{
 use crate::driver::sqlite::{sqlite_optional_real, sqlite_real, SqlitePool};
 use crate::error::SqlResultExt;
 use crate::repository::billing::quota::{
+    entitlement_allows_global_model, entitlements_snapshot_has_usage_quota_for_global_model,
     usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, UsageQuotaGrant,
     QUOTA_SCOPE_FIVE_HOUR,
 };
@@ -169,6 +170,7 @@ async fn consume_daily_quota_sqlite(
     wallet_available_usd: Option<f64>,
     wallet_can_overdraft: bool,
     now_unix_secs: i64,
+    request_global_model_id: Option<&str>,
 ) -> Result<DailyQuotaDebitResult, DataLayerError> {
     if total_cost_usd <= 0.0 {
         return Ok(DailyQuotaDebitResult::default());
@@ -206,6 +208,14 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
                     "user_plan_entitlements.entitlements_snapshot invalid json: {err}"
                 ))
             })?;
+        if request_global_model_id.is_some()
+            && !entitlements_snapshot_has_usage_quota_for_global_model(
+                &entitlements,
+                request_global_model_id,
+            )
+        {
+            continue;
+        }
         let stored_five_hour =
             find_usage_quota_window_sqlite(tx, &entitlement_id, QUOTA_SCOPE_FIVE_HOUR).await?;
         grants.extend(usage_quota_grants_from_entitlement(
@@ -216,6 +226,12 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
             stored_five_hour.as_ref(),
         )?);
     }
+    grants.retain(|grant| {
+        entitlement_allows_global_model(
+            grant.allowed_global_model_ids.as_deref(),
+            request_global_model_id,
+        )
+    });
     if grants.is_empty() {
         return Ok(DailyQuotaDebitResult::default());
     }
@@ -601,6 +617,7 @@ LIMIT 1
                         wallet_available_usd,
                         wallet_can_overdraft,
                         updated_at,
+                        input.global_model_id.as_deref(),
                     )
                     .await?;
                     if quota.insufficient {
@@ -818,6 +835,9 @@ mod tests {
                 api_key_id: None,
                 api_key_is_standalone: false,
                 provider_id: Some("provider-1".to_string()),
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
                 total_cost_usd: 3.0,
@@ -853,6 +873,9 @@ mod tests {
                 api_key_id: None,
                 api_key_is_standalone: false,
                 provider_id: Some("provider-1".to_string()),
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
                 total_cost_usd: 3.0,
@@ -892,6 +915,9 @@ mod tests {
                 api_key_id: None,
                 api_key_is_standalone: false,
                 provider_id: Some("provider-1".to_string()),
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
                 status: "failed".to_string(),
                 billing_status: "pending".to_string(),
                 total_cost_usd: 3.0,
@@ -932,6 +958,9 @@ mod tests {
                 api_key_id: None,
                 api_key_is_standalone: false,
                 provider_id: Some("provider-1".to_string()),
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
                 total_cost_usd: 15.0,
@@ -981,6 +1010,9 @@ mod tests {
                 api_key_id: Some("key-quota".to_string()),
                 api_key_is_standalone: false,
                 provider_id: None,
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
                 total_cost_usd: 3.0,
@@ -1044,6 +1076,9 @@ WHERE id = 'entitlement-quota'
                 api_key_id: Some("key-quota".to_string()),
                 api_key_is_standalone: false,
                 provider_id: None,
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
                 total_cost_usd: 3.0,
@@ -1091,6 +1126,9 @@ INSERT INTO "usage" (
                 api_key_id: Some("key-quota".to_string()),
                 api_key_is_standalone: false,
                 provider_id: None,
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
                 total_cost_usd: 3.0,
@@ -1102,6 +1140,60 @@ INSERT INTO "usage" (
             .expect("usage should exist");
 
         assert_eq!(settlement.billing_status, "insufficient_quota");
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_does_not_consume_plan_quota_for_other_global_model() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        seed_quota_covered_settlement_rows(&pool).await;
+        sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET entitlements_snapshot =
+  '[{"type":"daily_quota","daily_quota_usd":10.0,"allowed_global_model_ids":["global-codex"],"reset_timezone":"Asia/Shanghai","allow_wallet_overage":false}]'
+WHERE id = 'entitlement-quota'
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("entitlement should update");
+
+        let repository = SqliteSettlementRepository::new(pool.clone());
+        let settlement = repository
+            .settle_usage(UsageSettlementInput {
+                request_id: "request-quota-covered".to_string(),
+                user_id: Some("user-quota".to_string()),
+                api_key_id: Some("key-quota".to_string()),
+                api_key_is_standalone: false,
+                provider_id: None,
+                global_model_id: Some("global-claude".to_string()),
+                global_model_name: Some("claude-sonnet".to_string()),
+                model: Some("claude-sonnet".to_string()),
+                status: "completed".to_string(),
+                billing_status: "pending".to_string(),
+                total_cost_usd: 3.0,
+                actual_total_cost_usd: 2.0,
+                finalized_at_unix_secs: Some(1_260),
+            })
+            .await
+            .expect("settlement should run")
+            .expect("usage should exist");
+
+        assert_eq!(settlement.billing_status, "settled");
+        let quota_used: f64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(amount_usd), 0) AS REAL) FROM entitlement_usage_ledgers WHERE request_id = 'request-quota-covered'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("quota ledger should load");
+        assert_eq!(quota_used, 0.0);
     }
 
     async fn seed_settlement_rows(pool: &sqlx::SqlitePool) {

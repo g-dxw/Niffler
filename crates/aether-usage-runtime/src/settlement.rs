@@ -33,6 +33,9 @@ pub async fn settle_usage_if_needed(
         api_key_id: usage.api_key_id.clone(),
         api_key_is_standalone: usage_api_key_is_standalone(usage),
         provider_id: usage.provider_id.clone(),
+        global_model_id: usage.routing_global_model_id().map(ToOwned::to_owned),
+        global_model_name: usage.routing_global_model_name().map(ToOwned::to_owned),
+        model: Some(usage.model.clone()).filter(|value| !value.trim().is_empty()),
         status: usage.status.clone(),
         billing_status: usage.billing_status.clone(),
         total_cost_usd: finite_cost(usage.total_cost_usd)?,
@@ -162,6 +165,7 @@ mod tests {
         assert_eq!(inputs[0].total_cost_usd, 1.25);
         assert_eq!(inputs[0].actual_total_cost_usd, 0.75);
         assert!(!inputs[0].api_key_is_standalone);
+        assert_eq!(inputs[0].model.as_deref(), Some("gpt-5"));
     }
 
     #[tokio::test]

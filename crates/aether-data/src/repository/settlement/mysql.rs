@@ -9,6 +9,7 @@ use super::{
 use crate::driver::mysql::MysqlPool;
 use crate::error::SqlResultExt;
 use crate::repository::billing::quota::{
+    entitlement_allows_global_model, entitlements_snapshot_has_usage_quota_for_global_model,
     usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, UsageQuotaGrant,
     QUOTA_SCOPE_FIVE_HOUR,
 };
@@ -155,6 +156,7 @@ async fn consume_daily_quota_mysql(
     wallet_available_usd: Option<f64>,
     wallet_can_overdraft: bool,
     now_unix_secs: i64,
+    request_global_model_id: Option<&str>,
 ) -> Result<DailyQuotaDebitResult, DataLayerError> {
     if total_cost_usd <= 0.0 {
         return Ok(DailyQuotaDebitResult::default());
@@ -193,6 +195,14 @@ FOR UPDATE
                     "user_plan_entitlements.entitlements_snapshot invalid json: {err}"
                 ))
             })?;
+        if request_global_model_id.is_some()
+            && !entitlements_snapshot_has_usage_quota_for_global_model(
+                &entitlements,
+                request_global_model_id,
+            )
+        {
+            continue;
+        }
         let stored_five_hour =
             find_usage_quota_window_mysql(tx, &entitlement_id, QUOTA_SCOPE_FIVE_HOUR).await?;
         grants.extend(usage_quota_grants_from_entitlement(
@@ -203,6 +213,12 @@ FOR UPDATE
             stored_five_hour.as_ref(),
         )?);
     }
+    grants.retain(|grant| {
+        entitlement_allows_global_model(
+            grant.allowed_global_model_ids.as_deref(),
+            request_global_model_id,
+        )
+    });
     if grants.is_empty() {
         return Ok(DailyQuotaDebitResult::default());
     }
@@ -591,6 +607,7 @@ FOR UPDATE
                         wallet_available_usd,
                         wallet_can_overdraft,
                         updated_at,
+                        input.global_model_id.as_deref(),
                     )
                     .await?;
                     if quota.insufficient {

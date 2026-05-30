@@ -514,4 +514,15 @@ impl AppState {
             .await
             .map_err(data_error)
     }
+
+    pub(crate) async fn find_user_daily_quota_availability_for_global_model(
+        &self,
+        user_id: &str,
+        global_model_id: Option<&str>,
+    ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, GatewayError> {
+        self.data
+            .find_user_daily_quota_availability_for_global_model(user_id, global_model_id)
+            .await
+            .map_err(data_error)
+    }
 }

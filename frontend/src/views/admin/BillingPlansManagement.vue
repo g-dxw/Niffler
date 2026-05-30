@@ -729,6 +729,21 @@
                   step="0.01"
                 />
               </div>
+              <div class="space-y-1.5 md:col-span-2">
+                <Label class="inline-flex items-center gap-1.5">
+                  <span>套餐可用模型</span>
+                  <span class="text-destructive">*</span>
+                </Label>
+                <MultiSelect
+                  v-model="form.allowed_global_model_ids"
+                  :options="globalModelOptions"
+                  :placeholder="loadingGlobalModels ? '正在加载模型...' : '选择这个套餐可以使用的模型'"
+                  empty-text="暂无可选模型"
+                />
+                <p class="text-xs leading-5 text-muted-foreground">
+                  这项只限制套餐额度。用户钱包按量仍按 API Key 选择的分组规则执行。
+                </p>
+              </div>
               <div class="space-y-1.5">
                 <Label>重置时区</Label>
                 <Input
@@ -845,6 +860,7 @@ import {
   type WalletCreditBucket,
   type WalletCreditEntitlement,
 } from '@/api/billing'
+import { getGlobalModels, type GlobalModelResponse } from '@/api/global-models'
 import { usersApi, type UserGroup } from '@/api/users'
 import {
   Badge,
@@ -917,6 +933,7 @@ interface PlanFormState {
   reset_timezone: string
   carry_over: boolean
   allow_wallet_overage: boolean
+  allowed_global_model_ids: string[]
   membership_group_enabled: boolean
   grant_user_groups: string[]
 }
@@ -930,6 +947,8 @@ const dialogOpen = ref(false)
 const plans = ref<BillingPlan[]>([])
 const editingPlan = ref<BillingPlan | null>(null)
 const userGroups = ref<UserGroup[]>([])
+const globalModels = ref<GlobalModelResponse[]>([])
+const loadingGlobalModels = ref(false)
 const manualGroupId = ref('')
 
 const form = reactive<PlanFormState>(buildDefaultForm())
@@ -940,6 +959,21 @@ const userGroupOptions = computed(() =>
     label: group.name,
   }))
 )
+
+const globalModelOptions = computed(() => {
+  const knownIds = new Set(globalModels.value.map((model) => model.id))
+  const loadedOptions = globalModels.value.map((model) => ({
+    value: model.id,
+    label: model.display_name || model.name || model.id,
+  }))
+  const missingOptions = form.allowed_global_model_ids
+    .filter((id) => id && !knownIds.has(id))
+    .map((id) => ({
+      value: id,
+      label: id,
+    }))
+  return [...loadedOptions, ...missingOptions]
+})
 
 const priceCurrencyOptions = computed(() => {
   const normalized = form.price_currency.trim().toUpperCase()
@@ -999,6 +1033,7 @@ const isSaveDisabled = computed(() =>
   || (showPurchaseLimitCount.value && !hasValidActiveLimit.value)
   || !hasValidPurchaseLimitScope.value
   || !hasSelectedPackageEntitlement.value
+  || (form.daily_quota_enabled && form.allowed_global_model_ids.length === 0)
 )
 
 const planMode = computed<PlanMode>(() => {
@@ -1150,7 +1185,7 @@ const membershipDetailText = computed(() =>
 )
 
 onMounted(() => {
-  void Promise.all([loadPlans(), loadUserGroups()]).finally(() => {
+  void Promise.all([loadPlans(), loadUserGroups(), loadGlobalModels()]).finally(() => {
     loading.value = false
   })
 })
@@ -1178,6 +1213,7 @@ function buildDefaultForm(): PlanFormState {
     reset_timezone: 'Asia/Shanghai',
     carry_over: false,
     allow_wallet_overage: false,
+    allowed_global_model_ids: [],
     membership_group_enabled: false,
     grant_user_groups: [],
   }
@@ -1208,6 +1244,19 @@ async function loadUserGroups() {
   } catch (err) {
     log.error('加载用户分组失败:', err)
     showError(parseApiError(err, '加载用户分组失败'))
+  }
+}
+
+async function loadGlobalModels() {
+  loadingGlobalModels.value = true
+  try {
+    const response = await getGlobalModels({ skip: 0, limit: 1000, is_active: true })
+    globalModels.value = response.models
+  } catch (err) {
+    log.error('加载模型失败:', err)
+    showError(parseApiError(err, '加载模型失败'))
+  } finally {
+    loadingGlobalModels.value = false
   }
 }
 
@@ -1255,6 +1304,9 @@ function formFromPlan(plan: BillingPlan): PlanFormState {
       next.reset_timezone = quota.reset_timezone || 'Asia/Shanghai'
       next.carry_over = Boolean(quota.carry_over)
       next.allow_wallet_overage = Boolean(quota.allow_wallet_overage)
+      next.allowed_global_model_ids = Array.isArray(quota.allowed_global_model_ids)
+        ? [...quota.allowed_global_model_ids]
+        : []
     } else if (entitlement.type === 'membership_group') {
       const membership = entitlement as MembershipGroupEntitlement
       next.membership_group_enabled = true
@@ -1315,6 +1367,9 @@ function buildEntitlements(): BillingEntitlement[] {
       reset_timezone: form.reset_timezone.trim() || 'Asia/Shanghai',
       carry_over: false,
       allow_wallet_overage: Boolean(form.allow_wallet_overage),
+      allowed_global_model_ids: form.allowed_global_model_ids
+        .map((value) => value.trim())
+        .filter(Boolean),
     }
     entitlements.push(quota)
   }
@@ -1360,6 +1415,7 @@ function validatePlan(entitlements: BillingEntitlement[]): string | null {
   if (!hasPackageEntitlement(entitlements)) return '套餐至少需要包含用量额度或会员分组；钱包充值请使用充值功能'
   if (form.wallet_credit_enabled && Number(form.wallet_credit_amount_usd) <= 0) return '附赠余额金额必须大于 0'
   if (form.daily_quota_enabled && !hasAnyUsageQuota()) return '用量额度至少填写一个大于 0 的金额'
+  if (form.daily_quota_enabled && form.allowed_global_model_ids.length === 0) return '请选择套餐支持的模型'
   if (form.membership_group_enabled && form.grant_user_groups.length === 0) return '会员分组权益至少选择一个分组'
   return null
 }
@@ -1512,6 +1568,21 @@ function groupName(groupId: string): string {
   return userGroups.value.find((group) => group.id === groupId)?.name || groupId
 }
 
+function globalModelName(modelId: string): string {
+  const model = globalModels.value.find((item) => item.id === modelId)
+  return model?.display_name || model?.name || modelId
+}
+
+function formatAllowedGlobalModels(modelIds?: string[]): string {
+  if (!Array.isArray(modelIds) || modelIds.length === 0) {
+    return '全部模型（旧套餐）'
+  }
+  const names = modelIds.map(globalModelName)
+  return names.length <= 2
+    ? names.join('、')
+    : `${names.slice(0, 2).join('、')} 等 ${names.length} 个模型`
+}
+
 function entitlementBadges(plan: BillingPlan): string[] {
   return normalizeBillingEntitlements(plan.entitlements).map((entitlement) => {
     if (entitlement.type === 'wallet_credit') {
@@ -1531,7 +1602,8 @@ function entitlementBadges(plan: BillingPlan): string[] {
       if (Number(entitlement.monthly_quota_usd || 0) > 0) {
         parts.push(`30天 $${Number(entitlement.monthly_quota_usd || 0).toFixed(2)}`)
       }
-      return parts.join(' / ') || '用量额度'
+      const quotaText = parts.join(' / ') || '用量额度'
+      return `${quotaText} · ${formatAllowedGlobalModels(entitlement.allowed_global_model_ids)}`
     }
     if (entitlement.type === 'membership_group') {
       const groups = entitlement.grant_user_groups.map(groupName).join(', ')

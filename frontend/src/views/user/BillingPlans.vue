@@ -440,7 +440,15 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   if (fiveHour > 0) parts.push(`5H $${fiveHour.toFixed(2)}`)
   if (weekly > 0) parts.push(`7天 $${weekly.toFixed(2)}`)
   if (monthly > 0) parts.push(`30天 $${monthly.toFixed(2)}`)
-  return parts.join(' / ') || '用量额度'
+  const quotaText = parts.join(' / ') || '用量额度'
+  return `${quotaText} · ${quotaModelScopeLabel(item.allowed_global_model_ids)}`
+}
+
+function quotaModelScopeLabel(modelIds?: string[]): string {
+  if (!Array.isArray(modelIds) || modelIds.length === 0) {
+    return '全部模型'
+  }
+  return `可用模型 ${modelIds.length} 个`
 }
 
 function hasMembershipEntitlement(items: BillingEntitlementsInput): boolean {

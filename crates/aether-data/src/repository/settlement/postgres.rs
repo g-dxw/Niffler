@@ -9,6 +9,7 @@ use super::{
 use crate::driver::postgres::PostgresTransactionRunner;
 use crate::error::SqlxResultExt;
 use crate::repository::billing::quota::{
+    entitlement_allows_global_model, entitlements_snapshot_has_usage_quota_for_global_model,
     usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, UsageQuotaGrant,
     QUOTA_SCOPE_FIVE_HOUR,
 };
@@ -258,6 +259,7 @@ async fn consume_daily_quota_postgres(
     total_cost_usd: f64,
     wallet_available_usd: Option<f64>,
     wallet_can_overdraft: bool,
+    request_global_model_id: Option<&str>,
 ) -> Result<DailyQuotaDebitResult, DataLayerError> {
     if total_cost_usd <= 0.0 {
         return Ok(DailyQuotaDebitResult::default());
@@ -286,6 +288,14 @@ FOR UPDATE
             row.try_get("starts_at").map_postgres_err()?;
         let entitlements: serde_json::Value =
             row.try_get("entitlements_snapshot").map_postgres_err()?;
+        if request_global_model_id.is_some()
+            && !entitlements_snapshot_has_usage_quota_for_global_model(
+                &entitlements,
+                request_global_model_id,
+            )
+        {
+            continue;
+        }
         let stored_five_hour =
             find_usage_quota_window_postgres(tx, &entitlement_id, QUOTA_SCOPE_FIVE_HOUR).await?;
         grants.extend(usage_quota_grants_from_entitlement(
@@ -296,6 +306,12 @@ FOR UPDATE
             stored_five_hour.as_ref(),
         )?);
     }
+    grants.retain(|grant| {
+        entitlement_allows_global_model(
+            grant.allowed_global_model_ids.as_deref(),
+            request_global_model_id,
+        )
+    });
     if grants.is_empty() {
         return Ok(DailyQuotaDebitResult::default());
     }
@@ -667,6 +683,7 @@ LIMIT 1
                                     input.total_cost_usd,
                                     wallet_available_usd,
                                     wallet_can_overdraft,
+                                    input.global_model_id.as_deref(),
                                 )
                                 .await?;
                                 if quota.insufficient {

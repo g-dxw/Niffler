@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use sqlx::{PgPool, Row};
 
 use super::{
-    quota::{usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, QUOTA_SCOPE_FIVE_HOUR},
+    quota::{
+        entitlement_allows_global_model, entitlements_snapshot_has_usage_quota_for_global_model,
+        usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, QUOTA_SCOPE_FIVE_HOUR,
+    },
     AdminBillingCollectorRecord, AdminBillingCollectorWriteInput, AdminBillingMutationOutcome,
     AdminBillingPresetApplyResult, AdminBillingRuleRecord, AdminBillingRuleWriteInput,
     BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository, PaymentGatewayConfigRecord,
@@ -1004,6 +1007,15 @@ ORDER BY expires_at ASC, created_at ASC
         &self,
         user_id: &str,
     ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
+        self.find_user_daily_quota_availability_for_global_model(user_id, None)
+            .await
+    }
+
+    async fn find_user_daily_quota_availability_for_global_model(
+        &self,
+        user_id: &str,
+        global_model_id: Option<&str>,
+    ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
         let rows = sqlx::query(
             r#"
 SELECT id, starts_at, entitlements_snapshot
@@ -1027,6 +1039,14 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
                 row.try_get("starts_at").map_postgres_err()?;
             let entitlements: serde_json::Value =
                 row.try_get("entitlements_snapshot").map_postgres_err()?;
+            if global_model_id.is_some()
+                && !entitlements_snapshot_has_usage_quota_for_global_model(
+                    &entitlements,
+                    global_model_id,
+                )
+            {
+                continue;
+            }
             let stored_five_hour = find_usage_quota_window_postgres(
                 &self.pool,
                 &entitlement_id,
@@ -1040,6 +1060,14 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
                 entitlement_started_at,
                 stored_five_hour.as_ref(),
             )?);
+        }
+        if global_model_id.is_some() {
+            grants.retain(|grant| {
+                entitlement_allows_global_model(
+                    grant.allowed_global_model_ids.as_deref(),
+                    global_model_id,
+                )
+            });
         }
 
         let mut grouped_limits: BTreeMap<String, (Option<f64>, Option<f64>)> = BTreeMap::new();

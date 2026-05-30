@@ -1865,6 +1865,21 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn find_user_daily_quota_availability_for_global_model(
+        &self,
+        user_id: &str,
+        global_model_id: Option<&str>,
+    ) -> Result<Option<UserDailyQuotaAvailabilityRecord>, DataLayerError> {
+        match &self.billing_reader {
+            Some(repository) => {
+                repository
+                    .find_user_daily_quota_availability_for_global_model(user_id, global_model_id)
+                    .await
+            }
+            None => Ok(None),
+        }
+    }
+
     pub(crate) async fn read_request_candidate_trace(
         &self,
         request_id: &str,
