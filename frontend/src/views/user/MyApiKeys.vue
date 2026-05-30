@@ -114,6 +114,9 @@
                   <div class="text-xs text-muted-foreground mt-0.5">
                     创建于 {{ formatDate(apiKey.created_at) }}
                   </div>
+                  <div class="text-xs text-muted-foreground mt-0.5">
+                    分组：{{ apiKey.group_name || '默认分组' }}
+                  </div>
                 </div>
               </TableCell>
 
@@ -362,6 +365,9 @@
                   {{ apiKey.last_used_at ? formatRelativeTime(apiKey.last_used_at) : '从未使用' }}
                 </span>
               </div>
+              <div class="text-xs text-muted-foreground">
+                分组：{{ apiKey.group_name || '默认分组' }}
+              </div>
               <div class="flex items-center gap-3 text-xs">
                 <span class="text-amber-600 dark:text-amber-500 font-semibold">
                   ${{ (apiKey.total_cost_usd || 0).toFixed(4) }}
@@ -450,6 +456,36 @@
 
         <div class="space-y-2">
           <Label
+            for="key-group"
+            class="text-sm font-semibold"
+          >使用分组</Label>
+          <select
+            id="key-group"
+            v-model="selectedGroupId"
+            class="h-11 w-full rounded-md border border-border/60 bg-background px-3 text-sm"
+            :disabled="apiKeyGroups.length === 0"
+          >
+            <option
+              v-if="apiKeyGroups.length === 0"
+              value=""
+            >
+              暂无可用分组
+            </option>
+            <option
+              v-for="group in apiKeyGroups"
+              :key="group.id"
+              :value="group.id"
+            >
+              {{ group.name }}{{ group.visibility === 'internal' ? '（内部分组）' : '' }}
+            </option>
+          </select>
+          <p class="text-xs text-muted-foreground">
+            分组决定这个 API Key 的按量可用范围、并发上限和钱包扣费倍率；已购买套餐按套餐自己的模型范围使用。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <Label
             for="key-concurrent-limit"
             class="text-sm font-semibold"
           >并发限制</Label>
@@ -530,7 +566,7 @@
         </Button>
         <Button
           class="h-11 px-6 shadow-lg shadow-primary/20"
-          :disabled="creating"
+          :disabled="creating || apiKeyGroups.length === 0"
           @click="saveApiKey"
         >
           <Loader2
@@ -919,7 +955,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-import { meApi, type ApiKey, type InstallSessionTargetSystem, type InstallTargetCli, type ApiKeyInstallSession } from '@/api/me'
+import { meApi, type ApiKey, type ApiKeyGroupOption, type InstallSessionTargetSystem, type InstallTargetCli, type ApiKeyInstallSession } from '@/api/me'
 import Card from '@/components/ui/card.vue'
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
@@ -976,6 +1012,7 @@ const ccSwitchAppOptions: Array<{ value: CcSwitchApp; label: string; description
 ]
 
 const apiKeys = ref<ApiKey[]>([])
+const apiKeyGroups = ref<ApiKeyGroupOption[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const deleting = ref(false)
@@ -997,6 +1034,7 @@ const showInstallDialog = ref(false)
 const showCcSwitchDialog = ref(false)
 
 const newKeyName = ref('')
+const selectedGroupId = ref('')
 const newKeyRateLimit = ref<number | undefined>(undefined)
 const newKeyConcurrentLimit = ref<number | undefined>(undefined)
 const keyRedactionMode = ref<'inherit' | 'custom'>('inherit')
@@ -1042,6 +1080,7 @@ const ccSwitchEndpointPreview = computed(() => {
 
 onMounted(() => {
   installSystem.value = detectCurrentSystem()
+  loadApiKeyGroups()
   loadApiKeys()
 })
 
@@ -1080,6 +1119,18 @@ async function loadApiKeys() {
   }
 }
 
+async function loadApiKeyGroups() {
+  try {
+    apiKeyGroups.value = await meApi.getApiKeyGroups()
+    if (!selectedGroupId.value && apiKeyGroups.value.length > 0) {
+      selectedGroupId.value = apiKeyGroups.value[0].id
+    }
+  } catch (error: unknown) {
+    log.error('加载 API Key 分组失败:', error)
+    showError(parseApiError(error, '加载 API Key 分组失败'))
+  }
+}
+
 function clearInstallCopiedResetTimer() {
   if (installCopiedResetTimer) {
     clearTimeout(installCopiedResetTimer)
@@ -1097,6 +1148,7 @@ function openEditApiKeyDialog(apiKey: ApiKey) {
   const redactionFeature = readChatPiiRedactionFeatureSettings(apiKey.feature_settings)
   editingApiKey.value = apiKey
   newKeyName.value = apiKey.name || ''
+  selectedGroupId.value = apiKey.group_id || apiKeyGroups.value[0]?.id || ''
   newKeyRateLimit.value = apiKey.rate_limit ?? undefined
   newKeyConcurrentLimit.value = apiKey.concurrent_limit ?? undefined
   keyRedactionMode.value = hasRedactionFeature ? 'custom' : 'inherit'
@@ -1108,6 +1160,7 @@ function openEditApiKeyDialog(apiKey: ApiKey) {
 function openCreateApiKeyDialog() {
   editingApiKey.value = null
   newKeyName.value = ''
+  selectedGroupId.value = apiKeyGroups.value[0]?.id || ''
   newKeyRateLimit.value = undefined
   newKeyConcurrentLimit.value = undefined
   keyRedactionMode.value = 'inherit'
@@ -1241,6 +1294,7 @@ function closeApiKeyDialog() {
   showCreateDialog.value = false
   editingApiKey.value = null
   newKeyName.value = ''
+  selectedGroupId.value = apiKeyGroups.value[0]?.id || ''
   newKeyRateLimit.value = undefined
   newKeyConcurrentLimit.value = undefined
   keyRedactionMode.value = 'inherit'
@@ -1253,12 +1307,17 @@ async function saveApiKey() {
     showError('请输入密钥名称')
     return
   }
+  if (apiKeyGroups.value.length === 0 || !selectedGroupId.value) {
+    showError('当前没有可用分组，请联系管理员')
+    return
+  }
 
   creating.value = true
   try {
     if (editingApiKey.value) {
       await meApi.updateApiKey(editingApiKey.value.id, {
         name: newKeyName.value,
+        group_id: selectedGroupId.value || undefined,
         rate_limit: newKeyRateLimit.value ?? 0,
         concurrent_limit: newKeyConcurrentLimit.value,
         feature_settings: keyRedactionMode.value === 'custom'
@@ -1272,6 +1331,7 @@ async function saveApiKey() {
     } else {
       const newKey = await meApi.createApiKey({
         name: newKeyName.value,
+        group_id: selectedGroupId.value || undefined,
         rate_limit: newKeyRateLimit.value ?? 0,
         concurrent_limit: newKeyConcurrentLimit.value,
         ...(keyRedactionMode.value === 'custom'

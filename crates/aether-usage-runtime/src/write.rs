@@ -1468,6 +1468,13 @@ fn context_bool(context: Option<&Map<String, Value>>, key: &str) -> Option<bool>
         .and_then(Value::as_bool)
 }
 
+fn context_number(context: Option<&Map<String, Value>>, key: &str) -> Option<Value> {
+    context
+        .and_then(|value| value.get(key))
+        .filter(|value| value.is_number())
+        .cloned()
+}
+
 fn context_value_ref<'a>(context: Option<&'a Map<String, Value>>, key: &str) -> Option<&'a Value> {
     context.and_then(|value| value.get(key))
 }
@@ -1602,6 +1609,29 @@ fn build_runtime_request_metadata_seed_from_parts(
         metadata.insert(
             "api_key_is_standalone".to_string(),
             Value::Bool(api_key_is_standalone),
+        );
+    }
+    if let Some(api_key_group_id) = context_string(context, "api_key_group_id") {
+        metadata.insert(
+            "api_key_group_id".to_string(),
+            Value::String(api_key_group_id),
+        );
+    }
+    if let Some(api_key_group_name) = context_string(context, "api_key_group_name") {
+        metadata.insert(
+            "api_key_group_name".to_string(),
+            Value::String(api_key_group_name),
+        );
+    }
+    if let Some(sales_multiplier) = context_number(context, "sales_multiplier") {
+        metadata.insert("sales_multiplier".to_string(), sales_multiplier);
+    }
+    if let Some(model_sales_multipliers) =
+        context_value(context, "model_sales_multipliers").filter(|value| !value.is_null())
+    {
+        metadata.insert(
+            "model_sales_multipliers".to_string(),
+            model_sales_multipliers.clone(),
         );
     }
     let provider_source_bytes = provider_request_body_base64.and_then(decoded_base64_len_hint);

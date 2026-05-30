@@ -126,6 +126,20 @@ pub(crate) async fn build_admin_create_user_api_key_response(
                     .into_response());
             }
         };
+    let group_id = match payload
+        .group_id
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        Some(group_id) => {
+            if state.find_user_group_by_id(&group_id).await?.is_none() {
+                return Ok(build_admin_users_bad_request_response("分组不存在"));
+            }
+            Some(group_id)
+        }
+        None => state.effective_default_user_group_id().await?,
+    };
 
     let plaintext_key = generate_admin_user_api_key_plaintext();
     let Some(key_encrypted) = state.encrypt_catalog_secret_with_fallbacks(&plaintext_key) else {
@@ -143,6 +157,7 @@ pub(crate) async fn build_admin_create_user_api_key_response(
             key_hash: hash_admin_user_api_key(&plaintext_key),
             key_encrypted: Some(key_encrypted),
             name: Some(name.clone()),
+            group_id,
             allowed_providers: None,
             allowed_api_formats: None,
             allowed_models: None,

@@ -49,6 +49,17 @@ fn settlement_billing_status_for_usage_status(status: &str) -> &'static str {
     }
 }
 
+fn settlement_wallet_charge_multiplier(input: &UsageSettlementInput) -> f64 {
+    if input.base_cost_usd > SETTLEMENT_EPSILON_USD
+        && input.total_cost_usd.is_finite()
+        && input.base_cost_usd.is_finite()
+    {
+        (input.total_cost_usd / input.base_cost_usd).max(0.0)
+    } else {
+        1.0
+    }
+}
+
 #[allow(unused_imports)]
 pub(crate) use aether_data_contracts::repository::settlement::{
     SettlementRepository, SettlementWriteRepository, StoredUsageSettlement, UsageSettlementInput,

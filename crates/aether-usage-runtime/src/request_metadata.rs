@@ -77,6 +77,10 @@ fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<St
     copy_bool(source, target, "upstream_is_stream");
     copy_non_null_value(source, target, "client_session_affinity");
     copy_bool(source, target, "api_key_is_standalone");
+    copy_non_empty_string(source, target, "api_key_group_id");
+    copy_non_empty_string(source, target, "api_key_group_name");
+    copy_number(source, target, "sales_multiplier");
+    copy_non_null_value(source, target, "model_sales_multipliers");
     copy_non_empty_string(source, target, "request_path");
     copy_non_empty_string(source, target, "request_query_string");
     copy_non_empty_string(source, target, "request_path_and_query");
@@ -85,6 +89,8 @@ fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<St
     copy_number(source, target, "client_response_body_base64_bytes");
     copy_number(source, target, "client_response_status_code");
     copy_non_null_value(source, target, "billing_snapshot");
+    copy_number(source, target, "base_cost_usd");
+    copy_number(source, target, "user_total_cost_usd");
     copy_non_empty_string(source, target, "billing_snapshot_schema_version");
     copy_non_empty_string(source, target, "billing_snapshot_status");
     copy_non_null_value(source, target, "settlement_snapshot");
@@ -117,6 +123,10 @@ fn move_allowed_metadata_fields(mut source: Map<String, Value>, target: &mut Map
     remove_bool(&mut source, target, "upstream_is_stream");
     remove_non_null_value(&mut source, target, "client_session_affinity");
     remove_bool(&mut source, target, "api_key_is_standalone");
+    remove_non_empty_string(&mut source, target, "api_key_group_id");
+    remove_non_empty_string(&mut source, target, "api_key_group_name");
+    remove_number(&mut source, target, "sales_multiplier");
+    remove_non_null_value(&mut source, target, "model_sales_multipliers");
     remove_non_empty_string(&mut source, target, "request_path");
     remove_non_empty_string(&mut source, target, "request_query_string");
     remove_non_empty_string(&mut source, target, "request_path_and_query");
@@ -125,6 +135,8 @@ fn move_allowed_metadata_fields(mut source: Map<String, Value>, target: &mut Map
     remove_number(&mut source, target, "client_response_body_base64_bytes");
     remove_number(&mut source, target, "client_response_status_code");
     remove_non_null_value(&mut source, target, "billing_snapshot");
+    remove_number(&mut source, target, "base_cost_usd");
+    remove_number(&mut source, target, "user_total_cost_usd");
     remove_non_empty_string(&mut source, target, "billing_snapshot_schema_version");
     remove_non_empty_string(&mut source, target, "billing_snapshot_status");
     remove_non_null_value(&mut source, target, "settlement_snapshot");

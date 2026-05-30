@@ -94,12 +94,27 @@ pub(crate) async fn build_admin_update_user_api_key_response(
                     .into_response());
             }
         };
+    let group_id = match payload
+        .group_id
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        Some(group_id) => {
+            if state.find_user_group_by_id(&group_id).await?.is_none() {
+                return Ok(build_admin_users_bad_request_response("分组不存在"));
+            }
+            Some(group_id)
+        }
+        None => None,
+    };
 
     let Some(updated) = state
         .update_user_api_key_basic(aether_data::repository::auth::UpdateUserApiKeyBasicRecord {
             user_id: user_id.clone(),
             api_key_id: api_key_id.clone(),
             name,
+            group_id,
             rate_limit: payload.rate_limit,
             concurrent_limit,
         })

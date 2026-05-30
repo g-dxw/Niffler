@@ -47,12 +47,14 @@ impl InMemoryAuthApiKeySnapshotRepository {
                 .unwrap_or_else(|| format!("memory-{}", snapshot.api_key_id));
             export_by_api_key_id.insert(
                 snapshot.api_key_id.clone(),
-                StoredAuthApiKeyExportRecord::new(
+                StoredAuthApiKeyExportRecord::new_with_group(
                     snapshot.user_id.clone(),
                     snapshot.api_key_id.clone(),
                     derived_key_hash.clone(),
                     None,
                     snapshot.api_key_name.clone(),
+                    snapshot.api_key_group_id.clone(),
+                    snapshot.api_key_group_name.clone(),
                     snapshot
                         .api_key_allowed_providers
                         .as_ref()
@@ -487,6 +489,11 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
             StoredAuthApiKeySnapshot {
                 api_key_id: record.api_key_id.clone(),
                 api_key_name: record.name.clone(),
+                api_key_group_id: record.group_id.clone(),
+                api_key_group_name: None,
+                api_key_group_visibility: None,
+                api_key_group_sales_multiplier: 1.0,
+                api_key_group_model_sales_multipliers: None,
                 api_key_is_active: record.is_active,
                 api_key_is_locked: false,
                 api_key_is_standalone: false,
@@ -499,7 +506,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 ..template
             }
         } else {
-            StoredAuthApiKeySnapshot::new(
+            StoredAuthApiKeySnapshot::new_with_group(
                 record.user_id.clone(),
                 format!(
                     "user-{}",
@@ -515,6 +522,11 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 None,
                 record.api_key_id.clone(),
                 record.name.clone(),
+                record.group_id.clone(),
+                None,
+                None,
+                None,
+                None,
                 record.is_active,
                 false,
                 false,
@@ -537,12 +549,14 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
         };
 
         let now_unix_secs = current_unix_secs() as i64;
-        let export = StoredAuthApiKeyExportRecord::new(
+        let export = StoredAuthApiKeyExportRecord::new_with_group(
             record.user_id.clone(),
             record.api_key_id.clone(),
             record.key_hash.clone(),
             record.key_encrypted,
             record.name,
+            record.group_id,
+            None,
             record
                 .allowed_providers
                 .as_ref()
@@ -610,6 +624,11 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
             StoredAuthApiKeySnapshot {
                 api_key_id: record.api_key_id.clone(),
                 api_key_name: record.name.clone(),
+                api_key_group_id: None,
+                api_key_group_name: None,
+                api_key_group_visibility: None,
+                api_key_group_sales_multiplier: 1.0,
+                api_key_group_model_sales_multipliers: None,
                 api_key_is_active: record.is_active,
                 api_key_is_locked: false,
                 api_key_is_standalone: true,
@@ -622,7 +641,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 ..template
             }
         } else {
-            StoredAuthApiKeySnapshot::new(
+            StoredAuthApiKeySnapshot::new_with_group(
                 record.user_id.clone(),
                 format!(
                     "admin-{}",
@@ -638,6 +657,11 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 None,
                 record.api_key_id.clone(),
                 record.name.clone(),
+                None,
+                None,
+                None,
+                None,
+                None,
                 record.is_active,
                 false,
                 true,
@@ -660,12 +684,14 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
         };
 
         let now_unix_secs = current_unix_secs() as i64;
-        let export = StoredAuthApiKeyExportRecord::new(
+        let export = StoredAuthApiKeyExportRecord::new_with_group(
             record.user_id.clone(),
             record.api_key_id.clone(),
             record.key_hash.clone(),
             record.key_encrypted,
             record.name,
+            None,
+            None,
             record
                 .allowed_providers
                 .as_ref()
@@ -723,6 +749,19 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
             }
             if let Some(export) = index.export_by_api_key_id.get_mut(&record.api_key_id) {
                 export.name = Some(name);
+            }
+        }
+        if let Some(group_id) = record.group_id {
+            if let Some(snapshot) = index.by_api_key_id.get_mut(&record.api_key_id) {
+                snapshot.api_key_group_id = Some(group_id.clone());
+                snapshot.api_key_group_name = None;
+                snapshot.api_key_group_visibility = None;
+                snapshot.api_key_group_sales_multiplier = 1.0;
+                snapshot.api_key_group_model_sales_multipliers = None;
+            }
+            if let Some(export) = index.export_by_api_key_id.get_mut(&record.api_key_id) {
+                export.group_id = Some(group_id);
+                export.group_name = None;
             }
         }
         if let Some(rate_limit) = record.rate_limit {
@@ -1043,7 +1082,7 @@ mod tests {
     };
 
     fn sample_snapshot(api_key_id: &str, user_id: &str) -> StoredAuthApiKeySnapshot {
-        StoredAuthApiKeySnapshot::new(
+        StoredAuthApiKeySnapshot::new_with_group(
             user_id.to_string(),
             "alice".to_string(),
             Some("alice@example.com".to_string()),
@@ -1056,6 +1095,11 @@ mod tests {
             Some(serde_json::json!(["gpt-4.1"])),
             api_key_id.to_string(),
             Some("default".to_string()),
+            Some("group-default".to_string()),
+            Some("默认分组".to_string()),
+            Some("public".to_string()),
+            Some(1.0),
+            None,
             true,
             false,
             false,
@@ -1133,12 +1177,14 @@ mod tests {
             ),
         ])
         .with_export_records(vec![
-            StoredAuthApiKeyExportRecord::new(
+            StoredAuthApiKeyExportRecord::new_with_group(
                 "user-1".to_string(),
                 "key-user".to_string(),
                 "hash-user".to_string(),
                 Some("enc-user".to_string()),
                 Some("default".to_string()),
+                Some("group-default".to_string()),
+                Some("默认分组".to_string()),
                 Some(serde_json::json!(["openai"])),
                 Some(serde_json::json!(["openai:chat"])),
                 Some(serde_json::json!(["gpt-5"])),
@@ -1154,12 +1200,14 @@ mod tests {
                 false,
             )
             .expect("user export record should build"),
-            StoredAuthApiKeyExportRecord::new(
+            StoredAuthApiKeyExportRecord::new_with_group(
                 "admin-1".to_string(),
                 "key-standalone".to_string(),
                 "hash-standalone".to_string(),
                 Some("enc-standalone".to_string()),
                 Some("standalone".to_string()),
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -1237,6 +1285,7 @@ mod tests {
                 user_id: "user-1".to_string(),
                 api_key_id: "key-1".to_string(),
                 name: None,
+                group_id: None,
                 rate_limit: None,
                 concurrent_limit: Some(11),
             })

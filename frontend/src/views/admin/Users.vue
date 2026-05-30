@@ -1122,6 +1122,12 @@
                       variant="secondary"
                       class="text-xs"
                     >
+                      分组：{{ apiKey.group_name || apiKeyGroupName(apiKey.group_id) }}
+                    </Badge>
+                    <Badge
+                      variant="secondary"
+                      class="text-xs"
+                    >
                       {{ formatRateLimitSimple(apiKey.rate_limit) }}
                     </Badge>
                     <Badge
@@ -1265,6 +1271,35 @@
             class="h-10"
             placeholder="例如：生产环境 Key"
           />
+        </div>
+        <div class="space-y-2">
+          <Label
+            for="admin-user-key-group"
+            class="text-sm font-medium"
+          >使用分组</Label>
+          <select
+            id="admin-user-key-group"
+            v-model="userApiKeyForm.group_id"
+            class="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+            :disabled="apiKeyGroupOptions.length === 0"
+          >
+            <option
+              v-if="apiKeyGroupOptions.length === 0"
+              value=""
+            >
+              暂无可用分组
+            </option>
+            <option
+              v-for="group in apiKeyGroupOptions"
+              :key="group.id"
+              :value="group.id"
+            >
+              {{ group.name }}{{ group.visibility === 'internal' ? '（内部分组）' : '' }}
+            </option>
+          </select>
+          <p class="text-xs text-muted-foreground">
+            分组决定这个 API Key 的按量可用范围、并发上限和钱包扣费倍率；套餐按套餐自己的模型范围使用。
+          </p>
         </div>
         <div class="space-y-2">
           <Label
@@ -1622,6 +1657,7 @@ const apiKeyInput = ref<HTMLInputElement>()
 const editingUserApiKey = ref<ApiKey | null>(null)
 const userApiKeyForm = ref({
   name: '',
+  group_id: '',
   rate_limit: undefined as number | undefined,
   concurrent_limit: undefined as number | undefined,
   chat_pii_redaction_enabled: false,
@@ -1641,6 +1677,7 @@ const filterRole = ref('all')
 const filterStatus = ref('all')
 const filterGroup = ref('all')
 const userGroups = ref<UserGroup[]>([])
+const defaultUserGroupId = ref<string | null>(null)
 const userRoleFilterOptions = [
   { value: 'all', label: '全部角色' },
   { value: 'admin', label: '管理员' },
@@ -1741,6 +1778,16 @@ const grantableBillingPlans = computed(() =>
 const selectedGrantPlan = computed(() =>
   grantableBillingPlans.value.find((plan) => plan.id === selectedGrantPlanId.value) || null
 )
+const selectedUserGroupIds = computed(() =>
+  new Set((selectedUser.value?.groups || []).map((group) => group.id))
+)
+const apiKeyGroupOptions = computed(() => {
+  const currentGroupId = editingUserApiKey.value?.group_id || ''
+  return userGroups.value.filter((group) => {
+    if (group.visibility !== 'internal') return true
+    return selectedUserGroupIds.value.has(group.id) || group.id === currentGroupId
+  })
+})
 
 // Watch filter changes and reset to first page
 watch([searchQuery, filterRole, filterStatus, filterGroup], () => {
@@ -1783,6 +1830,7 @@ async function loadUserGroups(): Promise<void> {
   try {
     const response = await usersStore.listUserGroups()
     userGroups.value = response.items
+    defaultUserGroupId.value = response.default_group_id ?? null
     if (filterGroup.value !== 'all' && !userGroups.value.some((group) => group.id === filterGroup.value)) {
       filterGroup.value = 'all'
     }
@@ -1971,6 +2019,19 @@ function formatConcurrentLimitSimple(concurrentLimit?: number | null): string {
   return `${concurrentLimit} 并发`
 }
 
+function apiKeyGroupName(groupId?: string | null): string {
+  if (!groupId) return '默认分组'
+  return userGroups.value.find((group) => group.id === groupId)?.name || '未知分组'
+}
+
+function defaultApiKeyGroupId(): string {
+  const defaultGroupId = defaultUserGroupId.value
+  if (defaultGroupId && apiKeyGroupOptions.value.some((group) => group.id === defaultGroupId)) {
+    return defaultGroupId
+  }
+  return apiKeyGroupOptions.value[0]?.id || ''
+}
+
 function formatUserEffectiveRateLimitSource(user: User): string {
   const source = user.effective_policy?.rate_limit
   if (!source) return ''
@@ -2086,7 +2147,10 @@ async function handleUserFormSubmit(data: UserFormData & { password?: string; un
 async function manageApiKeys(user: User) {
   selectedUser.value = user
   showApiKeysDialog.value = true
-  await loadUserApiKeys(user.id)
+  await Promise.all([
+    loadUserGroups(),
+    loadUserApiKeys(user.id),
+  ])
 }
 
 async function manageUserSessions(user: User) {
@@ -2260,14 +2324,15 @@ async function loadUserApiKeys(userId: string) {
 
 function openCreateUserApiKeyDialog() {
   const redactionFeature = readChatPiiRedactionFeatureSettings(null)
+  editingUserApiKey.value = null
   userApiKeyForm.value = {
     name: `Key-${new Date().toISOString().split('T')[0]}`,
+    group_id: defaultApiKeyGroupId(),
     rate_limit: undefined,
     concurrent_limit: undefined,
     chat_pii_redaction_enabled: redactionFeature.enabled,
     chat_pii_redaction_placeholder_notice: redactionFeature.inject_model_instruction,
   }
-  editingUserApiKey.value = null
   showUserApiKeyFormDialog.value = true
 }
 
@@ -2276,6 +2341,7 @@ function openEditUserApiKeyDialog(apiKey: ApiKey) {
   editingUserApiKey.value = apiKey
   userApiKeyForm.value = {
     name: apiKey.name || '',
+    group_id: apiKey.group_id || defaultApiKeyGroupId(),
     rate_limit: apiKey.rate_limit ?? undefined,
     concurrent_limit: apiKey.concurrent_limit ?? undefined,
     chat_pii_redaction_enabled: redactionFeature.enabled,
@@ -2289,6 +2355,7 @@ function closeUserApiKeyFormDialog() {
   editingUserApiKey.value = null
   userApiKeyForm.value = {
     name: '',
+    group_id: '',
     rate_limit: undefined,
     concurrent_limit: undefined,
     chat_pii_redaction_enabled: false,
@@ -2302,12 +2369,17 @@ async function submitUserApiKeyForm() {
     error('请输入密钥名称', editingUserApiKey.value ? '更新 API Key 失败' : '创建 API Key 失败')
     return
   }
+  if (!userApiKeyForm.value.group_id) {
+    error('请选择使用分组', editingUserApiKey.value ? '更新 API Key 失败' : '创建 API Key 失败')
+    return
+  }
 
   creatingApiKey.value = true
   try {
     if (editingUserApiKey.value) {
       await usersStore.updateApiKey(selectedUser.value.id, editingUserApiKey.value.id, {
         name: userApiKeyForm.value.name,
+        group_id: userApiKeyForm.value.group_id,
         rate_limit: userApiKeyForm.value.rate_limit ?? 0,
         concurrent_limit: userApiKeyForm.value.concurrent_limit,
         feature_settings: mergeChatPiiRedactionFeatureSettings(editingUserApiKey.value.feature_settings, {
@@ -2319,6 +2391,7 @@ async function submitUserApiKeyForm() {
     } else {
       const response = await usersStore.createApiKey(selectedUser.value.id, {
         name: userApiKeyForm.value.name,
+        group_id: userApiKeyForm.value.group_id,
         rate_limit: userApiKeyForm.value.rate_limit ?? 0,
         concurrent_limit: userApiKeyForm.value.concurrent_limit,
         feature_settings: mergeChatPiiRedactionFeatureSettings(null, {

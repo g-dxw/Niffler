@@ -3,8 +3,8 @@ use sqlx::{sqlite::SqliteRow, Row};
 
 use super::{
     finite_wallet_available_usd, plan_finite_wallet_debit,
-    settlement_billing_status_for_usage_status, SettlementWriteRepository, StoredUsageSettlement,
-    UsageSettlementInput, SETTLEMENT_EPSILON_USD,
+    settlement_billing_status_for_usage_status, settlement_wallet_charge_multiplier,
+    SettlementWriteRepository, StoredUsageSettlement, UsageSettlementInput, SETTLEMENT_EPSILON_USD,
 };
 use crate::driver::sqlite::{sqlite_optional_real, sqlite_real, SqlitePool};
 use crate::error::SqlResultExt;
@@ -169,6 +169,7 @@ async fn consume_daily_quota_sqlite(
     total_cost_usd: f64,
     wallet_available_usd: Option<f64>,
     wallet_can_overdraft: bool,
+    wallet_charge_multiplier: f64,
     now_unix_secs: i64,
     request_global_model_id: Option<&str>,
 ) -> Result<DailyQuotaDebitResult, DataLayerError> {
@@ -269,7 +270,8 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
     if allow_wallet_overage
         && !wallet_can_overdraft
         && wallet_available_usd.is_some_and(|available| {
-            total_remaining + available + SETTLEMENT_EPSILON_USD < total_cost_usd
+            available + SETTLEMENT_EPSILON_USD
+                < (total_cost_usd - total_remaining).max(0.0) * wallet_charge_multiplier
         })
     {
         return Ok(DailyQuotaDebitResult {
@@ -609,13 +611,15 @@ LIMIT 1
 
             let wallet_debit_cost_usd = if !api_key_is_standalone {
                 if let Some(user_id) = input.user_id.as_deref().filter(|value| !value.is_empty()) {
+                    let sales_multiplier = settlement_wallet_charge_multiplier(&input);
                     let quota = consume_daily_quota_sqlite(
                         &mut tx,
                         user_id,
                         &input.request_id,
-                        input.total_cost_usd,
+                        input.base_cost_usd,
                         wallet_available_usd,
                         wallet_can_overdraft,
+                        sales_multiplier,
                         updated_at,
                         input.global_model_id.as_deref(),
                     )
@@ -625,7 +629,7 @@ LIMIT 1
                         settlement.billing_status = final_billing_status.clone();
                         0.0
                     } else {
-                        (input.total_cost_usd - quota.debited_usd).max(0.0)
+                        (input.base_cost_usd - quota.debited_usd).max(0.0) * sales_multiplier
                     }
                 } else {
                     input.total_cost_usd
@@ -840,6 +844,7 @@ mod tests {
                 model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
                 total_cost_usd: 3.0,
                 actual_total_cost_usd: 2.0,
                 finalized_at_unix_secs: Some(1_234),
@@ -878,6 +883,7 @@ mod tests {
                 model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
                 total_cost_usd: 3.0,
                 actual_total_cost_usd: 2.0,
                 finalized_at_unix_secs: Some(9_999),
@@ -920,6 +926,7 @@ mod tests {
                 model: None,
                 status: "failed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
                 total_cost_usd: 3.0,
                 actual_total_cost_usd: 2.0,
                 finalized_at_unix_secs: Some(1_235),
@@ -963,6 +970,7 @@ mod tests {
                 model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 15.0,
                 total_cost_usd: 15.0,
                 actual_total_cost_usd: 7.5,
                 finalized_at_unix_secs: Some(1_236),
@@ -1015,6 +1023,7 @@ mod tests {
                 model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
                 total_cost_usd: 3.0,
                 actual_total_cost_usd: 2.0,
                 finalized_at_unix_secs: Some(1_260),
@@ -1081,6 +1090,7 @@ WHERE id = 'entitlement-quota'
                 model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
                 total_cost_usd: 3.0,
                 actual_total_cost_usd: 2.0,
                 finalized_at_unix_secs: Some(1_260),
@@ -1131,6 +1141,7 @@ INSERT INTO "usage" (
                 model: None,
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
                 total_cost_usd: 3.0,
                 actual_total_cost_usd: 2.0,
                 finalized_at_unix_secs: Some(1_320),
@@ -1178,6 +1189,7 @@ WHERE id = 'entitlement-quota'
                 model: Some("claude-sonnet".to_string()),
                 status: "completed".to_string(),
                 billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
                 total_cost_usd: 3.0,
                 actual_total_cost_usd: 2.0,
                 finalized_at_unix_secs: Some(1_260),

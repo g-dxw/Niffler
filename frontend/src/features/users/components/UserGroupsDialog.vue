@@ -111,6 +111,48 @@
               />
             </div>
 
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="space-y-2">
+                <Label class="text-sm font-medium">分组可见性</Label>
+                <select
+                  v-model="form.visibility"
+                  class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="public">
+                    公开分组，用户创建 API Key 时可见
+                  </option>
+                  <option value="internal">
+                    内部分组，仅管理员分配后可见
+                  </option>
+                </select>
+              </div>
+
+              <div class="space-y-2">
+                <Label class="text-sm font-medium">默认销售倍率</Label>
+                <Input
+                  :model-value="form.sales_multiplier"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="h-10"
+                  placeholder="1 = 按官方价扣费"
+                  @update:model-value="(value) => form.sales_multiplier = parseNumberInput(value, { min: 0, max: 100 }) ?? 1"
+                />
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm font-medium">模型销售倍率覆盖（可选）</Label>
+              <Textarea
+                v-model="modelSalesMultipliersText"
+                class="min-h-20 font-mono text-xs"
+                placeholder='例如：{"global-model-id": 0.8}'
+              />
+              <p class="text-xs text-muted-foreground">
+                不填则所有模型使用默认销售倍率；这里填写后，指定模型会按单独倍率扣钱包。
+              </p>
+            </div>
+
             <div class="space-y-2">
               <Label class="text-sm font-medium">成员</Label>
               <MultiSelect
@@ -282,6 +324,7 @@ import {
   Input,
   Label,
   Switch,
+  Textarea,
 } from '@/components/ui'
 import { MultiSelect } from '@/components/common'
 import { useUsersStore } from '@/stores/users'
@@ -324,9 +367,12 @@ const saving = ref(false)
 const groups = ref<UserGroup[]>([])
 const editingGroupId = ref<string | null>(null)
 const memberUserIds = ref<string[]>([])
+const modelSalesMultipliersText = ref('')
 
 const form = ref({
   name: '',
+  visibility: 'public' as 'public' | 'internal',
+  sales_multiplier: 1,
   allowed_providers_mode: 'unrestricted' as ListPolicyMode,
   allowed_api_formats_mode: 'unrestricted' as ListPolicyMode,
   allowed_models_mode: 'unrestricted' as ListPolicyMode,
@@ -389,6 +435,8 @@ async function selectGroup(groupId: string): Promise<void> {
   editingGroupId.value = group.id
   form.value = {
     name: group.name,
+    visibility: group.visibility === 'internal' ? 'internal' : 'public',
+    sales_multiplier: group.sales_multiplier ?? 1,
     allowed_providers_mode: normalizeListMode(group.allowed_providers_mode),
     allowed_api_formats_mode: normalizeListMode(group.allowed_api_formats_mode),
     allowed_models_mode: normalizeListMode(group.allowed_models_mode),
@@ -400,6 +448,9 @@ async function selectGroup(groupId: string): Promise<void> {
     concurrent_limit_mode: normalizeRateMode(group.concurrent_limit_mode),
     concurrent_limit: group.concurrent_limit ?? undefined,
   }
+  modelSalesMultipliersText.value = group.model_sales_multipliers
+    ? JSON.stringify(group.model_sales_multipliers, null, 2)
+    : ''
   try {
     const members = await usersStore.listUserGroupMembers(group.id)
     memberUserIds.value = members.map((member) => member.user_id)
@@ -421,6 +472,8 @@ function startCreate(): void {
   editingGroupId.value = null
   form.value = {
     name: '',
+    visibility: 'public',
+    sales_multiplier: 1,
     allowed_providers_mode: 'unrestricted',
     allowed_api_formats_mode: 'unrestricted',
     allowed_models_mode: 'unrestricted',
@@ -432,6 +485,7 @@ function startCreate(): void {
     concurrent_limit_mode: 'system',
     concurrent_limit: undefined,
   }
+  modelSalesMultipliersText.value = ''
   memberUserIds.value = []
 }
 
@@ -468,6 +522,9 @@ async function toggleDefault(): Promise<void> {
 function buildPayload(): UpsertUserGroupRequest {
   return {
     name: form.value.name.trim(),
+    visibility: form.value.visibility,
+    sales_multiplier: form.value.sales_multiplier,
+    model_sales_multipliers: parseModelSalesMultipliers(),
     allowed_providers_mode: form.value.allowed_providers_mode,
     allowed_api_formats_mode: form.value.allowed_api_formats_mode,
     allowed_models_mode: form.value.allowed_models_mode,
@@ -489,6 +546,24 @@ function buildPayload(): UpsertUserGroupRequest {
       ? (form.value.concurrent_limit ?? 0)
       : null,
   }
+}
+
+function parseModelSalesMultipliers(): Record<string, number> | null {
+  const text = modelSalesMultipliersText.value.trim()
+  if (!text) return null
+  const value = JSON.parse(text) as unknown
+  if (!value || Array.isArray(value) || typeof value !== 'object') {
+    throw new Error('模型销售倍率必须是 JSON 对象')
+  }
+  const result: Record<string, number> = {}
+  for (const [modelId, multiplier] of Object.entries(value as Record<string, unknown>)) {
+    if (!modelId.trim()) throw new Error('模型ID不能为空')
+    if (typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier < 0) {
+      throw new Error('模型销售倍率必须是大于等于 0 的数字')
+    }
+    result[modelId.trim()] = multiplier
+  }
+  return result
 }
 
 async function saveGroup(): Promise<void> {

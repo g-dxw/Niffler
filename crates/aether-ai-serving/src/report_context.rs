@@ -81,6 +81,33 @@ pub fn build_ai_execution_report_context(parts: AiExecutionReportContextParts<'_
             .unwrap_or(Value::Null),
     );
     object.insert(
+        "api_key_group_id".to_string(),
+        parts
+            .auth_context
+            .api_key_group_id
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    object.insert(
+        "api_key_group_name".to_string(),
+        parts
+            .auth_context
+            .api_key_group_name
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    if let Some(number) = serde_json::Number::from_f64(parts.auth_context.sales_multiplier) {
+        object.insert("sales_multiplier".to_string(), Value::Number(number));
+    }
+    if let Some(model_sales_multipliers) = parts.auth_context.model_sales_multipliers.clone() {
+        object.insert(
+            "model_sales_multipliers".to_string(),
+            model_sales_multipliers,
+        );
+    }
+    object.insert(
         "request_id".to_string(),
         Value::String(parts.request_id.to_string()),
     );

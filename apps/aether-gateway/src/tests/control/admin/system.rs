@@ -629,7 +629,10 @@ async fn gateway_handles_admin_system_users_export_locally_with_trusted_admin_pr
         .create_user_group(UpsertUserGroupRecord {
             name: "Restricted GPT".to_string(),
             description: Some("GPT-only users".to_string()),
+            visibility: "public".to_string(),
             priority: 10,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: Some(vec!["openai".to_string()]),
             allowed_providers_mode: "specific".to_string(),
             allowed_api_formats: Some(vec!["openai:chat".to_string()]),

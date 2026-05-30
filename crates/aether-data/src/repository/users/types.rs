@@ -490,6 +490,7 @@ pub struct StoredUserGroup {
     pub normalized_name: String,
     pub description: Option<String>,
     pub priority: i32,
+    pub visibility: String,
     pub allowed_providers: Option<Vec<String>>,
     pub allowed_providers_mode: String,
     pub allowed_api_formats: Option<Vec<String>>,
@@ -500,6 +501,8 @@ pub struct StoredUserGroup {
     pub rate_limit_mode: String,
     pub concurrent_limit: Option<i32>,
     pub concurrent_limit_mode: String,
+    pub sales_multiplier: f64,
+    pub model_sales_multipliers: Option<Value>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -512,6 +515,7 @@ impl StoredUserGroup {
         normalized_name: String,
         description: Option<String>,
         priority: i32,
+        visibility: String,
         allowed_providers: Option<Value>,
         allowed_providers_mode: String,
         allowed_api_formats: Option<Value>,
@@ -522,6 +526,8 @@ impl StoredUserGroup {
         rate_limit_mode: String,
         concurrent_limit: Option<i32>,
         concurrent_limit_mode: String,
+        sales_multiplier: f64,
+        model_sales_multipliers: Option<Value>,
         created_at: Option<DateTime<Utc>>,
         updated_at: Option<DateTime<Utc>>,
     ) -> Result<Self, crate::DataLayerError> {
@@ -546,6 +552,7 @@ impl StoredUserGroup {
             normalized_name,
             description,
             priority,
+            visibility: normalize_user_group_visibility(&visibility)?,
             allowed_providers: parse_string_list(
                 allowed_providers,
                 "user_groups.allowed_providers",
@@ -576,6 +583,14 @@ impl StoredUserGroup {
             concurrent_limit_mode: normalize_rate_limit_policy_mode(
                 &concurrent_limit_mode,
                 "user_groups.concurrent_limit_mode",
+            )?,
+            sales_multiplier: normalize_user_group_multiplier(
+                sales_multiplier,
+                "user_groups.sales_multiplier",
+            )?,
+            model_sales_multipliers: normalize_model_sales_multipliers(
+                model_sales_multipliers,
+                "user_groups.model_sales_multipliers",
             )?,
             created_at,
             updated_at,
@@ -609,6 +624,7 @@ pub struct UpsertUserGroupRecord {
     pub name: String,
     pub description: Option<String>,
     pub priority: i32,
+    pub visibility: String,
     pub allowed_providers: Option<Vec<String>>,
     pub allowed_providers_mode: String,
     pub allowed_api_formats: Option<Vec<String>>,
@@ -619,6 +635,8 @@ pub struct UpsertUserGroupRecord {
     pub rate_limit_mode: String,
     pub concurrent_limit: Option<i32>,
     pub concurrent_limit_mode: String,
+    pub sales_multiplier: f64,
+    pub model_sales_multipliers: Option<Value>,
 }
 
 impl UpsertUserGroupRecord {
@@ -1016,6 +1034,56 @@ fn normalize_optional_json(value: Option<Value>) -> Option<Value> {
 
 pub fn normalize_user_group_name(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub fn normalize_user_group_visibility(value: &str) -> Result<String, crate::DataLayerError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "public" => Ok("public".to_string()),
+        "internal" => Ok("internal".to_string()),
+        _ => Err(crate::DataLayerError::UnexpectedValue(
+            "user_groups.visibility is not valid".to_string(),
+        )),
+    }
+}
+
+fn normalize_user_group_multiplier(
+    value: f64,
+    field_name: &str,
+) -> Result<f64, crate::DataLayerError> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(crate::DataLayerError::UnexpectedValue(format!(
+            "{field_name} must be finite and greater than or equal to 0"
+        )));
+    }
+    Ok(value)
+}
+
+fn normalize_model_sales_multipliers(
+    value: Option<Value>,
+    field_name: &str,
+) -> Result<Option<Value>, crate::DataLayerError> {
+    let Some(value) = normalize_optional_json(value) else {
+        return Ok(None);
+    };
+    let Some(object) = value.as_object() else {
+        return Err(crate::DataLayerError::UnexpectedValue(format!(
+            "{field_name} must be a JSON object"
+        )));
+    };
+    for (model_id, multiplier) in object {
+        if model_id.trim().is_empty() {
+            return Err(crate::DataLayerError::UnexpectedValue(format!(
+                "{field_name} contains an empty model id"
+            )));
+        }
+        let Some(multiplier) = multiplier.as_f64() else {
+            return Err(crate::DataLayerError::UnexpectedValue(format!(
+                "{field_name}.{model_id} must be a number"
+            )));
+        };
+        normalize_user_group_multiplier(multiplier, field_name)?;
+    }
+    Ok(Some(value))
 }
 
 pub fn normalize_list_policy_mode(

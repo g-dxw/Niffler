@@ -2862,7 +2862,10 @@ async fn gateway_handles_user_monitoring_rate_limit_status_locally_without_proxy
         .create_user_group(UpsertUserGroupRecord {
             name: "Monitoring Limits".to_string(),
             description: None,
+            visibility: "public".to_string(),
             priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -9306,7 +9309,10 @@ async fn gateway_filters_users_me_available_models_by_group_policy_and_hides_mod
         .create_user_group(UpsertUserGroupRecord {
             name: "Claude only".to_string(),
             description: None,
+            visibility: "public".to_string(),
             priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -9404,7 +9410,10 @@ async fn gateway_returns_no_users_me_available_models_when_group_denies_all_mode
         .create_user_group(UpsertUserGroupRecord {
             name: "No models".to_string(),
             description: None,
+            visibility: "public".to_string(),
             priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,

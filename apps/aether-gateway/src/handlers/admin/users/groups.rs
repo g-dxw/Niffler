@@ -21,6 +21,12 @@ struct AdminUserGroupPayload {
     name: String,
     #[serde(default)]
     description: Option<String>,
+    #[serde(default = "default_group_visibility")]
+    visibility: String,
+    #[serde(default = "default_sales_multiplier")]
+    sales_multiplier: f64,
+    #[serde(default)]
+    model_sales_multipliers: Option<serde_json::Value>,
     #[serde(default)]
     allowed_providers: Option<Vec<String>>,
     #[serde(default = "default_list_mode")]
@@ -377,6 +383,10 @@ fn parse_group_record(
     if payload.concurrent_limit.is_some_and(|value| value < 0) {
         return Err("concurrent_limit 必须大于等于 0".to_string());
     }
+    let visibility = normalize_group_visibility(&payload.visibility)?;
+    let sales_multiplier = normalize_sales_multiplier(payload.sales_multiplier)?;
+    let model_sales_multipliers =
+        normalize_model_sales_multipliers(payload.model_sales_multipliers)?;
     let allowed_providers =
         normalize_admin_user_string_list(payload.allowed_providers, "allowed_providers")?;
     let allowed_api_formats = normalize_admin_user_api_formats(payload.allowed_api_formats)?;
@@ -388,6 +398,9 @@ fn parse_group_record(
             .description
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
+        visibility,
+        sales_multiplier,
+        model_sales_multipliers,
         priority: 0,
         allowed_providers,
         allowed_providers_mode: normalize_list_mode(&payload.allowed_providers_mode)?,
@@ -421,6 +434,9 @@ fn user_group_payload(
         "name": group.name,
         "normalized_name": group.normalized_name,
         "description": group.description,
+        "visibility": group.visibility,
+        "sales_multiplier": group.sales_multiplier,
+        "model_sales_multipliers": group.model_sales_multipliers,
         "allowed_providers": group.allowed_providers,
         "allowed_providers_mode": group.allowed_providers_mode,
         "allowed_api_formats": group.allowed_api_formats,
@@ -453,12 +469,56 @@ fn normalize_rate_mode(value: &str) -> Result<String, String> {
     }
 }
 
+fn normalize_group_visibility(value: &str) -> Result<String, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "public" | "internal" => Ok(value.trim().to_ascii_lowercase()),
+        _ => Err("分组可见性不合法".to_string()),
+    }
+}
+
+fn normalize_sales_multiplier(value: f64) -> Result<f64, String> {
+    if value.is_finite() && value >= 0.0 {
+        Ok(value)
+    } else {
+        Err("销售倍率必须大于等于 0".to_string())
+    }
+}
+
+fn normalize_model_sales_multipliers(
+    value: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let Some(object) = value.as_object() else {
+        return Err("模型销售倍率必须是对象".to_string());
+    };
+    for (model_id, multiplier) in object {
+        if model_id.trim().is_empty() {
+            return Err("模型ID不能为空".to_string());
+        }
+        let Some(multiplier) = multiplier.as_f64() else {
+            return Err("模型销售倍率必须是数字".to_string());
+        };
+        normalize_sales_multiplier(multiplier)?;
+    }
+    Ok(Some(value))
+}
+
 fn default_list_mode() -> String {
     "inherit".to_string()
 }
 
 fn default_rate_limit_mode() -> String {
     "inherit".to_string()
+}
+
+fn default_group_visibility() -> String {
+    "public".to_string()
+}
+
+fn default_sales_multiplier() -> f64 {
+    1.0
 }
 
 fn normalize_ids(values: Vec<String>) -> Vec<String> {

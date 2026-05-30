@@ -3,8 +3,8 @@ use sqlx::{PgPool, Row};
 
 use super::{
     finite_wallet_available_usd, plan_finite_wallet_debit,
-    settlement_billing_status_for_usage_status, SettlementWriteRepository, StoredUsageSettlement,
-    UsageSettlementInput, SETTLEMENT_EPSILON_USD,
+    settlement_billing_status_for_usage_status, settlement_wallet_charge_multiplier,
+    SettlementWriteRepository, StoredUsageSettlement, UsageSettlementInput, SETTLEMENT_EPSILON_USD,
 };
 use crate::driver::postgres::PostgresTransactionRunner;
 use crate::error::SqlxResultExt;
@@ -259,6 +259,7 @@ async fn consume_daily_quota_postgres(
     total_cost_usd: f64,
     wallet_available_usd: Option<f64>,
     wallet_can_overdraft: bool,
+    wallet_charge_multiplier: f64,
     request_global_model_id: Option<&str>,
 ) -> Result<DailyQuotaDebitResult, DataLayerError> {
     if total_cost_usd <= 0.0 {
@@ -350,7 +351,8 @@ FOR UPDATE
     if allow_wallet_overage
         && !wallet_can_overdraft
         && wallet_available_usd.is_some_and(|available| {
-            total_remaining + available + SETTLEMENT_EPSILON_USD < total_cost_usd
+            available + SETTLEMENT_EPSILON_USD
+                < (total_cost_usd - total_remaining).max(0.0) * wallet_charge_multiplier
         })
     {
         return Ok(DailyQuotaDebitResult {
@@ -676,13 +678,15 @@ LIMIT 1
                             if let Some(user_id) =
                                 input.user_id.as_deref().filter(|value| !value.is_empty())
                             {
+                                let sales_multiplier = settlement_wallet_charge_multiplier(&input);
                                 let quota = consume_daily_quota_postgres(
                                     tx,
                                     user_id,
                                     &input.request_id,
-                                    input.total_cost_usd,
+                                    input.base_cost_usd,
                                     wallet_available_usd,
                                     wallet_can_overdraft,
+                                    sales_multiplier,
                                     input.global_model_id.as_deref(),
                                 )
                                 .await?;
@@ -691,7 +695,8 @@ LIMIT 1
                                     settlement.billing_status = final_billing_status.clone();
                                     0.0
                                 } else {
-                                    (input.total_cost_usd - quota.debited_usd).max(0.0)
+                                    (input.base_cost_usd - quota.debited_usd).max(0.0)
+                                        * sales_multiplier
                                 }
                             } else {
                                 input.total_cost_usd

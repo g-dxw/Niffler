@@ -1768,52 +1768,34 @@ impl GatewayDataState {
             apply_admin_unrestricted_auth_snapshot(&mut snapshot);
             return Ok(Some(snapshot));
         }
+        if !snapshot.api_key_is_standalone {
+            if let Some(group_id) = snapshot.api_key_group_id.clone() {
+                let Some(group) = repository.find_user_group_by_id(&group_id).await? else {
+                    snapshot.api_key_is_active = false;
+                    return Ok(Some(snapshot));
+                };
+                if group.visibility == "internal" {
+                    let user_groups = repository
+                        .list_user_groups_for_user(&snapshot.user_id)
+                        .await?;
+                    if !user_groups.iter().any(|item| item.id == group.id) {
+                        snapshot.api_key_is_active = false;
+                        return Ok(Some(snapshot));
+                    }
+                }
+                snapshot.api_key_group_name = Some(group.name.clone());
+                snapshot.api_key_group_visibility = Some(group.visibility.clone());
+                snapshot.api_key_group_sales_multiplier = group.sales_multiplier;
+                snapshot.api_key_group_model_sales_multipliers =
+                    group.model_sales_multipliers.clone();
+                apply_effective_user_group_policies_to_snapshot(&mut snapshot, &[group]);
+                return Ok(Some(snapshot));
+            }
+        }
         let groups = self
             .effective_user_groups_for_user(&snapshot.user_id)
             .await?;
-
-        let mut allowed_providers =
-            resolve_effective_list_policy(None, "unrestricted", &groups, |group| {
-                (
-                    &group.allowed_providers_mode,
-                    group.allowed_providers.clone(),
-                )
-            });
-        let mut allowed_api_formats =
-            resolve_effective_list_policy(None, "unrestricted", &groups, |group| {
-                (
-                    &group.allowed_api_formats_mode,
-                    group.allowed_api_formats.clone(),
-                )
-            });
-        let mut allowed_models =
-            resolve_effective_list_policy(None, "unrestricted", &groups, |group| {
-                (&group.allowed_models_mode, group.allowed_models.clone())
-            });
-        let user_rate_limit = resolve_effective_rate_limit_policy(None, "system", &groups);
-        let user_concurrent_limit =
-            resolve_effective_concurrent_limit_policy(None, "inherit", &groups);
-        if !snapshot.api_key_is_standalone {
-            constrain_api_key_list_policy_to_user_policy(
-                &mut allowed_providers,
-                &mut snapshot.api_key_allowed_providers,
-            );
-            constrain_api_key_list_policy_to_user_policy(
-                &mut allowed_api_formats,
-                &mut snapshot.api_key_allowed_api_formats,
-            );
-            constrain_api_key_list_policy_to_user_policy(
-                &mut allowed_models,
-                &mut snapshot.api_key_allowed_models,
-            );
-        }
-        snapshot.apply_user_policy(
-            allowed_providers,
-            allowed_api_formats,
-            allowed_models,
-            user_rate_limit,
-            user_concurrent_limit,
-        );
+        apply_effective_user_group_policies_to_snapshot(&mut snapshot, &groups);
         Ok(Some(snapshot))
     }
 
@@ -1948,6 +1930,52 @@ fn apply_admin_unrestricted_auth_snapshot(snapshot: &mut GatewayAuthApiKeySnapsh
     snapshot.api_key_allowed_models = None;
     snapshot.api_key_rate_limit = None;
     snapshot.api_key_concurrent_limit = None;
+}
+
+fn apply_effective_user_group_policies_to_snapshot(
+    snapshot: &mut GatewayAuthApiKeySnapshot,
+    groups: &[aether_data::repository::users::StoredUserGroup],
+) {
+    let mut allowed_providers =
+        resolve_effective_list_policy(None, "unrestricted", groups, |group| {
+            (
+                &group.allowed_providers_mode,
+                group.allowed_providers.clone(),
+            )
+        });
+    let mut allowed_api_formats =
+        resolve_effective_list_policy(None, "unrestricted", groups, |group| {
+            (
+                &group.allowed_api_formats_mode,
+                group.allowed_api_formats.clone(),
+            )
+        });
+    let mut allowed_models = resolve_effective_list_policy(None, "unrestricted", groups, |group| {
+        (&group.allowed_models_mode, group.allowed_models.clone())
+    });
+    let user_rate_limit = resolve_effective_rate_limit_policy(None, "system", groups);
+    let user_concurrent_limit = resolve_effective_concurrent_limit_policy(None, "inherit", groups);
+    if !snapshot.api_key_is_standalone {
+        constrain_api_key_list_policy_to_user_policy(
+            &mut allowed_providers,
+            &mut snapshot.api_key_allowed_providers,
+        );
+        constrain_api_key_list_policy_to_user_policy(
+            &mut allowed_api_formats,
+            &mut snapshot.api_key_allowed_api_formats,
+        );
+        constrain_api_key_list_policy_to_user_policy(
+            &mut allowed_models,
+            &mut snapshot.api_key_allowed_models,
+        );
+    }
+    snapshot.apply_user_policy(
+        allowed_providers,
+        allowed_api_formats,
+        allowed_models,
+        user_rate_limit,
+        user_concurrent_limit,
+    );
 }
 
 fn resolve_effective_list_policy(
@@ -2200,7 +2228,10 @@ mod tests {
             name: id.to_string(),
             normalized_name: id.to_string(),
             description: None,
+            visibility: "public".to_string(),
             priority,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -2459,7 +2490,10 @@ mod tests {
             .create_user_group(UpsertUserGroupRecord {
                 name: "Restricted".to_string(),
                 description: None,
+                visibility: "public".to_string(),
                 priority: 10,
+                sales_multiplier: 1.0,
+                model_sales_multipliers: None,
                 allowed_providers: Some(vec!["openai".to_string()]),
                 allowed_providers_mode: "specific".to_string(),
                 allowed_api_formats: Some(vec!["openai:chat".to_string()]),
@@ -2514,7 +2548,10 @@ mod tests {
             .create_user_group(UpsertUserGroupRecord {
                 name: "Group Policy".to_string(),
                 description: None,
+                visibility: "public".to_string(),
                 priority: 10,
+                sales_multiplier: 1.0,
+                model_sales_multipliers: None,
                 allowed_providers: Some(vec!["anthropic".to_string()]),
                 allowed_providers_mode: "specific".to_string(),
                 allowed_api_formats: Some(vec!["claude:messages".to_string()]),

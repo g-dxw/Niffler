@@ -1108,6 +1108,7 @@ mod tests {
             model: None,
             status: "completed".to_string(),
             billing_status: "pending".to_string(),
+            base_cost_usd: 0.1,
             total_cost_usd: 0.1,
             actual_total_cost_usd: 0.1,
             finalized_at_unix_secs: None,

@@ -165,6 +165,9 @@ export interface UserGroup {
   name: string
   normalized_name?: string
   description?: string | null
+  visibility?: 'public' | 'internal'
+  sales_multiplier?: number
+  model_sales_multipliers?: Record<string, number> | null
   allowed_providers?: string[] | null
   allowed_providers_mode: ListPolicyMode
   allowed_api_formats?: string[] | null
@@ -183,6 +186,9 @@ export interface UserGroup {
 export interface UpsertUserGroupRequest {
   name: string
   description?: string | null
+  visibility?: 'public' | 'internal'
+  sales_multiplier?: number
+  model_sales_multipliers?: Record<string, number> | null
   allowed_providers?: string[] | null
   allowed_providers_mode?: ListPolicyMode
   allowed_api_formats?: string[] | null
@@ -216,6 +222,8 @@ export interface ApiKey {
   key?: string  // 完整的 key，只在创建时返回
   key_display?: string  // 脱敏后的密钥显示
   name?: string
+  group_id?: string | null
+  group_name?: string | null
   created_at: string
   last_used_at?: string
   expires_at?: string  // 过期时间
@@ -231,6 +239,7 @@ export interface ApiKey {
 
 export interface UpsertUserApiKeyRequest {
   name?: string
+  group_id?: string | null
   rate_limit?: number | null
   concurrent_limit?: number | null
   feature_settings?: FeatureSettings | null

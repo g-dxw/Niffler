@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use serde_json::{json, Map, Value};
 
 use crate::{
-    BillingComputation, BillingModelPricingSnapshot, BillingService, BillingSnapshotStatus,
-    BillingUsageInput,
+    quantize_cost, BillingComputation, BillingModelPricingSnapshot, BillingService,
+    BillingSnapshotStatus, BillingUsageInput,
 };
 
 const SETTLEMENT_SNAPSHOT_SCHEMA_VERSION: &str = "3.0";
@@ -263,16 +263,60 @@ fn apply_billing_computation(
     pricing: &BillingModelPricingSnapshot,
     computation: BillingComputation,
 ) -> Result<(), DataLayerError> {
-    event.data.total_cost_usd = Some(computation.cost_result.cost);
+    let base_cost_usd = computation.cost_result.cost;
+    let sales_multiplier = resolve_sales_multiplier(event, pricing).unwrap_or(1.0);
+    let user_total_cost_usd = quantize_cost(base_cost_usd * sales_multiplier);
+    event.data.total_cost_usd = Some(user_total_cost_usd);
     event.data.actual_total_cost_usd = Some(computation.actual_total_cost);
     merge_billing_snapshot_metadata(
         &mut event.data.request_metadata,
         pricing,
         &computation.cost_result.snapshot,
+        base_cost_usd,
+        user_total_cost_usd,
         computation.actual_total_cost,
+        sales_multiplier,
         computation.rate_multiplier,
         computation.is_free_tier,
     )
+}
+
+fn resolve_sales_multiplier(
+    event: &UsageEvent,
+    pricing: &BillingModelPricingSnapshot,
+) -> Option<f64> {
+    let metadata = event.data.request_metadata.as_ref()?.as_object()?;
+    if let Some(model_multiplier) =
+        metadata_model_sales_multiplier(metadata, pricing.global_model_id.as_str())
+    {
+        return Some(model_multiplier);
+    }
+    metadata_number(metadata, "sales_multiplier").map(normalize_sales_multiplier)
+}
+
+fn metadata_model_sales_multiplier(metadata: &Map<String, Value>, model_id: &str) -> Option<f64> {
+    let model_id = model_id.trim();
+    if model_id.is_empty() {
+        return None;
+    }
+    metadata
+        .get("model_sales_multipliers")
+        .and_then(Value::as_object)
+        .and_then(|object| object.get(model_id))
+        .and_then(Value::as_f64)
+        .map(normalize_sales_multiplier)
+}
+
+fn metadata_number(metadata: &Map<String, Value>, key: &str) -> Option<f64> {
+    metadata.get(key).and_then(Value::as_f64)
+}
+
+fn normalize_sales_multiplier(value: f64) -> f64 {
+    if value.is_finite() && value >= 0.0 {
+        value
+    } else {
+        1.0
+    }
 }
 
 fn map_pricing_context(context: StoredBillingModelContext) -> BillingModelPricingSnapshot {
@@ -299,7 +343,10 @@ fn merge_billing_snapshot_metadata(
     request_metadata: &mut Option<Value>,
     pricing: &BillingModelPricingSnapshot,
     snapshot: &crate::BillingSnapshot,
+    base_cost_usd: f64,
+    user_total_cost_usd: f64,
     actual_total_cost: f64,
+    sales_multiplier: f64,
     rate_multiplier: f64,
     is_free_tier: bool,
 ) -> Result<(), DataLayerError> {
@@ -309,7 +356,10 @@ fn merge_billing_snapshot_metadata(
     let settlement_snapshot = build_settlement_snapshot(
         pricing,
         snapshot,
+        base_cost_usd,
+        user_total_cost_usd,
         actual_total_cost,
+        sales_multiplier,
         rate_multiplier,
         is_free_tier,
     );
@@ -319,6 +369,15 @@ fn merge_billing_snapshot_metadata(
         _ => Map::new(),
     };
     metadata.insert("billing_snapshot".to_string(), billing_snapshot);
+    metadata.insert("base_cost_usd".to_string(), Value::from(base_cost_usd));
+    metadata.insert(
+        "user_total_cost_usd".to_string(),
+        Value::from(user_total_cost_usd),
+    );
+    metadata.insert(
+        "sales_multiplier".to_string(),
+        Value::from(sales_multiplier),
+    );
     metadata.insert(
         "settlement_snapshot_schema_version".to_string(),
         Value::from(SETTLEMENT_SNAPSHOT_SCHEMA_VERSION),
@@ -337,7 +396,10 @@ fn merge_billing_snapshot_metadata(
 fn build_settlement_snapshot(
     pricing: &BillingModelPricingSnapshot,
     snapshot: &crate::BillingSnapshot,
+    base_cost_usd: f64,
+    user_total_cost_usd: f64,
     actual_total_cost: f64,
+    sales_multiplier: f64,
     rate_multiplier: f64,
     is_free_tier: bool,
 ) -> Value {
@@ -355,6 +417,7 @@ fn build_settlement_snapshot(
             "tiered_pricing": pricing.effective_tiered_pricing().cloned(),
             "price_per_request": pricing.effective_price_per_request(),
             "rate_multiplier": rate_multiplier,
+            "sales_multiplier": sales_multiplier,
             "is_free_tier": is_free_tier,
         },
         "billing_plan_snapshot": {
@@ -367,7 +430,9 @@ fn build_settlement_snapshot(
         "resolved_dimensions": snapshot.resolved_dimensions.clone(),
         "resolved_variables": snapshot.resolved_variables.clone(),
         "cost_breakdown": snapshot.cost_breakdown.clone(),
-        "total_cost": snapshot.total_cost,
+        "base_cost_usd": base_cost_usd,
+        "user_total_cost_usd": user_total_cost_usd,
+        "total_cost": user_total_cost_usd,
         "actual_total_cost": actual_total_cost,
         "status": snapshot.status,
         "calculated_at": snapshot.calculated_at.clone(),

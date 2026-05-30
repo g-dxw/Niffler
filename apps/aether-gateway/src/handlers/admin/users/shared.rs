@@ -14,6 +14,8 @@ pub(super) struct AdminCreateUserApiKeyRequest {
     #[serde(default)]
     pub(super) name: Option<String>,
     #[serde(default)]
+    pub(super) group_id: Option<String>,
+    #[serde(default)]
     pub(super) allowed_providers: Option<Vec<String>>,
     #[serde(default)]
     pub(super) allowed_api_formats: Option<Vec<String>>,
@@ -43,6 +45,8 @@ pub(super) struct AdminCreateUserApiKeyRequest {
 pub(super) struct AdminUpdateUserApiKeyRequest {
     #[serde(default)]
     pub(super) name: Option<String>,
+    #[serde(default)]
+    pub(super) group_id: Option<String>,
     #[serde(default)]
     pub(super) rate_limit: Option<i32>,
     #[serde(default)]

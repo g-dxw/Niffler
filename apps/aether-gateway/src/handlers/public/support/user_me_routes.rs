@@ -4,9 +4,9 @@ use axum::{body::Body, http, response::Response};
 use super::{
     handle_auth_me, handle_users_me_api_key_capabilities_put, handle_users_me_api_key_create,
     handle_users_me_api_key_delete, handle_users_me_api_key_detail_get,
-    handle_users_me_api_key_install_session_create, handle_users_me_api_key_patch,
-    handle_users_me_api_key_providers_put, handle_users_me_api_key_update,
-    handle_users_me_api_keys_get, handle_users_me_available_models,
+    handle_users_me_api_key_groups_get, handle_users_me_api_key_install_session_create,
+    handle_users_me_api_key_patch, handle_users_me_api_key_providers_put,
+    handle_users_me_api_key_update, handle_users_me_api_keys_get, handle_users_me_available_models,
     handle_users_me_delete_other_sessions, handle_users_me_delete_session,
     handle_users_me_detail_put, handle_users_me_endpoint_status_get,
     handle_users_me_management_token_create, handle_users_me_management_token_delete,
@@ -69,6 +69,11 @@ pub(crate) async fn maybe_build_local_users_me_response(
         }
         Some("api_keys_list") if request_context.request_path == "/api/users/me/api-keys" => {
             Some(handle_users_me_api_keys_get(state, request_context, headers).await)
+        }
+        Some("api_key_groups")
+            if request_context.request_path == "/api/users/me/api-key-groups" =>
+        {
+            Some(handle_users_me_api_key_groups_get(state, request_context, headers).await)
         }
         Some("management_tokens_list")
             if users_me_management_tokens_root(&request_context.request_path) =>

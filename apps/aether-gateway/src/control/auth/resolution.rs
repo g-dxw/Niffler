@@ -34,6 +34,14 @@ pub(crate) struct GatewayControlAuthContext {
     pub(crate) username: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) api_key_name: Option<String>,
+    #[serde(skip)]
+    pub(crate) api_key_group_id: Option<String>,
+    #[serde(skip)]
+    pub(crate) api_key_group_name: Option<String>,
+    #[serde(skip)]
+    pub(crate) sales_multiplier: f64,
+    #[serde(skip)]
+    pub(crate) model_sales_multipliers: Option<serde_json::Value>,
     pub(crate) balance_remaining: Option<f64>,
     pub(crate) access_allowed: bool,
     #[serde(skip)]
@@ -573,6 +581,10 @@ pub(super) async fn resolve_data_backed_auth_context(
                     api_key_id: String::new(),
                     username: None,
                     api_key_name: None,
+                    api_key_group_id: None,
+                    api_key_group_name: None,
+                    sales_multiplier: 1.0,
+                    model_sales_multipliers: None,
                     balance_remaining: None,
                     access_allowed: false,
                     user_rate_limit: None,
@@ -632,6 +644,10 @@ async fn resolve_trusted_auth_context(
             api_key_id: trusted_headers.api_key_id,
             username: None,
             api_key_name: None,
+            api_key_group_id: None,
+            api_key_group_name: None,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             balance_remaining: trusted_headers.balance_remaining,
             access_allowed: false,
             user_rate_limit: None,
@@ -721,6 +737,10 @@ async fn build_data_backed_auth_context(
     GatewayControlAuthContext {
         username: Some(snapshot.username.clone()),
         api_key_name: snapshot.api_key_name.clone(),
+        api_key_group_id: snapshot.api_key_group_id,
+        api_key_group_name: snapshot.api_key_group_name,
+        sales_multiplier: snapshot.api_key_group_sales_multiplier,
+        model_sales_multipliers: snapshot.api_key_group_model_sales_multipliers,
         user_id: snapshot.user_id,
         api_key_id: snapshot.api_key_id,
         balance_remaining: wallet_remaining.or(balance_remaining),

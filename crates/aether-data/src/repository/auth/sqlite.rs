@@ -26,6 +26,11 @@ SELECT
   users.allowed_models AS user_allowed_models,
   api_keys.id AS api_key_id,
   api_keys.name AS api_key_name,
+  api_keys.group_id AS api_key_group_id,
+  user_groups.name AS api_key_group_name,
+  user_groups.visibility AS api_key_group_visibility,
+  CAST(COALESCE(user_groups.sales_multiplier, 1) AS REAL) AS api_key_group_sales_multiplier,
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers,
   api_keys.is_active AS api_key_is_active,
   api_keys.is_locked AS api_key_is_locked,
   api_keys.is_standalone AS api_key_is_standalone,
@@ -37,6 +42,7 @@ SELECT
   api_keys.allowed_models AS api_key_allowed_models
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 "#;
 
 const EXPORT_COLUMNS: &str = r#"
@@ -46,6 +52,8 @@ SELECT
   api_keys.key_hash,
   api_keys.key_encrypted,
   api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
   api_keys.allowed_providers,
   api_keys.allowed_api_formats,
   api_keys.allowed_models,
@@ -64,6 +72,7 @@ SELECT
   api_keys.updated_at AS updated_at_unix_secs,
   api_keys.is_standalone
 FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 "#;
 
 #[derive(Debug, Clone)]
@@ -111,17 +120,18 @@ impl SqliteAuthApiKeyReadRepository {
         sqlx::query(
             r#"
 INSERT INTO api_keys (
-  id, user_id, key_hash, key_encrypted, name, allowed_providers,
+  id, user_id, group_id, key_hash, key_encrypted, name, allowed_providers,
   allowed_api_formats, allowed_models, rate_limit, concurrent_limit,
   force_capabilities, feature_settings, is_active, expires_at, auto_delete_on_expiry,
   total_requests, total_tokens, total_cost_usd, is_standalone,
   created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 "#,
         )
         .bind(&record.api_key_id)
         .bind(&record.user_id)
+        .bind(&record.group_id)
         .bind(&record.key_hash)
         .bind(&record.key_encrypted)
         .bind(&record.name)
@@ -169,6 +179,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 struct CreateApiKeyInsertRecord {
     user_id: String,
     api_key_id: String,
+    group_id: Option<String>,
     key_hash: String,
     key_encrypted: Option<String>,
     name: Option<String>,
@@ -411,6 +422,7 @@ WHERE id = ?
         self.create_api_key(CreateApiKeyInsertRecord {
             user_id: record.user_id,
             api_key_id: record.api_key_id,
+            group_id: record.group_id,
             key_hash: record.key_hash,
             key_encrypted: record.key_encrypted,
             name: record.name,
@@ -438,6 +450,7 @@ WHERE id = ?
         self.create_api_key(CreateApiKeyInsertRecord {
             user_id: record.user_id,
             api_key_id: record.api_key_id,
+            group_id: None,
             key_hash: record.key_hash,
             key_encrypted: record.key_encrypted,
             name: record.name,
@@ -467,6 +480,7 @@ WHERE id = ?
             r#"
 UPDATE api_keys
 SET name = COALESCE(?, name),
+    group_id = COALESCE(?, group_id),
     rate_limit = COALESCE(?, rate_limit),
     concurrent_limit = COALESCE(?, concurrent_limit),
     updated_at = ?
@@ -476,6 +490,7 @@ WHERE id = ?
 "#,
         )
         .bind(record.name.as_deref())
+        .bind(record.group_id.as_deref())
         .bind(record.rate_limit)
         .bind(record.concurrent_limit)
         .bind(now)
@@ -882,7 +897,7 @@ fn json_string_from_nested_string_list(
 fn map_auth_api_key_snapshot_row(
     row: &SqliteRow,
 ) -> Result<StoredAuthApiKeySnapshot, DataLayerError> {
-    let snapshot = StoredAuthApiKeySnapshot::new(
+    let snapshot = StoredAuthApiKeySnapshot::new_with_group(
         row.try_get("user_id").map_sql_err()?,
         row.try_get("username").map_sql_err()?,
         row.try_get("email").map_sql_err()?,
@@ -904,6 +919,15 @@ fn map_auth_api_key_snapshot_row(
         )?,
         row.try_get("api_key_id").map_sql_err()?,
         row.try_get("api_key_name").map_sql_err()?,
+        row.try_get("api_key_group_id").map_sql_err()?,
+        row.try_get("api_key_group_name").map_sql_err()?,
+        row.try_get("api_key_group_visibility").map_sql_err()?,
+        Some(sqlite_real(row, "api_key_group_sales_multiplier")?),
+        optional_json_from_string(
+            row.try_get("api_key_group_model_sales_multipliers")
+                .map_sql_err()?,
+            "user_groups.model_sales_multipliers",
+        )?,
         row.try_get("api_key_is_active").map_sql_err()?,
         row.try_get("api_key_is_locked").map_sql_err()?,
         row.try_get("api_key_is_standalone").map_sql_err()?,
@@ -933,12 +957,14 @@ fn map_auth_api_key_export_row(
         row.try_get("feature_settings").map_sql_err()?,
         "api_keys.feature_settings",
     )?;
-    StoredAuthApiKeyExportRecord::new(
+    StoredAuthApiKeyExportRecord::new_with_group(
         row.try_get("user_id").map_sql_err()?,
         row.try_get("api_key_id").map_sql_err()?,
         row.try_get("key_hash").map_sql_err()?,
         row.try_get("key_encrypted").map_sql_err()?,
         row.try_get("name").map_sql_err()?,
+        row.try_get("group_id").map_sql_err()?,
+        row.try_get("group_name").map_sql_err()?,
         optional_json_from_string(
             row.try_get("allowed_providers").map_sql_err()?,
             "api_keys.allowed_providers",
@@ -1078,6 +1104,7 @@ mod tests {
                 key_hash: "hash-created-user".to_string(),
                 key_encrypted: Some("enc-user".to_string()),
                 name: Some("Created User".to_string()),
+                group_id: None,
                 allowed_providers: Some(vec!["openai".to_string()]),
                 allowed_api_formats: Some(vec!["openai:chat".to_string()]),
                 allowed_models: Some(vec!["gpt-4.1".to_string()]),
@@ -1102,6 +1129,7 @@ mod tests {
                 user_id: "user-1".to_string(),
                 api_key_id: "key-created-user".to_string(),
                 name: Some("Updated User".to_string()),
+                group_id: None,
                 rate_limit: Some(150),
                 concurrent_limit: Some(6),
             })

@@ -282,6 +282,7 @@ fn memory_group_from_record(
         name.to_ascii_lowercase(),
         record.description,
         record.priority,
+        record.visibility,
         record.allowed_providers.map(serde_json::Value::from),
         record.allowed_providers_mode,
         record.allowed_api_formats.map(serde_json::Value::from),
@@ -292,6 +293,8 @@ fn memory_group_from_record(
         record.rate_limit_mode,
         record.concurrent_limit,
         record.concurrent_limit_mode,
+        record.sales_multiplier,
+        record.model_sales_multipliers,
         Some(now),
         Some(now),
     )
@@ -306,6 +309,7 @@ fn memory_update_group_from_record(
     group.normalized_name = name.to_ascii_lowercase();
     group.description = record.description;
     group.priority = record.priority;
+    group.visibility = record.visibility;
     group.allowed_providers = record.allowed_providers;
     group.allowed_providers_mode = record.allowed_providers_mode;
     group.allowed_api_formats = record.allowed_api_formats;
@@ -316,6 +320,8 @@ fn memory_update_group_from_record(
     group.rate_limit_mode = record.rate_limit_mode;
     group.concurrent_limit = record.concurrent_limit;
     group.concurrent_limit_mode = record.concurrent_limit_mode;
+    group.sales_multiplier = record.sales_multiplier;
+    group.model_sales_multipliers = record.model_sales_multipliers;
     group.updated_at = Some(chrono::Utc::now());
     StoredUserGroup::new(
         group.id,
@@ -323,6 +329,7 @@ fn memory_update_group_from_record(
         group.normalized_name,
         group.description,
         group.priority,
+        group.visibility,
         group.allowed_providers.map(serde_json::Value::from),
         group.allowed_providers_mode,
         group.allowed_api_formats.map(serde_json::Value::from),
@@ -333,6 +340,8 @@ fn memory_update_group_from_record(
         group.rate_limit_mode,
         group.concurrent_limit,
         group.concurrent_limit_mode,
+        group.sales_multiplier,
+        group.model_sales_multipliers,
         group.created_at,
         group.updated_at,
     )

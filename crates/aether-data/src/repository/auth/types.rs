@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredAuthApiKeySnapshot {
     pub user_id: String,
     pub username: String,
@@ -15,6 +15,11 @@ pub struct StoredAuthApiKeySnapshot {
     pub user_allowed_models: Option<Vec<String>>,
     pub api_key_id: String,
     pub api_key_name: Option<String>,
+    pub api_key_group_id: Option<String>,
+    pub api_key_group_name: Option<String>,
+    pub api_key_group_visibility: Option<String>,
+    pub api_key_group_sales_multiplier: f64,
+    pub api_key_group_model_sales_multipliers: Option<serde_json::Value>,
     pub api_key_is_active: bool,
     pub api_key_is_locked: bool,
     pub api_key_is_standalone: bool,
@@ -51,6 +56,65 @@ impl StoredAuthApiKeySnapshot {
         api_key_allowed_api_formats: Option<serde_json::Value>,
         api_key_allowed_models: Option<serde_json::Value>,
     ) -> Result<Self, crate::DataLayerError> {
+        Self::new_with_group(
+            user_id,
+            username,
+            email,
+            user_role,
+            user_auth_source,
+            user_is_active,
+            user_is_deleted,
+            user_allowed_providers,
+            user_allowed_api_formats,
+            user_allowed_models,
+            api_key_id,
+            api_key_name,
+            None,
+            None,
+            None,
+            Some(1.0),
+            None,
+            api_key_is_active,
+            api_key_is_locked,
+            api_key_is_standalone,
+            api_key_rate_limit,
+            api_key_concurrent_limit,
+            api_key_expires_at_unix_secs,
+            api_key_allowed_providers,
+            api_key_allowed_api_formats,
+            api_key_allowed_models,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_group(
+        user_id: String,
+        username: String,
+        email: Option<String>,
+        user_role: String,
+        user_auth_source: String,
+        user_is_active: bool,
+        user_is_deleted: bool,
+        user_allowed_providers: Option<serde_json::Value>,
+        user_allowed_api_formats: Option<serde_json::Value>,
+        user_allowed_models: Option<serde_json::Value>,
+        api_key_id: String,
+        api_key_name: Option<String>,
+        api_key_group_id: Option<String>,
+        api_key_group_name: Option<String>,
+        api_key_group_visibility: Option<String>,
+        api_key_group_sales_multiplier: Option<f64>,
+        api_key_group_model_sales_multipliers: Option<serde_json::Value>,
+        api_key_is_active: bool,
+        api_key_is_locked: bool,
+        api_key_is_standalone: bool,
+        api_key_rate_limit: Option<i32>,
+        api_key_concurrent_limit: Option<i32>,
+        api_key_expires_at_unix_secs: Option<i64>,
+        api_key_allowed_providers: Option<serde_json::Value>,
+        api_key_allowed_api_formats: Option<serde_json::Value>,
+        api_key_allowed_models: Option<serde_json::Value>,
+    ) -> Result<Self, crate::DataLayerError> {
         Ok(Self {
             user_id,
             username,
@@ -71,6 +135,14 @@ impl StoredAuthApiKeySnapshot {
             user_allowed_models: parse_string_list(user_allowed_models, "users.allowed_models")?,
             api_key_id,
             api_key_name,
+            api_key_group_id,
+            api_key_group_name,
+            api_key_group_visibility,
+            api_key_group_sales_multiplier: normalize_multiplier(
+                api_key_group_sales_multiplier.unwrap_or(1.0),
+                "user_groups.sales_multiplier",
+            )?,
+            api_key_group_model_sales_multipliers,
             api_key_is_active,
             api_key_is_locked,
             api_key_is_standalone,
@@ -124,7 +196,7 @@ impl StoredAuthApiKeySnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedAuthApiKeySnapshot {
     pub user_id: String,
     pub username: String,
@@ -140,6 +212,11 @@ pub struct ResolvedAuthApiKeySnapshot {
     pub user_allowed_models: Option<Vec<String>>,
     pub api_key_id: String,
     pub api_key_name: Option<String>,
+    pub api_key_group_id: Option<String>,
+    pub api_key_group_name: Option<String>,
+    pub api_key_group_visibility: Option<String>,
+    pub api_key_group_sales_multiplier: f64,
+    pub api_key_group_model_sales_multipliers: Option<serde_json::Value>,
     pub api_key_is_active: bool,
     pub api_key_is_locked: bool,
     pub api_key_is_standalone: bool,
@@ -170,6 +247,11 @@ impl ResolvedAuthApiKeySnapshot {
             user_allowed_models: snapshot.user_allowed_models,
             api_key_id: snapshot.api_key_id,
             api_key_name: snapshot.api_key_name,
+            api_key_group_id: snapshot.api_key_group_id,
+            api_key_group_name: snapshot.api_key_group_name,
+            api_key_group_visibility: snapshot.api_key_group_visibility,
+            api_key_group_sales_multiplier: snapshot.api_key_group_sales_multiplier,
+            api_key_group_model_sales_multipliers: snapshot.api_key_group_model_sales_multipliers,
             api_key_is_active: snapshot.api_key_is_active,
             api_key_is_locked: snapshot.api_key_is_locked,
             api_key_is_standalone: snapshot.api_key_is_standalone,
@@ -333,6 +415,8 @@ pub struct StoredAuthApiKeyExportRecord {
     pub key_hash: String,
     pub key_encrypted: Option<String>,
     pub name: Option<String>,
+    pub group_id: Option<String>,
+    pub group_name: Option<String>,
     pub allowed_providers: Option<Vec<String>>,
     pub allowed_api_formats: Option<Vec<String>>,
     pub allowed_models: Option<Vec<String>>,
@@ -374,6 +458,53 @@ impl StoredAuthApiKeyExportRecord {
         total_cost_usd: f64,
         is_standalone: bool,
     ) -> Result<Self, crate::DataLayerError> {
+        Self::new_with_group(
+            user_id,
+            api_key_id,
+            key_hash,
+            key_encrypted,
+            name,
+            None,
+            None,
+            allowed_providers,
+            allowed_api_formats,
+            allowed_models,
+            rate_limit,
+            concurrent_limit,
+            force_capabilities,
+            is_active,
+            expires_at_unix_secs,
+            auto_delete_on_expiry,
+            total_requests,
+            total_tokens,
+            total_cost_usd,
+            is_standalone,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_group(
+        user_id: String,
+        api_key_id: String,
+        key_hash: String,
+        key_encrypted: Option<String>,
+        name: Option<String>,
+        group_id: Option<String>,
+        group_name: Option<String>,
+        allowed_providers: Option<serde_json::Value>,
+        allowed_api_formats: Option<serde_json::Value>,
+        allowed_models: Option<serde_json::Value>,
+        rate_limit: Option<i32>,
+        concurrent_limit: Option<i32>,
+        force_capabilities: Option<serde_json::Value>,
+        is_active: bool,
+        expires_at_unix_secs: Option<i64>,
+        auto_delete_on_expiry: bool,
+        total_requests: i64,
+        total_tokens: i64,
+        total_cost_usd: f64,
+        is_standalone: bool,
+    ) -> Result<Self, crate::DataLayerError> {
         if user_id.trim().is_empty() {
             return Err(crate::DataLayerError::UnexpectedValue(
                 "api_keys.user_id is empty".to_string(),
@@ -401,6 +532,8 @@ impl StoredAuthApiKeyExportRecord {
             key_hash,
             key_encrypted,
             name,
+            group_id,
+            group_name,
             allowed_providers: parse_string_list(allowed_providers, "api_keys.allowed_providers")?,
             allowed_api_formats: parse_string_list(
                 allowed_api_formats,
@@ -470,6 +603,7 @@ pub struct CreateUserApiKeyRecord {
     pub key_hash: String,
     pub key_encrypted: Option<String>,
     pub name: Option<String>,
+    pub group_id: Option<String>,
     pub allowed_providers: Option<Vec<String>>,
     pub allowed_api_formats: Option<Vec<String>>,
     pub allowed_models: Option<Vec<String>>,
@@ -489,6 +623,7 @@ pub struct UpdateUserApiKeyBasicRecord {
     pub user_id: String,
     pub api_key_id: String,
     pub name: Option<String>,
+    pub group_id: Option<String>,
     pub rate_limit: Option<i32>,
     pub concurrent_limit: Option<i32>,
 }
@@ -754,6 +889,15 @@ fn parse_string_list_array(
         }
     }
     Ok(items)
+}
+
+fn normalize_multiplier(value: f64, field_name: &str) -> Result<f64, crate::DataLayerError> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(crate::DataLayerError::UnexpectedValue(format!(
+            "{field_name} must be finite and greater than or equal to 0"
+        )));
+    }
+    Ok(value)
 }
 
 fn parse_u64_i64(value: i64, field_name: &str) -> Result<u64, crate::DataLayerError> {

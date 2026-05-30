@@ -24,17 +24,28 @@ pub(crate) enum GatewayLocalAuthRejection {
 
 pub(crate) fn trusted_auth_local_rejection(
     decision: Option<&GatewayControlDecision>,
-    _headers: &http::HeaderMap,
+    headers: &http::HeaderMap,
 ) -> Option<GatewayLocalAuthRejection> {
     let decision = decision?;
     if decision.route_class.as_deref() != Some("ai_public") {
         return None;
     }
 
-    decision
+    let rejection = decision
         .local_auth_rejection
         .clone()
-        .or_else(|| decision.auth_context.as_ref()?.local_rejection.clone())
+        .or_else(|| decision.auth_context.as_ref()?.local_rejection.clone())?;
+    if crate::headers::is_json_request(headers)
+        && matches!(
+            rejection,
+            GatewayLocalAuthRejection::ProviderNotAllowed { .. }
+                | GatewayLocalAuthRejection::ApiFormatNotAllowed { .. }
+                | GatewayLocalAuthRejection::ModelNotAllowed { .. }
+        )
+    {
+        return None;
+    }
+    Some(rejection)
 }
 
 pub(crate) fn should_buffer_request_for_local_auth(
@@ -68,6 +79,25 @@ pub(crate) async fn request_model_local_rejection(
     let requested_model = extract_requested_model(decision, uri, headers, body);
     let mut requested_global_model_id = None::<String>;
     let mut scoped_quota = None;
+    let mut pay_as_you_go_allowed = true;
+    let deferred_policy_rejection = auth_context
+        .local_rejection
+        .as_ref()
+        .filter(|rejection| {
+            matches!(
+                rejection,
+                GatewayLocalAuthRejection::ProviderNotAllowed { .. }
+                    | GatewayLocalAuthRejection::ApiFormatNotAllowed { .. }
+                    | GatewayLocalAuthRejection::ModelNotAllowed { .. }
+            )
+        })
+        .cloned();
+    if let Some(rejection) = auth_context.local_rejection.as_ref() {
+        if deferred_policy_rejection.is_none() {
+            return Ok(Some(rejection.clone()));
+        }
+        pay_as_you_go_allowed = false;
+    }
     if let (Some(allowed_models), Some(requested_model)) = (
         auth_context.allowed_models.as_deref(),
         requested_model.as_deref(),
@@ -88,6 +118,7 @@ pub(crate) async fn request_model_local_rejection(
             )
             .await?;
         if !group_allows_model {
+            pay_as_you_go_allowed = false;
             requested_global_model_id =
                 resolve_requested_global_model_id_for_request(state, decision, requested_model)
                     .await?;
@@ -110,6 +141,28 @@ pub(crate) async fn request_model_local_rejection(
             }
         }
     }
+    if let Some(rejection) = deferred_policy_rejection.as_ref() {
+        if requested_model.is_none() {
+            return Ok(Some(rejection.clone()));
+        }
+        ensure_requested_global_model_id(
+            state,
+            decision,
+            requested_model.as_deref(),
+            &mut requested_global_model_id,
+        )
+        .await?;
+        scoped_quota = load_user_daily_quota_availability(
+            state,
+            &auth_context.user_id,
+            requested_global_model_id.as_deref(),
+        )
+        .await?
+        .filter(|quota| quota.has_active_daily_quota);
+        if !quota_allows_plan_bypass(scoped_quota.as_ref()) {
+            return Ok(Some(rejection.clone()));
+        }
+    }
 
     balance_capacity_rejection(
         state,
@@ -118,6 +171,7 @@ pub(crate) async fn request_model_local_rejection(
         requested_model.as_deref(),
         requested_global_model_id,
         scoped_quota,
+        pay_as_you_go_allowed,
         headers,
         body,
     )
@@ -246,6 +300,7 @@ async fn balance_capacity_rejection(
     preloaded_quota: Option<
         aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord,
     >,
+    pay_as_you_go_allowed: bool,
     headers: &http::HeaderMap,
     body: &Bytes,
 ) -> Result<Option<GatewayLocalAuthRejection>, GatewayError> {
@@ -275,21 +330,6 @@ async fn balance_capacity_rejection(
     let wallet_is_unlimited = wallet
         .as_ref()
         .is_some_and(|wallet| wallet.limit_mode.eq_ignore_ascii_case("unlimited"));
-    let available_usd = match quota.as_ref() {
-        Some(quota) if !quota.allow_wallet_overage => Some(quota.remaining_usd.max(0.0)),
-        Some(_) if wallet_is_unlimited => None,
-        Some(quota) => Some(quota.remaining_usd.max(0.0) + wallet_available_usd.unwrap_or(0.0)),
-        None if wallet_is_unlimited => None,
-        None => wallet_available_usd,
-    };
-    let Some(available_usd) = available_usd else {
-        return Ok(None);
-    };
-    if available_usd <= DAILY_QUOTA_EPSILON_USD {
-        return Ok(Some(GatewayLocalAuthRejection::BalanceDenied {
-            remaining: Some(0.0),
-        }));
-    }
     let Some(requested_model) = requested_model else {
         return Ok(None);
     };
@@ -299,7 +339,38 @@ async fn balance_capacity_rejection(
     else {
         return Ok(None);
     };
-    if estimated_cost_usd > available_usd + DAILY_QUOTA_EPSILON_USD {
+    let sales_multiplier =
+        sales_multiplier_for_auth_context(auth_context, requested_global_model_id.as_deref());
+    let (needed_usd, available_usd) = match quota.as_ref() {
+        Some(quota) if !quota.allow_wallet_overage => {
+            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)))
+        }
+        Some(quota) if !pay_as_you_go_allowed => {
+            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)))
+        }
+        Some(quota) if wallet_is_unlimited => {
+            let base_overage = (estimated_cost_usd - quota.remaining_usd.max(0.0)).max(0.0);
+            if base_overage <= DAILY_QUOTA_EPSILON_USD {
+                return Ok(None);
+            }
+            return Ok(None);
+        }
+        Some(quota) => (
+            (estimated_cost_usd - quota.remaining_usd.max(0.0)).max(0.0) * sales_multiplier,
+            wallet_available_usd,
+        ),
+        None if wallet_is_unlimited => return Ok(None),
+        None => (estimated_cost_usd * sales_multiplier, wallet_available_usd),
+    };
+    let Some(available_usd) = available_usd else {
+        return Ok(None);
+    };
+    if available_usd <= DAILY_QUOTA_EPSILON_USD {
+        return Ok(Some(GatewayLocalAuthRejection::BalanceDenied {
+            remaining: Some(0.0),
+        }));
+    }
+    if needed_usd > available_usd + DAILY_QUOTA_EPSILON_USD {
         return Ok(Some(GatewayLocalAuthRejection::BalanceDenied {
             remaining: Some(available_usd),
         }));
@@ -366,12 +437,9 @@ async fn estimate_request_cost_upper_bound_usd(
         let Some(context) = context else {
             continue;
         };
-        let Some(estimate) = estimate_cost_from_billing_context(
-            &context,
-            &api_format,
-            input_tokens,
-            max_output_tokens,
-        ) else {
+        let Some(estimate) =
+            estimate_cost_from_billing_context(&context, input_tokens, max_output_tokens)
+        else {
             return Ok(None);
         };
         max_estimate = Some(max_estimate.map_or(estimate, |current| current.max(estimate)));
@@ -381,7 +449,6 @@ async fn estimate_request_cost_upper_bound_usd(
 
 fn estimate_cost_from_billing_context(
     context: &aether_data_contracts::repository::billing::StoredBillingModelContext,
-    api_format: &str,
     input_tokens: u64,
     max_output_tokens: Option<u64>,
 ) -> Option<f64> {
@@ -412,8 +479,43 @@ fn estimate_cost_from_billing_context(
     let estimate = price_per_request
         + (input_tokens as f64 * input_price_per_1m / 1_000_000.0)
         + (output_tokens as f64 * output_price_per_1m / 1_000_000.0);
-    let rate_multiplier = rate_multiplier_for_api_format(context, api_format);
-    Some(estimate * rate_multiplier)
+    Some(estimate)
+}
+
+fn sales_multiplier_for_auth_context(
+    auth_context: &GatewayControlAuthContext,
+    global_model_id: Option<&str>,
+) -> f64 {
+    if let Some(model_multiplier) = global_model_id.and_then(|model_id| {
+        model_sales_multiplier(&auth_context.model_sales_multipliers, model_id)
+    }) {
+        return model_multiplier;
+    }
+    normalize_sales_multiplier(auth_context.sales_multiplier)
+}
+
+fn model_sales_multiplier(
+    model_sales_multipliers: &Option<serde_json::Value>,
+    model_id: &str,
+) -> Option<f64> {
+    let model_id = model_id.trim();
+    if model_id.is_empty() {
+        return None;
+    }
+    model_sales_multipliers
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .and_then(|object| object.get(model_id))
+        .and_then(serde_json::Value::as_f64)
+        .map(normalize_sales_multiplier)
+}
+
+fn normalize_sales_multiplier(value: f64) -> f64 {
+    if value.is_finite() && value >= 0.0 {
+        value
+    } else {
+        1.0
+    }
 }
 
 fn effective_tiered_pricing(
@@ -711,7 +813,7 @@ mod tests {
 
     use super::{
         estimate_cost_from_billing_context, request_model_local_rejection,
-        GatewayLocalAuthRejection,
+        trusted_auth_local_rejection, GatewayLocalAuthRejection,
     };
     use crate::control::{GatewayControlAuthContext, GatewayControlDecision};
     use crate::data::GatewayDataState;
@@ -791,6 +893,10 @@ mod tests {
             api_key_id: "api-key-1".to_string(),
             username: None,
             api_key_name: None,
+            api_key_group_id: None,
+            api_key_group_name: None,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             balance_remaining: None,
             access_allowed: true,
             user_rate_limit: None,
@@ -1114,6 +1220,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn provider_rejection_waits_for_plan_scope_when_request_body_is_available() {
+        let context = billing_context_with_pricing(
+            Some(json!({
+                "tiers": [{
+                    "up_to": null,
+                    "input_price_per_1m": 1.0,
+                    "output_price_per_1m": 2.0
+                }]
+            })),
+            None,
+            None,
+            None,
+        );
+        let state = state_with_quota_and_wallet(quota_availability(50.0, false), context);
+        let mut decision = decision_with_allowed_models(vec!["gpt-5".to_string()]);
+        let deferred_rejection = GatewayLocalAuthRejection::ProviderNotAllowed {
+            provider: "anthropic".to_string(),
+        };
+        decision.local_auth_rejection = Some(deferred_rejection.clone());
+        if let Some(auth_context) = decision.auth_context.as_mut() {
+            auth_context.local_rejection = Some(deferred_rejection.clone());
+        }
+        let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
+        let body = Bytes::from_static(
+            br#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"max_tokens":1000}"#,
+        );
+
+        assert_eq!(
+            trusted_auth_local_rejection(Some(&decision), &json_headers()),
+            None
+        );
+        let rejection =
+            request_model_local_rejection(&state, Some(&decision), &uri, &json_headers(), &body)
+                .await
+                .expect("plan scoped provider rejection should resolve");
+
+        assert_eq!(rejection, None);
+    }
+
+    #[tokio::test]
     async fn plan_scoped_model_reuses_quota_lookup_for_capacity_check() {
         let context = billing_context_with_pricing(
             Some(json!({
@@ -1265,7 +1411,7 @@ mod tests {
         }
         let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
         let body = Bytes::from_static(
-            br#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":true}"#,
+            br#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"stream":true,"max_tokens":1000}"#,
         );
 
         let rejection =
@@ -1359,15 +1505,14 @@ mod tests {
             None,
         );
 
-        let estimate =
-            estimate_cost_from_billing_context(&context, "openai:chat", 1_000_000, Some(1_000_000))
-                .expect("estimate should resolve");
+        let estimate = estimate_cost_from_billing_context(&context, 1_000_000, Some(1_000_000))
+            .expect("estimate should resolve");
 
         assert_eq!(estimate, 18.0);
     }
 
     #[test]
-    fn daily_quota_estimate_applies_provider_key_rate_multiplier() {
+    fn daily_quota_estimate_uses_base_model_price_not_provider_cost_multiplier() {
         let context = billing_context_with_pricing(
             Some(json!({
                 "tiers": [{
@@ -1381,11 +1526,10 @@ mod tests {
             None,
         );
 
-        let estimate =
-            estimate_cost_from_billing_context(&context, "openai:chat", 1_000_000, Some(1_000_000))
-                .expect("estimate should resolve");
+        let estimate = estimate_cost_from_billing_context(&context, 1_000_000, Some(1_000_000))
+            .expect("estimate should resolve");
 
-        assert_eq!(estimate, 6.0);
+        assert_eq!(estimate, 3.0);
     }
 
     #[test]
@@ -1403,9 +1547,8 @@ mod tests {
             Some("free_tier"),
         );
 
-        let estimate =
-            estimate_cost_from_billing_context(&context, "openai:chat", 1_000_000, Some(1_000_000))
-                .expect("estimate should resolve");
+        let estimate = estimate_cost_from_billing_context(&context, 1_000_000, Some(1_000_000))
+            .expect("estimate should resolve");
 
         assert_eq!(estimate, 0.0);
     }

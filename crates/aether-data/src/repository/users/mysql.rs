@@ -150,6 +150,7 @@ SELECT
   normalized_name,
   description,
   priority,
+  visibility,
   allowed_providers,
   allowed_providers_mode,
   allowed_api_formats,
@@ -160,6 +161,8 @@ SELECT
   rate_limit_mode,
   concurrent_limit,
   concurrent_limit_mode,
+  sales_multiplier,
+  model_sales_multipliers,
   created_at,
   updated_at
 FROM user_groups
@@ -420,12 +423,14 @@ WHERE is_deleted = 0
             r#"
 INSERT INTO user_groups (
   id, name, normalized_name, description, priority,
+  visibility,
   allowed_providers, allowed_providers_mode,
   allowed_api_formats, allowed_api_formats_mode,
   allowed_models, allowed_models_mode,
-  rate_limit, rate_limit_mode, concurrent_limit, concurrent_limit_mode, created_at, updated_at
+  rate_limit, rate_limit_mode, concurrent_limit, concurrent_limit_mode,
+  sales_multiplier, model_sales_multipliers, created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 "#,
         )
         .bind(&id)
@@ -433,6 +438,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         .bind(normalized_name)
         .bind(record.description)
         .bind(record.priority)
+        .bind(record.visibility)
         .bind(json_string_from_option_vec(
             record.allowed_providers.as_ref(),
         ))
@@ -447,6 +453,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         .bind(record.rate_limit_mode)
         .bind(record.concurrent_limit)
         .bind(record.concurrent_limit_mode)
+        .bind(record.sales_multiplier)
+        .bind(optional_json_string(
+            record.model_sales_multipliers,
+            "user_groups.model_sales_multipliers",
+        )?)
         .bind(now)
         .bind(now)
         .execute(&self.pool)
@@ -475,6 +486,7 @@ SET name = ?,
     normalized_name = ?,
     description = ?,
     priority = ?,
+    visibility = ?,
     allowed_providers = ?,
     allowed_providers_mode = ?,
     allowed_api_formats = ?,
@@ -485,6 +497,8 @@ SET name = ?,
     rate_limit_mode = ?,
     concurrent_limit = ?,
     concurrent_limit_mode = ?,
+    sales_multiplier = ?,
+    model_sales_multipliers = ?,
     updated_at = ?
 WHERE id = ?
 "#,
@@ -493,6 +507,7 @@ WHERE id = ?
         .bind(normalized_name)
         .bind(record.description)
         .bind(record.priority)
+        .bind(record.visibility)
         .bind(json_string_from_option_vec(
             record.allowed_providers.as_ref(),
         ))
@@ -507,6 +522,11 @@ WHERE id = ?
         .bind(record.rate_limit_mode)
         .bind(record.concurrent_limit)
         .bind(record.concurrent_limit_mode)
+        .bind(record.sales_multiplier)
+        .bind(optional_json_string(
+            record.model_sales_multipliers,
+            "user_groups.model_sales_multipliers",
+        )?)
         .bind(now)
         .bind(group_id)
         .execute(&self.pool)
@@ -1965,6 +1985,7 @@ fn map_user_group_row(row: &MySqlRow) -> Result<StoredUserGroup, DataLayerError>
         row.try_get("normalized_name").map_sql_err()?,
         row.try_get("description").map_sql_err()?,
         row.try_get("priority").map_sql_err()?,
+        row.try_get("visibility").map_sql_err()?,
         optional_json_from_string(
             row.try_get("allowed_providers").map_sql_err()?,
             "user_groups.allowed_providers",
@@ -1984,6 +2005,11 @@ fn map_user_group_row(row: &MySqlRow) -> Result<StoredUserGroup, DataLayerError>
         row.try_get("rate_limit_mode").map_sql_err()?,
         row.try_get("concurrent_limit").map_sql_err()?,
         row.try_get("concurrent_limit_mode").map_sql_err()?,
+        row.try_get("sales_multiplier").map_sql_err()?,
+        optional_json_from_string(
+            row.try_get("model_sales_multipliers").map_sql_err()?,
+            "user_groups.model_sales_multipliers",
+        )?,
         optional_datetime_from_unix_secs(row.try_get("created_at").map_sql_err()?),
         optional_datetime_from_unix_secs(row.try_get("updated_at").map_sql_err()?),
     )

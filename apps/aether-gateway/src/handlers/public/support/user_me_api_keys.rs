@@ -14,6 +14,7 @@ use crate::handlers::shared::{
     generate_gateway_api_key_plaintext, masked_gateway_api_key_display, normalize_feature_settings,
     normalize_optional_api_key_concurrent_limit,
 };
+use crate::GatewayError;
 
 use super::{
     build_auth_error_response, decrypt_catalog_secret_with_fallbacks,
@@ -29,6 +30,8 @@ const USERS_ME_API_KEY_WRITE_UNAVAILABLE_DETAIL: &str = "用户 API 密钥写入
 struct UsersMeCreateApiKeyRequest {
     name: String,
     #[serde(default)]
+    group_id: Option<String>,
+    #[serde(default)]
     rate_limit: Option<i32>,
     #[serde(default)]
     concurrent_limit: Option<i32>,
@@ -40,6 +43,8 @@ struct UsersMeCreateApiKeyRequest {
 struct UsersMeUpdateApiKeyRequest {
     #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
+    group_id: Option<String>,
     #[serde(default)]
     rate_limit: Option<i32>,
     #[serde(default)]
@@ -150,6 +155,8 @@ fn build_users_me_api_key_list_payload(
     json!({
         "id": record.api_key_id,
         "name": record.name,
+        "group_id": record.group_id,
+        "group_name": record.group_name,
         "key_display": users_me_masked_api_key_display(state, record.key_encrypted.as_deref()),
         "is_active": record.is_active,
         "is_locked": is_locked,
@@ -173,6 +180,8 @@ fn build_users_me_api_key_detail_payload(
     json!({
         "id": record.api_key_id,
         "name": record.name,
+        "group_id": record.group_id,
+        "group_name": record.group_name,
         "key_display": users_me_masked_api_key_display(state, record.key_encrypted.as_deref()),
         "is_active": record.is_active,
         "is_locked": is_locked,
@@ -187,12 +196,107 @@ fn build_users_me_api_key_detail_payload(
     })
 }
 
+pub(super) async fn handle_users_me_api_key_groups_get(
+    state: &AppState,
+    request_context: &GatewayPublicRequestContext,
+    headers: &http::HeaderMap,
+) -> Response<Body> {
+    let auth = match resolve_authenticated_local_user(state, request_context, headers).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let groups = match users_me_accessible_api_key_groups(state, &auth.user.id).await {
+        Ok(value) => value,
+        Err(err) => {
+            return build_auth_error_response(
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("user api key groups load failed: {err:?}"),
+                false,
+            )
+        }
+    };
+    Json(json!({
+        "groups": groups.into_iter().map(|group| json!({
+            "id": group.id,
+            "name": group.name,
+            "description": group.description,
+            "visibility": group.visibility,
+            "sales_multiplier": group.sales_multiplier,
+        })).collect::<Vec<_>>()
+    }))
+    .into_response()
+}
+
 fn normalize_users_me_required_api_key_name(value: &str) -> Result<String, String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err("API密钥名称不能为空".to_string());
     }
     Ok(trimmed.chars().take(100).collect())
+}
+
+fn normalize_users_me_optional_group_id(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+async fn users_me_accessible_api_key_groups(
+    state: &AppState,
+    user_id: &str,
+) -> Result<Vec<aether_data::repository::users::StoredUserGroup>, GatewayError> {
+    let groups = state.list_user_groups().await?;
+    let user_group_ids = state
+        .list_user_groups_for_user(user_id)
+        .await?
+        .into_iter()
+        .map(|group| group.id)
+        .collect::<BTreeSet<_>>();
+    Ok(groups
+        .into_iter()
+        .filter(|group| group.visibility == "public" || user_group_ids.contains(&group.id))
+        .collect())
+}
+
+async fn resolve_users_me_api_key_group_id(
+    state: &AppState,
+    user_id: &str,
+    requested_group_id: Option<String>,
+) -> Result<Option<String>, Response<Body>> {
+    let group_id = match normalize_users_me_optional_group_id(requested_group_id) {
+        Some(group_id) => Some(group_id),
+        None => state
+            .effective_default_user_group_id()
+            .await
+            .map_err(|err| {
+                build_auth_error_response(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("default user group load failed: {err:?}"),
+                    false,
+                )
+            })?,
+    };
+    let Some(group_id) = group_id else {
+        return Ok(None);
+    };
+    let accessible = users_me_accessible_api_key_groups(state, user_id)
+        .await
+        .map_err(|err| {
+            build_auth_error_response(
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("user api key groups load failed: {err:?}"),
+                false,
+            )
+        })?;
+    if accessible.iter().any(|group| group.id == group_id) {
+        Ok(Some(group_id))
+    } else {
+        Err(build_auth_error_response(
+            http::StatusCode::BAD_REQUEST,
+            "这个分组不可用",
+            false,
+        ))
+    }
 }
 
 fn generate_users_me_api_key_plaintext() -> String {
@@ -542,6 +646,13 @@ pub(super) async fn handle_users_me_api_key_create(
             return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
         }
     };
+    let group_id =
+        match resolve_users_me_api_key_group_id(state, &auth.user.id, payload.group_id.clone())
+            .await
+        {
+            Ok(value) => value,
+            Err(response) => return response,
+        };
 
     let plaintext_key = generate_users_me_api_key_plaintext();
     let Some(key_encrypted) = encrypt_catalog_secret_with_fallbacks(state, &plaintext_key) else {
@@ -557,6 +668,7 @@ pub(super) async fn handle_users_me_api_key_create(
         key_hash: hash_users_me_api_key(&plaintext_key),
         key_encrypted: Some(key_encrypted),
         name: Some(name.clone()),
+        group_id,
         allowed_providers: None,
         allowed_api_formats: None,
         allowed_models: None,
@@ -608,6 +720,8 @@ pub(super) async fn handle_users_me_api_key_create(
     Json(json!({
         "id": created.api_key_id,
         "name": created.name,
+        "group_id": created.group_id,
+        "group_name": created.group_name,
         "key": plaintext_key,
         "key_display": users_me_masked_api_key_display(state, created.key_encrypted.as_deref()),
         "is_active": created.is_active,
@@ -695,12 +809,23 @@ pub(super) async fn handle_users_me_api_key_update(
         },
         None => None,
     };
+    let group_id = if payload.group_id.is_some() {
+        match resolve_users_me_api_key_group_id(state, &auth.user.id, payload.group_id.clone())
+            .await
+        {
+            Ok(value) => value,
+            Err(response) => return response,
+        }
+    } else {
+        None
+    };
 
     let Some(updated) = (match state
         .update_user_api_key_basic(aether_data::repository::auth::UpdateUserApiKeyBasicRecord {
             user_id: auth.user.id.clone(),
             api_key_id: snapshot.api_key_id.clone(),
             name,
+            group_id,
             rate_limit,
             concurrent_limit,
         })

@@ -36,9 +36,15 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.expires_at) AS BIGINT) AS api_key_expires_at_unix_secs,
   api_keys.allowed_providers AS api_key_allowed_providers,
   api_keys.allowed_api_formats AS api_key_allowed_api_formats,
-  api_keys.allowed_models AS api_key_allowed_models
+  api_keys.allowed_models AS api_key_allowed_models,
+  api_keys.group_id AS api_key_group_id,
+  user_groups.name AS api_key_group_name,
+  user_groups.visibility AS api_key_group_visibility,
+  CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.key_hash = $1
 LIMIT 1
 "#;
@@ -66,9 +72,15 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.expires_at) AS BIGINT) AS api_key_expires_at_unix_secs,
   api_keys.allowed_providers AS api_key_allowed_providers,
   api_keys.allowed_api_formats AS api_key_allowed_api_formats,
-  api_keys.allowed_models AS api_key_allowed_models
+  api_keys.allowed_models AS api_key_allowed_models,
+  api_keys.group_id AS api_key_group_id,
+  user_groups.name AS api_key_group_name,
+  user_groups.visibility AS api_key_group_visibility,
+  CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.id = $1
 LIMIT 1
 "#;
@@ -96,9 +108,15 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.expires_at) AS BIGINT) AS api_key_expires_at_unix_secs,
   api_keys.allowed_providers AS api_key_allowed_providers,
   api_keys.allowed_api_formats AS api_key_allowed_api_formats,
-  api_keys.allowed_models AS api_key_allowed_models
+  api_keys.allowed_models AS api_key_allowed_models,
+  api_keys.group_id AS api_key_group_id,
+  user_groups.name AS api_key_group_name,
+  user_groups.visibility AS api_key_group_visibility,
+  CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.id = $1 AND users.id = $2
 LIMIT 1
 "#;
@@ -126,9 +144,15 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.expires_at) AS BIGINT) AS api_key_expires_at_unix_secs,
   api_keys.allowed_providers AS api_key_allowed_providers,
   api_keys.allowed_api_formats AS api_key_allowed_api_formats,
-  api_keys.allowed_models AS api_key_allowed_models
+  api_keys.allowed_models AS api_key_allowed_models,
+  api_keys.group_id AS api_key_group_id,
+  user_groups.name AS api_key_group_name,
+  user_groups.visibility AS api_key_group_visibility,
+  CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.id = ANY($1::TEXT[])
 ORDER BY api_keys.id ASC
 "#;
@@ -140,6 +164,8 @@ SELECT
   api_keys.key_hash,
   api_keys.key_encrypted,
   api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
   api_keys.allowed_providers,
   api_keys.allowed_api_formats,
   api_keys.allowed_models,
@@ -158,6 +184,7 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.updated_at) AS BIGINT) AS updated_at_unix_secs,
   api_keys.is_standalone
 FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.user_id = ANY($1::TEXT[])
   AND api_keys.is_standalone = FALSE
 ORDER BY api_keys.user_id ASC, api_keys.id ASC
@@ -170,6 +197,8 @@ SELECT
   api_keys.key_hash,
   api_keys.key_encrypted,
   api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
   api_keys.allowed_providers,
   api_keys.allowed_api_formats,
   api_keys.allowed_models,
@@ -188,6 +217,7 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.updated_at) AS BIGINT) AS updated_at_unix_secs,
   api_keys.is_standalone
 FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.id = ANY($1::TEXT[])
 ORDER BY api_keys.id ASC
 "#;
@@ -199,6 +229,8 @@ SELECT
   api_keys.key_hash,
   api_keys.key_encrypted,
   api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
   api_keys.allowed_providers,
   api_keys.allowed_api_formats,
   api_keys.allowed_models,
@@ -217,6 +249,7 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.updated_at) AS BIGINT) AS updated_at_unix_secs,
   api_keys.is_standalone
 FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE LOWER(COALESCE(api_keys.name, '')) LIKE $1
 ORDER BY api_keys.id ASC
 "#;
@@ -228,6 +261,8 @@ SELECT
   api_keys.key_hash,
   api_keys.key_encrypted,
   api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
   api_keys.allowed_providers,
   api_keys.allowed_api_formats,
   api_keys.allowed_models,
@@ -246,6 +281,7 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.updated_at) AS BIGINT) AS updated_at_unix_secs,
   api_keys.is_standalone
 FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.is_standalone = TRUE
 ORDER BY api_keys.id ASC
 "#;
@@ -257,6 +293,8 @@ SELECT
   api_keys.key_hash,
   api_keys.key_encrypted,
   api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
   api_keys.allowed_providers,
   api_keys.allowed_api_formats,
   api_keys.allowed_models,
@@ -275,6 +313,7 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.updated_at) AS BIGINT) AS updated_at_unix_secs,
   api_keys.is_standalone
 FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.is_standalone = TRUE
   AND ($1::BOOLEAN IS NULL OR api_keys.is_active = $1)
 ORDER BY api_keys.id ASC
@@ -330,6 +369,8 @@ SELECT
   api_keys.key_hash,
   api_keys.key_encrypted,
   api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
   api_keys.allowed_providers,
   api_keys.allowed_api_formats,
   api_keys.allowed_models,
@@ -348,6 +389,7 @@ SELECT
   CAST(EXTRACT(EPOCH FROM api_keys.updated_at) AS BIGINT) AS updated_at_unix_secs,
   api_keys.is_standalone
 FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE api_keys.is_standalone = TRUE
   AND api_keys.id = $1
 LIMIT 1
@@ -363,6 +405,7 @@ const CREATE_USER_API_KEY_SQL: &str = r#"
 INSERT INTO api_keys (
   id,
   user_id,
+  group_id,
   key_hash,
   key_encrypted,
   name,
@@ -396,15 +439,16 @@ VALUES (
   $9,
   $10,
   $11,
-  NULL,
   $12,
+  NULL,
   $13,
   $14,
-  FALSE,
-  FALSE,
   $15,
+  FALSE,
+  FALSE,
   $16,
   $17,
+  $18,
   NOW(),
   NOW()
 )
@@ -414,6 +458,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  NULL::TEXT AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -511,8 +557,9 @@ const UPDATE_USER_API_KEY_BASIC_SQL: &str = r#"
 UPDATE api_keys
 SET
   name = COALESCE($3, name),
-  rate_limit = COALESCE($4, rate_limit),
-  concurrent_limit = COALESCE($5, concurrent_limit),
+  group_id = COALESCE($4, group_id),
+  rate_limit = COALESCE($5, rate_limit),
+  concurrent_limit = COALESCE($6, concurrent_limit),
   updated_at = NOW()
 WHERE user_id = $1
   AND id = $2
@@ -1133,6 +1180,7 @@ impl AuthApiKeyWriteRepository for SqlxAuthApiKeySnapshotReadRepository {
         let row = sqlx::query(CREATE_USER_API_KEY_SQL)
             .bind(record.api_key_id)
             .bind(record.user_id)
+            .bind(record.group_id)
             .bind(record.key_hash)
             .bind(record.key_encrypted)
             .bind(record.name)
@@ -1213,6 +1261,7 @@ impl AuthApiKeyWriteRepository for SqlxAuthApiKeySnapshotReadRepository {
             .bind(record.user_id)
             .bind(record.api_key_id)
             .bind(record.name)
+            .bind(record.group_id)
             .bind(record.rate_limit)
             .bind(record.concurrent_limit)
             .fetch_optional(&self.pool)
@@ -1470,10 +1519,24 @@ where
     row.try_get(column).map_postgres_err()
 }
 
+fn row_get_optional<T>(
+    row: &sqlx::postgres::PgRow,
+    column: &str,
+) -> Result<Option<T>, DataLayerError>
+where
+    for<'r> T: sqlx::Decode<'r, sqlx::Postgres> + sqlx::Type<sqlx::Postgres>,
+{
+    match row.try_get(column) {
+        Ok(value) => Ok(value),
+        Err(sqlx::Error::ColumnNotFound(_)) => Ok(None),
+        Err(err) => Err(postgres_error(err)),
+    }
+}
+
 fn map_auth_api_key_snapshot_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<StoredAuthApiKeySnapshot, DataLayerError> {
-    let snapshot = StoredAuthApiKeySnapshot::new(
+    let snapshot = StoredAuthApiKeySnapshot::new_with_group(
         row_get(row, "user_id")?,
         row_get(row, "username")?,
         row_get(row, "email")?,
@@ -1486,6 +1549,11 @@ fn map_auth_api_key_snapshot_row(
         row_get(row, "user_allowed_models")?,
         row_get(row, "api_key_id")?,
         row_get(row, "api_key_name")?,
+        row_get(row, "api_key_group_id")?,
+        row_get(row, "api_key_group_name")?,
+        row_get(row, "api_key_group_visibility")?,
+        row_get(row, "api_key_group_sales_multiplier")?,
+        row_get(row, "api_key_group_model_sales_multipliers")?,
         row_get(row, "api_key_is_active")?,
         row_get(row, "api_key_is_locked")?,
         row_get(row, "api_key_is_standalone")?,
@@ -1503,12 +1571,14 @@ fn map_auth_api_key_export_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<StoredAuthApiKeyExportRecord, DataLayerError> {
     let feature_settings = row_get(row, "feature_settings")?;
-    StoredAuthApiKeyExportRecord::new(
+    StoredAuthApiKeyExportRecord::new_with_group(
         row_get(row, "user_id")?,
         row_get(row, "api_key_id")?,
         row_get(row, "key_hash")?,
         row_get(row, "key_encrypted")?,
         row_get(row, "name")?,
+        row_get_optional(row, "group_id")?,
+        row_get_optional(row, "group_name")?,
         row_get(row, "allowed_providers")?,
         row_get(row, "allowed_api_formats")?,
         row_get(row, "allowed_models")?,

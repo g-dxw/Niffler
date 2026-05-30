@@ -15,6 +15,45 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Card class="p-4 space-y-2">
         <div class="text-xs text-muted-foreground">
+          用户扣费
+        </div>
+        <div class="text-lg font-semibold">
+          {{ formatCurrency(financialSummary.income) }}
+        </div>
+        <div class="text-xs text-muted-foreground">
+          套餐和钱包实际记账金额
+        </div>
+      </Card>
+      <Card class="p-4 space-y-2">
+        <div class="text-xs text-muted-foreground">
+          平台成本
+        </div>
+        <div class="text-lg font-semibold">
+          {{ formatCurrency(financialSummary.cost) }}
+        </div>
+        <div class="text-xs text-muted-foreground">
+          按实际服务账号成本倍率统计
+        </div>
+      </Card>
+      <Card class="p-4 space-y-2">
+        <div class="text-xs text-muted-foreground">
+          毛利
+        </div>
+        <div
+          class="text-lg font-semibold"
+          :class="financialSummary.profit >= 0 ? 'text-emerald-500' : 'text-destructive'"
+        >
+          {{ formatCurrency(financialSummary.profit) }}
+        </div>
+        <div class="text-xs text-muted-foreground">
+          毛利率 {{ financialSummary.marginText }}
+        </div>
+      </Card>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <Card class="p-4 space-y-2">
+        <div class="text-xs text-muted-foreground">
           缓存节省
         </div>
         <div class="text-lg font-semibold">
@@ -108,7 +147,7 @@ import { TimeRangePicker } from '@/components/common'
 import { CostForecastChart, LeaderboardControls, LeaderboardTable, QuotaProgressCard } from '@/components/stats'
 import { UsageProviderTable } from '@/features/usage/components'
 import { adminApi, type CostForecastResponse, type CostSavingsResponse, type LeaderboardItem, type QuotaUsageProvider } from '@/api/admin'
-import { usageApi } from '@/api/usage'
+import { usageApi, type UsageStats } from '@/api/usage'
 import { formatCurrency, formatTokens } from '@/utils/format'
 import { getDateRangeFromPeriod } from '@/features/usage/composables'
 import type { DateRangeParams } from '@/features/usage/types'
@@ -118,6 +157,7 @@ const timeRange = ref<DateRangeParams>(getDateRangeFromPeriod('last30days'))
 
 const forecast = ref<CostForecastResponse | null>(null)
 const costSavings = ref<CostSavingsResponse | null>(null)
+const financialStats = ref<UsageStats | null>(null)
 const quotaProviders = ref<QuotaUsageProvider[]>([])
 const providerStats = ref<ProviderStatsItem[]>([])
 const apiKeyLeaderboard = ref<LeaderboardItem[]>([])
@@ -133,6 +173,7 @@ const quotaLoading = ref(false)
 const apiKeyLeaderboardLoading = ref(false)
 let forecastRequestId = 0
 let savingsRequestId = 0
+let financialStatsRequestId = 0
 let quotaRequestId = 0
 let providerStatsRequestId = 0
 let apiKeyLeaderboardRequestId = 0
@@ -143,6 +184,18 @@ let apiKeyLeaderboardDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const forecastHistory = computed(() => forecast.value?.history || [])
 const forecastFuture = computed(() => forecast.value?.forecast || [])
+const financialSummary = computed(() => {
+  const income = financialStats.value?.total_cost ?? 0
+  const cost = financialStats.value?.total_actual_cost ?? 0
+  const profit = income - cost
+  const margin = income > 0 ? (profit / income) * 100 : 0
+  return {
+    income,
+    cost,
+    profit,
+    marginText: `${margin.toFixed(1)}%`,
+  }
+})
 
 function buildTimeRangeParams() {
   return {
@@ -173,6 +226,13 @@ async function loadSavings() {
   const data = await adminApi.getCostSavings(buildTimeRangeParams())
   if (requestId !== savingsRequestId) return
   costSavings.value = data
+}
+
+async function loadFinancialStats() {
+  const requestId = ++financialStatsRequestId
+  const data = await usageApi.getUsageStats(buildTimeRangeParams())
+  if (requestId !== financialStatsRequestId) return
+  financialStats.value = data
 }
 
 async function loadQuotaUsage() {
@@ -244,6 +304,7 @@ async function loadAll() {
   loadAllPromise = Promise.all([
     loadForecast(),
     loadSavings(),
+    loadFinancialStats(),
     loadQuotaUsage(),
     loadProviderStats(),
     loadApiKeyLeaderboard()

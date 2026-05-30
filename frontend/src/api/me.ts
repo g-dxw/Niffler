@@ -165,6 +165,8 @@ export interface UsageResponse {
 export interface ApiKey {
   id: string // UUID
   name: string
+  group_id?: string | null
+  group_name?: string | null
   key?: string
   key_display: string
   is_active: boolean
@@ -178,6 +180,14 @@ export interface ApiKey {
   allowed_providers?: ProviderConfig[]
   force_capabilities?: Record<string, boolean> | null  // 强制能力配置
   feature_settings?: FeatureSettingsMap | null
+}
+
+export interface ApiKeyGroupOption {
+  id: string
+  name: string
+  description?: string | null
+  visibility: 'public' | 'internal'
+  sales_multiplier?: number
 }
 
 export type InstallTargetCli = 'claude_code' | 'codex_cli' | 'gemini_cli'
@@ -254,7 +264,12 @@ export const meApi = {
     return response.data
   },
 
-  async createApiKey(data: { name: string; rate_limit?: number | null; concurrent_limit?: number | null; feature_settings?: FeatureSettingsMap | null }): Promise<ApiKey> {
+  async getApiKeyGroups(): Promise<ApiKeyGroupOption[]> {
+    const response = await apiClient.get<{ groups: ApiKeyGroupOption[] }>('/api/users/me/api-key-groups')
+    return response.data.groups
+  },
+
+  async createApiKey(data: { name: string; group_id?: string | null; rate_limit?: number | null; concurrent_limit?: number | null; feature_settings?: FeatureSettingsMap | null }): Promise<ApiKey> {
     const response = await apiClient.post<ApiKey>('/api/users/me/api-keys', data)
     return response.data
   },
@@ -287,7 +302,7 @@ export const meApi = {
 
   async updateApiKey(
     keyId: string,
-    data: { name?: string; rate_limit?: number | null; concurrent_limit?: number | null; feature_settings?: FeatureSettingsMap | null | undefined }
+    data: { name?: string; group_id?: string | null; rate_limit?: number | null; concurrent_limit?: number | null; feature_settings?: FeatureSettingsMap | null | undefined }
   ): Promise<ApiKey & { message: string }> {
     const response = await apiClient.put<ApiKey & { message: string }>(
       `/api/users/me/api-keys/${keyId}`,

@@ -13,6 +13,7 @@ pub struct UsageSettlementInput {
     pub model: Option<String>,
     pub status: String,
     pub billing_status: String,
+    pub base_cost_usd: f64,
     pub total_cost_usd: f64,
     pub actual_total_cost_usd: f64,
     pub finalized_at_unix_secs: Option<u64>,
@@ -30,7 +31,10 @@ impl UsageSettlementInput {
                 "settlement status cannot be empty".to_string(),
             ));
         }
-        if !self.total_cost_usd.is_finite() || !self.actual_total_cost_usd.is_finite() {
+        if !self.base_cost_usd.is_finite()
+            || !self.total_cost_usd.is_finite()
+            || !self.actual_total_cost_usd.is_finite()
+        {
             return Err(crate::DataLayerError::InvalidInput(
                 "settlement cost must be finite".to_string(),
             ));
@@ -83,6 +87,7 @@ mod tests {
             model: None,
             status: "completed".to_string(),
             billing_status: "pending".to_string(),
+            base_cost_usd: 0.1,
             total_cost_usd: 0.1,
             actual_total_cost_usd: 0.1,
             finalized_at_unix_secs: None,

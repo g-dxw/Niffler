@@ -477,7 +477,10 @@ async fn gateway_allows_default_user_group_access_policy_updates() {
         .create_user_group(UpsertUserGroupRecord {
             name: "Baseline".to_string(),
             description: None,
+            visibility: "public".to_string(),
             priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: Some(vec!["openai".to_string()]),
             allowed_providers_mode: "specific".to_string(),
             allowed_api_formats: Some(vec!["openai:chat".to_string()]),
@@ -591,7 +594,10 @@ async fn gateway_allows_removing_default_group_members_when_other_group_remains(
         .create_user_group(UpsertUserGroupRecord {
             name: "Default".to_string(),
             description: None,
+            visibility: "public".to_string(),
             priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -610,7 +616,10 @@ async fn gateway_allows_removing_default_group_members_when_other_group_remains(
         .create_user_group(UpsertUserGroupRecord {
             name: "Team".to_string(),
             description: None,
+            visibility: "public".to_string(),
             priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,

@@ -502,6 +502,7 @@ pub(super) fn classify_public_support_route(
             "/api/users/me"
                 | "/api/users/me/sessions"
                 | "/api/users/me/api-keys"
+                | "/api/users/me/api-key-groups"
                 | "/api/users/me/usage"
                 | "/api/users/me/usage/active"
                 | "/api/users/me/usage/interval-timeline"
@@ -518,6 +519,7 @@ pub(super) fn classify_public_support_route(
             "/api/users/me" => "detail",
             "/api/users/me/sessions" => "sessions",
             "/api/users/me/api-keys" => "api_keys_list",
+            "/api/users/me/api-key-groups" => "api_key_groups",
             "/api/users/me/usage" => "usage",
             "/api/users/me/usage/active" => "usage_active",
             "/api/users/me/usage/interval-timeline" => "usage_interval_timeline",

@@ -796,7 +796,10 @@ fn build_imported_user_group_record(
         aether_data::repository::users::UpsertUserGroupRecord {
             name,
             description,
+            visibility: "public".to_string(),
             priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
             allowed_providers,
             allowed_providers_mode,
             allowed_api_formats,
@@ -2570,6 +2573,7 @@ impl<'a> AdminAppState<'a> {
                                         user_id: user_id.clone(),
                                         api_key_id: existing_key.api_key_id.clone(),
                                         name: name.clone(),
+                                        group_id: default_group_id.clone(),
                                         rate_limit: Some(rate_limit),
                                         concurrent_limit: if key.contains_key("concurrent_limit") {
                                             concurrent_limit
@@ -2644,6 +2648,7 @@ impl<'a> AdminAppState<'a> {
                         allowed_providers,
                         allowed_api_formats,
                         allowed_models,
+                        group_id: default_group_id.clone(),
                         rate_limit,
                         concurrent_limit,
                         force_capabilities,

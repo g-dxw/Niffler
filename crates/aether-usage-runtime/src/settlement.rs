@@ -38,6 +38,7 @@ pub async fn settle_usage_if_needed(
         model: Some(usage.model.clone()).filter(|value| !value.trim().is_empty()),
         status: usage.status.clone(),
         billing_status: usage.billing_status.clone(),
+        base_cost_usd: finite_cost(usage_base_cost_usd(usage))?,
         total_cost_usd: finite_cost(usage.total_cost_usd)?,
         actual_total_cost_usd: finite_cost(usage.actual_total_cost_usd)?,
         finalized_at_unix_secs,
@@ -53,6 +54,15 @@ fn usage_api_key_is_standalone(usage: &StoredRequestUsageAudit) -> bool {
         .and_then(|metadata| metadata.get("api_key_is_standalone"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false)
+}
+
+fn usage_base_cost_usd(usage: &StoredRequestUsageAudit) -> f64 {
+    usage
+        .request_metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("base_cost_usd"))
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(usage.total_cost_usd)
 }
 
 fn finite_cost(value: f64) -> Result<f64, DataLayerError> {
