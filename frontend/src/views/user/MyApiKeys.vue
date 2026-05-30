@@ -195,7 +195,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    title="一键安装并配置 CLI"
+                    title="一键配置"
                     @click="openInstallDialog(apiKey)"
                   >
                     <Terminal class="h-4 w-4" />
@@ -296,7 +296,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  title="一键安装并配置 CLI"
+                  title="一键配置"
                   @click="openInstallDialog(apiKey)"
                 >
                   <Terminal class="h-3.5 w-3.5" />
@@ -404,9 +404,6 @@
               <h3 class="text-lg font-semibold text-foreground leading-tight">
                 {{ editingApiKey ? '编辑 API 密钥' : '创建 API 密钥' }}
               </h3>
-              <p class="text-xs text-muted-foreground">
-                {{ editingApiKey ? '更新密钥名称、速率限制和并发限制' : '创建一个新的密钥用于访问 API 服务' }}
-              </p>
             </div>
           </div>
         </div>
@@ -599,7 +596,83 @@
       </template>
     </Dialog>
 
-    <!-- 一键安装并配置 CLI 对话框 -->
+    <!-- 接入方式选择对话框 -->
+    <Dialog
+      v-model="showSetupChoiceDialog"
+      size="lg"
+    >
+      <template #header>
+        <div class="border-b border-border px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
+              <Key class="h-5 w-5 text-primary" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <h3 class="text-lg font-semibold text-foreground leading-tight">
+                选择接入方式
+              </h3>
+              <p class="text-xs text-muted-foreground truncate">
+                当前密钥：{{ selectedSetupApiKey?.name || '未选择' }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <div class="space-y-4">
+        <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+          推荐优先导入 CC Switch；如果只想在一台机器上快速配置，也可以生成一次性命令。
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            class="group rounded-xl border border-primary/45 bg-primary/10 p-4 text-left transition hover:border-primary hover:bg-primary/15 focus:outline-none focus:ring-2 focus:ring-primary/35"
+            @click="chooseSetupCcSwitch"
+          >
+            <span class="mb-3 inline-flex items-center rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground">
+              推荐
+            </span>
+            <span class="flex items-center gap-2 text-base font-semibold text-foreground">
+              <ExternalLink class="h-4 w-4 text-primary" />
+              导入 CC Switch
+            </span>
+            <span class="mt-2 block text-sm leading-6 text-muted-foreground">
+              适合已经用 CC Switch 管理服务的用户，导入后可以继续在 CC Switch 里切换和管理。
+            </span>
+          </button>
+
+          <button
+            type="button"
+            class="group rounded-xl border border-border/70 bg-background p-4 text-left transition hover:border-primary/70 hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/25"
+            @click="chooseSetupInstall"
+          >
+            <span class="mb-3 inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+              命令配置
+            </span>
+            <span class="flex items-center gap-2 text-base font-semibold text-foreground">
+              <Terminal class="h-4 w-4 text-primary" />
+              一键配置
+            </span>
+            <span class="mt-2 block text-sm leading-6 text-muted-foreground">
+              生成 15 分钟内有效的一次性命令，复制到目标机器执行，不会在命令里暴露原始密钥。
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button
+          variant="outline"
+          class="h-10 px-5"
+          @click="showSetupChoiceDialog = false"
+        >
+          稍后再说
+        </Button>
+      </template>
+    </Dialog>
+
+    <!-- 一键配置对话框 -->
     <Dialog
       v-model="showInstallDialog"
       size="lg"
@@ -612,7 +685,7 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                一键安装并配置 CLI
+                一键配置
               </h3>
               <p class="text-xs text-muted-foreground truncate">
                 当前密钥：{{ selectedInstallApiKey?.name || '未选择' }}
@@ -624,11 +697,11 @@
 
       <div class="space-y-5">
         <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          选择要配置的 CLI 和目标系统，Niffler 会生成 15 分钟内有效的一次性 install code。页面命令不会包含原始 API Key。
+          选择要配置的工具和目标系统，Niffler 会生成 15 分钟内有效的一次性 install code。页面命令不会包含原始 API Key。
         </div>
 
         <div class="space-y-2">
-          <Label class="text-sm font-semibold">目标 CLI</Label>
+          <Label class="text-sm font-semibold">目标工具</Label>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               v-for="option in installCliOptions"
@@ -886,7 +959,7 @@ const { success, error: showError } = useToast()
 
 const installCliOptions: Array<{ value: InstallTargetCli; label: string }> = [
   { value: 'claude_code', label: 'Claude Code' },
-  { value: 'codex_cli', label: 'Codex CLI' },
+  { value: 'codex_cli', label: 'Codex' },
   { value: 'gemini_cli', label: 'Gemini CLI' }
 ]
 
@@ -898,7 +971,7 @@ const installSystemOptions: Array<{ value: InstallSessionTargetSystem; label: st
 
 const ccSwitchAppOptions: Array<{ value: CcSwitchApp; label: string; description: string }> = [
   { value: 'claude', label: 'Claude Code', description: '根地址' },
-  { value: 'codex', label: 'Codex CLI', description: '自动加 /v1' },
+  { value: 'codex', label: 'Codex', description: '自动加 /v1' },
   { value: 'gemini', label: 'Gemini CLI', description: '根地址' },
 ]
 
@@ -919,6 +992,7 @@ const paginatedApiKeys = computed(() => {
 const showCreateDialog = ref(false)
 const showKeyDialog = ref(false)
 const showDeleteDialog = ref(false)
+const showSetupChoiceDialog = ref(false)
 const showInstallDialog = ref(false)
 const showCcSwitchDialog = ref(false)
 
@@ -931,8 +1005,9 @@ const newKeyRedactionInjectNotice = ref(true)
 const newKeyValue = ref('')
 const keyToDelete = ref<ApiKey | null>(null)
 const editingApiKey = ref<ApiKey | null>(null)
+const selectedSetupApiKey = ref<ApiKey | null>(null)
 const selectedInstallApiKey = ref<ApiKey | null>(null)
-const pendingFirstInstallApiKey = ref<ApiKey | null>(null)
+const pendingSetupApiKey = ref<ApiKey | null>(null)
 const installCli = ref<InstallTargetCli>('claude_code')
 const installSystem = ref<InstallSessionTargetSystem>('linux')
 const installSession = ref<ApiKeyInstallSession | null>(null)
@@ -981,7 +1056,7 @@ watch(showInstallDialog, (isOpen) => {
 })
 
 watch(showKeyDialog, (isOpen) => {
-  if (!isOpen && pendingFirstInstallApiKey.value) {
+  if (!isOpen && pendingSetupApiKey.value) {
     closeCreatedKeyDialog()
   }
 })
@@ -1055,6 +1130,25 @@ async function openInstallDialog(apiKey: ApiKey) {
   resetInstallCopiedState()
   showInstallDialog.value = true
   await refreshInstallCommand()
+}
+
+function openSetupChoiceDialog(apiKey: ApiKey) {
+  selectedSetupApiKey.value = apiKey
+  showSetupChoiceDialog.value = true
+}
+
+function chooseSetupCcSwitch() {
+  if (!selectedSetupApiKey.value) return
+  const apiKey = selectedSetupApiKey.value
+  showSetupChoiceDialog.value = false
+  openCcSwitchDialog(apiKey)
+}
+
+function chooseSetupInstall() {
+  if (!selectedSetupApiKey.value) return
+  const apiKey = selectedSetupApiKey.value
+  showSetupChoiceDialog.value = false
+  void openInstallDialog(apiKey)
 }
 
 async function selectInstallCli(value: InstallTargetCli) {
@@ -1136,10 +1230,10 @@ async function importToCcSwitch() {
 
 function closeCreatedKeyDialog() {
   showKeyDialog.value = false
-  const pending = pendingFirstInstallApiKey.value
-  pendingFirstInstallApiKey.value = null
+  const pending = pendingSetupApiKey.value
+  pendingSetupApiKey.value = null
   if (pending) {
-    void openInstallDialog(pending)
+    openSetupChoiceDialog(pending)
   }
 }
 
@@ -1162,7 +1256,6 @@ async function saveApiKey() {
 
   creating.value = true
   try {
-    const isCreatingFirstApiKey = !editingApiKey.value && apiKeys.value.length === 0
     if (editingApiKey.value) {
       await meApi.updateApiKey(editingApiKey.value.id, {
         name: newKeyName.value,
@@ -1191,9 +1284,7 @@ async function saveApiKey() {
           : {}),
       })
       newKeyValue.value = newKey.key || ''
-      if (isCreatingFirstApiKey) {
-        pendingFirstInstallApiKey.value = newKey
-      }
+      pendingSetupApiKey.value = newKey
       showKeyDialog.value = true
       success('API 密钥创建成功')
     }

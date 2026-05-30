@@ -12,8 +12,12 @@ use aether_data::repository::management_tokens::{
 use aether_data::repository::oauth_providers::{
     InMemoryOAuthProviderRepository, OAuthProviderReadRepository,
 };
+use aether_data::repository::pool_scores::InMemoryPoolMemberScoreRepository;
 use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
 use aether_data::repository::proxy_nodes::InMemoryProxyNodeRepository;
+use aether_data_contracts::repository::pool_scores::{
+    GetPoolMemberScoresByIdsQuery, PoolMemberHardState, PoolMemberIdentity, PoolScoreReadRepository,
+};
 use aether_data_contracts::repository::provider_catalog::{
     ProviderCatalogReadRepository, ProviderCatalogWriteRepository, StoredProviderCatalogEndpoint,
 };
@@ -32,6 +36,7 @@ use super::super::{
 use crate::admin_api::{
     maybe_build_local_admin_provider_oauth_response, AdminAppState, AdminRequestContext,
 };
+use crate::ai_serving::{provider_key_pool_score_id, provider_key_pool_score_scope};
 use crate::audit::AdminAuditEvent;
 use crate::constants::{
     GATEWAY_HEADER, TRUSTED_ADMIN_MANAGEMENT_TOKEN_ID_HEADER, TRUSTED_ADMIN_SESSION_ID_HEADER,
@@ -1930,6 +1935,7 @@ async fn gateway_batch_imports_chatgpt_web_access_tokens_with_pool_hints() {
 
     let mut provider = sample_provider("provider-chatgpt-web", "chatgpt_web", 10);
     provider.provider_type = "chatgpt_web".to_string();
+    provider.config = Some(json!({"pool_advanced": {}}));
     let endpoint = sample_endpoint(
         "endpoint-chatgpt-web-image",
         "provider-chatgpt-web",
@@ -1941,6 +1947,7 @@ async fn gateway_batch_imports_chatgpt_web_access_tokens_with_pool_hints() {
         vec![endpoint],
         vec![],
     ));
+    let pool_score_repository = Arc::new(InMemoryPoolMemberScoreRepository::default());
 
     let (token_url, token_handle) = start_server(token_server).await;
     let gateway = build_router_with_state(
@@ -1950,6 +1957,7 @@ async fn gateway_batch_imports_chatgpt_web_access_tokens_with_pool_hints() {
                 GatewayDataState::with_provider_catalog_repository_for_tests(
                     provider_catalog_repository.clone(),
                 )
+                .with_pool_score_repository_for_tests(Arc::clone(&pool_score_repository))
                 .with_encryption_key_for_tests(DEVELOPMENT_ENCRYPTION_KEY),
             )
             .with_provider_oauth_token_url_for_tests(
@@ -2029,6 +2037,20 @@ async fn gateway_batch_imports_chatgpt_web_access_tokens_with_pool_hints() {
     );
     assert_eq!(auth_config["plan_type"], "plus");
     assert_eq!(auth_config["user_id"], "user-pool-image");
+
+    let score_scope = provider_key_pool_score_scope();
+    let score_identity =
+        PoolMemberIdentity::provider_api_key("provider-chatgpt-web", persisted.id.clone());
+    let scores = pool_score_repository
+        .get_pool_member_scores_by_ids(&GetPoolMemberScoresByIdsQuery {
+            ids: vec![provider_key_pool_score_id(&score_identity, &score_scope)],
+        })
+        .await
+        .expect("pool score should load");
+    assert_eq!(scores.len(), 1);
+    assert_eq!(scores[0].member_id, persisted.id);
+    assert_eq!(scores[0].hard_state, PoolMemberHardState::Unknown);
+    assert!(scores[0].score > 0.0);
 
     gateway_handle.abort();
     token_handle.abort();

@@ -8,6 +8,7 @@ use aether_data_contracts::repository::pool_scores::{
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
 };
+use aether_provider_pool::provider_pool_key_account_quota_exhausted;
 use aether_runtime_state::{RuntimeLockLease, RuntimeState};
 use futures_util::{stream, StreamExt};
 use serde_json::{json, Value};
@@ -488,12 +489,16 @@ async fn record_score_probe_result_for_key(
     if !state.data.has_pool_score_writer() {
         return;
     }
+    let success_hard_state = match outcome {
+        AccountSelfCheckOutcome::Success { .. } => {
+            resolve_self_check_success_hard_state(state, provider_id, key_id).await
+        }
+        _ => None,
+    };
     let (succeeded, hard_state, probe_status) = match outcome {
-        AccountSelfCheckOutcome::Success { .. } => (
-            true,
-            Some(PoolMemberHardState::Available),
-            PoolMemberProbeStatus::Ok,
-        ),
+        AccountSelfCheckOutcome::Success { .. } => {
+            (true, success_hard_state, PoolMemberProbeStatus::Ok)
+        }
         AccountSelfCheckOutcome::Blocked { .. } => (
             false,
             Some(PoolMemberHardState::Banned),
@@ -540,6 +545,51 @@ async fn record_score_probe_result_for_key(
             error = ?err,
             "gateway account self-check: failed to record score probe result"
         );
+    }
+}
+
+async fn resolve_self_check_success_hard_state(
+    state: &AppState,
+    provider_id: &str,
+    key_id: &str,
+) -> Option<PoolMemberHardState> {
+    let key = match state
+        .read_provider_catalog_keys_by_ids(&[key_id.to_string()])
+        .await
+    {
+        Ok(keys) => keys.into_iter().find(|key| key.id == key_id),
+        Err(err) => {
+            debug!(
+                provider_id,
+                key_id,
+                error = ?err,
+                "gateway account self-check: failed to read quota state after success"
+            );
+            None
+        }
+    }?;
+    let provider = match state
+        .read_provider_catalog_providers_by_ids(&[provider_id.to_string()])
+        .await
+    {
+        Ok(providers) => providers
+            .into_iter()
+            .find(|provider| provider.id == provider_id),
+        Err(err) => {
+            debug!(
+                provider_id,
+                key_id,
+                error = ?err,
+                "gateway account self-check: failed to read provider type after success"
+            );
+            None
+        }
+    }?;
+
+    if provider_pool_key_account_quota_exhausted(&key, provider.provider_type.as_str()) {
+        Some(PoolMemberHardState::QuotaExhausted)
+    } else {
+        Some(PoolMemberHardState::Available)
     }
 }
 
@@ -752,8 +802,27 @@ pub(crate) fn spawn_account_self_check_worker(
 
 #[cfg(test)]
 mod tests {
-    use super::select_account_self_check_key_ids;
+    use super::{
+        record_score_probe_result_for_key, select_account_self_check_key_ids,
+        AccountSelfCheckOutcome,
+    };
     use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use aether_data::repository::pool_scores::InMemoryPoolMemberScoreRepository;
+    use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
+    use aether_data_contracts::repository::pool_scores::{
+        GetPoolMemberScoresByIdsQuery, PoolMemberHardState, PoolMemberIdentity,
+        PoolMemberProbeStatus, StoredPoolMemberScore,
+    };
+    use aether_data_contracts::repository::provider_catalog::{
+        StoredProviderCatalogKey, StoredProviderCatalogProvider,
+    };
+    use serde_json::json;
+
+    use crate::ai_serving::{provider_key_pool_score_id, provider_key_pool_score_scope};
+    use crate::data::GatewayDataState;
+    use crate::AppState;
 
     #[test]
     fn selects_never_and_stale_self_check_keys_first() {
@@ -767,5 +836,134 @@ mod tests {
         let selected = select_account_self_check_key_ids(&key_ids, 2_000, 600, &stamps, 2);
 
         assert_eq!(selected, vec!["never".to_string(), "stale".to_string()]);
+    }
+
+    fn sample_codex_provider() -> StoredProviderCatalogProvider {
+        StoredProviderCatalogProvider::new(
+            "provider-codex-self-check".to_string(),
+            "codex".to_string(),
+            Some("https://chatgpt.com".to_string()),
+            "codex".to_string(),
+        )
+        .expect("provider should build")
+    }
+
+    fn sample_quota_exhausted_codex_key() -> StoredProviderCatalogKey {
+        let mut key = StoredProviderCatalogKey::new(
+            "key-codex-self-check".to_string(),
+            "provider-codex-self-check".to_string(),
+            "oauth".to_string(),
+            "oauth".to_string(),
+            None,
+            true,
+        )
+        .expect("key should build");
+        key.status_snapshot = Some(json!({
+            "quota": {
+                "provider_type": "codex",
+                "exhausted": true,
+                "usage_ratio": 1.0,
+                "windows": [
+                    {
+                        "code": "codex_5h",
+                        "is_exhausted": true,
+                        "used_ratio": 1.0,
+                        "reset_at": 4_102_444_800u64
+                    }
+                ]
+            }
+        }));
+        key
+    }
+
+    fn sample_pool_score(hard_state: PoolMemberHardState) -> StoredPoolMemberScore {
+        let identity = PoolMemberIdentity::provider_api_key(
+            "provider-codex-self-check",
+            "key-codex-self-check",
+        );
+        let scope = provider_key_pool_score_scope();
+        StoredPoolMemberScore {
+            id: provider_key_pool_score_id(&identity, &scope),
+            pool_kind: identity.pool_kind,
+            pool_id: identity.pool_id,
+            member_kind: identity.member_kind,
+            member_id: identity.member_id,
+            capability: scope.capability,
+            scope_kind: scope.scope_kind,
+            scope_id: scope.scope_id,
+            score: 0.5,
+            hard_state,
+            score_version: 1,
+            score_reason: json!({}),
+            last_ranked_at: Some(1_700_000_000),
+            last_scheduled_at: Some(1_700_000_010),
+            last_success_at: None,
+            last_failure_at: None,
+            failure_count: 0,
+            last_probe_attempt_at: None,
+            last_probe_success_at: None,
+            last_probe_failure_at: None,
+            probe_failure_count: 0,
+            probe_status: PoolMemberProbeStatus::Ok,
+            updated_at: 1_700_000_020,
+        }
+    }
+
+    fn state_with_quota_exhausted_key_and_pool_score() -> AppState {
+        let provider_catalog = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+            vec![sample_codex_provider()],
+            Vec::new(),
+            vec![sample_quota_exhausted_codex_key()],
+        ));
+        let pool_scores = Arc::new(InMemoryPoolMemberScoreRepository::seed(vec![
+            sample_pool_score(PoolMemberHardState::QuotaExhausted),
+        ]));
+        AppState::new()
+            .expect("gateway state should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_provider_catalog_repository_for_tests(provider_catalog)
+                    .with_pool_score_repository_for_tests(pool_scores),
+            )
+    }
+
+    async fn read_pool_score_state(state: &AppState) -> PoolMemberHardState {
+        let identity = PoolMemberIdentity::provider_api_key(
+            "provider-codex-self-check",
+            "key-codex-self-check",
+        );
+        let scope = provider_key_pool_score_scope();
+        state
+            .data
+            .get_pool_member_scores_by_ids(&GetPoolMemberScoresByIdsQuery {
+                ids: vec![provider_key_pool_score_id(&identity, &scope)],
+            })
+            .await
+            .expect("pool scores should load")
+            .into_iter()
+            .next()
+            .expect("pool score should exist")
+            .hard_state
+    }
+
+    #[tokio::test]
+    async fn self_check_success_keeps_quota_exhausted_key_out_of_available_state() {
+        let state = state_with_quota_exhausted_key_and_pool_score();
+
+        record_score_probe_result_for_key(
+            &state,
+            "provider-codex-self-check",
+            "key-codex-self-check",
+            1_700_000_030,
+            &AccountSelfCheckOutcome::Success {
+                status_code: Some(200),
+                message: Some("ok".to_string()),
+            },
+        )
+        .await;
+
+        assert_eq!(
+            read_pool_score_state(&state).await,
+            PoolMemberHardState::QuotaExhausted
+        );
     }
 }

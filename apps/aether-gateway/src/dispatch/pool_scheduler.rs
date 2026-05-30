@@ -709,31 +709,39 @@ impl<'a> PoolKeyCursor<'a> {
     }
 
     async fn refill_queued_candidates(&mut self) -> bool {
-        let mut candidates = Vec::new();
         let refill_target = self.window_size.max(1) as usize;
-        // Keep pool expansion bounded; the cursor freezes one small window at a time.
-        while candidates.len() < refill_target {
-            let Some(mut page_candidates) = self.next_page_candidates().await else {
-                break;
-            };
-            candidates.append(&mut page_candidates);
-        }
 
-        if candidates.is_empty() {
-            return false;
-        }
+        loop {
+            let mut candidates = Vec::new();
+            // Keep pool expansion bounded; the cursor freezes one small window at a time.
+            while candidates.len() < refill_target {
+                let Some(mut page_candidates) = self.next_page_candidates().await else {
+                    break;
+                };
+                candidates.append(&mut page_candidates);
+            }
 
-        let (mut scheduled, mut skipped) = schedule_pool_page_candidates(
-            self.state,
-            candidates,
-            self.sticky_session_token.as_deref(),
-        )
-        .await;
-        scheduled.truncate(refill_target);
-        self.record_skipped_candidates(&skipped);
-        self.queued_candidates.extend(scheduled.drain(..));
-        self.skipped_candidates.append(&mut skipped);
-        !self.queued_candidates.is_empty()
+            if candidates.is_empty() {
+                return false;
+            }
+
+            let (mut scheduled, mut skipped) = schedule_pool_page_candidates(
+                self.state,
+                candidates,
+                self.sticky_session_token.as_deref(),
+            )
+            .await;
+            self.record_skipped_candidates(&skipped);
+            self.skipped_candidates.append(&mut skipped);
+
+            if scheduled.is_empty() {
+                continue;
+            }
+
+            scheduled.truncate(refill_target);
+            self.queued_candidates.extend(scheduled.drain(..));
+            return true;
+        }
     }
 
     async fn next_queued_candidate(&mut self) -> Option<EligibleLocalExecutionCandidate> {
@@ -2796,6 +2804,78 @@ mod tests {
         assert_eq!(candidate.orchestration.pool_key_index, Some(0));
         assert!(candidate.orchestration.pool_key_lease.is_none());
         assert_eq!(cursor.skip_reason_counts.get("pool_cooldown"), Some(&1));
+    }
+
+    #[tokio::test]
+    async fn pool_key_cursor_continues_after_exhausted_window() {
+        let provider_config = Some(json!({
+            "pool_advanced": {
+                "skip_exhausted_accounts": true
+            }
+        }));
+        let (provider, endpoint, mut keys, rows) = large_pool_fixture(3, provider_config.clone());
+        for key in keys.iter_mut().take(2) {
+            key.status_snapshot = Some(json!({
+                "quota": {
+                    "provider_type": "openai",
+                    "exhausted": true,
+                    "usage_ratio": 1.0,
+                    "windows": [
+                        {
+                            "code": "daily",
+                            "used_ratio": 1.0,
+                            "remaining_ratio": 0.0
+                        }
+                    ]
+                }
+            }));
+        }
+
+        let data_state =
+            GatewayDataState::with_provider_catalog_and_minimal_candidate_selection_for_tests(
+                Arc::new(InMemoryProviderCatalogReadRepository::seed(
+                    vec![provider],
+                    vec![endpoint],
+                    keys,
+                )),
+                Arc::new(InMemoryMinimalCandidateSelectionReadRepository::seed(rows)),
+            )
+            .with_encryption_key_for_tests(aether_crypto::DEVELOPMENT_ENCRYPTION_KEY);
+        let app = AppState::new()
+            .expect("state should build")
+            .with_data_state_for_tests(data_state);
+        let group = sample_eligible_candidate(
+            "provider-pool",
+            "endpoint-1",
+            "pool-group",
+            10,
+            provider_config,
+        );
+
+        let mut cursor = PoolKeyCursor::new(PlannerAppState::new(&app), group, None, None, None);
+        cursor.window_size = 2;
+        cursor.page_size = 2;
+        cursor.max_scanned_keys = 4;
+
+        let candidate = cursor
+            .next_key()
+            .await
+            .expect("cursor should scan past an exhausted window");
+        assert_eq!(candidate.candidate.key_id, "key-00002");
+        assert_eq!(candidate.orchestration.pool_key_index, Some(0));
+        assert!(candidate.orchestration.pool_key_lease.is_none());
+        assert_eq!(
+            cursor
+                .skip_reason_counts
+                .get(aether_pool_core::POOL_ACCOUNT_EXHAUSTED_SKIP_REASON),
+            Some(&2)
+        );
+
+        let skipped = cursor.take_skipped_candidates();
+        assert_eq!(skipped.len(), 2);
+        assert!(skipped.iter().all(|candidate| {
+            candidate.skip_reason == aether_pool_core::POOL_ACCOUNT_EXHAUSTED_SKIP_REASON
+        }));
     }
 
     #[tokio::test]

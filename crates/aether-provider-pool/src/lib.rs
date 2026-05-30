@@ -381,6 +381,81 @@ mod tests {
     }
 
     #[test]
+    fn provider_quota_exhaustion_snapshot_expires_after_reset_at() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_secs();
+
+        let mut expired = sample_key(None);
+        expired.status_snapshot = Some(json!({
+            "quota": {
+                "version": 2,
+                "provider_type": "codex",
+                "code": "exhausted",
+                "exhausted": true,
+                "updated_at": now.saturating_sub(600),
+                "windows": [{
+                    "code": "5h",
+                    "used_ratio": 1.0,
+                    "reset_at": now.saturating_sub(60),
+                    "is_exhausted": true
+                }]
+            }
+        }));
+        assert!(!provider_pool_key_account_quota_exhausted(
+            &expired, "codex"
+        ));
+
+        let mut active = sample_key(None);
+        active.status_snapshot = Some(json!({
+            "quota": {
+                "version": 2,
+                "provider_type": "codex",
+                "code": "exhausted",
+                "exhausted": true,
+                "updated_at": now,
+                "windows": [{
+                    "code": "5h",
+                    "used_ratio": 1.0,
+                    "reset_at": now.saturating_add(3600),
+                    "is_exhausted": true
+                }]
+            }
+        }));
+        assert!(provider_pool_key_account_quota_exhausted(&active, "codex"));
+    }
+
+    #[test]
+    fn provider_quota_exhaustion_metadata_expires_after_reset_at() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_secs();
+
+        assert!(!provider_pool_key_account_quota_exhausted(
+            &sample_key(Some(json!({
+                "codex": {
+                    "updated_at": now.saturating_sub(600),
+                    "primary_used_percent": 100.0,
+                    "primary_reset_at": now.saturating_sub(60)
+                }
+            }))),
+            "codex",
+        ));
+        assert!(provider_pool_key_account_quota_exhausted(
+            &sample_key(Some(json!({
+                "codex": {
+                    "updated_at": now,
+                    "primary_used_percent": 100.0,
+                    "primary_reset_at": now.saturating_add(3600)
+                }
+            }))),
+            "codex",
+        ));
+    }
+
+    #[test]
     fn grok_quota_tier_boundaries_match_pool_modes() {
         assert_eq!(
             grok_supported_quota_windows_for_tier(Some("basic")),

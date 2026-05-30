@@ -5,6 +5,7 @@ use aether_contracts::{ExecutionPlan, ExecutionTelemetry};
 use aether_data_contracts::repository::pool_scores::{
     PoolMemberHardState, PoolMemberIdentity, PoolMemberScheduleFeedback,
 };
+use aether_provider_pool::provider_pool_key_account_quota_exhausted;
 use aether_scheduler_core::{
     build_scheduler_affinity_cache_key_for_api_key_id_with_client_session,
     count_recent_rpm_requests_for_provider_key, ClientSessionAffinity, SchedulerAffinityTarget,
@@ -104,6 +105,7 @@ pub(crate) enum LocalExecutionEffect<'a> {
 struct PoolFeedbackContext {
     pool_config: AdminProviderPoolConfig,
     sticky_session_token: Option<String>,
+    provider_type: String,
 }
 
 const ADAPTIVE_RPM_RECENT_CANDIDATE_LIMIT: usize = 512;
@@ -327,7 +329,34 @@ async fn resolve_pool_feedback_context(
     Some(PoolFeedbackContext {
         pool_config,
         sticky_session_token,
+        provider_type: transport.provider.provider_type,
     })
+}
+
+async fn resolve_pool_success_hard_state(
+    state: &AppState,
+    context: LocalExecutionEffectContext<'_>,
+    provider_type: &str,
+) -> Option<PoolMemberHardState> {
+    let key = match state
+        .read_provider_catalog_keys_by_ids(std::slice::from_ref(&context.plan.key_id))
+        .await
+    {
+        Ok(keys) => keys.into_iter().find(|key| key.id == context.plan.key_id),
+        Err(err) => {
+            warn!(
+                "gateway orchestration effects: failed to read quota state for provider {} key {} after success: {:?}",
+                context.plan.provider_id, context.plan.key_id, err
+            );
+            None
+        }
+    }?;
+
+    if provider_pool_key_account_quota_exhausted(&key, provider_type) {
+        Some(PoolMemberHardState::QuotaExhausted)
+    } else {
+        Some(PoolMemberHardState::Available)
+    }
 }
 
 fn total_tokens_used(outcome: &TerminalUsageOutcome) -> u64 {
@@ -385,11 +414,13 @@ async fn record_sync_pool_success_effect(
         resolve_ttfb_ms(payload.telemetry.as_ref()),
     )
     .await;
+    let hard_state =
+        resolve_pool_success_hard_state(state, context, pool_context.provider_type.as_str()).await;
     record_pool_score_schedule_feedback(
         state,
         context,
         Some(true),
-        Some(PoolMemberHardState::Available),
+        hard_state,
         Some(50),
         serde_json::json!({
             "last_request_feedback": {
@@ -634,11 +665,13 @@ async fn record_stream_pool_success_effect(
         resolve_ttfb_ms(payload.telemetry.as_ref()),
     )
     .await;
+    let hard_state =
+        resolve_pool_success_hard_state(state, context, pool_context.provider_type.as_str()).await;
     record_pool_score_schedule_feedback(
         state,
         context,
         Some(true),
-        Some(PoolMemberHardState::Available),
+        hard_state,
         Some(50),
         serde_json::json!({
             "last_request_feedback": {
@@ -967,14 +1000,20 @@ mod tests {
     use aether_contracts::{ExecutionPlan, RequestBody};
     use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY};
     use aether_data::repository::candidates::InMemoryRequestCandidateRepository;
+    use aether_data::repository::pool_scores::InMemoryPoolMemberScoreRepository;
     use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
     use aether_data_contracts::repository::candidates::{
         RequestCandidateStatus, StoredRequestCandidate,
+    };
+    use aether_data_contracts::repository::pool_scores::{
+        GetPoolMemberScoresByIdsQuery, PoolMemberHardState, PoolMemberIdentity,
+        PoolMemberProbeStatus, StoredPoolMemberScore,
     };
     use aether_data_contracts::repository::provider_catalog::{
         StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
     };
     use aether_testkit::ManagedRedisServer;
+    use aether_usage_runtime::GatewaySyncReportRequest;
     use serde_json::{json, Value};
 
     use super::{
@@ -983,6 +1022,7 @@ mod tests {
         LocalExecutionEffect, LocalExecutionEffectContext, LocalHealthFailureEffect,
         LocalHealthSuccessEffect, LocalOAuthInvalidationEffect, LocalPoolErrorEffect,
     };
+    use crate::ai_serving::{provider_key_pool_score_id, provider_key_pool_score_scope};
     use crate::data::{GatewayDataConfig, GatewayDataState};
     use crate::orchestration::LocalFailoverClassification;
     use crate::scheduler::affinity::SCHEDULER_AFFINITY_TTL;
@@ -1162,6 +1202,59 @@ mod tests {
         .expect("key transport should build")
     }
 
+    fn sample_quota_exhausted_codex_key() -> StoredProviderCatalogKey {
+        let mut key = sample_codex_key();
+        key.status_snapshot = Some(json!({
+            "quota": {
+                "provider_type": "codex",
+                "exhausted": true,
+                "usage_ratio": 1.0,
+                "windows": [
+                    {
+                        "code": "codex_5h",
+                        "is_exhausted": true,
+                        "used_ratio": 1.0,
+                        "reset_at": 4_102_444_800u64
+                    }
+                ]
+            }
+        }));
+        key
+    }
+
+    fn sample_codex_pool_score(hard_state: PoolMemberHardState) -> StoredPoolMemberScore {
+        let identity = PoolMemberIdentity::provider_api_key(
+            "provider-codex-cli-local-1",
+            "key-codex-cli-local-1",
+        );
+        let scope = provider_key_pool_score_scope();
+        StoredPoolMemberScore {
+            id: provider_key_pool_score_id(&identity, &scope),
+            pool_kind: identity.pool_kind,
+            pool_id: identity.pool_id,
+            member_kind: identity.member_kind,
+            member_id: identity.member_id,
+            capability: scope.capability,
+            scope_kind: scope.scope_kind,
+            scope_id: scope.scope_id,
+            score: 0.5,
+            hard_state,
+            score_version: 1,
+            score_reason: json!({}),
+            last_ranked_at: Some(1_700_000_000),
+            last_scheduled_at: Some(1_700_000_010),
+            last_success_at: None,
+            last_failure_at: None,
+            failure_count: 0,
+            last_probe_attempt_at: None,
+            last_probe_success_at: None,
+            last_probe_failure_at: None,
+            probe_failure_count: 0,
+            probe_status: PoolMemberProbeStatus::Ok,
+            updated_at: 1_700_000_020,
+        }
+    }
+
     fn codex_state() -> AppState {
         let repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
             vec![sample_codex_provider()],
@@ -1174,6 +1267,43 @@ mod tests {
                 GatewayDataState::with_provider_catalog_repository_for_tests(repository)
                     .with_encryption_key_for_tests(DEVELOPMENT_ENCRYPTION_KEY),
             )
+    }
+
+    fn codex_state_with_quota_exhausted_key_and_pool_score() -> AppState {
+        let provider_catalog = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+            vec![sample_codex_provider()],
+            vec![sample_codex_endpoint()],
+            vec![sample_quota_exhausted_codex_key()],
+        ));
+        let pool_scores = Arc::new(InMemoryPoolMemberScoreRepository::seed(vec![
+            sample_codex_pool_score(PoolMemberHardState::QuotaExhausted),
+        ]));
+        AppState::new()
+            .expect("gateway state should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_provider_catalog_repository_for_tests(provider_catalog)
+                    .with_pool_score_repository_for_tests(pool_scores)
+                    .with_encryption_key_for_tests(DEVELOPMENT_ENCRYPTION_KEY),
+            )
+    }
+
+    async fn read_codex_pool_score_state(state: &AppState) -> PoolMemberHardState {
+        let identity = PoolMemberIdentity::provider_api_key(
+            "provider-codex-cli-local-1",
+            "key-codex-cli-local-1",
+        );
+        let scope = provider_key_pool_score_scope();
+        state
+            .data
+            .get_pool_member_scores_by_ids(&GetPoolMemberScoresByIdsQuery {
+                ids: vec![provider_key_pool_score_id(&identity, &scope)],
+            })
+            .await
+            .expect("pool scores should load")
+            .into_iter()
+            .next()
+            .expect("pool score should exist")
+            .hard_state
     }
 
     fn codex_state_with_redis(redis_url: &str, redis_key_prefix: &str) -> AppState {
@@ -1733,6 +1863,38 @@ mod tests {
         assert_eq!(circuit["reason"], json!("account_deactivated_401"));
         assert!(circuit["next_probe_at"].is_string());
         assert!(circuit["next_probe_at_unix_secs"].as_u64().is_some());
+    }
+
+    #[tokio::test]
+    async fn sync_pool_success_keeps_quota_exhausted_key_out_of_available_state() {
+        let state = codex_state_with_quota_exhausted_key_and_pool_score();
+        let plan = sample_codex_plan();
+        let payload = GatewaySyncReportRequest {
+            trace_id: "trace-codex-success".to_string(),
+            report_kind: "local_ai_sync".to_string(),
+            report_context: None,
+            status_code: 200,
+            headers: BTreeMap::new(),
+            body_json: Some(json!({"id": "resp-1"})),
+            client_body_json: None,
+            body_base64: None,
+            telemetry: None,
+        };
+
+        apply_local_execution_effect(
+            &state,
+            LocalExecutionEffectContext {
+                plan: &plan,
+                report_context: None,
+            },
+            LocalExecutionEffect::PoolSuccessSync { payload: &payload },
+        )
+        .await;
+
+        assert_eq!(
+            read_codex_pool_score_state(&state).await,
+            PoolMemberHardState::QuotaExhausted
+        );
     }
 
     #[tokio::test]
