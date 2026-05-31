@@ -268,17 +268,17 @@ fn apply_billing_computation(
     let user_total_cost_usd = quantize_cost(base_cost_usd * sales_multiplier);
     event.data.total_cost_usd = Some(user_total_cost_usd);
     event.data.actual_total_cost_usd = Some(computation.actual_total_cost);
-    merge_billing_snapshot_metadata(
-        &mut event.data.request_metadata,
+    let metadata_input = BillingSnapshotMetadataInput {
         pricing,
-        &computation.cost_result.snapshot,
+        snapshot: &computation.cost_result.snapshot,
         base_cost_usd,
         user_total_cost_usd,
-        computation.actual_total_cost,
+        actual_total_cost: computation.actual_total_cost,
         sales_multiplier,
-        computation.rate_multiplier,
-        computation.is_free_tier,
-    )
+        rate_multiplier: computation.rate_multiplier,
+        is_free_tier: computation.is_free_tier,
+    };
+    merge_billing_snapshot_metadata(&mut event.data.request_metadata, metadata_input)
 }
 
 fn resolve_sales_multiplier(
@@ -340,44 +340,42 @@ fn map_pricing_context(context: StoredBillingModelContext) -> BillingModelPricin
     }
 }
 
-fn merge_billing_snapshot_metadata(
-    request_metadata: &mut Option<Value>,
-    pricing: &BillingModelPricingSnapshot,
-    snapshot: &crate::BillingSnapshot,
+struct BillingSnapshotMetadataInput<'a> {
+    pricing: &'a BillingModelPricingSnapshot,
+    snapshot: &'a crate::BillingSnapshot,
     base_cost_usd: f64,
     user_total_cost_usd: f64,
     actual_total_cost: f64,
     sales_multiplier: f64,
     rate_multiplier: f64,
     is_free_tier: bool,
+}
+
+fn merge_billing_snapshot_metadata(
+    request_metadata: &mut Option<Value>,
+    input: BillingSnapshotMetadataInput<'_>,
 ) -> Result<(), DataLayerError> {
-    let billing_snapshot = serde_json::to_value(snapshot).map_err(|err| {
+    let billing_snapshot = serde_json::to_value(input.snapshot).map_err(|err| {
         DataLayerError::UnexpectedValue(format!("failed to serialize billing snapshot: {err}"))
     })?;
-    let settlement_snapshot = build_settlement_snapshot(
-        pricing,
-        snapshot,
-        base_cost_usd,
-        user_total_cost_usd,
-        actual_total_cost,
-        sales_multiplier,
-        rate_multiplier,
-        is_free_tier,
-    );
+    let settlement_snapshot = build_settlement_snapshot(&input);
 
     let mut metadata = match request_metadata.take() {
         Some(Value::Object(object)) => object,
         _ => Map::new(),
     };
     metadata.insert("billing_snapshot".to_string(), billing_snapshot);
-    metadata.insert("base_cost_usd".to_string(), Value::from(base_cost_usd));
+    metadata.insert(
+        "base_cost_usd".to_string(),
+        Value::from(input.base_cost_usd),
+    );
     metadata.insert(
         "user_total_cost_usd".to_string(),
-        Value::from(user_total_cost_usd),
+        Value::from(input.user_total_cost_usd),
     );
     metadata.insert(
         "sales_multiplier".to_string(),
-        Value::from(sales_multiplier),
+        Value::from(input.sales_multiplier),
     );
     metadata.insert(
         "settlement_snapshot_schema_version".to_string(),
@@ -386,57 +384,58 @@ fn merge_billing_snapshot_metadata(
     metadata.insert("settlement_snapshot".to_string(), settlement_snapshot);
     metadata.insert(
         "billing_dimensions".to_string(),
-        Value::Object(snapshot.resolved_dimensions.clone().into_iter().collect()),
+        Value::Object(
+            input
+                .snapshot
+                .resolved_dimensions
+                .clone()
+                .into_iter()
+                .collect(),
+        ),
     );
-    metadata.insert("rate_multiplier".to_string(), Value::from(rate_multiplier));
-    metadata.insert("is_free_tier".to_string(), Value::from(is_free_tier));
+    metadata.insert(
+        "rate_multiplier".to_string(),
+        Value::from(input.rate_multiplier),
+    );
+    metadata.insert("is_free_tier".to_string(), Value::from(input.is_free_tier));
     *request_metadata = Some(Value::Object(metadata));
     Ok(())
 }
 
-fn build_settlement_snapshot(
-    pricing: &BillingModelPricingSnapshot,
-    snapshot: &crate::BillingSnapshot,
-    base_cost_usd: f64,
-    user_total_cost_usd: f64,
-    actual_total_cost: f64,
-    sales_multiplier: f64,
-    rate_multiplier: f64,
-    is_free_tier: bool,
-) -> Value {
+fn build_settlement_snapshot(input: &BillingSnapshotMetadataInput<'_>) -> Value {
     json!({
         "schema_version": SETTLEMENT_SNAPSHOT_SCHEMA_VERSION,
         "pricing_snapshot": {
-            "provider_id": pricing.provider_id.clone(),
-            "provider_billing_type": pricing.provider_billing_type.clone(),
-            "provider_api_key_id": pricing.provider_api_key_id.clone(),
-            "global_model_id": pricing.global_model_id.clone(),
-            "global_model_name": pricing.global_model_name.clone(),
-            "model_id": pricing.model_id.clone(),
-            "provider_model_name": pricing.model_provider_model_name.clone(),
-            "pricing_source": pricing.pricing_source(),
-            "tiered_pricing": pricing.effective_tiered_pricing().cloned(),
-            "price_per_request": pricing.effective_price_per_request(),
-            "rate_multiplier": rate_multiplier,
-            "sales_multiplier": sales_multiplier,
-            "is_free_tier": is_free_tier,
+            "provider_id": input.pricing.provider_id.clone(),
+            "provider_billing_type": input.pricing.provider_billing_type.clone(),
+            "provider_api_key_id": input.pricing.provider_api_key_id.clone(),
+            "global_model_id": input.pricing.global_model_id.clone(),
+            "global_model_name": input.pricing.global_model_name.clone(),
+            "model_id": input.pricing.model_id.clone(),
+            "provider_model_name": input.pricing.model_provider_model_name.clone(),
+            "pricing_source": input.pricing.pricing_source(),
+            "tiered_pricing": input.pricing.effective_tiered_pricing().cloned(),
+            "price_per_request": input.pricing.effective_price_per_request(),
+            "rate_multiplier": input.rate_multiplier,
+            "sales_multiplier": input.sales_multiplier,
+            "is_free_tier": input.is_free_tier,
         },
         "billing_plan_snapshot": {
-            "rule_id": snapshot.rule_id.clone(),
-            "rule_name": snapshot.rule_name.clone(),
-            "scope": snapshot.scope.clone(),
-            "expression": snapshot.expression.clone(),
-            "engine_version": snapshot.engine_version.clone(),
+            "rule_id": input.snapshot.rule_id.clone(),
+            "rule_name": input.snapshot.rule_name.clone(),
+            "scope": input.snapshot.scope.clone(),
+            "expression": input.snapshot.expression.clone(),
+            "engine_version": input.snapshot.engine_version.clone(),
         },
-        "resolved_dimensions": snapshot.resolved_dimensions.clone(),
-        "resolved_variables": snapshot.resolved_variables.clone(),
-        "cost_breakdown": snapshot.cost_breakdown.clone(),
-        "base_cost_usd": base_cost_usd,
-        "user_total_cost_usd": user_total_cost_usd,
-        "total_cost": user_total_cost_usd,
-        "actual_total_cost": actual_total_cost,
-        "status": snapshot.status,
-        "calculated_at": snapshot.calculated_at.clone(),
+        "resolved_dimensions": input.snapshot.resolved_dimensions.clone(),
+        "resolved_variables": input.snapshot.resolved_variables.clone(),
+        "cost_breakdown": input.snapshot.cost_breakdown.clone(),
+        "base_cost_usd": input.base_cost_usd,
+        "user_total_cost_usd": input.user_total_cost_usd,
+        "total_cost": input.user_total_cost_usd,
+        "actual_total_cost": input.actual_total_cost,
+        "status": input.snapshot.status,
+        "calculated_at": input.snapshot.calculated_at.clone(),
     })
 }
 

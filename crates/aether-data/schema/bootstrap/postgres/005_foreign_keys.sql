@@ -86,6 +86,20 @@ EXCEPTION
 END $mig$;
 
 
+--
+-- Name: api_keys api_keys_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.api_keys
+    ADD CONSTRAINT api_keys_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.user_groups(id) ON DELETE RESTRICT;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
 
 --
 -- Name: audit_logs audit_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

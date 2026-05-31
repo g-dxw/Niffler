@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS public.api_key_provider_mappings (
 CREATE TABLE IF NOT EXISTS public.api_keys (
     id character varying(36) NOT NULL,
     user_id character varying(36) NOT NULL,
+    group_id character varying(64),
     key_hash character varying(64) NOT NULL,
     key_encrypted text,
     name character varying(100),
@@ -1556,6 +1557,7 @@ CREATE TABLE IF NOT EXISTS public.user_groups (
     normalized_name character varying(100) NOT NULL,
     description text,
     priority integer DEFAULT 0 NOT NULL,
+    visibility text DEFAULT 'public'::text NOT NULL,
     allowed_providers json,
     allowed_providers_mode text DEFAULT 'inherit'::text NOT NULL,
     allowed_api_formats json,
@@ -1566,6 +1568,8 @@ CREATE TABLE IF NOT EXISTS public.user_groups (
     rate_limit_mode text DEFAULT 'inherit'::text NOT NULL,
     concurrent_limit integer,
     concurrent_limit_mode text DEFAULT 'inherit'::text NOT NULL,
+    sales_multiplier double precision DEFAULT '1'::double precision NOT NULL,
+    model_sales_multipliers json,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );

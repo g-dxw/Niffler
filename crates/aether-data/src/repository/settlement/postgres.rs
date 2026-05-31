@@ -252,17 +252,21 @@ struct DailyQuotaDebitResult {
     insufficient: bool,
 }
 
-async fn consume_daily_quota_postgres(
-    tx: &mut crate::driver::postgres::PostgresTransaction,
-    user_id: &str,
-    request_id: &str,
+struct DailyQuotaDebitInput<'a> {
+    user_id: &'a str,
+    request_id: &'a str,
     total_cost_usd: f64,
     wallet_available_usd: Option<f64>,
     wallet_can_overdraft: bool,
     wallet_charge_multiplier: f64,
-    request_global_model_id: Option<&str>,
+    request_global_model_id: Option<&'a str>,
+}
+
+async fn consume_daily_quota_postgres(
+    tx: &mut crate::driver::postgres::PostgresTransaction,
+    input: DailyQuotaDebitInput<'_>,
 ) -> Result<DailyQuotaDebitResult, DataLayerError> {
-    if total_cost_usd <= 0.0 {
+    if input.total_cost_usd <= 0.0 {
         return Ok(DailyQuotaDebitResult::default());
     }
     let now = chrono::Utc::now();
@@ -278,7 +282,7 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
 FOR UPDATE
         "#,
     )
-    .bind(user_id)
+    .bind(input.user_id)
     .fetch_all(&mut **tx)
     .await
     .map_postgres_err()?;
@@ -289,10 +293,10 @@ FOR UPDATE
             row.try_get("starts_at").map_postgres_err()?;
         let entitlements: serde_json::Value =
             row.try_get("entitlements_snapshot").map_postgres_err()?;
-        if request_global_model_id.is_some()
+        if input.request_global_model_id.is_some()
             && !entitlements_snapshot_has_usage_quota_for_global_model(
                 &entitlements,
-                request_global_model_id,
+                input.request_global_model_id,
             )
         {
             continue;
@@ -310,7 +314,7 @@ FOR UPDATE
     grants.retain(|grant| {
         entitlement_allows_global_model(
             grant.allowed_global_model_ids.as_deref(),
-            request_global_model_id,
+            input.request_global_model_id,
         )
     });
     if grants.is_empty() {
@@ -323,7 +327,7 @@ FOR UPDATE
     let mut allow_wallet_overage = true;
     for grant in grants {
         allow_wallet_overage &= grant.allow_wallet_overage;
-        let used = upsert_usage_quota_window_postgres(tx, user_id, &grant).await?;
+        let used = upsert_usage_quota_window_postgres(tx, input.user_id, &grant).await?;
         let remaining = (grant.limit_usd - used).max(0.0);
         grants_by_entitlement
             .entry(grant.entitlement_id.clone())
@@ -342,17 +346,17 @@ FOR UPDATE
         }
     }
 
-    if !allow_wallet_overage && total_remaining + 0.000_000_01 < total_cost_usd {
+    if !allow_wallet_overage && total_remaining + 0.000_000_01 < input.total_cost_usd {
         return Ok(DailyQuotaDebitResult {
             debited_usd: 0.0,
             insufficient: true,
         });
     }
     if allow_wallet_overage
-        && !wallet_can_overdraft
-        && wallet_available_usd.is_some_and(|available| {
+        && !input.wallet_can_overdraft
+        && input.wallet_available_usd.is_some_and(|available| {
             available + SETTLEMENT_EPSILON_USD
-                < (total_cost_usd - total_remaining).max(0.0) * wallet_charge_multiplier
+                < (input.total_cost_usd - total_remaining).max(0.0) * input.wallet_charge_multiplier
         })
     {
         return Ok(DailyQuotaDebitResult {
@@ -361,7 +365,7 @@ FOR UPDATE
         });
     }
 
-    let mut remaining_cost = total_cost_usd;
+    let mut remaining_cost = input.total_cost_usd;
     let mut debited = 0.0;
     for (grants, balance_before) in entitlement_remaining {
         if remaining_cost <= 0.000_000_01 || balance_before <= 0.0 {
@@ -385,8 +389,8 @@ ON CONFLICT (user_entitlement_id, request_id) DO NOTHING
         )
         .bind(uuid::Uuid::new_v4().to_string())
         .bind(&primary_grant.entitlement_id)
-        .bind(user_id)
-        .bind(request_id)
+        .bind(input.user_id)
+        .bind(input.request_id)
         .bind(amount)
         .bind(balance_before)
         .bind(balance_after)
@@ -681,13 +685,15 @@ LIMIT 1
                                 let sales_multiplier = settlement_wallet_charge_multiplier(&input);
                                 let quota = consume_daily_quota_postgres(
                                     tx,
-                                    user_id,
-                                    &input.request_id,
-                                    input.base_cost_usd,
-                                    wallet_available_usd,
-                                    wallet_can_overdraft,
-                                    sales_multiplier,
-                                    input.global_model_id.as_deref(),
+                                    DailyQuotaDebitInput {
+                                        user_id,
+                                        request_id: &input.request_id,
+                                        total_cost_usd: input.base_cost_usd,
+                                        wallet_available_usd,
+                                        wallet_can_overdraft,
+                                        wallet_charge_multiplier: sales_multiplier,
+                                        request_global_model_id: input.global_model_id.as_deref(),
+                                    },
                                 )
                                 .await?;
                                 if quota.insufficient {

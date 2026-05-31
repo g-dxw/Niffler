@@ -253,8 +253,8 @@ fn validate_plan_price_amount(price_amount: f64, rule: PlanPriceRule) -> Result<
         match rule {
             PlanPriceRule::Create => return Err("price_amount must be positive".to_string()),
             PlanPriceRule::UpdateExistingZero {
-                existing_price_amount,
-            } if existing_price_amount == 0.0 => {}
+                existing_price_amount: 0.0,
+            } => {}
             PlanPriceRule::UpdateExistingZero { .. } => {
                 return Err("price_amount must be positive".to_string())
             }

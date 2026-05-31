@@ -1204,6 +1204,34 @@ EXCEPTION
 END $mig$;
 
 
+--
+-- Name: user_groups user_groups_visibility_check; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.user_groups
+    ADD CONSTRAINT user_groups_visibility_check CHECK (visibility IN ('public', 'internal'));
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+--
+-- Name: user_groups user_groups_sales_multiplier_check; Type: CHECK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.user_groups
+    ADD CONSTRAINT user_groups_sales_multiplier_check CHECK (sales_multiplier >= 0);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
 
 --
 -- Name: user_groups user_groups_normalized_name_key; Type: CONSTRAINT; Schema: public; Owner: -

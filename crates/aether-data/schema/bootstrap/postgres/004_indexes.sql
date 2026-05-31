@@ -883,6 +883,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_api_keys_key_hash ON public.api_keys USING 
 CREATE INDEX IF NOT EXISTS ix_api_keys_user_id ON public.api_keys USING btree (user_id);
 
 
+--
+-- Name: api_keys_group_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS api_keys_group_id_idx ON public.api_keys USING btree (group_id);
+
+
 
 --
 -- Name: ix_audit_logs_created_at; Type: INDEX; Schema: public; Owner: -

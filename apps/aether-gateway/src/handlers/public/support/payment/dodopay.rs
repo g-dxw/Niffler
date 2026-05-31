@@ -359,10 +359,8 @@ pub(super) async fn handle_dodopay_notify(
         Ok(value) => value,
         Err(_) => return dodopay_plain(http::StatusCode::BAD_REQUEST, "fail"),
     };
-    let signature_valid = match dodopay_verify_payload_signature(&config.app_secret, &payload) {
-        Ok(value) => value,
-        Err(_) => false,
-    };
+    let signature_valid =
+        dodopay_verify_payload_signature(&config.app_secret, &payload).unwrap_or_default();
     if !signature_valid {
         return dodopay_plain(http::StatusCode::BAD_REQUEST, "fail");
     }
