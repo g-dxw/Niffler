@@ -603,7 +603,7 @@ pub struct CreateUserApiKeyRecord {
     pub key_hash: String,
     pub key_encrypted: Option<String>,
     pub name: Option<String>,
-    pub group_id: Option<String>,
+    pub group_id: String,
     pub allowed_providers: Option<Vec<String>>,
     pub allowed_api_formats: Option<Vec<String>>,
     pub allowed_models: Option<Vec<String>>,

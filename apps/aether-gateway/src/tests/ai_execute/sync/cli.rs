@@ -805,6 +805,7 @@ async fn gateway_waits_for_api_key_concurrency_slot_then_executes_openai_respons
         "key-openai-cli-local-limit-123",
         "user-openai-cli-local-limit-123",
     );
+    auth_snapshot.api_key_group_id = Some("group-openai-cli-local-limit".to_string());
     auth_snapshot.api_key_concurrent_limit = Some(1);
     let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
         Some(hash_api_key("sk-client-openai-cli-local-limit")),

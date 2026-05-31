@@ -38,6 +38,15 @@ describe('model catalog embedding helpers', () => {
     expect(supportsEmbedding(model({ config: { api_formats: ['openai:chat'] } }))).toBe(false)
   })
 
+  it('accepts object-shaped capabilities from legacy catalog rows', () => {
+    expect(supportsEmbedding(model({
+      supported_capabilities: { embedding: true, streaming: true },
+    }))).toBe(true)
+    expect(getModelCapabilityLabels(model({
+      supported_capabilities: { rerank: true, streaming: true },
+    }))).toEqual(['Rerank'])
+  })
+
   it('labels rerank models distinctly from chat and embedding models', () => {
     const rerank = model({
       supported_capabilities: ['rerank'],

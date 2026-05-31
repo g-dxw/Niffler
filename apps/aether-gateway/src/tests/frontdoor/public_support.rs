@@ -6641,6 +6641,28 @@ async fn gateway_handles_users_me_api_key_writes_locally_without_proxying_upstre
         .expect("export record should build")]),
     );
     let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![user]));
+    let default_group = user_repository
+        .create_user_group(UpsertUserGroupRecord {
+            name: "Default".to_string(),
+            description: None,
+            visibility: "public".to_string(),
+            priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
+            allowed_providers: None,
+            allowed_providers_mode: "unrestricted".to_string(),
+            allowed_api_formats: None,
+            allowed_api_formats_mode: "unrestricted".to_string(),
+            allowed_models: None,
+            allowed_models_mode: "unrestricted".to_string(),
+            rate_limit: None,
+            rate_limit_mode: "system".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
+        })
+        .await
+        .expect("default group should create")
+        .expect("default group should exist");
     let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
         vec![sample_provider("provider-openai", "openai", 10)],
         vec![sample_endpoint(
@@ -6659,6 +6681,10 @@ async fn gateway_handles_users_me_api_key_writes_locally_without_proxying_upstre
             )
             .with_user_reader(user_repository)
             .with_provider_catalog_reader(provider_catalog_repository)
+            .with_system_config_values_for_tests([(
+                "default_user_group_id".to_string(),
+                json!(default_group.id.clone()),
+            )])
             .with_encryption_key_for_tests(DEVELOPMENT_ENCRYPTION_KEY);
             AppState::new()
                 .expect("gateway should build")
@@ -6698,6 +6724,7 @@ async fn gateway_handles_users_me_api_key_writes_locally_without_proxying_upstre
         .to_string();
     assert_eq!(create_payload["name"], "writer-key");
     assert_eq!(create_payload["rate_limit"], 120);
+    assert_eq!(create_payload["group_id"], default_group.id);
     assert_eq!(create_payload["concurrent_limit"], serde_json::Value::Null);
     assert_eq!(create_payload["feature_settings"], serde_json::Value::Null);
     assert_eq!(create_payload["message"], "API密钥创建成功");
@@ -9197,7 +9224,12 @@ async fn gateway_handles_users_me_available_models_locally_without_proxying_upst
     );
     let global_model_repository = Arc::new(
         InMemoryGlobalModelReadRepository::seed(vec![
-            sample_public_global_model("gm-1", "gpt-5", "GPT 5", true),
+            sample_public_global_model_with_capabilities(
+                "gm-1",
+                "gpt-5",
+                "GPT 5",
+                json!({"streaming": true, "vision": true, "image_generation": false}),
+            ),
             sample_public_global_model("gm-2", "claude-sonnet-4-5", "Claude Sonnet 4.5", true),
             sample_public_global_model("gm-3", "disabled-model", "Disabled Model", false),
         ])
@@ -9258,6 +9290,10 @@ async fn gateway_handles_users_me_available_models_locally_without_proxying_upst
     assert_eq!(models[0]["id"], "gm-1");
     assert_eq!(models[0]["name"], "gpt-5");
     assert_eq!(models[0]["display_name"], "GPT 5");
+    assert_eq!(
+        models[0]["supported_capabilities"],
+        json!(["streaming", "vision"])
+    );
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();

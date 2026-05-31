@@ -136,9 +136,16 @@ pub(crate) async fn build_admin_create_user_api_key_response(
             if state.find_user_group_by_id(&group_id).await?.is_none() {
                 return Ok(build_admin_users_bad_request_response("分组不存在"));
             }
-            Some(group_id)
+            group_id
         }
-        None => state.effective_default_user_group_id().await?,
+        None => match state.effective_default_user_group_id().await? {
+            Some(group_id) => group_id,
+            None => {
+                return Ok(build_admin_users_bad_request_response(
+                    "当前没有可用分组，请先创建或设置默认分组",
+                ));
+            }
+        },
     };
 
     let plaintext_key = generate_admin_user_api_key_plaintext();

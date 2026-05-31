@@ -17,6 +17,7 @@ use super::{
     resolve_authenticated_local_user, sanitize_public_model_config_for_user, AppState,
     GatewayPublicRequestContext, USERS_ME_AVAILABLE_MODELS_FETCH_LIMIT,
 };
+use crate::handlers::public::supported_capability_names;
 
 const USERS_ME_MODEL_CATALOG_UNAVAILABLE_DETAIL: &str = "用户模型目录暂不可用";
 const USERS_ME_PROVIDER_CATALOG_UNAVAILABLE_DETAIL: &str = "用户提供商目录暂不可用";
@@ -38,7 +39,7 @@ fn build_users_me_available_model_payload(
         "is_active": model.is_active,
         "default_price_per_request": model.default_price_per_request,
         "default_tiered_pricing": model.default_tiered_pricing,
-        "supported_capabilities": model.supported_capabilities,
+        "supported_capabilities": supported_capability_names(model.supported_capabilities.as_ref()),
         "config": config,
         "usage_count": model.usage_count,
     })

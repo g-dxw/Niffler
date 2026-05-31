@@ -130,6 +130,12 @@
                   资金流水
                 </TabsTrigger>
                 <TabsTrigger
+                  v-if="showUsageRecords"
+                  value="usage"
+                >
+                  消费记录
+                </TabsTrigger>
+                <TabsTrigger
                   v-if="showPlanRecords"
                   value="plans"
                 >
@@ -349,6 +355,97 @@
               </TabsContent>
 
               <TabsContent
+                v-if="showUsageRecords"
+                value="usage"
+                class="mt-4 space-y-3"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <div class="text-sm text-muted-foreground">
+                    最近 30 天 · 共 {{ usageTotal }} 条
+                  </div>
+                  <RefreshButton
+                    :loading="loadingUsage"
+                    @click="loadUsageRecords"
+                  />
+                </div>
+
+                <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
+                  <div class="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>时间</TableHead>
+                          <TableHead>模型</TableHead>
+                          <TableHead>状态</TableHead>
+                          <TableHead class="text-right">
+                            官方费用
+                          </TableHead>
+                          <TableHead class="text-right">
+                            实际扣费
+                          </TableHead>
+                          <TableHead class="text-right">
+                            倍率
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow
+                          v-for="record in usageItems"
+                          :key="record.id"
+                          :title="usageCostTitle(record)"
+                        >
+                          <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
+                            {{ formatDateTime(record.created_at) }}
+                          </TableCell>
+                          <TableCell class="min-w-[220px]">
+                            <div class="text-sm font-medium text-foreground">
+                              {{ record.model || '-' }}
+                            </div>
+                            <div class="mt-1 text-[11px] text-muted-foreground">
+                              {{ record.api_key?.name || record.api_key_name || '未命名 Key' }}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge :variant="usageStatusBadge(record)">
+                              {{ usageStatusLabel(record) }}
+                            </Badge>
+                          </TableCell>
+                          <TableCell class="text-right text-xs tabular-nums text-primary">
+                            {{ formatUsageCurrency(usageOfficialCost(record)) }}
+                          </TableCell>
+                          <TableCell class="text-right text-xs tabular-nums">
+                            {{ hasUsageActualCost(record) ? formatUsageCurrency(usageActualCost(record)) : '-' }}
+                          </TableCell>
+                          <TableCell class="text-right text-xs tabular-nums text-muted-foreground">
+                            {{ formatUsageMultiplier(record) }}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow v-if="!loadingUsage && usageItems.length === 0">
+                          <TableCell
+                            colspan="6"
+                            class="py-10"
+                          >
+                            <EmptyState
+                              title="暂无消费记录"
+                              description="最近 30 天内没有可核账的模型请求"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                <Pagination
+                  :current="usagePage"
+                  :total="usageTotal"
+                  :page-size="usagePageSize"
+                  @update:current="handleUsagePageChange"
+                  @update:page-size="handleUsagePageSizeChange"
+                />
+              </TabsContent>
+
+              <TabsContent
                 v-if="showPlanRecords"
                 value="plans"
                 class="mt-4 space-y-3"
@@ -371,6 +468,7 @@
                           <TableHead>套餐</TableHead>
                           <TableHead>状态</TableHead>
                           <TableHead>权益</TableHead>
+                          <TableHead>价格/额度</TableHead>
                           <TableHead>开始</TableHead>
                           <TableHead>到期</TableHead>
                         </TableRow>
@@ -409,6 +507,14 @@
                             </div>
                           </TableCell>
                           <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
+                            <div class="text-foreground">
+                              {{ formatPlanPrice(plan.plan) }} / {{ formatPlanQuota(plan.plan) }}
+                            </div>
+                            <div class="mt-1">
+                              {{ formatPlanEquivalentMultiplier(plan.plan) }}
+                            </div>
+                          </TableCell>
+                          <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
                             {{ formatDateTime(plan.starts_at) }}
                           </TableCell>
                           <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
@@ -417,7 +523,7 @@
                         </TableRow>
                         <TableRow v-if="!loadingPlans && planItems.length === 0">
                           <TableCell
-                            colspan="5"
+                            colspan="6"
                             class="py-10"
                           >
                             <EmptyState
@@ -628,12 +734,15 @@ import {
   adminWalletApi,
   type AdminWallet,
 } from '@/api/admin-wallets'
+import { usageApi } from '@/api/usage'
 import { usersApi, type AdminUserPlanEntitlement } from '@/api/users'
-import type { BillingEntitlementsInput, DailyQuotaEntitlement } from '@/api/billing'
+import type { BillingEntitlementsInput, BillingPlan, DailyQuotaEntitlement } from '@/api/billing'
 import type { RefundRequest, WalletTransaction } from '@/api/wallet'
+import type { UsageRecord } from '@/features/usage/types'
 import { normalizeBillingEntitlements } from '@/utils/billingEntitlements'
 import { parseApiError } from '@/utils/errorParser'
 import { parseNumberInput } from '@/utils/form'
+import { formatCurrency } from '@/utils/format'
 import {
   refundModeLabel,
   refundStatusBadge,
@@ -677,7 +786,7 @@ const emit = defineEmits<{
 const { success, error } = useToast()
 const { confirm } = useConfirm()
 
-const activeTab = ref<'actions' | 'transactions' | 'plans' | 'refunds'>('actions')
+const activeTab = ref<'actions' | 'transactions' | 'usage' | 'plans' | 'refunds'>('actions')
 const localWallet = ref<AdminWallet | null>(null)
 
 const moneyActionType = ref<'recharge' | 'adjust'>('adjust')
@@ -691,6 +800,11 @@ const txItems = ref<WalletTransaction[]>([])
 const txTotal = ref(0)
 const txPage = ref(1)
 const txPageSize = ref(20)
+const loadingUsage = ref(false)
+const usageItems = ref<UsageRecord[]>([])
+const usageTotal = ref(0)
+const usagePage = ref(1)
+const usagePageSize = ref(20)
 
 const loadingRefunds = ref(false)
 const refundItems = ref<RefundRequest[]>([])
@@ -724,13 +838,14 @@ const totalAvailableAmount = computed(() => {
 })
 const showRefunds = computed(() => props.showRefunds)
 const showPlanRecords = computed(() => Boolean(props.userId && !isApiKeyWallet.value))
+const showUsageRecords = computed(() => Boolean(props.userId && !isApiKeyWallet.value))
 const tabsListClass = computed(() => {
-  const columnCount = 2 + (showPlanRecords.value ? 1 : 0) + (showRefunds.value ? 1 : 0)
+  const columnCount = 2 + (showUsageRecords.value ? 1 : 0) + (showPlanRecords.value ? 1 : 0) + (showRefunds.value ? 1 : 0)
   return [
     'tabs-button-list',
     'grid',
     'w-full',
-    columnCount === 4 ? 'grid-cols-4' : columnCount === 3 ? 'grid-cols-3' : 'grid-cols-2',
+    columnCount === 5 ? 'grid-cols-5' : columnCount === 4 ? 'grid-cols-4' : columnCount === 3 ? 'grid-cols-3' : 'grid-cols-2',
   ]
 })
 const submitMoneyDisabled = computed(() => {
@@ -757,7 +872,10 @@ watch(
     resetRefundActionForm()
     activeTab.value = 'actions'
     txPage.value = 1
+    usagePage.value = 1
     refundPage.value = 1
+    usageItems.value = []
+    usageTotal.value = 0
     planItems.value = []
     await refreshDrawerData()
   },
@@ -820,6 +938,41 @@ async function loadTransactions() {
   }
 }
 
+function usageDateRangeParams(): { preset: string; timezone: string; tz_offset_minutes: number } {
+  return {
+    preset: 'last30days',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    tz_offset_minutes: -new Date().getTimezoneOffset(),
+  }
+}
+
+async function loadUsageRecords() {
+  if (!props.userId || !showUsageRecords.value) {
+    usageItems.value = []
+    usageTotal.value = 0
+    return
+  }
+  loadingUsage.value = true
+  try {
+    const offset = (usagePage.value - 1) * usagePageSize.value
+    const resp = await usageApi.getAllUsageRecords({
+      user_id: props.userId,
+      limit: usagePageSize.value,
+      offset,
+      ...usageDateRangeParams(),
+    })
+    usageItems.value = (resp.records || []) as UsageRecord[]
+    usageTotal.value = resp.total || 0
+  } catch (err) {
+    log.error('加载消费记录失败:', err)
+    error(parseApiError(err, '加载消费记录失败'))
+    usageItems.value = []
+    usageTotal.value = 0
+  } finally {
+    loadingUsage.value = false
+  }
+}
+
 async function loadPlans() {
   if (!props.userId || !showPlanRecords.value) {
     planItems.value = []
@@ -877,6 +1030,19 @@ function handleTxPageSizeChange(size: number) {
   void loadTransactions()
 }
 
+function handleUsagePageChange(page: number) {
+  if (!showUsageRecords.value) return
+  usagePage.value = page
+  void loadUsageRecords()
+}
+
+function handleUsagePageSizeChange(size: number) {
+  if (!showUsageRecords.value) return
+  usagePageSize.value = size
+  usagePage.value = 1
+  void loadUsageRecords()
+}
+
 function handleRefundPageChange(page: number) {
   if (!showRefunds.value) return
   refundPage.value = page
@@ -892,6 +1058,9 @@ function handleRefundPageSizeChange(size: number) {
 
 async function refreshDrawerData() {
   const tasks: Array<Promise<void>> = [loadTransactions()]
+  if (showUsageRecords.value) {
+    tasks.push(loadUsageRecords())
+  }
   if (showPlanRecords.value) {
     tasks.push(loadPlans())
   }
@@ -1142,6 +1311,67 @@ async function submitCompleteRefund() {
   }
 }
 
+function finiteNumber(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function usageOfficialCost(record: UsageRecord): number {
+  return finiteNumber(record.cost) ?? 0
+}
+
+function hasUsageActualCost(record: UsageRecord): boolean {
+  return finiteNumber(record.actual_cost) !== null
+}
+
+function usageActualCost(record: UsageRecord): number {
+  return finiteNumber(record.actual_cost) ?? usageOfficialCost(record)
+}
+
+function usageMultiplier(record: UsageRecord): number | null {
+  const saved = finiteNumber(record.rate_multiplier)
+  if (saved !== null) return saved
+  const official = usageOfficialCost(record)
+  if (official <= 0 || !hasUsageActualCost(record)) return null
+  return usageActualCost(record) / official
+}
+
+function formatMultiplier(value: number | null): string {
+  if (value === null) return '-'
+  return `${value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}x`
+}
+
+function formatUsageMultiplier(record: UsageRecord): string {
+  return formatMultiplier(usageMultiplier(record))
+}
+
+function formatUsageCurrency(value: number): string {
+  return formatCurrency(value)
+}
+
+function usageCostTitle(record: UsageRecord): string {
+  const lines = [`官方费用: ${formatUsageCurrency(usageOfficialCost(record))}`]
+  if (hasUsageActualCost(record)) {
+    lines.push(`实际扣费: ${formatUsageCurrency(usageActualCost(record))}`)
+    lines.push(`倍率: ${formatUsageMultiplier(record)}`)
+  }
+  return lines.join('\n')
+}
+
+function usageStatusLabel(record: UsageRecord): string {
+  if (record.status === 'failed' || (record.status_code ?? 0) >= 400) return '失败'
+  if (record.status === 'cancelled') return '已取消'
+  if (record.status === 'pending') return '等待中'
+  if (record.status === 'streaming') return '传输中'
+  return '完成'
+}
+
+function usageStatusBadge(record: UsageRecord): 'default' | 'secondary' | 'outline' | 'destructive' | 'success' {
+  if (record.status === 'failed' || (record.status_code ?? 0) >= 400) return 'destructive'
+  if (record.status === 'cancelled') return 'outline'
+  if (record.status === 'pending' || record.status === 'streaming') return 'secondary'
+  return 'success'
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '-'
   return new Date(value).toLocaleString('zh-CN', {
@@ -1160,6 +1390,46 @@ function planStatusLabel(status: string | null | undefined): string {
     expired: '已过期',
   }
   return labels[String(status || '')] || String(status || '-')
+}
+
+function planQuotaValues(plan: BillingPlan | null | undefined): number[] {
+  if (!plan) return []
+  return normalizeBillingEntitlements(plan.entitlements)
+    .filter((item): item is DailyQuotaEntitlement => item.type === 'daily_quota')
+    .flatMap((item) => {
+      const limits = item.limits || {}
+      return [
+        item.daily_quota_usd ?? limits.daily_limit_usd,
+        item.five_hour_quota_usd ?? limits.five_hour_limit_usd,
+        item.weekly_quota_usd ?? limits.weekly_limit_usd,
+        item.monthly_quota_usd ?? limits.monthly_limit_usd,
+      ]
+    })
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0)
+}
+
+function planQuotaUsd(plan: BillingPlan | null | undefined): number | null {
+  const values = planQuotaValues(plan)
+  if (values.length === 0) return null
+  return Math.max(...values)
+}
+
+function formatPlanPrice(plan: BillingPlan | null | undefined): string {
+  if (!plan) return '-'
+  return `${Number(plan.price_amount || 0).toFixed(2)} ${plan.price_currency || 'CNY'}`
+}
+
+function formatPlanQuota(plan: BillingPlan | null | undefined): string {
+  const quota = planQuotaUsd(plan)
+  return quota === null ? '无用量额度' : `$${quota.toFixed(2)}`
+}
+
+function formatPlanEquivalentMultiplier(plan: BillingPlan | null | undefined): string {
+  const quota = planQuotaUsd(plan)
+  if (!plan || quota === null || quota <= 0) return '等效倍率 -'
+  const price = Number(plan.price_amount || 0)
+  return `等效倍率 ${formatMultiplier(price / quota)}`
 }
 
 function entitlementLabels(items: BillingEntitlementsInput): string[] {

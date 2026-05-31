@@ -338,6 +338,7 @@ import TableCell from '@/components/ui/table-cell.vue'
 
 import type { PublicGlobalModel } from '@/api/public-models'
 import type { TieredPricingConfig, PricingTier } from '@/api/endpoints/types'
+import { getCapabilityNames } from '../model-catalog-helpers'
 
 const props = defineProps<Props>()
 
@@ -396,7 +397,7 @@ function getFirst1hCachePrice(tieredPricing: TieredPricingConfig | undefined | n
 
 function supportsEmbedding(model: PublicGlobalModel): boolean {
   return model.supports_embedding === true
-    || model.supported_capabilities?.includes('embedding') === true
+    || getCapabilityNames(model).includes('embedding')
     || model.config?.embedding === true
     || model.config?.model_type === 'embedding'
     || (Array.isArray(model.config?.api_formats) && model.config.api_formats.some((format) => String(format).endsWith(':embedding')))

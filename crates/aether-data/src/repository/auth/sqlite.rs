@@ -422,7 +422,7 @@ WHERE id = ?
         self.create_api_key(CreateApiKeyInsertRecord {
             user_id: record.user_id,
             api_key_id: record.api_key_id,
-            group_id: record.group_id,
+            group_id: Some(record.group_id),
             key_hash: record.key_hash,
             key_encrypted: record.key_encrypted,
             name: record.name,
@@ -1104,7 +1104,7 @@ mod tests {
                 key_hash: "hash-created-user".to_string(),
                 key_encrypted: Some("enc-user".to_string()),
                 name: Some("Created User".to_string()),
-                group_id: None,
+                group_id: "00000000-0000-0000-0000-000000000001".to_string(),
                 allowed_providers: Some(vec!["openai".to_string()]),
                 allowed_api_formats: Some(vec!["openai:chat".to_string()]),
                 allowed_models: Some(vec!["gpt-4.1".to_string()]),

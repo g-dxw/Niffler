@@ -89,7 +89,7 @@ export interface UsageRecord {
   provider?: string  // 仅管理员可见
   api_key_name?: string
   provider_key_name?: string | null
-  rate_multiplier?: number
+  rate_multiplier?: number | null
   model: string
   target_model?: string | null  // 映射后的目标模型名（若无映射则为空）
   model_version?: string | null  // Provider 返回的实际模型版本（列表轻量字段）
@@ -105,7 +105,7 @@ export interface UsageRecord {
   cache_read_input_tokens?: number
   total_tokens: number
   cost: number
-  actual_cost?: number
+  actual_cost?: number | null
   response_time_ms?: number | null
   first_byte_time_ms?: number | null  // 首字时间 (TTFB)
   is_stream: boolean

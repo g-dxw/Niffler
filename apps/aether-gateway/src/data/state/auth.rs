@@ -1757,6 +1757,10 @@ impl GatewayDataState {
             apply_admin_unrestricted_auth_snapshot(&mut snapshot);
             return Ok(Some(snapshot));
         }
+        if !snapshot.api_key_is_standalone && snapshot.api_key_group_id.is_none() {
+            snapshot.api_key_is_active = false;
+            return Ok(Some(snapshot));
+        }
         let Some(repository) = self.user_reader.as_ref() else {
             return Ok(Some(snapshot));
         };
@@ -1769,28 +1773,29 @@ impl GatewayDataState {
             return Ok(Some(snapshot));
         }
         if !snapshot.api_key_is_standalone {
-            if let Some(group_id) = snapshot.api_key_group_id.clone() {
-                let Some(group) = repository.find_user_group_by_id(&group_id).await? else {
+            let Some(group_id) = snapshot.api_key_group_id.clone() else {
+                snapshot.api_key_is_active = false;
+                return Ok(Some(snapshot));
+            };
+            let Some(group) = repository.find_user_group_by_id(&group_id).await? else {
+                snapshot.api_key_is_active = false;
+                return Ok(Some(snapshot));
+            };
+            if group.visibility == "internal" {
+                let user_groups = repository
+                    .list_user_groups_for_user(&snapshot.user_id)
+                    .await?;
+                if !user_groups.iter().any(|item| item.id == group.id) {
                     snapshot.api_key_is_active = false;
                     return Ok(Some(snapshot));
-                };
-                if group.visibility == "internal" {
-                    let user_groups = repository
-                        .list_user_groups_for_user(&snapshot.user_id)
-                        .await?;
-                    if !user_groups.iter().any(|item| item.id == group.id) {
-                        snapshot.api_key_is_active = false;
-                        return Ok(Some(snapshot));
-                    }
                 }
-                snapshot.api_key_group_name = Some(group.name.clone());
-                snapshot.api_key_group_visibility = Some(group.visibility.clone());
-                snapshot.api_key_group_sales_multiplier = group.sales_multiplier;
-                snapshot.api_key_group_model_sales_multipliers =
-                    group.model_sales_multipliers.clone();
-                apply_effective_user_group_policies_to_snapshot(&mut snapshot, &[group]);
-                return Ok(Some(snapshot));
             }
+            snapshot.api_key_group_name = Some(group.name.clone());
+            snapshot.api_key_group_visibility = Some(group.visibility.clone());
+            snapshot.api_key_group_sales_multiplier = group.sales_multiplier;
+            snapshot.api_key_group_model_sales_multipliers = group.model_sales_multipliers.clone();
+            apply_effective_user_group_policies_to_snapshot(&mut snapshot, &[group]);
+            return Ok(Some(snapshot));
         }
         let groups = self
             .effective_user_groups_for_user(&snapshot.user_id)
@@ -2532,15 +2537,6 @@ mod tests {
 
     #[tokio::test]
     async fn user_personal_policy_fields_are_ignored_when_groups_are_applied() {
-        let mut snapshot = sample_snapshot("key-user", "user-1").with_user_rate_limit(Some(200));
-        snapshot.api_key_allowed_providers = None;
-        snapshot.api_key_allowed_api_formats = None;
-        snapshot.api_key_allowed_models = None;
-
-        let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
-            Some("hash-user".to_string()),
-            snapshot,
-        )]));
         let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![
             sample_auth_user("user-1", "user"),
         ]));
@@ -2566,6 +2562,16 @@ mod tests {
             .await
             .expect("group should create")
             .expect("group should exist");
+        let mut snapshot = sample_snapshot("key-user", "user-1").with_user_rate_limit(Some(200));
+        snapshot.api_key_group_id = Some(group.id.clone());
+        snapshot.api_key_allowed_providers = None;
+        snapshot.api_key_allowed_api_formats = None;
+        snapshot.api_key_allowed_models = None;
+
+        let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+            Some("hash-user".to_string()),
+            snapshot,
+        )]));
         user_repository
             .add_user_to_group(&group.id, "user-1")
             .await
@@ -2593,6 +2599,63 @@ mod tests {
         );
         assert_eq!(resolved.user_rate_limit, Some(30));
         assert_eq!(resolved.user_concurrent_limit, Some(2));
+    }
+
+    #[tokio::test]
+    async fn user_api_key_without_group_is_inactive() {
+        let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+            Some("hash-user".to_string()),
+            sample_snapshot("key-user", "user-1"),
+        )]));
+        let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![
+            sample_auth_user("user-1", "user"),
+        ]));
+
+        let state = GatewayDataState::with_auth_api_key_reader_for_tests(auth_repository)
+            .with_user_reader(user_repository);
+        let resolved = state
+            .read_auth_api_key_snapshot_by_key_hash("hash-user", 100)
+            .await
+            .expect("snapshot should resolve")
+            .expect("snapshot should exist");
+
+        assert!(!resolved.api_key_is_active);
+    }
+
+    #[tokio::test]
+    async fn user_api_key_without_group_is_inactive_without_user_reader() {
+        let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+            Some("hash-user".to_string()),
+            sample_snapshot("key-user", "user-1"),
+        )]));
+
+        let state = GatewayDataState::with_auth_api_key_reader_for_tests(auth_repository);
+        let resolved = state
+            .read_auth_api_key_snapshot_by_key_hash("hash-user", 100)
+            .await
+            .expect("snapshot should resolve")
+            .expect("snapshot should exist");
+
+        assert!(!resolved.api_key_is_active);
+    }
+
+    #[tokio::test]
+    async fn standalone_api_key_without_group_remains_active_without_user_reader() {
+        let mut snapshot = sample_snapshot("key-standalone", "admin-1");
+        snapshot.api_key_is_standalone = true;
+        let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+            Some("hash-standalone".to_string()),
+            snapshot,
+        )]));
+
+        let state = GatewayDataState::with_auth_api_key_reader_for_tests(auth_repository);
+        let resolved = state
+            .read_auth_api_key_snapshot_by_key_hash("hash-standalone", 100)
+            .await
+            .expect("snapshot should resolve")
+            .expect("snapshot should exist");
+
+        assert!(resolved.api_key_is_active);
     }
 
     #[tokio::test]

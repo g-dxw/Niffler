@@ -2638,6 +2638,11 @@ impl<'a> AdminAppState<'a> {
                     continue;
                 }
 
+                let Some(api_key_group_id) = default_group_id.clone() else {
+                    return Ok(Err(invalid_request(
+                        "当前没有可用分组，无法导入用户 API Key",
+                    )));
+                };
                 let created = self
                     .create_user_api_key(aether_data::repository::auth::CreateUserApiKeyRecord {
                         user_id: user_id.clone(),
@@ -2648,7 +2653,7 @@ impl<'a> AdminAppState<'a> {
                         allowed_providers,
                         allowed_api_formats,
                         allowed_models,
-                        group_id: default_group_id.clone(),
+                        group_id: api_key_group_id,
                         rate_limit,
                         concurrent_limit,
                         force_capabilities,

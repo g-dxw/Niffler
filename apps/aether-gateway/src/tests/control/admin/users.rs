@@ -1541,6 +1541,28 @@ async fn gateway_handles_admin_user_api_key_routes_locally_with_trusted_admin_pr
     let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![
         sample_admin_user("user-1"),
     ]));
+    let default_group = user_repository
+        .create_user_group(UpsertUserGroupRecord {
+            name: "Default".to_string(),
+            description: None,
+            visibility: "public".to_string(),
+            priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
+            allowed_providers: None,
+            allowed_providers_mode: "unrestricted".to_string(),
+            allowed_api_formats: None,
+            allowed_api_formats_mode: "unrestricted".to_string(),
+            allowed_models: None,
+            allowed_models_mode: "unrestricted".to_string(),
+            rate_limit: None,
+            rate_limit_mode: "system".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
+        })
+        .await
+        .expect("default group should create")
+        .expect("default group should exist");
 
     let (upstream_url, upstream_handle) = start_server(upstream).await;
     let gateway = build_router_with_state(
@@ -1550,7 +1572,11 @@ async fn gateway_handles_admin_user_api_key_routes_locally_with_trusted_admin_pr
                 crate::data::GatewayDataState::with_auth_api_key_repository_for_tests(
                     auth_repository,
                 )
-                .with_user_reader(user_repository),
+                .with_user_reader(user_repository)
+                .with_system_config_values_for_tests([(
+                    "default_user_group_id".to_string(),
+                    json!(default_group.id.clone()),
+                )]),
             ),
     );
     let (gateway_url, gateway_handle) = start_server(gateway).await;
@@ -1576,6 +1602,7 @@ async fn gateway_handles_admin_user_api_key_routes_locally_with_trusted_admin_pr
         .await
         .expect("json body should parse");
     assert_eq!(create_payload["name"], "new-key");
+    assert_eq!(create_payload["group_id"], default_group.id);
     assert_eq!(create_payload["rate_limit"], 90);
     assert_eq!(create_payload["concurrent_limit"], serde_json::Value::Null);
     assert_eq!(

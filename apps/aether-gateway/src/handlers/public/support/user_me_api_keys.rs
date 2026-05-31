@@ -277,7 +277,11 @@ async fn resolve_users_me_api_key_group_id(
             })?,
     };
     let Some(group_id) = group_id else {
-        return Ok(None);
+        return Err(build_auth_error_response(
+            http::StatusCode::BAD_REQUEST,
+            "当前没有可用分组，请联系管理员",
+            false,
+        ));
     };
     let accessible = users_me_accessible_api_key_groups(state, user_id)
         .await
@@ -653,6 +657,13 @@ pub(super) async fn handle_users_me_api_key_create(
             Ok(value) => value,
             Err(response) => return response,
         };
+    let Some(group_id) = group_id else {
+        return build_auth_error_response(
+            http::StatusCode::BAD_REQUEST,
+            "当前没有可用分组，请联系管理员",
+            false,
+        );
+    };
 
     let plaintext_key = generate_users_me_api_key_plaintext();
     let Some(key_encrypted) = encrypt_catalog_secret_with_fallbacks(state, &plaintext_key) else {

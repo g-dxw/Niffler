@@ -212,6 +212,20 @@ describe('UsageRecordsTable', () => {
     ].join('\n'))
   })
 
+  it('labels official cost, actual charge and multiplier for admin records', () => {
+    const root = mountUsageRecordsTable([
+      buildRecord({
+        cost: 1,
+        actual_cost: 0.15,
+        rate_multiplier: 0.15,
+      }),
+    ], { showActualCost: true })
+
+    expect(root.textContent).toContain('官方 $1.00')
+    expect(root.textContent).toContain('扣费 $0.15')
+    expect(root.textContent).toContain('倍率 0.15x')
+  })
+
   it('keeps active request latency in one first-byte / live-total line without TPS', () => {
     const root = mountUsageRecordsTable([buildRecord({
       status: 'streaming',

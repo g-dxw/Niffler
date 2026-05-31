@@ -76,13 +76,27 @@ fn capability_short_name_by_name(name: &str) -> Option<&'static str> {
 pub(crate) fn supported_capability_names(
     supported_capabilities: Option<&serde_json::Value>,
 ) -> Vec<String> {
-    supported_capabilities
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(serde_json::Value::as_str)
-        .map(ToOwned::to_owned)
-        .collect()
+    match supported_capabilities {
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
+        Some(serde_json::Value::Object(object)) => object
+            .iter()
+            .filter_map(|(name, enabled)| {
+                enabled
+                    .as_bool()
+                    .filter(|value| *value)
+                    .map(|_| name.trim())
+            })
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 pub(crate) fn enabled_key_capability_short_names(

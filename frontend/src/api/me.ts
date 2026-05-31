@@ -400,7 +400,7 @@ export const meApi = {
       is_active: boolean
       default_price_per_request: number | null
       default_tiered_pricing: TieredPricingConfig | null
-      supported_capabilities: string[] | null
+      supported_capabilities: string[] | Record<string, unknown> | null
       supports_embedding?: boolean | null
       config: Record<string, unknown> | null
       usage_count: number

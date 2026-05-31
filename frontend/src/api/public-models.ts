@@ -14,7 +14,7 @@ export interface PublicGlobalModel {
   default_tiered_pricing: TieredPricingConfig | null
   default_price_per_request: number | null  // 按次计费价格
   // Key 能力支持
-  supported_capabilities: string[] | null
+  supported_capabilities: string[] | Record<string, unknown> | null
   supports_embedding?: boolean | null
   // 模型配置（JSON）
   config: Record<string, unknown> | null

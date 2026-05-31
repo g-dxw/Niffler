@@ -489,7 +489,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
             StoredAuthApiKeySnapshot {
                 api_key_id: record.api_key_id.clone(),
                 api_key_name: record.name.clone(),
-                api_key_group_id: record.group_id.clone(),
+                api_key_group_id: Some(record.group_id.clone()),
                 api_key_group_name: None,
                 api_key_group_visibility: None,
                 api_key_group_sales_multiplier: 1.0,
@@ -522,7 +522,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 None,
                 record.api_key_id.clone(),
                 record.name.clone(),
-                record.group_id.clone(),
+                Some(record.group_id.clone()),
                 None,
                 None,
                 None,
@@ -555,7 +555,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
             record.key_hash.clone(),
             record.key_encrypted,
             record.name,
-            record.group_id,
+            Some(record.group_id),
             None,
             record
                 .allowed_providers

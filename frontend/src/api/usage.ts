@@ -21,6 +21,8 @@ export interface UsageRecord {
   cache_read_input_tokens?: number
   total_tokens: number
   cost?: number
+  actual_cost?: number | null
+  rate_multiplier?: number | null
   response_time?: number
   created_at: string
   has_fallback?: boolean // 🆕 是否发生了 fallback

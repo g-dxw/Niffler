@@ -161,6 +161,23 @@ fn existing_provider_oauth_key_is_replaceable(existing_key: &StoredProviderCatal
         .is_some_and(provider_oauth_invalid_reason_allows_replace)
 }
 
+fn provider_oauth_duplicate_error_message(identifier: &str, existing_key_name: &str) -> String {
+    let existing_key_name = existing_key_name.trim();
+    let record_label = if existing_key_name.is_empty() {
+        "未命名记录"
+    } else {
+        existing_key_name
+    };
+    let identifier = identifier.trim();
+    if identifier.is_empty() {
+        format!("该 OAuth 账号已添加到当前提供商，不能重复添加。已存在的号池记录：{record_label}")
+    } else {
+        format!(
+            "该 OAuth 账号已添加到当前提供商，不能重复添加。已存在的号池记录：{record_label}。账号标识：{identifier}"
+        )
+    }
+}
+
 pub(crate) async fn find_duplicate_provider_oauth_key(
     state: &AdminAppState<'_>,
     provider_id: &str,
@@ -281,11 +298,35 @@ pub(crate) async fn find_duplicate_provider_oauth_key_with_replace_policy(
                 .or_else(|| new_email.clone())
                 .or_else(|| new_user_id.clone())
                 .unwrap_or_default();
-        return Err(format!(
-            "该 OAuth 账号 ({identifier}) 已存在于当前 Provider 中（名称: {}）",
-            existing_key.name
+        return Err(provider_oauth_duplicate_error_message(
+            &identifier,
+            &existing_key.name,
         ));
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::provider_oauth_duplicate_error_message;
+
+    #[test]
+    fn provider_oauth_duplicate_error_message_labels_existing_pool_record() {
+        let message = provider_oauth_duplicate_error_message("user-123__account-456", "ChatGPT");
+
+        assert!(message.contains("已存在的号池记录：ChatGPT"));
+        assert!(message.contains("账号标识：user-123__account-456"));
+        assert!(!message.contains("名称:"));
+    }
+
+    #[test]
+    fn provider_oauth_duplicate_error_message_handles_empty_identifier() {
+        let message = provider_oauth_duplicate_error_message("", "ChatGPT");
+
+        assert_eq!(
+            message,
+            "该 OAuth 账号已添加到当前提供商，不能重复添加。已存在的号池记录：ChatGPT"
+        );
+    }
 }

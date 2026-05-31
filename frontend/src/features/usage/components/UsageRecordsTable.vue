@@ -193,12 +193,21 @@
               class="text-[11px] text-muted-foreground truncate block"
             >-> {{ getActualModel(record) }}</span>
           </div>
-          <div class="flex flex-col items-end flex-shrink-0">
-            <span class="text-xs text-primary font-medium">{{ formatCurrency(record.cost || 0) }}</span>
+          <div
+            class="flex flex-col items-end flex-shrink-0"
+            :title="getRecordCostTitle(record)"
+          >
+            <span class="text-xs text-primary font-medium">
+              {{ showActualCost ? `官方 ${formatCurrency(getOfficialCost(record))}` : formatCurrency(getOfficialCost(record)) }}
+            </span>
             <span
-              v-if="showActualCost && record.actual_cost !== undefined && record.rate_multiplier && record.rate_multiplier !== 1.0"
+              v-if="showActualCost && hasActualCost(record)"
               class="text-[10px] text-muted-foreground"
-            >{{ formatCurrency(record.actual_cost) }}</span>
+            >扣费 {{ formatCurrency(getActualCost(record)) }}</span>
+            <span
+              v-if="showActualCost && hasActualCost(record)"
+              class="text-[10px] text-muted-foreground"
+            >{{ formatRecordMultiplier(record) }}</span>
           </div>
         </div>
 
@@ -313,25 +322,25 @@
       <colgroup v-if="isAdmin">
         <col v-if="isColumnVisible('time')" class="w-[8%]">
         <col v-if="isColumnVisible('user')" class="w-[12%]">
-        <col v-if="isColumnVisible('model')" class="w-[14%]">
-        <col v-if="isColumnVisible('provider')" class="w-[16%]">
-        <col v-if="isColumnVisible('api_format')" class="w-[15%]">
-        <col v-if="isColumnVisible('status')" class="w-[10%]">
-        <col v-if="isColumnVisible('tokens')" class="w-[10%]">
-        <col v-if="isColumnVisible('cost')" class="w-[6%]">
-        <col v-if="isColumnVisible('performance')" class="w-[9%]">
+        <col v-if="isColumnVisible('model')" class="w-[13%]">
+        <col v-if="isColumnVisible('provider')" class="w-[14%]">
+        <col v-if="isColumnVisible('api_format')" class="w-[13%]">
+        <col v-if="isColumnVisible('status')" class="w-[9%]">
+        <col v-if="isColumnVisible('tokens')" class="w-[9%]">
+        <col v-if="isColumnVisible('cost')" class="w-[12%]">
+        <col v-if="isColumnVisible('performance')" class="w-[10%]">
         <col v-if="isColumnVisible('client_family')" class="w-[12%]">
         <col v-if="isColumnVisible('client_ip')" class="w-[10%]">
         <col v-if="isColumnVisible('user_agent')" class="w-[13%]">
       </colgroup>
       <colgroup v-else>
         <col v-if="isColumnVisible('time')" class="w-[9%]">
-        <col v-if="isColumnVisible('key')" class="w-[17%]">
-        <col v-if="isColumnVisible('model')" class="w-[22%]">
-        <col v-if="isColumnVisible('api_format')" class="w-[14%]">
+        <col v-if="isColumnVisible('key')" class="w-[16%]">
+        <col v-if="isColumnVisible('model')" class="w-[20%]">
+        <col v-if="isColumnVisible('api_format')" class="w-[13%]">
         <col v-if="isColumnVisible('status')" class="w-[10%]">
-        <col v-if="isColumnVisible('tokens')" class="w-[11%]">
-        <col v-if="isColumnVisible('cost')" class="w-[7%]">
+        <col v-if="isColumnVisible('tokens')" class="w-[10%]">
+        <col v-if="isColumnVisible('cost')" class="w-[12%]">
         <col v-if="isColumnVisible('performance')" class="w-[10%]">
         <col v-if="isColumnVisible('client_family')" class="w-[12%]">
         <col v-if="isColumnVisible('client_ip')" class="w-[10%]">
@@ -449,8 +458,8 @@
           <TableHead v-if="isColumnVisible('tokens')" class="h-12 font-semibold w-[10%] text-center">
             Tokens
           </TableHead>
-          <TableHead v-if="isColumnVisible('cost')" class="h-12 font-semibold w-[6%] text-right">
-            费用
+          <TableHead v-if="isColumnVisible('cost')" class="h-12 font-semibold w-[12%] text-right">
+            费用/倍率
           </TableHead>
           <TableHead v-if="isColumnVisible('performance')" class="h-12 font-semibold w-[9%] text-right">
             <div class="flex flex-col items-end text-xs gap-0.5">
@@ -758,14 +767,26 @@
               </span>
             </div>
           </TableCell>
-          <TableCell v-if="isColumnVisible('cost')" class="text-right py-4 w-[6%]">
+          <TableCell
+            v-if="isColumnVisible('cost')"
+            class="text-right py-4 w-[12%]"
+            :title="getRecordCostTitle(record)"
+          >
             <div class="flex flex-col items-end text-xs gap-0.5">
-              <span class="text-primary font-medium">{{ formatCurrency(record.cost || 0) }}</span>
+              <span class="text-primary font-medium">
+                {{ showActualCost ? `官方 ${formatCurrency(getOfficialCost(record))}` : formatCurrency(getOfficialCost(record)) }}
+              </span>
               <span
-                v-if="showActualCost && record.actual_cost !== undefined && record.rate_multiplier && record.rate_multiplier !== 1.0"
+                v-if="showActualCost && hasActualCost(record)"
                 class="text-muted-foreground"
               >
-                {{ formatCurrency(record.actual_cost) }}
+                扣费 {{ formatCurrency(getActualCost(record)) }}
+              </span>
+              <span
+                v-if="showActualCost && hasActualCost(record)"
+                class="text-[11px] text-muted-foreground"
+              >
+                {{ formatRecordMultiplier(record) }}
               </span>
             </div>
           </TableCell>
@@ -938,7 +959,7 @@ const USAGE_RECORD_COLUMN_OPTIONS: UsageRecordColumnOption[] = [
   { id: 'api_format', label: 'API格式' },
   { id: 'status', label: '类型/状态' },
   { id: 'tokens', label: 'Tokens' },
-  { id: 'cost', label: '费用' },
+  { id: 'cost', label: '费用/倍率' },
   { id: 'performance', label: '耗时/速度' },
   { id: 'client_family', label: '客户端类型' },
   { id: 'client_ip', label: 'IP 地址' },
@@ -1094,6 +1115,45 @@ const columnSelectOptions = computed<MultiSelectOption[]>(() => roleColumnOption
 
 function isColumnVisible(column: UsageRecordColumnId): boolean {
   return visibleColumnSet.value.has(column)
+}
+
+function toFiniteNumber(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function getOfficialCost(record: UsageRecord): number {
+  return toFiniteNumber(record.cost) ?? 0
+}
+
+function hasActualCost(record: UsageRecord): boolean {
+  return toFiniteNumber(record.actual_cost) !== null
+}
+
+function getActualCost(record: UsageRecord): number {
+  return toFiniteNumber(record.actual_cost) ?? getOfficialCost(record)
+}
+
+function getRecordMultiplier(record: UsageRecord): number | null {
+  const saved = toFiniteNumber(record.rate_multiplier)
+  if (saved !== null) return saved
+  const officialCost = getOfficialCost(record)
+  if (officialCost <= 0 || !hasActualCost(record)) return null
+  return getActualCost(record) / officialCost
+}
+
+function formatRecordMultiplier(record: UsageRecord): string {
+  const multiplier = getRecordMultiplier(record)
+  if (multiplier === null) return '倍率 -'
+  return `倍率 ${multiplier.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}x`
+}
+
+function getRecordCostTitle(record: UsageRecord): string {
+  const lines = [`官方费用: ${formatCurrency(getOfficialCost(record))}`]
+  if (hasActualCost(record)) {
+    lines.push(`实际扣费: ${formatCurrency(getActualCost(record))}`)
+    lines.push(formatRecordMultiplier(record))
+  }
+  return lines.join('\n')
 }
 
 const modelFilterOptions = computed<FilterOption[]>(() => [

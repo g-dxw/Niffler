@@ -422,7 +422,7 @@ WHERE id = ?
         self.create_api_key(CreateApiKeyInsertRecord {
             user_id: record.user_id,
             api_key_id: record.api_key_id,
-            group_id: record.group_id,
+            group_id: Some(record.group_id),
             key_hash: record.key_hash,
             key_encrypted: record.key_encrypted,
             name: record.name,
