@@ -113,13 +113,15 @@ echo ">>> Uploading image tar to $DEPLOY_HOST:$REMOTE_TAR..."
 scp $SSH_OPTS "$IMAGE_TAR" "$DEPLOY_HOST:$REMOTE_TAR"
 
 echo ">>> Loading image and restarting services on $DEPLOY_HOST..."
-ssh $SSH_OPTS "$DEPLOY_HOST" bash -s -- "$REMOTE_DIR" "$REMOTE_TAR" "$APP_IMAGE" "$APP_SERVICES" <<'REMOTE_SCRIPT'
+read -r -a LOCAL_SERVICES <<< "$APP_SERVICES"
+ssh $SSH_OPTS "$DEPLOY_HOST" bash -s -- "$REMOTE_DIR" "$REMOTE_TAR" "$APP_IMAGE" "${LOCAL_SERVICES[@]}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 
 REMOTE_DIR="$1"
 REMOTE_TAR="$2"
 APP_IMAGE="$3"
-APP_SERVICES="$4"
+shift 3
+SERVICES=("$@")
 
 cd "$REMOTE_DIR"
 
@@ -149,7 +151,6 @@ else
     exit 1
 fi
 
-read -r -a SERVICES <<< "$APP_SERVICES"
 "${DC[@]}" up -d --no-build --force-recreate "${SERVICES[@]}"
 "${DC[@]}" ps
 rm -f "$REMOTE_TAR"
