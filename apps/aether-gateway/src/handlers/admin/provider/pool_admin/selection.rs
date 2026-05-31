@@ -22,7 +22,7 @@ fn admin_pool_parse_auth_config_json(
         .cloned()
 }
 
-fn admin_pool_derive_plan_tier(
+pub(super) fn admin_pool_derive_plan_tier(
     state: &AdminAppState<'_>,
     key: &StoredProviderCatalogKey,
     provider_type: &str,

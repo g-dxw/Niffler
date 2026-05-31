@@ -126,6 +126,25 @@ fn unix_secs_now() -> u64 {
     chrono::Utc::now().timestamp().max(0) as u64
 }
 
+fn default_public_proto_for_host(host: &str) -> &'static str {
+    let trimmed = host.trim();
+    let host_without_port = if let Some(rest) = trimmed.strip_prefix('[') {
+        rest.split(']').next().unwrap_or(rest)
+    } else {
+        trimmed.split(':').next().unwrap_or(trimmed)
+    }
+    .to_ascii_lowercase();
+    if matches!(
+        host_without_port.as_str(),
+        "localhost" | "127.0.0.1" | "::1"
+    ) || host_without_port.starts_with("127.")
+    {
+        "http"
+    } else {
+        "https"
+    }
+}
+
 pub(crate) fn base_url_from_request(
     headers: &http::HeaderMap,
     request_context: &GatewayPublicRequestContext,
@@ -153,7 +172,7 @@ pub(crate) fn base_url_from_request(
     let proto = crate::headers::header_value_str(headers, "x-forwarded-proto")
         .map(|value| value.trim().trim_end_matches(':').to_ascii_lowercase())
         .filter(|value| value == "http" || value == "https")
-        .unwrap_or_else(|| "http".to_string());
+        .unwrap_or_else(|| default_public_proto_for_host(&host).to_string());
     format!("{proto}://{host}")
 }
 
@@ -414,6 +433,29 @@ $NpmPackage = {npm_package}
 
 function Say($Message) {{ Write-Host "[Niffler] $Message" }}
 function Fail($Message) {{ Write-Error "[Niffler] $Message"; exit 1 }}
+function ConvertTo-NifflerHashtable($Value) {{
+  if ($null -eq $Value) {{ return $null }}
+  if ($Value -is [System.Collections.IDictionary]) {{
+    $Hash = @{{}}
+    foreach ($Key in $Value.Keys) {{ $Hash[$Key] = ConvertTo-NifflerHashtable $Value[$Key] }}
+    return $Hash
+  }}
+  if ($Value -is [System.Management.Automation.PSCustomObject]) {{
+    $Hash = @{{}}
+    foreach ($Property in $Value.PSObject.Properties) {{ $Hash[$Property.Name] = ConvertTo-NifflerHashtable $Property.Value }}
+    return $Hash
+  }}
+  if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {{
+    return @($Value | ForEach-Object {{ ConvertTo-NifflerHashtable $_ }})
+  }}
+  return $Value
+}}
+function Read-NifflerJsonObject($Path) {{
+  if (-not (Test-Path $Path)) {{ return @{{}} }}
+  $Raw = Get-Content $Path -Raw
+  if ([string]::IsNullOrWhiteSpace($Raw)) {{ return @{{}} }}
+  return ConvertTo-NifflerHashtable ($Raw | ConvertFrom-Json)
+}}
 
 if ($TargetSystem -ne 'auto' -and $TargetSystem -ne 'windows') {{ Fail "该 install code 绑定 $TargetSystem，请复制 macOS/Linux 命令执行。" }}
 
@@ -432,10 +474,10 @@ Set-Content -Path (Join-Path $AetherDir 'client.env') -Value "AETHER_BASE_URL=$A
 if ($TargetCli -eq 'claude_code') {{
   $Dir = Join-Path $HomeDir '.claude'; New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   $Path = Join-Path $Dir 'settings.json'
-  $Data = if (Test-Path $Path) {{ Get-Content $Path -Raw | ConvertFrom-Json -AsHashtable }} else {{ @{{}} }}
-  if (-not $Data.ContainsKey('env')) {{ $Data.env = @{{}} }}
-  $Data.env.ANTHROPIC_BASE_URL = $AetherBaseUrl
-  $Data.env.ANTHROPIC_AUTH_TOKEN = $AetherApiKey
+  $Data = Read-NifflerJsonObject $Path
+  if (-not $Data.ContainsKey('env') -or $null -eq $Data['env']) {{ $Data['env'] = @{{}} }}
+  $Data['env']['ANTHROPIC_BASE_URL'] = $AetherBaseUrl
+  $Data['env']['ANTHROPIC_AUTH_TOKEN'] = $AetherApiKey
   $Data | ConvertTo-Json -Depth 8 | Set-Content $Path -Encoding UTF8
 }} elseif ($TargetCli -eq 'codex_cli') {{
   $Dir = Join-Path $HomeDir '.codex'; New-Item -ItemType Directory -Force -Path $Dir | Out-Null
@@ -488,8 +530,8 @@ if ($TargetCli -eq 'claude_code') {{
   $Dir = Join-Path $HomeDir '.gemini'; New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   Set-Content (Join-Path $Dir '.env') -Value "GEMINI_API_KEY=$AetherApiKey`nGOOGLE_API_KEY=$AetherApiKey`nGOOGLE_GEMINI_BASE_URL=$AetherBaseUrl`nAETHER_BASE_URL=$AetherBaseUrl`n" -Encoding UTF8
   $Path = Join-Path $Dir 'settings.json'
-  $Data = if (Test-Path $Path) {{ Get-Content $Path -Raw | ConvertFrom-Json -AsHashtable }} else {{ @{{}} }}
-  $Data.aether = @{{ baseUrl = $AetherBaseUrl }}
+  $Data = Read-NifflerJsonObject $Path
+  $Data['aether'] = @{{ baseUrl = $AetherBaseUrl }}
   $Data | ConvertTo-Json -Depth 8 | Set-Content $Path -Encoding UTF8
 }}
 
@@ -915,6 +957,18 @@ mod tests {
     }
 
     #[test]
+    fn public_base_url_defaults_to_https_for_public_hosts() {
+        assert_eq!(default_public_proto_for_host("niffler.org"), "https");
+        assert_eq!(
+            default_public_proto_for_host("api.niffler.org:443"),
+            "https"
+        );
+        assert_eq!(default_public_proto_for_host("localhost:8080"), "http");
+        assert_eq!(default_public_proto_for_host("127.0.0.1:8080"), "http");
+        assert_eq!(default_public_proto_for_host("[::1]:8080"), "http");
+    }
+
+    #[test]
     fn tunnel_unix_script_exports_session_values_and_reuses_tunnel_installer() {
         let script = build_tunnel_unix_script(&test_tunnel_session());
 
@@ -969,5 +1023,13 @@ mod tests {
         assert!(script.contains("experimental_bearer_token ="));
         assert!(!script.contains("wire_api = \"chat\""));
         assert!(!script.contains("auth.json"));
+    }
+
+    #[test]
+    fn powershell_script_avoids_powershell_seven_only_json_hashtable_flag() {
+        let script = build_powershell_script(&test_session(InstallTargetCli::ClaudeCode));
+
+        assert!(!script.contains("ConvertFrom-Json -AsHashtable"));
+        assert!(script.contains("ConvertTo-NifflerHashtable"));
     }
 }

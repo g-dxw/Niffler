@@ -8,4 +8,5 @@ pub(crate) use aether_data_contracts::repository::billing::{
     AdminBillingPresetApplyResult, AdminBillingRuleRecord, AdminBillingRuleWriteInput,
     BillingPlanRecord, BillingPlanWriteInput, PaymentGatewayConfigRecord,
     PaymentGatewayConfigWriteInput, UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord,
+    UserPlanEntitlementUpdateInput,
 };

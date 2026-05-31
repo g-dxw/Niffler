@@ -420,6 +420,11 @@ fn classifies_users_me_routes_as_public_support_route() {
             "available_models",
         ),
         (
+            http::Method::GET,
+            "/api/users/me/public-base-url",
+            "public_base_url",
+        ),
+        (
             http::Method::PUT,
             "/api/users/me/model-capabilities",
             "model_capabilities_update",

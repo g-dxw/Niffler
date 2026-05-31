@@ -7,7 +7,7 @@ use super::quota::entitlement_allows_global_model;
 use super::{
     AdminBillingMutationOutcome, BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository,
     PaymentGatewayConfigRecord, PaymentGatewayConfigWriteInput, StoredBillingModelContext,
-    UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord,
+    UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
 };
 use crate::DataLayerError;
 
@@ -404,20 +404,17 @@ impl BillingReadRepository for InMemoryBillingReadRepository {
         &self,
         user_id: &str,
     ) -> Result<Option<Vec<UserPlanEntitlementRecord>>, DataLayerError> {
-        let now = current_unix_secs();
         let mut items = self
             .entitlements_by_id
             .read()
             .expect("billing repository lock")
             .values()
-            .filter(|item| {
-                item.user_id == user_id
-                    && item.status == "active"
-                    && item.expires_at_unix_secs > now
-            })
+            .filter(|item| item.user_id == user_id)
             .cloned()
             .collect::<Vec<_>>();
-        items.sort_by_key(|item| item.expires_at_unix_secs);
+        items.sort_by_key(|item| {
+            std::cmp::Reverse((item.created_at_unix_secs, item.expires_at_unix_secs))
+        });
         Ok(Some(items))
     }
 
@@ -442,6 +439,35 @@ impl BillingReadRepository for InMemoryBillingReadRepository {
         }
         record.status = "cancelled".to_string();
         record.expires_at_unix_secs = record.expires_at_unix_secs.min(now);
+        record.updated_at_unix_secs = now;
+        Ok(AdminBillingMutationOutcome::Applied(record.clone()))
+    }
+
+    async fn update_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+        input: &UserPlanEntitlementUpdateInput,
+    ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, DataLayerError> {
+        let now = current_unix_secs();
+        let mut records = self
+            .entitlements_by_id
+            .write()
+            .expect("billing repository lock");
+        let Some(record) = records.get_mut(entitlement_id) else {
+            return Ok(AdminBillingMutationOutcome::NotFound);
+        };
+        if record.user_id != user_id
+            || record.status != "active"
+            || record.expires_at_unix_secs <= now
+        {
+            return Ok(AdminBillingMutationOutcome::NotFound);
+        }
+        record.starts_at_unix_secs = input.starts_at_unix_secs;
+        record.expires_at_unix_secs = input.expires_at_unix_secs;
+        if let Some(entitlements_snapshot) = input.entitlements_snapshot.as_ref() {
+            record.entitlements_snapshot = entitlements_snapshot.clone();
+        }
         record.updated_at_unix_secs = now;
         Ok(AdminBillingMutationOutcome::Applied(record.clone()))
     }
@@ -545,6 +571,7 @@ mod tests {
         StoredBillingModelContext::new(
             "provider-1".to_string(),
             Some("pay_as_you_go".to_string()),
+            None,
             Some("key-1".to_string()),
             Some(json!({"openai:chat": 0.8})),
             Some(60),
@@ -580,6 +607,7 @@ mod tests {
         let global_named_context = StoredBillingModelContext::new(
             "provider-1".to_string(),
             Some("pay_as_you_go".to_string()),
+            None,
             Some("key-1".to_string()),
             None,
             Some(60),
@@ -598,6 +626,7 @@ mod tests {
         let provider_priced_context = StoredBillingModelContext::new(
             "provider-1".to_string(),
             Some("pay_as_you_go".to_string()),
+            None,
             Some("key-1".to_string()),
             None,
             Some(60),

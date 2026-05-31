@@ -1,3 +1,4 @@
+use crate::handlers::admin::provider::write::normalize::read_billing_cost_multiplier;
 use crate::handlers::admin::shared::unix_secs_to_rfc3339;
 use crate::handlers::public::{request_candidate_event_unix_ms, request_candidate_status_label};
 use crate::provider_key_auth::provider_key_effective_api_formats;
@@ -170,6 +171,7 @@ pub(crate) fn build_admin_provider_summary_value(
         "enable_format_conversion": provider.enable_format_conversion,
         "is_active": provider.is_active,
         "billing_type": billing_type,
+        "cost_multiplier": read_billing_cost_multiplier(provider.config.as_ref()),
         "monthly_quota_usd": monthly_quota_usd,
         "monthly_used_usd": monthly_used_usd,
         "quota_reset_day": quota_reset_day,

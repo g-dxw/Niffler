@@ -28,7 +28,9 @@ mod redeem;
 #[path = "wallet/refunds.rs"]
 mod refunds;
 use self::flow::handle_wallet_flow;
-pub(in crate::handlers::public::support) use self::reads::build_wallet_balance_payload_for_user;
+pub(in crate::handlers::public::support) use self::reads::{
+    build_wallet_balance_payload_for_user, build_wallet_balance_payload_for_user_and_model,
+};
 use self::reads::{
     build_wallet_daily_usage_payload, build_wallet_live_today_usage_payload_for_user,
     build_wallet_payload, build_wallet_zero_today_entry, handle_wallet_balance,

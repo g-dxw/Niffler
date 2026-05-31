@@ -14,7 +14,9 @@ use tracing::warn;
 
 use crate::ai_serving::planner::common::extract_standard_requested_model;
 use crate::ai_serving::{ExecutionRuntimeAuthContext, GatewayAuthApiKeySnapshot, PlannerAppState};
-use crate::client_session_affinity::client_session_affinity_from_request;
+use crate::client_session_affinity::{
+    client_session_affinity_from_request, codex_encrypted_context_requires_session,
+};
 use crate::clock::current_unix_secs;
 use crate::routing::{
     apply_routing_mutation_plan, build_routing_trace_seed, resolve_gateway_routing_policy,
@@ -273,6 +275,12 @@ pub(crate) async fn attach_routing_policy_to_local_requested_model_input(
     else {
         input.client_session_affinity =
             client_session_affinity_from_request(&parts.headers, Some(body_json));
+        ensure_codex_encrypted_context_has_session(
+            client_api_format,
+            &parts.headers,
+            body_json,
+            input.client_session_affinity.as_ref(),
+        )?;
         input.routing_policy = None;
         input.routing_trace_seed = None;
         input.routing_context = None;
@@ -324,6 +332,12 @@ pub(crate) async fn attach_routing_policy_to_local_requested_model_input(
     let effective_headers_json = headers_to_routing_value(&effective_headers);
     input.client_session_affinity =
         client_session_affinity_from_request(&effective_headers, Some(&effective_body_json));
+    ensure_codex_encrypted_context_has_session(
+        client_api_format,
+        &effective_headers,
+        &effective_body_json,
+        input.client_session_affinity.as_ref(),
+    )?;
     let mut final_policy = resolve_gateway_routing_policy(GatewayRoutingPolicyInput {
         group_id: group_id.as_deref(),
         group_version,
@@ -351,6 +365,32 @@ pub(crate) async fn attach_routing_policy_to_local_requested_model_input(
         effective_headers,
     });
     Ok(())
+}
+
+fn ensure_codex_encrypted_context_has_session(
+    client_api_format: &str,
+    headers: &HeaderMap,
+    body_json: &Value,
+    client_session_affinity: Option<&ClientSessionAffinity>,
+) -> Result<(), GatewayError> {
+    if !codex_encrypted_context_protection_applies(client_api_format) {
+        return Ok(());
+    }
+    if !codex_encrypted_context_requires_session(headers, Some(body_json), client_session_affinity)
+    {
+        return Ok(());
+    }
+    Err(GatewayError::Client {
+        status: StatusCode::BAD_REQUEST,
+        message: "此 Codex 请求包含加密上下文，但没有会话标识。请重新开始会话，或让客户端发送 x-aether-session-id。".to_string(),
+    })
+}
+
+fn codex_encrypted_context_protection_applies(client_api_format: &str) -> bool {
+    matches!(
+        client_api_format.trim().to_ascii_lowercase().as_str(),
+        "openai:responses" | "openai:responses:compact"
+    )
 }
 
 pub(crate) fn build_local_authenticated_decision_input(
@@ -820,6 +860,60 @@ mod tests {
                 .is_some(),
             "failed provider_request mutation should still seed routing trace"
         );
+    }
+
+    #[test]
+    fn codex_encrypted_context_without_session_is_rejected_before_upstream_selection() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::USER_AGENT,
+            HeaderValue::from_static("codex-tui/0.135.0"),
+        );
+        let body = json!({
+            "model": "gpt-5.5",
+            "input": [{
+                "type": "compaction",
+                "encrypted_content": "encrypted-payload"
+            }]
+        });
+
+        let error =
+            ensure_codex_encrypted_context_has_session("openai:responses", &headers, &body, None)
+                .expect_err("unbound Codex encrypted context should be rejected locally");
+
+        match error {
+            GatewayError::Client { status, message } => {
+                assert_eq!(status, StatusCode::BAD_REQUEST);
+                assert!(message.contains("加密上下文"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn codex_encrypted_context_with_session_can_continue() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::USER_AGENT,
+            HeaderValue::from_static("codex-tui/0.135.0"),
+        );
+        let body = json!({
+            "model": "gpt-5.5",
+            "prompt_cache_key": "session-1",
+            "input": [{
+                "type": "compaction",
+                "encrypted_content": "encrypted-payload"
+            }]
+        });
+        let affinity = client_session_affinity_from_request(&headers, Some(&body));
+
+        ensure_codex_encrypted_context_has_session(
+            "openai:responses",
+            &headers,
+            &body,
+            affinity.as_ref(),
+        )
+        .expect("Codex encrypted context with session should continue");
     }
 
     #[test]

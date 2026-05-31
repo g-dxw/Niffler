@@ -498,7 +498,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    title="资金操作"
+                    title="资金与套餐"
                     @click="openWalletActionDialog(user)"
                   >
                     <DollarSign class="h-4 w-4" />
@@ -747,7 +747,7 @@
                   @click="openWalletActionDialog(user)"
                 >
                   <DollarSign class="mr-1.5 h-3.5 w-3.5" />
-                  资金
+                  资金与套餐
                 </Button>
                 <Button
                   v-if="authStore.canOperateAdmin"
@@ -898,7 +898,7 @@
             正在加载用户套餐...
           </div>
           <div
-            v-else-if="userPlanEntitlements.length === 0"
+            v-else-if="activeUserPlanEntitlements.length === 0"
             class="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground"
           >
             当前没有有效套餐
@@ -908,7 +908,7 @@
             class="space-y-2.5"
           >
             <div
-              v-for="item in userPlanEntitlements"
+              v-for="item in activeUserPlanEntitlements"
               :key="item.id"
               class="rounded-lg border border-border bg-card/80 p-3"
             >
@@ -939,16 +939,28 @@
                 <div class="space-y-2 text-left text-[11px] text-muted-foreground sm:text-right">
                   <div>开始：{{ formatDateTime(item.starts_at) }}</div>
                   <div>到期：{{ formatDateTime(item.expires_at) }}</div>
-                  <Button
-                    v-if="item.active"
-                    variant="outline"
-                    size="sm"
-                    class="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
-                    :disabled="cancellingUserPlanEntitlementId === item.id"
-                    @click="cancelUserPlanEntitlement(item)"
-                  >
-                    {{ cancellingUserPlanEntitlementId === item.id ? '取消中...' : '取消套餐' }}
-                  </Button>
+                  <div class="flex flex-wrap justify-start gap-2 sm:justify-end">
+                    <Button
+                      v-if="item.active"
+                      variant="outline"
+                      size="sm"
+                      class="h-7 px-2 text-[11px]"
+                      :disabled="updatingUserPlanEntitlement"
+                      @click="openEditUserPlanEntitlement(item)"
+                    >
+                      编辑
+                    </Button>
+                    <Button
+                      v-if="item.active"
+                      variant="outline"
+                      size="sm"
+                      class="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                      :disabled="cancellingUserPlanEntitlementId === item.id"
+                      @click="cancelUserPlanEntitlement(item)"
+                    >
+                      {{ cancellingUserPlanEntitlementId === item.id ? '取消中...' : '取消套餐' }}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -961,7 +973,7 @@
               发放套餐
             </h4>
             <p class="text-xs text-muted-foreground">
-              仅发放套餐权益，不产生用户付款；同类旧套餐会按现有规则自动替换。
+              仅发放套餐权益，不产生用户付款；同一个套餐会从当前到期时间后继续。
             </p>
           </div>
 
@@ -1066,6 +1078,89 @@
           @click="showUserPlansDialog = false"
         >
           关闭
+        </Button>
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model="showEditUserPlanDialog"
+      size="lg"
+    >
+      <template #header>
+        <div class="border-b border-border px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-kraft/10">
+              <PackageCheck class="h-5 w-5 text-kraft" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <h3 class="text-lg font-semibold leading-tight text-foreground">
+                编辑套餐
+              </h3>
+              <p class="text-xs text-muted-foreground">
+                {{ selectedUser?.username || '-' }} · {{ editingUserPlanEntitlement?.plan_title || editingUserPlanEntitlement?.plan?.title || editingUserPlanEntitlement?.plan_id || '-' }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <div class="space-y-4">
+        <div class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100/90">
+          这里只调整已有套餐记录的时间和额度上限；如果要换套餐类型，请取消后重新发放。
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div class="space-y-1.5">
+            <Label class="text-xs font-medium text-muted-foreground">开始时间</Label>
+            <input
+              v-model="editUserPlanStartsAt"
+              type="datetime-local"
+              class="flex h-9 w-full rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-foreground ring-offset-background transition-all focus-visible:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              autocomplete="off"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <Label class="text-xs font-medium text-muted-foreground">到期时间</Label>
+            <input
+              v-model="editUserPlanExpiresAt"
+              type="datetime-local"
+              class="flex h-9 w-full rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-sm text-foreground ring-offset-background transition-all focus-visible:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              autocomplete="off"
+            />
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <Label class="text-xs font-medium text-muted-foreground">额度上限 USD（可选）</Label>
+          <Input
+            v-model="editUserPlanQuotaUsd"
+            type="number"
+            min="0"
+            step="0.01"
+            class="h-9 rounded-md bg-muted/50 text-sm"
+            placeholder="留空则不调整额度上限"
+          />
+          <p class="text-[11px] text-muted-foreground">
+            只用于降低套餐额度上限，不会把原套餐里更低的额度调高。
+          </p>
+        </div>
+      </div>
+
+      <template #footer>
+        <Button
+          variant="outline"
+          class="h-10 px-5"
+          :disabled="updatingUserPlanEntitlement"
+          @click="showEditUserPlanDialog = false"
+        >
+          取消
+        </Button>
+        <Button
+          class="h-10 px-5"
+          :disabled="updatingUserPlanEntitlement"
+          @click="updateUserPlanEntitlement"
+        >
+          {{ updatingUserPlanEntitlement ? '保存中...' : '保存' }}
         </Button>
       </template>
     </Dialog>
@@ -1476,7 +1571,8 @@
       :wallet="walletActionTarget?.wallet || null"
       :owner-name="walletActionTarget?.user.username || ''"
       :owner-subtitle="walletActionTarget?.user.email || '未设置邮箱'"
-      context-label="用户钱包"
+      :user-id="walletActionTarget?.user.id || null"
+      context-label="资金与套餐"
       accent="emerald"
       @close="closeWalletActionDrawer"
       @changed="handleWalletDrawerChanged"
@@ -1663,6 +1759,12 @@ const loadingUserPlans = ref(false)
 const loadingBillingPlans = ref(false)
 const grantingUserPlan = ref(false)
 const cancellingUserPlanEntitlementId = ref<string | null>(null)
+const showEditUserPlanDialog = ref(false)
+const editingUserPlanEntitlement = ref<AdminUserPlanEntitlement | null>(null)
+const editUserPlanStartsAt = ref('')
+const editUserPlanExpiresAt = ref('')
+const editUserPlanQuotaUsd = ref('')
+const updatingUserPlanEntitlement = ref(false)
 const sessionDialogActionLoading = ref<string | null>(null)
 const apiKeyInput = ref<HTMLInputElement>()
 const editingUserApiKey = ref<ApiKey | null>(null)
@@ -1789,6 +1891,9 @@ const grantableBillingPlans = computed(() =>
 const selectedGrantPlan = computed(() =>
   grantableBillingPlans.value.find((plan) => plan.id === selectedGrantPlanId.value) || null
 )
+const activeUserPlanEntitlements = computed(() =>
+  userPlanEntitlements.value.filter((item) => item.active)
+)
 const selectedUserGroupIds = computed(() =>
   new Set((selectedUser.value?.groups || []).map((group) => group.id))
 )
@@ -1877,6 +1982,13 @@ function formatDateTime(value?: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function isoToDatetimeLocal(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return formatDatetimeLocal(date)
 }
 
 function formatPlanPrice(plan: BillingPlan): string {
@@ -2321,6 +2433,63 @@ async function grantPlanToSelectedUser() {
     error(parseApiError(err, '发放套餐失败'))
   } finally {
     grantingUserPlan.value = false
+  }
+}
+
+function openEditUserPlanEntitlement(item: AdminUserPlanEntitlement): void {
+  editingUserPlanEntitlement.value = item
+  editUserPlanStartsAt.value = isoToDatetimeLocal(item.starts_at)
+  editUserPlanExpiresAt.value = isoToDatetimeLocal(item.expires_at)
+  editUserPlanQuotaUsd.value = ''
+  showEditUserPlanDialog.value = true
+}
+
+async function updateUserPlanEntitlement(): Promise<void> {
+  if (!selectedUser.value || !editingUserPlanEntitlement.value) return
+  const startsAt = datetimeLocalToIso(editUserPlanStartsAt.value)
+  const expiresAt = datetimeLocalToIso(editUserPlanExpiresAt.value)
+  const quotaUsd = optionalUsdAmount(editUserPlanQuotaUsd.value)
+  if (startsAt === undefined || expiresAt === undefined) {
+    error('时间格式不正确')
+    return
+  }
+  if (!startsAt || !expiresAt) {
+    error('开始时间和到期时间不能为空')
+    return
+  }
+  if (quotaUsd === undefined) {
+    error('额度上限必须是大于等于 0 的数字')
+    return
+  }
+  const now = Date.now()
+  if (new Date(startsAt).getTime() > now) {
+    error('开始时间不能晚于现在')
+    return
+  }
+  if (new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) {
+    error('到期时间必须晚于开始时间')
+    return
+  }
+
+  updatingUserPlanEntitlement.value = true
+  try {
+    const response = await usersApi.updateUserPlanEntitlement(
+      selectedUser.value.id,
+      editingUserPlanEntitlement.value.id,
+      {
+        starts_at: startsAt,
+        expires_at: expiresAt,
+        ...(quotaUsd === null ? {} : { initial_remaining_quota_usd: quotaUsd }),
+      }
+    )
+    userPlanEntitlements.value = response.items
+    showEditUserPlanDialog.value = false
+    editingUserPlanEntitlement.value = null
+    success('套餐已保存')
+  } catch (err) {
+    error(parseApiError(err, '保存套餐失败'))
+  } finally {
+    updatingUserPlanEntitlement.value = false
   }
 }
 

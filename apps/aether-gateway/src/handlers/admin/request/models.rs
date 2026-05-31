@@ -3,6 +3,9 @@ use crate::handlers::admin::provider::shared::payloads::{
     AdminImportProviderModelsRequest, AdminProviderModelCreateRequest,
     AdminProviderModelUpdatePatch,
 };
+use crate::handlers::admin::provider::write::normalize::{
+    apply_billing_cost_multiplier, normalize_cost_multiplier,
+};
 use crate::handlers::admin::shared::{normalize_json_array, normalize_json_object};
 use crate::GatewayError;
 use aether_admin::provider::{
@@ -158,7 +161,15 @@ impl<'a> AdminAppState<'a> {
         let provider_model_mappings = normalize_provider_model_mappings_api_formats(
             normalize_json_array(payload.provider_model_mappings, "provider_model_mappings")?,
         );
-        let config = normalize_json_object(payload.config, "config")?;
+        let mut config_map = normalize_json_object(payload.config, "config")?
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        if let Some(cost_multiplier) =
+            normalize_cost_multiplier(payload.cost_multiplier, "cost_multiplier")?
+        {
+            apply_billing_cost_multiplier(&mut config_map, Some(cost_multiplier));
+        }
+        let config = (!config_map.is_empty()).then_some(serde_json::Value::Object(config_map));
         admin_provider_models_write_pure::build_admin_provider_model_create_record(
             Uuid::new_v4().to_string(),
             provider_id.to_string(),
@@ -248,11 +259,30 @@ impl<'a> AdminAppState<'a> {
         } else {
             existing.provider_model_mappings.clone()
         };
-        let config = if fields.contains("config") {
+        let mut config_map = if fields.contains("config") {
             normalize_json_object(payload.config, "config")?
+                .and_then(|value| value.as_object().cloned())
+                .unwrap_or_default()
         } else {
-            existing.config.clone()
+            existing
+                .config
+                .clone()
+                .and_then(|value| value.as_object().cloned())
+                .unwrap_or_default()
         };
+        if fields.contains("cost_multiplier") {
+            if fields.is_null("cost_multiplier") {
+                apply_billing_cost_multiplier(&mut config_map, None);
+            } else {
+                let Some(cost_multiplier) =
+                    normalize_cost_multiplier(payload.cost_multiplier, "cost_multiplier")?
+                else {
+                    return Err("cost_multiplier 必须是非负数".to_string());
+                };
+                apply_billing_cost_multiplier(&mut config_map, Some(cost_multiplier));
+            }
+        }
+        let config = (!config_map.is_empty()).then_some(serde_json::Value::Object(config_map));
 
         admin_provider_models_write_pure::build_admin_provider_model_update_record(
             existing,

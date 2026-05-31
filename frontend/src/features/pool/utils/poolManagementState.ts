@@ -1,4 +1,12 @@
-export type PoolManagementStatus = 'all' | 'active' | 'cooldown' | 'inactive'
+export type PoolManagementStatus =
+  | 'all'
+  | 'active'
+  | 'available'
+  | 'invalid'
+  | 'cooldown'
+  | 'inactive'
+  | 'quota_exhausted'
+  | 'blocked'
 export type PoolManagementSortBy = 'imported_at' | 'last_used_at' | 'score'
 export type PoolManagementSortOrder = 'asc' | 'desc'
 export type PoolManagementStatsMode = 'current_cycle' | 'account_total'
@@ -7,6 +15,7 @@ export interface PoolManagementViewState {
   providerId: string | null
   search: string
   status: PoolManagementStatus
+  planType: string
   page: number
   pageSize: number
   sortBy: PoolManagementSortBy | null
@@ -18,6 +27,7 @@ export interface PoolManagementStateSource {
   providerId?: string
   search?: string
   status?: string
+  planType?: string
   page?: string
   pageSize?: string
   sortBy?: string
@@ -41,6 +51,7 @@ export const DEFAULT_POOL_MANAGEMENT_VIEW_STATE: PoolManagementViewState = {
   providerId: null,
   search: '',
   status: 'all',
+  planType: 'all',
   page: 1,
   pageSize: 50,
   sortBy: 'imported_at',
@@ -58,10 +69,23 @@ function normalizeSearch(value: unknown): string {
 }
 
 function normalizeStatus(value: unknown): PoolManagementStatus {
-  if (value === 'active' || value === 'cooldown' || value === 'inactive') {
+  if (
+    value === 'active'
+    || value === 'available'
+    || value === 'invalid'
+    || value === 'cooldown'
+    || value === 'inactive'
+    || value === 'quota_exhausted'
+    || value === 'blocked'
+  ) {
     return value
   }
   return 'all'
+}
+
+function normalizePlanType(value: unknown): string {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return normalized || 'all'
 }
 
 function normalizePositiveInteger(value: unknown, fallback: number): number {
@@ -92,6 +116,7 @@ function normalizeViewState(input: PoolManagementViewStateInput): PoolManagement
     providerId: normalizeProviderId(input.providerId),
     search: normalizeSearch(input.search),
     status: normalizeStatus(input.status),
+    planType: normalizePlanType(input.planType),
     page: normalizePositiveInteger(input.page, DEFAULT_POOL_MANAGEMENT_VIEW_STATE.page),
     pageSize: normalizePositiveInteger(input.pageSize, DEFAULT_POOL_MANAGEMENT_VIEW_STATE.pageSize),
     sortBy: normalizeSortBy(input.sortBy),
@@ -123,6 +148,7 @@ export function readPoolManagementViewState(
     providerId: source.providerId !== undefined ? normalizeProviderId(source.providerId) : stored.providerId,
     search: source.search !== undefined ? normalizeSearch(source.search) : stored.search,
     status: source.status !== undefined ? normalizeStatus(source.status) : stored.status,
+    planType: source.planType !== undefined ? normalizePlanType(source.planType) : stored.planType,
     page: source.page !== undefined
       ? normalizePositiveInteger(source.page, DEFAULT_POOL_MANAGEMENT_VIEW_STATE.page)
       : stored.page,
@@ -163,6 +189,7 @@ export function buildPoolManagementQueryPatch(
     providerId: normalized.providerId || undefined,
     search: search || undefined,
     status: normalized.status === 'all' ? undefined : normalized.status,
+    planType: normalized.planType === 'all' ? undefined : normalized.planType,
     page: normalized.page <= 1 ? undefined : String(normalized.page),
     pageSize:
       normalized.pageSize === DEFAULT_POOL_MANAGEMENT_VIEW_STATE.pageSize

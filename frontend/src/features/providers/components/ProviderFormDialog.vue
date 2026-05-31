@@ -153,6 +153,20 @@
             </Select>
           </div>
           <div class="space-y-1.5">
+            <Label>默认成本倍率</Label>
+            <Input
+              :model-value="form.cost_multiplier ?? ''"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="默认 1"
+              @update:model-value="(v) => form.cost_multiplier = parseNumberInput(v, { allowFloat: true })"
+            />
+            <p class="text-xs text-muted-foreground">
+              只影响平台成本统计，不影响用户扣费。
+            </p>
+          </div>
+          <div class="space-y-1.5">
             <Label>最大重试次数</Label>
             <Input
               :model-value="form.max_retries ?? ''"
@@ -382,6 +396,7 @@ const form = ref({
   website: '',
   // 计费配置
   billing_type: 'pay_as_you_go' as 'monthly_quota' | 'pay_as_you_go' | 'free_tier',
+  cost_multiplier: undefined as number | undefined,
   monthly_quota_usd: undefined as number | undefined,
   quota_reset_day: 30,
   quota_last_reset_at: '',  // 周期开始时间
@@ -411,6 +426,7 @@ function resetForm() {
     description: '',
     website: '',
     billing_type: 'pay_as_you_go',
+    cost_multiplier: undefined,
     monthly_quota_usd: undefined,
     quota_reset_day: 30,
     quota_last_reset_at: '',
@@ -443,6 +459,7 @@ function loadProviderData() {
     description: props.provider.description || '',
     website: props.provider.website || '',
     billing_type: (props.provider.billing_type as 'monthly_quota' | 'pay_as_you_go' | 'free_tier') || 'pay_as_you_go',
+    cost_multiplier: props.provider.cost_multiplier ?? undefined,
     monthly_quota_usd: props.provider.monthly_quota_usd || undefined,
     quota_reset_day: props.provider.quota_reset_day || 30,
     quota_last_reset_at: formatDateTimeLocalInput(props.provider.quota_last_reset_at),
@@ -517,6 +534,7 @@ const handleSubmit = async () => {
       description: form.value.description || undefined,
       website: form.value.website || undefined,
       billing_type: form.value.billing_type,
+      cost_multiplier: form.value.cost_multiplier ?? null,
       monthly_quota_usd: form.value.monthly_quota_usd,
       quota_reset_day: form.value.quota_reset_day,
       quota_last_reset_at: quotaLastResetAt,

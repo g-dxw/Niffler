@@ -1152,22 +1152,7 @@ WHERE user_id = ?
                 .await
                 .map_sql_err()?
             } else {
-                sqlx::query_scalar::<_, i64>(
-                    r#"
-SELECT COUNT(*)
-FROM user_plan_entitlements
-WHERE user_id = ?
-  AND plan_id = ?
-  AND status = 'active'
-  AND expires_at > ?
-"#,
-                )
-                .bind(&input.user_id)
-                .bind(&input.product_id)
-                .bind(now)
-                .fetch_one(&mut *tx)
-                .await
-                .map_sql_err()?
+                0
             };
             active_count += sqlx::query_scalar::<_, i64>(
                 r#"
@@ -1658,7 +1643,10 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
                     .unwrap_or("unknown")
                     .to_string()
             });
-            let starts_at = plan_starts_at_unix(&snapshot, now);
+            let requested_starts_at = plan_starts_at_unix(&snapshot, now);
+            let starts_at =
+                plan_renewal_starts_at_sqlite(&mut tx, &user_id, &plan_id, requested_starts_at)
+                    .await?;
             let expires_at = plan_expires_at_unix(&snapshot, starts_at);
             let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
@@ -1688,22 +1676,7 @@ WHERE user_id = ?
                         .await
                         .map_sql_err()?
                     } else {
-                        sqlx::query_scalar::<_, i64>(
-                            r#"
-SELECT COUNT(*)
-FROM user_plan_entitlements
-WHERE user_id = ?
-  AND plan_id = ?
-  AND status = 'active'
-  AND expires_at > ?
-                    "#,
-                        )
-                        .bind(&user_id)
-                        .bind(&plan_id)
-                        .bind(now)
-                        .fetch_one(&mut *tx)
-                        .await
-                        .map_sql_err()?
+                        0
                     };
                     if active_count >= max_active_per_user {
                         update_sqlite_payment_callback_failure(
@@ -1721,8 +1694,6 @@ WHERE user_id = ?
                         });
                     }
                 }
-                replace_matching_plan_entitlements_sqlite(&mut tx, &user_id, &snapshot, now)
-                    .await?;
                 sqlx::query(
                     r#"
 INSERT INTO user_plan_entitlements (
@@ -2705,7 +2676,10 @@ WHERE id = ? AND wallet_id = ?
                     .unwrap_or("unknown")
                     .to_string()
             });
-            let starts_at = plan_starts_at_unix(&snapshot, now);
+            let requested_starts_at = plan_starts_at_unix(&snapshot, now);
+            let starts_at =
+                plan_renewal_starts_at_sqlite(&mut tx, &user_id, &plan_id, requested_starts_at)
+                    .await?;
             let expires_at = plan_expires_at_unix(&snapshot, starts_at);
             let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
@@ -2735,22 +2709,7 @@ WHERE user_id = ?
                         .await
                         .map_sql_err()?
                     } else {
-                        sqlx::query_scalar::<_, i64>(
-                            r#"
-SELECT COUNT(*)
-FROM user_plan_entitlements
-WHERE user_id = ?
-  AND plan_id = ?
-  AND status = 'active'
-  AND expires_at > ?
-                    "#,
-                        )
-                        .bind(&user_id)
-                        .bind(&plan_id)
-                        .bind(now)
-                        .fetch_one(&mut *tx)
-                        .await
-                        .map_sql_err()?
+                        0
                     };
                     if active_count >= max_active_per_user {
                         tx.commit().await.map_sql_err()?;
@@ -2759,8 +2718,6 @@ WHERE user_id = ?
                         ));
                     }
                 }
-                replace_matching_plan_entitlements_sqlite(&mut tx, &user_id, &snapshot, now)
-                    .await?;
                 sqlx::query(
                     r#"
 INSERT INTO user_plan_entitlements (
@@ -3682,86 +3639,33 @@ fn plan_purchase_limit_scope(snapshot: &serde_json::Value) -> &str {
     }
 }
 
-fn plan_replacement_entitlement_types(snapshot: &serde_json::Value) -> Vec<&'static str> {
-    let entitlements = plan_entitlements_snapshot(snapshot);
-    let mut kinds = Vec::new();
-    if entitlement_snapshot_has_type(&entitlements, "daily_quota") {
-        kinds.push("daily_quota");
-    }
-    if entitlement_snapshot_has_type(&entitlements, "membership_group") {
-        kinds.push("membership_group");
-    }
-    kinds
-}
-
-fn entitlement_snapshot_has_type(snapshot: &serde_json::Value, entitlement_type: &str) -> bool {
-    snapshot.as_array().is_some_and(|items| {
-        items
-            .iter()
-            .any(|item| item.get("type").and_then(|value| value.as_str()) == Some(entitlement_type))
-    })
-}
-
-async fn replace_matching_plan_entitlements_sqlite(
+async fn plan_renewal_starts_at_sqlite(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     user_id: &str,
-    snapshot: &serde_json::Value,
-    now: i64,
-) -> Result<(), DataLayerError> {
-    let replacement_types = plan_replacement_entitlement_types(snapshot);
-    if replacement_types.is_empty() {
-        return Ok(());
-    }
-
-    let rows = sqlx::query(
+    plan_id: &str,
+    requested_starts_at: i64,
+) -> Result<i64, DataLayerError> {
+    let latest_expires_at = sqlx::query_scalar::<_, i64>(
         r#"
-SELECT id, entitlements_snapshot
+SELECT expires_at
 FROM user_plan_entitlements
 WHERE user_id = ?
+  AND plan_id = ?
   AND status = 'active'
   AND expires_at > ?
+ORDER BY expires_at DESC
+LIMIT 1
         "#,
     )
     .bind(user_id)
-    .bind(now)
-    .fetch_all(&mut **tx)
+    .bind(plan_id)
+    .bind(requested_starts_at)
+    .fetch_optional(&mut **tx)
     .await
     .map_sql_err()?;
-
-    for row in rows {
-        let entitlements = optional_json(
-            get::<Option<String>>(&row, "entitlements_snapshot")?,
-            "user_plan_entitlements.entitlements_snapshot",
-        )?
-        .unwrap_or_else(|| serde_json::json!([]));
-        let should_replace = replacement_types
-            .iter()
-            .any(|kind| entitlement_snapshot_has_type(&entitlements, kind));
-        if !should_replace {
-            continue;
-        }
-        let entitlement_id: String = get(&row, "id")?;
-        sqlx::query(
-            r#"
-UPDATE user_plan_entitlements
-SET status = 'replaced',
-    expires_at = CASE WHEN expires_at > ? THEN ? ELSE expires_at END,
-    updated_at = ?
-WHERE id = ?
-  AND status = 'active'
-  AND expires_at > ?
-        "#,
-        )
-        .bind(now)
-        .bind(now)
-        .bind(now)
-        .bind(entitlement_id)
-        .bind(now)
-        .execute(&mut **tx)
-        .await
-        .map_sql_err()?;
-    }
-    Ok(())
+    Ok(latest_expires_at
+        .filter(|value| *value > requested_starts_at)
+        .unwrap_or(requested_starts_at))
 }
 
 fn plan_starts_at_unix(snapshot: &serde_json::Value, now_unix_secs: i64) -> i64 {
@@ -5470,6 +5374,57 @@ INSERT INTO billing_plans (
         .expect("entitlement count should query");
         assert_eq!(entitlement_count, 1);
 
+        let second_order = match repository
+            .create_plan_purchase_order(CreatePlanPurchaseOrderInput {
+                preferred_wallet_id: None,
+                user_id: "user-active-period-1".to_string(),
+                amount_usd: 13.8,
+                pay_amount: 100.0,
+                pay_currency: "CNY".to_string(),
+                exchange_rate: 7.24637681,
+                payment_method: "alipay".to_string(),
+                payment_provider: Some("epay".to_string()),
+                payment_channel: Some("alipay".to_string()),
+                gateway_order_id: "gateway-plan-active-period-3".to_string(),
+                gateway_response: json!({ "checkout": true }),
+                order_no: "order-plan-active-period-3".to_string(),
+                product_id: "active-period-plan".to_string(),
+                product_snapshot: plan_snapshot.clone(),
+                expires_at_unix_secs: 4_102_444_800,
+            })
+            .await
+            .expect("renewal active period order should create")
+        {
+            CreatePlanPurchaseOrderOutcome::Created(order) => order,
+            other => panic!("renewal active period order should be created, got {other:?}"),
+        };
+        let WalletMutationOutcome::Applied((_, true)) = repository
+            .credit_admin_payment_order(CreditAdminPaymentOrderInput {
+                order_id: second_order.id,
+                gateway_order_id: Some("gateway-plan-active-period-paid-3".to_string()),
+                pay_amount: Some(100.0),
+                pay_currency: Some("CNY".to_string()),
+                exchange_rate: Some(7.24637681),
+                gateway_response_patch: Some(json!({ "settled": true })),
+                operator_id: Some("admin-1".to_string()),
+            })
+            .await
+            .expect("renewal plan credit should run")
+        else {
+            panic!("renewal plan credit should apply");
+        };
+        let windows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT starts_at, expires_at FROM user_plan_entitlements WHERE user_id = ? AND plan_id = ? ORDER BY starts_at ASC",
+        )
+        .bind("user-active-period-1")
+        .bind("active-period-plan")
+        .fetch_all(repository.pool())
+        .await
+        .expect("renewal windows should query");
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[1].0, windows[0].1);
+        assert_eq!(windows[1].1, windows[0].1 + 30 * 86_400);
+
         let wallet_balance: f64 = sqlx::query_scalar("SELECT balance FROM wallets WHERE id = ?")
             .bind("wallet-active-period-1")
             .fetch_one(repository.pool())
@@ -5635,7 +5590,7 @@ INSERT INTO billing_plans (
     }
 
     #[tokio::test]
-    async fn sqlite_plan_purchase_replaces_same_class_entitlements_on_manual_credit() {
+    async fn sqlite_plan_purchase_keeps_different_plans_active_on_manual_credit() {
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
@@ -5818,7 +5773,7 @@ INSERT INTO billing_plans (
         .fetch_one(repository.pool())
         .await
         .expect("low entitlement status should query");
-        assert_eq!(low_status, "replaced");
+        assert_eq!(low_status, "active");
         let active_high_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM user_plan_entitlements WHERE user_id = ? AND plan_id = ? AND status = 'active'",
         )

@@ -1,6 +1,6 @@
 use super::{
-    build_auth_error_response, build_auth_json_response, support_wallet, AppState, Body,
-    GatewayPublicRequestContext,
+    build_auth_error_response, build_auth_json_response, query_param_value, support_wallet,
+    AppState, Body, GatewayPublicRequestContext,
 };
 use crate::control::GatewayLocalAuthRejection;
 use axum::{http, response::Response};
@@ -63,10 +63,14 @@ async fn handle_ccswitch_usage(
         .await
         .ok()
         .flatten();
-    let wallet_payload = support_wallet::build_wallet_balance_payload_for_user(
+    let model_filter = query_param_value(request_context.request_query_string.as_deref(), "model")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let wallet_payload = support_wallet::build_wallet_balance_payload_for_user_and_model(
         state,
         &auth_context.user_id,
         wallet.as_ref(),
+        model_filter.as_deref(),
     )
     .await;
 
@@ -116,6 +120,7 @@ async fn handle_ccswitch_usage(
                 "id": auth_context.api_key_id,
                 "name": auth_context.api_key_name,
             },
+            "model": model_filter,
         }),
         None,
     )

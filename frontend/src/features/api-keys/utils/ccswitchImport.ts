@@ -17,10 +17,14 @@ export function ccSwitchEndpoint(app: CcSwitchApp, baseUrl: string): string {
   return app === 'codex' ? `${normalizedBaseUrl}/v1` : normalizedBaseUrl
 }
 
-export function buildCcSwitchUsageScript(): string {
+export function buildCcSwitchUsageScript(model?: string): string {
+  const modelQuery = model?.trim()
+    ? `?model=${encodeURIComponent(model.trim())}`
+    : ''
+
   return `({
     request: {
-      url: "{{baseUrl}}/v1/usage",
+      url: "{{baseUrl}}/v1/usage${modelQuery}",
       method: "GET",
       headers: { "Authorization": "Bearer {{apiKey}}" }
     },
@@ -48,7 +52,8 @@ export function buildCcSwitchImportUrl(input: BuildCcSwitchImportUrlInput): stri
     ['enabled', 'true'],
     ['configFormat', 'json'],
     ['usageEnabled', 'true'],
-    ['usageScript', encodeBase64(buildCcSwitchUsageScript())],
+    ['usageBaseUrl', baseUrl],
+    ['usageScript', encodeBase64(buildCcSwitchUsageScript(input.model))],
     ['usageAutoInterval', '30'],
   ]
 

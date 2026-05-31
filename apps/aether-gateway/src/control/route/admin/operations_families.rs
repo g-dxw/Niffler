@@ -809,6 +809,18 @@ pub(super) fn classify_admin_operations_family_route(
             "admin:users",
             false,
         ))
+    } else if method == http::Method::PATCH
+        && normalized_path_no_trailing.starts_with("/api/admin/users/")
+        && normalized_path_no_trailing.contains("/billing/entitlements/")
+        && normalized_path_no_trailing.matches('/').count() == 7
+    {
+        Some(classified(
+            "admin_proxy",
+            "users_manage",
+            "update_user_billing_entitlement",
+            "admin:users",
+            false,
+        ))
     } else if method == http::Method::GET
         && normalized_path.starts_with("/api/admin/users/")
         && normalized_path.ends_with("/sessions")

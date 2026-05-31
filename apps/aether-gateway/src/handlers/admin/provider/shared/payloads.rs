@@ -128,6 +128,11 @@ pub(crate) struct AdminProviderCreateRequest {
         default,
         deserialize_with = "deserialize_optional_f64_from_number_or_string"
     )]
+    pub(crate) cost_multiplier: Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
     pub(crate) monthly_quota_usd: Option<f64>,
     #[serde(default)]
     pub(crate) quota_reset_day: Option<u64>,
@@ -179,6 +184,11 @@ pub(crate) struct AdminProviderUpdateRequest {
     pub(crate) website: Option<String>,
     #[serde(default)]
     pub(crate) billing_type: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
+    pub(crate) cost_multiplier: Option<f64>,
     #[serde(
         default,
         deserialize_with = "deserialize_optional_f64_from_number_or_string"
@@ -246,6 +256,11 @@ pub(crate) struct AdminProviderModelCreateRequest {
         deserialize_with = "deserialize_optional_f64_from_number_or_string"
     )]
     pub(crate) price_per_request: Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
+    pub(crate) cost_multiplier: Option<f64>,
     #[serde(default)]
     pub(crate) tiered_pricing: Option<serde_json::Value>,
     #[serde(default)]
@@ -277,6 +292,11 @@ pub(crate) struct AdminProviderModelUpdateRequest {
         deserialize_with = "deserialize_optional_f64_from_number_or_string"
     )]
     pub(crate) price_per_request: Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
+    pub(crate) cost_multiplier: Option<f64>,
     #[serde(default)]
     pub(crate) tiered_pricing: Option<serde_json::Value>,
     #[serde(default)]

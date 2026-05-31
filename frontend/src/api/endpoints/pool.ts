@@ -202,6 +202,19 @@ export interface PoolKeysPageResponse {
   page: number
   page_size: number
   keys: PoolKeyDetail[]
+  summary?: PoolKeysSummary | null
+}
+
+export interface PoolKeysSummaryBucket {
+  code: string
+  label: string
+  count: number
+}
+
+export interface PoolKeysSummary {
+  total: number
+  plans: PoolKeysSummaryBucket[]
+  statuses: PoolKeysSummaryBucket[]
 }
 
 export interface PoolKeyScoreDetail {
@@ -271,7 +284,8 @@ export interface PoolKeysQuery {
   page?: number
   page_size?: number
   search?: string
-  status?: 'all' | 'active' | 'cooldown' | 'inactive'
+  status?: 'all' | 'active' | 'available' | 'invalid' | 'cooldown' | 'inactive' | 'quota_exhausted' | 'blocked'
+  plan_type?: string
   quick_selectors?: string[]
   search_scope?: 'name' | 'full'
   sort_by?: 'imported_at' | 'last_used_at' | 'score'

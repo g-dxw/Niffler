@@ -185,6 +185,19 @@
           />
           <span class="text-xs text-muted-foreground">每次请求固定费用，留空使用全局模型默认值</span>
         </div>
+        <div class="flex items-center gap-3">
+          <Label class="text-xs whitespace-nowrap">成本倍率</Label>
+          <Input
+            :model-value="form.cost_multiplier ?? ''"
+            type="number"
+            step="0.01"
+            min="0"
+            class="w-32"
+            placeholder="留空继承提供商"
+            @update:model-value="(v) => form.cost_multiplier = parseNumberInput(v, { allowFloat: true })"
+          />
+          <span class="text-xs text-muted-foreground">只影响平台成本统计，不影响用户扣费</span>
+        </div>
 
         <!-- 视频计费（可选覆盖） -->
         <div class="pt-3 border-t space-y-2">
@@ -432,6 +445,7 @@ const form = ref({
   manual_global_model_name: '',
   manual_global_model_display_name: '',
   price_per_request: undefined as number | undefined,
+  cost_multiplier: undefined as number | undefined,
   config: {} as Record<string, unknown>,
   // 能力配置
   supports_vision: undefined as boolean | undefined,
@@ -466,6 +480,7 @@ watch(() => props.open, async (newOpen) => {
         manual_global_model_display_name: '',
         // 显示有效的按次计费价格（继承自全局模型）
         price_per_request: props.editingModel.effective_price_per_request ?? props.editingModel.price_per_request ?? undefined,
+        cost_multiplier: props.editingModel.cost_multiplier ?? undefined,
         config: effectiveConfig ? JSON.parse(JSON.stringify(effectiveConfig)) : {},
         supports_vision: props.editingModel.supports_vision ?? undefined,
         supports_function_calling: props.editingModel.supports_function_calling ?? undefined,
@@ -529,6 +544,7 @@ function resetForm() {
     manual_global_model_name: '',
     manual_global_model_display_name: '',
     price_per_request: undefined,
+    cost_multiplier: undefined,
     config: {},
     supports_vision: undefined,
     supports_function_calling: undefined,
@@ -835,6 +851,7 @@ async function handleSubmit() {
       await updateModel(props.providerId, props.editingModel.id, buildProviderModelUpdatePayload({
         finalTieredPricing,
         pricePerRequest: form.value.price_per_request,
+        costMultiplier: form.value.cost_multiplier,
         cleanConfig,
         supportsVision: form.value.supports_vision,
         supportsFunctionCalling: form.value.supports_function_calling,
@@ -859,6 +876,7 @@ async function handleSubmit() {
         finalTieredPricing,
         tieredPricingModified: manualGlobalModelMode.value ? false : tieredPricingModified.value,
         pricePerRequest: manualGlobalModelMode.value ? undefined : form.value.price_per_request,
+        costMultiplier: form.value.cost_multiplier,
         cleanConfig,
         configTouched: manualGlobalModelMode.value ? false : configTouched.value,
         supportsVision: form.value.supports_vision,

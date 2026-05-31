@@ -896,12 +896,12 @@
           <Input
             id="ccswitch-model"
             v-model="ccSwitchModel"
-            placeholder="例如：gpt-5.4"
+            placeholder="例如：gpt-5.5"
             class="h-11 border-border/60"
             autocomplete="off"
           />
           <p class="text-xs text-muted-foreground">
-            Codex 默认使用 gpt-5.4；Claude Code 和 Gemini CLI 可以留空。
+            填写后，CC Switch 余额检查会按这个模型计算套餐额度；不填则显示账户总可用额度。
           </p>
         </div>
 
@@ -979,6 +979,7 @@ import { log } from '@/utils/logger'
 import { parseApiError } from '@/utils/errorParser'
 import { formatRateLimitSimple } from '@/utils/format'
 import { parseNumberInput } from '@/utils/form'
+import { getApiBaseOrigin } from '@/utils/url'
 import { getErrorStatus } from '@/types/api-error'
 import {
   buildCcSwitchImportUrl,
@@ -1072,7 +1073,7 @@ const installCommandHint = computed(() => {
   return 'macOS / Linux 请在 sh 兼容终端中执行。install code 使用后立即失效，如需再次执行请重新生成。'
 })
 
-const ccSwitchBaseUrl = computed(() => window.location.origin)
+const ccSwitchBaseUrl = ref(getApiBaseOrigin())
 
 const ccSwitchEndpointPreview = computed(() => {
   return ccSwitchEndpoint(ccSwitchApp.value, ccSwitchBaseUrl.value)
@@ -1252,17 +1253,33 @@ function openCcSwitchDialog(apiKey: ApiKey) {
   ccSwitchProviderName.value = `Niffler - ${apiKey.name || 'API Key'}`
   ccSwitchModel.value = ''
   showCcSwitchDialog.value = true
+  void refreshCcSwitchBaseUrl()
 }
 
 function selectCcSwitchApp(value: CcSwitchApp) {
   ccSwitchApp.value = value
-  ccSwitchModel.value = value === 'codex' ? (ccSwitchModel.value || 'gpt-5.4') : ''
+  if (value !== 'codex') {
+    ccSwitchModel.value = ''
+  }
+}
+
+async function refreshCcSwitchBaseUrl() {
+  try {
+    const response = await meApi.getPublicBaseUrl()
+    const value = response.public_base_url?.trim().replace(/\/+$/, '')
+    if (value) {
+      ccSwitchBaseUrl.value = value
+    }
+  } catch (error) {
+    log.warn('获取公开 API 地址失败，使用前端推断地址:', error)
+  }
 }
 
 async function importToCcSwitch() {
   if (!selectedCcSwitchApiKey.value) return
   ccSwitchImportLoading.value = true
   try {
+    await refreshCcSwitchBaseUrl()
     const response = await meApi.getFullApiKey(selectedCcSwitchApiKey.value.id)
     const deeplink = buildCcSwitchImportUrl({
       app: ccSwitchApp.value,

@@ -5,5 +5,5 @@ pub use types::{
     AdminBillingPresetApplyResult, AdminBillingRuleRecord, AdminBillingRuleWriteInput,
     BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository, PaymentGatewayConfigRecord,
     PaymentGatewayConfigWriteInput, StoredBillingModelContext, UserDailyQuotaAvailabilityRecord,
-    UserPlanEntitlementRecord,
+    UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
 };

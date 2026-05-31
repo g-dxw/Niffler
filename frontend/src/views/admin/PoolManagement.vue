@@ -55,14 +55,12 @@
                 <SelectItem value="all">
                   全部
                 </SelectItem>
-                <SelectItem value="active">
-                  可调度
-                </SelectItem>
-                <SelectItem value="cooldown">
-                  冷却中
-                </SelectItem>
-                <SelectItem value="inactive">
-                  禁用
+                <SelectItem
+                  v-for="option in poolKeyStatusFilterOptions.filter((item) => item.value !== 'all')"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -406,6 +404,60 @@
       </div>
 
       <template v-else>
+        <div
+          v-if="poolSummaryTotal > 0"
+          class="border-b border-border/50 bg-muted/[0.12] px-4 py-3 sm:px-6"
+        >
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="mr-1 text-xs font-medium text-muted-foreground">订阅类型</span>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 rounded-full px-3 text-xs"
+                :class="planTypeFilter === 'all' ? 'border-primary/60 bg-primary/10 text-primary' : ''"
+                @click="planTypeFilter = 'all'"
+              >
+                全部 {{ poolSummaryTotal }}
+              </Button>
+              <Button
+                v-for="item in poolPlanSummaryItems"
+                :key="item.code"
+                variant="outline"
+                size="sm"
+                class="h-7 rounded-full px-3 text-xs"
+                :class="planTypeFilter === item.code ? 'border-primary/60 bg-primary/10 text-primary' : ''"
+                @click="selectPoolPlanFilter(item.code)"
+              >
+                {{ item.label }} {{ item.count }}
+              </Button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="mr-1 text-xs font-medium text-muted-foreground">账号状态</span>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 rounded-full px-3 text-xs"
+                :class="statusFilter === 'all' ? 'border-primary/60 bg-primary/10 text-primary' : ''"
+                @click="statusFilter = 'all'"
+              >
+                全部 {{ poolSummaryTotal }}
+              </Button>
+              <Button
+                v-for="item in poolStatusSummaryItems"
+                :key="item.code"
+                variant="outline"
+                size="sm"
+                class="h-7 rounded-full px-3 text-xs"
+                :class="statusFilter === item.code ? 'border-primary/60 bg-primary/10 text-primary' : ''"
+                @click="selectPoolStatusFilter(item.code)"
+              >
+                {{ item.label }} {{ item.count }}
+              </Button>
+            </div>
+          </div>
+        </div>
+
         <!-- Desktop table -->
         <div
           v-if="keyPage.keys.length > 0 || hasPoolKeyFilters"
@@ -1682,9 +1734,12 @@ const showDemandMetricsDialog = ref(false)
 const providerDemandMetricSamples = ref<PoolDemandMetricSample[]>([])
 const poolKeyStatusFilterOptions: Array<{ value: PoolManagementViewState['status'], label: string }> = [
   { value: 'all', label: '全部状态' },
-  { value: 'active', label: '可调度' },
-  { value: 'cooldown', label: '冷却中' },
+  { value: 'available', label: '可用' },
+  { value: 'invalid', label: '已失效' },
   { value: 'inactive', label: '禁用' },
+  { value: 'quota_exhausted', label: '额度耗尽' },
+  { value: 'cooldown', label: '冷却中' },
+  { value: 'blocked', label: '异常' },
 ]
 const poolScoreHardStateOptions = [
   { value: 'all', label: '全部状态' },
@@ -2031,7 +2086,7 @@ const selectedProviderDemandMetaText = computed(() => {
     segments.push(`EMA ${formatDemandEma(overview.provider_ema_in_flight)}`)
   }
   if (Number.isFinite(inFlight) && inFlight > 0) {
-    segments.push(`in-flight ${inFlight}`)
+    segments.push(`处理中 ${inFlight}`)
   }
   if (overview.provider_burst_pending) {
     segments.push('补热中')
@@ -2140,6 +2195,7 @@ async function selectProvider(
   }
   if (!options.preserveStatus) {
     statusFilter.value = 'all'
+    planTypeFilter.value = 'all'
   }
   suppressFiltersWatch = false
   if (keysSearchDebounceTimer !== null) {
@@ -2173,7 +2229,13 @@ async function refresh() {
 
 // --- Keys ---
 function createEmptyKeyPage(page = 1, pageSizeValue = 50): PoolKeysPageResponse {
-  return { total: 0, page, page_size: pageSizeValue, keys: [] }
+  return {
+    total: 0,
+    page,
+    page_size: pageSizeValue,
+    keys: [],
+    summary: { total: 0, plans: [], statuses: [] },
+  }
 }
 
 const keyPage = ref<PoolKeysPageResponse>(createEmptyKeyPage())
@@ -2182,12 +2244,18 @@ const keysLoadedOnce = ref(false)
 const refreshingCurrentPageQuota = ref(false)
 const searchQuery = ref(restoredViewState.search)
 const statusFilter = ref(restoredViewState.status)
+const planTypeFilter = ref(restoredViewState.planType)
 const currentPage = ref(restoredViewState.page)
 const pageSize = ref(restoredViewState.pageSize)
 const sortBy = ref<PoolManagementSortBy | null>(restoredViewState.sortBy)
 const sortOrder = ref<PoolManagementSortOrder>(restoredViewState.sortOrder)
 const poolStatsMode = ref<PoolManagementStatsMode>(restoredViewState.statsMode)
-const hasPoolKeyFilters = computed(() => searchQuery.value.trim().length > 0 || statusFilter.value !== 'all')
+const hasPoolKeyFilters = computed(() =>
+  searchQuery.value.trim().length > 0 || statusFilter.value !== 'all' || planTypeFilter.value !== 'all'
+)
+const poolPlanSummaryItems = computed(() => keyPage.value.summary?.plans || [])
+const poolStatusSummaryItems = computed(() => keyPage.value.summary?.statuses || [])
+const poolSummaryTotal = computed(() => Number(keyPage.value.summary?.total ?? keyPage.value.total ?? 0))
 const MANUAL_QUOTA_REFRESH_COOLDOWN_SECONDS = 5 * 60
 const refreshingOAuthKeyId = ref<string | null>(null)
 const resettingCycleKeyId = ref<string | null>(null)
@@ -2218,12 +2286,22 @@ function clearPoolKeyFilters() {
   suppressFiltersWatch = true
   searchQuery.value = ''
   statusFilter.value = 'all'
+  planTypeFilter.value = 'all'
   suppressFiltersWatch = false
   if (currentPage.value !== 1) {
     currentPage.value = 1
     return
   }
   void loadKeys({ cacheTtlMs: POOL_KEYS_CACHE_TTL_MS })
+}
+
+function selectPoolPlanFilter(planCode: string): void {
+  planTypeFilter.value = planTypeFilter.value === planCode ? 'all' : planCode
+}
+
+function selectPoolStatusFilter(statusCode: string): void {
+  const normalized = statusCode as PoolManagementViewState['status']
+  statusFilter.value = statusFilter.value === normalized ? 'all' : normalized
 }
 
 watch(
@@ -2241,6 +2319,17 @@ watch(
     if (statusFilter.value === value) return
     suppressFiltersWatch = true
     statusFilter.value = value
+    suppressFiltersWatch = false
+  },
+  { immediate: true },
+)
+
+watch(
+  () => readPoolManagementViewState({ planType: getQueryValue('planType') }).planType,
+  (value) => {
+    if (planTypeFilter.value === value) return
+    suppressFiltersWatch = true
+    planTypeFilter.value = value
     suppressFiltersWatch = false
   },
   { immediate: true },
@@ -2305,12 +2394,13 @@ watch(
 )
 
 watch(
-  [selectedProviderId, searchQuery, statusFilter, currentPage, pageSize, sortBy, sortOrder, poolStatsMode],
-  ([providerId, search, status, page, pageSizeValue, sortByValue, sortOrderValue, statsMode]) => {
+  [selectedProviderId, searchQuery, statusFilter, planTypeFilter, currentPage, pageSize, sortBy, sortOrder, poolStatsMode],
+  ([providerId, search, status, planType, page, pageSizeValue, sortByValue, sortOrderValue, statsMode]) => {
     const nextState: PoolManagementViewState = {
       providerId,
       search,
       status: status as PoolManagementViewState['status'],
+      planType: String(planType || 'all'),
       page,
       pageSize: pageSizeValue,
       sortBy: sortByValue,
@@ -2645,7 +2735,8 @@ async function loadKeys(options: { cacheTtlMs?: number } = {}) {
   const page = currentPage.value
   const pageSizeValue = pageSize.value
   const search = searchQuery.value || undefined
-  const status = statusFilter.value as 'all' | 'active' | 'cooldown' | 'inactive'
+  const status = statusFilter.value
+  const planType = planTypeFilter.value === 'all' ? undefined : planTypeFilter.value
   const sortByValue = sortBy.value || undefined
   keysLoading.value = true
   try {
@@ -2654,6 +2745,7 @@ async function loadKeys(options: { cacheTtlMs?: number } = {}) {
       page_size: pageSizeValue,
       search,
       status,
+      plan_type: planType,
       sort_by: sortByValue || undefined,
       sort_order: sortByValue ? sortOrder.value : undefined,
     }, {
@@ -2688,6 +2780,12 @@ watch([currentPage, pageSize], () => {
 })
 
 watch(statusFilter, () => {
+  if (suppressFiltersWatch) return
+  currentPage.value = 1
+  void loadKeys({ cacheTtlMs: POOL_KEYS_CACHE_TTL_MS })
+})
+
+watch(planTypeFilter, () => {
   if (suppressFiltersWatch) return
   currentPage.value = 1
   void loadKeys({ cacheTtlMs: POOL_KEYS_CACHE_TTL_MS })

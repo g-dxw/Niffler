@@ -276,13 +276,14 @@ pub(super) async fn handle_billing_entitlements(
     let now = Utc::now().timestamp().max(0) as u64;
     let items = entitlements
         .iter()
+        .filter(|record| {
+            record.status == "active"
+                && record.starts_at_unix_secs <= now
+                && record.expires_at_unix_secs > now
+        })
         .map(|record| {
             let mut payload = entitlement_payload(record);
-            payload["active"] = json!(
-                record.status == "active"
-                    && record.starts_at_unix_secs <= now
-                    && record.expires_at_unix_secs > now
-            );
+            payload["active"] = json!(true);
             payload
         })
         .collect::<Vec<_>>();

@@ -9,3 +9,12 @@ export function getApiUrl(path: string): string {
   // 移除 base 尾部的 `/`，避免拼接成 `//api/...`
   return base ? `${base.replace(/\/$/, '')}${path}` : path
 }
+
+export function getApiBaseOrigin(): string {
+  const base = import.meta.env.VITE_API_URL || ''
+  if (typeof window === 'undefined') return ''
+  if (!base) return window.location.origin
+
+  const parsed = new URL(base, window.location.origin)
+  return parsed.origin
+}

@@ -339,6 +339,7 @@ mod tests {
                     aether_data_contracts::repository::billing::StoredBillingModelContext::new(
                         "provider-1".to_string(),
                         Some("pay_as_you_go".to_string()),
+                        None,
                         Some("key-1".to_string()),
                         Some(serde_json::json!({"openai:chat": 0.5})),
                         Some(60),

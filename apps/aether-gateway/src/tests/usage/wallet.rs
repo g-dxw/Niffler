@@ -19,6 +19,7 @@ async fn gateway_settles_wallet_for_completed_execution_runtime_sync_usage() {
         StoredBillingModelContext::new(
             "provider-openai-usage-local-1".to_string(),
             Some("pay_as_you_go".to_string()),
+            None,
             Some("key-openai-usage-local-1".to_string()),
             Some(json!({"openai:chat": 1.0})),
             Some(60),

@@ -60,7 +60,7 @@ impl BillingService {
                 },
                 actual_total_cost: 0.0,
                 rate_multiplier: pricing
-                    .rate_multiplier_for_api_format(input.api_format.as_deref()),
+                    .actual_cost_multiplier_for_api_format(input.api_format.as_deref()),
                 is_free_tier: pricing.is_free_tier(),
             });
         };
@@ -83,7 +83,8 @@ impl BillingService {
         } else {
             0.0
         };
-        let rate_multiplier = pricing.rate_multiplier_for_api_format(input.api_format.as_deref());
+        let rate_multiplier =
+            pricing.actual_cost_multiplier_for_api_format(input.api_format.as_deref());
         let is_free_tier = pricing.is_free_tier();
         let actual_total_cost = if is_free_tier {
             0.0
@@ -591,6 +592,7 @@ mod tests {
         BillingModelPricingSnapshot {
             provider_id: "provider-1".to_string(),
             provider_billing_type: Some("pay_as_you_go".to_string()),
+            provider_config: None,
             provider_api_key_id: Some("key-1".to_string()),
             provider_api_key_rate_multipliers: Some(json!({"openai:chat": 0.5})),
             provider_api_key_cache_ttl_minutes: Some(60),
@@ -1058,6 +1060,7 @@ mod tests {
         let pricing = BillingModelPricingSnapshot {
             provider_id: "provider-1".to_string(),
             provider_billing_type: Some("pay_as_you_go".to_string()),
+            provider_config: None,
             provider_api_key_id: Some("key-1".to_string()),
             provider_api_key_rate_multipliers: None,
             provider_api_key_cache_ttl_minutes: Some(5),
@@ -1131,6 +1134,7 @@ mod tests {
         let pricing = BillingModelPricingSnapshot {
             provider_id: "provider-1".to_string(),
             provider_billing_type: Some("pay_as_you_go".to_string()),
+            provider_config: None,
             provider_api_key_id: Some("key-1".to_string()),
             provider_api_key_rate_multipliers: None,
             provider_api_key_cache_ttl_minutes: Some(60),

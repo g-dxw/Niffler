@@ -29,8 +29,8 @@ use super::{
     StoredVideoTask, StoredWalletDailyUsageLedger, StoredWalletDailyUsageLedgerPage,
     StoredWalletSnapshot, UpdateAnnouncementRecord, UpsertBackgroundTaskEvent,
     UpsertBackgroundTaskRun, UpsertUsageRecord, UpsertVideoTask, UsageSettlementInput,
-    UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord, VideoTaskLookupKey,
-    VideoTaskModelCount, VideoTaskQueryFilter, VideoTaskStatusCount,
+    UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
+    VideoTaskLookupKey, VideoTaskModelCount, VideoTaskQueryFilter, VideoTaskStatusCount,
     WalletDailyUsageAggregationInput, WalletDailyUsageAggregationResult, WalletLookupKey,
     WalletMutationOutcome,
 };
@@ -1864,6 +1864,22 @@ impl GatewayDataState {
             Some(repository) => {
                 repository
                     .cancel_user_plan_entitlement(user_id, entitlement_id)
+                    .await
+            }
+            None => Ok(AdminBillingMutationOutcome::Unavailable),
+        }
+    }
+
+    pub(crate) async fn update_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+        input: &UserPlanEntitlementUpdateInput,
+    ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, DataLayerError> {
+        match &self.billing_reader {
+            Some(repository) => {
+                repository
+                    .update_user_plan_entitlement(user_id, entitlement_id, input)
                     .await
             }
             None => Ok(AdminBillingMutationOutcome::Unavailable),

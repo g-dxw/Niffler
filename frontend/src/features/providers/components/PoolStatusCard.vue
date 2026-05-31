@@ -33,7 +33,7 @@
             variant="outline"
             class="text-xs"
           >
-            in-flight {{ poolStatus.provider_in_flight }}
+            处理中 {{ poolStatus.provider_in_flight }}
           </Badge>
           <Badge
             v-if="poolStatus && poolStatus.provider_desired_hot > 0"

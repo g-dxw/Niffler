@@ -54,12 +54,24 @@ pub(in crate::handlers::public::support) async fn build_wallet_balance_payload_f
     user_id: &str,
     wallet: Option<&aether_data::repository::wallet::StoredWalletSnapshot>,
 ) -> serde_json::Value {
+    build_wallet_balance_payload_for_user_and_model(state, user_id, wallet, None).await
+}
+
+pub(in crate::handlers::public::support) async fn build_wallet_balance_payload_for_user_and_model(
+    state: &AppState,
+    user_id: &str,
+    wallet: Option<&aether_data::repository::wallet::StoredWalletSnapshot>,
+    global_model_id: Option<&str>,
+) -> serde_json::Value {
     let mut payload = build_wallet_balance_payload(wallet);
     let wallet_balance = wallet
         .map(|value| value.balance + value.gift_balance)
         .unwrap_or(0.0);
+    let model_filter = global_model_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let daily_quota = state
-        .find_user_daily_quota_availability(user_id)
+        .find_user_daily_quota_availability_for_global_model(user_id, model_filter)
         .await
         .ok()
         .flatten();
@@ -91,6 +103,7 @@ pub(in crate::handlers::public::support) async fn build_wallet_balance_payload_f
         "used_usd": round_to(used_usd.max(0.0), 6),
         "remaining_usd": round_to(package_balance, 6),
         "allow_wallet_overage": allow_wallet_overage,
+        "model": model_filter,
     });
     payload["package_balance"] = json!(round_to(package_balance, 6));
     payload["wallet_balance"] = json!(round_to(wallet_balance.max(0.0), 6));

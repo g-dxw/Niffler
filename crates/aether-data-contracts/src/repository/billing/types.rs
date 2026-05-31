@@ -5,6 +5,7 @@ use serde_json::Value;
 pub struct StoredBillingModelContext {
     pub provider_id: String,
     pub provider_billing_type: Option<String>,
+    pub provider_config: Option<Value>,
     pub provider_api_key_id: Option<String>,
     pub provider_api_key_rate_multipliers: Option<Value>,
     pub provider_api_key_cache_ttl_minutes: Option<i64>,
@@ -25,6 +26,7 @@ impl StoredBillingModelContext {
     pub fn new(
         provider_id: String,
         provider_billing_type: Option<String>,
+        provider_config: Option<Value>,
         provider_api_key_id: Option<String>,
         provider_api_key_rate_multipliers: Option<Value>,
         provider_api_key_cache_ttl_minutes: Option<i64>,
@@ -57,6 +59,7 @@ impl StoredBillingModelContext {
         Ok(Self {
             provider_id,
             provider_billing_type,
+            provider_config,
             provider_api_key_id,
             provider_api_key_rate_multipliers,
             provider_api_key_cache_ttl_minutes,
@@ -226,6 +229,13 @@ pub struct UserPlanEntitlementRecord {
     pub entitlements_snapshot: Value,
     pub created_at_unix_secs: u64,
     pub updated_at_unix_secs: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserPlanEntitlementUpdateInput {
+    pub starts_at_unix_secs: u64,
+    pub expires_at_unix_secs: u64,
+    pub entitlements_snapshot: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -442,6 +452,16 @@ pub trait BillingReadRepository: Send + Sync {
         entitlement_id: &str,
     ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, crate::DataLayerError> {
         let _ = (user_id, entitlement_id);
+        Ok(AdminBillingMutationOutcome::Unavailable)
+    }
+
+    async fn update_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+        input: &UserPlanEntitlementUpdateInput,
+    ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, crate::DataLayerError> {
+        let _ = (user_id, entitlement_id, input);
         Ok(AdminBillingMutationOutcome::Unavailable)
     }
 

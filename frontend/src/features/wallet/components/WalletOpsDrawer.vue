@@ -130,6 +130,12 @@
                   资金流水
                 </TabsTrigger>
                 <TabsTrigger
+                  v-if="showPlanRecords"
+                  value="plans"
+                >
+                  套餐记录
+                </TabsTrigger>
+                <TabsTrigger
                   v-if="showRefunds"
                   value="refunds"
                 >
@@ -343,6 +349,90 @@
               </TabsContent>
 
               <TabsContent
+                v-if="showPlanRecords"
+                value="plans"
+                class="mt-4 space-y-3"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <div class="text-sm text-muted-foreground">
+                    共 {{ planItems.length }} 条
+                  </div>
+                  <RefreshButton
+                    :loading="loadingPlans"
+                    @click="loadPlans"
+                  />
+                </div>
+
+                <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
+                  <div class="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>套餐</TableHead>
+                          <TableHead>状态</TableHead>
+                          <TableHead>权益</TableHead>
+                          <TableHead>开始</TableHead>
+                          <TableHead>到期</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow
+                          v-for="plan in planItems"
+                          :key="plan.id"
+                        >
+                          <TableCell class="min-w-[160px]">
+                            <div class="font-medium text-foreground">
+                              {{ plan.plan_title || plan.plan?.title || plan.plan_id }}
+                            </div>
+                            <div class="mt-1 text-[11px] text-muted-foreground">
+                              {{ plan.payment_order_id || '-' }}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              :variant="plan.active ? 'success' : 'secondary'"
+                              class="whitespace-nowrap"
+                            >
+                              {{ plan.active ? '生效中' : planStatusLabel(plan.status) }}
+                            </Badge>
+                          </TableCell>
+                          <TableCell class="max-w-[260px]">
+                            <div class="flex flex-wrap gap-1.5">
+                              <Badge
+                                v-for="label in entitlementLabels(plan.entitlements)"
+                                :key="label"
+                                variant="outline"
+                                class="h-5 px-1.5 py-0 text-[10px]"
+                              >
+                                {{ label }}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
+                            {{ formatDateTime(plan.starts_at) }}
+                          </TableCell>
+                          <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
+                            {{ formatDateTime(plan.expires_at) }}
+                          </TableCell>
+                        </TableRow>
+                        <TableRow v-if="!loadingPlans && planItems.length === 0">
+                          <TableCell
+                            colspan="5"
+                            class="py-10"
+                          >
+                            <EmptyState
+                              title="暂无套餐记录"
+                              description="当前用户还没有套餐发放或购买记录"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent
                 v-if="showRefunds"
                 value="refunds"
                 class="mt-4 space-y-3"
@@ -538,7 +628,10 @@ import {
   adminWalletApi,
   type AdminWallet,
 } from '@/api/admin-wallets'
+import { usersApi, type AdminUserPlanEntitlement } from '@/api/users'
+import type { BillingEntitlementsInput, DailyQuotaEntitlement } from '@/api/billing'
 import type { RefundRequest, WalletTransaction } from '@/api/wallet'
+import { normalizeBillingEntitlements } from '@/utils/billingEntitlements'
 import { parseApiError } from '@/utils/errorParser'
 import { parseNumberInput } from '@/utils/form'
 import {
@@ -562,6 +655,7 @@ const props = withDefaults(
     ownerName?: string
     ownerSubtitle?: string
     contextLabel?: string
+    userId?: string | null
     accent?: 'emerald' | 'blue'
     showRefunds?: boolean
   }>(),
@@ -569,6 +663,7 @@ const props = withDefaults(
     ownerName: '',
     ownerSubtitle: '',
     contextLabel: '钱包详情',
+    userId: null,
     accent: 'emerald',
     showRefunds: true,
   }
@@ -582,7 +677,7 @@ const emit = defineEmits<{
 const { success, error } = useToast()
 const { confirm } = useConfirm()
 
-const activeTab = ref<'actions' | 'transactions' | 'refunds'>('actions')
+const activeTab = ref<'actions' | 'transactions' | 'plans' | 'refunds'>('actions')
 const localWallet = ref<AdminWallet | null>(null)
 
 const moneyActionType = ref<'recharge' | 'adjust'>('adjust')
@@ -603,6 +698,8 @@ const refundTotal = ref(0)
 const refundPage = ref(1)
 const refundPageSize = ref(20)
 const submittingRefundAction = ref(false)
+const loadingPlans = ref(false)
+const planItems = ref<AdminUserPlanEntitlement[]>([])
 
 const refundActionType = ref<'fail' | 'complete' | null>(null)
 const actionRefund = ref<RefundRequest | null>(null)
@@ -626,12 +723,14 @@ const totalAvailableAmount = computed(() => {
   )
 })
 const showRefunds = computed(() => props.showRefunds)
+const showPlanRecords = computed(() => Boolean(props.userId && !isApiKeyWallet.value))
 const tabsListClass = computed(() => {
+  const columnCount = 2 + (showPlanRecords.value ? 1 : 0) + (showRefunds.value ? 1 : 0)
   return [
     'tabs-button-list',
     'grid',
     'w-full',
-    showRefunds.value ? 'grid-cols-3' : 'grid-cols-2',
+    columnCount === 4 ? 'grid-cols-4' : columnCount === 3 ? 'grid-cols-3' : 'grid-cols-2',
   ]
 })
 const submitMoneyDisabled = computed(() => {
@@ -648,7 +747,7 @@ const submitMoneyLabel = computed(() => {
 })
 
 watch(
-  () => [props.open, props.wallet?.id] as const,
+  () => [props.open, props.wallet?.id, props.userId] as const,
   async ([open]) => {
     if (!open || !props.wallet) {
       return
@@ -659,6 +758,7 @@ watch(
     activeTab.value = 'actions'
     txPage.value = 1
     refundPage.value = 1
+    planItems.value = []
     await refreshDrawerData()
   },
   { immediate: true }
@@ -720,6 +820,24 @@ async function loadTransactions() {
   }
 }
 
+async function loadPlans() {
+  if (!props.userId || !showPlanRecords.value) {
+    planItems.value = []
+    return
+  }
+  loadingPlans.value = true
+  try {
+    const resp = await usersApi.listUserPlanEntitlements(props.userId)
+    planItems.value = resp.items
+  } catch (err) {
+    log.error('加载套餐记录失败:', err)
+    error(parseApiError(err, '加载套餐记录失败'))
+    planItems.value = []
+  } finally {
+    loadingPlans.value = false
+  }
+}
+
 async function loadRefunds() {
   if (!showRefunds.value || !localWallet.value) {
     refundItems.value = []
@@ -773,11 +891,14 @@ function handleRefundPageSizeChange(size: number) {
 }
 
 async function refreshDrawerData() {
-  if (showRefunds.value) {
-    await Promise.all([loadTransactions(), loadRefunds()])
-    return
+  const tasks: Array<Promise<void>> = [loadTransactions()]
+  if (showPlanRecords.value) {
+    tasks.push(loadPlans())
   }
-  await loadTransactions()
+  if (showRefunds.value) {
+    tasks.push(loadRefunds())
+  }
+  await Promise.all(tasks)
 }
 
 async function submitRecharge() {
@@ -1030,6 +1151,46 @@ function formatDateTime(value: string | null | undefined) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function planStatusLabel(status: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    active: '已发放',
+    cancelled: '已取消',
+    expired: '已过期',
+  }
+  return labels[String(status || '')] || String(status || '-')
+}
+
+function entitlementLabels(items: BillingEntitlementsInput): string[] {
+  return normalizeBillingEntitlements(items).map((item) => {
+    if (item.type === 'wallet_credit') {
+      return `附赠余额 $${Number(item.amount_usd || 0).toFixed(2)}`
+    }
+    if (item.type === 'daily_quota') {
+      return quotaEntitlementLabel(item)
+    }
+    if (item.type === 'membership_group') {
+      return '会员权益'
+    }
+    return item.type
+  })
+}
+
+function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
+  const limits = item.limits || {}
+  const parts = []
+  const daily = Number(item.daily_quota_usd ?? limits.daily_limit_usd ?? 0)
+  const fiveHour = Number(item.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
+  const weekly = Number(item.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
+  const monthly = Number(item.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
+  if (daily > 0) parts.push(`每日 $${daily.toFixed(2)}`)
+  if (fiveHour > 0) parts.push(`5小时 $${fiveHour.toFixed(2)}`)
+  if (weekly > 0) parts.push(`每周 $${weekly.toFixed(2)}`)
+  if (monthly > 0) parts.push(`每月 $${monthly.toFixed(2)}`)
+  const quotaText = parts.join(' / ') || '用量额度'
+  const modelIds = item.allowed_global_model_ids || []
+  return modelIds.length > 0 ? `${quotaText} · ${modelIds.length} 个模型` : `${quotaText} · 全部模型`
 }
 
 function toFiniteNumber(value: unknown, fallback = 0): number {

@@ -43,6 +43,7 @@ export interface Model {
   config?: Record<string, unknown> | null  // 额外配置（如 billing/video 等）
   // 原始配置值（可能为空，为空时使用 GlobalModel 默认值）
   price_per_request?: number | null  // 按次计费价格
+  cost_multiplier?: number | null  // 平台成本倍率
   tiered_pricing?: TieredPricingConfig | null  // 阶梯计费配置
   supports_vision?: boolean | null
   supports_function_calling?: boolean | null
@@ -79,6 +80,7 @@ export interface ModelCreate {
   global_model_id: string  // 关联的 GlobalModel ID（必填）
   // 计费配置（可选，为空时使用 GlobalModel 默认值）
   price_per_request?: number  // 按次计费价格
+  cost_multiplier?: number  // 平台成本倍率
   tiered_pricing?: TieredPricingConfig  // 阶梯计费配置
   // 能力配置（可选，为空时使用 GlobalModel 默认值）
   supports_vision?: boolean
@@ -95,6 +97,7 @@ export interface ModelUpdate {
   provider_model_mappings?: ProviderModelMapping[] | null  // 模型名称映射列表（带优先级）
   global_model_id?: string
   price_per_request?: number | null  // 按次计费价格（null 表示清空/使用默认值）
+  cost_multiplier?: number | null  // 平台成本倍率（null 表示清空）
   tiered_pricing?: TieredPricingConfig | null  // 阶梯计费配置
   supports_vision?: boolean
   supports_function_calling?: boolean

@@ -111,6 +111,27 @@ pub(crate) fn client_session_affinity_from_parts(
     client_session_scope_from_parts(parts, body_json)?.scheduler_affinity()
 }
 
+pub(crate) fn codex_encrypted_context_requires_session(
+    headers: &http::HeaderMap,
+    body_json: Option<&Value>,
+    client_session_affinity: Option<&ClientSessionAffinity>,
+) -> bool {
+    if client_session_affinity.is_some() {
+        return false;
+    }
+    let Some(body_json) = body_json else {
+        return false;
+    };
+    if !json_contains_non_empty_encrypted_content(body_json) {
+        return false;
+    }
+    let request = ClientSessionRequest {
+        headers,
+        body_json: Some(body_json),
+    };
+    CodexSessionScopeAdapter.detect(&request)
+}
+
 pub(crate) fn client_session_scope_from_parts(
     parts: &http::request::Parts,
     body_json: Option<&Value>,
@@ -437,6 +458,27 @@ fn value_at_path<'a>(body: &'a Value, path: &[&str]) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
+fn json_contains_non_empty_encrypted_content(value: &Value) -> bool {
+    match value {
+        Value::Object(object) => object.iter().any(|(key, value)| {
+            if key == "encrypted_content" && encrypted_content_value_is_non_empty(value) {
+                return true;
+            }
+            json_contains_non_empty_encrypted_content(value)
+        }),
+        Value::Array(values) => values.iter().any(json_contains_non_empty_encrypted_content),
+        _ => false,
+    }
+}
+
+fn encrypted_content_value_is_non_empty(value: &Value) -> bool {
+    match value {
+        Value::String(value) => !value.trim().is_empty(),
+        Value::Null => false,
+        _ => true,
+    }
+}
+
 fn header_contains(headers: &http::HeaderMap, key: &str, needle: &str) -> bool {
     header_value_str(headers, key)
         .map(|value| value.to_ascii_lowercase().contains(needle))
@@ -448,7 +490,8 @@ mod tests {
     use super::{
         client_session_affinity_from_report_context_value, client_session_affinity_from_request,
         client_session_affinity_report_context_value, client_session_scope_from_request,
-        ClientSessionSignalSource, AETHER_AGENT_ID_HEADER, AETHER_SESSION_ID_HEADER,
+        codex_encrypted_context_requires_session, ClientSessionSignalSource,
+        AETHER_AGENT_ID_HEADER, AETHER_SESSION_ID_HEADER,
     };
     use aether_scheduler_core::ClientSessionAffinity;
     use http::{HeaderMap, HeaderValue};
@@ -702,5 +745,78 @@ mod tests {
         let body = json!({"model": "gpt-5"});
 
         assert!(client_session_affinity_from_request(&headers, Some(&body)).is_none());
+    }
+
+    #[test]
+    fn codex_encrypted_context_without_session_requires_local_rejection() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::USER_AGENT,
+            HeaderValue::from_static("codex-tui/0.135.0"),
+        );
+        let body = json!({
+            "model": "gpt-5.5",
+            "input": [
+                {
+                    "type": "compaction",
+                    "encrypted_content": "encrypted-payload"
+                }
+            ]
+        });
+
+        assert!(codex_encrypted_context_requires_session(
+            &headers,
+            Some(&body),
+            None,
+        ));
+    }
+
+    #[test]
+    fn codex_encrypted_context_with_explicit_session_is_allowed() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::USER_AGENT,
+            HeaderValue::from_static("codex-tui/0.135.0"),
+        );
+        headers.insert(
+            AETHER_SESSION_ID_HEADER,
+            HeaderValue::from_static("session-1"),
+        );
+        let body = json!({
+            "model": "gpt-5.5",
+            "input": [
+                {
+                    "type": "compaction",
+                    "encrypted_content": "encrypted-payload"
+                }
+            ]
+        });
+        let affinity = client_session_affinity_from_request(&headers, Some(&body));
+
+        assert!(!codex_encrypted_context_requires_session(
+            &headers,
+            Some(&body),
+            affinity.as_ref(),
+        ));
+    }
+
+    #[test]
+    fn non_codex_encrypted_context_does_not_require_codex_session() {
+        let headers = HeaderMap::new();
+        let body = json!({
+            "model": "gpt-5.5",
+            "input": [
+                {
+                    "type": "compaction",
+                    "encrypted_content": "encrypted-payload"
+                }
+            ]
+        });
+
+        assert!(!codex_encrypted_context_requires_session(
+            &headers,
+            Some(&body),
+            None,
+        ));
     }
 }

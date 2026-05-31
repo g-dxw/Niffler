@@ -206,6 +206,10 @@ export interface ApiKeyInstallSession {
   powershell_command: string
 }
 
+export interface PublicBaseUrlResponse {
+  public_base_url: string
+}
+
 // 不再需要 ProviderBinding 接口
 
 export interface ChangePasswordRequest {
@@ -319,6 +323,11 @@ export const meApi = {
       `/api/users/me/api-keys/${keyId}/install-sessions`,
       data
     )
+    return response.data
+  },
+
+  async getPublicBaseUrl(): Promise<PublicBaseUrlResponse> {
+    const response = await apiClient.get<PublicBaseUrlResponse>('/api/users/me/public-base-url')
     return response.data
   },
 

@@ -274,7 +274,7 @@ const summaryCards = computed(() => {
       hint: '当前 / 目标',
     },
     {
-      label: 'in-flight',
+      label: '处理中',
       value: sample ? formatMetric(sample.inFlight) : '0',
       hint: '正在执行',
     },
@@ -294,7 +294,7 @@ const summaryCards = computed(() => {
 const legendItems = [
   { label: '目标', dotClass: 'bg-indigo-500' },
   { label: '热池', dotClass: 'bg-emerald-500' },
-  { label: 'in-flight', dotClass: 'bg-amber-500' },
+  { label: '处理中', dotClass: 'bg-amber-500' },
   { label: 'EMA', dotClass: 'bg-sky-500' },
   { label: 'Burst', dotClass: 'bg-red-500' },
 ]

@@ -361,6 +361,7 @@ fn sample_billing_context(spec: ProviderSpec) -> StoredBillingModelContext {
     StoredBillingModelContext::new(
         spec.provider_id.to_string(),
         Some("pay_as_you_go".to_string()),
+        None,
         Some(spec.key_id.to_string()),
         None,
         Some(60),

@@ -540,7 +540,7 @@
                 {{ purchaseLimitSummaryText }}
               </div>
               <div class="xl:col-span-12 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-200">
-                同一用户只保留一个有效周期额度套餐、一个有效会员权益包。购买新的同类套餐后，旧同类套餐会自动失效；混合套餐会同时替换这两类旧权益。
+                同一个套餐再次购买会从当前到期时间后继续；不同套餐可以并存，按各自可用模型范围生效。
               </div>
             </div>
           </section>
@@ -1130,7 +1130,7 @@ const planModeGuide = computed<PlanModeGuide>(() => {
         notes: [
           '日、周、月额度都从支付成功后开始滚动',
           '默认用完后拒绝继续消费',
-          '同一用户只保留一个有效周期额度套餐',
+          '同一个套餐再次购买会自动顺延',
         ],
       }
     case 'membership':
@@ -1140,7 +1140,7 @@ const planModeGuide = computed<PlanModeGuide>(() => {
         description: '适合 Pro、Plus、团队会员。购买后动态合并用户分组权限，到期自然失效。',
         notes: [
           '不会永久修改用户基础分组',
-          '同一用户只保留一个有效会员权益包',
+          '同一个权益包再次购买会自动顺延',
           '适合解锁模型组或高级功能',
         ],
       }
@@ -1150,7 +1150,7 @@ const planModeGuide = computed<PlanModeGuide>(() => {
         title: '组合权益套餐',
         description: '适合同时包含周期额度和会员权限的产品，也可以按需附赠少量钱包余额。',
         notes: [
-          '会替换旧周期额度套餐和旧会员权益包',
+          '同一个组合套餐再次购买会自动顺延',
           '附赠余额发放后不随周期结束扣回',
           '限购会同时影响整套组合权益',
         ],
@@ -1179,13 +1179,13 @@ const durationTooltipText = computed(() => {
 })
 
 const activeLimitFieldLabel = computed(() =>
-  form.purchase_limit_scope === 'lifetime' ? '每人最多购买次数' : '每人最多同时生效'
+  form.purchase_limit_scope === 'lifetime' ? '每人最多购买次数' : '每人最多待支付订单'
 )
 
 const activeLimitTooltipText = computed(() =>
   form.purchase_limit_scope === 'lifetime'
     ? '按同一用户历史成功购买次数累计，达到该值后不能再次购买，适合首购特惠包。'
-    : '只统计仍在周期内的已生效权益，过期后释放名额，用于防止周期权益无限叠加。'
+    : '只限制同一用户同时存在的未支付订单，不阻止续费。'
 )
 
 const purchaseLimitSummaryText = computed(() => {
@@ -1195,7 +1195,7 @@ const purchaseLimitSummaryText = computed(() => {
   if (form.purchase_limit_scope === 'lifetime') {
     return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；同一用户历史成功购买本套餐达到 ${form.max_active_per_user || 1} 次后不能再买。`
   }
-  return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；同一用户在有效期内最多同时生效 ${form.max_active_per_user || 1} 份。`
+  return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；同一用户最多同时保留 ${form.max_active_per_user || 1} 个未支付订单，支付成功后同套餐自动顺延。`
 })
 
 const showWalletCreditConfig = computed(() =>

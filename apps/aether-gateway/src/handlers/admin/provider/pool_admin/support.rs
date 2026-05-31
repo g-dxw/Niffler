@@ -107,9 +107,18 @@ pub(crate) fn parse_admin_pool_status_filter(query: Option<&str>) -> Result<Stri
         .trim()
         .to_ascii_lowercase();
     match value.as_str() {
-        "all" | "active" | "inactive" | "cooldown" => Ok(value),
-        _ => Err("status must be one of: all, active, cooldown, inactive".to_string()),
+        "all" | "active" | "available" | "invalid" | "inactive" | "quota_exhausted"
+        | "cooldown" | "blocked" => Ok(value),
+        _ => Err("status must be one of: all, available, invalid, inactive, quota_exhausted, cooldown, blocked".to_string()),
     }
+}
+
+pub(crate) fn parse_admin_pool_plan_filter(query: Option<&str>) -> String {
+    query_param_value(query, "plan_type")
+        .or_else(|| query_param_value(query, "plan"))
+        .unwrap_or_else(|| "all".to_string())
+        .trim()
+        .to_ascii_lowercase()
 }
 
 pub(crate) fn parse_admin_pool_key_sort(query: Option<&str>) -> Result<AdminPoolKeySort, String> {

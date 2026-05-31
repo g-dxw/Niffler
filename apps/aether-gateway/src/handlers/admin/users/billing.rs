@@ -3,7 +3,9 @@ use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::{attach_admin_audit_response, unix_secs_to_rfc3339};
 use crate::handlers::shared::unix_ms_to_rfc3339;
 use crate::{GatewayError, LocalMutationOutcome};
-use aether_data_contracts::repository::billing::{BillingPlanRecord, UserPlanEntitlementRecord};
+use aether_data_contracts::repository::billing::{
+    BillingPlanRecord, UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
+};
 use axum::{
     body::{Body, Bytes},
     http,
@@ -12,7 +14,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Map, Number, Value};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
@@ -21,6 +23,16 @@ struct AdminGrantUserPlanRequest {
     plan_id: String,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    starts_at: Option<String>,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default)]
+    initial_remaining_quota_usd: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminUpdateUserPlanEntitlementRequest {
     #[serde(default)]
     starts_at: Option<String>,
     #[serde(default)]
@@ -227,6 +239,116 @@ fn billing_plan_snapshot_with_admin_grant_overrides(
     snapshot
 }
 
+fn unix_secs_to_datetime(value: u64, field_name: &str) -> Result<DateTime<Utc>, String> {
+    chrono::DateTime::from_timestamp(value as i64, 0)
+        .ok_or_else(|| format!("{field_name} 格式不正确"))
+}
+
+fn cap_entitlement_quota_snapshot(entitlements: &mut Value, cap: f64) {
+    if let Some(items) = entitlements.as_array_mut() {
+        for item in items {
+            cap_entitlement_quota_item(item, cap);
+        }
+        return;
+    }
+    cap_entitlement_quota_item(entitlements, cap);
+}
+
+fn cap_entitlement_quota_item(item: &mut Value, cap: f64) {
+    let is_quota = item
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|value| matches!(value, "daily_quota" | "usage_quota"))
+        || item.get("limits").is_some();
+    if !is_quota {
+        return;
+    }
+    if let Some(map) = item.as_object_mut() {
+        for key in [
+            "daily_quota_usd",
+            "five_hour_quota_usd",
+            "weekly_quota_usd",
+            "monthly_quota_usd",
+            "daily_limit_usd",
+            "five_hour_limit_usd",
+            "weekly_limit_usd",
+            "monthly_limit_usd",
+        ] {
+            cap_entitlement_quota_field(map, key, cap);
+        }
+        if let Some(limits) = map.get_mut("limits").and_then(Value::as_object_mut) {
+            for key in [
+                "daily_limit_usd",
+                "five_hour_limit_usd",
+                "weekly_limit_usd",
+                "monthly_limit_usd",
+            ] {
+                cap_entitlement_quota_field(limits, key, cap);
+            }
+        }
+    }
+}
+
+fn cap_entitlement_quota_field(map: &mut Map<String, Value>, key: &str, cap: f64) {
+    let Some(value) = map.get(key) else {
+        return;
+    };
+    let current = value
+        .as_f64()
+        .or_else(|| value.as_str().and_then(|text| text.parse::<f64>().ok()))
+        .unwrap_or(0.0);
+    if !current.is_finite() || current <= 0.0 {
+        return;
+    }
+    let Some(number) = Number::from_f64(current.min(cap)) else {
+        return;
+    };
+    map.insert(key.to_string(), Value::Number(number));
+}
+
+fn normalize_admin_update_entitlement_input(
+    payload: &AdminUpdateUserPlanEntitlementRequest,
+    current: &UserPlanEntitlementRecord,
+    now: DateTime<Utc>,
+) -> Result<UserPlanEntitlementUpdateInput, String> {
+    let requested_starts_at = parse_admin_grant_time(payload.starts_at.clone(), "开始时间")?;
+    let requested_expires_at = parse_admin_grant_time(payload.expires_at.clone(), "到期时间")?;
+    let starts_at = requested_starts_at
+        .or_else(|| unix_secs_to_datetime(current.starts_at_unix_secs, "开始时间").ok())
+        .ok_or_else(|| "开始时间格式不正确".to_string())?;
+    let expires_at = requested_expires_at
+        .or_else(|| unix_secs_to_datetime(current.expires_at_unix_secs, "到期时间").ok())
+        .ok_or_else(|| "到期时间格式不正确".to_string())?;
+    if starts_at > now {
+        return Err("开始时间不能晚于现在".to_string());
+    }
+    if expires_at <= starts_at {
+        return Err("到期时间必须晚于开始时间".to_string());
+    }
+    if expires_at <= now {
+        return Err("按这个时间计算，套餐已经过期；请填写新的到期时间".to_string());
+    }
+    if starts_at.timestamp() < 0 || expires_at.timestamp() < 0 {
+        return Err("时间不能早于 1970-01-01".to_string());
+    }
+
+    let entitlements_snapshot = match payload.initial_remaining_quota_usd {
+        Some(value) if value.is_finite() && value >= 0.0 => {
+            let mut snapshot = current.entitlements_snapshot.clone();
+            cap_entitlement_quota_snapshot(&mut snapshot, value);
+            Some(snapshot)
+        }
+        Some(_) => return Err("额度上限不能为负数".to_string()),
+        None => None,
+    };
+
+    Ok(UserPlanEntitlementUpdateInput {
+        starts_at_unix_secs: starts_at.timestamp().max(0) as u64,
+        expires_at_unix_secs: expires_at.timestamp().max(0) as u64,
+        entitlements_snapshot,
+    })
+}
+
 fn plan_has_package_rights(record: &BillingPlanRecord) -> bool {
     record.entitlements_json.as_array().is_some_and(|items| {
         items.iter().any(|item| {
@@ -387,6 +509,100 @@ pub(in super::super) async fn build_admin_cancel_user_billing_entitlement_respon
         .into_response(),
         "admin_user_plan_cancelled",
         "cancel_user_billing_entitlement",
+        "user",
+        &user_id,
+    ))
+}
+
+pub(in super::super) async fn build_admin_update_user_billing_entitlement_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    let Some((user_id, entitlement_id)) =
+        admin_user_and_entitlement_id_from_billing_path(request_context.path())
+    else {
+        return Ok(build_admin_users_bad_request_response("缺少套餐记录 ID"));
+    };
+    if state.find_user_auth_by_id(&user_id).await?.is_none() {
+        return Ok((
+            http::StatusCode::NOT_FOUND,
+            Json(json!({ "detail": "用户不存在" })),
+        )
+            .into_response());
+    }
+    let Some(body) = request_body else {
+        return Ok(build_admin_users_bad_request_response("缺少请求体"));
+    };
+    let payload = match serde_json::from_slice::<AdminUpdateUserPlanEntitlementRequest>(body) {
+        Ok(value) => value,
+        Err(_) => return Ok(build_admin_users_bad_request_response("输入验证失败")),
+    };
+    let existing_entitlements = match state.app().list_user_plan_entitlements(&user_id).await? {
+        Some(value) => value,
+        None => return Ok(build_admin_users_data_unavailable_response()),
+    };
+    let Some(current) = existing_entitlements
+        .iter()
+        .find(|item| item.id == entitlement_id)
+    else {
+        return Ok((
+            http::StatusCode::NOT_FOUND,
+            Json(json!({ "detail": "套餐不存在" })),
+        )
+            .into_response());
+    };
+    let now = Utc::now();
+    if current.status != "active" || current.expires_at_unix_secs <= now.timestamp().max(0) as u64 {
+        return Ok((
+            http::StatusCode::CONFLICT,
+            Json(json!({ "detail": "只能编辑当前仍有效的套餐" })),
+        )
+            .into_response());
+    }
+    let update_input = match normalize_admin_update_entitlement_input(&payload, current, now) {
+        Ok(value) => value,
+        Err(detail) => return Ok(build_admin_users_bad_request_response(detail)),
+    };
+    let outcome = state
+        .app()
+        .update_user_plan_entitlement(&user_id, &entitlement_id, &update_input)
+        .await?;
+    let updated = match outcome {
+        LocalMutationOutcome::Applied(value) => value,
+        LocalMutationOutcome::NotFound => {
+            return Ok((
+                http::StatusCode::NOT_FOUND,
+                Json(json!({ "detail": "套餐不存在或已经失效" })),
+            )
+                .into_response());
+        }
+        LocalMutationOutcome::Invalid(detail) => {
+            return Ok((
+                http::StatusCode::CONFLICT,
+                Json(json!({ "detail": detail })),
+            )
+                .into_response());
+        }
+        LocalMutationOutcome::Unavailable => {
+            return Ok(build_admin_users_data_unavailable_response());
+        }
+    };
+    let entitlements = match load_admin_user_entitlements_payload(state, &user_id).await? {
+        Some(value) => value,
+        None => return Ok(build_admin_users_data_unavailable_response()),
+    };
+    let now_unix_secs = Utc::now().timestamp().max(0) as u64;
+    Ok(attach_admin_audit_response(
+        Json(json!({
+            "updated": entitlement_payload(&updated, None, now_unix_secs),
+            "items": entitlements["items"].clone(),
+            "entitlements": entitlements["items"].clone(),
+            "total": entitlements["total"].clone(),
+        }))
+        .into_response(),
+        "admin_user_plan_updated",
+        "update_user_billing_entitlement",
         "user",
         &user_id,
     ))

@@ -972,6 +972,7 @@ mod tests {
         StoredBillingModelContext::new(
             "provider-1".to_string(),
             billing_type.map(ToOwned::to_owned),
+            None,
             Some("key-1".to_string()),
             rate_multipliers,
             Some(60),

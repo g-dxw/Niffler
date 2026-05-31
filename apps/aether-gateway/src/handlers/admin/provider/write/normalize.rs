@@ -1,5 +1,63 @@
 use std::collections::BTreeSet;
 
+pub(crate) fn normalize_cost_multiplier(
+    value: Option<f64>,
+    field_name: &str,
+) -> Result<Option<f64>, String> {
+    match value {
+        Some(value) if value.is_finite() && value >= 0.0 => Ok(Some(value)),
+        Some(_) => Err(format!("{field_name} 必须是非负数")),
+        None => Ok(None),
+    }
+}
+
+pub(crate) fn apply_billing_cost_multiplier(
+    config_map: &mut serde_json::Map<String, serde_json::Value>,
+    value: Option<f64>,
+) {
+    match value {
+        Some(value) => {
+            let billing = config_map
+                .entry("billing".to_string())
+                .or_insert_with(|| serde_json::json!({}));
+            if !billing.is_object() {
+                *billing = serde_json::json!({});
+            }
+            if let Some(map) = billing.as_object_mut() {
+                map.insert("cost_multiplier".to_string(), serde_json::json!(value));
+            }
+        }
+        None => {
+            if let Some(billing) = config_map
+                .get_mut("billing")
+                .and_then(|value| value.as_object_mut())
+            {
+                billing.remove("cost_multiplier");
+                if billing.is_empty() {
+                    config_map.remove("billing");
+                }
+            }
+        }
+    }
+}
+
+pub(crate) fn read_billing_cost_multiplier(config: Option<&serde_json::Value>) -> Option<f64> {
+    config
+        .and_then(serde_json::Value::as_object)
+        .and_then(|object| object.get("billing"))
+        .and_then(serde_json::Value::as_object)
+        .and_then(|object| object.get("cost_multiplier"))
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .or_else(|| {
+            config
+                .and_then(serde_json::Value::as_object)
+                .and_then(|object| object.get("cost_multiplier"))
+                .and_then(serde_json::Value::as_f64)
+                .filter(|value| value.is_finite() && *value >= 0.0)
+        })
+}
+
 pub(crate) fn normalize_provider_type_input(value: &str) -> Result<String, String> {
     let normalized = value.trim().to_ascii_lowercase();
     match normalized.as_str() {

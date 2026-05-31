@@ -353,6 +353,11 @@ pub(crate) fn admin_proxy_local_requires_buffered_body(
                     http::Method::DELETE,
                     Some("cancel_user_billing_entitlement"),
                 )
+                | (
+                    Some("users_manage"),
+                    http::Method::PATCH,
+                    Some("update_user_billing_entitlement"),
+                )
                 | (Some("users_manage"), http::Method::PUT, Some("update_user"))
                 | (Some("users_manage"), http::Method::POST, Some("create_user_group"))
                 | (Some("users_manage"), http::Method::PUT, Some("update_user_group"))

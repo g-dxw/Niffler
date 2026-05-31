@@ -98,6 +98,7 @@ export async function updateProvider(
     provider_priority: number
     keep_priority_on_conversion: boolean
     billing_type: 'monthly_quota' | 'pay_as_you_go' | 'free_tier'
+    cost_multiplier: number | null
     monthly_quota_usd: number
     quota_reset_day: number
     quota_last_reset_at: string  // 周期开始时间
@@ -131,6 +132,7 @@ export async function createProvider(
     description?: string
     website?: string
     billing_type?: 'monthly_quota' | 'pay_as_you_go' | 'free_tier'
+    cost_multiplier?: number | null
     monthly_quota_usd?: number
     quota_reset_day?: number
     quota_last_reset_at?: string

@@ -121,6 +121,23 @@ fn merge_admin_provider_model_effective_config(model: &StoredAdminProviderModel)
     }
 }
 
+fn model_cost_multiplier(config: Option<&Value>) -> Option<f64> {
+    config
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("billing"))
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("cost_multiplier"))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .or_else(|| {
+            config
+                .and_then(Value::as_object)
+                .and_then(|object| object.get("cost_multiplier"))
+                .and_then(Value::as_f64)
+                .filter(|value| value.is_finite() && *value >= 0.0)
+        })
+}
+
 fn timestamp_or_now(value: Option<u64>, now_unix_secs: u64) -> Value {
     unix_secs_to_rfc3339(value.unwrap_or(now_unix_secs))
         .map(Value::String)
@@ -201,6 +218,7 @@ pub fn build_admin_provider_model_response(
         "provider_model_name": &model.provider_model_name,
         "provider_model_mappings": model.provider_model_mappings.clone(),
         "price_per_request": model.price_per_request,
+        "cost_multiplier": model_cost_multiplier(model.config.as_ref()),
         "tiered_pricing": model.tiered_pricing.clone(),
         "effective_tiered_pricing": effective_tiered_pricing,
         "effective_input_price": admin_provider_model_effective_input_price(model),

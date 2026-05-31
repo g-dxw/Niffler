@@ -323,6 +323,7 @@ fn map_pricing_context(context: StoredBillingModelContext) -> BillingModelPricin
     BillingModelPricingSnapshot {
         provider_id: context.provider_id,
         provider_billing_type: context.provider_billing_type,
+        provider_config: context.provider_config,
         provider_api_key_id: context.provider_api_key_id,
         provider_api_key_rate_multipliers: context.provider_api_key_rate_multipliers,
         provider_api_key_cache_ttl_minutes: context.provider_api_key_cache_ttl_minutes,
@@ -484,6 +485,7 @@ mod tests {
                 StoredBillingModelContext::new(
                     "provider-1".to_string(),
                     Some("pay_as_you_go".to_string()),
+                    None,
                     Some("key-1".to_string()),
                     Some(json!({"openai:chat": 0.5})),
                     Some(60),
@@ -546,6 +548,7 @@ mod tests {
                 StoredBillingModelContext::new(
                     "provider-1".to_string(),
                     Some("pay_as_you_go".to_string()),
+                    None,
                     Some("key-1".to_string()),
                     None,
                     None,
@@ -630,6 +633,7 @@ mod tests {
                 StoredBillingModelContext::new(
                     "provider-1".to_string(),
                     Some("pay_as_you_go".to_string()),
+                    None,
                     Some("key-1".to_string()),
                     None,
                     None,
@@ -724,6 +728,7 @@ mod tests {
                 StoredBillingModelContext::new(
                     "provider-1".to_string(),
                     Some("pay_as_you_go".to_string()),
+                    None,
                     Some("key-1".to_string()),
                     Some(json!({"openai:responses": 0.5})),
                     Some(60),
@@ -845,6 +850,7 @@ mod tests {
         let blank_name_context = StoredBillingModelContext::new(
             "provider-1".to_string(),
             Some("pay_as_you_go".to_string()),
+            None,
             Some("key-1".to_string()),
             None,
             Some(60),
@@ -863,6 +869,7 @@ mod tests {
         let priced_model_context = StoredBillingModelContext::new(
             "provider-1".to_string(),
             Some("pay_as_you_go".to_string()),
+            None,
             Some("key-1".to_string()),
             None,
             Some(60),

@@ -1,5 +1,6 @@
 use super::{
-    auth_password_policy_level, build_auth_error_response, build_auth_wallet_summary_payload,
+    auth_password_policy_level, base_url_from_request, build_auth_error_response,
+    build_auth_json_response, build_auth_wallet_summary_payload,
     decrypt_catalog_secret_with_fallbacks, encrypt_catalog_secret_with_fallbacks, handle_auth_me,
     handle_users_me_api_key_install_session_create, query_param_optional_bool, query_param_value,
     resolve_authenticated_local_user, sanitize_public_model_config_for_user, unix_secs_to_rfc3339,
@@ -37,6 +38,9 @@ use user_me_referral::*;
 #[path = "user_me_profile.rs"]
 mod user_me_profile;
 use user_me_profile::*;
+#[path = "user_me_public_base.rs"]
+mod user_me_public_base;
+use user_me_public_base::*;
 #[path = "user_me_sessions.rs"]
 mod user_me_sessions;
 use user_me_sessions::*;

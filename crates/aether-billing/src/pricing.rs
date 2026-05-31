@@ -5,6 +5,7 @@ use serde_json::Value;
 pub struct BillingModelPricingSnapshot {
     pub provider_id: String,
     pub provider_billing_type: Option<String>,
+    pub provider_config: Option<Value>,
     pub provider_api_key_id: Option<String>,
     pub provider_api_key_rate_multipliers: Option<Value>,
     pub provider_api_key_cache_ttl_minutes: Option<i64>,
@@ -56,7 +57,19 @@ impl BillingModelPricingSnapshot {
             .unwrap_or(false)
     }
 
-    pub fn rate_multiplier_for_api_format(&self, api_format: Option<&str>) -> f64 {
+    pub fn actual_cost_multiplier_for_api_format(&self, api_format: Option<&str>) -> f64 {
+        self.model_config
+            .as_ref()
+            .and_then(cost_multiplier_from_config)
+            .or_else(|| {
+                self.provider_config
+                    .as_ref()
+                    .and_then(cost_multiplier_from_config)
+            })
+            .unwrap_or_else(|| self.rate_multiplier_for_api_format(api_format))
+    }
+
+    fn rate_multiplier_for_api_format(&self, api_format: Option<&str>) -> f64 {
         let Some(api_format) = api_format.map(str::trim).filter(|value| !value.is_empty()) else {
             return 1.0;
         };
@@ -73,6 +86,21 @@ impl BillingModelPricingSnapshot {
             .and_then(|value| value.as_f64())
             .unwrap_or(1.0)
     }
+}
+
+fn cost_multiplier_from_config(config: &Value) -> Option<f64> {
+    let direct = config
+        .get("cost_multiplier")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0);
+    direct.or_else(|| {
+        config
+            .get("billing")
+            .and_then(Value::as_object)
+            .and_then(|object| object.get("cost_multiplier"))
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value >= 0.0)
+    })
 }
 
 fn has_pricing_data(value: &Value) -> bool {
@@ -113,6 +141,7 @@ mod tests {
         BillingModelPricingSnapshot {
             provider_id: "provider-1".to_string(),
             provider_billing_type: None,
+            provider_config: None,
             provider_api_key_id: None,
             provider_api_key_rate_multipliers: None,
             provider_api_key_cache_ttl_minutes: None,
@@ -151,6 +180,31 @@ mod tests {
         let pricing = snapshot(Some(provider_pricing.clone()), Some(default_pricing));
 
         assert_eq!(pricing.effective_tiered_pricing(), Some(&provider_pricing));
+    }
+
+    #[test]
+    fn model_cost_multiplier_overrides_provider_and_key_multiplier() {
+        let mut pricing = snapshot(None, None);
+        pricing.provider_config = Some(json!({"billing": {"cost_multiplier": 0.4}}));
+        pricing.provider_api_key_rate_multipliers = Some(json!({"openai:chat": 0.8}));
+        pricing.model_config = Some(json!({"billing": {"cost_multiplier": 0.2}}));
+
+        assert_eq!(
+            pricing.actual_cost_multiplier_for_api_format(Some("openai:chat")),
+            0.2
+        );
+    }
+
+    #[test]
+    fn provider_cost_multiplier_overrides_key_multiplier() {
+        let mut pricing = snapshot(None, None);
+        pricing.provider_config = Some(json!({"billing": {"cost_multiplier": 0.4}}));
+        pricing.provider_api_key_rate_multipliers = Some(json!({"openai:chat": 0.8}));
+
+        assert_eq!(
+            pricing.actual_cost_multiplier_for_api_format(Some("openai:chat")),
+            0.4
+        );
     }
 }
 

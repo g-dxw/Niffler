@@ -12,7 +12,7 @@ use super::{
     AdminBillingPresetApplyResult, AdminBillingRuleRecord, AdminBillingRuleWriteInput,
     BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository, PaymentGatewayConfigRecord,
     PaymentGatewayConfigWriteInput, StoredBillingModelContext, UserDailyQuotaAvailabilityRecord,
-    UserPlanEntitlementRecord,
+    UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
 };
 use crate::{error::SqlxResultExt, DataLayerError};
 
@@ -20,6 +20,7 @@ const FIND_MODEL_CONTEXT_SQL: &str = r#"
 SELECT
   p.id AS provider_id,
   CAST(p.billing_type AS TEXT) AS provider_billing_type,
+  p.config AS provider_config,
   pak.id AS provider_api_key_id,
   pak.rate_multipliers AS provider_api_key_rate_multipliers,
   pak.cache_ttl_minutes AS provider_api_key_cache_ttl_minutes,
@@ -84,6 +85,7 @@ const FIND_MODEL_CONTEXT_BY_MODEL_ID_SQL: &str = r#"
 SELECT
   p.id AS provider_id,
   CAST(p.billing_type AS TEXT) AS provider_billing_type,
+  p.config AS provider_config,
   pak.id AS provider_api_key_id,
   pak.rate_multipliers AS provider_api_key_rate_multipliers,
   pak.cache_ttl_minutes AS provider_api_key_cache_ttl_minutes,
@@ -987,9 +989,7 @@ SELECT
   CAST(EXTRACT(EPOCH FROM updated_at) AS BIGINT) AS updated_at_unix_secs
 FROM user_plan_entitlements
 WHERE user_id = $1
-  AND status = 'active'
-  AND expires_at > NOW()
-ORDER BY expires_at ASC, created_at ASC
+ORDER BY created_at DESC, expires_at DESC
             "#,
         )
         .bind(user_id)
@@ -1030,6 +1030,49 @@ RETURNING
         )
         .bind(entitlement_id)
         .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_postgres_err()?;
+        match row {
+            Some(row) => Ok(AdminBillingMutationOutcome::Applied(
+                map_user_plan_entitlement_row(&row)?,
+            )),
+            None => Ok(AdminBillingMutationOutcome::NotFound),
+        }
+    }
+
+    async fn update_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+        input: &UserPlanEntitlementUpdateInput,
+    ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET
+  starts_at = to_timestamp($3),
+  expires_at = to_timestamp($4),
+  entitlements_snapshot = COALESCE($5, entitlements_snapshot),
+  updated_at = NOW()
+WHERE id = $1
+  AND user_id = $2
+  AND status = 'active'
+  AND expires_at > NOW()
+RETURNING
+  id, user_id, plan_id, payment_order_id, status,
+  CAST(EXTRACT(EPOCH FROM starts_at) AS BIGINT) AS starts_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs,
+  entitlements_snapshot,
+  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM updated_at) AS BIGINT) AS updated_at_unix_secs
+            "#,
+        )
+        .bind(entitlement_id)
+        .bind(user_id)
+        .bind(input.starts_at_unix_secs as i64)
+        .bind(input.expires_at_unix_secs as i64)
+        .bind(input.entitlements_snapshot.clone())
         .fetch_optional(&self.pool)
         .await
         .map_postgres_err()?;
@@ -1216,6 +1259,7 @@ fn map_row(row: &sqlx::postgres::PgRow) -> Result<StoredBillingModelContext, Dat
     StoredBillingModelContext::new(
         row.try_get("provider_id").map_postgres_err()?,
         row.try_get("provider_billing_type").map_postgres_err()?,
+        row.try_get("provider_config").map_postgres_err()?,
         row.try_get("provider_api_key_id").map_postgres_err()?,
         row.try_get("provider_api_key_rate_multipliers")
             .map_postgres_err()?,

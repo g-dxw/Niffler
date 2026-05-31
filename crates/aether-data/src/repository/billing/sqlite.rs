@@ -12,7 +12,7 @@ use super::{
     AdminBillingPresetApplyResult, AdminBillingRuleRecord, AdminBillingRuleWriteInput,
     BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository, PaymentGatewayConfigRecord,
     PaymentGatewayConfigWriteInput, StoredBillingModelContext, UserDailyQuotaAvailabilityRecord,
-    UserPlanEntitlementRecord,
+    UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
 };
 use crate::driver::sqlite::{sqlite_optional_real, SqlitePool};
 use crate::error::SqlResultExt;
@@ -22,6 +22,7 @@ const MODEL_CONTEXT_COLUMNS: &str = r#"
 SELECT
   p.id AS provider_id,
   p.billing_type AS provider_billing_type,
+  p.config AS provider_config,
   pak.id AS provider_api_key_id,
   pak.rate_multipliers AS provider_api_key_rate_multipliers,
   pak.cache_ttl_minutes AS provider_api_key_cache_ttl_minutes,
@@ -907,13 +908,10 @@ SELECT
   updated_at AS updated_at_unix_secs
 FROM user_plan_entitlements
 WHERE user_id = ?
-  AND status = 'active'
-  AND expires_at > ?
-ORDER BY expires_at ASC, created_at ASC
+ORDER BY created_at DESC, expires_at DESC
             "#,
         )
         .bind(user_id)
-        .bind(current_unix_secs_i64())
         .fetch_all(&self.pool)
         .await
         .map_sql_err()?;
@@ -941,6 +939,65 @@ WHERE id = ?
             "#,
         )
         .bind(now)
+        .bind(now)
+        .bind(entitlement_id)
+        .bind(user_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        if result.rows_affected() == 0 {
+            return Ok(AdminBillingMutationOutcome::NotFound);
+        }
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, user_id, plan_id, payment_order_id, status,
+  starts_at AS starts_at_unix_secs, expires_at AS expires_at_unix_secs,
+  entitlements_snapshot, created_at AS created_at_unix_secs,
+  updated_at AS updated_at_unix_secs
+FROM user_plan_entitlements
+WHERE id = ? AND user_id = ?
+            "#,
+        )
+        .bind(entitlement_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        match row {
+            Some(row) => Ok(AdminBillingMutationOutcome::Applied(
+                map_user_plan_entitlement_sqlite(&row)?,
+            )),
+            None => Ok(AdminBillingMutationOutcome::NotFound),
+        }
+    }
+
+    async fn update_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+        input: &UserPlanEntitlementUpdateInput,
+    ) -> Result<AdminBillingMutationOutcome<UserPlanEntitlementRecord>, DataLayerError> {
+        let now = current_unix_secs_i64();
+        let entitlements_snapshot = input
+            .entitlements_snapshot
+            .as_ref()
+            .map(json_to_string)
+            .transpose()?;
+        let result = sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET starts_at = ?, expires_at = ?, entitlements_snapshot = COALESCE(?, entitlements_snapshot), updated_at = ?
+WHERE id = ?
+  AND user_id = ?
+  AND status = 'active'
+  AND expires_at > ?
+            "#,
+        )
+        .bind(input.starts_at_unix_secs as i64)
+        .bind(input.expires_at_unix_secs as i64)
+        .bind(entitlements_snapshot)
         .bind(now)
         .bind(entitlement_id)
         .bind(user_id)
@@ -1227,6 +1284,7 @@ fn map_row(row: &SqliteRow) -> Result<StoredBillingModelContext, DataLayerError>
     StoredBillingModelContext::new(
         row.try_get("provider_id").map_sql_err()?,
         row.try_get("provider_billing_type").map_sql_err()?,
+        parse_json(row.try_get("provider_config").ok().flatten())?,
         row.try_get("provider_api_key_id").map_sql_err()?,
         parse_json(
             row.try_get("provider_api_key_rate_multipliers")

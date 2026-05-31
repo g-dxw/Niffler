@@ -2,9 +2,10 @@ use crate::handlers::admin::provider::shared::payloads::AdminProviderCreateReque
 use crate::handlers::admin::provider::shared::support::{
     normalize_provider_billing_type, parse_optional_rfc3339_unix_secs,
 };
-use crate::handlers::admin::provider::write::normalize::normalize_chat_pii_redaction_config;
-use crate::handlers::admin::provider::write::normalize::normalize_pool_advanced_config;
-use crate::handlers::admin::provider::write::normalize::normalize_provider_type_input;
+use crate::handlers::admin::provider::write::normalize::{
+    apply_billing_cost_multiplier, normalize_chat_pii_redaction_config, normalize_cost_multiplier,
+    normalize_pool_advanced_config, normalize_provider_type_input,
+};
 use crate::handlers::admin::request::AdminAppState;
 use crate::handlers::admin::shared::normalize_json_object;
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogProvider;
@@ -134,6 +135,11 @@ pub(crate) async fn build_admin_create_provider_record(
             return Err("claude_code_advanced 仅适用于 provider_type=claude_code".to_string());
         }
         config_map.insert("claude_code_advanced".to_string(), value);
+    }
+    if let Some(cost_multiplier) =
+        normalize_cost_multiplier(payload.cost_multiplier, "cost_multiplier")?
+    {
+        apply_billing_cost_multiplier(&mut config_map, Some(cost_multiplier));
     }
     if config_map.contains_key("chat_pii_redaction") {
         let value = normalize_chat_pii_redaction_config(config_map.remove("chat_pii_redaction"))?;

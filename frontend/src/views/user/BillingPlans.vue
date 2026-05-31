@@ -312,7 +312,7 @@ async function loadRechargeOptions() {
 
 async function checkoutPlan(plan: BillingPlan) {
   if (hasMatchingActivePlan(plan)) {
-    const confirmed = window.confirm('购买后新套餐会立即生效，当前同类套餐会停止使用，剩余时间和额度不会叠加。确定继续购买吗？')
+    const confirmed = window.confirm('你已经有这个套餐，购买成功后会从当前到期时间后继续生效。确定继续购买吗？')
     if (!confirmed) return
   }
   checkoutLoadingPlanId.value = plan.id
@@ -386,22 +386,14 @@ function planTitle(planId: string): string {
 }
 
 function hasMatchingActivePlan(plan: BillingPlan): boolean {
-  const replacesDailyQuota = hasDailyQuotaEntitlement(plan.entitlements)
-  const replacesMembership = hasMembershipEntitlement(plan.entitlements)
-  if (!replacesDailyQuota && !replacesMembership) return false
-  return activeEntitlements.value.some((item) =>
-    (replacesDailyQuota && hasDailyQuotaEntitlement(item.entitlements))
-    || (replacesMembership && hasMembershipEntitlement(item.entitlements))
-  )
+  return activeEntitlements.value.some((item) => item.plan_id === plan.id)
 }
 
 function replacementNotice(plan: BillingPlan): string {
-  const labels = replacementClassLabels(plan.entitlements)
-  if (labels.length === 0) return ''
   if (hasMatchingActivePlan(plan)) {
-    return `购买后新${labels.join('和')}会立即生效，当前同类套餐会停止使用，剩余时间和额度不会叠加。`
+    return '你已经有这个套餐，购买成功后会从当前到期时间后继续生效。'
   }
-  return `购买后立即生效；若你已有同类套餐，新套餐会替换旧套餐，剩余时间和额度不会叠加。`
+  return ''
 }
 
 function entitlementLabels(items: BillingEntitlementsInput): string[] {
@@ -421,12 +413,6 @@ function entitlementLabels(items: BillingEntitlementsInput): string[] {
 
 function hasPackageEntitlement(items: BillingEntitlementsInput): boolean {
   return hasPackageBillingEntitlement(items)
-}
-
-function hasDailyQuotaEntitlement(items: BillingEntitlementsInput): boolean {
-  return normalizeBillingEntitlements(items).some((item) =>
-    item.type === 'daily_quota' || Boolean((item as DailyQuotaEntitlement).limits)
-  )
 }
 
 function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
@@ -449,17 +435,6 @@ function quotaModelScopeLabel(modelIds?: string[]): string {
     return '全部模型'
   }
   return `可用模型 ${modelIds.length} 个`
-}
-
-function hasMembershipEntitlement(items: BillingEntitlementsInput): boolean {
-  return normalizeBillingEntitlements(items).some((item) => item.type === 'membership_group')
-}
-
-function replacementClassLabels(items: BillingEntitlementsInput): string[] {
-  const labels: string[] = []
-  if (hasDailyQuotaEntitlement(items)) labels.push('用量额度套餐')
-  if (hasMembershipEntitlement(items)) labels.push('会员权益包')
-  return labels
 }
 
 function formatDuration(unit: BillingDurationUnit, value: number): string {

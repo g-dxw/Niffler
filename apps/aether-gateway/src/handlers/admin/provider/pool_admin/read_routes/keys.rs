@@ -1,11 +1,11 @@
 use super::{
     admin_pool_provider_id_from_path, admin_provider_pool_config, build_admin_pool_error_response,
     parse_admin_pool_key_sort, parse_admin_pool_page, parse_admin_pool_page_size,
-    parse_admin_pool_quick_selectors, parse_admin_pool_search, parse_admin_pool_status_filter,
-    pool_payloads, pool_selection, read_admin_provider_pool_cooldown_key_ids,
-    read_admin_provider_pool_runtime_state, AdminPoolKeySort, AdminPoolKeySortDirection,
-    AdminPoolKeySortField, AdminProviderPoolRuntimeState, ProviderCatalogKeyListOrder,
-    ProviderCatalogKeyListQuery, ADMIN_POOL_PROVIDER_CATALOG_READER_UNAVAILABLE_DETAIL,
+    parse_admin_pool_plan_filter, parse_admin_pool_quick_selectors, parse_admin_pool_search,
+    parse_admin_pool_status_filter, pool_payloads, pool_selection,
+    read_admin_provider_pool_cooldown_key_ids, read_admin_provider_pool_runtime_state,
+    AdminPoolKeySort, AdminPoolKeySortDirection, AdminPoolKeySortField,
+    AdminProviderPoolRuntimeState, ADMIN_POOL_PROVIDER_CATALOG_READER_UNAVAILABLE_DETAIL,
 };
 use crate::ai_serving::{provider_key_pool_score_id, provider_key_pool_score_scope};
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
@@ -24,15 +24,161 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::{
     cmp::Ordering,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 type AdminPoolCodexCycleUsageByKey =
     BTreeMap<String, BTreeMap<String, StoredProviderApiKeyWindowUsageSummary>>;
+
+fn admin_pool_status_snapshot_bool(key: &StoredProviderCatalogKey, path: &[&str]) -> bool {
+    let mut current = key.status_snapshot.as_ref();
+    for segment in path {
+        current = current.and_then(|value| value.get(*segment));
+    }
+    current.and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn admin_pool_key_status_bucket(
+    key: &StoredProviderCatalogKey,
+    provider_type: &str,
+    cooldown_key_ids: &BTreeSet<String>,
+) -> &'static str {
+    if !key.is_active {
+        return "inactive";
+    }
+    if key.oauth_invalid_at_unix_secs.is_some()
+        || admin_pool_status_snapshot_bool(key, &["oauth", "invalid"])
+    {
+        return "invalid";
+    }
+    if admin_pool_status_snapshot_bool(key, &["account", "blocked"])
+        || pool_selection::admin_pool_key_is_known_banned(key)
+    {
+        return "blocked";
+    }
+    if admin_provider_pool_pure::admin_pool_key_account_quota_exhausted(key, provider_type) {
+        return "quota_exhausted";
+    }
+    if cooldown_key_ids.contains(&key.id) {
+        return "cooldown";
+    }
+    "available"
+}
+
+fn admin_pool_status_filter_matches(
+    status_filter: &str,
+    status_bucket: &str,
+    key: &StoredProviderCatalogKey,
+) -> bool {
+    match status_filter {
+        "all" => true,
+        "active" => key.is_active,
+        "available" => status_bucket == "available",
+        "invalid" => status_bucket == "invalid",
+        "inactive" => status_bucket == "inactive",
+        "quota_exhausted" => status_bucket == "quota_exhausted",
+        "cooldown" => status_bucket == "cooldown",
+        "blocked" => status_bucket == "blocked",
+        _ => true,
+    }
+}
+
+fn admin_pool_key_plan_bucket(
+    state: &AdminAppState<'_>,
+    key: &StoredProviderCatalogKey,
+    provider_type: &str,
+) -> String {
+    pool_selection::admin_pool_derive_plan_tier(state, key, provider_type)
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn admin_pool_plan_filter_matches(plan_filter: &str, plan_bucket: &str) -> bool {
+    plan_filter == "all" || plan_filter == plan_bucket
+}
+
+fn admin_pool_plan_label(code: &str) -> &'static str {
+    match code {
+        "free" => "Free",
+        "plus" => "Plus",
+        "team" => "Team",
+        "pro" => "Pro",
+        "enterprise" => "Enterprise",
+        "unknown" => "未知",
+        _ => "其他",
+    }
+}
+
+fn admin_pool_status_label(code: &str) -> &'static str {
+    match code {
+        "available" => "可用",
+        "invalid" => "已失效",
+        "inactive" => "禁用",
+        "quota_exhausted" => "额度耗尽",
+        "cooldown" => "冷却中",
+        "blocked" => "异常",
+        _ => "其他",
+    }
+}
+
+fn admin_pool_key_summary_payload(
+    state: &AdminAppState<'_>,
+    keys: &[StoredProviderCatalogKey],
+    provider_type: &str,
+    cooldown_key_ids: &BTreeSet<String>,
+) -> serde_json::Value {
+    let mut by_plan: BTreeMap<String, usize> = BTreeMap::new();
+    let mut by_status: BTreeMap<String, usize> = BTreeMap::new();
+    for key in keys {
+        let plan_bucket = admin_pool_key_plan_bucket(state, key, provider_type);
+        *by_plan.entry(plan_bucket).or_default() += 1;
+        let status_bucket = admin_pool_key_status_bucket(key, provider_type, cooldown_key_ids);
+        *by_status.entry(status_bucket.to_string()).or_default() += 1;
+    }
+    let plan_order = ["free", "plus", "team", "pro", "enterprise", "unknown"];
+    let status_order = [
+        "available",
+        "invalid",
+        "inactive",
+        "quota_exhausted",
+        "cooldown",
+        "blocked",
+    ];
+    let plans = plan_order
+        .iter()
+        .filter_map(|code| {
+            by_plan.get(*code).map(|count| {
+                json!({
+                    "code": code,
+                    "label": admin_pool_plan_label(code),
+                    "count": count,
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    let statuses = status_order
+        .iter()
+        .filter_map(|code| {
+            by_status.get(*code).map(|count| {
+                json!({
+                    "code": code,
+                    "label": admin_pool_status_label(code),
+                    "count": count,
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "total": keys.len(),
+        "plans": plans,
+        "statuses": statuses,
+    })
+}
 
 fn admin_pool_json_u64(value: Option<&serde_json::Value>) -> Option<u64> {
     match value {
@@ -271,25 +417,6 @@ fn admin_pool_sort_keys_by_score(
     });
 }
 
-fn admin_pool_repository_key_order(sort: AdminPoolKeySort) -> ProviderCatalogKeyListOrder {
-    match (sort.field, sort.direction) {
-        (AdminPoolKeySortField::Default, _) => ProviderCatalogKeyListOrder::Name,
-        (AdminPoolKeySortField::ImportedAt, AdminPoolKeySortDirection::Asc) => {
-            ProviderCatalogKeyListOrder::CreatedAtAsc
-        }
-        (AdminPoolKeySortField::ImportedAt, AdminPoolKeySortDirection::Desc) => {
-            ProviderCatalogKeyListOrder::CreatedAtDesc
-        }
-        (AdminPoolKeySortField::LastUsedAt, AdminPoolKeySortDirection::Asc) => {
-            ProviderCatalogKeyListOrder::LastUsedAtAsc
-        }
-        (AdminPoolKeySortField::LastUsedAt, AdminPoolKeySortDirection::Desc) => {
-            ProviderCatalogKeyListOrder::LastUsedAtDesc
-        }
-        (AdminPoolKeySortField::Score, _) => ProviderCatalogKeyListOrder::Name,
-    }
-}
-
 pub(super) async fn build_admin_pool_list_keys_response(
     state: &AdminAppState<'_>,
     request_context: &AdminRequestContext<'_>,
@@ -339,6 +466,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
             ));
         }
     };
+    let plan_filter = parse_admin_pool_plan_filter(query);
     let sort = match parse_admin_pool_key_sort(query) {
         Ok(value) => value,
         Err(detail) => {
@@ -364,121 +492,67 @@ pub(super) async fn build_admin_pool_list_keys_response(
     let pool_config = admin_provider_pool_config(&provider);
     let page_offset = page.saturating_sub(1).saturating_mul(page_size);
     let sort_by_score = matches!(sort.field, AdminPoolKeySortField::Score);
-
-    let (keys, total, preloaded_pool_scores_by_key_id) = if status == "cooldown" {
-        let cooldown_key_ids =
-            read_admin_provider_pool_cooldown_key_ids(state.runtime_state(), &provider.id).await;
-        let mut keys = if cooldown_key_ids.is_empty() {
-            Vec::new()
-        } else {
-            state
-                .read_provider_catalog_keys_by_ids(&cooldown_key_ids)
-                .await?
-        };
-        if let Some(keyword) = search.as_ref() {
-            keys.retain(|key| {
-                pool_selection::admin_pool_matches_search(
+    let cooldown_key_ids =
+        read_admin_provider_pool_cooldown_key_ids(state.runtime_state(), &provider.id)
+            .await
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+    let mut all_keys = state
+        .list_provider_catalog_keys_by_provider_ids(std::slice::from_ref(&provider.id))
+        .await?
+        .into_iter()
+        .filter(|key| {
+            pool_selection::admin_pool_matches_search(
+                state,
+                key,
+                &provider.provider_type,
+                search.as_deref(),
+            )
+        })
+        .filter(|key| {
+            quick_selectors.iter().all(|selector| {
+                pool_selection::admin_pool_matches_quick_selector(
                     state,
                     key,
                     &provider.provider_type,
-                    Some(keyword),
-                )
-            });
-        }
-        if !quick_selectors.is_empty() {
-            keys.retain(|key| {
-                quick_selectors.iter().all(|selector| {
-                    pool_selection::admin_pool_matches_quick_selector(
-                        state,
-                        key,
-                        &provider.provider_type,
-                        selector,
-                    )
-                })
-            });
-        }
-        let preloaded_pool_scores_by_key_id = if sort_by_score {
-            let key_ids = keys.iter().map(|key| key.id.clone()).collect::<Vec<_>>();
-            let scores = read_admin_pool_scores_by_key_id(state, &provider.id, &key_ids)
-                .await
-                .unwrap_or_default();
-            admin_pool_sort_keys_by_score(&mut keys, &scores, sort.direction);
-            Some(scores)
-        } else {
-            admin_pool_sort_keys_for_request(&mut keys, sort);
-            None
-        };
-        let total = keys.len();
-        let keys = keys
-            .into_iter()
-            .skip(page_offset)
-            .take(page_size)
-            .collect::<Vec<_>>();
-        (keys, total, preloaded_pool_scores_by_key_id)
-    } else if !quick_selectors.is_empty() || sort_by_score {
-        let mut keys = state
-            .list_provider_catalog_keys_by_provider_ids(std::slice::from_ref(&provider.id))
-            .await?
-            .into_iter()
-            .filter(|key| match status.as_str() {
-                "active" => key.is_active,
-                "inactive" => !key.is_active,
-                _ => true,
-            })
-            .filter(|key| {
-                pool_selection::admin_pool_matches_search(
-                    state,
-                    key,
-                    &provider.provider_type,
-                    search.as_deref(),
+                    selector,
                 )
             })
-            .filter(|key| {
-                quick_selectors.iter().all(|selector| {
-                    pool_selection::admin_pool_matches_quick_selector(
-                        state,
-                        key,
-                        &provider.provider_type,
-                        selector,
-                    )
-                })
-            })
+        })
+        .collect::<Vec<_>>();
+    let summary = admin_pool_key_summary_payload(
+        state,
+        &all_keys,
+        &provider.provider_type,
+        &cooldown_key_ids,
+    );
+    all_keys.retain(|key| {
+        let plan_bucket = admin_pool_key_plan_bucket(state, key, &provider.provider_type);
+        let status_bucket =
+            admin_pool_key_status_bucket(key, &provider.provider_type, &cooldown_key_ids);
+        admin_pool_plan_filter_matches(&plan_filter, &plan_bucket)
+            && admin_pool_status_filter_matches(&status, status_bucket, key)
+    });
+    let preloaded_pool_scores_by_key_id = if sort_by_score {
+        let key_ids = all_keys
+            .iter()
+            .map(|key| key.id.clone())
             .collect::<Vec<_>>();
-        let preloaded_pool_scores_by_key_id = if sort_by_score {
-            let key_ids = keys.iter().map(|key| key.id.clone()).collect::<Vec<_>>();
-            let scores = read_admin_pool_scores_by_key_id(state, &provider.id, &key_ids)
-                .await
-                .unwrap_or_default();
-            admin_pool_sort_keys_by_score(&mut keys, &scores, sort.direction);
-            Some(scores)
-        } else {
-            admin_pool_sort_keys_for_request(&mut keys, sort);
-            None
-        };
-        let total = keys.len();
-        let keys = keys
-            .into_iter()
-            .skip(page_offset)
-            .take(page_size)
-            .collect::<Vec<_>>();
-        (keys, total, preloaded_pool_scores_by_key_id)
+        let scores = read_admin_pool_scores_by_key_id(state, &provider.id, &key_ids)
+            .await
+            .unwrap_or_default();
+        admin_pool_sort_keys_by_score(&mut all_keys, &scores, sort.direction);
+        Some(scores)
     } else {
-        let key_page = state
-            .list_provider_catalog_key_page(&ProviderCatalogKeyListQuery {
-                provider_id: provider.id.clone(),
-                search: search.clone(),
-                is_active: match status.as_str() {
-                    "active" => Some(true),
-                    "inactive" => Some(false),
-                    _ => None,
-                },
-                offset: page_offset,
-                limit: page_size,
-                order: admin_pool_repository_key_order(sort),
-            })
-            .await?;
-        (key_page.items, key_page.total, None)
+        admin_pool_sort_keys_for_request(&mut all_keys, sort);
+        None
     };
+    let total = all_keys.len();
+    let keys = all_keys
+        .into_iter()
+        .skip(page_offset)
+        .take(page_size)
+        .collect::<Vec<_>>();
 
     let key_ids = keys.iter().map(|key| key.id.clone()).collect::<Vec<_>>();
     let pool_scores_by_key_id = match preloaded_pool_scores_by_key_id {
@@ -533,6 +607,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
         "total": total,
         "page": page,
         "page_size": page_size,
+        "summary": summary,
         "keys": items,
     }))
     .into_response())

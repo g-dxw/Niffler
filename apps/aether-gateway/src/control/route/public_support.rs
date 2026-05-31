@@ -510,6 +510,7 @@ pub(super) fn classify_public_support_route(
                 | "/api/users/me/providers"
                 | "/api/users/me/available-models"
                 | "/api/users/me/endpoint-status"
+                | "/api/users/me/public-base-url"
                 | "/api/users/me/preferences"
                 | "/api/users/me/referral"
                 | "/api/users/me/model-capabilities"
@@ -527,6 +528,7 @@ pub(super) fn classify_public_support_route(
             "/api/users/me/providers" => "providers",
             "/api/users/me/available-models" => "available_models",
             "/api/users/me/endpoint-status" => "endpoint_status",
+            "/api/users/me/public-base-url" => "public_base_url",
             "/api/users/me/preferences" => "preferences",
             "/api/users/me/referral" => "referral",
             "/api/users/me/model-capabilities" => "model_capabilities",

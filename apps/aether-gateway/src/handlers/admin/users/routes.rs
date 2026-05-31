@@ -11,8 +11,9 @@ use super::{
     build_admin_replace_user_group_members_response, build_admin_resolve_user_selection_response,
     build_admin_reveal_user_api_key_response, build_admin_set_default_user_group_response,
     build_admin_toggle_user_api_key_lock_response, build_admin_update_user_api_key_response,
-    build_admin_update_user_group_response, build_admin_update_user_response,
-    build_admin_user_batch_action_response, build_admin_users_data_unavailable_response,
+    build_admin_update_user_billing_entitlement_response, build_admin_update_user_group_response,
+    build_admin_update_user_response, build_admin_user_batch_action_response,
+    build_admin_users_data_unavailable_response,
 };
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::GatewayError;
@@ -60,6 +61,10 @@ fn is_admin_users_route(request_context: &AdminRequestContext<'_>) -> bool {
             && path.ends_with("/billing/grant-plan")
             && path.matches('/').count() == 6)
         || (request_context.method() == http::Method::DELETE
+            && path.starts_with("/api/admin/users/")
+            && path.contains("/billing/entitlements/")
+            && path.matches('/').count() == 7)
+        || (request_context.method() == http::Method::PATCH
             && path.starts_with("/api/admin/users/")
             && path.contains("/billing/entitlements/")
             && path.matches('/').count() == 7)
@@ -162,6 +167,14 @@ pub(super) async fn maybe_build_local_admin_users_routes_response(
         )),
         Some("cancel_user_billing_entitlement") => Ok(Some(
             build_admin_cancel_user_billing_entitlement_response(state, request_context).await?,
+        )),
+        Some("update_user_billing_entitlement") => Ok(Some(
+            build_admin_update_user_billing_entitlement_response(
+                state,
+                request_context,
+                request_body,
+            )
+            .await?,
         )),
         Some("get_user") => Ok(Some(
             build_admin_get_user_response(state, request_context).await?,

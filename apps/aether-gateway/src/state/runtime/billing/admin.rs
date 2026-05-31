@@ -3,7 +3,7 @@ use super::{
     AdminBillingPresetApplyResult, AdminBillingRuleRecord, AdminBillingRuleWriteInput, AppState,
     BillingPlanRecord, BillingPlanWriteInput, GatewayError, LocalMutationOutcome,
     PaymentGatewayConfigRecord, PaymentGatewayConfigWriteInput, UserDailyQuotaAvailabilityRecord,
-    UserPlanEntitlementRecord,
+    UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
 };
 
 fn data_error(err: impl ToString) -> GatewayError {
@@ -512,6 +512,19 @@ impl AppState {
     ) -> Result<LocalMutationOutcome<UserPlanEntitlementRecord>, GatewayError> {
         self.data
             .cancel_user_plan_entitlement(user_id, entitlement_id)
+            .await
+            .map(local_mutation_outcome)
+            .map_err(data_error)
+    }
+
+    pub(crate) async fn update_user_plan_entitlement(
+        &self,
+        user_id: &str,
+        entitlement_id: &str,
+        input: &UserPlanEntitlementUpdateInput,
+    ) -> Result<LocalMutationOutcome<UserPlanEntitlementRecord>, GatewayError> {
+        self.data
+            .update_user_plan_entitlement(user_id, entitlement_id, input)
             .await
             .map(local_mutation_outcome)
             .map_err(data_error)

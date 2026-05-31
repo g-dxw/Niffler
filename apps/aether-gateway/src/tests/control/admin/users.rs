@@ -534,6 +534,33 @@ async fn gateway_cancels_admin_user_plan_entitlement_locally() {
     let (gateway_url, gateway_handle) = start_server(gateway).await;
     let client = reqwest::Client::new();
 
+    let update_response = client
+        .patch(format!(
+            "{gateway_url}/api/admin/users/user-1/billing/entitlements/entitlement-1"
+        ))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "starts_at": "2024-03-10T00:00:00Z",
+            "expires_at": "2100-01-01T00:00:00Z",
+            "initial_remaining_quota_usd": 80.0
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(update_response.status(), StatusCode::OK);
+    let update_payload: serde_json::Value = update_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(update_payload["updated"]["id"], "entitlement-1");
+    assert_eq!(
+        update_payload["updated"]["entitlements"][0]["daily_quota_usd"],
+        80.0
+    );
+
     let cancel_response = client
         .delete(format!(
             "{gateway_url}/api/admin/users/user-1/billing/entitlements/entitlement-1"
@@ -552,8 +579,9 @@ async fn gateway_cancels_admin_user_plan_entitlement_locally() {
         .expect("json body should parse");
     assert_eq!(cancel_payload["cancelled"]["id"], "entitlement-1");
     assert_eq!(cancel_payload["cancelled"]["status"], "cancelled");
-    assert_eq!(cancel_payload["total"], 0);
-    assert_eq!(cancel_payload["items"], json!([]));
+    assert_eq!(cancel_payload["total"], 1);
+    assert_eq!(cancel_payload["items"][0]["id"], "entitlement-1");
+    assert_eq!(cancel_payload["items"][0]["status"], "cancelled");
 
     let list_response = client
         .get(format!(
@@ -569,7 +597,9 @@ async fn gateway_cancels_admin_user_plan_entitlement_locally() {
     assert_eq!(list_response.status(), StatusCode::OK);
     let list_payload: serde_json::Value =
         list_response.json().await.expect("json body should parse");
-    assert_eq!(list_payload["total"], 0);
+    assert_eq!(list_payload["total"], 1);
+    assert_eq!(list_payload["items"][0]["id"], "entitlement-1");
+    assert_eq!(list_payload["items"][0]["status"], "cancelled");
 
     let second_cancel_response = client
         .delete(format!(

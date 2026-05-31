@@ -119,6 +119,22 @@ fn classifies_admin_user_billing_routes_as_admin_proxy_route() {
         Some("admin:users")
     );
 
+    let update_uri: Uri = "/api/admin/users/user-1/billing/entitlements/entitlement-1"
+        .parse()
+        .expect("uri should parse");
+    let update = classify_control_route(&http::Method::PATCH, &update_uri, &headers)
+        .expect("route should classify");
+    assert_eq!(update.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(update.route_family.as_deref(), Some("users_manage"));
+    assert_eq!(
+        update.route_kind.as_deref(),
+        Some("update_user_billing_entitlement")
+    );
+    assert_eq!(
+        update.auth_endpoint_signature.as_deref(),
+        Some("admin:users")
+    );
+
     let context = GatewayPublicRequestContext::from_request_parts(
         "trace-user-billing-grant",
         &http::Method::POST,

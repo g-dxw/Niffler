@@ -274,6 +274,16 @@ export interface CancelUserPlanResponse extends AdminUserPlanEntitlementsRespons
   cancelled?: AdminUserPlanEntitlement
 }
 
+export interface UpdateUserPlanEntitlementRequest {
+  starts_at?: string | null
+  expires_at?: string | null
+  initial_remaining_quota_usd?: number | null
+}
+
+export interface UpdateUserPlanEntitlementResponse extends AdminUserPlanEntitlementsResponse {
+  updated?: AdminUserPlanEntitlement
+}
+
 export interface GetAllUsersOptions {
   search?: string
   role?: UserRole
@@ -432,6 +442,18 @@ export const usersApi = {
   ): Promise<CancelUserPlanResponse> {
     const response = await apiClient.delete<CancelUserPlanResponse>(
       `/api/admin/users/${userId}/billing/entitlements/${entitlementId}`
+    )
+    return response.data
+  },
+
+  async updateUserPlanEntitlement(
+    userId: string,
+    entitlementId: string,
+    payload: UpdateUserPlanEntitlementRequest
+  ): Promise<UpdateUserPlanEntitlementResponse> {
+    const response = await apiClient.patch<UpdateUserPlanEntitlementResponse>(
+      `/api/admin/users/${userId}/billing/entitlements/${entitlementId}`,
+      payload
     )
     return response.data
   },

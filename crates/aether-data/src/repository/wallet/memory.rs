@@ -1005,10 +1005,7 @@ impl WalletWriteRepository for InMemoryWalletRepository {
                     if purchase_limit_scope == "lifetime" {
                         return order.status == "credited";
                     }
-                    order.status == "credited"
-                        && order
-                            .expires_at_unix_secs
-                            .is_some_and(|expires_at| expires_at > now_secs)
+                    false
                 })
                 .count() as i64;
             if existing_count >= max_active_per_user {

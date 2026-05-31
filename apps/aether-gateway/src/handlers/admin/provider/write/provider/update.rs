@@ -2,9 +2,10 @@ use crate::handlers::admin::provider::shared::payloads::AdminProviderUpdatePatch
 use crate::handlers::admin::provider::shared::support::{
     normalize_provider_billing_type, parse_optional_rfc3339_unix_secs,
 };
-use crate::handlers::admin::provider::write::normalize::normalize_chat_pii_redaction_config;
-use crate::handlers::admin::provider::write::normalize::normalize_pool_advanced_config;
-use crate::handlers::admin::provider::write::normalize::normalize_provider_type_input;
+use crate::handlers::admin::provider::write::normalize::{
+    apply_billing_cost_multiplier, normalize_chat_pii_redaction_config, normalize_cost_multiplier,
+    normalize_pool_advanced_config, normalize_provider_type_input,
+};
 use crate::handlers::admin::request::AdminAppState;
 use crate::handlers::admin::shared::normalize_json_object;
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogProvider;
@@ -283,6 +284,19 @@ pub(crate) async fn build_admin_update_provider_record(
             let value = normalize_json_object(payload.failover_rules, "failover_rules")?
                 .ok_or_else(|| "failover_rules 必须是 JSON 对象".to_string())?;
             config_map.insert("failover_rules".to_string(), value);
+        }
+    }
+
+    if fields.contains("cost_multiplier") {
+        if fields.is_null("cost_multiplier") {
+            apply_billing_cost_multiplier(&mut config_map, None);
+        } else {
+            let Some(cost_multiplier) =
+                normalize_cost_multiplier(payload.cost_multiplier, "cost_multiplier")?
+            else {
+                return Err("cost_multiplier 必须是非负数".to_string());
+            };
+            apply_billing_cost_multiplier(&mut config_map, Some(cost_multiplier));
         }
     }
 

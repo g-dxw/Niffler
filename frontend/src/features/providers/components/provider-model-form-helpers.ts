@@ -13,6 +13,7 @@ export interface ProviderModelCreatePayloadInput {
   finalTieredPricing: TieredPricingConfig | null
   tieredPricingModified: boolean
   pricePerRequest?: number
+  costMultiplier?: number
   cleanConfig?: Record<string, unknown>
   configTouched: boolean
   supportsVision?: boolean
@@ -26,6 +27,7 @@ export interface ProviderModelCreatePayloadInput {
 export interface ProviderModelUpdatePayloadInput {
   finalTieredPricing: TieredPricingConfig | null
   pricePerRequest?: number
+  costMultiplier?: number
   cleanConfig?: Record<string, unknown>
   supportsVision?: boolean
   supportsFunctionCalling?: boolean
@@ -54,6 +56,7 @@ export function buildProviderModelCreatePayload(input: ProviderModelCreatePayloa
     provider_model_name: input.providerModelName,
     tiered_pricing: input.tieredPricingModified && input.finalTieredPricing ? input.finalTieredPricing : undefined,
     price_per_request: input.pricePerRequest,
+    cost_multiplier: input.costMultiplier,
     config: input.configTouched ? input.cleanConfig : undefined,
     supports_vision: input.supportsVision,
     supports_function_calling: input.supportsFunctionCalling,
@@ -68,6 +71,7 @@ export function buildProviderModelUpdatePayload(input: ProviderModelUpdatePayloa
   return {
     tiered_pricing: input.finalTieredPricing,
     price_per_request: input.pricePerRequest ?? null,
+    cost_multiplier: input.costMultiplier ?? null,
     config: input.cleanConfig || null,
     supports_vision: input.supportsVision,
     supports_function_calling: input.supportsFunctionCalling,
