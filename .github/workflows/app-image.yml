@@ -147,3 +147,22 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
+
+      - name: Build amd64 image tar
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --file ./Dockerfile.app \
+            --tag niffler-app:latest \
+            --tag niffler-app:${GITHUB_SHA} \
+            --output type=docker,dest=/tmp/niffler-app-linux-amd64.tar \
+            .
+
+      - name: Upload amd64 image tar
+        uses: actions/upload-artifact@v5
+        with:
+          name: niffler-app-linux-amd64
+          path: /tmp/niffler-app-linux-amd64.tar
+          if-no-files-found: error
+          retention-days: 7
