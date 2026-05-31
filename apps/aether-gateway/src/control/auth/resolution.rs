@@ -945,7 +945,7 @@ mod tests {
     use crate::AppState;
 
     fn sample_snapshot(api_key_id: &str, user_id: &str) -> StoredAuthApiKeySnapshot {
-        StoredAuthApiKeySnapshot::new(
+        let mut snapshot = StoredAuthApiKeySnapshot::new(
             user_id.to_string(),
             "alice".to_string(),
             Some("alice@example.com".to_string()),
@@ -968,7 +968,11 @@ mod tests {
             Some(serde_json::json!(["openai:chat"])),
             Some(serde_json::json!(["gpt-4.1"])),
         )
-        .expect("snapshot should build")
+        .expect("snapshot should build");
+        snapshot.api_key_group_id = Some("group-default".to_string());
+        snapshot.api_key_group_name = Some("Default".to_string());
+        snapshot.api_key_group_visibility = Some("public".to_string());
+        snapshot
     }
 
     fn uri(path: &str) -> Uri {

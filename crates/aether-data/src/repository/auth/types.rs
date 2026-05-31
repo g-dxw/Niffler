@@ -56,6 +56,16 @@ impl StoredAuthApiKeySnapshot {
         api_key_allowed_api_formats: Option<serde_json::Value>,
         api_key_allowed_models: Option<serde_json::Value>,
     ) -> Result<Self, crate::DataLayerError> {
+        let (api_key_group_id, api_key_group_name, api_key_group_visibility) =
+            if api_key_is_standalone {
+                (None, None, None)
+            } else {
+                (
+                    Some("group-default".to_string()),
+                    Some("Default".to_string()),
+                    Some("public".to_string()),
+                )
+            };
         Self::new_with_group(
             user_id,
             username,
@@ -69,9 +79,9 @@ impl StoredAuthApiKeySnapshot {
             user_allowed_models,
             api_key_id,
             api_key_name,
-            None,
-            None,
-            None,
+            api_key_group_id,
+            api_key_group_name,
+            api_key_group_visibility,
             Some(1.0),
             None,
             api_key_is_active,

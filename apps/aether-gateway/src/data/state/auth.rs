@@ -2603,9 +2603,13 @@ mod tests {
 
     #[tokio::test]
     async fn user_api_key_without_group_is_inactive() {
+        let mut snapshot = sample_snapshot("key-user", "user-1");
+        snapshot.api_key_group_id = None;
+        snapshot.api_key_group_name = None;
+        snapshot.api_key_group_visibility = None;
         let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
             Some("hash-user".to_string()),
-            sample_snapshot("key-user", "user-1"),
+            snapshot,
         )]));
         let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![
             sample_auth_user("user-1", "user"),
@@ -2624,9 +2628,13 @@ mod tests {
 
     #[tokio::test]
     async fn user_api_key_without_group_is_inactive_without_user_reader() {
+        let mut snapshot = sample_snapshot("key-user", "user-1");
+        snapshot.api_key_group_id = None;
+        snapshot.api_key_group_name = None;
+        snapshot.api_key_group_visibility = None;
         let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
             Some("hash-user".to_string()),
-            sample_snapshot("key-user", "user-1"),
+            snapshot,
         )]));
 
         let state = GatewayDataState::with_auth_api_key_reader_for_tests(auth_repository);
@@ -2643,6 +2651,9 @@ mod tests {
     async fn standalone_api_key_without_group_remains_active_without_user_reader() {
         let mut snapshot = sample_snapshot("key-standalone", "admin-1");
         snapshot.api_key_is_standalone = true;
+        snapshot.api_key_group_id = None;
+        snapshot.api_key_group_name = None;
+        snapshot.api_key_group_visibility = None;
         let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
             Some("hash-standalone".to_string()),
             snapshot,
