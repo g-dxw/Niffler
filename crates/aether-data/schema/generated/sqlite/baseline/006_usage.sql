@@ -153,4 +153,3 @@ CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (
 );
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_billing_status_idx ON usage_settlement_snapshots (billing_status);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_wallet_id_idx ON usage_settlement_snapshots (wallet_id);
-

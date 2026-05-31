@@ -220,4 +220,3 @@ CREATE TABLE IF NOT EXISTS stats_user_daily (
     updated_at INTEGER NOT NULL,
     UNIQUE (date, user_id)
 );
-

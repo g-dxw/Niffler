@@ -442,4 +442,3 @@ CREATE TABLE IF NOT EXISTS public.routing_group_versions (
 ALTER TABLE ONLY public.routing_group_versions ADD CONSTRAINT routing_group_versions_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.routing_group_versions ADD CONSTRAINT routing_group_versions_group_version_key UNIQUE (group_id, version);
 CREATE INDEX IF NOT EXISTS routing_group_versions_group_id_idx ON public.routing_group_versions USING btree (group_id);
-

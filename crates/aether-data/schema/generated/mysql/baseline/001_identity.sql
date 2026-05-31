@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS user_groups (
     `normalized_name` VARCHAR(100) NOT NULL,
     `description` LONGTEXT,
     `priority` INT NOT NULL DEFAULT 0,
+    `visibility` VARCHAR(32) NOT NULL DEFAULT 'public',
     `allowed_providers` JSON,
     `allowed_providers_mode` VARCHAR(32) NOT NULL DEFAULT 'inherit',
     `allowed_api_formats` JSON,
@@ -51,6 +52,8 @@ CREATE TABLE IF NOT EXISTS user_groups (
     `rate_limit_mode` VARCHAR(32) NOT NULL DEFAULT 'inherit',
     `concurrent_limit` INT,
     `concurrent_limit_mode` VARCHAR(32) NOT NULL DEFAULT 'inherit',
+    `sales_multiplier` DOUBLE NOT NULL DEFAULT 1,
+    `model_sales_multipliers` JSON,
     `created_at` BIGINT NOT NULL,
     `updated_at` BIGINT NOT NULL,
     PRIMARY KEY (`id`),
@@ -69,6 +72,7 @@ CREATE TABLE IF NOT EXISTS user_group_members (
 CREATE TABLE IF NOT EXISTS api_keys (
     `id` VARCHAR(64) NOT NULL,
     `user_id` VARCHAR(64) NOT NULL,
+    `group_id` VARCHAR(64),
     `key_hash` VARCHAR(255) NOT NULL,
     `key_encrypted` LONGTEXT,
     `name` VARCHAR(255),
@@ -95,7 +99,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     `updated_at` BIGINT NOT NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY api_keys_key_hash_key (`key_hash`),
-    KEY api_keys_user_id_idx (`user_id`)
+    KEY api_keys_user_id_idx (`user_id`),
+    KEY api_keys_group_id_idx (`group_id`)
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (

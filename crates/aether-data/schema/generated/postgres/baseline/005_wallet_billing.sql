@@ -275,7 +275,7 @@ CREATE TABLE IF NOT EXISTS public.entitlement_usage_windows (
     window_key character varying(64) NOT NULL,
     window_started_at bigint NOT NULL,
     window_ends_at bigint NOT NULL,
-    used_usd double precision NOT NULL DEFAULT 0,
+    used_usd double precision DEFAULT 0 NOT NULL,
     created_at bigint NOT NULL,
     updated_at bigint NOT NULL
 );

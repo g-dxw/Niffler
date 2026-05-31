@@ -246,4 +246,3 @@ CREATE TABLE IF NOT EXISTS public.stats_user_daily (
 
 ALTER TABLE ONLY public.stats_user_daily ADD CONSTRAINT stats_user_daily_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.stats_user_daily ADD CONSTRAINT uq_stats_user_daily UNIQUE (date, user_id);
-

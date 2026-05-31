@@ -1043,6 +1043,65 @@ columns = ["user_id", "usage_date"]
 name = "idx_entitlement_usage_entitlement_date"
 columns = ["user_entitlement_id", "usage_date"]
 
+[table.entitlement_usage_windows]
+domain = "wallet_billing"
+order = 58
+primary_key = ["id"]
+
+[[table.entitlement_usage_windows.columns]]
+name = "id"
+type = "text_id"
+length = 64
+
+[[table.entitlement_usage_windows.columns]]
+name = "user_entitlement_id"
+type = "text_id"
+length = 64
+
+[[table.entitlement_usage_windows.columns]]
+name = "user_id"
+type = "text_id"
+length = 64
+
+[[table.entitlement_usage_windows.columns]]
+name = "window_scope"
+type = "text"
+length = 32
+
+[[table.entitlement_usage_windows.columns]]
+name = "window_key"
+type = "text"
+length = 64
+
+[[table.entitlement_usage_windows.columns]]
+name = "window_started_at"
+type = "unix_seconds"
+
+[[table.entitlement_usage_windows.columns]]
+name = "window_ends_at"
+type = "unix_seconds"
+
+[[table.entitlement_usage_windows.columns]]
+name = "used_usd"
+type = "float64"
+default = 0
+
+[[table.entitlement_usage_windows.columns]]
+name = "created_at"
+type = "unix_seconds"
+
+[[table.entitlement_usage_windows.columns]]
+name = "updated_at"
+type = "unix_seconds"
+
+[[table.entitlement_usage_windows.uniques]]
+name = "uq_entitlement_usage_window"
+columns = ["user_entitlement_id", "window_scope"]
+
+[[table.entitlement_usage_windows.indexes]]
+name = "idx_entitlement_usage_windows_user_scope"
+columns = ["user_id", "window_scope", "window_ends_at"]
+
 [[table.payment_callbacks.indexes]]
 name = "idx_payment_callbacks_order"
 columns = ["order_no"]

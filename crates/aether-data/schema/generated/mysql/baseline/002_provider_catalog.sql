@@ -426,4 +426,3 @@ CREATE TABLE IF NOT EXISTS routing_group_versions (
     UNIQUE KEY routing_group_versions_group_version_key (`group_id`, `version`),
     KEY routing_group_versions_group_id_idx (`group_id`)
 );
-

@@ -83,4 +83,3 @@ CREATE TABLE IF NOT EXISTS proxy_node_metrics_1h (
     PRIMARY KEY (`node_id`, `bucket_start_unix_secs`),
     KEY idx_proxy_node_metrics_1h_bucket_start (`bucket_start_unix_secs`)
 );
-

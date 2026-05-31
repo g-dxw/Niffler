@@ -159,4 +159,3 @@ CREATE TABLE IF NOT EXISTS public.usage_settlement_snapshots (
 ALTER TABLE ONLY public.usage_settlement_snapshots ADD CONSTRAINT usage_settlement_snapshots_pkey PRIMARY KEY (request_id);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_billing_status_idx ON public.usage_settlement_snapshots USING btree (billing_status);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_wallet_id_idx ON public.usage_settlement_snapshots USING btree (wallet_id);
-

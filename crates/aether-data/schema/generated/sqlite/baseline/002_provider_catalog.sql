@@ -410,4 +410,3 @@ CREATE TABLE IF NOT EXISTS routing_group_versions (
     UNIQUE (group_id, version)
 );
 CREATE INDEX IF NOT EXISTS routing_group_versions_group_id_idx ON routing_group_versions (group_id);
-

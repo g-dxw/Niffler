@@ -156,4 +156,3 @@ CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (
     KEY usage_settlement_snapshots_billing_status_idx (`billing_status`),
     KEY usage_settlement_snapshots_wallet_id_idx (`wallet_id`)
 );
-

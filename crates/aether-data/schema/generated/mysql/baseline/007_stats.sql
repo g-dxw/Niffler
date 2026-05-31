@@ -233,4 +233,3 @@ CREATE TABLE IF NOT EXISTS stats_user_daily (
     PRIMARY KEY (`id`),
     UNIQUE KEY uq_stats_user_daily (`date`, `user_id`)
 );
-

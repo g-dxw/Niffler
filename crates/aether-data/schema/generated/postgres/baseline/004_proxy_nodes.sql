@@ -87,4 +87,3 @@ CREATE TABLE IF NOT EXISTS public.proxy_node_metrics_1h (
 
 ALTER TABLE ONLY public.proxy_node_metrics_1h ADD CONSTRAINT proxy_node_metrics_1h_pkey PRIMARY KEY (node_id, bucket_start_unix_secs);
 CREATE INDEX IF NOT EXISTS idx_proxy_node_metrics_1h_bucket_start ON public.proxy_node_metrics_1h USING btree (bucket_start_unix_secs);
-

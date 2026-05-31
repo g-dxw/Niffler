@@ -675,8 +675,7 @@ fn write_driver_sources(
         let filename = format!("{}.sql", source.name);
         manifest.push_str(&filename);
         manifest.push('\n');
-        let mut output = generated_header();
-        output.push_str(&emit(&source.tables));
+        let output = generated_sql_file(&emit(&source.tables));
         write_generated(baseline_dir.join(filename), &output)?;
     }
     write_generated(baseline_dir.join("manifest.txt"), &manifest)?;
@@ -753,10 +752,17 @@ fn check_driver_sources(
     }
 
     for source in sources {
-        let expected = generated_header() + &emit(&source.tables);
+        let expected = generated_sql_file(&emit(&source.tables));
         assert_file_contents(baseline_dir.join(format!("{}.sql", source.name)), &expected)?;
     }
     Ok(())
+}
+
+fn generated_sql_file(body: &str) -> String {
+    let mut output = generated_header();
+    output.push_str(body.trim_end());
+    output.push('\n');
+    output
 }
 
 fn generated_header() -> String {

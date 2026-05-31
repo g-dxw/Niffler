@@ -480,6 +480,7 @@ fn settlement_input(index: usize) -> UsageSettlementInput {
         model: None,
         status: "completed".to_string(),
         billing_status: "pending".to_string(),
+        base_cost_usd: COST_PER_REQUEST_USD,
         total_cost_usd: 0.0,
         actual_total_cost_usd: COST_PER_REQUEST_USD,
         finalized_at_unix_secs: Some(now_unix_secs().saturating_add(index as u64)),

@@ -37,4 +37,3 @@ CREATE TABLE IF NOT EXISTS background_task_events (
     CONSTRAINT fk_background_task_events_run FOREIGN KEY (run_id) REFERENCES background_task_runs (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_background_task_events_run_id ON background_task_events (run_id, created_at_unix_secs);
-

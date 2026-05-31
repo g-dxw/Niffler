@@ -83,4 +83,3 @@ ALTER TABLE ONLY public.user_oauth_links ADD CONSTRAINT uq_user_oauth_links_prov
 ALTER TABLE ONLY public.user_oauth_links ADD CONSTRAINT uq_user_oauth_links_user_provider UNIQUE (user_id, provider_type);
 CREATE INDEX IF NOT EXISTS user_oauth_links_provider_type_idx ON public.user_oauth_links USING btree (provider_type);
 CREATE INDEX IF NOT EXISTS user_oauth_links_user_id_idx ON public.user_oauth_links USING btree (user_id);
-
