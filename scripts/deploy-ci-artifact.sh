@@ -5,6 +5,7 @@
 set -euo pipefail
 
 WORKFLOW_NAME="${WORKFLOW_NAME:-Build App Image}"
+GH_REPO="${GH_REPO:-ryfineZ/Niffler}"
 BRANCH="${BRANCH:-main}"
 ARTIFACT_NAME="${ARTIFACT_NAME:-niffler-app-linux-amd64}"
 REMOTE_TAR="${REMOTE_TAR:-/tmp/niffler-app-linux-amd64.tar}"
@@ -29,6 +30,7 @@ Options:
 Environment:
   APP_IMAGE                Image tag used by docker compose, default niffler-app:latest
   APP_SERVICES             Compose services to restart, default app
+  GH_REPO                  GitHub repo used by gh, default ryfineZ/Niffler
   ARTIFACT_NAME            CI artifact name, default niffler-app-linux-amd64
   WORKFLOW_NAME            GitHub Actions workflow name, default Build App Image
   BRANCH                   Branch used when selecting latest successful run, default main
@@ -77,6 +79,7 @@ done
 
 if [ -z "$RUN_ID" ]; then
     RUN_ID="$(gh run list \
+        --repo "$GH_REPO" \
         --workflow "$WORKFLOW_NAME" \
         --branch "$BRANCH" \
         --status success \
@@ -97,7 +100,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo ">>> Downloading CI image artifact from run $RUN_ID..."
-gh run download "$RUN_ID" --name "$ARTIFACT_NAME" --dir "$TMP_DIR"
+gh run download "$RUN_ID" --repo "$GH_REPO" --name "$ARTIFACT_NAME" --dir "$TMP_DIR"
 
 IMAGE_TAR="$TMP_DIR/niffler-app-linux-amd64.tar"
 if [ ! -f "$IMAGE_TAR" ]; then

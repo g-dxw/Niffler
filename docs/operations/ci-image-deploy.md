@@ -51,6 +51,7 @@ APP_IMAGE=ghcr.io/ryfinez/niffler:main
 ```bash
 APP_SERVICES="frontdoor background" \
 APP_IMAGE=niffler-app:latest \
+GH_REPO=ryfineZ/Niffler \
 ./scripts/deploy-ci-artifact.sh --host hd0526 --remote-dir /opt/niffler-app
 ```
 
