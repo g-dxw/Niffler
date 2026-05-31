@@ -29,6 +29,7 @@ export interface ProviderModelUpdatePayloadInput {
   pricePerRequest?: number
   costMultiplier?: number
   cleanConfig?: Record<string, unknown>
+  configTouched: boolean
   supportsVision?: boolean
   supportsFunctionCalling?: boolean
   supportsStreaming?: boolean
@@ -72,7 +73,7 @@ export function buildProviderModelUpdatePayload(input: ProviderModelUpdatePayloa
     tiered_pricing: input.finalTieredPricing,
     price_per_request: input.pricePerRequest ?? null,
     cost_multiplier: input.costMultiplier ?? null,
-    config: input.cleanConfig || null,
+    config: input.configTouched ? (input.cleanConfig || null) : undefined,
     supports_vision: input.supportsVision,
     supports_function_calling: input.supportsFunctionCalling,
     supports_streaming: input.supportsStreaming,

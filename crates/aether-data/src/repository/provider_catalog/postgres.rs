@@ -264,11 +264,8 @@ SELECT
   api_formats,
   NULL::jsonb AS auth_type_by_format,
   'summary' AS api_key,
-  CASE
-    WHEN auth_config IS NULL THEN NULL
-    ELSE '{}'::text
-  END AS auth_config,
-  NULL::text AS note,
+  auth_config,
+  note,
   NULL::integer AS internal_priority,
   NULL::jsonb AS rate_multipliers,
   NULL::jsonb AS global_priority_by_format,
@@ -302,10 +299,10 @@ SELECT
   NULL::jsonb AS locked_models,
   NULL::jsonb AS model_include_patterns,
   NULL::jsonb AS model_exclude_patterns,
-  NULL::jsonb AS upstream_metadata,
-  NULL::bigint AS oauth_invalid_at_unix_secs,
-  NULL::text AS oauth_invalid_reason,
-  NULL::jsonb AS status_snapshot,
+  upstream_metadata,
+  EXTRACT(EPOCH FROM oauth_invalid_at)::bigint AS oauth_invalid_at_unix_secs,
+  oauth_invalid_reason,
+  status_snapshot,
   NULL::bigint AS created_at_unix_ms,
   NULL::bigint AS updated_at_unix_secs,
   health_by_format,

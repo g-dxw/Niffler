@@ -75,6 +75,7 @@ describe('provider model form embedding helpers', () => {
     const payload = buildProviderModelUpdatePayload({
       finalTieredPricing: pricing,
       pricePerRequest: undefined,
+      configTouched: true,
       cleanConfig: {
         streaming: false,
         embedding: true,
@@ -93,5 +94,22 @@ describe('provider model form embedding helpers', () => {
     })
     expect(payload.supports_streaming).toBe(false)
     expect('supports_embedding' in payload).toBe(false)
+  })
+
+  it('does not post inherited config when editing pricing only', () => {
+    const payload = buildProviderModelUpdatePayload({
+      finalTieredPricing: pricing,
+      pricePerRequest: undefined,
+      costMultiplier: 0.4,
+      configTouched: false,
+      cleanConfig: {
+        api_formats: ['openai:responses'],
+        inherited_setting: true,
+      },
+      isActive: true,
+    })
+
+    expect(payload.config).toBeUndefined()
+    expect(payload.cost_multiplier).toBe(0.4)
   })
 })

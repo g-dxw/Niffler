@@ -2091,12 +2091,14 @@ async fn gateway_lists_admin_user_api_keys_locally_with_trusted_admin_principal(
             Some("hash-key-1".to_string()),
             sample_admin_api_key_snapshot("user-1", "key-1"),
         )])
-        .with_export_records(vec![StoredAuthApiKeyExportRecord::new(
+        .with_export_records(vec![StoredAuthApiKeyExportRecord::new_with_group(
             "user-1".to_string(),
             "key-1".to_string(),
             "hash-key-1".to_string(),
             Some(encrypted),
             Some("default".to_string()),
+            Some("group-codex".to_string()),
+            Some("Codex".to_string()),
             Some(json!(["openai"])),
             Some(json!(["openai:chat"])),
             Some(json!(["gpt-4.1"])),
@@ -2151,6 +2153,8 @@ async fn gateway_lists_admin_user_api_keys_locally_with_trusted_admin_principal(
     assert_eq!(payload["username"], "alice");
     assert_eq!(payload["api_keys"][0]["id"], "key-1");
     assert_eq!(payload["api_keys"][0]["name"], "default");
+    assert_eq!(payload["api_keys"][0]["group_id"], "group-codex");
+    assert_eq!(payload["api_keys"][0]["group_name"], "Codex");
     assert_eq!(payload["api_keys"][0]["key_display"], "sk-user-1...er-1");
     assert_eq!(payload["api_keys"][0]["is_active"], true);
     assert_eq!(payload["api_keys"][0]["is_locked"], false);

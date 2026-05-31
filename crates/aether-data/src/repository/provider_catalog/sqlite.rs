@@ -219,11 +219,8 @@ SELECT
   NULL AS auth_type_by_format,
   NULL AS allow_auth_channel_mismatch_formats,
   'summary' AS api_key,
-  CASE
-    WHEN auth_config IS NULL THEN NULL
-    ELSE '{}'
-  END AS auth_config,
-  NULL AS note,
+  auth_config,
+  note,
   NULL AS internal_priority,
   NULL AS rate_multipliers,
   NULL AS global_priority_by_format,
@@ -257,10 +254,10 @@ SELECT
   NULL AS locked_models,
   NULL AS model_include_patterns,
   NULL AS model_exclude_patterns,
-  NULL AS upstream_metadata,
-  NULL AS oauth_invalid_at_unix_secs,
-  NULL AS oauth_invalid_reason,
-  NULL AS status_snapshot,
+  upstream_metadata,
+  oauth_invalid_at AS oauth_invalid_at_unix_secs,
+  oauth_invalid_reason,
+  status_snapshot,
   NULL AS created_at_unix_ms,
   NULL AS updated_at_unix_secs,
   health_by_format,

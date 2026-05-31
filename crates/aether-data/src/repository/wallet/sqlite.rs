@@ -1643,12 +1643,6 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
                     .unwrap_or("unknown")
                     .to_string()
             });
-            let requested_starts_at = plan_starts_at_unix(&snapshot, now);
-            let starts_at =
-                plan_renewal_starts_at_sqlite(&mut tx, &user_id, &plan_id, requested_starts_at)
-                    .await?;
-            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
-            let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
             )
@@ -1657,6 +1651,12 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
             .await
             .map_sql_err()?;
             if existing_entitlement_id.is_none() {
+                let requested_starts_at = plan_starts_at_unix(&snapshot, now);
+                let starts_at =
+                    plan_renewal_starts_at_sqlite(&mut tx, &user_id, &plan_id, requested_starts_at)
+                        .await?;
+                let expires_at = plan_expires_at_unix(&snapshot, starts_at);
+                let entitlements = plan_entitlements_snapshot(&snapshot);
                 let purchase_limit_scope = plan_purchase_limit_scope(&snapshot);
                 if purchase_limit_scope != "unlimited" {
                     let max_active_per_user = plan_max_active_per_user(&snapshot);
@@ -2676,12 +2676,6 @@ WHERE id = ? AND wallet_id = ?
                     .unwrap_or("unknown")
                     .to_string()
             });
-            let requested_starts_at = plan_starts_at_unix(&snapshot, now);
-            let starts_at =
-                plan_renewal_starts_at_sqlite(&mut tx, &user_id, &plan_id, requested_starts_at)
-                    .await?;
-            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
-            let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
             )
@@ -2690,6 +2684,12 @@ WHERE id = ? AND wallet_id = ?
             .await
             .map_sql_err()?;
             if existing_entitlement_id.is_none() {
+                let requested_starts_at = plan_starts_at_unix(&snapshot, now);
+                let starts_at =
+                    plan_renewal_starts_at_sqlite(&mut tx, &user_id, &plan_id, requested_starts_at)
+                        .await?;
+                let expires_at = plan_expires_at_unix(&snapshot, starts_at);
+                let entitlements = plan_entitlements_snapshot(&snapshot);
                 let purchase_limit_scope = plan_purchase_limit_scope(&snapshot);
                 if purchase_limit_scope != "unlimited" {
                     let max_active_per_user = plan_max_active_per_user(&snapshot);

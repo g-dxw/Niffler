@@ -853,6 +853,7 @@ async function handleSubmit() {
         pricePerRequest: form.value.price_per_request,
         costMultiplier: form.value.cost_multiplier,
         cleanConfig,
+        configTouched: configTouched.value,
         supportsVision: form.value.supports_vision,
         supportsFunctionCalling: form.value.supports_function_calling,
         supportsStreaming: form.value.supports_streaming,

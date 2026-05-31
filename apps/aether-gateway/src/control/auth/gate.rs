@@ -310,11 +310,23 @@ async fn balance_capacity_rejection(
     if auth_context.local_rejection.is_some() {
         return Ok(None);
     }
+    let Some(requested_model) = requested_model else {
+        return Ok(None);
+    };
+    let Some(estimated_cost_usd) =
+        estimate_request_cost_upper_bound_usd(state, decision, requested_model, headers, body)
+            .await?
+    else {
+        return Ok(None);
+    };
+    if estimated_cost_usd <= DAILY_QUOTA_EPSILON_USD {
+        return Ok(None);
+    }
     let quota = scoped_quota_for_request(
         state,
         decision,
         auth_context,
-        requested_model,
+        Some(requested_model),
         &mut requested_global_model_id,
         preloaded_quota,
     )
@@ -330,15 +342,6 @@ async fn balance_capacity_rejection(
     let wallet_is_unlimited = wallet
         .as_ref()
         .is_some_and(|wallet| wallet.limit_mode.eq_ignore_ascii_case("unlimited"));
-    let Some(requested_model) = requested_model else {
-        return Ok(None);
-    };
-    let Some(estimated_cost_usd) =
-        estimate_request_cost_upper_bound_usd(state, decision, requested_model, headers, body)
-            .await?
-    else {
-        return Ok(None);
-    };
     let sales_multiplier =
         sales_multiplier_for_auth_context(auth_context, requested_global_model_id.as_deref());
     let (needed_usd, available_usd) = match quota.as_ref() {
@@ -1293,6 +1296,52 @@ mod tests {
 
         assert_eq!(rejection, None);
         assert_eq!(quota_lookup_count.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn request_without_model_does_not_query_quota_availability() {
+        let context = billing_context_with_pricing(None, None, None, None);
+        let quota_lookup_count = Arc::new(AtomicUsize::new(0));
+        let state = state_with_quota_wallet_and_counter(
+            quota_availability(50.0, false),
+            context,
+            Some(quota_lookup_count.clone()),
+        );
+        let decision = decision_with_allowed_models(vec!["gpt-5".to_string()]);
+        let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
+        let body = Bytes::from_static(br#"{"messages":[{"role":"user","content":"hi"}]}"#);
+
+        let rejection =
+            request_model_local_rejection(&state, Some(&decision), &uri, &json_headers(), &body)
+                .await
+                .expect("request without model should resolve");
+
+        assert_eq!(rejection, None);
+        assert_eq!(quota_lookup_count.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn zero_cost_request_does_not_query_quota_availability() {
+        let context = billing_context_with_pricing(None, None, None, Some("free_tier"));
+        let quota_lookup_count = Arc::new(AtomicUsize::new(0));
+        let state = state_with_quota_wallet_and_counter(
+            quota_availability(50.0, false),
+            context,
+            Some(quota_lookup_count.clone()),
+        );
+        let decision = decision_with_allowed_models(vec!["gpt-5".to_string()]);
+        let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
+        let body = Bytes::from_static(
+            br#"{"model":"gpt-5","messages":[{"role":"user","content":"hi"}],"max_tokens":1000}"#,
+        );
+
+        let rejection =
+            request_model_local_rejection(&state, Some(&decision), &uri, &json_headers(), &body)
+                .await
+                .expect("zero-cost request should resolve");
+
+        assert_eq!(rejection, None);
+        assert_eq!(quota_lookup_count.load(Ordering::Relaxed), 0);
     }
 
     #[tokio::test]

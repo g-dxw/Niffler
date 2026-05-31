@@ -208,6 +208,8 @@ pub(crate) async fn build_admin_create_user_api_key_response(
             "id": created.api_key_id,
             "key": plaintext_key,
             "name": created.name,
+            "group_id": created.group_id,
+            "group_name": created.group_name,
             "key_display": masked_user_api_key_display(state, created.key_encrypted.as_deref()),
             "rate_limit": created.rate_limit,
             "concurrent_limit": created.concurrent_limit,

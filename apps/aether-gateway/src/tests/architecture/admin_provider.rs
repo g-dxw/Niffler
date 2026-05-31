@@ -925,6 +925,23 @@ fn admin_provider_pool_admin_mod_stays_thin() {
 }
 
 #[test]
+fn admin_provider_pool_keys_use_repository_paging_for_default_list() {
+    let keys_route = read_workspace_file(
+        "apps/aether-gateway/src/handlers/admin/provider/pool_admin/read_routes/keys.rs",
+    );
+    assert!(
+        keys_route.contains("list_provider_catalog_key_page(&ProviderCatalogKeyListQuery"),
+        "default pool key list must use repository pagination instead of loading every key first"
+    );
+    assert!(
+        !keys_route.contains(
+            "let mut all_keys = state\n        .list_provider_catalog_keys_by_provider_ids"
+        ),
+        "pool key list should not always load every provider key before pagination"
+    );
+}
+
+#[test]
 fn admin_provider_write_uses_specific_local_owners() {
     let write_mod =
         read_workspace_file("apps/aether-gateway/src/handlers/admin/provider/write/mod.rs");

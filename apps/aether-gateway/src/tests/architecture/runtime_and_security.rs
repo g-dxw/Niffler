@@ -1529,3 +1529,28 @@ fn ai_serving_runtime_kiro_wrapper_is_facade_only() {
         "adaptation/mod.rs should own KiroToClaudeCliStreamState export after runtime facade removal"
     );
 }
+
+#[test]
+fn wallet_plan_renewal_locks_wallet_before_calculating_start_time() {
+    let source = read_workspace_file("crates/aether-data/src/repository/wallet/postgres.rs");
+    for wallet_lock in [
+        "lock_plan_renewal_scope_postgres(tx, &order_wallet_id).await?;",
+        "lock_plan_renewal_scope_postgres(tx, &order.wallet_id).await?;",
+    ] {
+        let lock_position = source
+            .find(wallet_lock)
+            .unwrap_or_else(|| panic!("postgres wallet repository should call {wallet_lock}"));
+        let existing_position = source[..lock_position]
+            .rfind("if existing_entitlement_id.is_none()")
+            .expect("postgres wallet repository should skip renewal work for existing entitlement");
+        let after_lock = &source[lock_position..];
+        let renewal_position = lock_position
+            + after_lock
+                .find("plan_renewal_starts_at_postgres(")
+                .expect("postgres wallet repository should calculate renewal start after lock");
+        assert!(
+            existing_position < lock_position && lock_position < renewal_position,
+            "plan renewal should skip existing entitlement and lock wallet before calculating the next start time"
+        );
+    }
+}

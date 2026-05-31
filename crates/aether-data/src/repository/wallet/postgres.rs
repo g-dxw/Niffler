@@ -2142,6 +2142,7 @@ FOR UPDATE
                         row_get(&order_row, "payment_provider")?;
                     let order_payment_channel: Option<String> =
                         row_get(&order_row, "payment_channel")?;
+                    let now = Utc::now();
                     let order_kind: String = row_get(&order_row, "order_kind")?;
                     let order_amount_usd: f64 = row_get(&order_row, "amount_usd")?;
                     let order_pay_amount: Option<f64> = row_get(&order_row, "pay_amount")?;
@@ -2290,17 +2291,6 @@ FOR UPDATE
                                 .unwrap_or("unknown")
                                 .to_string()
                         });
-                        let now = Utc::now();
-                        let requested_starts_at = plan_starts_at(&snapshot, now);
-                        let starts_at = plan_renewal_starts_at_postgres(
-                            tx,
-                            &user_id,
-                            &plan_id,
-                            requested_starts_at,
-                        )
-                        .await?;
-                        let expires_at = plan_expires_at(&snapshot, starts_at);
-                        let entitlements = plan_entitlements_snapshot(&snapshot);
                         let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                             r#"
 SELECT id
@@ -2314,11 +2304,17 @@ LIMIT 1
                         .await
                         .map_postgres_err()?;
                         if existing_entitlement_id.is_none() {
-                            sqlx::query("SELECT id FROM wallets WHERE id = $1 LIMIT 1 FOR UPDATE")
-                                .bind(&order_wallet_id)
-                                .fetch_optional(&mut **tx)
-                                .await
-                                .map_postgres_err()?;
+                            lock_plan_renewal_scope_postgres(tx, &order_wallet_id).await?;
+                            let requested_starts_at = plan_starts_at(&snapshot, now);
+                            let starts_at = plan_renewal_starts_at_postgres(
+                                tx,
+                                &user_id,
+                                &plan_id,
+                                requested_starts_at,
+                            )
+                            .await?;
+                            let expires_at = plan_expires_at(&snapshot, starts_at);
+                            let entitlements = plan_entitlements_snapshot(&snapshot);
                             let purchase_limit_scope = plan_purchase_limit_scope(&snapshot);
                             if purchase_limit_scope != "unlimited" {
                                 let max_active_per_user = plan_max_active_per_user(&snapshot);
@@ -4065,6 +4061,7 @@ FOR UPDATE
                         ));
                     }
 
+                    let now = Utc::now();
                     let order_kind: String = row_get(&order_row, "order_kind")?;
                     if order_kind == "plan_purchase" {
                         let order_user_id: Option<String> = row_get(&order_row, "user_id")?;
@@ -4084,17 +4081,6 @@ FOR UPDATE
                                 .unwrap_or("unknown")
                                 .to_string()
                         });
-                        let now = Utc::now();
-                        let requested_starts_at = plan_starts_at(&snapshot, now);
-                        let starts_at = plan_renewal_starts_at_postgres(
-                            tx,
-                            &user_id,
-                            &plan_id,
-                            requested_starts_at,
-                        )
-                        .await?;
-                        let expires_at = plan_expires_at(&snapshot, starts_at);
-                        let entitlements = plan_entitlements_snapshot(&snapshot);
                         let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                             r#"
 SELECT id
@@ -4108,6 +4094,17 @@ LIMIT 1
                         .await
                         .map_postgres_err()?;
                         if existing_entitlement_id.is_none() {
+                            lock_plan_renewal_scope_postgres(tx, &order.wallet_id).await?;
+                            let requested_starts_at = plan_starts_at(&snapshot, now);
+                            let starts_at = plan_renewal_starts_at_postgres(
+                                tx,
+                                &user_id,
+                                &plan_id,
+                                requested_starts_at,
+                            )
+                            .await?;
+                            let expires_at = plan_expires_at(&snapshot, starts_at);
+                            let entitlements = plan_entitlements_snapshot(&snapshot);
                             let purchase_limit_scope = plan_purchase_limit_scope(&snapshot);
                             if purchase_limit_scope != "unlimited" {
                                 let max_active_per_user = plan_max_active_per_user(&snapshot);
@@ -5469,6 +5466,18 @@ fn plan_purchase_limit_scope(snapshot: &serde_json::Value) -> &str {
         Some("unlimited") => "unlimited",
         _ => "active_period",
     }
+}
+
+async fn lock_plan_renewal_scope_postgres(
+    tx: &mut crate::driver::postgres::PostgresTransaction,
+    wallet_id: &str,
+) -> Result<(), DataLayerError> {
+    sqlx::query("SELECT id FROM wallets WHERE id = $1 LIMIT 1 FOR UPDATE")
+        .bind(wallet_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_postgres_err()?;
+    Ok(())
 }
 
 async fn plan_renewal_starts_at_postgres(

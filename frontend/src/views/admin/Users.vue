@@ -1045,7 +1045,7 @@
           </div>
 
           <div class="space-y-1.5">
-            <Label class="text-xs font-medium text-muted-foreground">初始剩余额度 USD（可选）</Label>
+            <Label class="text-xs font-medium text-muted-foreground">迁移额度上限 USD（可选）</Label>
             <Input
               v-model="grantInitialRemainingQuotaUsd"
               type="number"
@@ -1055,7 +1055,7 @@
               placeholder="例如：35.5"
             />
             <p class="text-[11px] text-muted-foreground">
-              用于迁移旧套餐剩余额度；系统只会降低套餐里的额度上限，不会提高原本更低的日额度或周额度。
+              用于迁移旧套餐时限制可用额度；系统只会降低套餐里的额度上限，不会重新计算已经用掉的额度。
             </p>
           </div>
 
@@ -2400,7 +2400,7 @@ async function grantPlanToSelectedUser() {
     return
   }
   if (initialRemainingQuotaUsd === undefined) {
-    error('初始剩余额度必须是大于等于 0 的数字')
+    error('迁移额度上限必须是大于等于 0 的数字')
     return
   }
   const now = Date.now()

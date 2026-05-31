@@ -1260,12 +1260,6 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
                     .unwrap_or("unknown")
                     .to_string()
             });
-            let requested_starts_at = plan_starts_at_unix(&snapshot, now);
-            let starts_at =
-                plan_renewal_starts_at_mysql(&mut tx, &user_id, &plan_id, requested_starts_at)
-                    .await?;
-            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
-            let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
             )
@@ -1274,11 +1268,13 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
             .await
             .map_sql_err()?;
             if existing_entitlement_id.is_none() {
-                sqlx::query("SELECT id FROM wallets WHERE id = ? LIMIT 1 FOR UPDATE")
-                    .bind(&order_wallet_id)
-                    .fetch_optional(&mut *tx)
-                    .await
-                    .map_sql_err()?;
+                lock_plan_renewal_scope_mysql(&mut tx, &order_wallet_id).await?;
+                let requested_starts_at = plan_starts_at_unix(&snapshot, now);
+                let starts_at =
+                    plan_renewal_starts_at_mysql(&mut tx, &user_id, &plan_id, requested_starts_at)
+                        .await?;
+                let expires_at = plan_expires_at_unix(&snapshot, starts_at);
+                let entitlements = plan_entitlements_snapshot(&snapshot);
                 let purchase_limit_scope = plan_purchase_limit_scope(&snapshot);
                 if purchase_limit_scope != "unlimited" {
                     let max_active_per_user = plan_max_active_per_user(&snapshot);
@@ -2303,12 +2299,6 @@ WHERE id = ? AND wallet_id = ?
                     .unwrap_or("unknown")
                     .to_string()
             });
-            let requested_starts_at = plan_starts_at_unix(&snapshot, now);
-            let starts_at =
-                plan_renewal_starts_at_mysql(&mut tx, &user_id, &plan_id, requested_starts_at)
-                    .await?;
-            let expires_at = plan_expires_at_unix(&snapshot, starts_at);
-            let entitlements = plan_entitlements_snapshot(&snapshot);
             let existing_entitlement_id = sqlx::query_scalar::<_, String>(
                 "SELECT id FROM user_plan_entitlements WHERE payment_order_id = ? LIMIT 1",
             )
@@ -2317,6 +2307,13 @@ WHERE id = ? AND wallet_id = ?
             .await
             .map_sql_err()?;
             if existing_entitlement_id.is_none() {
+                lock_plan_renewal_scope_mysql(&mut tx, &order.wallet_id).await?;
+                let requested_starts_at = plan_starts_at_unix(&snapshot, now);
+                let starts_at =
+                    plan_renewal_starts_at_mysql(&mut tx, &user_id, &plan_id, requested_starts_at)
+                        .await?;
+                let expires_at = plan_expires_at_unix(&snapshot, starts_at);
+                let entitlements = plan_entitlements_snapshot(&snapshot);
                 let purchase_limit_scope = plan_purchase_limit_scope(&snapshot);
                 if purchase_limit_scope != "unlimited" {
                     let max_active_per_user = plan_max_active_per_user(&snapshot);
@@ -3143,6 +3140,18 @@ fn plan_purchase_limit_scope(snapshot: &serde_json::Value) -> &str {
         Some("unlimited") => "unlimited",
         _ => "active_period",
     }
+}
+
+async fn lock_plan_renewal_scope_mysql(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    wallet_id: &str,
+) -> Result<(), DataLayerError> {
+    sqlx::query("SELECT id FROM wallets WHERE id = ? LIMIT 1 FOR UPDATE")
+        .bind(wallet_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_sql_err()?;
+    Ok(())
 }
 
 async fn plan_renewal_starts_at_mysql(

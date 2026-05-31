@@ -189,6 +189,8 @@ ttl: 3 seconds
 
 Redis-backed runtime state shares this across gateway nodes. If Redis is unavailable, the request falls back to the database and does not fail only because cache read/write failed. The cache is only a request-admission optimization; final quota consumption and ledger records remain in the database.
 
+The capacity check only loads plan quota after the request model is known and the estimated request cost is greater than zero. Requests without a model, or requests that resolve to a zero-cost provider/model, do not need plan quota admission and must not query quota availability.
+
 - [x] **Step 6: Add unit tests for model matching**
 
 Add tests in `crates/aether-data/src/repository/billing/quota.rs`:

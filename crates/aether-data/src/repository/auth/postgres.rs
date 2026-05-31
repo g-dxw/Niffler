@@ -459,7 +459,7 @@ RETURNING
   key_encrypted,
   name,
   group_id,
-  NULL::TEXT AS group_name,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -534,6 +534,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -570,6 +572,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -609,6 +613,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -642,6 +648,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -674,6 +682,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -717,6 +727,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -750,6 +762,8 @@ RETURNING
   key_hash,
   key_encrypted,
   name,
+  group_id,
+  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,
   allowed_providers,
   allowed_api_formats,
   allowed_models,
@@ -1615,13 +1629,15 @@ mod tests {
     fn create_api_key_sql_orders_expiry_before_standalone_flags() {
         assert!(CREATE_USER_API_KEY_SQL
             .contains("expires_at,\n  auto_delete_on_expiry,\n  is_locked,\n  is_standalone,"));
-        assert!(
-            CREATE_USER_API_KEY_SQL.contains("$12,\n  $13,\n  $14,\n  FALSE,\n  FALSE,\n  $15,")
-        );
+        assert!(CREATE_USER_API_KEY_SQL
+            .contains("$12,\n  NULL,\n  $13,\n  $14,\n  $15,\n  FALSE,\n  FALSE,\n  $16,"));
+        assert!(CREATE_USER_API_KEY_SQL.contains(
+            "group_id,\n  (SELECT name FROM user_groups WHERE user_groups.id = api_keys.group_id) AS group_name,"
+        ));
         assert!(CREATE_STANDALONE_API_KEY_SQL
             .contains("expires_at,\n  auto_delete_on_expiry,\n  is_locked,\n  is_standalone,"));
         assert!(CREATE_STANDALONE_API_KEY_SQL
-            .contains("$12,\n  $13,\n  $14,\n  FALSE,\n  TRUE,\n  $15,"));
+            .contains("$11,\n  NULL,\n  $12,\n  $13,\n  $14,\n  FALSE,\n  TRUE,\n  $15,"));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use super::super::super::build_admin_users_bad_request_response;
-use super::super::helpers::{format_optional_unix_secs_iso8601, masked_user_api_key_display};
+use super::super::helpers::build_admin_user_api_key_detail_payload;
 use super::super::paths::admin_user_id_from_api_keys_path;
 
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
@@ -53,21 +53,7 @@ pub(crate) async fn build_admin_list_user_api_keys_response(
                 .get(&record.api_key_id)
                 .map(|snapshot| snapshot.api_key_is_locked)
                 .unwrap_or(false);
-            json!({
-                "id": record.api_key_id,
-                "name": record.name,
-                "key_display": masked_user_api_key_display(state, record.key_encrypted.as_deref()),
-                "is_active": record.is_active,
-                "is_locked": is_locked,
-                "total_requests": record.total_requests,
-                "total_cost_usd": record.total_cost_usd,
-                "rate_limit": record.rate_limit,
-                "concurrent_limit": record.concurrent_limit,
-                "feature_settings": record.feature_settings,
-                "expires_at": format_optional_unix_secs_iso8601(record.expires_at_unix_secs),
-                "last_used_at": format_optional_unix_secs_iso8601(record.last_used_at_unix_secs),
-                "created_at": format_optional_unix_secs_iso8601(record.created_at_unix_secs),
-            })
+            build_admin_user_api_key_detail_payload(state, &record, is_locked)
         })
         .collect::<Vec<_>>();
 
