@@ -3361,6 +3361,7 @@ mod tests {
         should_skip_direct_finalize_prefetch,
     };
     use crate::control::GatewayControlDecision;
+    use crate::request_candidate_runtime::flush_request_candidate_status_writes;
     use crate::tunnel::{tunnel_protocol, TunnelProxyConn};
     use crate::AppState;
 
@@ -4942,6 +4943,7 @@ mod tests {
                 .and_then(|body| body.pointer("/error/upstream_status")),
             Some(&json!(302))
         );
+        flush_request_candidate_status_writes(&state).await;
         let candidates = request_candidate_repository
             .list_by_request_id("req-remote-runtime-stream-redirect")
             .await
