@@ -18,13 +18,27 @@ use aether_data_contracts::repository::candidate_selection::{
 };
 use aether_data_contracts::repository::candidates::{
     RequestCandidateReadRepository, RequestCandidateStatus, RequestCandidateWriteRepository,
-    UpsertRequestCandidateRecord,
+    StoredRequestCandidate, UpsertRequestCandidateRecord,
 };
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
 };
 use base64::Engine as _;
 use sha2::{Digest, Sha256};
+
+use crate::request_candidate_runtime::flush_request_candidate_status_writes;
+
+async fn list_request_candidates_after_status_flush(
+    gateway_state: &crate::AppState,
+    request_candidate_repository: &Arc<InMemoryRequestCandidateRepository>,
+    request_id: &str,
+) -> Vec<StoredRequestCandidate> {
+    flush_request_candidate_status_writes(gateway_state).await;
+    request_candidate_repository
+        .list_by_request_id(request_id)
+        .await
+        .expect("request candidate trace should read")
+}
 
 #[tokio::test]
 async fn gateway_executes_openai_responses_sync_via_local_decision_gate_with_local_sync_decision() {
@@ -426,7 +440,7 @@ async fn gateway_executes_openai_responses_sync_via_local_decision_gate_with_loc
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -506,10 +520,12 @@ async fn gateway_executes_openai_responses_sync_via_local_decision_gate_with_loc
         "chrome_136"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-local-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-local-123",
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
     assert_eq!(
@@ -833,7 +849,7 @@ async fn gateway_waits_for_api_key_concurrency_slot_then_executes_openai_respons
                 DEVELOPMENT_ENCRYPTION_KEY,
             ),
         );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let request_candidate_repository_for_release = Arc::clone(&request_candidate_repository);
@@ -908,10 +924,12 @@ async fn gateway_waits_for_api_key_concurrency_slot_then_executes_openai_respons
     let payload: serde_json::Value = response.json().await.expect("body should parse");
     assert_eq!(payload["model"], "gpt-5-upstream");
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-local-limit-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-local-limit-123",
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
     assert_eq!(stored_candidates[0].skip_reason.as_deref(), None);
@@ -1216,7 +1234,7 @@ async fn gateway_returns_concurrency_limited_after_wait_budget_expires_for_opena
                 DEVELOPMENT_ENCRYPTION_KEY,
             ),
         );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let started_at = std::time::Instant::now();
@@ -1258,10 +1276,12 @@ async fn gateway_returns_concurrency_limited_after_wait_budget_expires_for_opena
         serde_json::Value::String("当前 API Key 并发请求数已达上限，请稍后重试".to_string())
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-local-timeout-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-local-timeout-123",
+    )
+    .await;
     assert!(stored_candidates.is_empty());
     assert_eq!(
         *execution_runtime_hits.lock().expect("mutex should lock"),
@@ -1514,7 +1534,7 @@ async fn gateway_returns_openai_responses_error_for_local_sync_failure() {
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1549,10 +1569,12 @@ async fn gateway_returns_openai_responses_error_for_local_sync_failure() {
         })
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-local-error-123",
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -1864,7 +1886,7 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_gemini_sy
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1926,10 +1948,12 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_gemini_sy
     assert!(seen_execution_runtime_request.has_contents);
     assert_eq!(seen_execution_runtime_request.model, "gemini-cli-upstream");
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-gemini-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-gemini-local-error-123",
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -2242,7 +2266,7 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_claude_sy
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -2303,10 +2327,12 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_claude_sy
     assert_eq!(seen_execution_runtime_request.model, "claude-code-upstream");
     assert!(seen_execution_runtime_request.has_messages);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-claude-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-claude-local-error-123",
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -2619,7 +2645,7 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_claude_ch
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -2683,10 +2709,12 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_claude_ch
     );
     assert!(seen_execution_runtime_request.has_messages);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-claude-chat-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-claude-chat-local-error-123",
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -2998,7 +3026,7 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_gemini_ch
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -3063,10 +3091,12 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_gemini_ch
     );
     assert!(seen_execution_runtime_request.has_contents);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-cli-gemini-chat-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = list_request_candidates_after_status_flush(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-cli-gemini-chat-local-error-123",
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -3449,7 +3479,7 @@ async fn gateway_executes_codex_cli_sync_via_local_decision_gate_after_oauth_ref
         ),
     )
     .with_oauth_refresh_coordinator_for_tests(oauth_refresh);
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -3587,7 +3617,7 @@ async fn gateway_executes_codex_cli_sync_via_local_decision_gate_after_oauth_ref
         ),
     )
     .with_oauth_refresh_coordinator_for_tests(oauth_refresh);
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
