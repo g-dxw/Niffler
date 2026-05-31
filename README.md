@@ -55,6 +55,10 @@ docker compose pull && docker compose up -d
 docker compose -f docker-compose.single-node.yml pull && docker compose -f docker-compose.single-node.yml up -d
 ```
 
+生产发布使用 CI 预构建镜像。推送到 `main` 后，GitHub Actions 会构建并推送
+`ghcr.io/ryfinez/niffler:main`；服务器执行 `./deploy.sh` 只会拉取镜像并重启容器，
+不会在服务器上编译 Rust、构建前端或执行 `docker build`。
+
 ### 一键安装（默认 Single Node：Linux systemd / macOS launchd + SQLite）
 
 ```bash

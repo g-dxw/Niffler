@@ -15,7 +15,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  GHCR_IMAGE: ryfineZ/niffler
+  GHCR_IMAGE: ryfinez/niffler
   DOCKERHUB_IMAGE: ryfineZ/niffler
 
 jobs:
