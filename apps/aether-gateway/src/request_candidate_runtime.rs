@@ -415,7 +415,11 @@ async fn submit_local_request_candidate_status_record(
     };
 
     match queue.submit_record(writer, record).await {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            #[cfg(test)]
+            queue.flush().await;
+            Ok(())
+        }
         Err((err, record)) => {
             warn!(
                 event_name = "request_candidate_status_queue_submit_failed",
