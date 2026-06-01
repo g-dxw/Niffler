@@ -3,18 +3,29 @@
     <!-- 标题头部 -->
     <div class="p-4 border-b border-border/60">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-semibold flex items-center gap-2">
+        <h3 class="text-sm font-semibold flex items-center gap-2 shrink-0">
           模型列表
         </h3>
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-8"
-          @click="openBatchAssignDialog"
-        >
-          <Layers class="w-3.5 h-3.5 mr-1.5" />
-          关联模型
-        </Button>
+        <div class="flex items-center justify-end gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8"
+            @click="openUpstreamImportDialog"
+          >
+            <RefreshCw class="w-3.5 h-3.5 mr-1.5" />
+            从上游获取
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8"
+            @click="openBatchAssignDialog"
+          >
+            <Layers class="w-3.5 h-3.5 mr-1.5" />
+            关联已有模型
+          </Button>
+        </div>
       </div>
     </div>
 
@@ -206,7 +217,7 @@
         暂无模型
       </p>
       <p class="text-xs mt-1">
-        请前往"模型目录"页面添加模型
+        可以从上游获取模型，或关联已有模型
       </p>
     </div>
   </Card>
@@ -247,7 +258,7 @@
 import { ref, computed, watch } from 'vue'
 import { useSmartPagination } from '@/composables/useSmartPagination'
 import { useModelTest } from '@/composables/useModelTest'
-import { Box, Edit, Layers, Power, Copy, Loader2, Play } from 'lucide-vue-next'
+import { Box, Edit, Layers, Power, Copy, Loader2, Play, RefreshCw } from 'lucide-vue-next'
 import Card from '@/components/ui/card.vue'
 import Button from '@/components/ui/button.vue'
 import { useToast } from '@/composables/useToast'
@@ -287,6 +298,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'editModel': [model: Model]
   'batchAssign': []
+  'importUpstream': []
   'refresh': []
 }>()
 
@@ -482,6 +494,11 @@ function editModel(model: Model) {
 // 打开批量关联对话框
 function openBatchAssignDialog() {
   emit('batchAssign')
+}
+
+// 打开上游模型导入对话框
+function openUpstreamImportDialog() {
+  emit('importUpstream')
 }
 
 // 切换模型启用状态

@@ -1083,6 +1083,7 @@
                 :loading="loadingProviderModels || loadingProviderKeys"
                 @edit-model="handleEditModel"
                 @batch-assign="handleBatchAssign"
+                @import-upstream="handleImportUpstream"
                 @refresh="loadEndpoints"
               />
 
@@ -1195,6 +1196,16 @@
     @changed="handleBatchAssignChanged"
   />
 
+  <!-- 从上游获取模型对话框 -->
+  <KeyAllowedModelsDialog
+    v-if="open && provider"
+    :open="upstreamModelsDialogOpen"
+    :api-key="null"
+    :provider-id="provider.id"
+    @close="upstreamModelsDialogOpen = false"
+    @saved="handleUpstreamModelsImported"
+  />
+
   <!-- Antigravity 配额详情弹窗 -->
   <AntigravityQuotaDialog
     v-if="antigravityQuotaDialogKey"
@@ -1259,6 +1270,7 @@ import {
 import { adminApi } from '@/api/admin'
 import {
   KeyFormDialog,
+  KeyAllowedModelsDialog,
   KeyAllowedModelsEditDialog,
   ModelsTab,
   BatchAssignModelsDialog,
@@ -1396,6 +1408,7 @@ const revealedKeys = ref<Map<string, string>>(new Map())
 const modelFormDialogOpen = ref(false)
 const editingModel = ref<Model | null>(null)
 const batchAssignDialogOpen = ref(false)
+const upstreamModelsDialogOpen = ref(false)
 const modelMappingTabRef = ref<InstanceType<typeof ModelMappingTab> | null>(null)
 
 // 密钥列表拖拽排序状态
@@ -2785,8 +2798,20 @@ function handleBatchAssign() {
   batchAssignDialogOpen.value = true
 }
 
+// 处理打开上游模型导入对话框
+function handleImportUpstream() {
+  upstreamModelsDialogOpen.value = true
+}
+
 // 处理批量关联完成
 async function handleBatchAssignChanged() {
+  await Promise.all([loadEndpoints(), loadMappingPreview()])
+  emit('refresh')
+}
+
+// 处理上游模型导入完成
+async function handleUpstreamModelsImported() {
+  upstreamModelsDialogOpen.value = false
   await Promise.all([loadEndpoints(), loadMappingPreview()])
   emit('refresh')
 }
