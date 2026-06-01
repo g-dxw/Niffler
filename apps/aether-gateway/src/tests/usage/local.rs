@@ -1838,12 +1838,7 @@ async fn gateway_records_failed_usage_when_all_local_claude_cli_candidates_are_s
         .list_by_request_id("trace-claude-cli-usage-local-miss-123")
         .await
         .expect("request candidate trace should read");
-    assert_eq!(stored_candidates.len(), 1);
-    assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Skipped);
-    assert_eq!(
-        stored_candidates[0].skip_reason.as_deref(),
-        Some("format_conversion_disabled")
-    );
+    assert!(stored_candidates.is_empty());
     assert_eq!(stored_usage.routing_candidate_id(), None);
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
 
@@ -2103,12 +2098,7 @@ fn gateway_keeps_failed_usage_request_capture_lightweight_for_large_local_claude
             .list_by_request_id("trace-claude-cli-usage-local-miss-large-123")
             .await
             .expect("request candidate trace should read");
-        assert_eq!(stored_candidates.len(), 1);
-        assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Skipped);
-        assert_eq!(
-            stored_candidates[0].skip_reason.as_deref(),
-            Some("format_conversion_disabled")
-        );
+        assert!(stored_candidates.is_empty());
 
         gateway_handle.abort();
         execution_runtime_handle.abort();
