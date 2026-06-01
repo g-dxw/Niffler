@@ -416,8 +416,9 @@ async fn submit_local_request_candidate_status_record(
 
     match queue.submit_record(writer, record).await {
         Ok(()) => {
-            #[cfg(test)]
-            queue.flush().await;
+            if cfg!(test) {
+                queue.flush().await;
+            }
             Ok(())
         }
         Err((err, record)) => {
