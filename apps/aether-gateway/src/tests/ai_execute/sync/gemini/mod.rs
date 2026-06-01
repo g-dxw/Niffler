@@ -33,7 +33,7 @@ use aether_data_contracts::repository::candidate_selection::{
     StoredMinimalCandidateSelectionRow, StoredProviderModelMapping,
 };
 use aether_data_contracts::repository::candidates::{
-    RequestCandidateReadRepository, RequestCandidateStatus,
+    RequestCandidateReadRepository, RequestCandidateStatus, StoredRequestCandidate,
 };
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -42,3 +42,30 @@ use sha2::{Digest, Sha256};
 
 mod cli;
 mod local_chat;
+
+async fn wait_for_request_candidate_status(
+    gateway_state: &AppState,
+    request_candidate_repository: &Arc<InMemoryRequestCandidateRepository>,
+    request_id: &str,
+    expected_status: RequestCandidateStatus,
+) -> Vec<StoredRequestCandidate> {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            crate::request_candidate_runtime::flush_request_candidate_status_writes(gateway_state)
+                .await;
+            let stored_candidates = request_candidate_repository
+                .list_by_request_id(request_id)
+                .await
+                .expect("request candidate trace should read");
+            if stored_candidates
+                .iter()
+                .any(|candidate| candidate.status == expected_status)
+            {
+                break stored_candidates;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("request candidate status should settle")
+}
