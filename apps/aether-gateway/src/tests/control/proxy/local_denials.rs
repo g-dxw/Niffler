@@ -546,6 +546,8 @@ async fn gateway_locally_denies_disallowed_provider_without_hitting_control_or_u
     snapshot.api_key_allowed_api_formats = None;
     snapshot.user_allowed_api_formats = None;
     snapshot.api_key_allowed_providers = Some(vec!["openai".to_string()]);
+    snapshot.user_allowed_models = Some(vec!["claude-3-7-sonnet".to_string()]);
+    snapshot.api_key_allowed_models = Some(vec!["claude-3-7-sonnet".to_string()]);
     let repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
         Some(hash_api_key("sk-claude-provider-123")),
         snapshot,
