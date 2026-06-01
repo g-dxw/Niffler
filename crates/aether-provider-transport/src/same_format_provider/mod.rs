@@ -19,6 +19,7 @@ use crate::policy::{
     local_gemini_transport_unsupported_reason_with_network,
     local_standard_transport_unsupported_reason_with_network,
 };
+use crate::provider_types::provider_type_is_claude_code_compatible;
 use crate::rules::{
     apply_local_body_rules_with_request_headers, apply_local_header_rules_with_request_headers,
 };
@@ -103,11 +104,8 @@ pub fn classify_same_format_provider_request_behavior(
     params: SameFormatProviderRequestBehaviorParams<'_>,
 ) -> SameFormatProviderRequestBehavior {
     let is_antigravity = is_antigravity_provider_transport(transport);
-    let is_claude_code = transport
-        .provider
-        .provider_type
-        .trim()
-        .eq_ignore_ascii_case("claude_code");
+    let is_claude_code =
+        provider_type_is_claude_code_compatible(transport.provider.provider_type.as_str());
     let is_vertex = is_vertex_transport_context(transport);
     let is_kiro = is_kiro_provider_transport(transport);
     let upstream_is_stream = aether_ai_formats::resolve_upstream_is_stream_from_endpoint_config(
@@ -1018,5 +1016,58 @@ mod tests {
             headers.get("accept").map(String::as_str),
             Some("text/event-stream")
         );
+    }
+
+    #[test]
+    fn claude_code_api_uses_claude_code_headers_with_bearer_auth() {
+        let mut transport = sample_transport("claude_code_api");
+        transport.endpoint.api_format = "claude:messages".to_string();
+        transport.key.auth_type = "bearer".to_string();
+        transport.key.api_formats = Some(vec!["claude:messages".to_string()]);
+
+        let behavior = classify_same_format_provider_request_behavior(
+            &transport,
+            SameFormatProviderRequestBehaviorParams {
+                require_streaming: true,
+                provider_api_format: "claude:messages",
+                report_kind: "claude_cli_stream_success",
+            },
+        );
+        assert!(behavior.is_claude_code);
+        assert!(same_format_provider_transport_supported(
+            &behavior,
+            &transport,
+            SameFormatProviderFamily::Standard,
+            "claude:messages",
+        ));
+
+        let headers = build_same_format_provider_headers(SameFormatProviderHeadersInput {
+            headers: &http::HeaderMap::new(),
+            provider_request_body: &json!({"model":"claude-haiku","messages":[]}),
+            original_request_body: &json!({"model":"claude-haiku","messages":[]}),
+            header_rules: None,
+            behavior,
+            auth_header: Some("authorization"),
+            auth_value: Some("Bearer upstream-token"),
+            extra_headers: &BTreeMap::new(),
+            key_fingerprint: None,
+            kiro_auth_config: None,
+            kiro_machine_id: None,
+        })
+        .expect("headers should build");
+
+        assert_eq!(
+            headers.get("authorization").map(String::as_str),
+            Some("Bearer upstream-token")
+        );
+        assert!(headers.get("x-api-key").is_none());
+        assert_eq!(headers.get("x-app").map(String::as_str), Some("cli"));
+        assert_eq!(
+            headers.get("anthropic-version").map(String::as_str),
+            Some("2023-06-01")
+        );
+        assert!(headers
+            .get("anthropic-beta")
+            .is_some_and(|value| value.contains("claude-code-20250219")));
     }
 }

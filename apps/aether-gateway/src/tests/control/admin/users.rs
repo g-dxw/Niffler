@@ -1563,6 +1563,28 @@ async fn gateway_handles_admin_user_api_key_routes_locally_with_trusted_admin_pr
         .await
         .expect("default group should create")
         .expect("default group should exist");
+    let internal_group = user_repository
+        .create_user_group(UpsertUserGroupRecord {
+            name: "Wholesale".to_string(),
+            description: None,
+            visibility: "internal".to_string(),
+            priority: 0,
+            sales_multiplier: 0.15,
+            model_sales_multipliers: None,
+            allowed_providers: None,
+            allowed_providers_mode: "unrestricted".to_string(),
+            allowed_api_formats: None,
+            allowed_api_formats_mode: "unrestricted".to_string(),
+            allowed_models: None,
+            allowed_models_mode: "unrestricted".to_string(),
+            rate_limit: None,
+            rate_limit_mode: "system".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
+        })
+        .await
+        .expect("internal group should create")
+        .expect("internal group should exist");
 
     let (upstream_url, upstream_handle) = start_server(upstream).await;
     let gateway = build_router_with_state(
@@ -1572,7 +1594,7 @@ async fn gateway_handles_admin_user_api_key_routes_locally_with_trusted_admin_pr
                 crate::data::GatewayDataState::with_auth_api_key_repository_for_tests(
                     auth_repository,
                 )
-                .with_user_reader(user_repository)
+                .with_user_reader(user_repository.clone())
                 .with_system_config_values_for_tests([(
                     "default_user_group_id".to_string(),
                     json!(default_group.id.clone()),
@@ -1649,6 +1671,55 @@ async fn gateway_handles_admin_user_api_key_routes_locally_with_trusted_admin_pr
     assert_eq!(update_payload["concurrent_limit"], 9);
     assert_eq!(update_payload["created_at"], "2024-03-21T05:48:20+00:00");
     assert_eq!(update_payload["message"], "API Key更新成功");
+
+    let reject_internal_group_response = client
+        .put(format!(
+            "{gateway_url}/api/admin/users/user-1/api-keys/key-1"
+        ))
+        .header(crate::constants::GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "group_id": internal_group.id.clone(),
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(
+        reject_internal_group_response.status(),
+        StatusCode::BAD_REQUEST
+    );
+    let reject_payload: serde_json::Value = reject_internal_group_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(reject_payload["detail"], "这个分组不可用于该用户");
+
+    user_repository
+        .add_user_to_group(&internal_group.id, "user-1")
+        .await
+        .expect("internal membership should create");
+    let allow_internal_group_response = client
+        .put(format!(
+            "{gateway_url}/api/admin/users/user-1/api-keys/key-1"
+        ))
+        .header(crate::constants::GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "group_id": internal_group.id.clone(),
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(allow_internal_group_response.status(), StatusCode::OK);
+    let allow_payload: serde_json::Value = allow_internal_group_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(allow_payload["group_id"], internal_group.id);
 
     let lock_response = client
         .patch(format!(

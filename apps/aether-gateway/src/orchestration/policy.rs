@@ -97,7 +97,7 @@ pub(crate) fn local_failover_policy_from_transport(
                 .and_then(|value| u64::try_from(value).ok())
         });
 
-    LocalFailoverPolicy {
+    let mut policy = LocalFailoverPolicy {
         max_retries,
         stop_status_codes: rules
             .map(|value| {
@@ -131,7 +131,18 @@ pub(crate) fn local_failover_policy_from_transport(
         error_stop_patterns: rules
             .map(|value| parse_regex_rules(value, "error_stop_patterns"))
             .unwrap_or_default(),
+    };
+
+    if transport
+        .provider
+        .provider_type
+        .trim()
+        .eq_ignore_ascii_case("claude_code_api")
+    {
+        policy.stop_status_codes.insert(400);
     }
+
+    policy
 }
 
 pub(crate) fn local_failover_policy_from_report_context(
@@ -253,7 +264,7 @@ mod tests {
 
     use super::{
         append_local_failover_policy_to_value, local_failover_policy_from_report_context,
-        LocalFailoverPolicy, LocalFailoverRegexRule,
+        local_failover_policy_from_transport, LocalFailoverPolicy, LocalFailoverRegexRule,
     };
     use crate::provider_transport::snapshot::{
         GatewayProviderTransportEndpoint, GatewayProviderTransportKey,
@@ -357,5 +368,15 @@ mod tests {
                 }],
             })
         );
+    }
+
+    #[test]
+    fn claude_code_api_stops_on_upstream_400_by_default() {
+        let mut transport = sample_transport(None, None, None);
+        transport.provider.provider_type = "claude_code_api".to_string();
+
+        let policy = local_failover_policy_from_transport(&transport);
+
+        assert!(policy.stop_status_codes.contains(&400));
     }
 }

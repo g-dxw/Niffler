@@ -254,7 +254,10 @@ async fn users_me_accessible_api_key_groups(
         .collect::<BTreeSet<_>>();
     Ok(groups
         .into_iter()
-        .filter(|group| group.visibility == "public" || user_group_ids.contains(&group.id))
+        .filter(|group| {
+            group.visibility.trim().eq_ignore_ascii_case("public")
+                || user_group_ids.contains(&group.id)
+        })
         .collect())
 }
 

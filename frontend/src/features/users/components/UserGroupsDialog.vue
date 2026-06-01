@@ -209,29 +209,39 @@
                 v-if="providerModelMultiplierSourceOptions.length > 0"
                 class="rounded-lg border border-border/70 bg-muted/20 p-3"
               >
-                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Label class="shrink-0 text-xs font-medium text-muted-foreground">按提供商批量设置</Label>
-                  <Input
-                    :model-value="batchSalesMultiplier ?? ''"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    class="h-8 sm:w-28"
-                    placeholder="例如 0.15"
-                    @update:model-value="(value) => batchSalesMultiplier = parseNumberInput(value, { allowFloat: true, min: 0, max: 100 }) ?? undefined"
-                  />
+                <div class="mb-2 text-xs font-medium text-muted-foreground">
+                  按提供商批量设置
                 </div>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <button
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <div
                     v-for="provider in providerModelMultiplierSourceOptions"
                     :key="provider.id"
-                    type="button"
-                    class="filter-chip rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
-                    :disabled="batchSalesMultiplier === undefined"
-                    @click="applyProviderSalesMultiplier(provider)"
+                    class="rounded-lg border border-border/60 bg-background/70 p-2"
                   >
-                    {{ provider.name }} · {{ provider.modelIds.length }} 个模型
-                  </button>
+                    <div class="mb-2 truncate text-xs font-medium">
+                      {{ provider.name }} · {{ provider.modelIds.length }} 个模型
+                    </div>
+                    <div class="flex gap-2">
+                      <Input
+                        :model-value="getProviderBatchSalesMultiplier(provider.id) ?? ''"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        class="h-8 min-w-0"
+                        placeholder="例如 0.15"
+                        @update:model-value="(value) => setProviderBatchSalesMultiplier(provider.id, value)"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="h-8 shrink-0"
+                        @click="applyProviderSalesMultiplier(provider)"
+                      >
+                        应用
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <p class="text-xs text-muted-foreground">
@@ -481,7 +491,7 @@ const groups = ref<UserGroup[]>([])
 const editingGroupId = ref<string | null>(null)
 const memberUserIds = ref<string[]>([])
 const modelSalesMultiplierRows = ref<ModelSalesMultiplierRow[]>([])
-const batchSalesMultiplier = ref<number | undefined>(undefined)
+const providerBatchSalesMultipliers = ref<Record<string, number | undefined>>({})
 let modelSalesMultiplierRowSequence = 0
 
 const form = ref({
@@ -668,6 +678,7 @@ async function selectGroup(groupId: string): Promise<void> {
     concurrent_limit: group.concurrent_limit ?? undefined,
   }
   modelSalesMultiplierRows.value = rowsFromModelSalesMultipliers(group.model_sales_multipliers)
+  providerBatchSalesMultipliers.value = {}
   try {
     const members = await usersStore.listUserGroupMembers(group.id)
     memberUserIds.value = members.map((member) => member.user_id)
@@ -703,7 +714,7 @@ function startCreate(): void {
     concurrent_limit: undefined,
   }
   modelSalesMultiplierRows.value = []
-  batchSalesMultiplier.value = undefined
+  providerBatchSalesMultipliers.value = {}
   memberUserIds.value = []
 }
 
@@ -832,8 +843,23 @@ function toggleProviderAllowedModels(provider: ProviderModelNameSource): void {
   form.value.allowed_models = Array.from(nextModelNames)
 }
 
+function getProviderBatchSalesMultiplier(providerId: string): number | undefined {
+  return providerBatchSalesMultipliers.value[providerId]
+}
+
+function setProviderBatchSalesMultiplier(providerId: string, value: string | number | null | undefined): void {
+  providerBatchSalesMultipliers.value = {
+    ...providerBatchSalesMultipliers.value,
+    [providerId]: parseNumberInput(value, { allowFloat: true, min: 0, max: 100 }),
+  }
+}
+
 function applyProviderSalesMultiplier(provider: ProviderModelMultiplierSource): void {
-  if (batchSalesMultiplier.value === undefined) return
+  const multiplier = getProviderBatchSalesMultiplier(provider.id)
+  if (multiplier === undefined) {
+    error('请先填写这个提供商的销售倍率')
+    return
+  }
   const nextByModelId = new Map<string, number>()
   for (const row of modelSalesMultiplierRows.value) {
     if (row.modelId && row.multiplier !== undefined) {
@@ -841,7 +867,7 @@ function applyProviderSalesMultiplier(provider: ProviderModelMultiplierSource): 
     }
   }
   for (const modelId of provider.modelIds) {
-    nextByModelId.set(modelId, batchSalesMultiplier.value)
+    nextByModelId.set(modelId, multiplier)
   }
   modelSalesMultiplierRows.value = Array.from(nextByModelId.entries()).map(([modelId, multiplier]) => ({
     id: nextModelSalesMultiplierRowId(),

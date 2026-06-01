@@ -92,6 +92,11 @@ WHERE p.is_active = TRUE
       AND LOWER($3) = 'claude:messages'
     )
     OR (
+      LOWER(BTRIM(p.provider_type)) = 'claude_code_api'
+      AND LOWER(BTRIM(pak.auth_type)) = 'bearer'
+      AND LOWER($3) = 'claude:messages'
+    )
+    OR (
       LOWER(BTRIM(p.provider_type)) = 'kiro'
       AND LOWER($3) = 'claude:messages'
       AND (
@@ -130,6 +135,7 @@ WHERE p.is_active = TRUE
       LOWER(BTRIM(p.provider_type)) NOT IN (
         'chatgpt_web',
         'claude_code',
+        'claude_code_api',
         'codex',
         'gemini_cli',
         'grok',
@@ -281,6 +287,11 @@ WHERE p.is_active = TRUE
       AND LOWER($4) = 'claude:messages'
     )
     OR (
+      LOWER(BTRIM(p.provider_type)) = 'claude_code_api'
+      AND LOWER(BTRIM(pak.auth_type)) = 'bearer'
+      AND LOWER($4) = 'claude:messages'
+    )
+    OR (
       LOWER(BTRIM(p.provider_type)) = 'kiro'
       AND LOWER($4) = 'claude:messages'
       AND (
@@ -319,6 +330,7 @@ WHERE p.is_active = TRUE
       LOWER(BTRIM(p.provider_type)) NOT IN (
         'chatgpt_web',
         'claude_code',
+        'claude_code_api',
         'codex',
         'gemini_cli',
         'grok',
@@ -469,6 +481,11 @@ WHERE p.is_active = TRUE
       AND LOWER($6) = 'claude:messages'
     )
     OR (
+      LOWER(BTRIM(p.provider_type)) = 'claude_code_api'
+      AND LOWER(BTRIM(pak.auth_type)) = 'bearer'
+      AND LOWER($6) = 'claude:messages'
+    )
+    OR (
       LOWER(BTRIM(p.provider_type)) = 'kiro'
       AND LOWER($6) = 'claude:messages'
       AND (
@@ -507,6 +524,7 @@ WHERE p.is_active = TRUE
       LOWER(BTRIM(p.provider_type)) NOT IN (
         'chatgpt_web',
         'claude_code',
+        'claude_code_api',
         'codex',
         'gemini_cli',
         'grok',
@@ -1302,6 +1320,26 @@ mod tests {
             assert!(sql.contains("LOWER(BTRIM(p.provider_type)) = 'chatgpt_web'"));
             assert!(sql.contains("LOWER(BTRIM(pak.auth_type)) IN ('oauth', 'bearer')"));
             assert!(sql.contains("'chatgpt_web',"));
+        }
+    }
+
+    #[test]
+    fn candidate_selection_sql_allows_claude_code_api_bearer_messages_auth() {
+        let requested_model_sql = requested_model_selection_sql();
+        for sql in [
+            LIST_FOR_EXACT_API_FORMAT_SQL,
+            LIST_FOR_EXACT_API_FORMAT_AND_GLOBAL_MODEL_SQL,
+            LIST_POOL_KEYS_FOR_GROUP_SQL,
+            requested_model_sql.as_str(),
+        ] {
+            assert!(sql.contains("LOWER(BTRIM(p.provider_type)) = 'claude_code_api'"));
+            assert!(sql.contains("LOWER(BTRIM(pak.auth_type)) = 'bearer'"));
+            assert!(
+                sql.contains("LOWER($3) = 'claude:messages'")
+                    || sql.contains("LOWER($4) = 'claude:messages'")
+                    || sql.contains("LOWER($6) = 'claude:messages'")
+            );
+            assert!(sql.contains("'claude_code_api',"));
         }
     }
 

@@ -49,7 +49,10 @@
                     value="claude_code"
                     disabled
                   >
-                    ClaudeCode（暂不可用）
+                    ClaudeCode OAuth（暂不可用）
+                  </SelectItem>
+                  <SelectItem value="claude_code_api">
+                    Claude Code 兼容 API
                   </SelectItem>
                   <SelectItem value="codex">
                     Codex
@@ -79,7 +82,10 @@
                     Vertex AI
                   </SelectItem>
                   <SelectItem value="claude_code">
-                    ClaudeCode
+                    ClaudeCode OAuth
+                  </SelectItem>
+                  <SelectItem value="claude_code_api">
+                    Claude Code 兼容 API
                   </SelectItem>
                   <SelectItem value="codex">
                     Codex
@@ -103,7 +109,7 @@
               </SelectContent>
             </Select>
             <p
-              v-if="!isEditMode && form.provider_type !== 'custom'"
+              v-if="!isEditMode && form.provider_type !== 'custom' && form.provider_type !== 'claude_code_api'"
               class="text-xs text-muted-foreground"
             >
               反代使用固定端点且不可修改
@@ -391,7 +397,7 @@ const defaultPriority = computed(() => {
 // 表单数据
 const form = ref({
   name: '',
-  provider_type: 'custom' as 'custom' | 'vertex_ai' | 'claude_code' | 'codex' | 'chatgpt_web' | 'gemini_cli' | 'antigravity' | 'kiro' | 'grok',
+  provider_type: 'custom' as 'custom' | 'vertex_ai' | 'claude_code' | 'claude_code_api' | 'codex' | 'chatgpt_web' | 'gemini_cli' | 'antigravity' | 'kiro' | 'grok',
   description: '',
   website: '',
   // 计费配置
@@ -504,7 +510,7 @@ watch(() => form.value.provider_type, () => {
 // 提交表单
 const handleSubmit = async () => {
   if (!isEditMode.value && form.value.provider_type === 'claude_code') {
-    showError('ClaudeCode 提供商类型暂时禁用', '验证失败')
+    showError('ClaudeCode OAuth 提供商类型暂时禁用，请使用 Claude Code 兼容 API 接入第三方接口', '验证失败')
     return
   }
 

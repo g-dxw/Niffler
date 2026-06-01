@@ -430,6 +430,12 @@ function normalizeFormAuthType(authType: string | null | undefined): ProviderKey
 }
 
 function getAuthTypeOptions(providerType: ProviderType | null): AuthTypeOption[] {
+  if ((providerType || '').toLowerCase() === 'claude_code_api') {
+    return [
+      { value: 'bearer', label: 'Bearer Token' },
+    ]
+  }
+
   if ((providerType || '').toLowerCase() === 'vertex_ai') {
     return [
       { value: 'api_key', label: 'API Key' },
@@ -533,7 +539,7 @@ function getDefaultApiFormats(): string[] {
 const visibleApiFormats = computed(() => getSelectableApiFormats())
 
 const authTypeOptions = computed(() => getAuthTypeOptions(props.providerType))
-const showAuthTypeSelector = computed(() => props.providerType === 'vertex_ai')
+const showAuthTypeSelector = computed(() => props.providerType === 'vertex_ai' || props.providerType === 'claude_code_api')
 
 const apiFormatHelpOpen = ref(false)
 const apiFormatHelpHovered = ref(false)

@@ -10,6 +10,7 @@ use crate::antigravity::{
     AntigravityRequestUrlAction,
 };
 use crate::claude_code::build_claude_code_messages_url;
+use crate::provider_types::provider_type_is_claude_code_compatible;
 use crate::snapshot::GatewayProviderTransportSnapshot;
 use crate::url::{
     build_claude_messages_url, build_gemini_content_url, build_openai_chat_url,
@@ -272,12 +273,7 @@ fn build_transport_hook_url(
         );
     }
 
-    if transport
-        .provider
-        .provider_type
-        .trim()
-        .eq_ignore_ascii_case("claude_code")
-    {
+    if provider_type_is_claude_code_compatible(&transport.provider.provider_type) {
         return Some(build_claude_code_messages_url(
             &transport.endpoint.base_url,
             params.request_query,
@@ -864,6 +860,33 @@ mod tests {
         assert_eq!(
             v1_stream_url,
             "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-pro:streamGenerateContent?alt=sse"
+        );
+    }
+
+    #[test]
+    fn claude_code_api_url_accepts_messages_base_without_duplication() {
+        let transport = sample_transport(
+            "claude_code_api",
+            "claude:messages",
+            "https://sapi.example.com/v1/messages?source=cc",
+            None,
+        );
+
+        let url = build_transport_request_url(
+            &transport,
+            TransportRequestUrlParams {
+                provider_api_format: "claude:messages",
+                mapped_model: Some("claude-sonnet"),
+                upstream_is_stream: true,
+                request_query: Some("debug=true"),
+                kiro_api_region: None,
+            },
+        )
+        .expect("claude code compatible url");
+
+        assert_eq!(
+            url,
+            "https://sapi.example.com/v1/messages?debug=true&source=cc"
         );
     }
 

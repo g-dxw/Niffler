@@ -514,6 +514,15 @@ fn push_key_auth_channel_sql_filter(
         r#" = 'claude:messages'
     )
     OR (
+      LOWER(TRIM(p.provider_type)) = 'claude_code_api'
+      AND LOWER(TRIM(pak.auth_type)) = 'bearer'
+      AND "#,
+    );
+    builder.push_bind(api_format.clone());
+    builder.push(
+        r#" = 'claude:messages'
+    )
+    OR (
       LOWER(TRIM(p.provider_type)) = 'kiro'
       AND "#,
     );
@@ -563,6 +572,7 @@ fn push_key_auth_channel_sql_filter(
       LOWER(TRIM(p.provider_type)) NOT IN (
         'chatgpt_web',
         'claude_code',
+        'claude_code_api',
         'codex',
         'gemini_cli',
         'vertex_ai',
@@ -812,6 +822,7 @@ fn key_auth_channel_matches(row: &CandidateSelectionRow, api_format: &str) -> bo
             matches!(auth_type.as_str(), "oauth" | "bearer") && api_format == "openai:image"
         }
         "claude_code" => auth_type == "oauth" && api_format == "claude:messages",
+        "claude_code_api" => auth_type == "bearer" && api_format == "claude:messages",
         "kiro" => {
             api_format == "claude:messages"
                 && (auth_type == "oauth"
@@ -1221,6 +1232,25 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["key-chatgpt-web-oauth", "key-chatgpt-web-bearer"]
         );
+
+        let claude_code_api_rows = repository
+            .list_for_exact_api_format_and_requested_model_page(
+                &StoredRequestedModelCandidateRowsQuery {
+                    api_format: "claude:messages".to_string(),
+                    requested_model_name: "claude-sonnet".to_string(),
+                    offset: 0,
+                    limit: 10,
+                },
+            )
+            .await
+            .expect("claude code compatible rows should load");
+        assert_eq!(
+            claude_code_api_rows
+                .iter()
+                .map(|row| row.key_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["key-claude-code-api-bearer"]
+        );
     }
 
     async fn seed_candidate_selection(pool: &sqlx::SqlitePool) {
@@ -1264,12 +1294,33 @@ VALUES
   ('key-chatgpt-web-bearer', 'provider-chatgpt-web', 'Bearer', 'bearer', '["openai:image"]', 20, 1, 1, 1),
   ('key-chatgpt-web-api-key', 'provider-chatgpt-web', 'API Key', 'api_key', '["openai:image"]', 30, 1, 1, 1);
 
+INSERT INTO providers (
+  id, name, provider_type, provider_priority, is_active, created_at, updated_at
+)
+VALUES ('provider-claude-code-api', 'Claude Code Compatible', 'claude_code_api', 30, 1, 1, 1);
+
+INSERT INTO provider_endpoints (
+  id, provider_id, name, base_url, api_format, is_active, created_at, updated_at
+)
+VALUES (
+  'endpoint-claude-code-api', 'provider-claude-code-api', 'Claude Messages',
+  'https://sapi.example.test', 'claude:messages', 1, 1, 1
+);
+
+INSERT INTO provider_api_keys (
+  id, provider_id, name, auth_type, api_formats, internal_priority, is_active, created_at, updated_at
+)
+VALUES
+  ('key-claude-code-api-bearer', 'provider-claude-code-api', 'Bearer', 'bearer', '["claude:messages"]', 10, 1, 1, 1),
+  ('key-claude-code-api-api-key', 'provider-claude-code-api', 'API Key', 'api_key', '["claude:messages"]', 20, 1, 1, 1);
+
 INSERT INTO global_models (
   id, name, config, is_active, created_at, updated_at
 )
 VALUES
   ('global-1', 'gpt-5', '{"model_mappings":["alias-global"],"streaming":true}', 1, 1, 1),
-  ('global-image-1', 'gpt-image-2', NULL, 1, 1, 1);
+  ('global-image-1', 'gpt-image-2', NULL, 1, 1, 1),
+  ('global-claude-1', 'claude-sonnet', NULL, 1, 1, 1);
 
 INSERT INTO models (
   id, provider_id, global_model_id, provider_model_name, provider_model_mappings,
@@ -1282,6 +1333,10 @@ VALUES (
 ),
 (
   'model-chatgpt-web-image', 'provider-chatgpt-web', 'global-image-1', 'gpt-image-2',
+  NULL, 1, 1, 1, 1, 1
+),
+(
+  'model-claude-code-api', 'provider-claude-code-api', 'global-claude-1', 'claude-sonnet',
   NULL, 1, 1, 1, 1, 1
 );
 "#,

@@ -1775,7 +1775,7 @@ const internalOpen = computed(() => props.modelValue)
 
 const isFixedProvider = computed(() => {
   const t = props.provider?.provider_type
-  return !!t && t !== 'custom'
+  return !!t && t !== 'custom' && t !== 'claude_code_api'
 })
 
 // 新端点表单

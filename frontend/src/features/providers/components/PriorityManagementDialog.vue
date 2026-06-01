@@ -853,6 +853,7 @@ const PROVIDER_TYPE_LABELS: Record<string, string> = {
   custom: '自定义',
   vertex_ai: 'Vertex AI',
   claude_code: 'ClaudeCode',
+  claude_code_api: 'Claude Code 兼容 API',
   codex: 'Codex',
   chatgpt_web: 'ChatGPT Web',
   gemini_cli: 'Gemini CLI',

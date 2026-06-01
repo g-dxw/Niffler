@@ -310,6 +310,7 @@ fn key_auth_channel_matches(row: &StoredMinimalCandidateSelectionRow, api_format
             matches!(auth_type.as_str(), "oauth" | "bearer") && api_format == "openai:image"
         }
         "claude_code" => auth_type == "oauth" && api_format == "claude:messages",
+        "claude_code_api" => auth_type == "bearer" && api_format == "claude:messages",
         "kiro" => {
             matches!(auth_type.as_str(), "oauth" | "bearer") && api_format == "claude:messages"
         }
@@ -554,6 +555,39 @@ mod tests {
                 .map(|row| row.provider_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["chatgpt-web-oauth", "chatgpt-web-bearer"]
+        );
+    }
+
+    #[tokio::test]
+    async fn allows_claude_code_api_bearer_for_claude_messages_only() {
+        let mut bearer = sample_row(
+            "claude-code-api-bearer",
+            "claude:messages",
+            "claude-haiku",
+            10,
+        );
+        bearer.provider_type = "claude_code_api".to_string();
+        bearer.key_auth_type = "bearer".to_string();
+        let mut api_key = sample_row("claude-code-api-key", "claude:messages", "claude-haiku", 20);
+        api_key.provider_type = "claude_code_api".to_string();
+        api_key.key_auth_type = "api_key".to_string();
+        let mut openai = sample_row("claude-code-api-openai", "openai:chat", "claude-haiku", 30);
+        openai.provider_type = "claude_code_api".to_string();
+        openai.key_auth_type = "bearer".to_string();
+
+        let repository =
+            InMemoryMinimalCandidateSelectionReadRepository::seed(vec![bearer, api_key, openai]);
+
+        let rows = repository
+            .list_for_exact_api_format_and_requested_model("claude:messages", "claude-haiku")
+            .await
+            .expect("list should succeed");
+
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.provider_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["claude-code-api-bearer"]
         );
     }
 

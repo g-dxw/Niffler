@@ -7,6 +7,7 @@ use super::super::helpers::{
     attach_audit_response, default_admin_user_api_key_name, format_optional_unix_secs_iso8601,
     generate_admin_user_api_key_plaintext, hash_admin_user_api_key, masked_user_api_key_display,
     normalize_admin_api_key_providers, normalize_admin_optional_api_key_name,
+    validate_admin_user_api_key_group_id,
 };
 use super::super::paths::admin_user_id_from_api_keys_path;
 
@@ -133,13 +134,22 @@ pub(crate) async fn build_admin_create_user_api_key_response(
         .filter(|value| !value.is_empty())
     {
         Some(group_id) => {
-            if state.find_user_group_by_id(&group_id).await?.is_none() {
-                return Ok(build_admin_users_bad_request_response("分组不存在"));
+            if let Err(response) =
+                validate_admin_user_api_key_group_id(state, &user_id, &group_id).await?
+            {
+                return Ok(response);
             }
             group_id
         }
         None => match state.effective_default_user_group_id().await? {
-            Some(group_id) => group_id,
+            Some(group_id) => {
+                if let Err(response) =
+                    validate_admin_user_api_key_group_id(state, &user_id, &group_id).await?
+                {
+                    return Ok(response);
+                }
+                group_id
+            }
             None => {
                 return Ok(build_admin_users_bad_request_response(
                     "当前没有可用分组，请先创建或设置默认分组",

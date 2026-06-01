@@ -5,6 +5,7 @@ use super::super::{
     transport_profile_is_configured, transport_proxy_is_locally_supported,
 };
 use super::auth::supports_local_claude_code_auth;
+use crate::provider_types::provider_type_is_claude_code_compatible;
 
 pub fn local_claude_code_transport_unsupported_reason_with_network(
     transport: &GatewayProviderTransportSnapshot,
@@ -19,12 +20,7 @@ pub fn local_claude_code_transport_unsupported_reason_with_network(
             Some("key_inactive")
         };
     }
-    if !transport
-        .provider
-        .provider_type
-        .trim()
-        .eq_ignore_ascii_case("claude_code")
-    {
+    if !provider_type_is_claude_code_compatible(transport.provider.provider_type.as_str()) {
         return Some("transport_provider_type_unsupported");
     }
     if !transport
@@ -157,5 +153,17 @@ mod tests {
             ),
             Some("transport_auth_unavailable")
         );
+    }
+
+    #[test]
+    fn supports_claude_code_api_bearer_transport() {
+        let mut transport = sample_transport();
+        transport.provider.provider_type = "claude_code_api".to_string();
+        transport.endpoint.base_url = "https://sapi.example.com".to_string();
+
+        assert!(supports_local_claude_code_transport_with_network(
+            &transport,
+            "claude:messages"
+        ));
     }
 }

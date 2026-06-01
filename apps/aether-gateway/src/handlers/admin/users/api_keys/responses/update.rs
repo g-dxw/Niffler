@@ -4,7 +4,7 @@ use super::super::super::{
 };
 use super::super::helpers::{
     attach_audit_response, build_admin_user_api_key_detail_payload,
-    normalize_admin_optional_api_key_name,
+    normalize_admin_optional_api_key_name, validate_admin_user_api_key_group_id,
 };
 use super::super::paths::admin_user_api_key_parts;
 
@@ -98,11 +98,17 @@ pub(crate) async fn build_admin_update_user_api_key_response(
         .group_id
         .as_ref()
         .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
     {
         Some(group_id) => {
-            if state.find_user_group_by_id(&group_id).await?.is_none() {
-                return Ok(build_admin_users_bad_request_response("分组不存在"));
+            if group_id.is_empty() {
+                return Ok(build_admin_users_bad_request_response(
+                    "API Key 必须选择分组",
+                ));
+            }
+            if let Err(response) =
+                validate_admin_user_api_key_group_id(state, &user_id, &group_id).await?
+            {
+                return Ok(response);
             }
             Some(group_id)
         }

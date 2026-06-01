@@ -433,6 +433,7 @@ fn key_auth_channel_matches(row: &CandidateSelectionRow, api_format: &str) -> bo
             matches!(auth_type.as_str(), "oauth" | "bearer") && api_format == "openai:image"
         }
         "claude_code" => auth_type == "oauth" && api_format == "claude:messages",
+        "claude_code_api" => auth_type == "bearer" && api_format == "claude:messages",
         "kiro" => {
             api_format == "claude:messages"
                 && (auth_type == "oauth"

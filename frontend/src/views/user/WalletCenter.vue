@@ -205,13 +205,18 @@
             v-if="selectedRechargeOption?.usd_exchange_rate"
             class="rounded-xl border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground"
           >
-            预计支付:
-            <span class="font-medium text-foreground">
-              {{ estimatedRechargePayAmount }}
-              {{ selectedRechargeOption.pay_currency || 'CNY' }}
-            </span>
-            · 1 USD = {{ Number(selectedRechargeOption.usd_exchange_rate).toFixed(4) }}
-            {{ selectedRechargeOption.pay_currency || 'CNY' }}
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span>本次应付</span>
+              <span class="text-sm font-semibold text-foreground">
+                {{ estimatedRechargePayAmount }}
+                {{ selectedRechargeOption.pay_currency || 'CNY' }}
+              </span>
+            </div>
+            <div class="mt-1">
+              充值 {{ rechargeAmountUsdText }} USD，按汇率 1 USD =
+              {{ Number(selectedRechargeOption.usd_exchange_rate).toFixed(4) }}
+              {{ selectedRechargeOption.pay_currency || 'CNY' }} 换算
+            </div>
           </div>
 
           <Button
@@ -786,6 +791,7 @@ const estimatedRechargePayAmount = computed(() => {
   if (!Number.isFinite(rate) || rate <= 0) return '-'
   return (Number(rechargeForm.amount_usd || 0) * rate).toFixed(2)
 })
+const rechargeAmountUsdText = computed(() => Number(rechargeForm.amount_usd || 0).toFixed(2))
 
 const dailyQuota = computed(() => walletBalance.value?.daily_quota ?? null)
 const hasActiveDailyQuota = computed(() => Boolean(dailyQuota.value?.has_active))

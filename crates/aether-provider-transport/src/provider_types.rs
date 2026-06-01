@@ -198,6 +198,13 @@ const CLAUDE_CODE_RUNTIME_POLICY: ProviderRuntimePolicy = ProviderRuntimePolicy 
     supports_local_same_format_transport: false,
     ..STANDARD_RUNTIME_POLICY
 };
+const CLAUDE_CODE_API_RUNTIME_POLICY: ProviderRuntimePolicy = ProviderRuntimePolicy {
+    fixed_provider: false,
+    supports_model_fetch: false,
+    supports_local_openai_chat_transport: false,
+    supports_local_same_format_transport: true,
+    ..STANDARD_RUNTIME_POLICY
+};
 const CODEX_RUNTIME_POLICY: ProviderRuntimePolicy = ProviderRuntimePolicy {
     fixed_provider: true,
     api_format_inheritance: ProviderApiFormatInheritance::OAuth,
@@ -436,6 +443,7 @@ pub fn provider_runtime_policy(provider_type: &str) -> ProviderRuntimePolicy {
     }
 
     match provider_type.trim().to_ascii_lowercase().as_str() {
+        "claude_code_api" => CLAUDE_CODE_API_RUNTIME_POLICY,
         "custom" => CUSTOM_RUNTIME_POLICY,
         "openai" => OPENAI_RUNTIME_POLICY,
         "gemini" | "google" => GEMINI_RUNTIME_POLICY,
@@ -487,6 +495,13 @@ pub fn provider_type_supports_local_embedding_transport(
     api_format: &str,
 ) -> bool {
     provider_runtime_policy(provider_type).supports_local_embedding_transport(api_format)
+}
+
+pub fn provider_type_is_claude_code_compatible(provider_type: &str) -> bool {
+    matches!(
+        provider_type.trim().to_ascii_lowercase().as_str(),
+        "claude_code" | "claude_code_api"
+    )
 }
 
 pub fn is_codex_cli_backend_url(url: &str) -> bool {

@@ -5,9 +5,12 @@ use crate::handlers::admin::shared::{
 use crate::handlers::shared::{
     api_key_placeholder_display, generate_gateway_api_key_plaintext, masked_gateway_api_key_display,
 };
+use crate::GatewayError;
 use axum::{body::Body, response::Response};
 use serde_json::json;
 use std::collections::BTreeSet;
+
+use super::super::build_admin_users_bad_request_response;
 
 pub(crate) fn format_optional_unix_secs_iso8601(value: Option<u64>) -> Option<String> {
     let secs = value?;
@@ -86,6 +89,34 @@ pub(super) fn normalize_admin_api_key_providers(
         }
     }
     Ok(Some(normalized))
+}
+
+pub(super) async fn validate_admin_user_api_key_group_id(
+    state: &AdminAppState<'_>,
+    user_id: &str,
+    group_id: &str,
+) -> Result<Result<(), Response<Body>>, GatewayError> {
+    let Some(group) = state.find_user_group_by_id(group_id).await? else {
+        return Ok(Err(build_admin_users_bad_request_response("分组不存在")));
+    };
+
+    if group.visibility.trim().eq_ignore_ascii_case("public") {
+        return Ok(Ok(()));
+    }
+
+    let user_group_ids = state
+        .list_user_groups_for_user(user_id)
+        .await?
+        .into_iter()
+        .map(|group| group.id)
+        .collect::<BTreeSet<_>>();
+    if user_group_ids.contains(group_id) {
+        Ok(Ok(()))
+    } else {
+        Ok(Err(build_admin_users_bad_request_response(
+            "这个分组不可用于该用户",
+        )))
+    }
 }
 
 pub(crate) fn generate_admin_user_api_key_plaintext() -> String {
