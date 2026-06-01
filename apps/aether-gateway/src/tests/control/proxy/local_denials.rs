@@ -474,6 +474,8 @@ async fn gateway_locally_denies_disallowed_claude_api_format_without_hitting_con
     snapshot.api_key_allowed_providers = Some(vec!["claude".to_string()]);
     snapshot.user_allowed_providers = Some(vec!["claude".to_string()]);
     snapshot.api_key_allowed_api_formats = Some(vec!["openai:chat".to_string()]);
+    snapshot.user_allowed_models = Some(vec!["claude-3-7-sonnet".to_string()]);
+    snapshot.api_key_allowed_models = Some(vec!["claude-3-7-sonnet".to_string()]);
     let repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
         Some(hash_api_key("sk-claude-auth-123")),
         snapshot,

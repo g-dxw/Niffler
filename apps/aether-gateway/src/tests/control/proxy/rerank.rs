@@ -285,6 +285,8 @@ async fn rerank_route_rejects_chat_only_api_format() {
     let mut snapshot = sample_currently_usable_auth_snapshot("key-rerank-2", "user-rerank-2");
     snapshot.user_allowed_api_formats = Some(vec!["openai:chat".to_string()]);
     snapshot.api_key_allowed_api_formats = Some(vec!["openai:chat".to_string()]);
+    snapshot.user_allowed_models = Some(vec!["bge-reranker-base".to_string()]);
+    snapshot.api_key_allowed_models = Some(vec!["bge-reranker-base".to_string()]);
     let repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
         Some(hash_api_key("sk-rerank-format-guard")),
         snapshot,
