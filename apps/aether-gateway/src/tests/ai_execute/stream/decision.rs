@@ -408,10 +408,19 @@ async fn gateway_executes_openai_chat_stream_via_local_decision_gate_without_exe
         "Bearer sk-upstream-openai"
     );
     assert_eq!(seen_upstream_request.content_type, "application/json");
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-stream-123")
-        .await
-        .expect("request candidate trace should read");
+    let mut stored_candidates = Vec::new();
+    for _ in 0..50 {
+        stored_candidates = request_candidate_repository
+            .list_by_request_id("trace-openai-chat-local-stream-123")
+            .await
+            .expect("request candidate trace should read");
+        if stored_candidates.len() == 1
+            && stored_candidates[0].status == RequestCandidateStatus::Success
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(
         stored_candidates
@@ -900,10 +909,19 @@ async fn gateway_executes_openai_chat_stream_via_local_openai_responses_cross_fo
     );
     assert_eq!(seen_execution_runtime_request.user_text, "Say hello");
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-cli-local-123")
-        .await
-        .expect("request candidate trace should read");
+    let mut stored_candidates = Vec::new();
+    for _ in 0..50 {
+        stored_candidates = request_candidate_repository
+            .list_by_request_id("trace-openai-chat-cli-local-123")
+            .await
+            .expect("request candidate trace should read");
+        if stored_candidates.len() == 1
+            && stored_candidates[0].status == RequestCandidateStatus::Success
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
     let extra_data = stored_candidates[0]
@@ -1322,10 +1340,19 @@ async fn gateway_executes_openai_chat_stream_via_local_cross_format_gemini_candi
         "openai-chat-gemini-cross-format-stream"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-gemini-stream-123")
-        .await
-        .expect("request candidate trace should read");
+    let mut stored_candidates = Vec::new();
+    for _ in 0..50 {
+        stored_candidates = request_candidate_repository
+            .list_by_request_id("trace-openai-chat-gemini-stream-123")
+            .await
+            .expect("request candidate trace should read");
+        if stored_candidates.len() == 1
+            && stored_candidates[0].status == RequestCandidateStatus::Success
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
     let extra_data = stored_candidates[0]
@@ -1822,10 +1849,19 @@ async fn gateway_executes_openai_chat_stream_with_custom_path_via_local_decision
         "chrome_136"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-custom-stream-123")
-        .await
-        .expect("request candidate trace should read");
+    let mut stored_candidates = Vec::new();
+    for _ in 0..50 {
+        stored_candidates = request_candidate_repository
+            .list_by_request_id("trace-openai-chat-custom-stream-123")
+            .await
+            .expect("request candidate trace should read");
+        if stored_candidates.len() == 1
+            && stored_candidates[0].status == RequestCandidateStatus::Success
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -2323,10 +2359,20 @@ async fn gateway_retries_next_local_openai_chat_stream_candidate_after_retryable
         seen_execution_runtime_requests[1].authorization,
         "Bearer sk-upstream-openai-backup"
     );
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-stream-failover-123")
-        .await
-        .expect("request candidate trace should read");
+    let mut stored_candidates = Vec::new();
+    for _ in 0..50 {
+        stored_candidates = request_candidate_repository
+            .list_by_request_id("trace-openai-chat-local-stream-failover-123")
+            .await
+            .expect("request candidate trace should read");
+        if stored_candidates.len() == 2
+            && stored_candidates[0].status == RequestCandidateStatus::Failed
+            && stored_candidates[1].status == RequestCandidateStatus::Success
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
     assert_eq!(stored_candidates.len(), 2);
     assert_eq!(stored_candidates[0].candidate_index, 0);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
