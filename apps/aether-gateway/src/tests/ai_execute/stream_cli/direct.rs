@@ -1,7 +1,8 @@
 use super::{
     any, build_router_with_state, build_state_with_execution_runtime_override, json, start_server,
-    strip_sse_keepalive_comments, to_bytes, Arc, Body, Bytes, HeaderName, HeaderValue, Infallible,
-    Json, Mutex, Request, Response, Router, StatusCode, UsageRuntimeConfig, TRACE_ID_HEADER,
+    strip_sse_keepalive_comments, to_bytes, wait_for_request_candidate_status, Arc, Body, Bytes,
+    HeaderName, HeaderValue, Infallible, Json, Mutex, Request, Response, Router, StatusCode,
+    UsageRuntimeConfig, TRACE_ID_HEADER,
 };
 use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY};
 use aether_data::repository::auth::{
@@ -14,9 +15,7 @@ use aether_data::repository::usage::InMemoryUsageReadRepository;
 use aether_data_contracts::repository::candidate_selection::{
     StoredMinimalCandidateSelectionRow, StoredProviderModelMapping,
 };
-use aether_data_contracts::repository::candidates::{
-    RequestCandidateReadRepository, RequestCandidateStatus,
-};
+use aether_data_contracts::repository::candidates::RequestCandidateStatus;
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
 };
@@ -451,7 +450,7 @@ async fn gateway_executes_codex_cli_stream_via_local_decision_gate_after_oauth_r
         enabled: true,
         ..UsageRuntimeConfig::default()
     });
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -517,10 +516,13 @@ async fn gateway_executes_codex_cli_stream_via_local_decision_gate_after_oauth_r
         "trace-codex-cli-stream-local-123"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-codex-cli-stream-local-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-codex-cli-stream-local-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
