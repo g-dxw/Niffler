@@ -1,13 +1,13 @@
 use super::{
     any, build_router_with_state, build_state_with_execution_runtime_override,
-    encrypt_python_fernet_plaintext, json, start_server, to_bytes, AppState, Arc, Body, Digest,
+    encrypt_python_fernet_plaintext, json, start_server, to_bytes,
+    wait_for_request_candidate_status, AppState, Arc, Body, Digest,
     InMemoryAuthApiKeySnapshotRepository, InMemoryMinimalCandidateSelectionReadRepository,
     InMemoryProviderCatalogReadRepository, InMemoryRequestCandidateRepository, Json, Mutex,
-    Request, RequestCandidateReadRepository, RequestCandidateStatus, Router, Sha256, StatusCode,
-    StoredAuthApiKeySnapshot, StoredMinimalCandidateSelectionRow, StoredProviderCatalogEndpoint,
-    StoredProviderCatalogKey, StoredProviderCatalogProvider, StoredProviderModelMapping,
-    DEVELOPMENT_ENCRYPTION_KEY, EXECUTION_PATH_EXECUTION_RUNTIME_SYNC, EXECUTION_PATH_HEADER,
-    TRACE_ID_HEADER,
+    Request, RequestCandidateStatus, Router, Sha256, StatusCode, StoredAuthApiKeySnapshot,
+    StoredMinimalCandidateSelectionRow, StoredProviderCatalogEndpoint, StoredProviderCatalogKey,
+    StoredProviderCatalogProvider, StoredProviderModelMapping, DEVELOPMENT_ENCRYPTION_KEY,
+    EXECUTION_PATH_EXECUTION_RUNTIME_SYNC, EXECUTION_PATH_HEADER, TRACE_ID_HEADER,
 };
 
 #[tokio::test]
@@ -313,7 +313,7 @@ async fn proxy_pii_redaction_local_openai_chat_runtime_masks_headers_and_restore
     let gateway_state = AppState::new()
         .expect("gateway state should build")
         .with_data_state_for_tests(data_state);
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -366,10 +366,13 @@ async fn proxy_pii_redaction_local_openai_chat_runtime_masks_headers_and_restore
     assert!(notice.contains("do not answer"));
     assert_eq!(seen.body["messages"][1]["role"], "user");
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-proxy-pii-redaction-sync")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-proxy-pii-redaction-sync",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -689,7 +692,7 @@ async fn gateway_executes_openai_chat_sync_via_local_decision_gate_without_execu
                 DEVELOPMENT_ENCRYPTION_KEY,
             ),
         );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -724,10 +727,13 @@ async fn gateway_executes_openai_chat_sync_via_local_decision_gate_without_execu
         "Bearer sk-upstream-openai"
     );
     assert_eq!(seen_upstream_request.content_type, "application/json");
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-local-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(
         stored_candidates
@@ -989,7 +995,7 @@ async fn gateway_executes_openai_chat_sync_with_regex_model_mapping_in_execution
                 DEVELOPMENT_ENCRYPTION_KEY,
             ),
         );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1027,10 +1033,13 @@ async fn gateway_executes_openai_chat_sync_with_regex_model_mapping_in_execution
         "Bearer sk-upstream-openai-regex"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-regex-mapping-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-regex-mapping-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -1500,7 +1509,7 @@ async fn gateway_executes_openai_chat_sync_via_local_cross_format_gemini_candida
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1579,10 +1588,13 @@ async fn gateway_executes_openai_chat_sync_via_local_cross_format_gemini_candida
     assert_eq!(seen_execution_runtime_request.max_output_tokens, 64);
     assert!((seen_execution_runtime_request.temperature - 0.2).abs() < f64::EPSILON);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-gemini-local-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-gemini-local-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(
         stored_candidates
@@ -1921,7 +1933,7 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_claude_cli_syn
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1982,10 +1994,13 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_claude_cli_syn
     );
     assert!(seen_execution_runtime_request.has_messages);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-claude-cli-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-claude-cli-local-error-123",
+        RequestCandidateStatus::Failed,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -2318,7 +2333,7 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_gemini_cli_syn
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -2380,10 +2395,13 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_gemini_cli_syn
     );
     assert!(seen_execution_runtime_request.has_contents);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-gemini-cli-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-gemini-cli-local-error-123",
+        RequestCandidateStatus::Failed,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -2717,7 +2735,7 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_claude_sync_fa
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -2781,10 +2799,13 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_claude_sync_fa
     );
     assert!(seen_execution_runtime_request.has_messages);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-claude-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-claude-local-error-123",
+        RequestCandidateStatus::Failed,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -3153,7 +3174,7 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_gemini_sync_fa
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -3221,10 +3242,13 @@ async fn gateway_returns_openai_chat_error_for_local_cross_format_gemini_sync_fa
     assert_eq!(seen_execution_runtime_request.max_output_tokens, 64);
     assert!((seen_execution_runtime_request.temperature - 0.2).abs() < f64::EPSILON);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-gemini-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-gemini-local-error-123",
+        RequestCandidateStatus::Failed,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
