@@ -943,6 +943,8 @@ async fn embeddings_route_rejects_chat_only_api_format() {
     let mut snapshot = sample_currently_usable_auth_snapshot("key-embedding-2", "user-embedding-2");
     snapshot.user_allowed_api_formats = Some(vec!["openai:chat".to_string()]);
     snapshot.api_key_allowed_api_formats = Some(vec!["openai:chat".to_string()]);
+    snapshot.user_allowed_models = Some(vec!["text-embedding-3-small".to_string()]);
+    snapshot.api_key_allowed_models = Some(vec!["text-embedding-3-small".to_string()]);
     let repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
         Some(hash_api_key("sk-embedding-format-guard")),
         snapshot,
