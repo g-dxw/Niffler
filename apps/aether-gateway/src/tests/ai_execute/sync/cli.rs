@@ -40,6 +40,32 @@ async fn list_request_candidates_after_status_flush(
         .expect("request candidate trace should read")
 }
 
+async fn wait_for_request_candidate_status_after_flush(
+    gateway_state: &crate::AppState,
+    request_candidate_repository: &Arc<InMemoryRequestCandidateRepository>,
+    request_id: &str,
+    expected_status: RequestCandidateStatus,
+) -> Vec<StoredRequestCandidate> {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            flush_request_candidate_status_writes(gateway_state).await;
+            let stored_candidates = request_candidate_repository
+                .list_by_request_id(request_id)
+                .await
+                .expect("request candidate trace should read");
+            if stored_candidates
+                .iter()
+                .any(|candidate| candidate.status == expected_status)
+            {
+                break stored_candidates;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("request candidate status should settle")
+}
+
 #[tokio::test]
 async fn gateway_executes_openai_responses_sync_via_local_decision_gate_with_local_sync_decision() {
     #[derive(Debug, Clone)]
@@ -520,10 +546,11 @@ async fn gateway_executes_openai_responses_sync_via_local_decision_gate_with_loc
         "chrome_136"
     );
 
-    let stored_candidates = list_request_candidates_after_status_flush(
+    let stored_candidates = wait_for_request_candidate_status_after_flush(
         &gateway_state,
         &request_candidate_repository,
         "trace-openai-cli-local-123",
+        RequestCandidateStatus::Success,
     )
     .await;
     assert_eq!(stored_candidates.len(), 1);
@@ -924,10 +951,11 @@ async fn gateway_waits_for_api_key_concurrency_slot_then_executes_openai_respons
     let payload: serde_json::Value = response.json().await.expect("body should parse");
     assert_eq!(payload["model"], "gpt-5-upstream");
 
-    let stored_candidates = list_request_candidates_after_status_flush(
+    let stored_candidates = wait_for_request_candidate_status_after_flush(
         &gateway_state,
         &request_candidate_repository,
         "trace-openai-cli-local-limit-123",
+        RequestCandidateStatus::Success,
     )
     .await;
     assert_eq!(stored_candidates.len(), 1);
@@ -1569,10 +1597,11 @@ async fn gateway_returns_openai_responses_error_for_local_sync_failure() {
         })
     );
 
-    let stored_candidates = list_request_candidates_after_status_flush(
+    let stored_candidates = wait_for_request_candidate_status_after_flush(
         &gateway_state,
         &request_candidate_repository,
         "trace-openai-cli-local-error-123",
+        RequestCandidateStatus::Failed,
     )
     .await;
     assert_eq!(stored_candidates.len(), 1);
@@ -1948,10 +1977,11 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_gemini_sy
     assert!(seen_execution_runtime_request.has_contents);
     assert_eq!(seen_execution_runtime_request.model, "gemini-cli-upstream");
 
-    let stored_candidates = list_request_candidates_after_status_flush(
+    let stored_candidates = wait_for_request_candidate_status_after_flush(
         &gateway_state,
         &request_candidate_repository,
         "trace-openai-cli-gemini-local-error-123",
+        RequestCandidateStatus::Failed,
     )
     .await;
     assert_eq!(stored_candidates.len(), 1);
@@ -2327,10 +2357,11 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_claude_sy
     assert_eq!(seen_execution_runtime_request.model, "claude-code-upstream");
     assert!(seen_execution_runtime_request.has_messages);
 
-    let stored_candidates = list_request_candidates_after_status_flush(
+    let stored_candidates = wait_for_request_candidate_status_after_flush(
         &gateway_state,
         &request_candidate_repository,
         "trace-openai-cli-claude-local-error-123",
+        RequestCandidateStatus::Failed,
     )
     .await;
     assert_eq!(stored_candidates.len(), 1);
@@ -2709,10 +2740,11 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_claude_ch
     );
     assert!(seen_execution_runtime_request.has_messages);
 
-    let stored_candidates = list_request_candidates_after_status_flush(
+    let stored_candidates = wait_for_request_candidate_status_after_flush(
         &gateway_state,
         &request_candidate_repository,
         "trace-openai-cli-claude-chat-local-error-123",
+        RequestCandidateStatus::Failed,
     )
     .await;
     assert_eq!(stored_candidates.len(), 1);
@@ -3091,10 +3123,11 @@ async fn gateway_returns_openai_responses_error_for_local_cross_format_gemini_ch
     );
     assert!(seen_execution_runtime_request.has_contents);
 
-    let stored_candidates = list_request_candidates_after_status_flush(
+    let stored_candidates = wait_for_request_candidate_status_after_flush(
         &gateway_state,
         &request_candidate_repository,
         "trace-openai-cli-gemini-chat-local-error-123",
+        RequestCandidateStatus::Failed,
     )
     .await;
     assert_eq!(stored_candidates.len(), 1);

@@ -1,13 +1,13 @@
 use super::{
     any, build_router_with_state, build_state_with_execution_runtime_override,
-    encrypt_python_fernet_plaintext, json, start_server, to_bytes, Arc, Body, Digest,
-    InMemoryAuthApiKeySnapshotRepository, InMemoryMinimalCandidateSelectionReadRepository,
-    InMemoryProviderCatalogReadRepository, InMemoryRequestCandidateRepository, Json, Mutex,
-    Request, RequestCandidateReadRepository, RequestCandidateStatus, Router, Sha256, StatusCode,
-    StoredAuthApiKeySnapshot, StoredMinimalCandidateSelectionRow, StoredProviderCatalogEndpoint,
-    StoredProviderCatalogKey, StoredProviderCatalogProvider, StoredProviderModelMapping,
-    DEVELOPMENT_ENCRYPTION_KEY, EXECUTION_PATH_EXECUTION_RUNTIME_SYNC, EXECUTION_PATH_HEADER,
-    TRACE_ID_HEADER,
+    encrypt_python_fernet_plaintext, json, start_server, to_bytes,
+    wait_for_request_candidate_status, Arc, Body, Digest, InMemoryAuthApiKeySnapshotRepository,
+    InMemoryMinimalCandidateSelectionReadRepository, InMemoryProviderCatalogReadRepository,
+    InMemoryRequestCandidateRepository, Json, Mutex, Request, RequestCandidateStatus, Router,
+    Sha256, StatusCode, StoredAuthApiKeySnapshot, StoredMinimalCandidateSelectionRow,
+    StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
+    StoredProviderModelMapping, DEVELOPMENT_ENCRYPTION_KEY, EXECUTION_PATH_EXECUTION_RUNTIME_SYNC,
+    EXECUTION_PATH_HEADER, TRACE_ID_HEADER,
 };
 
 const GEMINI_CLI_SYNC_TEST_STACK_BYTES: usize = 16 * 1024 * 1024;
@@ -398,7 +398,7 @@ async fn gateway_executes_gemini_cli_sync_via_local_decision_gate_with_local_syn
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -465,10 +465,13 @@ async fn gateway_executes_gemini_cli_sync_via_local_decision_gate_with_local_syn
         "chrome_136"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-gemini-cli-local-sync-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-gemini-cli-local-sync-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -713,7 +716,7 @@ async fn gateway_returns_gemini_cli_error_for_local_sync_failure_impl() {
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -748,10 +751,13 @@ async fn gateway_returns_gemini_cli_error_for_local_sync_failure_impl() {
         })
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-gemini-cli-local-error-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-gemini-cli-local-error-123",
+        RequestCandidateStatus::Failed,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
 
@@ -1185,7 +1191,7 @@ async fn gateway_executes_gemini_cli_sync_via_local_decision_gate_after_oauth_re
         ),
     )
     .with_oauth_refresh_coordinator_for_tests(oauth_refresh);
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1265,10 +1271,13 @@ async fn gateway_executes_gemini_cli_sync_via_local_decision_gate_after_oauth_re
         "chrome_136"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-gemini-cli-oauth-local-sync-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-gemini-cli-oauth-local-sync-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -1656,7 +1665,7 @@ async fn gateway_executes_vertex_ai_gemini_cli_sync_via_local_decision_gate_with
             DEVELOPMENT_ENCRYPTION_KEY,
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1705,10 +1714,13 @@ async fn gateway_executes_vertex_ai_gemini_cli_sync_via_local_decision_gate_with
     );
     assert!(!seen_execution_runtime_request.tool_config_present);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-vertex-cli-local-sync-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-vertex-cli-local-sync-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -2184,7 +2196,7 @@ async fn gateway_executes_antigravity_gemini_cli_sync_via_local_decision_gate_af
         ),
     )
     .with_oauth_refresh_coordinator_for_tests(oauth_refresh);
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -2292,10 +2304,13 @@ async fn gateway_executes_antigravity_gemini_cli_sync_via_local_decision_gate_af
     assert!((seen_execution_runtime_request.exact_temperature - 0.2).abs() < f64::EPSILON);
     assert!(!seen_execution_runtime_request.request_has_model);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-antigravity-cli-oauth-local-sync-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-antigravity-cli-oauth-local-sync-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
