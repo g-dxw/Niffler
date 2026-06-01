@@ -985,6 +985,10 @@ async fn gateway_imports_admin_system_users_locally_and_persists_data() {
         .expect("user api keys should load");
     assert_eq!(user_api_keys.len(), 1);
     assert_eq!(user_api_keys[0].name.as_deref(), Some("Alice CLI"));
+    assert_eq!(
+        user_api_keys[0].group_id.as_deref(),
+        Some(imported_groups[0].id.as_str())
+    );
     assert_eq!(user_api_keys[0].total_tokens, 3456);
     assert_eq!(user_api_keys[0].total_cost_usd, 1.25);
     assert_eq!(

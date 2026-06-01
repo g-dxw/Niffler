@@ -850,6 +850,50 @@ fn resolve_imported_user_group_ids(
     Ok(group_ids.into_iter().collect())
 }
 
+fn resolve_imported_api_key_group_id(
+    key: &Map<String, Value>,
+    user_group_ids: &[String],
+    default_group_id: Option<&str>,
+    imported_group_id_map: &BTreeMap<String, String>,
+    imported_group_name_map: &BTreeMap<String, String>,
+    groups_by_name: &BTreeMap<String, aether_data::repository::users::StoredUserGroup>,
+) -> Result<Option<String>, String> {
+    let raw_group_id = imported_optional_string(key.get("group_id"))
+        .map_err(|_| "group_id 必须是字符串".to_string())?;
+    if let Some(raw_group_id) = raw_group_id.as_deref() {
+        if let Some(group_id) = imported_group_id_map.get(raw_group_id) {
+            return Ok(Some(group_id.clone()));
+        }
+    }
+
+    let raw_group_name = imported_optional_string(key.get("group_name"))
+        .map_err(|_| "group_name 必须是字符串".to_string())?;
+    if let Some(raw_group_name) = raw_group_name.as_deref() {
+        let normalized_name =
+            aether_data::repository::users::normalize_user_group_name(raw_group_name)
+                .to_ascii_lowercase();
+        if let Some(group_id) = imported_group_name_map.get(&normalized_name) {
+            return Ok(Some(group_id.clone()));
+        }
+        if let Some(group) = groups_by_name.get(&normalized_name) {
+            return Ok(Some(group.id.clone()));
+        }
+    }
+
+    if let Some(raw_group_id) = raw_group_id {
+        return Ok(Some(raw_group_id));
+    }
+    if let Some(raw_group_name) = raw_group_name {
+        return Err(format!("API Key 分组不存在: {raw_group_name}"));
+    }
+
+    if let Some(group_id) = user_group_ids.first() {
+        return Ok(Some(group_id.clone()));
+    }
+
+    Ok(default_group_id.map(ToOwned::to_owned))
+}
+
 fn normalize_imported_wallet_target(
     wallet: Option<&Map<String, Value>>,
     unlimited: bool,
@@ -2469,6 +2513,11 @@ impl<'a> AdminAppState<'a> {
                 created.id
             };
 
+            let api_key_fallback_group_ids = if imported_user_group_ids.is_empty() {
+                group_ids.clone().unwrap_or_default()
+            } else {
+                imported_user_group_ids.clone()
+            };
             let existing_api_keys = self
                 .list_auth_api_key_export_records_by_user_ids(std::slice::from_ref(&user_id))
                 .await?
@@ -2554,6 +2603,26 @@ impl<'a> AdminAppState<'a> {
                     "feature_settings"
                 )
                 .and_then(normalize_admin_feature_settings));
+                let api_key_group_id = invalid_value!(resolve_imported_api_key_group_id(
+                    key,
+                    &api_key_fallback_group_ids,
+                    default_group_id.as_deref(),
+                    &imported_group_id_map,
+                    &imported_group_name_map,
+                    &groups_by_name,
+                ));
+                if let Some(api_key_group_id) = api_key_group_id.as_deref() {
+                    if self
+                        .find_user_group_by_id(api_key_group_id)
+                        .await?
+                        .is_none()
+                    {
+                        return Ok(Err(invalid_request(format!(
+                            "用户 '{}' 的 API Key 分组不存在",
+                            email.clone().unwrap_or(username.clone())
+                        ))));
+                    }
+                }
 
                 if let Some(existing_key) = existing_api_keys_by_hash.get(&key_hash).cloned() {
                     match merge_mode {
@@ -2573,7 +2642,7 @@ impl<'a> AdminAppState<'a> {
                                         user_id: user_id.clone(),
                                         api_key_id: existing_key.api_key_id.clone(),
                                         name: name.clone(),
-                                        group_id: default_group_id.clone(),
+                                        group_id: api_key_group_id.clone(),
                                         rate_limit: Some(rate_limit),
                                         concurrent_limit: if key.contains_key("concurrent_limit") {
                                             concurrent_limit
@@ -2638,7 +2707,7 @@ impl<'a> AdminAppState<'a> {
                     continue;
                 }
 
-                let Some(api_key_group_id) = default_group_id.clone() else {
+                let Some(api_key_group_id) = api_key_group_id else {
                     return Ok(Err(invalid_request(
                         "当前没有可用分组，无法导入用户 API Key",
                     )));

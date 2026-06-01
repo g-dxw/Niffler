@@ -334,6 +334,8 @@ impl<'a> AdminAppState<'a> {
         let mut payload = serde_json::Map::from_iter([
             ("key_hash".to_string(), json!(key.key_hash.clone())),
             ("name".to_string(), json!(key.name.clone())),
+            ("group_id".to_string(), json!(key.group_id.clone())),
+            ("group_name".to_string(), json!(key.group_name.clone())),
             (
                 "allowed_providers".to_string(),
                 json!(key.allowed_providers.clone()),

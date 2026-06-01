@@ -653,7 +653,7 @@ async fn gateway_handles_admin_system_users_export_locally_with_trusted_admin_pr
         .expect("user group membership should create");
     let auth_repository = Arc::new(
         InMemoryAuthApiKeySnapshotRepository::default().with_export_records(vec![
-            StoredAuthApiKeyExportRecord::new(
+            StoredAuthApiKeyExportRecord::new_with_group(
                 "user-1".to_string(),
                 "key-user-1".to_string(),
                 "hash-user-1".to_string(),
@@ -662,6 +662,8 @@ async fn gateway_handles_admin_system_users_export_locally_with_trusted_admin_pr
                         .expect("user api key should encrypt"),
                 ),
                 Some("User Key".to_string()),
+                Some(user_group.id.clone()),
+                Some(user_group.name.clone()),
                 Some(json!(["openai"])),
                 Some(json!(["openai:chat"])),
                 Some(json!(["gpt-5"])),
@@ -802,6 +804,14 @@ async fn gateway_handles_admin_system_users_export_locally_with_trusted_admin_pr
     assert_eq!(
         payload["users"][0]["api_keys"][0]["is_standalone"],
         json!(false)
+    );
+    assert_eq!(
+        payload["users"][0]["api_keys"][0]["group_id"],
+        json!(user_group.id)
+    );
+    assert_eq!(
+        payload["users"][0]["api_keys"][0]["group_name"],
+        json!("Restricted GPT")
     );
     assert_eq!(
         payload["users"][0]["api_keys"][0]["total_tokens"],
