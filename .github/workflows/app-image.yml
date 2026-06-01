@@ -2,23 +2,13 @@ name: Build App Image
 
 on:
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: Extra image tag to publish
-        required: false
-        type: string
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: app-image-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ryfinez/niffler
 
 jobs:
   frontend:
@@ -83,7 +73,7 @@ jobs:
           retention-days: 1
 
   image:
-    name: Build and push image
+    name: Build image tar
     needs: [frontend, gateway]
     runs-on: ubuntu-latest
     steps:
@@ -102,48 +92,17 @@ jobs:
           chmod +x dist/aether-gateway-amd64
           cp -r artifacts/frontend-dist dist/frontend
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=sha-
-            type=raw,value=${{ github.event.inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != '' }}
-          flavor: |
-            latest=false
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.app
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-
       - name: Build amd64 image tar
         run: |
           set -euo pipefail
-          docker buildx build \
-            --platform linux/amd64 \
+          docker build \
             --file ./Dockerfile.app \
+            --build-arg TARGETARCH=amd64 \
             --tag niffler-app:latest \
             --tag niffler-app:${GITHUB_SHA} \
-            --output type=docker,dest=/tmp/niffler-app-linux-amd64.tar \
             .
+          docker save niffler-app:latest niffler-app:${GITHUB_SHA} \
+            --output /tmp/niffler-app-linux-amd64.tar
 
       - name: Upload amd64 image tar
         uses: actions/upload-artifact@v5

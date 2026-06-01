@@ -14,40 +14,21 @@
 ## 行为变化
 
 - 主应用镜像构建不再跟随 `main` 推送自动执行，需要在 GitHub Actions 手动触发 `Build App Image`。
-- 当前线上只使用 Linux amd64，因此 `Build App Image` 只构建 amd64 的 `aether-gateway` 和 amd64 镜像文件。
-- 从 `main` 手动触发时，CI 会推送 `ghcr.io/ryfinez/niffler:main` 和 `ghcr.io/ryfinez/niffler:sha-xxxxxxx`，并上传 `niffler-app-linux-amd64` 镜像文件。
-- 从其他分支手动触发时，CI 只推送 `sha-xxxxxxx` 和手动填写的镜像标签，不覆盖 `main` 镜像。
+- 当前线上只使用 Linux amd64，因此 `Build App Image` 只构建 amd64 的 `aether-gateway`。
+- `Build App Image` 只产出 `niffler-app-linux-amd64` 镜像文件，不再推送 GHCR 镜像，避免重复构建和上传。
 - `deploy.sh` 不再使用 `Dockerfile.app.local`，也不再计算代码哈希。
 - `deploy.sh` 只执行镜像拉取和 `docker compose up -d --no-build`。
 - `scripts/deploy-ci-artifact.sh` 会从 CI 下载镜像文件，上传到服务器，执行 `docker load`，再重启指定服务。
 
 ## 影响范围
 
-- GitHub Actions 主应用镜像构建流程会产出 GHCR 镜像和 amd64 镜像文件。
-- 线上发布优先使用 CI 产出的镜像文件，不依赖服务器访问私有 GHCR。
-- Compose 默认镜像统一为 `ghcr.io/ryfinez/niffler`。
+- GitHub Actions 主应用镜像构建流程只产出 amd64 镜像文件。
+- 线上发布使用 CI 产出的镜像文件，不依赖服务器访问私有 GHCR。
+- 服务器 `.env` 中的 `APP_IMAGE` 应设置为 `niffler-app:latest`，由 `docker load` 后的本地镜像提供。
 
 ## 发布方式
 
-如果服务器可以公开拉取镜像，服务器 `.env` 中设置：
-
-```env
-APP_IMAGE=ghcr.io/ryfinez/niffler:main
-```
-
-发布时执行：
-
-```bash
-./deploy.sh
-```
-
-脚本会拉取 `APP_IMAGE` 指向的镜像，然后重启应用容器。需要强制重建容器时执行：
-
-```bash
-./deploy.sh --force
-```
-
-如果 GHCR 镜像不是公开包，使用 CI 镜像文件发布。以 hd0526 为例：
+使用 CI 镜像文件发布。以 hd0526 为例：
 
 ```bash
 APP_SERVICES="frontdoor background" \
@@ -56,7 +37,7 @@ GH_REPO=ryfineZ/Niffler \
 ./scripts/deploy-ci-artifact.sh --host hd0526 --remote-dir /opt/niffler-app
 ```
 
-这个脚本会下载最近一次成功的 `Build App Image` 工作流产物，把镜像文件传到服务器，服务器加载成 `niffler-app:latest`，再重启 `frontdoor` 和 `background`。
+这个脚本会下载最近一次成功的 `Build App Image` 工作流产物，把镜像文件传到服务器，服务器加载成 `niffler-app:latest`，再重启 `frontdoor` 和 `background`。Postgres 和 Redis 不需要重启。
 
 ## 验证方式
 

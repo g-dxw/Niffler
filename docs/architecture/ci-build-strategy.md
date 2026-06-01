@@ -17,13 +17,14 @@
 - SQLite 和 MySQL 数据库冒烟测试改为手动全量 CI 时运行，避免日常提交反复启动不在线上使用的数据库服务。
 - 应用镜像构建不再跟随 `main` 分支每次 push 自动运行，改为手动触发。
 - 应用镜像构建只生成当前线上需要的 `linux/amd64` 版本，不再生成 `linux/arm64`。
-- Docker 镜像只构建 `linux/amd64`，不再走多架构 buildx 发布。
+- Docker 镜像只构建一次 `linux/amd64` 本地镜像，并导出为 `niffler-app-linux-amd64.tar`；不再重复构建并推送 GHCR。
 - 正式 release 和 tunnel 多平台构建仍保留在标签或手动场景，不绑定日常上线。
 
 ## 影响范围
 
 - GitHub Actions 的 Rust CI。
 - GitHub Actions 的应用镜像构建。
+- 当前应用镜像发布不再产出 `ghcr.io/ryfinez/niffler:main`，线上通过 CI 产出的 tar 镜像文件发布。
 - 不影响本地构建命令。
 - 不影响正式 tag release 的多平台产物。
 
