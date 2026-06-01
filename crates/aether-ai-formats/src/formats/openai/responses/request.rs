@@ -62,6 +62,7 @@ pub fn from_raw(body_json: &Value) -> Option<CanonicalRequest> {
     canonical.messages = openai_responses_input_to_canonical_messages(request.get("input"))?;
     canonical.generation = openai_responses_generation_config(request);
     canonical.tools = openai_responses_tools_to_canonical(request.get("tools"))?;
+    let raw_tool_choice = request.get("tool_choice").cloned();
     canonical.tool_choice = openai_responses_tool_choice_to_canonical(request.get("tool_choice"));
     canonical.parallel_tool_calls = request.get("parallel_tool_calls").and_then(Value::as_bool);
     canonical.metadata = request.get("metadata").cloned();
@@ -103,6 +104,17 @@ pub fn from_raw(body_json: &Value) -> Option<CanonicalRequest> {
         canonical
             .extensions
             .insert(OPENAI_RESPONSES_EXTENSION_NAMESPACE.to_string(), raw);
+    }
+    if canonical.tool_choice.is_none() {
+        if let Some(tool_choice) = raw_tool_choice {
+            let entry = canonical
+                .extensions
+                .entry(OPENAI_RESPONSES_EXTENSION_NAMESPACE.to_string())
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            if let Some(object) = entry.as_object_mut() {
+                object.insert("tool_choice".to_string(), tool_choice);
+            }
+        }
     }
     if let Some(verbosity) = request
         .get("text")
@@ -460,9 +472,7 @@ fn canonical_tool_to_responses(tool: &CanonicalToolDefinition) -> Value {
             value
                 .get("type")
                 .and_then(Value::as_str)
-                .is_some_and(|tool_type| {
-                    tool_type == "custom" || tool_type.starts_with("web_search")
-                })
+                .is_some_and(openai_responses_raw_tool_should_be_preserved)
         })
     {
         return raw.clone();
@@ -485,6 +495,13 @@ fn canonical_tool_to_responses(tool: &CanonicalToolDefinition) -> Value {
         &out,
     ));
     Value::Object(out)
+}
+
+fn openai_responses_raw_tool_should_be_preserved(tool_type: &str) -> bool {
+    let normalized = tool_type.trim().to_ascii_lowercase();
+    normalized == "custom"
+        || normalized == "image_generation"
+        || normalized.starts_with("web_search")
 }
 
 fn canonical_tool_choice_to_responses(choice: &CanonicalToolChoice) -> Value {

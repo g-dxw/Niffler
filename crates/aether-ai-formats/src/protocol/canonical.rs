@@ -3406,7 +3406,7 @@ pub(crate) fn openai_responses_tools_to_canonical(
                     tool.clone(),
                 )]),
             });
-        } else if tool_type.starts_with("web_search") {
+        } else if openai_responses_raw_tool_should_be_preserved(&tool_type) {
             canonical.push(CanonicalToolDefinition {
                 name: tool_type,
                 description: None,
@@ -3419,6 +3419,11 @@ pub(crate) fn openai_responses_tools_to_canonical(
         }
     }
     Some(canonical)
+}
+
+fn openai_responses_raw_tool_should_be_preserved(tool_type: &str) -> bool {
+    let normalized = tool_type.trim().to_ascii_lowercase();
+    normalized == "image_generation" || normalized.starts_with("web_search")
 }
 
 fn merge_tool_extensions(target: &mut BTreeMap<String, Value>, source: BTreeMap<String, Value>) {

@@ -9,12 +9,11 @@
   >
     <div class="grid gap-4 lg:min-h-[560px] lg:grid-cols-[17rem_minmax(0,1fr)]">
       <div class="rounded-xl border border-border/70 bg-muted/20 p-3">
-        <div class="mb-3 flex items-center justify-between gap-2">
-          <Label class="text-sm font-semibold">分组</Label>
+        <div class="mb-3 flex justify-end">
           <Button
             variant="ghost"
             size="icon"
-            class="h-8 w-8"
+            class="nav-action h-8 w-8"
             title="新建分组"
             @click="startCreate"
           >
@@ -42,6 +41,8 @@
             v-for="group in groups"
             :key="group.id"
             type="button"
+            role="tab"
+            :aria-selected="editingGroupId === group.id"
             :class="groupButtonClass(group.id)"
             @click="selectGroup(group.id)"
           >
@@ -79,7 +80,7 @@
             <Button
               variant="ghost"
               size="icon"
-              class="h-8 w-8"
+              class="nav-action h-8 w-8"
               :class="selectedGroup?.is_default ? 'text-emerald-500 hover:text-emerald-500' : ''"
               :disabled="saving || selectedGroup?.is_default"
               :title="selectedGroup?.is_default ? '默认注册组' : '设为默认注册组'"
@@ -90,7 +91,7 @@
             <Button
               variant="ghost"
               size="icon"
-              class="h-8 w-8"
+              class="nav-action h-8 w-8"
               :disabled="saving || selectedGroup?.is_default"
               title="删除分组"
               @click="deleteSelectedGroup"
@@ -142,14 +143,99 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm font-medium">模型销售倍率覆盖（可选）</Label>
-              <Textarea
-                v-model="modelSalesMultipliersText"
-                class="min-h-20 font-mono text-xs"
-                placeholder='例如：{"global-model-id": 0.8}'
-              />
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <Label class="text-sm font-medium">模型销售倍率覆盖（可选）</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-8"
+                  :disabled="globalModelSelectOptions.length === 0"
+                  @click="addModelSalesMultiplierRow"
+                >
+                  <Plus class="mr-1.5 h-3.5 w-3.5" />
+                  添加模型
+                </Button>
+              </div>
+              <div class="rounded-lg border border-border/70">
+                <div
+                  v-if="modelSalesMultiplierRows.length === 0"
+                  class="px-3 py-4 text-sm text-muted-foreground"
+                >
+                  未单独设置的模型使用默认销售倍率。
+                </div>
+                <div
+                  v-for="row in modelSalesMultiplierRows"
+                  :key="row.id"
+                  class="grid gap-2 border-b border-border/60 p-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_8rem_2.25rem]"
+                >
+                  <select
+                    v-model="row.modelId"
+                    class="h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">
+                      选择模型
+                    </option>
+                    <option
+                      v-for="option in globalModelSelectOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                  <Input
+                    :model-value="row.multiplier ?? ''"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="h-9"
+                    placeholder="倍率"
+                    @update:model-value="(value) => row.multiplier = parseNumberInput(value, { allowFloat: true, min: 0, max: 100 }) ?? undefined"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="filter-action h-9 w-9"
+                    title="删除"
+                    @click="removeModelSalesMultiplierRow(row.id)"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div
+                v-if="providerModelMultiplierSourceOptions.length > 0"
+                class="rounded-lg border border-border/70 bg-muted/20 p-3"
+              >
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Label class="shrink-0 text-xs font-medium text-muted-foreground">按提供商批量设置</Label>
+                  <Input
+                    :model-value="batchSalesMultiplier ?? ''"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="h-8 sm:w-28"
+                    placeholder="例如 0.15"
+                    @update:model-value="(value) => batchSalesMultiplier = parseNumberInput(value, { allowFloat: true, min: 0, max: 100 }) ?? undefined"
+                  />
+                </div>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button
+                    v-for="provider in providerModelMultiplierSourceOptions"
+                    :key="provider.id"
+                    type="button"
+                    class="filter-chip rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="batchSalesMultiplier === undefined"
+                    @click="applyProviderSalesMultiplier(provider)"
+                  >
+                    {{ provider.name }} · {{ provider.modelIds.length }} 个模型
+                  </button>
+                </div>
+              </div>
               <p class="text-xs text-muted-foreground">
-                不填则所有模型使用默认销售倍率；这里填写后，指定模型会按单独倍率扣钱包。
+                不设置的模型使用默认销售倍率；批量按钮只是帮你快速填入这些模型。
               </p>
             </div>
 
@@ -239,6 +325,32 @@
                   />
                 </div>
               </div>
+              <div
+                v-if="form.allowed_models_mode === 'specific' && providerModelNameSourceOptions.length > 0"
+                class="rounded-lg border border-border/70 bg-muted/20 p-3"
+              >
+                <div class="mb-2 text-xs font-medium text-muted-foreground">
+                  按提供商快速勾选
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="provider in providerModelNameSourceOptions"
+                    :key="provider.id"
+                    type="button"
+                    class="filter-chip rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+                    :class="[
+                      provider.allSelected
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : provider.someSelected
+                          ? 'border-primary/60 bg-primary/10 text-primary'
+                          : 'border-border/60 bg-background text-muted-foreground hover:border-border hover:bg-muted/40'
+                    ]"
+                    @click="toggleProviderAllowedModels(provider)"
+                  >
+                    {{ provider.name }} · {{ provider.selectedCount }}/{{ provider.modelNames.length }}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div class="space-y-2">
@@ -288,7 +400,7 @@
                 </div>
               </div>
               <p class="text-xs text-muted-foreground">
-                用于套餐分组。同一用户同时进行中的请求数达到上限后，新请求会被拒绝；0 表示不限制。
+                0 表示不限制并发。
               </p>
             </div>
           </div>
@@ -324,7 +436,6 @@ import {
   Input,
   Label,
   Switch,
-  Textarea,
 } from '@/components/ui'
 import { MultiSelect } from '@/components/common'
 import { useUsersStore } from '@/stores/users'
@@ -356,6 +467,8 @@ const usersStore = useUsersStore()
 const { success, error } = useToast()
 const { confirmDanger, confirmInfo } = useConfirm()
 const {
+  providers,
+  globalModels,
   providerOptions,
   apiFormatOptions,
   modelOptions,
@@ -367,7 +480,9 @@ const saving = ref(false)
 const groups = ref<UserGroup[]>([])
 const editingGroupId = ref<string | null>(null)
 const memberUserIds = ref<string[]>([])
-const modelSalesMultipliersText = ref('')
+const modelSalesMultiplierRows = ref<ModelSalesMultiplierRow[]>([])
+const batchSalesMultiplier = ref<number | undefined>(undefined)
+let modelSalesMultiplierRowSequence = 0
 
 const form = ref({
   name: '',
@@ -390,6 +505,110 @@ const userOptions = computed(() => props.users.map((user) => ({
   label: `${user.username}${user.email ? ` (${user.email})` : ''}`,
   value: user.id,
 })))
+
+interface ModelSalesMultiplierRow {
+  id: string
+  modelId: string
+  multiplier?: number
+}
+
+interface ProviderModelNameSource {
+  id: string
+  name: string
+  modelNames: string[]
+  selectedCount: number
+  allSelected: boolean
+  someSelected: boolean
+}
+
+interface ProviderModelMultiplierSource {
+  id: string
+  name: string
+  modelIds: string[]
+}
+
+const globalModelById = computed(() => {
+  const map = new Map<string, { id: string; name: string; display_name?: string | null }>()
+  for (const model of globalModels.value) {
+    map.set(model.id, model)
+  }
+  return map
+})
+
+const providerNamesByGlobalModelId = computed(() => {
+  const map = new Map<string, string[]>()
+  for (const provider of providers.value) {
+    for (const modelId of provider.global_model_ids || []) {
+      const names = map.get(modelId) ?? []
+      names.push(provider.name)
+      map.set(modelId, names)
+    }
+  }
+  return map
+})
+
+const globalModelSelectOptions = computed(() => {
+  const knownModelIds = new Set(globalModels.value.map((model) => model.id))
+  const loadedOptions = globalModels.value.map((model) => {
+    const providerNames = providerNamesByGlobalModelId.value.get(model.id) ?? []
+    const providerText = providerNames.length ? ` · ${providerNames.join(' / ')}` : ''
+    const modelText = model.display_name && model.display_name !== model.name
+      ? `${model.display_name} · ${model.name}`
+      : (model.name || model.id)
+    return {
+      value: model.id,
+      label: `${modelText}${providerText}`,
+    }
+  })
+  const missingModelIds = Array.from(new Set(
+    modelSalesMultiplierRows.value
+      .map((row) => row.modelId)
+      .filter((modelId) => modelId && !knownModelIds.has(modelId)),
+  ))
+  const missingOptions = missingModelIds
+    .map((modelId) => ({
+      value: modelId,
+      label: `${modelId} · 已失效`,
+    }))
+  return [...loadedOptions, ...missingOptions]
+})
+
+const providerModelNameSourceOptions = computed<ProviderModelNameSource[]>(() => {
+  const selectedModelNames = new Set(form.value.allowed_models)
+  return providers.value
+    .map((provider) => {
+      const modelNames = Array.from(new Set(
+        (provider.global_model_ids || [])
+          .map((modelId) => globalModelById.value.get(modelId)?.name)
+          .filter((name): name is string => !!name),
+      ))
+      const selectedCount = modelNames.filter((name) => selectedModelNames.has(name)).length
+      return {
+        id: provider.id,
+        name: provider.name,
+        modelNames,
+        selectedCount,
+        allSelected: modelNames.length > 0 && selectedCount === modelNames.length,
+        someSelected: selectedCount > 0,
+      }
+    })
+    .filter((provider) => provider.modelNames.length > 0)
+})
+
+const providerModelMultiplierSourceOptions = computed<ProviderModelMultiplierSource[]>(() =>
+  providers.value
+    .map((provider) => {
+      const modelIds = Array.from(new Set(
+        (provider.global_model_ids || []).filter((modelId) => globalModelById.value.has(modelId)),
+      ))
+      return {
+        id: provider.id,
+        name: provider.name,
+        modelIds,
+      }
+    })
+    .filter((provider) => provider.modelIds.length > 0),
+)
 
 watch(
   () => props.open,
@@ -448,9 +667,7 @@ async function selectGroup(groupId: string): Promise<void> {
     concurrent_limit_mode: normalizeRateMode(group.concurrent_limit_mode),
     concurrent_limit: group.concurrent_limit ?? undefined,
   }
-  modelSalesMultipliersText.value = group.model_sales_multipliers
-    ? JSON.stringify(group.model_sales_multipliers, null, 2)
-    : ''
+  modelSalesMultiplierRows.value = rowsFromModelSalesMultipliers(group.model_sales_multipliers)
   try {
     const members = await usersStore.listUserGroupMembers(group.id)
     memberUserIds.value = members.map((member) => member.user_id)
@@ -485,7 +702,8 @@ function startCreate(): void {
     concurrent_limit_mode: 'system',
     concurrent_limit: undefined,
   }
-  modelSalesMultipliersText.value = ''
+  modelSalesMultiplierRows.value = []
+  batchSalesMultiplier.value = undefined
   memberUserIds.value = []
 }
 
@@ -548,22 +766,88 @@ function buildPayload(): UpsertUserGroupRequest {
   }
 }
 
+function nextModelSalesMultiplierRowId(): string {
+  modelSalesMultiplierRowSequence += 1
+  return `model-sales-${modelSalesMultiplierRowSequence}`
+}
+
+function rowsFromModelSalesMultipliers(value: unknown): ModelSalesMultiplierRow[] {
+  if (!value || Array.isArray(value) || typeof value !== 'object') return []
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([modelId, multiplier]) =>
+      modelId.trim()
+      && typeof multiplier === 'number'
+      && Number.isFinite(multiplier)
+      && multiplier >= 0,
+    )
+    .map(([modelId, multiplier]) => ({
+      id: nextModelSalesMultiplierRowId(),
+      modelId,
+      multiplier: multiplier as number,
+    }))
+}
+
+function addModelSalesMultiplierRow(): void {
+  const usedModelIds = new Set(modelSalesMultiplierRows.value.map((row) => row.modelId).filter(Boolean))
+  const firstAvailableModel = globalModelSelectOptions.value.find((option) => !usedModelIds.has(option.value))
+  modelSalesMultiplierRows.value.push({
+    id: nextModelSalesMultiplierRowId(),
+    modelId: firstAvailableModel?.value ?? '',
+    multiplier: form.value.sales_multiplier,
+  })
+}
+
+function removeModelSalesMultiplierRow(rowId: string): void {
+  modelSalesMultiplierRows.value = modelSalesMultiplierRows.value.filter((row) => row.id !== rowId)
+}
+
 function parseModelSalesMultipliers(): Record<string, number> | null {
-  const text = modelSalesMultipliersText.value.trim()
-  if (!text) return null
-  const value = JSON.parse(text) as unknown
-  if (!value || Array.isArray(value) || typeof value !== 'object') {
-    throw new Error('模型销售倍率必须是 JSON 对象')
-  }
   const result: Record<string, number> = {}
-  for (const [modelId, multiplier] of Object.entries(value as Record<string, unknown>)) {
-    if (!modelId.trim()) throw new Error('模型ID不能为空')
-    if (typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier < 0) {
+  const seenModelIds = new Set<string>()
+  for (const row of modelSalesMultiplierRows.value) {
+    const modelId = row.modelId.trim()
+    if (!modelId && row.multiplier === undefined) continue
+    if (!modelId) throw new Error('请选择要单独设置倍率的模型')
+    if (seenModelIds.has(modelId)) throw new Error('同一个模型不能重复设置销售倍率')
+    if (row.multiplier === undefined || !Number.isFinite(row.multiplier) || row.multiplier < 0) {
       throw new Error('模型销售倍率必须是大于等于 0 的数字')
     }
-    result[modelId.trim()] = multiplier
+    seenModelIds.add(modelId)
+    result[modelId] = row.multiplier
   }
-  return result
+  return Object.keys(result).length ? result : null
+}
+
+function toggleProviderAllowedModels(provider: ProviderModelNameSource): void {
+  const nextModelNames = new Set(form.value.allowed_models)
+  if (provider.allSelected) {
+    for (const modelName of provider.modelNames) {
+      nextModelNames.delete(modelName)
+    }
+  } else {
+    for (const modelName of provider.modelNames) {
+      nextModelNames.add(modelName)
+    }
+  }
+  form.value.allowed_models = Array.from(nextModelNames)
+}
+
+function applyProviderSalesMultiplier(provider: ProviderModelMultiplierSource): void {
+  if (batchSalesMultiplier.value === undefined) return
+  const nextByModelId = new Map<string, number>()
+  for (const row of modelSalesMultiplierRows.value) {
+    if (row.modelId && row.multiplier !== undefined) {
+      nextByModelId.set(row.modelId, row.multiplier)
+    }
+  }
+  for (const modelId of provider.modelIds) {
+    nextByModelId.set(modelId, batchSalesMultiplier.value)
+  }
+  modelSalesMultiplierRows.value = Array.from(nextByModelId.entries()).map(([modelId, multiplier]) => ({
+    id: nextModelSalesMultiplierRowId(),
+    modelId,
+    multiplier,
+  }))
 }
 
 async function saveGroup(): Promise<void> {

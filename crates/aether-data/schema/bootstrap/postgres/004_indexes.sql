@@ -181,6 +181,13 @@ CREATE INDEX IF NOT EXISTS idx_entitlement_usage_entitlement_date ON public.enti
 
 
 --
+-- Name: idx_entitlement_usage_request; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_entitlement_usage_request ON public.entitlement_usage_ledgers USING btree (request_id);
+
+
+--
 -- Name: idx_entitlement_usage_windows_user_scope; Type: INDEX; Schema: public; Owner: -
 --
 

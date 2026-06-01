@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, type App } from 'vue'
 import UsageRecordsTable from '../UsageRecordsTable.vue'
 import type { UsageRecord } from '../../types'
@@ -107,6 +107,22 @@ vi.mock('../ServerUserSelector.vue', () => ({
 
 const mountedApps: Array<{ app: App, root: HTMLElement }> = []
 
+beforeEach(() => {
+  const storage = new Map<string, string>()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value)
+      },
+      removeItem: (key: string) => {
+        storage.delete(key)
+      },
+    },
+  })
+})
+
 function buildRecord(overrides: Partial<UsageRecord> = {}): UsageRecord {
   return {
     id: 'usage-1',
@@ -212,18 +228,85 @@ describe('UsageRecordsTable', () => {
     ].join('\n'))
   })
 
-  it('labels official cost, actual charge and multiplier for admin records', () => {
+  it('labels official cost, wallet debit and multiplier for admin records', () => {
     const root = mountUsageRecordsTable([
       buildRecord({
-        cost: 1,
-        actual_cost: 0.15,
-        rate_multiplier: 0.15,
+        official_cost: 1,
+        cost: 0.15,
+        sales_multiplier: 0.15,
+        actual_cost: 0.8,
+        rate_multiplier: 0.8,
       }),
     ], { showActualCost: true })
 
     expect(root.textContent).toContain('官方 $1.00')
-    expect(root.textContent).toContain('扣费 $0.15')
-    expect(root.textContent).toContain('倍率 0.15x')
+    expect(root.textContent).toContain('钱包扣除 $0.15')
+    expect(root.textContent).toContain('0.15x')
+    expect(root.textContent).toContain('平台 $0.80')
+    expect(root.textContent).toContain('成本倍率 0.8x')
+  })
+
+  it('shows package debit without applying wallet multiplier', () => {
+    const root = mountUsageRecordsTable([
+      buildRecord({
+        official_cost: 1,
+        cost: 1,
+        sales_multiplier: 0.15,
+        charge_breakdown: {
+          official_cost: 1,
+          package_debit: 1,
+          package_multiplier: 1,
+          wallet_debit: 0,
+          wallet_multiplier: 0.15,
+          user_debit: 1,
+        },
+      }),
+    ])
+
+    expect(root.textContent).toContain('官方 $1.00')
+    expect(root.textContent).toContain('套餐扣除 $1.00')
+    expect(root.textContent).toContain('1x')
+    expect(root.textContent).not.toContain('钱包扣除 $0.15')
+  })
+
+  it('shows package and wallet split when quota only covers part of the request', () => {
+    const root = mountUsageRecordsTable([
+      buildRecord({
+        official_cost: 1,
+        cost: 0.49,
+        sales_multiplier: 0.15,
+        charge_breakdown: {
+          official_cost: 1,
+          package_debit: 0.4,
+          package_multiplier: 1,
+          wallet_debit: 0.09,
+          wallet_multiplier: 0.15,
+          user_debit: 0.49,
+        },
+      }),
+    ])
+
+    expect(root.textContent).toContain('套餐扣除 $0.40')
+    expect(root.textContent).toContain('钱包扣除 $0.09')
+    expect(root.textContent).toContain('0.15x')
+  })
+
+  it('hides platform cost in the user usage table', () => {
+    const root = mountUsageRecordsTable([
+      buildRecord({
+        official_cost: 1,
+        cost: 0.15,
+        sales_multiplier: 0.15,
+        actual_cost: 0.8,
+        rate_multiplier: 0.8,
+      }),
+    ], { isAdmin: false, showActualCost: false })
+
+    expect(root.textContent).toContain('官方 $1.00')
+    expect(root.textContent).toContain('钱包扣除 $0.15')
+    expect(root.textContent).toContain('0.15x')
+    expect(root.textContent).not.toContain('平台 $0.80')
+    expect(root.textContent).not.toContain('成本倍率 0.8x')
   })
 
   it('keeps active request latency in one first-byte / live-total line without TPS', () => {

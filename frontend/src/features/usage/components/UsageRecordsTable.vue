@@ -198,16 +198,23 @@
             :title="getRecordCostTitle(record)"
           >
             <span class="text-xs text-primary font-medium">
-              {{ showActualCost ? `官方 ${formatCurrency(getOfficialCost(record))}` : formatCurrency(getOfficialCost(record)) }}
+              官方 {{ formatCurrency(getOfficialCost(record)) }}
             </span>
             <span
-              v-if="showActualCost && hasActualCost(record)"
+              v-for="line in getChargeLines(record)"
+              :key="line.label"
               class="text-[10px] text-muted-foreground"
-            >扣费 {{ formatCurrency(getActualCost(record)) }}</span>
+            >
+              {{ line.label }}扣除 {{ formatCurrency(line.amount) }} · {{ formatMultiplier(line.multiplier) }}
+            </span>
             <span
-              v-if="showActualCost && hasActualCost(record)"
+              v-if="showActualCost && hasPlatformCost(record)"
               class="text-[10px] text-muted-foreground"
-            >{{ formatRecordMultiplier(record) }}</span>
+            >平台 {{ formatCurrency(getPlatformCost(record)) }}</span>
+            <span
+              v-if="showActualCost && hasPlatformCost(record)"
+              class="text-[10px] text-muted-foreground"
+            >{{ formatCostMultiplier(record) }}</span>
           </div>
         </div>
 
@@ -774,19 +781,26 @@
           >
             <div class="flex flex-col items-end text-xs gap-0.5">
               <span class="text-primary font-medium">
-                {{ showActualCost ? `官方 ${formatCurrency(getOfficialCost(record))}` : formatCurrency(getOfficialCost(record)) }}
+                官方 {{ formatCurrency(getOfficialCost(record)) }}
               </span>
               <span
-                v-if="showActualCost && hasActualCost(record)"
+                v-for="line in getChargeLines(record)"
+                :key="line.label"
                 class="text-muted-foreground"
               >
-                扣费 {{ formatCurrency(getActualCost(record)) }}
+                {{ line.label }}扣除 {{ formatCurrency(line.amount) }} · {{ formatMultiplier(line.multiplier) }}
               </span>
               <span
-                v-if="showActualCost && hasActualCost(record)"
+                v-if="showActualCost && hasPlatformCost(record)"
+                class="text-muted-foreground"
+              >
+                平台 {{ formatCurrency(getPlatformCost(record)) }}
+              </span>
+              <span
+                v-if="showActualCost && hasPlatformCost(record)"
                 class="text-[11px] text-muted-foreground"
               >
-                {{ formatRecordMultiplier(record) }}
+                {{ formatCostMultiplier(record) }}
               </span>
             </div>
           </TableCell>
@@ -1048,14 +1062,17 @@ const AVAILABLE_API_FORMATS = [
 
 // 使用模块级常量
 const availableApiFormats = AVAILABLE_API_FORMATS
+const browserWindow = typeof window !== 'undefined' ? window : undefined
 
 const adminVisibleColumnIds = useLocalStorage<UsageRecordColumnId[]>(
   'usage-records-visible-columns-admin',
   DEFAULT_ADMIN_COLUMNS,
+  { window: browserWindow },
 )
 const userVisibleColumnIds = useLocalStorage<UsageRecordColumnId[]>(
   'usage-records-visible-columns-user',
   DEFAULT_USER_COLUMNS,
+  { window: browserWindow },
 )
 
 const roleColumnOptions = computed(() => USAGE_RECORD_COLUMN_OPTIONS.filter((column) => {
@@ -1113,6 +1130,23 @@ const columnSelectOptions = computed<MultiSelectOption[]>(() => roleColumnOption
   label: column.label,
 })))
 
+const COST_EPSILON = 0.0000001
+
+interface ChargeLine {
+  label: '套餐' | '钱包'
+  amount: number
+  multiplier: number | null
+}
+
+interface ResolvedChargeBreakdown {
+  officialCost: number
+  packageDebit: number
+  packageMultiplier: number | null
+  walletDebit: number
+  walletMultiplier: number | null
+  userDebit: number
+}
+
 function isColumnVisible(column: UsageRecordColumnId): boolean {
   return visibleColumnSet.value.has(column)
 }
@@ -1121,37 +1155,120 @@ function toFiniteNumber(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function getOfficialCost(record: UsageRecord): number {
-  return toFiniteNumber(record.cost) ?? 0
+function getSalesMultiplier(record: UsageRecord): number | null {
+  return toFiniteNumber(record.sales_multiplier)
 }
 
-function hasActualCost(record: UsageRecord): boolean {
+function resolveChargeBreakdown(record: UsageRecord): ResolvedChargeBreakdown {
+  const rawBreakdown = record.charge_breakdown
+  const salesMultiplier = getSalesMultiplier(record)
+  const official = toFiniteNumber(rawBreakdown?.official_cost) ?? toFiniteNumber(record.official_cost)
+  const recordCost = toFiniteNumber(record.cost) ?? 0
+  let officialCost = official
+  if (officialCost === null && salesMultiplier !== null && salesMultiplier > 0) {
+    officialCost = recordCost / salesMultiplier
+  } else if (officialCost === null) {
+    officialCost = recordCost
+  }
+  const resolvedOfficialCost = officialCost ?? recordCost
+
+  const packageDebit = Math.max(toFiniteNumber(rawBreakdown?.package_debit) ?? 0, 0)
+  const hasBreakdown = rawBreakdown !== null && rawBreakdown !== undefined
+  const walletFromBreakdown = toFiniteNumber(rawBreakdown?.wallet_debit)
+  const walletDebit = Math.max(
+    walletFromBreakdown ?? (hasBreakdown ? 0 : recordCost),
+    0,
+  )
+  const userDebit = Math.max(
+    toFiniteNumber(rawBreakdown?.user_debit) ?? (packageDebit + walletDebit),
+    0,
+  )
+  const packageMultiplier = toFiniteNumber(rawBreakdown?.package_multiplier)
+    ?? (packageDebit > COST_EPSILON ? 1 : null)
+  const walletMultiplier = toFiniteNumber(rawBreakdown?.wallet_multiplier)
+    ?? salesMultiplier
+    ?? (resolvedOfficialCost > COST_EPSILON && walletDebit > COST_EPSILON ? walletDebit / resolvedOfficialCost : null)
+
+  return {
+    officialCost: resolvedOfficialCost,
+    packageDebit,
+    packageMultiplier,
+    walletDebit,
+    walletMultiplier,
+    userDebit,
+  }
+}
+
+function getUserCharge(record: UsageRecord): number {
+  return resolveChargeBreakdown(record).userDebit
+}
+
+function getOfficialCost(record: UsageRecord): number {
+  return resolveChargeBreakdown(record).officialCost
+}
+
+function getChargeLines(record: UsageRecord): ChargeLine[] {
+  const breakdown = resolveChargeBreakdown(record)
+  const lines: ChargeLine[] = []
+  if (breakdown.packageDebit > COST_EPSILON) {
+    lines.push({
+      label: '套餐',
+      amount: breakdown.packageDebit,
+      multiplier: breakdown.packageMultiplier,
+    })
+  }
+  if (breakdown.walletDebit > COST_EPSILON) {
+    lines.push({
+      label: '钱包',
+      amount: breakdown.walletDebit,
+      multiplier: breakdown.walletMultiplier,
+    })
+  }
+  if (lines.length === 0 && breakdown.userDebit > COST_EPSILON) {
+    lines.push({
+      label: '钱包',
+      amount: breakdown.userDebit,
+      multiplier: breakdown.walletMultiplier,
+    })
+  }
+  return lines
+}
+
+function hasPlatformCost(record: UsageRecord): boolean {
   return toFiniteNumber(record.actual_cost) !== null
 }
 
-function getActualCost(record: UsageRecord): number {
+function getPlatformCost(record: UsageRecord): number {
   return toFiniteNumber(record.actual_cost) ?? getOfficialCost(record)
 }
 
-function getRecordMultiplier(record: UsageRecord): number | null {
+function getCostMultiplier(record: UsageRecord): number | null {
   const saved = toFiniteNumber(record.rate_multiplier)
   if (saved !== null) return saved
   const officialCost = getOfficialCost(record)
-  if (officialCost <= 0 || !hasActualCost(record)) return null
-  return getActualCost(record) / officialCost
+  if (officialCost <= 0 || !hasPlatformCost(record)) return null
+  return getPlatformCost(record) / officialCost
 }
 
-function formatRecordMultiplier(record: UsageRecord): string {
-  const multiplier = getRecordMultiplier(record)
-  if (multiplier === null) return '倍率 -'
-  return `倍率 ${multiplier.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}x`
+function formatMultiplier(value: number | null): string {
+  if (value === null) return '-'
+  return `${value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}x`
+}
+
+function formatCostMultiplier(record: UsageRecord): string {
+  return `成本倍率 ${formatMultiplier(getCostMultiplier(record))}`
 }
 
 function getRecordCostTitle(record: UsageRecord): string {
-  const lines = [`官方费用: ${formatCurrency(getOfficialCost(record))}`]
-  if (hasActualCost(record)) {
-    lines.push(`实际扣费: ${formatCurrency(getActualCost(record))}`)
-    lines.push(formatRecordMultiplier(record))
+  const chargeLines = getChargeLines(record)
+  const lines = [
+    `官方价格: ${formatCurrency(getOfficialCost(record))}`,
+    ...chargeLines.map(line => `${line.label}扣除: ${formatCurrency(line.amount)} · ${formatMultiplier(line.multiplier)}`),
+  ]
+  if (chargeLines.length === 0) lines.push('本次没有产生用户扣费')
+  if (props.showActualCost && hasPlatformCost(record)) {
+    lines.push(`平台成本: ${formatCurrency(getPlatformCost(record))}`)
+    lines.push(`成本倍率: ${formatMultiplier(getCostMultiplier(record))}`)
   }
   return lines.join('\n')
 }

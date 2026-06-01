@@ -5278,6 +5278,8 @@ async fn gateway_handles_users_me_usage_locally_without_proxying_upstream() {
     );
     streaming_usage.candidate_index = Some(2);
     streaming_usage.request_metadata = Some(json!({
+        "base_cost_usd": 2.5,
+        "sales_multiplier": 0.5,
         "rate_multiplier": 0.5,
         "input_price_per_1m": 3.0,
         "output_price_per_1m": 9.0,
@@ -5368,6 +5370,11 @@ async fn gateway_handles_users_me_usage_locally_without_proxying_upstream() {
     assert_eq!(payload["records"][0]["output_price_per_1m"], 9.0);
     assert_eq!(payload["records"][0]["cache_creation_price_per_1m"], 3.75);
     assert_eq!(payload["records"][0]["cache_read_price_per_1m"], 0.3);
+    assert_eq!(payload["records"][0]["official_cost"], 2.5);
+    assert_eq!(payload["records"][0]["cost"], 1.25);
+    assert_eq!(payload["records"][0]["sales_multiplier"], 0.5);
+    assert!(payload["records"][0].get("actual_cost").is_none());
+    assert!(payload["records"][0].get("rate_multiplier").is_none());
     assert_eq!(payload["records"][0]["has_fallback"], true);
     assert_eq!(payload["records"][0]["api_key"]["name"], "renamed-key");
     assert_eq!(payload["records"][0]["api_key"]["display"], "renamed-key");
@@ -5619,6 +5626,8 @@ async fn gateway_handles_users_me_usage_active_locally_without_proxying_upstream
         now - chrono::Duration::minutes(2),
     );
     streaming_usage.request_metadata = Some(json!({
+        "base_cost_usd": 2.5,
+        "sales_multiplier": 0.5,
         "rate_multiplier": 0.5,
     }));
     let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![
@@ -5671,7 +5680,11 @@ async fn gateway_handles_users_me_usage_active_locally_without_proxying_upstream
     let requests = payload["requests"].as_array().expect("requests array");
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0]["status"], "streaming");
-    assert_eq!(requests[0]["rate_multiplier"], 0.5);
+    assert_eq!(requests[0]["official_cost"], 2.5);
+    assert_eq!(requests[0]["cost"], 1.25);
+    assert_eq!(requests[0]["sales_multiplier"], 0.5);
+    assert!(requests[0].get("actual_cost").is_none());
+    assert!(requests[0].get("rate_multiplier").is_none());
     assert_eq!(requests[0]["cache_creation_ephemeral_5m_input_tokens"], 4);
     assert_eq!(requests[0]["cache_creation_ephemeral_1h_input_tokens"], 6);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);

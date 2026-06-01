@@ -22,7 +22,7 @@
               </div>
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              费用
+              {{ isAdmin ? '用户扣费/平台成本' : '用户扣费' }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
               缓存命中率
@@ -67,7 +67,7 @@
                   v-if="isAdmin && provider.actualCost !== undefined"
                   class="text-muted-foreground text-[10px]"
                 >
-                  {{ formatCurrency(provider.actualCost) }}
+                  平台 {{ formatCurrency(provider.actualCost) }}
                 </span>
               </div>
             </TableCell>

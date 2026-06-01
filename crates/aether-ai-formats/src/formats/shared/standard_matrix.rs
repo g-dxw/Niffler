@@ -1008,6 +1008,131 @@ mod tests {
     }
 
     #[test]
+    fn codex_responses_bridge_adds_image_tool_and_instructions() {
+        let request = json!({
+            "model": "gpt-5.5",
+            "instructions": "Be helpful.",
+            "input": "Draw a small orange cat.",
+        });
+
+        let converted = build_standard_request_body(
+            &request,
+            "openai:responses",
+            "gpt-5.5",
+            "codex",
+            "openai:responses",
+            "/v1/responses",
+            true,
+            None,
+            Some("key-1"),
+        )
+        .expect("codex responses request should build");
+
+        assert_eq!(converted["model"], json!("gpt-5.5"));
+        assert!(converted
+            .get("tools")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|tool| tool.get("type") == Some(&json!("image_generation"))));
+        assert!(converted["instructions"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Responses native `image_generation` tool"));
+        assert!(
+            converted.get("tool_choice").is_none(),
+            "advertising the image tool must not force image generation"
+        );
+    }
+
+    #[test]
+    fn codex_responses_explicit_image_tool_choice_survives_standard_conversion() {
+        let request = json!({
+            "model": "gpt-5.5",
+            "input": "Draw a mountain observatory.",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "lookup",
+                    "description": "Lookup data",
+                    "parameters": {"type": "object"}
+                },
+                {
+                    "type": "image_generation",
+                    "format": "jpeg"
+                }
+            ],
+            "tool_choice": {"type": "image_generation"}
+        });
+
+        let converted = build_standard_request_body(
+            &request,
+            "openai:responses",
+            "gpt-5.5",
+            "codex",
+            "openai:responses",
+            "/v1/responses",
+            true,
+            None,
+            Some("key-1"),
+        )
+        .expect("codex image request should build");
+
+        assert_eq!(converted["model"], json!("gpt-5.4-mini"));
+        assert_eq!(converted["tool_choice"]["type"], json!("image_generation"));
+        assert_eq!(converted["tools"][0]["type"], json!("image_generation"));
+        assert_eq!(converted["tools"][0]["output_format"], json!("jpeg"));
+        assert!(converted["tools"][0].get("description").is_none());
+        assert!(converted["tools"][0].get("parameters").is_none());
+    }
+
+    #[test]
+    fn codex_responses_auto_tool_choice_with_image_tool_stays_text_request() {
+        let request = json!({
+            "model": "gpt-5.5",
+            "input": "Use tools only if needed.",
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "lookup",
+                    "description": "Lookup data",
+                    "parameters": {"type": "object"}
+                },
+                {"type": "image_generation"}
+            ],
+            "tool_choice": "auto"
+        });
+
+        let converted = build_standard_request_body(
+            &request,
+            "openai:responses",
+            "gpt-5.5",
+            "codex",
+            "openai:responses",
+            "/v1/responses",
+            true,
+            None,
+            Some("key-1"),
+        )
+        .expect("codex mixed tools request should build");
+
+        assert_eq!(converted["model"], json!("gpt-5.5"));
+        assert_eq!(converted["tool_choice"], json!("auto"));
+        assert!(converted
+            .get("tools")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|tool| tool.get("type") == Some(&json!("function"))));
+        assert!(converted
+            .get("tools")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|tool| tool.get("type") == Some(&json!("image_generation"))));
+    }
+
+    #[test]
     fn builds_openai_chat_request_from_claude_chat_source() {
         let request = json!({
             "model": "claude-3-7-sonnet",

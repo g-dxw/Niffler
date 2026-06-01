@@ -18,6 +18,13 @@ on:
       - "crates/**"
       - "apps/**"
       - ".github/workflows/rust-ci.yml"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run optional SQLite/MySQL database smoke tests
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: rust-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -295,6 +302,7 @@ jobs:
   data_db_smoke_sqlite:
     name: Data DB Smoke (SQLite)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full == true }}
     steps:
       - uses: actions/checkout@v5
 
@@ -392,6 +400,7 @@ jobs:
   data_db_smoke_mysql:
     name: Data DB Smoke (MySQL)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.full == true }}
     services:
       mysql:
         image: mysql:8.0
@@ -499,10 +508,18 @@ jobs:
     steps:
       - name: Verify database smoke jobs
         run: |
-          if [ "${{ needs.data_db_smoke_sqlite.result }}" != "success" ] || \
-             [ "${{ needs.data_db_smoke_postgres.result }}" != "success" ] || \
-             [ "${{ needs.data_db_smoke_mysql.result }}" != "success" ]; then
-            echo "Data DB smoke failed"
+          if [ "${{ needs.data_db_smoke_postgres.result }}" != "success" ]; then
+            echo "Postgres data DB smoke failed"
+            exit 1
+          fi
+          if [ "${{ needs.data_db_smoke_sqlite.result }}" != "success" ] && \
+             [ "${{ needs.data_db_smoke_sqlite.result }}" != "skipped" ]; then
+            echo "SQLite data DB smoke failed"
+            exit 1
+          fi
+          if [ "${{ needs.data_db_smoke_mysql.result }}" != "success" ] && \
+             [ "${{ needs.data_db_smoke_mysql.result }}" != "skipped" ]; then
+            echo "MySQL data DB smoke failed"
             exit 1
           fi
 

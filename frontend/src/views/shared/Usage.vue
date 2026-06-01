@@ -478,7 +478,9 @@ async function pollActiveRequests() {
         record.cache_creation_ephemeral_1h_input_tokens =
           update.cache_creation_ephemeral_1h_input_tokens ?? undefined
         record.cache_read_input_tokens = update.cache_read_input_tokens ?? undefined
+        record.official_cost = update.official_cost ?? undefined
         record.cost = update.cost
+        record.sales_multiplier = update.sales_multiplier ?? undefined
         record.actual_cost = update.actual_cost ?? undefined
         record.rate_multiplier = update.rate_multiplier ?? undefined
         record.response_time_ms = update.response_time_ms ?? undefined

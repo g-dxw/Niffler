@@ -1043,6 +1043,10 @@ columns = ["user_id", "usage_date"]
 name = "idx_entitlement_usage_entitlement_date"
 columns = ["user_entitlement_id", "usage_date"]
 
+[[table.entitlement_usage_ledgers.indexes]]
+name = "idx_entitlement_usage_request"
+columns = ["request_id"]
+
 [table.entitlement_usage_windows]
 domain = "wallet_billing"
 order = 58

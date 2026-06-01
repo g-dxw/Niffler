@@ -1105,6 +1105,9 @@ async fn gateway_handles_admin_usage_active_ids_for_terminal_updates() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0]["id"], "usage-completed");
     assert_eq!(requests[0]["status"], "completed");
+    assert_eq!(requests[0]["official_cost"], 0.2);
+    assert_eq!(requests[0]["cost"], 0.2);
+    assert_eq!(requests[0]["actual_cost"], 0.24);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();
@@ -1187,6 +1190,9 @@ async fn gateway_handles_admin_usage_records_locally_with_trusted_admin_principa
     assert_eq!(payload["records"][0]["id"], "usage-b");
     assert_eq!(payload["records"][0]["username"], "bob");
     assert_eq!(payload["records"][0]["user_email"], "bob@example.com");
+    assert_eq!(payload["records"][0]["official_cost"], 0.1);
+    assert_eq!(payload["records"][0]["cost"], 0.1);
+    assert_eq!(payload["records"][0]["actual_cost"], 0.12);
     assert_eq!(
         payload["records"][0]["provider_key_name"],
         "upstream-primary"

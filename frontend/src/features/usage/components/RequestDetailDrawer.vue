@@ -203,13 +203,25 @@
               <!-- 费用与性能概览 -->
               <Card>
                 <div class="p-3 sm:p-4">
-                  <!-- 总费用和响应时间（独立显示） -->
+                  <!-- 扣费和响应时间（独立显示） -->
                   <div class="flex items-center mb-4">
-                    <div class="flex items-center">
-                      <span class="text-xs text-muted-foreground w-[56px]">总费用</span>
-                      <span class="text-lg font-bold text-green-600 dark:text-green-400">
-                        ${{ ((typeof detail.cost === 'object' ? detail.cost?.total : detail.cost) || detail.total_cost || 0).toFixed(6) }}
-                      </span>
+                    <div class="flex items-start">
+                      <span class="text-xs text-muted-foreground w-[56px] pt-1">扣费</span>
+                      <div class="space-y-0.5">
+                        <div
+                          v-if="detailChargeLines.length === 0"
+                          class="text-lg font-bold text-green-600 dark:text-green-400"
+                        >
+                          $0.000000
+                        </div>
+                        <div
+                          v-for="line in detailChargeLines"
+                          :key="line.label"
+                          class="text-sm font-semibold text-green-600 dark:text-green-400"
+                        >
+                          {{ line.label }}扣除 ${{ line.amount.toFixed(6) }} · {{ formatDetailMultiplier(line.multiplier) }}
+                        </div>
+                      </div>
                     </div>
                     <Separator
                       orientation="vertical"
@@ -1025,6 +1037,44 @@ let timelineMountTimer: ReturnType<typeof setTimeout> | null = null
 
 const fullRequestId = computed(() => detail.value?.request_id || detail.value?.id || '-')
 const displayRequestId = computed(() => formatShortRequestId(fullRequestId.value))
+const DETAIL_COST_EPSILON = 0.0000001
+type DetailChargeLine = {
+  label: '套餐' | '钱包'
+  amount: number
+  multiplier: number | null
+}
+
+function formatDetailMultiplier(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '-'
+  return `${value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}x`
+}
+
+function detailTotalCost(): number {
+  if (!detail.value) return 0
+  const rawCost = detail.value.cost
+  if (typeof rawCost === 'object' && rawCost !== null) {
+    return toNumber(rawCost.total) ?? toNumber(detail.value.total_cost) ?? 0
+  }
+  return toNumber(rawCost) ?? toNumber(detail.value.total_cost) ?? 0
+}
+
+const detailChargeLines = computed<DetailChargeLine[]>(() => {
+  if (!detail.value) return []
+  const breakdown = detail.value.charge_breakdown
+  const packageDebit = Math.max(toNumber(breakdown?.package_debit) ?? 0, 0)
+  const hasBreakdown = breakdown !== null && breakdown !== undefined
+  const walletDebit = Math.max(toNumber(breakdown?.wallet_debit) ?? (hasBreakdown ? 0 : detailTotalCost()), 0)
+  const packageMultiplier = toNumber(breakdown?.package_multiplier) ?? (packageDebit > DETAIL_COST_EPSILON ? 1 : null)
+  const walletMultiplier = toNumber(breakdown?.wallet_multiplier)
+  const lines: DetailChargeLine[] = []
+  if (packageDebit > DETAIL_COST_EPSILON) {
+    lines.push({ label: '套餐', amount: packageDebit, multiplier: packageMultiplier })
+  }
+  if (walletDebit > DETAIL_COST_EPSILON) {
+    lines.push({ label: '钱包', amount: walletDebit, multiplier: walletMultiplier })
+  }
+  return lines
+})
 const refreshButtonTitle = computed(() => {
   if (autoRefreshing.value) return '停止自动刷新'
   return isRequestCompleted() ? '刷新' : '开启自动刷新'

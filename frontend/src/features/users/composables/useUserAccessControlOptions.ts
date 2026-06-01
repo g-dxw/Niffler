@@ -25,7 +25,9 @@ export function useUserAccessControlOptions() {
   const modelOptions = computed(() =>
     globalModels.value.map((model) => ({
       value: model.name,
-      label: model.name,
+      label: model.display_name && model.display_name !== model.name
+        ? `${model.display_name} · ${model.name}`
+        : model.name,
     })),
   )
 

@@ -27,6 +27,12 @@ use super::{
 };
 
 const USERS_ME_USAGE_DATA_UNAVAILABLE_DETAIL: &str = "用户用量数据暂不可用";
+const USERS_ME_USAGE_COST_EPSILON: f64 = 0.000_000_01;
+
+struct UsersMeUsageChargeBreakdown {
+    payload: serde_json::Value,
+    user_debit_usd: f64,
+}
 
 fn build_users_me_usage_reader_unavailable_response() -> Response<Body> {
     build_auth_error_response(
@@ -390,6 +396,45 @@ fn users_me_usage_client_family(item: &StoredRequestUsageAudit) -> Option<&str> 
         })
 }
 
+fn users_me_usage_charge_breakdown(
+    item: &StoredRequestUsageAudit,
+    official_cost: f64,
+    sales_multiplier: Option<f64>,
+) -> UsersMeUsageChargeBreakdown {
+    let package_debit_snapshot = item.settlement_package_debit_usd();
+    let wallet_debit_snapshot = item.settlement_wallet_debit_usd();
+    let has_debit_snapshot = package_debit_snapshot.is_some() || wallet_debit_snapshot.is_some();
+    let package_debit = package_debit_snapshot.unwrap_or_default().max(0.0);
+    let wallet_debit = wallet_debit_snapshot.unwrap_or_else(|| {
+        if has_debit_snapshot {
+            0.0
+        } else {
+            item.total_cost_usd.max(0.0)
+        }
+    });
+    let user_debit = (package_debit + wallet_debit).max(0.0);
+    let wallet_multiplier = sales_multiplier.or_else(|| {
+        if official_cost > USERS_ME_USAGE_COST_EPSILON && wallet_debit > USERS_ME_USAGE_COST_EPSILON
+        {
+            Some(wallet_debit / official_cost)
+        } else {
+            None
+        }
+    });
+
+    UsersMeUsageChargeBreakdown {
+        payload: json!({
+            "official_cost": round_to(official_cost.max(0.0), 6),
+            "package_debit": round_to(package_debit, 6),
+            "package_multiplier": if package_debit > USERS_ME_USAGE_COST_EPSILON { Some(1.0) } else { None },
+            "wallet_debit": round_to(wallet_debit.max(0.0), 6),
+            "wallet_multiplier": wallet_multiplier,
+            "user_debit": round_to(user_debit, 6),
+        }),
+        user_debit_usd: user_debit,
+    }
+}
+
 fn build_users_me_usage_record_payload(
     item: &StoredRequestUsageAudit,
     include_actual_cost: bool,
@@ -400,8 +445,19 @@ fn build_users_me_usage_record_payload(
     let output_price_per_1m = item.settlement_output_price_per_1m();
     let cache_creation_price_per_1m = item.settlement_cache_creation_price_per_1m();
     let cache_read_price_per_1m = item.settlement_cache_read_price_per_1m();
+    let official_cost = item
+        .settlement_base_cost_usd()
+        .unwrap_or(item.total_cost_usd);
+    let sales_multiplier = item.settlement_sales_multiplier().or_else(|| {
+        if official_cost > 0.0 {
+            Some(item.total_cost_usd / official_cost)
+        } else {
+            None
+        }
+    });
     let cache_creation_input_tokens = users_me_usage_cache_creation_tokens(item);
     let rate_multiplier = item.settlement_rate_multiplier();
+    let charge_breakdown = users_me_usage_charge_breakdown(item, official_cost, sales_multiplier);
     let client_is_stream = users_me_usage_client_is_stream(item);
     let upstream_is_stream = users_me_usage_upstream_is_stream(item);
     let mut payload = json!({
@@ -415,7 +471,10 @@ fn build_users_me_usage_record_payload(
         "effective_input_tokens": users_me_usage_effective_input_tokens(item),
         "output_tokens": item.output_tokens,
         "total_tokens": item.total_tokens,
-        "cost": round_to(item.total_cost_usd, 6),
+        "official_cost": round_to(official_cost, 6),
+        "cost": round_to(charge_breakdown.user_debit_usd, 6),
+        "sales_multiplier": sales_multiplier,
+        "charge_breakdown": charge_breakdown.payload,
         "response_time_ms": item.response_time_ms,
         "first_byte_time_ms": item.first_byte_time_ms,
         "is_stream": item.is_stream,
@@ -457,10 +516,24 @@ fn build_users_me_usage_record_payload(
     payload
 }
 
-fn build_users_me_usage_active_payload(item: &StoredRequestUsageAudit) -> serde_json::Value {
+fn build_users_me_usage_active_payload(
+    item: &StoredRequestUsageAudit,
+    include_actual_cost: bool,
+) -> serde_json::Value {
     let cache_creation_input_tokens = users_me_usage_cache_creation_tokens(item);
     let client_is_stream = users_me_usage_client_is_stream(item);
     let upstream_is_stream = users_me_usage_upstream_is_stream(item);
+    let official_cost = item
+        .settlement_base_cost_usd()
+        .unwrap_or(item.total_cost_usd);
+    let sales_multiplier = item.settlement_sales_multiplier().or_else(|| {
+        if official_cost > 0.0 {
+            Some(item.total_cost_usd / official_cost)
+        } else {
+            None
+        }
+    });
+    let charge_breakdown = users_me_usage_charge_breakdown(item, official_cost, sales_multiplier);
     let mut payload = json!({
         "id": item.id,
         "status": item.status,
@@ -471,9 +544,10 @@ fn build_users_me_usage_active_payload(item: &StoredRequestUsageAudit) -> serde_
         "cache_creation_ephemeral_5m_input_tokens": item.cache_creation_ephemeral_5m_input_tokens,
         "cache_creation_ephemeral_1h_input_tokens": item.cache_creation_ephemeral_1h_input_tokens,
         "cache_read_input_tokens": item.cache_read_input_tokens,
-        "cost": round_to(item.total_cost_usd, 6),
-        "actual_cost": round_to(item.actual_total_cost_usd, 6),
-        "rate_multiplier": item.settlement_rate_multiplier(),
+        "official_cost": round_to(official_cost, 6),
+        "cost": round_to(charge_breakdown.user_debit_usd, 6),
+        "sales_multiplier": sales_multiplier,
+        "charge_breakdown": charge_breakdown.payload,
         "response_time_ms": item.response_time_ms,
         "first_byte_time_ms": item.first_byte_time_ms,
         "status_code": item.status_code,
@@ -491,6 +565,10 @@ fn build_users_me_usage_active_payload(item: &StoredRequestUsageAudit) -> serde_
         "target_model": item.target_model,
         "has_fallback": item.has_fallback(),
     });
+    if include_actual_cost {
+        payload["actual_cost"] = json!(round_to(item.actual_total_cost_usd, 6));
+        payload["rate_multiplier"] = json!(item.settlement_rate_multiplier());
+    }
     if item.api_format.is_none() {
         payload
             .as_object_mut()
@@ -1105,10 +1183,12 @@ pub(super) async fn handle_users_me_usage_active_get(
             .collect::<Vec<_>>()
     };
 
+    let include_actual_cost = auth.user.role.eq_ignore_ascii_case("admin");
+
     Json(json!({
         "requests": items
             .iter()
-            .map(build_users_me_usage_active_payload)
+            .map(|item| build_users_me_usage_active_payload(item, include_actual_cost))
             .collect::<Vec<_>>(),
     }))
     .into_response()
@@ -1376,7 +1456,7 @@ mod tests {
             ..sample_usage("streaming")
         };
 
-        let payload = build_users_me_usage_active_payload(&item);
+        let payload = build_users_me_usage_active_payload(&item, false);
 
         assert_eq!(payload["cache_creation_input_tokens"], 10);
         assert_eq!(payload["cache_creation_ephemeral_5m_input_tokens"], 4);
@@ -1438,7 +1518,7 @@ mod tests {
         assert_eq!(record_payload["client_requested_stream"], false);
         assert_eq!(record_payload["client_is_stream"], false);
 
-        let active_payload = build_users_me_usage_active_payload(&item);
+        let active_payload = build_users_me_usage_active_payload(&item, false);
         assert_eq!(active_payload["is_stream"], true);
         assert_eq!(active_payload["upstream_is_stream"], true);
         assert_eq!(active_payload["client_requested_stream"], false);
@@ -1457,7 +1537,7 @@ mod tests {
 
         let record_payload =
             build_users_me_usage_record_payload(&item, false, &BTreeMap::new(), false);
-        let active_payload = build_users_me_usage_active_payload(&item);
+        let active_payload = build_users_me_usage_active_payload(&item, false);
 
         assert_eq!(record_payload["client_family"], "codex_vscode");
         assert_eq!(record_payload["client_ip"], "192.168.0.28");
@@ -1523,7 +1603,7 @@ mod tests {
         assert_eq!(record_payload["client_requested_stream"], false);
         assert_eq!(record_payload["client_is_stream"], false);
 
-        let active_payload = build_users_me_usage_active_payload(&item);
+        let active_payload = build_users_me_usage_active_payload(&item, false);
         assert_eq!(active_payload["is_stream"], true);
         assert_eq!(active_payload["upstream_is_stream"], true);
         assert_eq!(active_payload["client_requested_stream"], false);
@@ -1548,7 +1628,7 @@ mod tests {
         assert_eq!(record_payload["client_requested_stream"], false);
         assert_eq!(record_payload["client_is_stream"], false);
 
-        let active_payload = build_users_me_usage_active_payload(&item);
+        let active_payload = build_users_me_usage_active_payload(&item, false);
         assert_eq!(active_payload["is_stream"], false);
         assert_eq!(active_payload["upstream_is_stream"], true);
         assert_eq!(active_payload["client_requested_stream"], false);
@@ -1590,7 +1670,7 @@ mod tests {
         assert_eq!(record_payload["client_requested_stream"], false);
         assert_eq!(record_payload["client_is_stream"], false);
 
-        let active_payload = build_users_me_usage_active_payload(&item);
+        let active_payload = build_users_me_usage_active_payload(&item, false);
         assert_eq!(active_payload["is_stream"], true);
         assert_eq!(active_payload["upstream_is_stream"], true);
         assert_eq!(active_payload["client_requested_stream"], false);
@@ -1624,7 +1704,7 @@ mod tests {
         assert_eq!(record_payload["client_requested_stream"], false);
         assert_eq!(record_payload["client_is_stream"], false);
 
-        let active_payload = build_users_me_usage_active_payload(&item);
+        let active_payload = build_users_me_usage_active_payload(&item, false);
         assert_eq!(active_payload["is_stream"], true);
         assert_eq!(active_payload["upstream_is_stream"], true);
         assert_eq!(active_payload["client_requested_stream"], false);

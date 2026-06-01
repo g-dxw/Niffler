@@ -181,6 +181,14 @@ export interface RequestDetail {
     output: number
     total: number
   }
+  charge_breakdown?: {
+    official_cost?: number | null
+    package_debit?: number | null
+    package_multiplier?: number | null
+    wallet_debit?: number | null
+    wallet_multiplier?: number | null
+    user_debit?: number | null
+  } | null
   // Additional token fields
   input_tokens?: number
   effective_input_tokens?: number

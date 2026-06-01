@@ -500,7 +500,9 @@ export function useUsageData(options: UseUsageDataOptions) {
             existing.cache_creation_ephemeral_1h_input_tokens
             ?? record.cache_creation_ephemeral_1h_input_tokens,
           cache_read_input_tokens: existing.cache_read_input_tokens ?? record.cache_read_input_tokens,
+          official_cost: existing.official_cost ?? record.official_cost,
           cost: existing.cost || record.cost,
+          sales_multiplier: existing.sales_multiplier ?? record.sales_multiplier,
           actual_cost: existing.actual_cost ?? record.actual_cost,
           response_time_ms: existing.response_time_ms ?? record.response_time_ms,
           first_byte_time_ms: existing.first_byte_time_ms ?? record.first_byte_time_ms,

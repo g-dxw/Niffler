@@ -9694,9 +9694,14 @@ fn map_usage_row(
     usage.execution_path = routing_snapshot.execution_path.clone();
     usage.local_execution_runtime_miss_reason =
         routing_snapshot.local_execution_runtime_miss_reason.clone();
-    usage.request_metadata = attach_usage_settlement_pricing_snapshot_metadata(
+    let request_metadata = attach_usage_settlement_pricing_snapshot_metadata(
         request_metadata,
         &settlement_pricing_snapshot,
+    );
+    usage.request_metadata = attach_usage_charge_breakdown_metadata(
+        request_metadata,
+        row_try_get_optional(row, "settlement_package_debit_usd")?,
+        row_try_get_optional(row, "settlement_wallet_debit_usd")?,
     );
     Ok(usage)
 }
@@ -11119,6 +11124,38 @@ fn attach_usage_settlement_pricing_snapshot_metadata(
         "price_per_request",
         snapshot.price_per_request,
     );
+    (!metadata.is_empty()).then_some(Value::Object(metadata))
+}
+
+fn attach_usage_charge_breakdown_metadata(
+    metadata: Option<Value>,
+    package_debit_usd: Option<f64>,
+    wallet_debit_usd: Option<f64>,
+) -> Option<Value> {
+    let package_debit_usd = package_debit_usd.filter(|value| value.is_finite() && *value >= 0.0);
+    let wallet_debit_usd = wallet_debit_usd.filter(|value| value.is_finite() && *value >= 0.0);
+    if package_debit_usd.is_none() && wallet_debit_usd.is_none() {
+        return metadata;
+    }
+
+    let mut metadata = match metadata {
+        Some(Value::Object(object)) => object,
+        Some(value) => return Some(value),
+        None => Map::new(),
+    };
+    if metadata.contains_key("charge_breakdown_snapshot") {
+        return (!metadata.is_empty()).then_some(Value::Object(metadata));
+    }
+
+    let mut snapshot = Map::new();
+    maybe_insert_number_value(&mut snapshot, "package_debit_usd", package_debit_usd);
+    maybe_insert_number_value(&mut snapshot, "wallet_debit_usd", wallet_debit_usd);
+    if !snapshot.is_empty() {
+        metadata.insert(
+            "charge_breakdown_snapshot".to_string(),
+            Value::Object(snapshot),
+        );
+    }
     (!metadata.is_empty()).then_some(Value::Object(metadata))
 }
 

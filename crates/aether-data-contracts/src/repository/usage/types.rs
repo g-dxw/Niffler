@@ -341,6 +341,72 @@ impl StoredRequestUsageAudit {
         self.request_metadata_number("rate_multiplier")
     }
 
+    fn settlement_snapshot_number(&self, key: &str) -> Option<f64> {
+        self.request_metadata_object()
+            .and_then(|metadata| metadata.get("settlement_snapshot"))
+            .and_then(Value::as_object)
+            .and_then(|snapshot| snapshot.get(key))
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    }
+
+    fn settlement_snapshot_pricing_number(&self, key: &str) -> Option<f64> {
+        self.request_metadata_object()
+            .and_then(|metadata| metadata.get("settlement_snapshot"))
+            .and_then(Value::as_object)
+            .and_then(|snapshot| snapshot.get("pricing_snapshot"))
+            .and_then(Value::as_object)
+            .and_then(|pricing| pricing.get(key))
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    }
+
+    fn settlement_charge_breakdown_number(&self, key: &str) -> Option<f64> {
+        self.request_metadata_object()
+            .and_then(|metadata| metadata.get("charge_breakdown_snapshot"))
+            .and_then(Value::as_object)
+            .and_then(|snapshot| snapshot.get(key))
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value >= 0.0)
+    }
+
+    fn settlement_raw_base_cost_usd(&self) -> Option<f64> {
+        self.request_metadata_number("base_cost_usd")
+            .or_else(|| self.settlement_snapshot_number("base_cost_usd"))
+    }
+
+    fn settlement_raw_sales_multiplier(&self) -> Option<f64> {
+        self.request_metadata_number("sales_multiplier")
+            .or_else(|| self.settlement_snapshot_pricing_number("sales_multiplier"))
+            .filter(|value| *value >= 0.0)
+    }
+
+    pub fn settlement_base_cost_usd(&self) -> Option<f64> {
+        self.settlement_raw_base_cost_usd().or_else(|| {
+            let multiplier = self
+                .settlement_raw_sales_multiplier()
+                .filter(|value| *value > 0.0)?;
+            Some(self.total_cost_usd / multiplier)
+        })
+    }
+
+    pub fn settlement_sales_multiplier(&self) -> Option<f64> {
+        self.settlement_raw_sales_multiplier().or_else(|| {
+            let base_cost = self
+                .settlement_raw_base_cost_usd()
+                .filter(|value| *value > 0.0)?;
+            Some(self.total_cost_usd / base_cost)
+        })
+    }
+
+    pub fn settlement_package_debit_usd(&self) -> Option<f64> {
+        self.settlement_charge_breakdown_number("package_debit_usd")
+    }
+
+    pub fn settlement_wallet_debit_usd(&self) -> Option<f64> {
+        self.settlement_charge_breakdown_number("wallet_debit_usd")
+    }
+
     pub fn settlement_is_free_tier(&self) -> Option<bool> {
         self.request_metadata_bool("is_free_tier")
     }
@@ -2187,6 +2253,8 @@ mod tests {
         usage.request_metadata = Some(json!({
             "billing_snapshot_schema_version": "v2",
             "billing_snapshot_status": "resolved",
+            "base_cost_usd": 0.2,
+            "sales_multiplier": 0.5,
             "rate_multiplier": 0.5,
             "is_free_tier": false,
             "input_price_per_1m": 3.0,
@@ -2206,6 +2274,8 @@ mod tests {
             Some("v2")
         );
         assert_eq!(usage.settlement_billing_snapshot_status(), Some("resolved"));
+        assert_eq!(usage.settlement_base_cost_usd(), Some(0.2));
+        assert_eq!(usage.settlement_sales_multiplier(), Some(0.5));
         assert_eq!(usage.settlement_rate_multiplier(), Some(0.5));
         assert_eq!(usage.settlement_is_free_tier(), Some(false));
         assert_eq!(usage.settlement_input_price_per_1m(), Some(3.0));

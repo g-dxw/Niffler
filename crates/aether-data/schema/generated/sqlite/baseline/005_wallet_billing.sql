@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS entitlement_usage_ledgers (
 );
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_user_date ON entitlement_usage_ledgers (user_id, usage_date);
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_entitlement_date ON entitlement_usage_ledgers (user_entitlement_id, usage_date);
+CREATE INDEX IF NOT EXISTS idx_entitlement_usage_request ON entitlement_usage_ledgers (request_id);
 
 CREATE TABLE IF NOT EXISTS entitlement_usage_windows (
     id TEXT PRIMARY KEY NOT NULL,

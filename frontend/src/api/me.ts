@@ -58,9 +58,19 @@ export interface UsageRecordDetail {
   effective_input_tokens?: number
   output_tokens: number
   total_tokens: number
-  cost: number  // 官方费率
-  actual_cost?: number  // 倍率消耗（仅管理员可见）
+  official_cost?: number | null  // 模型官方价格
+  cost: number  // 用户实际扣费
+  sales_multiplier?: number | null  // 用户侧倍率
+  actual_cost?: number  // 平台成本（仅管理员可见）
   rate_multiplier?: number  // 成本倍率（仅管理员可见）
+  charge_breakdown?: {
+    official_cost?: number | null
+    package_debit?: number | null
+    package_multiplier?: number | null
+    wallet_debit?: number | null
+    wallet_multiplier?: number | null
+    user_debit?: number | null
+  } | null
   response_time_ms?: number | null
   first_byte_time_ms?: number | null
   is_stream: boolean
@@ -105,7 +115,7 @@ export interface ModelSummary {
   total_input_context?: number
   cache_hit_rate?: number
   total_cost_usd: number
-  actual_total_cost_usd?: number  // 倍率消耗（仅管理员可见）
+  actual_total_cost_usd?: number  // 平台成本（仅管理员可见）
 }
 
 // 提供商统计接口
@@ -145,8 +155,8 @@ export interface UsageResponse {
   total_input_tokens: number
   total_output_tokens: number
   total_tokens: number
-  total_cost: number  // 官方费率
-  total_actual_cost?: number  // 倍率消耗（仅管理员可见）
+  total_cost: number  // 用户实际扣费
+  total_actual_cost?: number  // 平台成本（仅管理员可见）
   avg_response_time: number
   billing: BillingSummary
   summary_by_model: ModelSummary[]
@@ -358,7 +368,10 @@ export const meApi = {
       cache_creation_ephemeral_5m_input_tokens?: number | null
       cache_creation_ephemeral_1h_input_tokens?: number | null
       cache_read_input_tokens?: number | null
+      official_cost?: number | null
       cost: number
+      sales_multiplier?: number | null
+      charge_breakdown?: UsageRecordDetail['charge_breakdown']
       actual_cost?: number | null
       rate_multiplier?: number | null
       response_time_ms: number | null

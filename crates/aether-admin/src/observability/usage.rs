@@ -19,6 +19,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use url::form_urlencoded;
 
 pub const ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL: &str = "Admin usage data unavailable";
+const ADMIN_USAGE_COST_EPSILON: f64 = 0.000_000_01;
+
+struct AdminUsageChargeBreakdown {
+    payload: Value,
+    user_debit_usd: f64,
+}
 
 pub fn admin_usage_data_unavailable_response(detail: &'static str) -> Response<Body> {
     (
@@ -1124,6 +1130,44 @@ pub fn admin_usage_client_family(item: &StoredRequestUsageAudit) -> Option<&str>
         })
 }
 
+fn admin_usage_charge_breakdown(
+    item: &StoredRequestUsageAudit,
+    official_cost: f64,
+    sales_multiplier: Option<f64>,
+) -> AdminUsageChargeBreakdown {
+    let package_debit_snapshot = item.settlement_package_debit_usd();
+    let wallet_debit_snapshot = item.settlement_wallet_debit_usd();
+    let has_debit_snapshot = package_debit_snapshot.is_some() || wallet_debit_snapshot.is_some();
+    let package_debit = package_debit_snapshot.unwrap_or_default().max(0.0);
+    let wallet_debit = wallet_debit_snapshot.unwrap_or_else(|| {
+        if has_debit_snapshot {
+            0.0
+        } else {
+            item.total_cost_usd.max(0.0)
+        }
+    });
+    let user_debit = (package_debit + wallet_debit).max(0.0);
+    let wallet_multiplier = sales_multiplier.or_else(|| {
+        if official_cost > ADMIN_USAGE_COST_EPSILON && wallet_debit > ADMIN_USAGE_COST_EPSILON {
+            Some(wallet_debit / official_cost)
+        } else {
+            None
+        }
+    });
+
+    AdminUsageChargeBreakdown {
+        payload: json!({
+            "official_cost": round_to(official_cost.max(0.0), 6),
+            "package_debit": round_to(package_debit, 6),
+            "package_multiplier": if package_debit > ADMIN_USAGE_COST_EPSILON { Some(1.0) } else { None },
+            "wallet_debit": round_to(wallet_debit.max(0.0), 6),
+            "wallet_multiplier": wallet_multiplier,
+            "user_debit": round_to(user_debit, 6),
+        }),
+        user_debit_usd: user_debit,
+    }
+}
+
 fn admin_usage_active_request_json(
     item: &StoredRequestUsageAudit,
     api_key_name: Option<String>,
@@ -1133,6 +1177,17 @@ fn admin_usage_active_request_json(
     let cache_creation_input_tokens = admin_usage_cache_creation_tokens(item);
     let client_is_stream = admin_usage_client_is_stream(item);
     let upstream_is_stream = admin_usage_upstream_is_stream(item);
+    let official_cost = item
+        .settlement_base_cost_usd()
+        .unwrap_or(item.total_cost_usd);
+    let sales_multiplier = item.settlement_sales_multiplier().or_else(|| {
+        if official_cost > 0.0 {
+            Some(item.total_cost_usd / official_cost)
+        } else {
+            None
+        }
+    });
+    let charge_breakdown = admin_usage_charge_breakdown(item, official_cost, sales_multiplier);
     let mut value = json!({
         "id": item.id,
         "status": item.status,
@@ -1143,8 +1198,12 @@ fn admin_usage_active_request_json(
         "cache_creation_ephemeral_5m_input_tokens": item.cache_creation_ephemeral_5m_input_tokens,
         "cache_creation_ephemeral_1h_input_tokens": item.cache_creation_ephemeral_1h_input_tokens,
         "cache_read_input_tokens": item.cache_read_input_tokens,
-        "cost": round_to(item.total_cost_usd, 6),
+        "official_cost": round_to(official_cost, 6),
+        "cost": round_to(charge_breakdown.user_debit_usd, 6),
+        "sales_multiplier": sales_multiplier,
+        "charge_breakdown": charge_breakdown.payload,
         "actual_cost": round_to(item.actual_total_cost_usd, 6),
+        "rate_multiplier": item.settlement_rate_multiplier(),
         "response_time_ms": item.response_time_ms,
         "first_byte_time_ms": item.first_byte_time_ms,
         "status_code": item.status_code,
@@ -1192,6 +1251,17 @@ pub fn admin_usage_record_json(
     let output_price_per_1m = item.settlement_output_price_per_1m();
     let cache_creation_price_per_1m = item.settlement_cache_creation_price_per_1m();
     let cache_read_price_per_1m = item.settlement_cache_read_price_per_1m();
+    let official_cost = item
+        .settlement_base_cost_usd()
+        .unwrap_or(item.total_cost_usd);
+    let sales_multiplier = item.settlement_sales_multiplier().or_else(|| {
+        if official_cost > 0.0 {
+            Some(item.total_cost_usd / official_cost)
+        } else {
+            None
+        }
+    });
+    let charge_breakdown = admin_usage_charge_breakdown(item, official_cost, sales_multiplier);
     let cache_creation_input_tokens = admin_usage_cache_creation_tokens(item);
     let is_free_tier = item.settlement_is_free_tier();
     let user = item
@@ -1206,6 +1276,8 @@ pub fn admin_usage_record_json(
         .unwrap_or_else(|| "已删除用户".to_string());
     let client_is_stream = admin_usage_client_is_stream(item);
     let upstream_is_stream = admin_usage_upstream_is_stream(item);
+    let user_debit_usd = charge_breakdown.user_debit_usd;
+    let charge_breakdown_payload = charge_breakdown.payload;
 
     let mut payload = json!({
         "id": item.id,
@@ -1228,7 +1300,6 @@ pub fn admin_usage_record_json(
         "cache_creation_ephemeral_1h_input_tokens": item.cache_creation_ephemeral_1h_input_tokens,
         "cache_read_input_tokens": item.cache_read_input_tokens,
         "total_tokens": admin_usage_total_tokens(item),
-        "cost": round_to(item.total_cost_usd, 6),
         "actual_cost": round_to(item.actual_total_cost_usd, 6),
         "rate_multiplier": rate_multiplier,
         "response_time_ms": item.response_time_ms,
@@ -1255,6 +1326,13 @@ pub fn admin_usage_record_json(
     let object = payload
         .as_object_mut()
         .expect("admin usage record payload should be an object");
+    object.insert(
+        "official_cost".to_string(),
+        json!(round_to(official_cost, 6)),
+    );
+    object.insert("cost".to_string(), json!(round_to(user_debit_usd, 6)));
+    object.insert("sales_multiplier".to_string(), json!(sales_multiplier));
+    object.insert("charge_breakdown".to_string(), charge_breakdown_payload);
     object.insert("is_stream".to_string(), json!(item.is_stream));
     object.insert("upstream_is_stream".to_string(), json!(upstream_is_stream));
     object.insert(

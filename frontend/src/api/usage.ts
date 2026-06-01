@@ -5,6 +5,15 @@ import type { ImageProgress } from './requestTrace'
 
 const ACTIVITY_HEATMAP_CACHE_TTL_MS = 30 * 60 * 1000
 
+export interface UsageChargeBreakdown {
+  official_cost?: number | null
+  package_debit?: number | null
+  package_multiplier?: number | null
+  wallet_debit?: number | null
+  wallet_multiplier?: number | null
+  user_debit?: number | null
+}
+
 export interface UsageRecord {
   id: string // UUID
   user_id: string // UUID
@@ -20,9 +29,12 @@ export interface UsageRecord {
   cache_creation_ephemeral_1h_input_tokens?: number
   cache_read_input_tokens?: number
   total_tokens: number
+  official_cost?: number | null
   cost?: number
+  sales_multiplier?: number | null
   actual_cost?: number | null
   rate_multiplier?: number | null
+  charge_breakdown?: UsageChargeBreakdown | null
   response_time?: number
   created_at: string
   has_fallback?: boolean // 🆕 是否发生了 fallback
@@ -480,7 +492,10 @@ export const usageApi = {
       cache_creation_ephemeral_5m_input_tokens?: number | null
       cache_creation_ephemeral_1h_input_tokens?: number | null
       cache_read_input_tokens?: number | null
+      official_cost?: number | null
       cost: number
+      sales_multiplier?: number | null
+      charge_breakdown?: UsageChargeBreakdown | null
       actual_cost?: number | null
       rate_multiplier?: number | null
       response_time_ms: number | null

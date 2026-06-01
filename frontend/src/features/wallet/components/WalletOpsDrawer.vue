@@ -378,13 +378,19 @@
                           <TableHead>模型</TableHead>
                           <TableHead>状态</TableHead>
                           <TableHead class="text-right">
-                            官方费用
+                            官方价格
                           </TableHead>
                           <TableHead class="text-right">
-                            实际扣费
+                            套餐扣除
                           </TableHead>
                           <TableHead class="text-right">
-                            倍率
+                            钱包扣除
+                          </TableHead>
+                          <TableHead class="text-right">
+                            平台成本
+                          </TableHead>
+                          <TableHead class="text-right">
+                            成本倍率
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -414,15 +420,21 @@
                             {{ formatUsageCurrency(usageOfficialCost(record)) }}
                           </TableCell>
                           <TableCell class="text-right text-xs tabular-nums">
-                            {{ hasUsageActualCost(record) ? formatUsageCurrency(usageActualCost(record)) : '-' }}
+                            {{ formatUsageDebitWithMultiplier(usagePackageDebit(record), usagePackageMultiplier(record)) }}
                           </TableCell>
                           <TableCell class="text-right text-xs tabular-nums text-muted-foreground">
-                            {{ formatUsageMultiplier(record) }}
+                            {{ formatUsageDebitWithMultiplier(usageWalletDebit(record), usageWalletMultiplier(record)) }}
+                          </TableCell>
+                          <TableCell class="text-right text-xs tabular-nums">
+                            {{ hasUsagePlatformCost(record) ? formatUsageCurrency(usagePlatformCost(record)) : '-' }}
+                          </TableCell>
+                          <TableCell class="text-right text-xs tabular-nums text-muted-foreground">
+                            {{ formatUsageCostMultiplier(record) }}
                           </TableCell>
                         </TableRow>
                         <TableRow v-if="!loadingUsage && usageItems.length === 0">
                           <TableCell
-                            colspan="6"
+                            colspan="8"
                             class="py-10"
                           >
                             <EmptyState
@@ -1315,24 +1327,98 @@ function finiteNumber(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function usageOfficialCost(record: UsageRecord): number {
-  return finiteNumber(record.cost) ?? 0
+const USAGE_COST_EPSILON = 0.0000001
+
+interface UsageChargeBreakdownView {
+  officialCost: number
+  packageDebit: number
+  packageMultiplier: number | null
+  walletDebit: number
+  walletMultiplier: number | null
+  userDebit: number
 }
 
-function hasUsageActualCost(record: UsageRecord): boolean {
+function usageSalesMultiplier(record: UsageRecord): number | null {
+  return finiteNumber(record.sales_multiplier)
+}
+
+function resolveUsageChargeBreakdown(record: UsageRecord): UsageChargeBreakdownView {
+  const rawBreakdown = record.charge_breakdown
+  const salesMultiplier = usageSalesMultiplier(record)
+  const recordCost = finiteNumber(record.cost) ?? 0
+  let officialCost = finiteNumber(rawBreakdown?.official_cost) ?? finiteNumber(record.official_cost)
+  if (officialCost === null && salesMultiplier !== null && salesMultiplier > 0) {
+    officialCost = recordCost / salesMultiplier
+  } else if (officialCost === null) {
+    officialCost = recordCost
+  }
+  const resolvedOfficialCost = officialCost ?? recordCost
+  const packageDebit = Math.max(finiteNumber(rawBreakdown?.package_debit) ?? 0, 0)
+  const hasBreakdown = rawBreakdown !== null && rawBreakdown !== undefined
+  const walletDebit = Math.max(
+    finiteNumber(rawBreakdown?.wallet_debit) ?? (hasBreakdown ? 0 : recordCost),
+    0,
+  )
+  const userDebit = Math.max(
+    finiteNumber(rawBreakdown?.user_debit) ?? (packageDebit + walletDebit),
+    0,
+  )
+  const packageMultiplier = finiteNumber(rawBreakdown?.package_multiplier)
+    ?? (packageDebit > USAGE_COST_EPSILON ? 1 : null)
+  const walletMultiplier = finiteNumber(rawBreakdown?.wallet_multiplier)
+    ?? salesMultiplier
+    ?? (resolvedOfficialCost > USAGE_COST_EPSILON && walletDebit > USAGE_COST_EPSILON
+      ? walletDebit / resolvedOfficialCost
+      : null)
+
+  return {
+    officialCost: resolvedOfficialCost,
+    packageDebit,
+    packageMultiplier,
+    walletDebit,
+    walletMultiplier,
+    userDebit,
+  }
+}
+
+function usageUserCharge(record: UsageRecord): number {
+  return resolveUsageChargeBreakdown(record).userDebit
+}
+
+function usageOfficialCost(record: UsageRecord): number {
+  return resolveUsageChargeBreakdown(record).officialCost
+}
+
+function usagePackageDebit(record: UsageRecord): number {
+  return resolveUsageChargeBreakdown(record).packageDebit
+}
+
+function usagePackageMultiplier(record: UsageRecord): number | null {
+  return resolveUsageChargeBreakdown(record).packageMultiplier
+}
+
+function usageWalletDebit(record: UsageRecord): number {
+  return resolveUsageChargeBreakdown(record).walletDebit
+}
+
+function usageWalletMultiplier(record: UsageRecord): number | null {
+  return resolveUsageChargeBreakdown(record).walletMultiplier
+}
+
+function hasUsagePlatformCost(record: UsageRecord): boolean {
   return finiteNumber(record.actual_cost) !== null
 }
 
-function usageActualCost(record: UsageRecord): number {
+function usagePlatformCost(record: UsageRecord): number {
   return finiteNumber(record.actual_cost) ?? usageOfficialCost(record)
 }
 
-function usageMultiplier(record: UsageRecord): number | null {
+function usageCostMultiplier(record: UsageRecord): number | null {
   const saved = finiteNumber(record.rate_multiplier)
   if (saved !== null) return saved
   const official = usageOfficialCost(record)
-  if (official <= 0 || !hasUsageActualCost(record)) return null
-  return usageActualCost(record) / official
+  if (official <= 0 || !hasUsagePlatformCost(record)) return null
+  return usagePlatformCost(record) / official
 }
 
 function formatMultiplier(value: number | null): string {
@@ -1340,19 +1426,37 @@ function formatMultiplier(value: number | null): string {
   return `${value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}x`
 }
 
-function formatUsageMultiplier(record: UsageRecord): string {
-  return formatMultiplier(usageMultiplier(record))
+function formatUsageCostMultiplier(record: UsageRecord): string {
+  return formatMultiplier(usageCostMultiplier(record))
 }
 
 function formatUsageCurrency(value: number): string {
   return formatCurrency(value)
 }
 
+function formatUsageDebitWithMultiplier(amount: number, multiplier: number | null): string {
+  if (amount <= USAGE_COST_EPSILON) return '-'
+  return `${formatUsageCurrency(amount)} · ${formatMultiplier(multiplier)}`
+}
+
 function usageCostTitle(record: UsageRecord): string {
-  const lines = [`官方费用: ${formatUsageCurrency(usageOfficialCost(record))}`]
-  if (hasUsageActualCost(record)) {
-    lines.push(`实际扣费: ${formatUsageCurrency(usageActualCost(record))}`)
-    lines.push(`倍率: ${formatUsageMultiplier(record)}`)
+  const packageDebit = usagePackageDebit(record)
+  const walletDebit = usageWalletDebit(record)
+  const lines = [
+    `官方价格: ${formatUsageCurrency(usageOfficialCost(record))}`,
+  ]
+  if (packageDebit > USAGE_COST_EPSILON) {
+    lines.push(`套餐扣除: ${formatUsageDebitWithMultiplier(packageDebit, usagePackageMultiplier(record))}`)
+  }
+  if (walletDebit > USAGE_COST_EPSILON) {
+    lines.push(`钱包扣除: ${formatUsageDebitWithMultiplier(walletDebit, usageWalletMultiplier(record))}`)
+  }
+  if (packageDebit <= USAGE_COST_EPSILON && walletDebit <= USAGE_COST_EPSILON) {
+    lines.push('本次没有产生用户扣费')
+  }
+  if (hasUsagePlatformCost(record)) {
+    lines.push(`平台成本: ${formatUsageCurrency(usagePlatformCost(record))}`)
+    lines.push(`成本倍率: ${formatUsageCostMultiplier(record)}`)
   }
   return lines.join('\n')
 }

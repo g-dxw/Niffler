@@ -13,16 +13,17 @@
 
 ## 行为变化
 
-- 推送到 `main` 后，CI 会构建前端、构建 Linux amd64/arm64 的 `aether-gateway`，再打包成镜像。
-- CI 会继续推送 `ghcr.io/ryfinez/niffler:main` 和 `ghcr.io/ryfinez/niffler:sha-xxxxxxx`，也会额外上传 `niffler-app-linux-amd64` 镜像文件。
-- 手动触发 CI 时，可以额外填写一个镜像标签，方便发布指定测试版本。
+- 主应用镜像构建不再跟随 `main` 推送自动执行，需要在 GitHub Actions 手动触发 `Build App Image`。
+- 当前线上只使用 Linux amd64，因此 `Build App Image` 只构建 amd64 的 `aether-gateway` 和 amd64 镜像文件。
+- 从 `main` 手动触发时，CI 会推送 `ghcr.io/ryfinez/niffler:main` 和 `ghcr.io/ryfinez/niffler:sha-xxxxxxx`，并上传 `niffler-app-linux-amd64` 镜像文件。
+- 从其他分支手动触发时，CI 只推送 `sha-xxxxxxx` 和手动填写的镜像标签，不覆盖 `main` 镜像。
 - `deploy.sh` 不再使用 `Dockerfile.app.local`，也不再计算代码哈希。
 - `deploy.sh` 只执行镜像拉取和 `docker compose up -d --no-build`。
 - `scripts/deploy-ci-artifact.sh` 会从 CI 下载镜像文件，上传到服务器，执行 `docker load`，再重启指定服务。
 
 ## 影响范围
 
-- GitHub Actions 主应用镜像构建流程会同时产出 GHCR 镜像和 amd64 镜像文件。
+- GitHub Actions 主应用镜像构建流程会产出 GHCR 镜像和 amd64 镜像文件。
 - 线上发布优先使用 CI 产出的镜像文件，不依赖服务器访问私有 GHCR。
 - Compose 默认镜像统一为 `ghcr.io/ryfinez/niffler`。
 

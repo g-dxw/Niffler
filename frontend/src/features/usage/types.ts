@@ -5,7 +5,7 @@ export interface UsageStatsState {
   total_requests: number
   total_tokens: number
   total_cost: number
-  total_actual_cost?: number  // 倍率消耗（仅管理员可见）
+  total_actual_cost?: number  // 平台成本（仅管理员可见）
   avg_response_time: number
   error_count?: number
   error_rate?: number
@@ -31,7 +31,7 @@ export interface ModelStatsItem {
   cache_creation_tokens?: number
   cache_hit_rate?: number
   total_cost: number
-  actual_cost?: number  // 倍率消耗
+  actual_cost?: number  // 平台成本
 }
 
 // 增强的模型统计（包含效率分析）
@@ -76,6 +76,15 @@ export interface ApiFormatStatsItem {
 // 请求状态类型
 export type RequestStatus = 'pending' | 'streaming' | 'completed' | 'failed' | 'cancelled'
 
+export interface UsageChargeBreakdown {
+  official_cost?: number | null
+  package_debit?: number | null
+  package_multiplier?: number | null
+  wallet_debit?: number | null
+  wallet_multiplier?: number | null
+  user_debit?: number | null
+}
+
 export interface UsageRecord {
   id: string
   user_id?: string
@@ -90,6 +99,7 @@ export interface UsageRecord {
   api_key_name?: string
   provider_key_name?: string | null
   rate_multiplier?: number | null
+  sales_multiplier?: number | null
   model: string
   target_model?: string | null  // 映射后的目标模型名（若无映射则为空）
   model_version?: string | null  // Provider 返回的实际模型版本（列表轻量字段）
@@ -104,8 +114,10 @@ export interface UsageRecord {
   cache_creation_ephemeral_1h_input_tokens?: number
   cache_read_input_tokens?: number
   total_tokens: number
+  official_cost?: number | null
   cost: number
   actual_cost?: number | null
+  charge_breakdown?: UsageChargeBreakdown | null
   response_time_ms?: number | null
   first_byte_time_ms?: number | null  // 首字时间 (TTFB)
   is_stream: boolean

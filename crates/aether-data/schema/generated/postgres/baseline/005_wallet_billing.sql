@@ -266,6 +266,7 @@ ALTER TABLE ONLY public.entitlement_usage_ledgers ADD CONSTRAINT entitlement_usa
 ALTER TABLE ONLY public.entitlement_usage_ledgers ADD CONSTRAINT uq_entitlement_usage_request UNIQUE (user_entitlement_id, request_id);
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_user_date ON public.entitlement_usage_ledgers USING btree (user_id, usage_date);
 CREATE INDEX IF NOT EXISTS idx_entitlement_usage_entitlement_date ON public.entitlement_usage_ledgers USING btree (user_entitlement_id, usage_date);
+CREATE INDEX IF NOT EXISTS idx_entitlement_usage_request ON public.entitlement_usage_ledgers USING btree (request_id);
 
 CREATE TABLE IF NOT EXISTS public.entitlement_usage_windows (
     id character varying(64) NOT NULL,

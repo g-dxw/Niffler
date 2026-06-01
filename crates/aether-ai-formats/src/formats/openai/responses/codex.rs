@@ -24,6 +24,8 @@ pub const CODEX_OPENAI_IMAGE_DEFAULT_VARIATION_PROMPT: &str =
 const CODEX_IMAGE_TOOL_DEFAULT_SIZE: &str = "1024x1024";
 const CODEX_IMAGE_TOOL_DEFAULT_QUALITY: &str = "high";
 const CODEX_IMAGE_TOOL_DEFAULT_BACKGROUND: &str = "auto";
+const CODEX_IMAGE_GENERATION_BRIDGE_MARKER: &str = "<niffler-codex-image-generation>";
+const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user asks for raster image generation or editing, use the OpenAI Responses native `image_generation` tool attached to this request. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
 const UUID_NAMESPACE_OID_BYTES: [u8; 16] = [
     0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
 ];
@@ -67,16 +69,132 @@ fn codex_openai_responses_tool_choice_references_image_generation(
     }
 }
 
+fn codex_openai_responses_image_bridge_enabled(
+    provider_api_format: &str,
+    body_object: &serde_json::Map<String, Value>,
+) -> bool {
+    aether_ai_formats::is_openai_responses_format(provider_api_format)
+        && !body_object
+            .get("model")
+            .and_then(Value::as_str)
+            .is_some_and(|model| model.trim().eq_ignore_ascii_case("gpt-5.3-codex-spark"))
+}
+
+fn codex_openai_responses_has_image_generation_tool(
+    body_object: &serde_json::Map<String, Value>,
+) -> bool {
+    body_object
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .any(|tool| {
+            tool.get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|tool_type| tool_type.trim().eq_ignore_ascii_case("image_generation"))
+        })
+}
+
+fn normalize_codex_openai_image_generation_tool(tool: &mut serde_json::Map<String, Value>) {
+    tool.insert("type".to_string(), json!("image_generation"));
+    if !tool.contains_key("output_format") {
+        if let Some(format) = tool
+            .get("format")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+        {
+            tool.insert("output_format".to_string(), json!(format));
+        }
+    }
+    if !tool.contains_key("output_compression") {
+        if let Some(compression) = tool.get("compression").cloned() {
+            tool.insert("output_compression".to_string(), compression);
+        }
+    }
+    tool.remove("format");
+    tool.remove("compression");
+}
+
+fn normalize_codex_openai_image_generation_tools(body_object: &mut serde_json::Map<String, Value>) {
+    let Some(tools) = body_object.get_mut("tools").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for tool in tools {
+        let Some(tool_object) = tool.as_object_mut() else {
+            continue;
+        };
+        if tool_object
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|tool_type| tool_type.trim().eq_ignore_ascii_case("image_generation"))
+        {
+            normalize_codex_openai_image_generation_tool(tool_object);
+        }
+    }
+}
+
+fn ensure_codex_openai_responses_image_generation_tool(
+    body_object: &mut serde_json::Map<String, Value>,
+) {
+    if codex_openai_responses_has_image_generation_tool(body_object) {
+        return;
+    }
+    let tool = json!({
+        "type": "image_generation",
+        "output_format": CODEX_OPENAI_IMAGE_DEFAULT_OUTPUT_FORMAT,
+    });
+    match body_object.get_mut("tools").and_then(Value::as_array_mut) {
+        Some(tools) => tools.push(tool),
+        None => {
+            body_object.insert("tools".to_string(), json!([tool]));
+        }
+    }
+}
+
+fn apply_codex_image_generation_bridge_instructions(
+    body_object: &mut serde_json::Map<String, Value>,
+) {
+    if !codex_openai_responses_has_image_generation_tool(body_object) {
+        return;
+    }
+    let existing = body_object
+        .get("instructions")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim_end()
+        .to_string();
+    if existing.contains(CODEX_IMAGE_GENERATION_BRIDGE_MARKER) {
+        return;
+    }
+    let instructions = if existing.trim().is_empty() {
+        CODEX_IMAGE_GENERATION_BRIDGE_TEXT.to_string()
+    } else {
+        format!("{existing}\n\n{CODEX_IMAGE_GENERATION_BRIDGE_TEXT}")
+    };
+    body_object.insert("instructions".to_string(), json!(instructions));
+}
+
 fn apply_codex_openai_image_tool_overrides(body_object: &mut serde_json::Map<String, Value>) {
     let mut tool = body_object
         .get("tools")
         .and_then(Value::as_array)
-        .and_then(|tools| tools.first())
+        .and_then(|tools| {
+            tools.iter().find(|tool| {
+                tool.get("type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|tool_type| {
+                        tool_type.trim().eq_ignore_ascii_case("image_generation")
+                    })
+            })
+        })
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
 
-    tool.insert("type".to_string(), json!("image_generation"));
+    normalize_codex_openai_image_generation_tool(&mut tool);
     tool.entry("output_format".to_string())
         .or_insert_with(|| json!(CODEX_OPENAI_IMAGE_DEFAULT_OUTPUT_FORMAT));
     let action = tool
@@ -485,6 +603,11 @@ pub fn apply_codex_openai_responses_special_body_edits(
     strip_codex_hosted_tool_names_for_backend(body_object);
     strip_codex_hosted_tool_choice_name_for_backend(body_object);
     normalize_codex_responses_string_input(body_object);
+    normalize_codex_openai_image_generation_tools(body_object);
+    if codex_openai_responses_image_bridge_enabled(provider_api_format, body_object) {
+        ensure_codex_openai_responses_image_generation_tool(body_object);
+        apply_codex_image_generation_bridge_instructions(body_object);
+    }
     if is_openai_image_request(provider_api_format)
         || codex_openai_responses_tool_choice_references_image_generation(body_object)
     {
@@ -635,7 +758,15 @@ mod tests {
             json!(["reasoning.encrypted_content"])
         );
         assert_eq!(provider_request_body["parallel_tool_calls"], json!(true));
-        assert_eq!(provider_request_body["instructions"], json!(""));
+        assert!(provider_request_body["instructions"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Responses native `image_generation` tool"));
+        assert!(provider_request_body["tools"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|tool| tool.get("type") == Some(&json!("image_generation"))));
     }
 
     #[test]

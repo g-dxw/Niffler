@@ -86,6 +86,46 @@ SELECT
     CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION),
     0
   ) AS actual_total_cost_usd,
+  (
+    SELECT CAST(SUM(entitlement_usage_ledgers.amount_usd) AS DOUBLE PRECISION)
+    FROM entitlement_usage_ledgers
+    WHERE entitlement_usage_ledgers.request_id = "usage".request_id
+  ) AS settlement_package_debit_usd,
+  CASE
+    WHEN COALESCE(
+      usage_settlement_snapshots.wallet_recharge_balance_before,
+      "usage".wallet_recharge_balance_before,
+      usage_settlement_snapshots.wallet_recharge_balance_after,
+      "usage".wallet_recharge_balance_after,
+      usage_settlement_snapshots.wallet_gift_balance_before,
+      "usage".wallet_gift_balance_before,
+      usage_settlement_snapshots.wallet_gift_balance_after,
+      "usage".wallet_gift_balance_after
+    ) IS NULL THEN NULL
+    ELSE GREATEST(
+      COALESCE(
+        CAST(usage_settlement_snapshots.wallet_recharge_balance_before AS DOUBLE PRECISION),
+        CAST("usage".wallet_recharge_balance_before AS DOUBLE PRECISION),
+        0
+      ) - COALESCE(
+        CAST(usage_settlement_snapshots.wallet_recharge_balance_after AS DOUBLE PRECISION),
+        CAST("usage".wallet_recharge_balance_after AS DOUBLE PRECISION),
+        0
+      ),
+      0
+    ) + GREATEST(
+      COALESCE(
+        CAST(usage_settlement_snapshots.wallet_gift_balance_before AS DOUBLE PRECISION),
+        CAST("usage".wallet_gift_balance_before AS DOUBLE PRECISION),
+        0
+      ) - COALESCE(
+        CAST(usage_settlement_snapshots.wallet_gift_balance_after AS DOUBLE PRECISION),
+        CAST("usage".wallet_gift_balance_after AS DOUBLE PRECISION),
+        0
+      ),
+      0
+    )
+  END AS settlement_wallet_debit_usd,
   "usage".status_code,
   "usage".error_message,
   "usage".error_category,

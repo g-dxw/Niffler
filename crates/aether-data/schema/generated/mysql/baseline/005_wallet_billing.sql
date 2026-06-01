@@ -252,7 +252,8 @@ CREATE TABLE IF NOT EXISTS entitlement_usage_ledgers (
     PRIMARY KEY (`id`),
     UNIQUE KEY uq_entitlement_usage_request (`user_entitlement_id`, `request_id`),
     KEY idx_entitlement_usage_user_date (`user_id`, `usage_date`),
-    KEY idx_entitlement_usage_entitlement_date (`user_entitlement_id`, `usage_date`)
+    KEY idx_entitlement_usage_entitlement_date (`user_entitlement_id`, `usage_date`),
+    KEY idx_entitlement_usage_request (`request_id`)
 );
 
 CREATE TABLE IF NOT EXISTS entitlement_usage_windows (
