@@ -1558,14 +1558,48 @@ async function goToKeyPage(page: number) {
   await loadProviderKeysPage(nextPage)
 }
 
+function resetProviderScopedState() {
+  endpoints.value = []
+  providerKeys.value = []
+  providerKeysTotal.value = 0
+  currentKeyPage.value = 1
+  keyPageSize.value = DEFAULT_PROVIDER_KEYS_PAGE_SIZE
+  providerModels.value = []
+  providerMappingPreview.value = null
+  currentEndpoint.value = null
+  editingKey.value = null
+  editingModel.value = null
+  keyToDelete.value = null
+  revealedKeys.value.clear()
+
+  endpointDialogOpen.value = false
+  keyFormDialogOpen.value = false
+  keyPermissionsDialogOpen.value = false
+  oauthAccountDialogOpen.value = false
+  oauthKeyEditDialogOpen.value = false
+  deleteKeyConfirmOpen.value = false
+  modelFormDialogOpen.value = false
+  batchAssignDialogOpen.value = false
+  upstreamModelsDialogOpen.value = false
+  antigravityQuotaDialogOpen.value = false
+  antigravityQuotaDialogKey.value = null
+}
+
 // 合并监听 providerId 和 open，避免同一 tick 内两个 watcher 都触发导致重复请求
 watch(
   [() => props.providerId, () => props.open],
-  async ([newId, newOpen], [_oldId, oldOpen]) => {
+  async ([newId, newOpen], [oldId, oldOpen]) => {
     if (newOpen && newId) {
-      if (!oldOpen || provider.value?.id !== newId) {
-        currentKeyPage.value = 1
-        providerKeysTotal.value = 0
+      const providerChanged = !oldOpen || oldId !== newId || provider.value?.id !== newId
+      if (providerChanged) {
+        // 先清空上一家 Provider 的明细，避免加载期间短暂显示串台数据。
+        endpointsLoadRequestId += 1
+        keysLoadRequestId += 1
+        mappingPreviewLoadRequestId += 1
+        resetProviderScopedState()
+        if (provider.value?.id !== newId) {
+          provider.value = null
+        }
       }
       const hasInitialProvider = props.initialProvider?.id === newId
       if (hasInitialProvider) {
@@ -1597,36 +1631,11 @@ watch(
       // 重置所有状态
       loading.value = false
       provider.value = null
-      endpoints.value = []
-      providerKeys.value = []  // 清空 Provider 级别的 keys
-      providerKeysTotal.value = 0
-      currentKeyPage.value = 1
-      keyPageSize.value = DEFAULT_PROVIDER_KEYS_PAGE_SIZE
-      providerModels.value = []
-      providerMappingPreview.value = null
+      resetProviderScopedState()
       loadingProviderEndpoints.value = false
       loadingProviderKeys.value = false
       loadingProviderModels.value = false
       loadingProviderMappingPreview.value = false
-
-      // 重置所有对话框状态
-      endpointDialogOpen.value = false
-      keyFormDialogOpen.value = false
-      keyPermissionsDialogOpen.value = false
-      oauthAccountDialogOpen.value = false
-      oauthKeyEditDialogOpen.value = false
-      deleteKeyConfirmOpen.value = false
-      batchAssignDialogOpen.value = false
-      antigravityQuotaDialogOpen.value = false
-      antigravityQuotaDialogKey.value = null
-
-      // 重置临时数据
-      currentEndpoint.value = null
-      editingKey.value = null
-      keyToDelete.value = null
-
-      // 清除已显示的密钥（安全考虑）
-      revealedKeys.value.clear()
     }
   },
   { immediate: true },
