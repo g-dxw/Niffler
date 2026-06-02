@@ -353,7 +353,7 @@
           <Tabs v-model="activeTab">
             <TabsList class="tabs-button-list grid grid-cols-3 w-full max-w-xl">
               <TabsTrigger value="transactions">
-                资金流水
+                资金与用量
               </TabsTrigger>
               <TabsTrigger value="orders">
                 充值订单
@@ -382,8 +382,8 @@
                     <TableRow>
                       <TableHead>时间</TableHead>
                       <TableHead>类型</TableHead>
-                      <TableHead>变动</TableHead>
-                      <TableHead>余额变化</TableHead>
+                      <TableHead>金额</TableHead>
+                      <TableHead>余额变化 / 口径</TableHead>
                       <TableHead>说明</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -411,11 +411,11 @@
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell class="text-rose-600 dark:text-rose-400">
-                        -{{ todayUsage.total_cost.toFixed(4) }}
+                      <TableCell class="text-muted-foreground">
+                        {{ todayUsage.total_cost.toFixed(4) }}
                       </TableCell>
                       <TableCell class="text-xs text-muted-foreground">
-                        按日汇总
+                        用量金额，含套餐额度
                       </TableCell>
                       <TableCell class="text-xs text-muted-foreground">
                         {{ todayUsage.total_requests }} 次请求 · {{ formatTokenCount(todayUsage.input_tokens) }} / {{ formatTokenCount(todayUsage.output_tokens) }} tokens
@@ -471,11 +471,11 @@
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell class="text-rose-600 dark:text-rose-400">
-                          -{{ item.data.total_cost.toFixed(4) }}
+                        <TableCell class="text-muted-foreground">
+                          {{ item.data.total_cost.toFixed(4) }}
                         </TableCell>
                         <TableCell class="text-xs text-muted-foreground">
-                          按日汇总
+                          用量金额，含套餐额度
                         </TableCell>
                         <TableCell class="text-xs text-muted-foreground">
                           {{ item.data.total_requests }} 次请求 · {{ formatTokenCount(item.data.input_tokens) }} / {{ formatTokenCount(item.data.output_tokens) }} tokens
@@ -489,7 +489,7 @@
                       >
                         <EmptyState
                           title="暂无资金流水"
-                          description="充值、退款或消费后会在这里显示"
+                          description="充值、退款或用量汇总后会在这里显示"
                         />
                       </TableCell>
                     </TableRow>
@@ -887,8 +887,8 @@ async function loadTransactions() {
     txTotal.value = resp.total
     todayUsage.value = resp.today_entry
   } catch (error) {
-    log.error('加载钱包流水失败:', error)
-    showError(parseApiError(error, '加载钱包流水失败'))
+    log.error('加载资金与用量失败:', error)
+    showError(parseApiError(error, '加载资金与用量失败'))
   } finally {
     loadingTransactions.value = false
   }
@@ -898,7 +898,7 @@ async function loadTodayCost() {
   try {
     todayUsage.value = await walletApi.getTodayCost()
   } catch (error) {
-    log.error('加载今日消费失败:', error)
+    log.error('加载今日用量失败:', error)
   }
 }
 

@@ -26,13 +26,13 @@ pub trait UsageBillingEventEnricher: Send + Sync {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UsageRequestRecordLevel {
-    Basic,
     #[default]
+    Basic,
     Full,
 }
 
-pub const DEFAULT_USAGE_REQUEST_BODY_CAPTURE_LIMIT_BYTES: usize = 5 * 1024 * 1024;
-pub const DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES: usize = 5 * 1024 * 1024;
+pub const DEFAULT_USAGE_REQUEST_BODY_CAPTURE_LIMIT_BYTES: usize = 256 * 1024;
+pub const DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UsageBodyCapturePolicy {
@@ -44,7 +44,7 @@ pub struct UsageBodyCapturePolicy {
 impl Default for UsageBodyCapturePolicy {
     fn default() -> Self {
         Self {
-            record_level: UsageRequestRecordLevel::Full,
+            record_level: UsageRequestRecordLevel::Basic,
             max_request_body_bytes: Some(DEFAULT_USAGE_REQUEST_BODY_CAPTURE_LIMIT_BYTES),
             max_response_body_bytes: Some(DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES),
         }

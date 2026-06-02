@@ -748,6 +748,28 @@ async fn usage_cleanup_settings_resolve_batch_and_delete_toggle() {
 }
 
 #[tokio::test]
+async fn usage_cleanup_settings_use_safe_body_retention_defaults() {
+    let data = GatewayDataState::disabled()
+        .with_system_config_values_for_tests(Vec::<(String, serde_json::Value)>::new());
+
+    let settings = usage_cleanup_settings(&data)
+        .await
+        .expect("usage cleanup settings should resolve");
+
+    assert_eq!(
+        settings,
+        UsageCleanupSettings {
+            detail_retention_days: 1,
+            compressed_retention_days: 2,
+            header_retention_days: 30,
+            log_retention_days: 365,
+            batch_size: 1_000,
+            auto_delete_expired_keys: false,
+        }
+    );
+}
+
+#[tokio::test]
 async fn proxy_node_metrics_cleanup_settings_use_dedicated_retention_and_batch_limits() {
     let data = GatewayDataState::disabled().with_system_config_values_for_tests([
         ("cleanup_batch_size".to_string(), json!(250)),

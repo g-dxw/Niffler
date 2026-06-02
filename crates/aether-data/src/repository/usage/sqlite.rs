@@ -806,6 +806,17 @@ COALESCE(
 "#
 }
 
+fn sqlite_provider_api_key_window_cost_expr() -> &'static str {
+    r#"
+COALESCE(
+  CAST(json_extract(request_metadata, '$.base_cost_usd') AS REAL),
+  CAST(json_extract(request_metadata, '$.settlement_snapshot.base_cost_usd') AS REAL),
+  CAST(total_cost_usd AS REAL),
+  0
+)
+"#
+}
+
 fn sqlite_usage_bucket_expr(
     granularity: UsageTimeSeriesGranularity,
     tz_offset_minutes: i32,
@@ -3096,24 +3107,29 @@ WHERE provider_api_key_id IN (
                 ));
             }
 
-            let row = sqlx::query(
+            let sql = format!(
                 r#"
 SELECT
   COUNT(*) AS request_count,
   COALESCE(SUM(MAX(COALESCE(total_tokens, 0), 0)), 0) AS total_tokens,
-  COALESCE(SUM(COALESCE(CAST(total_cost_usd AS REAL), 0)), 0) AS total_cost_usd
+  COALESCE(SUM({cost_expr}), 0) AS total_cost_usd
 FROM "usage"
 WHERE provider_api_key_id = ?
   AND created_at_unix_ms >= ?
   AND created_at_unix_ms < ?
+  AND billing_status = 'settled'
+  AND {cost_expr} > 0
 "#,
-            )
-            .bind(provider_api_key_id)
-            .bind(request.start_unix_secs as i64)
-            .bind(request.end_unix_secs as i64)
-            .fetch_one(&self.pool)
-            .await
-            .map_sql_err()?;
+                cost_expr = sqlite_provider_api_key_window_cost_expr(),
+            );
+
+            let row = sqlx::query(&sql)
+                .bind(provider_api_key_id)
+                .bind(request.start_unix_secs as i64)
+                .bind(request.end_unix_secs as i64)
+                .fetch_one(&self.pool)
+                .await
+                .map_sql_err()?;
 
             summaries.push(StoredProviderApiKeyWindowUsageSummary {
                 provider_api_key_id: provider_api_key_id.to_string(),

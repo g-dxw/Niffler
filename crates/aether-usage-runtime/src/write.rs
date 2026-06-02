@@ -1989,7 +1989,6 @@ fn standardized_usage_total_tokens(usage: &StandardizedUsage) -> u64 {
 
     positive_usage_component(usage.input_tokens)
         .saturating_add(positive_usage_component(usage.output_tokens))
-        .saturating_add(positive_usage_component(usage.reasoning_tokens))
 }
 
 fn standardized_usage_explicit_total_tokens(usage: &StandardizedUsage) -> Option<u64> {
@@ -3001,9 +3000,9 @@ mod tests {
         build_terminal_usage_event_from_seed, build_usage_event_data_seed,
         extract_token_counts_from_json, extract_token_counts_from_value, headers_to_json,
         mask_header_value, mask_sensitive_headers_in_json_value, parse_sse_body_for_storage,
-        resolve_error_message, trim_owned_non_empty_string, LifecycleUsageSeed, TerminalUsageSeed,
-        UsageBodyRefsSeed, UsageBodyStatesSeed, UsageRoutingSeed, UsageTerminalState,
-        MAX_USAGE_CAPTURE_BYTES, MAX_USAGE_CAPTURE_DEPTH,
+        resolve_error_message, standardized_usage_total_tokens, trim_owned_non_empty_string,
+        LifecycleUsageSeed, TerminalUsageSeed, UsageBodyRefsSeed, UsageBodyStatesSeed,
+        UsageRoutingSeed, UsageTerminalState, MAX_USAGE_CAPTURE_BYTES, MAX_USAGE_CAPTURE_DEPTH,
     };
     use crate::{
         build_upsert_usage_record_from_event, GatewayStreamReportRequest, GatewaySyncReportRequest,
@@ -3029,6 +3028,16 @@ mod tests {
         .expect("tokens should exist");
 
         assert_eq!(tokens, (3, 5, 8));
+    }
+
+    #[test]
+    fn standardized_usage_total_tokens_does_not_double_count_reasoning_tokens() {
+        let mut usage = StandardizedUsage::new();
+        usage.input_tokens = 26;
+        usage.output_tokens = 148;
+        usage.reasoning_tokens = 10;
+
+        assert_eq!(standardized_usage_total_tokens(&usage), 174);
     }
 
     #[test]

@@ -36,7 +36,7 @@ export function walletTransactionCategoryLabel(category: string | null | undefin
 }
 
 export function dailyUsageCategoryLabel(isToday = false): string {
-  return isToday ? '今日消费' : '每日消费'
+  return isToday ? '今日用量' : '每日用量'
 }
 
 export function formatTokenCount(value: number | null | undefined): string {

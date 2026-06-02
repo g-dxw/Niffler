@@ -487,11 +487,7 @@ fn openai_chat_usage_counts(usage: &StandardizedUsage) -> Option<(u64, u64, u64,
         .dimensions
         .get("total_tokens")
         .and_then(Value::as_u64)
-        .unwrap_or_else(|| {
-            input_tokens
-                .saturating_add(output_tokens)
-                .saturating_add(reasoning_tokens)
-        });
+        .unwrap_or_else(|| input_tokens.saturating_add(output_tokens));
     (total_tokens > 0).then_some((input_tokens, output_tokens, total_tokens, reasoning_tokens))
 }
 
@@ -897,12 +893,22 @@ fn standardized_usage_from_openai_usage(value: &Value) -> Option<StandardizedUsa
                 .and_then(Value::as_i64)
         })
         .unwrap_or(0);
-    let total_tokens = usage.get("total_tokens").and_then(Value::as_i64).unwrap_or(
-        input_tokens
-            .saturating_add(output_tokens)
-            .saturating_add(cache_creation_tokens)
-            .saturating_add(cache_read_tokens),
-    );
+    let reasoning_tokens = usage
+        .get("reasoning_tokens")
+        .and_then(Value::as_i64)
+        .or_else(|| {
+            usage
+                .get("output_tokens_details")
+                .or_else(|| usage.get("completion_tokens_details"))
+                .and_then(Value::as_object)
+                .and_then(|details| details.get("reasoning_tokens"))
+                .and_then(Value::as_i64)
+        })
+        .unwrap_or(0);
+    let total_tokens = usage
+        .get("total_tokens")
+        .and_then(Value::as_i64)
+        .unwrap_or_else(|| input_tokens.saturating_add(output_tokens));
     if input_tokens == 0 && total_tokens > output_tokens {
         input_tokens = total_tokens.saturating_sub(output_tokens);
     }
@@ -911,6 +917,7 @@ fn standardized_usage_from_openai_usage(value: &Value) -> Option<StandardizedUsa
     standardized_usage.output_tokens = output_tokens;
     standardized_usage.cache_creation_tokens = cache_creation_tokens;
     standardized_usage.cache_read_tokens = cache_read_tokens;
+    standardized_usage.reasoning_tokens = reasoning_tokens;
     standardized_usage
         .dimensions
         .insert("total_tokens".to_string(), json!(total_tokens));
@@ -919,7 +926,7 @@ fn standardized_usage_from_openai_usage(value: &Value) -> Option<StandardizedUsa
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::{maybe_bridge_standard_sync_json_to_stream, standardized_usage_from_openai_usage};
 
@@ -941,6 +948,26 @@ mod tests {
         assert_eq!(usage.input_tokens, 20_435);
         assert_eq!(usage.output_tokens, 177);
         assert_eq!(usage.cache_read_tokens, 19_840);
+    }
+
+    #[test]
+    fn openai_sync_usage_does_not_double_count_reasoning_tokens_when_total_is_missing() {
+        let usage = standardized_usage_from_openai_usage(&json!({
+            "input_tokens": 26,
+            "output_tokens": 148,
+            "output_tokens_details": {
+                "reasoning_tokens": 10,
+            },
+        }))
+        .expect("usage should parse");
+
+        assert_eq!(usage.input_tokens, 26);
+        assert_eq!(usage.output_tokens, 148);
+        assert_eq!(usage.reasoning_tokens, 10);
+        assert_eq!(
+            usage.dimensions.get("total_tokens").and_then(Value::as_i64),
+            Some(174),
+        );
     }
 
     #[test]

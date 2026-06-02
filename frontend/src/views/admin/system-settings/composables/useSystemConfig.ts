@@ -147,14 +147,14 @@ function createDefaultConfig(): SystemConfig {
     enable_openai_image_sync_heartbeat: false,
     // 请求记录
     request_record_level: 'basic',
-    max_request_body_size: 1048576,
-    max_response_body_size: 1048576,
+    max_request_body_size: 262144,
+    max_response_body_size: 262144,
     sensitive_headers: ['authorization', 'x-api-key', 'api-key', 'cookie', 'set-cookie'],
     // 请求记录清理
     enable_auto_cleanup: true,
-    detail_log_retention_days: 7,
-    compressed_log_retention_days: 30,
-    header_retention_days: 90,
+    detail_log_retention_days: 1,
+    compressed_log_retention_days: 2,
+    header_retention_days: 30,
     log_retention_days: 365,
     cleanup_batch_size: 1000,
     audit_log_retention_days: 30,
@@ -270,14 +270,16 @@ export function useSystemConfig() {
   const maxRequestBodySizeKB = computed({
     get: () => Math.round(systemConfig.value.max_request_body_size / 1024),
     set: (val: number) => {
-      systemConfig.value.max_request_body_size = val * 1024
+      const nextValue = Number.isFinite(val) && val > 0 ? val : 256
+      systemConfig.value.max_request_body_size = nextValue * 1024
     },
   })
 
   const maxResponseBodySizeKB = computed({
     get: () => Math.round(systemConfig.value.max_response_body_size / 1024),
     set: (val: number) => {
-      systemConfig.value.max_response_body_size = val * 1024
+      const nextValue = Number.isFinite(val) && val > 0 ? val : 256
+      systemConfig.value.max_response_body_size = nextValue * 1024
     },
   })
 

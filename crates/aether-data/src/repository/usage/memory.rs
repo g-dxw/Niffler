@@ -941,6 +941,12 @@ fn usage_total_tokens(item: &StoredRequestUsageAudit) -> u64 {
         .saturating_add(item.cache_read_input_tokens)
 }
 
+fn provider_api_key_window_cost_usd(item: &StoredRequestUsageAudit) -> f64 {
+    item.settlement_base_cost_usd()
+        .filter(|value| *value > 0.0)
+        .unwrap_or(item.total_cost_usd)
+}
+
 fn usage_is_success(item: &StoredRequestUsageAudit) -> bool {
     matches!(
         item.status.as_str(),
@@ -2376,10 +2382,14 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
                 {
                     continue;
                 }
+                let window_cost_usd = provider_api_key_window_cost_usd(item);
+                if item.billing_status != "settled" || window_cost_usd <= 0.0 {
+                    continue;
+                }
 
                 summary.request_count = summary.request_count.saturating_add(1);
                 summary.total_tokens = summary.total_tokens.saturating_add(item.total_tokens);
-                summary.total_cost_usd += item.total_cost_usd;
+                summary.total_cost_usd += window_cost_usd;
             }
 
             summaries.push(summary);
@@ -3051,6 +3061,57 @@ mod tests {
             Some(120),
             "completed".to_string(),
             "settled".to_string(),
+            created_at_unix_ms,
+            created_at_unix_ms + 1,
+            Some(created_at_unix_ms + 2),
+        )
+        .expect("usage should build")
+    }
+
+    fn sample_non_billable_usage(
+        request_id: &str,
+        created_at_unix_ms: i64,
+        status: &str,
+        billing_status: &str,
+    ) -> StoredRequestUsageAudit {
+        StoredRequestUsageAudit::new(
+            "usage-1".to_string(),
+            request_id.to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            Some("alice".to_string()),
+            Some("default".to_string()),
+            "OpenAI".to_string(),
+            "gpt-4.1".to_string(),
+            Some("gpt-4.1-mini".to_string()),
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            Some("chat".to_string()),
+            Some("openai:chat".to_string()),
+            Some("openai".to_string()),
+            Some("chat".to_string()),
+            Some("openai:chat".to_string()),
+            Some("openai".to_string()),
+            Some("chat".to_string()),
+            true,
+            status == "streaming",
+            100,
+            50,
+            150,
+            0.0,
+            0.0,
+            Some(if status == "failed" { 500 } else { 200 }),
+            if status == "failed" {
+                Some("upstream failed".to_string())
+            } else {
+                None
+            },
+            None,
+            Some(420),
+            Some(120),
+            status.to_string(),
+            billing_status.to_string(),
             created_at_unix_ms,
             created_at_unix_ms + 1,
             Some(created_at_unix_ms + 2),
@@ -3876,6 +3937,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resolve_body_ref_allows_provider_request_ref_to_reuse_request_body_ref() {
+        let request_body = json!({
+            "model": "gpt-5.5",
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+        let mut usage = sample_usage("req-dedup-ref", 100);
+        usage.request_body = Some(request_body.clone());
+
+        let repository = InMemoryUsageReadRepository::seed_with_detached_bodies(vec![usage]);
+        let mut stored = repository
+            .find_by_request_id("req-dedup-ref")
+            .await
+            .expect("find should succeed")
+            .expect("usage should exist");
+        stored.provider_request_body_ref =
+            Some(usage_body_ref("req-dedup-ref", UsageBodyField::RequestBody));
+
+        assert_eq!(
+            repository
+                .resolve_body_ref(
+                    stored
+                        .body_ref(UsageBodyField::ProviderRequestBody)
+                        .expect("provider ref should be present")
+                )
+                .await
+                .expect("provider request ref should resolve"),
+            Some(request_body)
+        );
+    }
+
+    #[tokio::test]
     async fn upsert_writes_usage_record() {
         let repository = InMemoryUsageReadRepository::default();
         let stored = repository
@@ -4595,6 +4687,8 @@ mod tests {
         let repository = InMemoryUsageReadRepository::seed(vec![
             sample_usage("req-1", 1_711_000_000),
             sample_usage("req-2", 1_711_000_250),
+            sample_non_billable_usage("req-failed", 1_711_000_260, "failed", "void"),
+            sample_non_billable_usage("req-pending", 1_711_000_270, "pending", "pending"),
         ]);
 
         let usage = repository
@@ -4647,6 +4741,32 @@ mod tests {
         assert_eq!(usage[1].request_count, 0);
         assert_eq!(usage[1].total_tokens, 0);
         assert_eq!(usage[1].total_cost_usd, 0.0);
+    }
+
+    #[tokio::test]
+    async fn provider_api_key_window_usage_uses_base_cost_not_user_sales_price() {
+        let mut discounted = sample_usage("req-discounted", 1_711_000_000);
+        discounted.total_cost_usd = 0.15;
+        discounted.request_metadata = Some(json!({
+            "base_cost_usd": 1.0,
+            "sales_multiplier": 0.15
+        }));
+
+        let repository = InMemoryUsageReadRepository::seed(vec![discounted]);
+
+        let usage = repository
+            .summarize_usage_by_provider_api_key_windows(&[ProviderApiKeyWindowUsageRequest {
+                provider_api_key_id: "provider-key-1".to_string(),
+                window_code: "5h".to_string(),
+                start_unix_secs: 1_711_000_000,
+                end_unix_secs: 1_711_000_300,
+            }])
+            .await
+            .expect("window summary should succeed");
+
+        assert_eq!(usage[0].request_count, 1);
+        assert_eq!(usage[0].total_tokens, 150);
+        assert_eq!(usage[0].total_cost_usd, 1.0);
     }
 
     #[tokio::test]

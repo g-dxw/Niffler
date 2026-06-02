@@ -2650,8 +2650,10 @@ fn sample_user_usage_audit(
         Some(420),
         Some(120),
         status.to_string(),
-        if matches!(status, "completed" | "failed" | "cancelled") {
+        if matches!(status, "completed" | "cancelled") {
             "settled".to_string()
+        } else if status == "failed" {
+            "void".to_string()
         } else {
             "pending".to_string()
         },
@@ -4383,7 +4385,7 @@ async fn gateway_handles_wallet_balance_locally_without_proxying_upstream() {
 #[tokio::test]
 async fn gateway_handles_wallet_today_cost_locally_without_proxying_upstream() {
     let auth_now = Utc::now();
-    let usage_now = auth_now - chrono::Duration::minutes(30);
+    let usage_now = auth_now;
     let user = sample_auth_user(auth_now);
     let access_token = build_test_auth_token(
         "access",
@@ -4406,7 +4408,7 @@ async fn gateway_handles_wallet_today_cost_locally_without_proxying_upstream() {
             "gpt-4.1",
             "OpenAI",
             "completed",
-            usage_now - chrono::Duration::minutes(30),
+            usage_now,
         ),
         sample_user_usage_audit(
             "usage-wallet-old-1",

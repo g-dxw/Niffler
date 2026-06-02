@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use aether_data_contracts::repository::usage::{
-    UpsertUsageRecord, UsageBodyCaptureState, UsageBodyField,
+    usage_body_ref, UpsertUsageRecord, UsageBodyCaptureState, UsageBodyField,
 };
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -21,6 +21,7 @@ struct LimitedUsageBodyCapture {
 }
 
 struct UsageBodyCapturePayloadMut<'a> {
+    request_id: &'a str,
     request_body: &'a mut Option<Value>,
     request_body_ref: &'a mut Option<String>,
     request_body_state: &'a mut Option<UsageBodyCaptureState>,
@@ -39,6 +40,7 @@ struct UsageBodyCapturePayloadMut<'a> {
 impl<'a> UsageBodyCapturePayloadMut<'a> {
     fn from_event(event: &'a mut UsageEvent) -> Self {
         Self {
+            request_id: &event.request_id,
             request_body: &mut event.data.request_body,
             request_body_ref: &mut event.data.request_body_ref,
             request_body_state: &mut event.data.request_body_state,
@@ -57,6 +59,7 @@ impl<'a> UsageBodyCapturePayloadMut<'a> {
 
     fn from_record(record: &'a mut UpsertUsageRecord) -> Self {
         Self {
+            request_id: &record.request_id,
             request_body: &mut record.request_body,
             request_body_ref: &mut record.request_body_ref,
             request_body_state: &mut record.request_body_state,
@@ -125,7 +128,7 @@ impl UsageBodyCaptureEngine {
         self.apply_to_payload(UsageBodyCapturePayloadMut::from_record(record));
     }
 
-    fn apply_to_payload(self, payload: UsageBodyCapturePayloadMut<'_>) {
+    fn apply_to_payload(self, mut payload: UsageBodyCapturePayloadMut<'_>) {
         if matches!(self.policy.record_level, UsageRequestRecordLevel::Basic) {
             disable_usage_body_capture_field(
                 UsageBodyField::RequestBody,
@@ -161,6 +164,8 @@ impl UsageBodyCaptureEngine {
             );
             return;
         }
+
+        deduplicate_provider_request_body_capture(&mut payload);
 
         apply_usage_body_capture_limit(
             UsageBodyField::RequestBody,
@@ -199,6 +204,50 @@ impl UsageBodyCaptureEngine {
             payload.request_metadata,
         );
     }
+}
+
+fn deduplicate_provider_request_body_capture(payload: &mut UsageBodyCapturePayloadMut<'_>) {
+    if payload
+        .provider_request_body_ref
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return;
+    }
+
+    let Some(request_body) = payload.request_body.as_ref() else {
+        return;
+    };
+    let Some(provider_request_body) = payload.provider_request_body.as_ref() else {
+        return;
+    };
+    if request_body != provider_request_body {
+        return;
+    }
+
+    let request_ref = payload
+        .request_body_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| usage_body_ref(payload.request_id, UsageBodyField::RequestBody));
+    *payload.provider_request_body = None;
+    *payload.provider_request_body_ref = Some(request_ref.clone());
+    *payload.provider_request_body_state = Some(UsageBodyCaptureState::Reference);
+    sync_usage_body_ref_metadata(
+        payload.request_metadata,
+        UsageBodyField::ProviderRequestBody,
+        Some(request_ref.as_str()),
+    );
+    upsert_body_capture_metadata_value_entry(
+        payload.request_metadata,
+        "provider_request",
+        Some(UsageBodyCaptureState::Reference),
+        None,
+        None,
+        Some("deduplicated_with_request_body"),
+    );
 }
 
 pub fn apply_usage_body_capture_policy_to_event(
@@ -716,9 +765,13 @@ mod tests {
         trim_owned_non_empty_string, truncate_usage_body_string,
         upsert_body_capture_metadata_value_entry,
     };
-    use aether_data_contracts::repository::usage::UsageBodyCaptureState;
-    use aether_data_contracts::repository::usage::UsageBodyField;
-    use serde_json::{Map, Value};
+    use aether_data_contracts::repository::usage::{
+        usage_body_ref, UsageBodyCaptureState, UsageBodyField,
+    };
+    use serde_json::{json, Map, Value};
+
+    use crate::event::{UsageEvent, UsageEventData, UsageEventType};
+    use crate::runtime::{UsageBodyCapturePolicy, UsageRequestRecordLevel};
 
     #[test]
     fn build_plan_body_capture_metadata_returns_none_without_base64_body() {
@@ -825,5 +878,55 @@ mod tests {
         assert!(serde_json::to_vec(&truncated)
             .ok()
             .is_some_and(|bytes| bytes.len() <= limit));
+    }
+
+    #[test]
+    fn full_record_level_reuses_request_body_ref_for_identical_provider_request_body() {
+        let body = json!({
+            "model": "gpt-5.5",
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+        let mut event = UsageEvent::new(
+            UsageEventType::Completed,
+            "req-dedup-1",
+            UsageEventData {
+                provider_name: "openai".to_string(),
+                model: "gpt-5.5".to_string(),
+                request_body: Some(body.clone()),
+                provider_request_body: Some(body.clone()),
+                ..UsageEventData::default()
+            },
+        );
+
+        super::apply_usage_body_capture_policy_to_event(
+            UsageBodyCapturePolicy {
+                record_level: UsageRequestRecordLevel::Full,
+                max_request_body_bytes: Some(256 * 1024),
+                max_response_body_bytes: Some(256 * 1024),
+            },
+            &mut event,
+        );
+
+        let request_ref = usage_body_ref("req-dedup-1", UsageBodyField::RequestBody);
+        assert_eq!(event.data.request_body, Some(body));
+        assert!(event.data.request_body_ref.is_none());
+        assert!(event.data.provider_request_body.is_none());
+        assert_eq!(
+            event.data.provider_request_body_ref,
+            Some(request_ref.clone())
+        );
+        assert_eq!(
+            event.data.provider_request_body_state,
+            Some(UsageBodyCaptureState::Reference)
+        );
+        assert_eq!(
+            event
+                .data
+                .request_metadata
+                .as_ref()
+                .and_then(|value| value.get("provider_request_body_ref"))
+                .and_then(Value::as_str),
+            Some(request_ref.as_str())
+        );
     }
 }

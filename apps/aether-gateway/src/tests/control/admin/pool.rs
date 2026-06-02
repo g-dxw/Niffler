@@ -157,6 +157,61 @@ fn sample_provider_key_usage_row(
     .expect("usage row should build")
 }
 
+fn sample_provider_key_non_billable_usage_row(
+    id: &str,
+    request_id: &str,
+    provider_id: &str,
+    provider_api_key_id: &str,
+    created_at_unix_secs: i64,
+    total_tokens: i32,
+    status: &str,
+    billing_status: &str,
+) -> StoredRequestUsageAudit {
+    StoredRequestUsageAudit::new(
+        id.to_string(),
+        request_id.to_string(),
+        Some("user-1".to_string()),
+        Some("api-key-1".to_string()),
+        Some("alice".to_string()),
+        Some("user key".to_string()),
+        "codex".to_string(),
+        "gpt-5".to_string(),
+        None,
+        Some(provider_id.to_string()),
+        Some("endpoint-1".to_string()),
+        Some(provider_api_key_id.to_string()),
+        Some("responses".to_string()),
+        Some("openai:responses".to_string()),
+        Some("openai".to_string()),
+        Some("responses".to_string()),
+        Some("openai:responses".to_string()),
+        Some("openai".to_string()),
+        Some("responses".to_string()),
+        false,
+        status == "streaming",
+        total_tokens,
+        0,
+        total_tokens,
+        0.0,
+        0.0,
+        Some(if status == "failed" { 500 } else { 200 }),
+        if status == "failed" {
+            Some("upstream failed".to_string())
+        } else {
+            None
+        },
+        None,
+        Some(120),
+        Some(40),
+        status.to_string(),
+        billing_status.to_string(),
+        created_at_unix_secs,
+        created_at_unix_secs + 1,
+        Some(created_at_unix_secs + 2),
+    )
+    .expect("usage row should build")
+}
+
 #[tokio::test]
 async fn gateway_handles_admin_pool_overview_locally_with_trusted_admin_principal() {
     let upstream_hits = Arc::new(Mutex::new(0usize));
@@ -1399,6 +1454,26 @@ async fn gateway_pool_list_overrides_stale_codex_cycle_usage_from_usage_facts() 
             now_unix_secs.saturating_sub(100) as i64,
             200,
             0.75,
+        ),
+        sample_provider_key_non_billable_usage_row(
+            "usage-five-hour-failed",
+            "req-five-hour-failed",
+            "provider-codex",
+            "key-codex-stale-cycle",
+            now_unix_secs.saturating_sub(90) as i64,
+            500,
+            "failed",
+            "void",
+        ),
+        sample_provider_key_non_billable_usage_row(
+            "usage-five-hour-pending",
+            "req-five-hour-pending",
+            "provider-codex",
+            "key-codex-stale-cycle",
+            now_unix_secs.saturating_sub(80) as i64,
+            600,
+            "pending",
+            "pending",
         ),
     ]));
     let state = AppState::new()

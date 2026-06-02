@@ -1466,9 +1466,9 @@ pub fn admin_system_config_default_value(key: &str) -> Option<serde_json::Value>
         "site_subtitle" => Some(json!("AI Gateway")),
         "default_user_initial_gift_usd" => Some(json!(10.0)),
         "password_policy_level" => Some(json!("weak")),
-        REQUEST_RECORD_LEVEL_KEY => Some(json!("full")),
-        "max_request_body_size" => Some(json!(5_242_880)),
-        "max_response_body_size" => Some(json!(5_242_880)),
+        REQUEST_RECORD_LEVEL_KEY => Some(json!("basic")),
+        "max_request_body_size" => Some(json!(262_144)),
+        "max_response_body_size" => Some(json!(262_144)),
         "sensitive_headers" => Some(json!([
             "authorization",
             "x-api-key",
@@ -1476,9 +1476,9 @@ pub fn admin_system_config_default_value(key: &str) -> Option<serde_json::Value>
             "cookie",
             "set-cookie"
         ])),
-        "detail_log_retention_days" => Some(json!(7)),
-        "compressed_log_retention_days" => Some(json!(30)),
-        "header_retention_days" => Some(json!(90)),
+        "detail_log_retention_days" => Some(json!(1)),
+        "compressed_log_retention_days" => Some(json!(2)),
+        "header_retention_days" => Some(json!(30)),
         "log_retention_days" => Some(json!(365)),
         "enable_auto_cleanup" => Some(json!(true)),
         "cleanup_batch_size" => Some(json!(1000)),
@@ -2564,6 +2564,34 @@ fn mask_admin_proxy_node_password(password: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admin_system_config_defaults_keep_request_body_capture_safe() {
+        assert_eq!(
+            admin_system_config_default_value("request_record_level"),
+            Some(json!("basic"))
+        );
+        assert_eq!(
+            admin_system_config_default_value("max_request_body_size"),
+            Some(json!(262_144))
+        );
+        assert_eq!(
+            admin_system_config_default_value("max_response_body_size"),
+            Some(json!(262_144))
+        );
+        assert_eq!(
+            admin_system_config_default_value("detail_log_retention_days"),
+            Some(json!(1))
+        );
+        assert_eq!(
+            admin_system_config_default_value("compressed_log_retention_days"),
+            Some(json!(2))
+        );
+        assert_eq!(
+            admin_system_config_default_value("header_retention_days"),
+            Some(json!(30))
+        );
+    }
 
     #[test]
     fn build_admin_system_check_update_payload_reports_available_release() {

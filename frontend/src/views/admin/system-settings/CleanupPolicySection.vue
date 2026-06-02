@@ -53,12 +53,12 @@
           id="detail-log-retention-days"
           :model-value="detailLogRetentionDays"
           type="number"
-          placeholder="7"
+          placeholder="1"
           class="mt-1"
           @update:model-value="$emit('update:detailLogRetentionDays', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          超过后压缩 body 字段
+          默认 1 天，超过后转为压缩正文
         </p>
       </div>
 
@@ -73,12 +73,12 @@
           id="compressed-log-retention-days"
           :model-value="compressedLogRetentionDays"
           type="number"
-          placeholder="30"
+          placeholder="2"
           class="mt-1"
           @update:model-value="$emit('update:compressedLogRetentionDays', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          超过后删除 body 字段
+          默认 2 天，超过后删除完整正文
         </p>
       </div>
 
@@ -93,12 +93,12 @@
           id="header-retention-days"
           :model-value="headerRetentionDays"
           type="number"
-          placeholder="90"
+          placeholder="30"
           class="mt-1"
           @update:model-value="$emit('update:headerRetentionDays', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          超过后清空 headers 字段
+          默认 30 天，超过后清空请求头
         </p>
       </div>
 

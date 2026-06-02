@@ -107,9 +107,53 @@ aggregated AS (
   SELECT
     window_bounds.id,
     window_bounds.window_ordinality,
-    COUNT("usage".id)::BIGINT AS request_count,
-    COALESCE(SUM(GREATEST(COALESCE("usage".total_tokens, 0), 0)::BIGINT), 0)::BIGINT AS total_tokens,
-    CAST(COALESCE(SUM(COALESCE("usage".total_cost_usd, 0)), 0) AS DOUBLE PRECISION) AS total_cost_usd
+    COUNT("usage".id) FILTER (
+      WHERE COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        "usage".total_cost_usd,
+        0
+      ) > 0
+    )::BIGINT AS request_count,
+    COALESCE(SUM(GREATEST(COALESCE("usage".total_tokens, 0), 0)::BIGINT) FILTER (
+      WHERE COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        "usage".total_cost_usd,
+        0
+      ) > 0
+    ), 0)::BIGINT AS total_tokens,
+    CAST(COALESCE(SUM(
+      COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        "usage".total_cost_usd,
+        0
+      )
+    ) FILTER (
+      WHERE COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        "usage".total_cost_usd,
+        0
+      ) > 0
+    ), 0) AS DOUBLE PRECISION) AS total_cost_usd
   FROM window_bounds
   LEFT JOIN usage_billing_facts AS "usage"
     ON window_bounds.window_start IS NOT NULL
@@ -117,6 +161,9 @@ aggregated AS (
    AND "usage".provider_api_key_id = window_bounds.id
    AND "usage".created_at >= to_timestamp(window_bounds.window_start::DOUBLE PRECISION)
    AND "usage".created_at < to_timestamp(window_bounds.window_end::DOUBLE PRECISION)
+   AND "usage".billing_status = 'settled'
+  LEFT JOIN usage_settlement_snapshots AS settlement
+    ON settlement.request_id = "usage".request_id
   GROUP BY
     window_bounds.id,
     window_bounds.window_ordinality

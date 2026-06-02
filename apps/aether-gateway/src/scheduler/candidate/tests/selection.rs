@@ -315,6 +315,53 @@ async fn selects_by_provider_priority_when_priority_mode_is_provider() {
 }
 
 #[tokio::test]
+async fn skips_inactive_catalog_rows_and_selects_next_available_provider() {
+    let mut inactive_provider = sample_row();
+    inactive_provider.provider_id = "provider-a".to_string();
+    inactive_provider.provider_name = "provider-a".to_string();
+    inactive_provider.endpoint_id = "endpoint-a".to_string();
+    inactive_provider.key_id = "key-a".to_string();
+    inactive_provider.key_name = "alpha".to_string();
+    inactive_provider.provider_priority = 0;
+    inactive_provider.provider_is_active = false;
+
+    let mut active_provider = sample_row();
+    active_provider.provider_id = "provider-b".to_string();
+    active_provider.provider_name = "provider-b".to_string();
+    active_provider.endpoint_id = "endpoint-b".to_string();
+    active_provider.key_id = "key-b".to_string();
+    active_provider.key_name = "beta".to_string();
+    active_provider.provider_priority = 10;
+
+    let candidates = Arc::new(InMemoryMinimalCandidateSelectionReadRepository::seed(vec![
+        inactive_provider,
+        active_provider,
+    ]));
+    let quotas = Arc::new(InMemoryProviderQuotaRepository::seed(vec![]));
+    let state = AppState::new()
+        .expect("state should build")
+        .with_data_state_for_tests(
+            GatewayDataState::with_candidate_selection_and_quota_for_tests(candidates, quotas),
+        );
+
+    let selected = select_candidate(
+        state.data.as_ref(),
+        &state,
+        "openai:chat",
+        "gpt-4.1",
+        false,
+        None,
+        100,
+    )
+    .await
+    .expect("selection should succeed")
+    .expect("candidate should exist");
+
+    assert_eq!(selected.provider_id, "provider-b");
+    assert_eq!(selected.key_id, "key-b");
+}
+
+#[tokio::test]
 async fn selects_by_global_key_priority_when_priority_mode_is_global_key() {
     let mut provider_first = sample_row();
     provider_first.provider_id = "provider-a".to_string();

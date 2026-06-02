@@ -38,12 +38,12 @@
               HEADERS - 含请求头 (~2-3KB/条)
             </SelectItem>
             <SelectItem value="full">
-              FULL - 完整请求响应 (~50KB/条)
+              FULL - 完整请求响应（短期审计）
             </SelectItem>
           </SelectContent>
         </Select>
         <p class="mt-1 text-xs text-muted-foreground">
-          敏感信息会自动脱敏
+          默认只记录基本信息；完整正文建议只保留 24-48 小时，敏感请求头会自动脱敏
         </p>
       </div>
 
@@ -58,12 +58,13 @@
           id="max-request-body-size"
           :model-value="maxRequestBodySizeKB"
           type="number"
-          placeholder="512"
+          min="1"
+          placeholder="256"
           class="mt-1"
           @update:model-value="$emit('update:maxRequestBodySizeKB', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          超过此大小的请求体将被截断记录
+          默认 256 KiB，超过此大小的请求体会被截断记录
         </p>
       </div>
 
@@ -78,12 +79,13 @@
           id="max-response-body-size"
           :model-value="maxResponseBodySizeKB"
           type="number"
-          placeholder="512"
+          min="1"
+          placeholder="256"
           class="mt-1"
           @update:model-value="$emit('update:maxResponseBodySizeKB', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          超过此大小的响应体将被截断记录
+          默认 256 KiB，超过此大小的响应体会被截断记录
         </p>
       </div>
 

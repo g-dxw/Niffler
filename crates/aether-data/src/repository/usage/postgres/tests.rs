@@ -251,6 +251,18 @@ fn usage_sql_rebuilds_provider_key_window_usage_into_status_snapshot() {
     );
     assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
         .contains("WHEN 'weekly' THEN 10080"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
+        .contains("\"usage\".billing_status = 'settled'"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
+        .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
+        .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("\"usage\".billing_status = 'settled'"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
 }
 
 #[test]

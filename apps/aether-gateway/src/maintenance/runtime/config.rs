@@ -95,10 +95,10 @@ pub(super) async fn usage_cleanup_settings(
     data: &GatewayDataState,
 ) -> Result<UsageCleanupSettings, DataLayerError> {
     Ok(UsageCleanupSettings {
-        detail_retention_days: system_config_u64(data, "detail_log_retention_days", 7).await?,
-        compressed_retention_days: system_config_u64(data, "compressed_log_retention_days", 30)
+        detail_retention_days: system_config_u64(data, "detail_log_retention_days", 1).await?,
+        compressed_retention_days: system_config_u64(data, "compressed_log_retention_days", 2)
             .await?,
-        header_retention_days: system_config_u64(data, "header_retention_days", 90).await?,
+        header_retention_days: system_config_u64(data, "header_retention_days", 30).await?,
         log_retention_days: system_config_u64(data, "log_retention_days", 365).await?,
         batch_size: system_config_usize(data, "cleanup_batch_size", 1_000)
             .await?

@@ -89,11 +89,10 @@ pub fn canonical_usage_from_openai_usage(value: Option<&Value>) -> Option<Canoni
                 .and_then(Value::as_u64)
         })
         .unwrap_or(0);
-    let total_tokens = usage.get("total_tokens").and_then(Value::as_u64).unwrap_or(
-        input_tokens
-            .saturating_add(output_tokens)
-            .saturating_add(reasoning_tokens),
-    );
+    let total_tokens = usage
+        .get("total_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or_else(|| input_tokens.saturating_add(output_tokens));
     if input_tokens == 0 && total_tokens > output_tokens {
         input_tokens = total_tokens.saturating_sub(output_tokens);
     }

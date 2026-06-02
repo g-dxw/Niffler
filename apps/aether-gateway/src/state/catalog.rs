@@ -284,20 +284,30 @@ impl AppState {
         &self,
         record: &global_models::UpsertAdminProviderModelRecord,
     ) -> Result<Option<global_models::StoredAdminProviderModel>, GatewayError> {
-        self.data
+        let created = self
+            .data
             .create_admin_provider_model(record)
             .await
-            .map_err(|err| GatewayError::Internal(err.to_string()))
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if created.is_some() {
+            self.invalidate_provider_routing_caches();
+        }
+        Ok(created)
     }
 
     pub(crate) async fn update_admin_provider_model(
         &self,
         record: &global_models::UpsertAdminProviderModelRecord,
     ) -> Result<Option<global_models::StoredAdminProviderModel>, GatewayError> {
-        self.data
+        let updated = self
+            .data
             .update_admin_provider_model(record)
             .await
-            .map_err(|err| GatewayError::Internal(err.to_string()))
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if updated.is_some() {
+            self.invalidate_provider_routing_caches();
+        }
+        Ok(updated)
     }
 
     pub(crate) async fn delete_admin_provider_model(
@@ -305,40 +315,60 @@ impl AppState {
         provider_id: &str,
         model_id: &str,
     ) -> Result<bool, GatewayError> {
-        self.data
+        let deleted = self
+            .data
             .delete_admin_provider_model(provider_id, model_id)
             .await
-            .map_err(|err| GatewayError::Internal(err.to_string()))
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if deleted {
+            self.invalidate_provider_routing_caches();
+        }
+        Ok(deleted)
     }
 
     pub(crate) async fn create_admin_global_model(
         &self,
         record: &global_models::CreateAdminGlobalModelRecord,
     ) -> Result<Option<global_models::StoredAdminGlobalModel>, GatewayError> {
-        self.data
+        let created = self
+            .data
             .create_admin_global_model(record)
             .await
-            .map_err(|err| GatewayError::Internal(err.to_string()))
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if created.is_some() {
+            self.invalidate_provider_routing_caches();
+        }
+        Ok(created)
     }
 
     pub(crate) async fn update_admin_global_model(
         &self,
         record: &global_models::UpdateAdminGlobalModelRecord,
     ) -> Result<Option<global_models::StoredAdminGlobalModel>, GatewayError> {
-        self.data
+        let updated = self
+            .data
             .update_admin_global_model(record)
             .await
-            .map_err(|err| GatewayError::Internal(err.to_string()))
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if updated.is_some() {
+            self.invalidate_provider_routing_caches();
+        }
+        Ok(updated)
     }
 
     pub(crate) async fn delete_admin_global_model(
         &self,
         global_model_id: &str,
     ) -> Result<bool, GatewayError> {
-        self.data
+        let deleted = self
+            .data
             .delete_admin_global_model(global_model_id)
             .await
-            .map_err(|err| GatewayError::Internal(err.to_string()))
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if deleted {
+            self.invalidate_provider_routing_caches();
+        }
+        Ok(deleted)
     }
 
     pub(crate) async fn list_provider_model_stats(
@@ -817,7 +847,11 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use aether_data::repository::global_models::InMemoryGlobalModelReadRepository;
     use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
+    use aether_data_contracts::repository::global_models::{
+        StoredAdminGlobalModel, StoredAdminProviderModel, UpsertAdminProviderModelRecord,
+    };
     use aether_data_contracts::repository::provider_catalog::{
         StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
     };
@@ -869,6 +903,75 @@ mod tests {
             true,
         )
         .expect("key should build")
+    }
+
+    fn sample_admin_global_model() -> StoredAdminGlobalModel {
+        StoredAdminGlobalModel::new(
+            "global-model-1".to_string(),
+            "gpt-4.1".to_string(),
+            "GPT 4.1".to_string(),
+            true,
+            None,
+            None,
+            None,
+            None,
+            1,
+            1,
+            0,
+            Some(1_711_000_000),
+            Some(1_711_000_000),
+        )
+        .expect("global model should build")
+    }
+
+    fn sample_admin_provider_model() -> StoredAdminProviderModel {
+        StoredAdminProviderModel::new(
+            "model-1".to_string(),
+            "provider-1".to_string(),
+            "global-model-1".to_string(),
+            "gpt-4.1-upstream".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+            None,
+            true,
+            true,
+            None,
+            Some(1_711_000_000),
+            Some(1_711_000_000),
+            Some("gpt-4.1".to_string()),
+            Some("GPT 4.1".to_string()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("provider model should build")
+    }
+
+    fn sample_provider_model_record(is_active: bool) -> UpsertAdminProviderModelRecord {
+        UpsertAdminProviderModelRecord::new(
+            "model-1".to_string(),
+            "provider-1".to_string(),
+            "global-model-1".to_string(),
+            "gpt-4.1-upstream".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+            None,
+            is_active,
+            true,
+            None,
+        )
+        .expect("provider model record should build")
     }
 
     #[tokio::test]
@@ -929,5 +1032,48 @@ mod tests {
             .expect("provider transport should read after update")
             .expect("provider transport should exist after update");
         assert!(snapshot.provider.keep_priority_on_conversion);
+    }
+
+    #[tokio::test]
+    async fn provider_model_update_invalidates_scheduler_affinity_cache() {
+        let global_model_repository = Arc::new(
+            InMemoryGlobalModelReadRepository::seed(Vec::new())
+                .with_admin_global_models(vec![sample_admin_global_model()])
+                .with_admin_provider_models(vec![sample_admin_provider_model()]),
+        );
+        let state = AppState::new()
+            .expect("app state should build")
+            .with_data_state_for_tests(
+                GatewayDataState::disabled()
+                    .with_global_model_repository_for_tests(global_model_repository),
+            );
+
+        let cache_key = "scheduler_affinity:api-key-1:openai:chat:gpt-4.1";
+        let ttl = Duration::from_secs(300);
+        state.remember_scheduler_affinity_target(
+            cache_key,
+            SchedulerAffinityTarget {
+                provider_id: "provider-1".to_string(),
+                endpoint_id: "endpoint-1".to_string(),
+                key_id: "key-1".to_string(),
+            },
+            ttl,
+            128,
+        );
+        assert!(state
+            .read_scheduler_affinity_target(cache_key, ttl)
+            .is_some());
+        let initial_epoch = state.scheduler_affinity_epoch();
+
+        state
+            .update_admin_provider_model(&sample_provider_model_record(false))
+            .await
+            .expect("provider model update should succeed")
+            .expect("provider model should update");
+
+        assert!(state.scheduler_affinity_epoch() > initial_epoch);
+        assert!(state
+            .read_scheduler_affinity_target(cache_key, ttl)
+            .is_none());
     }
 }
