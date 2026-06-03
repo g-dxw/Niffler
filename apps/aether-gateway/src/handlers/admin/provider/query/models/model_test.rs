@@ -1131,6 +1131,7 @@ fn provider_query_pool_catalog_key_context(
             provider_type,
             quota_snapshot,
         ),
+        temporary_unavailable: false,
         health_score,
         latency_avg_ms,
         catalog_lru_score: Some(key.last_used_at_unix_secs.unwrap_or(0) as f64),

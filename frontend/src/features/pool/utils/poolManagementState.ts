@@ -3,8 +3,8 @@ export type PoolManagementStatus =
   | 'active'
   | 'available'
   | 'invalid'
-  | 'cooldown'
-  | 'inactive'
+  | 'temporary_unavailable'
+  | 'disabled'
   | 'quota_exhausted'
   | 'blocked'
 export type PoolManagementSortBy = 'imported_at' | 'last_used_at' | 'score'
@@ -69,12 +69,14 @@ function normalizeSearch(value: unknown): string {
 }
 
 function normalizeStatus(value: unknown): PoolManagementStatus {
+  if (value === 'cooldown') return 'temporary_unavailable'
+  if (value === 'inactive') return 'disabled'
   if (
     value === 'active'
     || value === 'available'
     || value === 'invalid'
-    || value === 'cooldown'
-    || value === 'inactive'
+    || value === 'temporary_unavailable'
+    || value === 'disabled'
     || value === 'quota_exhausted'
     || value === 'blocked'
   ) {

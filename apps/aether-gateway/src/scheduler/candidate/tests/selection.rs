@@ -1536,7 +1536,7 @@ async fn selects_next_candidate_when_first_provider_key_rpm_slots_are_reserved_f
 }
 
 #[tokio::test]
-async fn selects_next_candidate_when_first_provider_key_circuit_is_open() {
+async fn selects_first_candidate_when_legacy_provider_key_circuit_is_open() {
     let mut first = sample_row();
     first.provider_id = "provider-a".to_string();
     first.provider_name = "openai-a".to_string();
@@ -1596,8 +1596,8 @@ async fn selects_next_candidate_when_first_provider_key_circuit_is_open() {
     .expect("selection should succeed")
     .expect("candidate should exist");
 
-    assert_eq!(selected.provider_id, "provider-b");
-    assert_eq!(selected.key_id, "key-b");
+    assert_eq!(selected.provider_id, "provider-a");
+    assert_eq!(selected.key_id, "key-a");
 }
 
 #[tokio::test]
@@ -1660,12 +1660,74 @@ async fn exposes_runtime_skipped_candidates_with_skip_reasons() {
     .await
     .expect("selection should succeed");
 
-    assert_eq!(selected.len(), 1);
-    assert_eq!(selected[0].provider_id, "provider-b");
-    assert_eq!(skipped.len(), 1);
-    assert_eq!(skipped[0].candidate.provider_id, "provider-a");
-    assert_eq!(skipped[0].skip_reason, "key_circuit_open");
+    assert_eq!(selected.len(), 2);
+    assert_eq!(selected[0].provider_id, "provider-a");
+    assert!(skipped.is_empty());
     assert!(!is_exact_all_skipped_by_auth_limit(&selected, &skipped));
+}
+
+#[tokio::test]
+async fn keeps_pool_provider_selectable_when_representative_key_circuit_is_open() {
+    let mut pool_row = sample_row();
+    pool_row.provider_id = "provider-pool".to_string();
+    pool_row.provider_name = "pool-provider".to_string();
+    pool_row.endpoint_id = "endpoint-pool".to_string();
+    pool_row.key_id = "key-representative".to_string();
+    pool_row.key_name = "representative".to_string();
+    pool_row.key_global_priority_by_format = Some(serde_json::json!({"openai:chat": 1}));
+
+    let candidates = Arc::new(InMemoryMinimalCandidateSelectionReadRepository::seed(vec![
+        pool_row,
+    ]));
+    let mut pool_provider = sample_provider("provider-pool", None);
+    pool_provider.config = Some(serde_json::json!({
+        "pool_advanced": {
+            "skip_exhausted_accounts": true
+        }
+    }));
+    let provider_catalog = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![pool_provider],
+        Vec::new(),
+        vec![
+            sample_key("key-representative", "provider-pool", Some(10)).with_health_fields(
+                Some(serde_json::json!({"openai:chat": {"health_score": 0.2}})),
+                Some(serde_json::json!({
+                    "openai:chat": {
+                        "open": true,
+                        "next_probe_at_unix_secs": 1_000
+                    }
+                })),
+            ),
+        ],
+    ));
+    let quotas = Arc::new(InMemoryProviderQuotaRepository::seed(vec![]));
+    let request_candidates = Arc::new(InMemoryRequestCandidateRepository::seed(vec![]));
+    let state = AppState::new()
+        .expect("state should build")
+        .with_data_state_for_tests(
+            GatewayDataState::with_candidate_selection_provider_catalog_quota_and_request_candidates_for_tests(
+                candidates,
+                provider_catalog,
+                quotas,
+                request_candidates,
+            ),
+        );
+
+    let (selected, skipped) = collect_selectable_candidates_with_skip_reasons(
+        state.data.as_ref(),
+        &state,
+        "openai:chat",
+        "gpt-4.1",
+        false,
+        None,
+        100,
+    )
+    .await
+    .expect("selection should succeed");
+
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].provider_id, "provider-pool");
+    assert!(skipped.is_empty());
 }
 
 #[tokio::test]

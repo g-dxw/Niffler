@@ -477,8 +477,8 @@ fn admin_usage_simplify_all_candidates_skipped_client_error_message(
 
 fn admin_usage_local_runtime_miss_reason_label(reason: &str) -> &'static str {
     match reason {
-        "all_candidates_skipped" => "所有候选均被跳过",
-        "candidate_list_empty" => "没有可调度候选",
+        "all_candidates_skipped" => "可尝试服务全部不可用",
+        "candidate_list_empty" => "没有可调度服务",
         "local_runtime_unavailable" => "本地执行运行时不可用",
         "provider_transport_unavailable" => "提供商传输不可用",
         _ => "本地调度未命中",
@@ -3225,7 +3225,7 @@ mod tests {
         );
         assert_eq!(
             payload["scheduling_failure"]["title"],
-            "本地调度失败：没有可调度候选"
+            "本地调度失败：没有可调度服务"
         );
         assert_eq!(
             payload["scheduling_failure"]["reason"],
@@ -3241,7 +3241,7 @@ mod tests {
 
     #[test]
     fn detail_payload_simplifies_all_candidates_skipped_when_client_body_is_unloaded() {
-        let message = "找到 1 个支持模型 gpt-5.4 的候选提供商，但本次流式请求全部不可用：provider_quota_blocked 2 次（原因代码: all_candidates_skipped）";
+        let message = "找到 1 个支持模型 gpt-5.4 的可尝试提供商，但本次流式请求全部不可用：provider_quota_blocked 2 次（原因代码: all_candidates_skipped）";
         let item = StoredRequestUsageAudit {
             provider_api_key_id: None,
             provider_request_headers: None,
@@ -3274,15 +3274,15 @@ mod tests {
 
         assert_eq!(
             payload["client_error"]["message"],
-            "没有可用提供商支持模型 gpt-5.4 的流式请求"
+            "找到 1 个支持模型 gpt-5.4 的可尝试提供商，但本次流式请求全部不可用：provider_quota_blocked 2 次"
         );
         assert_eq!(
             payload["failure_summary"]["message"],
-            "没有可用提供商支持模型 gpt-5.4 的流式请求"
+            "找到 1 个支持模型 gpt-5.4 的可尝试提供商，但本次流式请求全部不可用：provider_quota_blocked 2 次"
         );
         assert_eq!(
             payload["scheduling_failure"]["title"],
-            "本地调度失败：所有候选均被跳过"
+            "本地调度失败：可尝试服务全部不可用"
         );
         assert_eq!(
             payload["scheduling_failure"]["reason"],
@@ -3294,7 +3294,7 @@ mod tests {
         );
         assert_eq!(
             payload["scheduling_failure"]["message"],
-            "没有可用提供商支持模型 gpt-5.4 的流式请求"
+            "找到 1 个支持模型 gpt-5.4 的可尝试提供商，但本次流式请求全部不可用：provider_quota_blocked 2 次"
         );
         assert_eq!(payload["scheduling_failure"]["no_upstream_attempt"], true);
     }

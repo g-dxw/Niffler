@@ -1830,17 +1830,17 @@ fn local_execution_runtime_miss_diagnostic_detail(
         }
         "execution_runtime_candidates_exhausted" => {
             return Some(format!(
-                "已尝试所有本地执行候选提供商，但没有任何候选成功完成请求（{route_label}，原因代码: execution_runtime_candidates_exhausted）"
+                "已尝试所有本地执行可尝试提供商，但没有任何服务成功完成请求（{route_label}，原因代码: execution_runtime_candidates_exhausted）"
             ));
         }
         "candidate_evaluation_incomplete" => {
             return Some(format!(
-                "本地执行候选评估未完成，暂时无法为本次{request_mode}请求选择上游提供商（{route_label}，原因代码: candidate_evaluation_incomplete）"
+                "本地执行服务评估未完成，暂时无法为本次{request_mode}请求选择上游提供商（{route_label}，原因代码: candidate_evaluation_incomplete）"
             ));
         }
         "no_local_sync_plans" | "no_local_stream_plans" => {
             return Some(format!(
-                "找到了候选提供商，但无法为本次{request_mode}请求构建本地执行计划。请检查端点路径、认证方式、Header/Body 规则和格式转换配置（{route_label}，原因代码: {}）",
+                "找到了可尝试提供商，但无法为本次{request_mode}请求构建本地执行计划。请检查端点路径、认证方式、Header/Body 规则和格式转换配置（{route_label}，原因代码: {}）",
                 diagnostic.reason
             ));
         }
@@ -1886,28 +1886,28 @@ fn local_execution_runtime_miss_all_candidates_skipped_detail(
 
     match (candidate_count, skipped_summary, requested_model) {
         (count, Some(summary), Some(model)) if count > 0 => format!(
-            "找到 {count} 个支持模型 {model} 的候选提供商，但本次{request_mode}请求全部不可用：{summary}（原因代码: all_candidates_skipped）"
+            "找到 {count} 个支持模型 {model} 的可尝试提供商，但本次{request_mode}请求全部不可用：{summary}（原因代码: all_candidates_skipped）"
         ),
         (count, Some(summary), None) if count > 0 => format!(
-            "找到 {count} 个候选提供商，但本次{request_mode}请求全部不可用：{summary}（原因代码: all_candidates_skipped）"
+            "找到 {count} 个可尝试提供商，但本次{request_mode}请求全部不可用：{summary}（原因代码: all_candidates_skipped）"
         ),
         (_, Some(summary), Some(model)) => format!(
-            "支持模型 {model} 的候选提供商全部不可用：{summary}（原因代码: all_candidates_skipped）"
+            "支持模型 {model} 的可尝试提供商全部不可用：{summary}（原因代码: all_candidates_skipped）"
         ),
         (_, Some(summary), None) => {
-            format!("候选提供商全部不可用：{summary}（原因代码: all_candidates_skipped）")
+            format!("可尝试提供商全部不可用：{summary}（原因代码: all_candidates_skipped）")
         }
         (count, None, Some(model)) if count > 0 => format!(
-            "找到 {count} 个支持模型 {model} 的候选提供商，但都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
+            "找到 {count} 个支持模型 {model} 的可尝试提供商，但都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
         ),
         (count, None, None) if count > 0 => format!(
-            "找到 {count} 个候选提供商，但都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
+            "找到 {count} 个可尝试提供商，但都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
         ),
         (_, None, Some(model)) if skipped_count > 0 => format!(
-            "支持模型 {model} 的 {skipped_count} 个候选提供商都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
+            "支持模型 {model} 的 {skipped_count} 个可尝试提供商都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
         ),
         _ => format!(
-            "候选提供商都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
+            "可尝试提供商都不满足本次{request_mode}请求要求（原因代码: all_candidates_skipped）"
         ),
     }
 }
@@ -1958,6 +1958,7 @@ fn local_execution_runtime_miss_skip_reason_label(reason: &str) -> &str {
         "pool_cooldown" => "池内账号处于冷却中",
         "pool_cost_limit_reached" => "池内账号成本额度已用尽",
         "pool_group_exhausted" => "池化提供商没有可调度账号",
+        "pool_temporary_unavailable" => "池内账号暂时不可用",
         "pool_key_lease_busy" => "池内账号正被其他请求占用",
         "provider_inactive" => "提供商未启用",
         "provider_request_body_missing" => "无法构建上游请求体",

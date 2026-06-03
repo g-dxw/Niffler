@@ -6,6 +6,7 @@ pub const POOL_ACCOUNT_BLOCKED_SKIP_REASON: &str = "pool_account_blocked";
 pub const POOL_ACCOUNT_EXHAUSTED_SKIP_REASON: &str = "pool_account_exhausted";
 pub const POOL_COOLDOWN_SKIP_REASON: &str = "pool_cooldown";
 pub const POOL_COST_LIMIT_REACHED_SKIP_REASON: &str = "pool_cost_limit_reached";
+pub const POOL_TEMPORARY_UNAVAILABLE_SKIP_REASON: &str = "pool_temporary_unavailable";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolSchedulingPreset {
@@ -38,6 +39,7 @@ pub struct PoolMemberSignals {
     pub quota_reset_seconds: Option<f64>,
     pub account_blocked: bool,
     pub quota_exhausted: bool,
+    pub temporary_unavailable: bool,
     pub health_score: Option<f64>,
     pub latency_avg_ms: Option<f64>,
     pub catalog_lru_score: Option<f64>,
@@ -236,6 +238,14 @@ fn schedule_pool_group<Candidate>(
             skipped.push(PoolSkippedCandidate {
                 candidate: item.candidate,
                 skip_reason: POOL_COOLDOWN_SKIP_REASON,
+            });
+            continue;
+        }
+
+        if item.key_context.temporary_unavailable {
+            skipped.push(PoolSkippedCandidate {
+                candidate: item.candidate,
+                skip_reason: POOL_TEMPORARY_UNAVAILABLE_SKIP_REASON,
             });
             continue;
         }

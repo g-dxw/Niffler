@@ -170,7 +170,7 @@
                               <!-- 第一行：Key 名称 -->
                               <div
                                 class="text-sm font-medium truncate"
-                                :class="keyEntry.key.circuit_breaker_open ? 'text-destructive' : ''"
+                                :class="getKeyNameClass(keyEntry.key)"
                               >
                                 {{ keyEntry.key.name }}
                               </div>
@@ -195,13 +195,14 @@
                               </div>
                             </div>
 
-                            <!-- 熔断徽章 -->
+                            <!-- Key 主状态 -->
                             <Badge
-                              v-if="keyEntry.key.circuit_breaker_open"
-                              variant="destructive"
+                              v-if="getKeySchedulingState(keyEntry.key) !== 'available'"
+                              :variant="getKeySchedulingBadgeVariant(keyEntry.key)"
                               class="text-[10px] px-1.5 py-0 shrink-0 tabular-nums"
+                              :title="getKeyTooltip(keyEntry.key)"
                             >
-                              熔断{{ getKeyProbeCountdown(keyEntry.key) }}
+                              {{ getKeySchedulingLabel(keyEntry.key) }}
                             </Badge>
 
                             <!-- 健康度 -->
@@ -455,7 +456,7 @@
                                         <div class="min-w-0 flex flex-col">
                                           <span
                                             class="font-medium truncate"
-                                            :class="key.circuit_breaker_open ? 'text-destructive' : ''"
+                                            :class="getKeyNameClass(key)"
                                           >
                                             {{ key.name }}
                                           </span>
@@ -473,13 +474,14 @@
                                           </div>
                                         </div>
                                         <span class="flex-1" />
-                                        <!-- 熔断徽章（带倒计时）- 靠右 -->
+                                        <!-- Key 主状态 -->
                                         <Badge
-                                          v-if="key.circuit_breaker_open"
-                                          variant="destructive"
+                                          v-if="getKeySchedulingState(key) !== 'available'"
+                                          :variant="getKeySchedulingBadgeVariant(key)"
                                           class="text-[9px] px-1 py-0 h-4 shrink-0 tabular-nums"
+                                          :title="getKeyTooltip(key)"
                                         >
-                                          熔断{{ getKeyProbeCountdown(key) }}
+                                          {{ getKeySchedulingLabel(key) }}
                                         </Badge>
                                         <!-- 健康度（进度条 + 百分比） -->
                                         <div class="flex items-center gap-1 shrink-0">
@@ -1223,12 +1225,12 @@ function getBillingLabel(provider: RoutingProviderInfo): string {
 
 // 获取 Key 状态样式（score 为 0-1 小数格式）
 function getKeyStatusClass(key: RoutingKeyInfo): string {
-  if (!key.is_active) {
-    return 'bg-gray-400'
-  }
-  if (key.circuit_breaker_open) {
+  const state = getKeySchedulingState(key)
+  if (state === 'disabled') return 'bg-gray-400'
+  if (state === 'invalid' || state === 'blocked') {
     return 'bg-red-500'
   }
+  if (state === 'quota_exhausted' || state === 'temporary_unavailable') return 'bg-yellow-500'
   const score = key.health_score ?? 1
   if (score < 0.5) {
     return 'bg-red-500'
@@ -1239,15 +1241,66 @@ function getKeyStatusClass(key: RoutingKeyInfo): string {
   return 'bg-green-500'
 }
 
+function getKeySchedulingState(key: RoutingKeyInfo): NonNullable<RoutingKeyInfo['scheduling_state']> {
+  if (
+    key.scheduling_state === 'available'
+    || key.scheduling_state === 'temporary_unavailable'
+    || key.scheduling_state === 'quota_exhausted'
+    || key.scheduling_state === 'blocked'
+    || key.scheduling_state === 'invalid'
+    || key.scheduling_state === 'disabled'
+  ) {
+    return key.scheduling_state
+  }
+  if (!key.is_active) return 'disabled'
+  if (key.circuit_breaker_open) return 'temporary_unavailable'
+  return 'available'
+}
+
+function getKeySchedulingLabel(key: RoutingKeyInfo): string {
+  if (key.scheduling_label) return key.scheduling_label
+  switch (getKeySchedulingState(key)) {
+    case 'disabled':
+      return '禁用'
+    case 'invalid':
+      return '已失效'
+    case 'blocked':
+      return '异常'
+    case 'quota_exhausted':
+      return '额度耗尽'
+    case 'temporary_unavailable':
+      return '暂时不可用'
+    default:
+      return '可用'
+  }
+}
+
+function getKeySchedulingBadgeVariant(key: RoutingKeyInfo): 'default' | 'secondary' | 'destructive' | 'outline' {
+  const state = getKeySchedulingState(key)
+  if (state === 'invalid' || state === 'blocked') return 'destructive'
+  if (state === 'disabled') return 'secondary'
+  return 'outline'
+}
+
+function getKeyNameClass(key: RoutingKeyInfo): string {
+  const state = getKeySchedulingState(key)
+  if (state === 'invalid' || state === 'blocked') return 'text-destructive'
+  if (state === 'disabled') return 'text-muted-foreground'
+  return ''
+}
+
 // 获取 Key 提示信息
 function getKeyTooltip(key: RoutingKeyInfo): string {
   const parts: string[] = []
   parts.push(`名称: ${key.name}`)
+  parts.push(`状态: ${getKeySchedulingLabel(key)}`)
+  if (key.scheduling_reason_label) {
+    parts.push(`原因: ${key.scheduling_reason_label}`)
+  }
   parts.push(`健康度: ${((key.health_score || 0) * 100).toFixed(0)}%`)
-  if (!key.is_active) {
-    parts.push('状态: 禁用')
-  } else if (key.circuit_breaker_open) {
-    parts.push(`熔断中: ${key.circuit_breaker_formats.join(', ')}`)
+  if (key.circuit_breaker_open) {
+    const formats = key.circuit_breaker_formats.join(', ')
+    parts.push(`健康熔断: ${formats || '已打开'}${getKeyProbeCountdown(key)}`)
   }
   return parts.join('\n')
 }

@@ -367,7 +367,7 @@ nullable = true
 [[table.provider_api_keys.columns]]
 name = "cache_ttl_minutes"
 type = "int32"
-default = 5
+default = 60
 
 [[table.provider_api_keys.columns]]
 name = "max_probe_interval_minutes"

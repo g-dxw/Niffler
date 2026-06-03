@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_key_concurrency_limit_preserves_key_circuit_and_rpm_checks() {
+    fn provider_key_concurrency_limit_ignores_legacy_circuit_and_preserves_rpm_checks() {
         let mut circuit_open_key = sample_key_with_concurrent_limit("1", Some(2));
         circuit_open_key.circuit_breaker_by_format = Some(serde_json::json!({
             "openai:chat": {"open": true}
@@ -484,7 +484,7 @@ mod tests {
                 oauth_invalid: false,
                 rpm_reset_at: None,
             }),
-            Some("key_circuit_open")
+            None
         );
 
         let recent_candidates = vec![stored_candidate(
@@ -524,7 +524,7 @@ mod tests {
     }
 
     #[test]
-    fn key_circuit_allows_probe_after_next_probe_time() {
+    fn legacy_key_circuit_no_longer_blocks_runtime_selection() {
         let mut circuit_open_key = sample_key_with_concurrent_limit("1", Some(2));
         circuit_open_key.circuit_breaker_by_format = Some(serde_json::json!({
             "openai:chat": {
@@ -546,7 +546,7 @@ mod tests {
                 oauth_invalid: false,
                 rpm_reset_at: None,
             }),
-            Some("key_circuit_open")
+            None
         );
         assert_eq!(
             candidate_runtime_skip_reason_with_state(CandidateRuntimeSelectabilityInput {

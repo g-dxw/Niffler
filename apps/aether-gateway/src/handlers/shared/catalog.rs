@@ -4,6 +4,7 @@ use crate::provider_key_auth::{
     provider_key_configured_api_formats, provider_key_inherits_provider_api_formats,
 };
 use crate::AppState;
+use aether_admin::provider::pool as admin_provider_pool_pure;
 use aether_admin::provider::quota as admin_provider_quota_pure;
 use aether_admin::provider::status as admin_provider_status_pure;
 #[cfg(test)]
@@ -1518,6 +1519,67 @@ pub(crate) fn provider_key_status_snapshot_payload(
     Value::Object(snapshot)
 }
 
+fn status_snapshot_field<'a>(
+    status_snapshot: &'a Value,
+    section: &str,
+    field: &str,
+) -> Option<&'a Value> {
+    status_snapshot
+        .as_object()
+        .and_then(|snapshot| snapshot.get(section))
+        .and_then(Value::as_object)
+        .and_then(|section| section.get(field))
+}
+
+fn status_snapshot_string(status_snapshot: &Value, section: &str, field: &str) -> Option<String> {
+    status_snapshot_field(status_snapshot, section, field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn status_snapshot_bool(status_snapshot: &Value, section: &str, field: &str) -> bool {
+    status_snapshot_field(status_snapshot, section, field)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+pub(crate) fn provider_key_scheduling_state_payload(
+    key: &StoredProviderCatalogKey,
+    provider_type: &str,
+    status_snapshot: &Value,
+    circuit_breaker_open: bool,
+    now_unix_secs: u64,
+) -> admin_provider_pool_pure::AdminPoolSchedulingStatePayload {
+    let account_status_code = status_snapshot_string(status_snapshot, "account", "code");
+    let account_status_label = status_snapshot_string(status_snapshot, "account", "label");
+    let account_status_reason = status_snapshot_string(status_snapshot, "account", "reason");
+    let account_status_source = status_snapshot_string(status_snapshot, "account", "source");
+    let quota_code = status_snapshot_string(status_snapshot, "quota", "code");
+    let account_quota_exhausted = status_snapshot_bool(status_snapshot, "quota", "exhausted")
+        || quota_code
+            .as_deref()
+            .is_some_and(|code| matches!(code, "exhausted" | "quota_exhausted"));
+
+    let _ = provider_type;
+    admin_provider_pool_pure::admin_pool_resolve_scheduling_state(
+        admin_provider_pool_pure::AdminPoolSchedulingStateInput {
+            key,
+            now_unix_secs,
+            cooldown_reason: None,
+            cooldown_ttl_seconds: None,
+            account_blocked: status_snapshot_bool(status_snapshot, "account", "blocked"),
+            account_status_code: account_status_code.as_deref(),
+            account_status_label: account_status_label.as_deref(),
+            account_status_reason: account_status_reason.as_deref(),
+            account_status_source: account_status_source.as_deref(),
+            account_quota_exhausted,
+            circuit_breaker_open,
+        },
+    )
+}
+
 pub(crate) fn provider_key_health_summary(
     key: &StoredProviderCatalogKey,
 ) -> (
@@ -1889,10 +1951,8 @@ pub(crate) fn build_admin_provider_key_response(
             .then_some(key.oauth_invalid_reason.clone())
             .flatten()),
     );
-    payload.insert(
-        "status_snapshot".to_string(),
-        provider_key_status_snapshot_payload(key, provider_type),
-    );
+    let status_snapshot = provider_key_status_snapshot_payload(key, provider_type);
+    payload.insert("status_snapshot".to_string(), status_snapshot.clone());
     payload.insert(
         "cache_ttl_minutes".to_string(),
         json!(key.cache_ttl_minutes),
@@ -1915,6 +1975,35 @@ pub(crate) fn build_admin_provider_key_response(
     payload.insert(
         "circuit_breaker_open".to_string(),
         json!(circuit_breaker_open),
+    );
+    let scheduling = provider_key_scheduling_state_payload(
+        key,
+        provider_type,
+        &status_snapshot,
+        circuit_breaker_open,
+        now_unix_secs,
+    );
+    payload.insert(
+        "scheduling_state".to_string(),
+        json!(scheduling.state.code()),
+    );
+    payload.insert(
+        "scheduling_status".to_string(),
+        json!(scheduling.legacy_status),
+    );
+    payload.insert("scheduling_reason".to_string(), json!(scheduling.reason));
+    payload.insert(
+        "scheduling_reason_label".to_string(),
+        json!(scheduling.reason_label),
+    );
+    payload.insert("scheduling_label".to_string(), json!(scheduling.label));
+    payload.insert(
+        "scheduling_blocking".to_string(),
+        json!(scheduling.blocking),
+    );
+    payload.insert(
+        "scheduling_ttl_seconds".to_string(),
+        json!(scheduling.ttl_seconds),
     );
     payload.insert(
         "circuit_breaker_open_at".to_string(),

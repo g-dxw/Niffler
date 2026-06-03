@@ -334,7 +334,7 @@ impl StoredProviderCatalogKey {
             global_priority_by_format: None,
             allowed_models: None,
             expires_at_unix_secs: None,
-            cache_ttl_minutes: 5,
+            cache_ttl_minutes: 60,
             max_probe_interval_minutes: 32,
             proxy: None,
             fingerprint: None,

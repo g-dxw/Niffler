@@ -420,14 +420,14 @@
                       </div>
                       <!-- 并发 + 健康度 + 操作按钮 -->
                       <div class="flex items-center gap-1 shrink-0">
-                        <!-- 熔断徽章 -->
+                        <!-- Key 主状态 -->
                         <Badge
-                          v-if="key.circuit_breaker_open"
-                          variant="destructive"
+                          v-if="getKeySchedulingState(key) !== 'available'"
+                          :variant="getKeySchedulingBadgeVariant(key)"
                           class="text-[10px] px-1.5 py-0 shrink-0"
-                          :title="getKeyCircuitBreakerTitle(key)"
+                          :title="getKeySchedulingTitle(key)"
                         >
-                          熔断{{ getKeyCircuitProbeCountdown(key) }}
+                          {{ getKeySchedulingLabel(key) }}
                         </Badge>
                         <!-- 健康度 -->
                         <div
@@ -3538,6 +3538,58 @@ function getHealthScoreBarColor(score: number): string {
   if (score >= 0.8) return 'bg-green-500 dark:bg-green-400'
   if (score >= 0.5) return 'bg-yellow-500 dark:bg-yellow-400'
   return 'bg-red-500 dark:bg-red-400'
+}
+
+function getKeySchedulingState(key: EndpointAPIKey): NonNullable<EndpointAPIKey['scheduling_state']> {
+  if (
+    key.scheduling_state === 'available'
+    || key.scheduling_state === 'temporary_unavailable'
+    || key.scheduling_state === 'quota_exhausted'
+    || key.scheduling_state === 'blocked'
+    || key.scheduling_state === 'invalid'
+    || key.scheduling_state === 'disabled'
+  ) {
+    return key.scheduling_state
+  }
+  if (!key.is_active) return 'disabled'
+  if (key.circuit_breaker_open) return 'temporary_unavailable'
+  return 'available'
+}
+
+function getKeySchedulingLabel(key: EndpointAPIKey): string {
+  if (key.scheduling_label) return key.scheduling_label
+  switch (getKeySchedulingState(key)) {
+    case 'disabled':
+      return '禁用'
+    case 'invalid':
+      return '已失效'
+    case 'blocked':
+      return '异常'
+    case 'quota_exhausted':
+      return '额度耗尽'
+    case 'temporary_unavailable':
+      return '暂时不可用'
+    default:
+      return '可用'
+  }
+}
+
+function getKeySchedulingBadgeVariant(key: EndpointAPIKey): 'default' | 'secondary' | 'destructive' | 'outline' {
+  const state = getKeySchedulingState(key)
+  if (state === 'invalid' || state === 'blocked') return 'destructive'
+  if (state === 'disabled') return 'secondary'
+  return 'outline'
+}
+
+function getKeySchedulingTitle(key: EndpointAPIKey): string {
+  const parts = [`状态: ${getKeySchedulingLabel(key)}`]
+  if (key.scheduling_reason_label) {
+    parts.push(`原因: ${key.scheduling_reason_label}`)
+  }
+  if (key.circuit_breaker_open) {
+    parts.push(getKeyCircuitBreakerTitle(key))
+  }
+  return parts.join('\n')
 }
 
 function isKeyRecoverable(key: EndpointAPIKey): boolean {

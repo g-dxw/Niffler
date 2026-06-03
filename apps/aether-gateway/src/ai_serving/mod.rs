@@ -52,7 +52,7 @@ pub(crate) use self::planner::{
     maybe_build_stream_plan_payload, maybe_build_sync_decision_payload,
     maybe_build_sync_plan_payload, planner_is_matching_stream_request, provider_key_pool_score_id,
     provider_key_pool_score_scope, read_candidate_transport_snapshot,
-    record_local_runtime_candidate_skip_reason,
+    record_local_runtime_candidate_skip_reason, record_local_runtime_candidate_skip_reason_counts,
     set_local_openai_chat_execution_exhausted_diagnostic,
     set_local_openai_image_execution_exhausted_diagnostic, CandidateFailureDiagnostic,
     CandidateFailureDiagnosticKind, EligibleLocalExecutionCandidate, GatewayAuthApiKeySnapshot,

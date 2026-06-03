@@ -114,42 +114,7 @@ pub(super) fn is_candidate_selectable(
     snapshot: &CandidateRuntimeSelectionSnapshot,
     now_unix_secs: u64,
 ) -> bool {
-    let pool_group = snapshot
-        .pool_provider_ids
-        .contains(candidate.provider_id.as_str());
-    candidate_is_selectable_with_runtime_state(CandidateRuntimeSelectabilityInput {
-        candidate,
-        recent_candidates: &snapshot.recent_candidates,
-        provider_concurrent_limits: &snapshot.provider_concurrent_limits,
-        provider_key_rpm_states: &snapshot.provider_key_rpm_states,
-        now_unix_secs,
-        provider_quota_blocks_requests: snapshot
-            .provider_quota_blocks_requests
-            .get(candidate.provider_id.as_str())
-            .copied()
-            .unwrap_or(false),
-        account_quota_exhausted: !pool_group
-            && snapshot
-                .key_account_quota_exhausted
-                .get(candidate.key_id.as_str())
-                .copied()
-                .unwrap_or(false),
-        oauth_invalid: !pool_group
-            && snapshot
-                .key_oauth_invalid
-                .get(candidate.key_id.as_str())
-                .copied()
-                .unwrap_or(false),
-        rpm_reset_at: (!pool_group)
-            .then(|| {
-                snapshot
-                    .provider_key_rpm_reset_ats
-                    .get(candidate.key_id.as_str())
-                    .copied()
-                    .flatten()
-            })
-            .flatten(),
-    })
+    current_candidate_runtime_skip_reason(candidate, snapshot, now_unix_secs).is_none()
 }
 
 pub(super) fn current_candidate_runtime_skip_reason(
@@ -160,19 +125,51 @@ pub(super) fn current_candidate_runtime_skip_reason(
     let pool_group = snapshot
         .pool_provider_ids
         .contains(candidate.provider_id.as_str());
+    if pool_group {
+        return pool_group_candidate_runtime_skip_reason(candidate, snapshot, now_unix_secs);
+    }
+
+    single_key_candidate_runtime_skip_reason(candidate, snapshot, now_unix_secs)
+}
+
+fn pool_group_candidate_runtime_skip_reason(
+    candidate: &SchedulerMinimalCandidateSelectionCandidate,
+    snapshot: &CandidateRuntimeSelectionSnapshot,
+    now_unix_secs: u64,
+) -> Option<&'static str> {
     let provider_quota_blocks_requests = snapshot
         .provider_quota_blocks_requests
         .get(candidate.provider_id.as_str())
         .copied()
         .unwrap_or(false);
-    let rpm_reset_at = (!pool_group)
-        .then(|| {
-            snapshot
-                .provider_key_rpm_reset_ats
-                .get(candidate.key_id.as_str())
-                .copied()
-                .flatten()
-        })
+
+    candidate_runtime_skip_reason_with_state(CandidateRuntimeSelectabilityInput {
+        candidate,
+        recent_candidates: &snapshot.recent_candidates,
+        provider_concurrent_limits: &snapshot.provider_concurrent_limits,
+        provider_key_rpm_states: &BTreeMap::new(),
+        now_unix_secs,
+        provider_quota_blocks_requests,
+        account_quota_exhausted: false,
+        oauth_invalid: false,
+        rpm_reset_at: None,
+    })
+}
+
+fn single_key_candidate_runtime_skip_reason(
+    candidate: &SchedulerMinimalCandidateSelectionCandidate,
+    snapshot: &CandidateRuntimeSelectionSnapshot,
+    now_unix_secs: u64,
+) -> Option<&'static str> {
+    let provider_quota_blocks_requests = snapshot
+        .provider_quota_blocks_requests
+        .get(candidate.provider_id.as_str())
+        .copied()
+        .unwrap_or(false);
+    let rpm_reset_at = snapshot
+        .provider_key_rpm_reset_ats
+        .get(candidate.key_id.as_str())
+        .copied()
         .flatten();
 
     candidate_runtime_skip_reason_with_state(CandidateRuntimeSelectabilityInput {
@@ -182,18 +179,16 @@ pub(super) fn current_candidate_runtime_skip_reason(
         provider_key_rpm_states: &snapshot.provider_key_rpm_states,
         now_unix_secs,
         provider_quota_blocks_requests,
-        account_quota_exhausted: !pool_group
-            && snapshot
-                .key_account_quota_exhausted
-                .get(candidate.key_id.as_str())
-                .copied()
-                .unwrap_or(false),
-        oauth_invalid: !pool_group
-            && snapshot
-                .key_oauth_invalid
-                .get(candidate.key_id.as_str())
-                .copied()
-                .unwrap_or(false),
+        account_quota_exhausted: snapshot
+            .key_account_quota_exhausted
+            .get(candidate.key_id.as_str())
+            .copied()
+            .unwrap_or(false),
+        oauth_invalid: snapshot
+            .key_oauth_invalid
+            .get(candidate.key_id.as_str())
+            .copied()
+            .unwrap_or(false),
         rpm_reset_at,
     })
 }

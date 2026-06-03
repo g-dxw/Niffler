@@ -1,5 +1,13 @@
 // ========== 路由预览相关类型 ==========
 
+export type RoutingKeySchedulingState =
+  | 'disabled'
+  | 'invalid'
+  | 'blocked'
+  | 'quota_exhausted'
+  | 'temporary_unavailable'
+  | 'available'
+
 /**
  * Key 路由信息
  */
@@ -20,6 +28,13 @@ export interface RoutingKeyInfo {
   circuit_breaker_open: boolean
   circuit_breaker_formats: string[]
   next_probe_at?: string | null  // 下次探测时间（ISO格式）
+  scheduling_state?: RoutingKeySchedulingState
+  scheduling_status?: 'available' | 'degraded' | 'blocked'
+  scheduling_reason?: string
+  scheduling_reason_label?: string
+  scheduling_label?: string
+  scheduling_blocking?: boolean
+  scheduling_ttl_seconds?: number | null
 }
 
 /**

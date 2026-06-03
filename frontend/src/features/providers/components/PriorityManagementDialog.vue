@@ -284,18 +284,12 @@
                           号池
                         </Badge>
                         <Badge
-                          v-else-if="key.circuit_breaker_open"
-                          variant="destructive"
+                          v-else-if="getKeySchedulingState(key) !== 'available'"
+                          :variant="getKeySchedulingBadgeVariant(key)"
                           class="text-[9px] h-4 px-1 shrink-0"
+                          :title="getKeySchedulingTitle(key)"
                         >
-                          熔断
-                        </Badge>
-                        <Badge
-                          v-else-if="!key.is_active && key.provider_active"
-                          variant="secondary"
-                          class="text-[9px] h-4 px-1 shrink-0"
-                        >
-                          停用
+                          {{ getKeySchedulingLabel(key) }}
                         </Badge>
                       </div>
                       <!-- 第二行：密钥脱敏 · Provider 名称 + Provider 级别状态 -->
@@ -495,6 +489,9 @@ interface KeyWithMeta {
   is_active: boolean
   provider_active: boolean
   circuit_breaker_open: boolean
+  scheduling_state?: 'disabled' | 'invalid' | 'blocked' | 'quota_exhausted' | 'temporary_unavailable' | 'available'
+  scheduling_label?: string
+  scheduling_reason_label?: string
   provider_name: string
   endpoint_base_url: string
   api_format: string
@@ -895,6 +892,60 @@ function toNumberOrNull(value: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
+function normalizeKeySchedulingState(value: unknown): KeyWithMeta['scheduling_state'] {
+  if (
+    value === 'available'
+    || value === 'temporary_unavailable'
+    || value === 'quota_exhausted'
+    || value === 'blocked'
+    || value === 'invalid'
+    || value === 'disabled'
+  ) {
+    return value
+  }
+  return undefined
+}
+
+function getKeySchedulingState(key: KeyWithMeta): NonNullable<KeyWithMeta['scheduling_state']> {
+  if (key.scheduling_state) return key.scheduling_state
+  if (!key.is_active || !key.provider_active) return 'disabled'
+  if (key.circuit_breaker_open) return 'temporary_unavailable'
+  return 'available'
+}
+
+function getKeySchedulingLabel(key: KeyWithMeta): string {
+  if (key.scheduling_label) return key.scheduling_label
+  switch (getKeySchedulingState(key)) {
+    case 'disabled':
+      return '停用'
+    case 'invalid':
+      return '已失效'
+    case 'blocked':
+      return '异常'
+    case 'quota_exhausted':
+      return '额度耗尽'
+    case 'temporary_unavailable':
+      return '暂时不可用'
+    default:
+      return '可用'
+  }
+}
+
+function getKeySchedulingBadgeVariant(key: KeyWithMeta): 'default' | 'secondary' | 'destructive' | 'outline' {
+  const state = getKeySchedulingState(key)
+  if (state === 'invalid' || state === 'blocked') return 'destructive'
+  if (state === 'disabled') return 'secondary'
+  return 'outline'
+}
+
+function getKeySchedulingTitle(key: KeyWithMeta): string {
+  const parts = [`状态: ${getKeySchedulingLabel(key)}`]
+  if (key.scheduling_reason_label) {
+    parts.push(`原因: ${key.scheduling_reason_label}`)
+  }
+  return parts.join('\n')
+}
+
 // 可用的 API 格式
 const availableFormats = computed(() => {
   return sortApiFormats(Object.keys(keysByFormat.value))
@@ -950,6 +1001,8 @@ function buildPoolAggregateItem(format: string, providerId: string, sourceKeys: 
     is_active: activeKeyCount > 0,
     provider_active: providerActive,
     circuit_breaker_open: false,
+    scheduling_state: activeKeyCount > 0 && providerActive ? 'available' : 'disabled',
+    scheduling_label: activeKeyCount > 0 && providerActive ? '可用' : '禁用',
     provider_name: providerName,
     endpoint_base_url: sourceKeys.find((k) => k.endpoint_base_url)?.endpoint_base_url || '',
     api_format: format,
@@ -1103,6 +1156,11 @@ async function loadKeysByFormat() {
           is_active: key.is_active !== false,
           provider_active: key.provider_active !== false,
           circuit_breaker_open: key.circuit_breaker_open === true,
+          scheduling_state: normalizeKeySchedulingState(key.scheduling_state),
+          scheduling_label: typeof key.scheduling_label === 'string' ? key.scheduling_label : undefined,
+          scheduling_reason_label: typeof key.scheduling_reason_label === 'string'
+            ? key.scheduling_reason_label
+            : undefined,
           provider_name: providerName || 'Unknown Provider',
           endpoint_base_url: String(key.endpoint_base_url || ''),
           api_format: format,

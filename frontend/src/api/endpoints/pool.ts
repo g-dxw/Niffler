@@ -10,6 +10,14 @@ import type { ProviderKeyStatusSnapshot } from './types/statusSnapshot'
 
 const POOL_BATCH_ACTION_TIMEOUT_MS = 5 * 60 * 1000
 
+export type PoolSchedulingState =
+  | 'disabled'
+  | 'invalid'
+  | 'blocked'
+  | 'quota_exhausted'
+  | 'temporary_unavailable'
+  | 'available'
+
 export interface PoolKeyStatus {
   key_id: string
   key_name: string
@@ -171,12 +179,14 @@ export interface PoolKeyDetail {
   created_at: string | null
   imported_at?: string | null
   last_used_at: string | null
+  scheduling_state?: PoolSchedulingState
   scheduling_status?: 'available' | 'degraded' | 'blocked'
   scheduling_reason?:
     | 'available'
-    | 'manual_disabled'
-    | 'cooldown'
-    | 'circuit_open'
+    | 'disabled'
+    | 'oauth_invalid'
+    | 'temporary_unavailable'
+    | 'legacy_circuit_open'
     | 'cost_exhausted'
     | 'cost_soft'
     | 'cost'
@@ -184,7 +194,10 @@ export interface PoolKeyDetail {
     | 'health_degraded'
     | 'health'
     | string
+  scheduling_reason_label?: string
   scheduling_label?: string
+  scheduling_blocking?: boolean
+  scheduling_ttl_seconds?: number | null
   scheduling_reasons?: PoolSchedulingReason[]
 }
 
@@ -192,7 +205,8 @@ export interface PoolSchedulingReason {
   code: string
   label: string
   blocking: boolean
-  source: 'manual' | 'pool' | 'health' | 'policy' | string
+  state?: PoolSchedulingState | string
+  source: 'manual' | 'runtime' | 'oauth' | 'account' | 'quota' | 'legacy_circuit_breaker' | 'scheduler' | 'pool' | 'health' | 'policy' | string
   ttl_seconds?: number | null
   detail?: string | null
 }
@@ -284,7 +298,7 @@ export interface PoolKeysQuery {
   page?: number
   page_size?: number
   search?: string
-  status?: 'all' | 'active' | 'available' | 'invalid' | 'cooldown' | 'inactive' | 'quota_exhausted' | 'blocked'
+  status?: 'all' | 'active' | 'available' | 'invalid' | 'temporary_unavailable' | 'disabled' | 'cooldown' | 'inactive' | 'quota_exhausted' | 'blocked'
   plan_type?: string
   quick_selectors?: string[]
   search_scope?: 'name' | 'full'

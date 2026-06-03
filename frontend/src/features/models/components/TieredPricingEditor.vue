@@ -85,7 +85,7 @@
           />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs text-muted-foreground">缓存创建</Label>
+          <Label class="text-xs text-muted-foreground">{{ showCache1h ? '5min 缓存创建' : '缓存创建' }}</Label>
           <Input
             :model-value="getCacheCreationDisplay(index)"
             type="number"
@@ -112,7 +112,7 @@
           v-if="showCache1h"
           class="space-y-1"
         >
-          <Label class="text-xs text-muted-foreground">1h 缓存</Label>
+          <Label class="text-xs text-muted-foreground">1h 缓存创建</Label>
           <Input
             :model-value="getCache1hDisplay(index)"
             type="number"

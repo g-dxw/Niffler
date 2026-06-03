@@ -47,27 +47,32 @@ fn admin_pool_key_status_bucket(
     key: &StoredProviderCatalogKey,
     provider_type: &str,
     cooldown_key_ids: &BTreeSet<String>,
+    now_unix_secs: u64,
 ) -> &'static str {
-    if !key.is_active {
-        return "inactive";
-    }
-    if key.oauth_invalid_at_unix_secs.is_some()
-        || admin_pool_status_snapshot_bool(key, &["oauth", "invalid"])
-    {
-        return "invalid";
-    }
-    if admin_pool_status_snapshot_bool(key, &["account", "blocked"])
-        || pool_selection::admin_pool_key_is_known_banned(key)
-    {
-        return "blocked";
-    }
-    if admin_provider_pool_pure::admin_pool_key_account_quota_exhausted(key, provider_type) {
-        return "quota_exhausted";
-    }
-    if cooldown_key_ids.contains(&key.id) {
-        return "cooldown";
-    }
-    "available"
+    let account_blocked = admin_pool_status_snapshot_bool(key, &["account", "blocked"]);
+    let account_quota_exhausted =
+        admin_provider_pool_pure::admin_pool_key_account_quota_exhausted(key, provider_type);
+    let cooldown_reason = cooldown_key_ids
+        .contains(&key.id)
+        .then_some("pool_cooldown");
+    let scheduling = admin_provider_pool_pure::admin_pool_resolve_scheduling_state(
+        admin_provider_pool_pure::AdminPoolSchedulingStateInput {
+            key,
+            now_unix_secs,
+            cooldown_reason,
+            cooldown_ttl_seconds: None,
+            account_blocked,
+            account_status_code: None,
+            account_status_label: None,
+            account_status_reason: None,
+            account_status_source: None,
+            account_quota_exhausted,
+            circuit_breaker_open: admin_provider_pool_pure::admin_pool_key_circuit_breaker_open(
+                key,
+            ),
+        },
+    );
+    scheduling.state.code()
 }
 
 fn admin_pool_status_filter_matches(
@@ -80,9 +85,9 @@ fn admin_pool_status_filter_matches(
         "active" => key.is_active,
         "available" => status_bucket == "available",
         "invalid" => status_bucket == "invalid",
-        "inactive" => status_bucket == "inactive",
+        "inactive" | "disabled" => status_bucket == "disabled",
         "quota_exhausted" => status_bucket == "quota_exhausted",
-        "cooldown" => status_bucket == "cooldown",
+        "cooldown" | "temporary_unavailable" => status_bucket == "temporary_unavailable",
         "blocked" => status_bucket == "blocked",
         _ => true,
     }
@@ -119,9 +124,9 @@ fn admin_pool_status_label(code: &str) -> &'static str {
     match code {
         "available" => "可用",
         "invalid" => "已失效",
-        "inactive" => "禁用",
+        "disabled" => "禁用",
         "quota_exhausted" => "额度耗尽",
-        "cooldown" => "冷却中",
+        "temporary_unavailable" => "暂时不可用",
         "blocked" => "异常",
         _ => "其他",
     }
@@ -132,22 +137,24 @@ fn admin_pool_key_summary_payload(
     keys: &[StoredProviderCatalogKey],
     provider_type: &str,
     cooldown_key_ids: &BTreeSet<String>,
+    now_unix_secs: u64,
 ) -> serde_json::Value {
     let mut by_plan: BTreeMap<String, usize> = BTreeMap::new();
     let mut by_status: BTreeMap<String, usize> = BTreeMap::new();
     for key in keys {
         let plan_bucket = admin_pool_key_plan_bucket(state, key, provider_type);
         *by_plan.entry(plan_bucket).or_default() += 1;
-        let status_bucket = admin_pool_key_status_bucket(key, provider_type, cooldown_key_ids);
+        let status_bucket =
+            admin_pool_key_status_bucket(key, provider_type, cooldown_key_ids, now_unix_secs);
         *by_status.entry(status_bucket.to_string()).or_default() += 1;
     }
     let plan_order = ["free", "plus", "team", "pro", "enterprise", "unknown"];
     let status_order = [
         "available",
         "invalid",
-        "inactive",
+        "disabled",
         "quota_exhausted",
-        "cooldown",
+        "temporary_unavailable",
         "blocked",
     ];
     let plans = plan_order
@@ -440,7 +447,7 @@ fn admin_pool_repository_key_order(sort: AdminPoolKeySort) -> ProviderCatalogKey
 fn admin_pool_repository_key_is_active_filter(status: &str) -> Option<bool> {
     match status {
         "active" => Some(true),
-        "inactive" => Some(false),
+        "inactive" | "disabled" => Some(false),
         _ => None,
     }
 }
@@ -455,7 +462,7 @@ fn admin_pool_can_use_repository_page(
     search.is_none()
         && quick_selectors.is_empty()
         && plan_filter == "all"
-        && matches!(status, "all" | "active" | "inactive")
+        && matches!(status, "all" | "active" | "inactive" | "disabled")
         && !matches!(sort.field, AdminPoolKeySortField::Score)
 }
 
@@ -539,6 +546,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
             .await
             .into_iter()
             .collect::<BTreeSet<_>>();
+    let now_unix_secs = admin_pool_current_unix_secs();
 
     let use_repository_page = admin_pool_can_use_repository_page(
         search.as_deref(),
@@ -556,6 +564,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
             &summary_keys,
             &provider.provider_type,
             &cooldown_key_ids,
+            now_unix_secs,
         );
         let key_page = state
             .list_provider_catalog_key_page(&ProviderCatalogKeyListQuery {
@@ -597,11 +606,16 @@ pub(super) async fn build_admin_pool_list_keys_response(
             &loaded_keys,
             &provider.provider_type,
             &cooldown_key_ids,
+            now_unix_secs,
         );
         loaded_keys.retain(|key| {
             let plan_bucket = admin_pool_key_plan_bucket(state, key, &provider.provider_type);
-            let status_bucket =
-                admin_pool_key_status_bucket(key, &provider.provider_type, &cooldown_key_ids);
+            let status_bucket = admin_pool_key_status_bucket(
+                key,
+                &provider.provider_type,
+                &cooldown_key_ids,
+                now_unix_secs,
+            );
             admin_pool_plan_filter_matches(&plan_filter, &plan_bucket)
                 && admin_pool_status_filter_matches(&status, status_bucket, key)
         });
@@ -651,7 +665,6 @@ pub(super) async fn build_admin_pool_list_keys_response(
         }
         _ => AdminProviderPoolRuntimeState::default(),
     };
-    let now_unix_secs = admin_pool_current_unix_secs();
     let codex_cycle_usage_by_key = read_admin_pool_codex_cycle_usage_by_key(
         state,
         &provider.provider_type,

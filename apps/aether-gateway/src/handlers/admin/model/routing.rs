@@ -1,6 +1,9 @@
 use super::resolve_admin_global_model_by_id_or_err;
 use crate::handlers::admin::request::AdminAppState;
-use crate::handlers::admin::shared::{json_string_list, provider_catalog_key_supports_format};
+use crate::handlers::admin::shared::{
+    json_string_list, provider_catalog_key_supports_format, provider_key_scheduling_state_payload,
+    provider_key_status_snapshot_payload,
+};
 use aether_data_contracts::repository::global_models::{
     AdminProviderModelListQuery, UpsertAdminProviderModelRecord,
 };
@@ -12,6 +15,7 @@ use aether_scheduler_core::{
 };
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 pub(crate) async fn build_admin_global_model_routing_payload(
@@ -86,6 +90,11 @@ pub(crate) async fn build_admin_global_model_routing_payload(
         .flatten()
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
+    let now_unix_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
 
     let global_model_mappings = global_model
         .config
@@ -155,6 +164,17 @@ pub(crate) async fn build_admin_global_model_routing_payload(
                     let effective_rpm = key.learned_rpm_limit.or(key.rpm_limit);
                     let is_adaptive = key.rpm_limit.is_none();
                     let allowed_models = json_string_list(key.allowed_models.as_ref());
+                    let circuit_breaker_open =
+                        is_provider_key_circuit_open(key, &endpoint.api_format);
+                    let status_snapshot =
+                        provider_key_status_snapshot_payload(key, &provider.provider_type);
+                    let scheduling = provider_key_scheduling_state_payload(
+                        key,
+                        &provider.provider_type,
+                        &status_snapshot,
+                        circuit_breaker_open,
+                        now_unix_secs,
+                    );
                     let circuit_breaker_formats = key
                         .circuit_breaker_by_format
                         .as_ref()
@@ -163,7 +183,8 @@ pub(crate) async fn build_admin_global_model_routing_payload(
                             entries
                                 .iter()
                                 .filter_map(|(api_format, value)| {
-                                    value.get("open")
+                                    value
+                                        .get("open")
                                         .and_then(serde_json::Value::as_bool)
                                         .filter(|is_open| *is_open)
                                         .map(|_| api_format.clone())
@@ -188,9 +209,16 @@ pub(crate) async fn build_admin_global_model_routing_payload(
                         "effective_rpm": effective_rpm,
                         "allowed_models": allowed_models,
                         "health_score": provider_key_health_score(key, &endpoint.api_format),
-                        "circuit_breaker_open": is_provider_key_circuit_open(key, &endpoint.api_format),
+                        "circuit_breaker_open": circuit_breaker_open,
                         "circuit_breaker_formats": circuit_breaker_formats,
                         "next_probe_at": next_probe_at,
+                        "scheduling_state": scheduling.state.code(),
+                        "scheduling_status": scheduling.legacy_status,
+                        "scheduling_reason": scheduling.reason,
+                        "scheduling_reason_label": scheduling.reason_label,
+                        "scheduling_label": scheduling.label,
+                        "scheduling_blocking": scheduling.blocking,
+                        "scheduling_ttl_seconds": scheduling.ttl_seconds,
                     });
                     payload
                 })

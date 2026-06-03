@@ -54,6 +54,79 @@ pub struct AdminPoolKeyPayloadContext {
     pub cost_limit: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderKeySchedulingState {
+    Disabled,
+    Invalid,
+    Blocked,
+    QuotaExhausted,
+    TemporaryUnavailable,
+    Available,
+}
+
+impl ProviderKeySchedulingState {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Invalid => "invalid",
+            Self::Blocked => "blocked",
+            Self::QuotaExhausted => "quota_exhausted",
+            Self::TemporaryUnavailable => "temporary_unavailable",
+            Self::Available => "available",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Disabled => "已禁用",
+            Self::Invalid => "已失效",
+            Self::Blocked => "账号异常",
+            Self::QuotaExhausted => "额度耗尽",
+            Self::TemporaryUnavailable => "暂时不可用",
+            Self::Available => "可用",
+        }
+    }
+
+    pub const fn legacy_status(self) -> &'static str {
+        match self {
+            Self::Available => "available",
+            Self::TemporaryUnavailable => "degraded",
+            Self::Disabled | Self::Invalid | Self::Blocked | Self::QuotaExhausted => "blocked",
+        }
+    }
+
+    pub const fn blocking(self) -> bool {
+        !matches!(self, Self::Available)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AdminPoolSchedulingStateInput<'a> {
+    pub key: &'a StoredProviderCatalogKey,
+    pub now_unix_secs: u64,
+    pub cooldown_reason: Option<&'a str>,
+    pub cooldown_ttl_seconds: Option<u64>,
+    pub account_blocked: bool,
+    pub account_status_code: Option<&'a str>,
+    pub account_status_label: Option<&'a str>,
+    pub account_status_reason: Option<&'a str>,
+    pub account_status_source: Option<&'a str>,
+    pub account_quota_exhausted: bool,
+    pub circuit_breaker_open: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdminPoolSchedulingStatePayload {
+    pub state: ProviderKeySchedulingState,
+    pub reason: String,
+    pub reason_label: String,
+    pub legacy_status: String,
+    pub label: String,
+    pub blocking: bool,
+    pub ttl_seconds: Option<u64>,
+    pub reasons: Vec<Value>,
+}
+
 #[derive(Debug, Default, Clone, serde::Deserialize)]
 pub struct AdminPoolBatchImportRequest {
     #[serde(default)]
@@ -156,7 +229,7 @@ fn admin_pool_health_score(key: &StoredProviderCatalogKey) -> f64 {
     }
 }
 
-fn admin_pool_circuit_breaker_open(key: &StoredProviderCatalogKey) -> bool {
+pub fn admin_pool_key_circuit_breaker_open(key: &StoredProviderCatalogKey) -> bool {
     key.circuit_breaker_by_format
         .as_ref()
         .and_then(Value::as_object)
@@ -169,6 +242,115 @@ fn admin_pool_circuit_breaker_open(key: &StoredProviderCatalogKey) -> bool {
         .unwrap_or(false)
 }
 
+fn admin_pool_scheduling_reason(
+    state: ProviderKeySchedulingState,
+    code: &str,
+    label: &str,
+    source: &str,
+    ttl_seconds: Option<u64>,
+    detail: Option<&str>,
+) -> Value {
+    json!({
+        "code": code,
+        "label": label,
+        "blocking": state.blocking(),
+        "state": state.code(),
+        "source": source,
+        "ttl_seconds": ttl_seconds,
+        "detail": detail,
+    })
+}
+
+pub fn admin_pool_resolve_scheduling_state(
+    input: AdminPoolSchedulingStateInput<'_>,
+) -> AdminPoolSchedulingStatePayload {
+    let state_payload = if !input.key.is_active {
+        (
+            ProviderKeySchedulingState::Disabled,
+            "disabled",
+            "已禁用",
+            "manual",
+            None,
+            None,
+        )
+    } else if input.account_blocked || admin_pool_key_is_known_banned(input.key) {
+        (
+            ProviderKeySchedulingState::Blocked,
+            input.account_status_code.unwrap_or("account_blocked"),
+            input.account_status_label.unwrap_or("账号异常"),
+            input.account_status_source.unwrap_or("account"),
+            None,
+            input.account_status_reason,
+        )
+    } else if input.key.oauth_invalid_at_unix_secs.is_some()
+        || admin_pool_is_oauth_invalid(input.key, input.now_unix_secs)
+    {
+        (
+            ProviderKeySchedulingState::Invalid,
+            "oauth_invalid",
+            "已失效",
+            "oauth",
+            None,
+            input.key.oauth_invalid_reason.as_deref(),
+        )
+    } else if input.account_quota_exhausted {
+        (
+            ProviderKeySchedulingState::QuotaExhausted,
+            "account_quota_exhausted",
+            "额度耗尽",
+            "quota",
+            None,
+            None,
+        )
+    } else if let Some(reason) = input.cooldown_reason {
+        (
+            ProviderKeySchedulingState::TemporaryUnavailable,
+            "temporary_unavailable",
+            "暂时不可用",
+            "runtime",
+            input.cooldown_ttl_seconds,
+            Some(reason),
+        )
+    } else if input.circuit_breaker_open {
+        (
+            ProviderKeySchedulingState::TemporaryUnavailable,
+            "legacy_circuit_open",
+            "暂时不可用",
+            "legacy_circuit_breaker",
+            None,
+            None,
+        )
+    } else {
+        (
+            ProviderKeySchedulingState::Available,
+            "available",
+            "可用",
+            "scheduler",
+            None,
+            None,
+        )
+    };
+
+    let (state, reason, reason_label, source, ttl_seconds, detail) = state_payload;
+    let reasons = state
+        .blocking()
+        .then(|| {
+            admin_pool_scheduling_reason(state, reason, reason_label, source, ttl_seconds, detail)
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
+    AdminPoolSchedulingStatePayload {
+        state,
+        reason: reason.to_string(),
+        reason_label: reason_label.to_string(),
+        legacy_status: state.legacy_status().to_string(),
+        label: reason_label.to_string(),
+        blocking: state.blocking(),
+        ttl_seconds,
+        reasons,
+    }
+}
+
 fn unix_secs_to_rfc3339(unix_secs: u64) -> Option<String> {
     Utc.timestamp_opt(unix_secs as i64, 0)
         .single()
@@ -179,43 +361,20 @@ fn admin_pool_scheduling_payload(
     key: &StoredProviderCatalogKey,
     cooldown_reason: Option<&str>,
     cooldown_ttl_seconds: Option<u64>,
-) -> (String, String, String, Vec<Value>) {
-    if !key.is_active {
-        return (
-            "blocked".to_string(),
-            "inactive".to_string(),
-            "已禁用".to_string(),
-            vec![json!({
-                "code": "inactive",
-                "label": "已禁用",
-                "blocking": true,
-                "source": "manual",
-                "ttl_seconds": Value::Null,
-                "detail": Value::Null,
-            })],
-        );
-    }
-    if let Some(reason) = cooldown_reason {
-        return (
-            "degraded".to_string(),
-            "cooldown".to_string(),
-            "冷却中".to_string(),
-            vec![json!({
-                "code": "cooldown",
-                "label": "冷却中",
-                "blocking": true,
-                "source": "pool",
-                "ttl_seconds": cooldown_ttl_seconds,
-                "detail": reason,
-            })],
-        );
-    }
-    (
-        "available".to_string(),
-        "available".to_string(),
-        "可用".to_string(),
-        Vec::new(),
-    )
+) -> AdminPoolSchedulingStatePayload {
+    admin_pool_resolve_scheduling_state(AdminPoolSchedulingStateInput {
+        key,
+        now_unix_secs: admin_pool_now_unix_secs(),
+        cooldown_reason,
+        cooldown_ttl_seconds,
+        account_blocked: false,
+        account_status_code: None,
+        account_status_label: None,
+        account_status_reason: None,
+        account_status_source: None,
+        account_quota_exhausted: false,
+        circuit_breaker_open: admin_pool_key_circuit_breaker_open(key),
+    })
 }
 
 pub fn admin_pool_normalize_text(value: impl AsRef<str>) -> String {
@@ -505,7 +664,8 @@ pub fn build_admin_pool_selection_payload(keys: &[StoredProviderCatalogKey]) -> 
 mod tests {
     use super::{
         admin_pool_key_account_quota_exhausted, admin_pool_key_is_known_banned,
-        build_admin_pool_key_payload, AdminPoolKeyPayloadContext,
+        admin_pool_resolve_scheduling_state, build_admin_pool_key_payload,
+        AdminPoolKeyPayloadContext, AdminPoolSchedulingStateInput, ProviderKeySchedulingState,
     };
     use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogKey;
     use serde_json::json;
@@ -690,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn build_admin_pool_key_payload_ignores_health_for_scheduling() {
+    fn build_admin_pool_key_payload_maps_legacy_circuit_to_temporary_unavailable() {
         let mut key = sample_key(None);
         key.health_by_format = Some(json!({
             "openai:chat": {
@@ -707,9 +867,60 @@ mod tests {
 
         assert_eq!(payload["health_score"], json!(0.2));
         assert_eq!(payload["circuit_breaker_open"], json!(true));
-        assert_eq!(payload["scheduling_status"], json!("available"));
-        assert_eq!(payload["scheduling_reason"], json!("available"));
-        assert_eq!(payload["scheduling_label"], json!("可用"));
+        assert_eq!(payload["scheduling_state"], json!("temporary_unavailable"));
+        assert_eq!(payload["scheduling_status"], json!("degraded"));
+        assert_eq!(payload["scheduling_reason"], json!("legacy_circuit_open"));
+        assert_eq!(payload["scheduling_label"], json!("暂时不可用"));
+        assert_eq!(payload["scheduling_blocking"], json!(true));
+    }
+
+    #[test]
+    fn scheduling_state_priority_prefers_disabled_over_runtime_cooldown() {
+        let mut key = sample_key(None);
+        key.is_active = false;
+
+        let state = admin_pool_resolve_scheduling_state(AdminPoolSchedulingStateInput {
+            key: &key,
+            now_unix_secs: 1_776_395_200,
+            cooldown_reason: Some("rate_limited_429"),
+            cooldown_ttl_seconds: Some(300),
+            account_blocked: false,
+            account_status_code: None,
+            account_status_label: None,
+            account_status_reason: None,
+            account_status_source: None,
+            account_quota_exhausted: false,
+            circuit_breaker_open: true,
+        });
+
+        assert_eq!(state.state, ProviderKeySchedulingState::Disabled);
+        assert_eq!(state.reason, "disabled");
+        assert_eq!(state.legacy_status, "blocked");
+    }
+
+    #[test]
+    fn scheduling_state_marks_oauth_invalid_before_temporary_unavailable() {
+        let mut key = sample_key(None);
+        key.oauth_invalid_at_unix_secs = Some(1_776_395_200);
+        key.oauth_invalid_reason = Some("refresh token expired".to_string());
+
+        let state = admin_pool_resolve_scheduling_state(AdminPoolSchedulingStateInput {
+            key: &key,
+            now_unix_secs: 1_776_395_200,
+            cooldown_reason: Some("rate_limited_429"),
+            cooldown_ttl_seconds: Some(300),
+            account_blocked: false,
+            account_status_code: None,
+            account_status_label: None,
+            account_status_reason: None,
+            account_status_source: None,
+            account_quota_exhausted: false,
+            circuit_breaker_open: true,
+        });
+
+        assert_eq!(state.state, ProviderKeySchedulingState::Invalid);
+        assert_eq!(state.reason, "oauth_invalid");
+        assert_eq!(state.reason_label, "已失效");
     }
 }
 
@@ -718,13 +929,12 @@ pub fn build_admin_pool_key_payload(
     context: &AdminPoolKeyPayloadContext,
 ) -> Value {
     let health_score = admin_pool_health_score(key);
-    let circuit_breaker_open = admin_pool_circuit_breaker_open(key);
-    let (scheduling_status, scheduling_reason, scheduling_label, scheduling_reasons) =
-        admin_pool_scheduling_payload(
-            key,
-            context.cooldown_reason.as_deref(),
-            context.cooldown_ttl_seconds,
-        );
+    let circuit_breaker_open = admin_pool_key_circuit_breaker_open(key);
+    let scheduling = admin_pool_scheduling_payload(
+        key,
+        context.cooldown_reason.as_deref(),
+        context.cooldown_ttl_seconds,
+    );
 
     json!({
         "key_id": key.id,
@@ -760,10 +970,14 @@ pub fn build_admin_pool_key_payload(
         "lru_score": context.lru_score,
         "created_at": key.created_at_unix_ms.and_then(unix_secs_to_rfc3339),
         "last_used_at": key.last_used_at_unix_secs.and_then(unix_secs_to_rfc3339),
-        "scheduling_status": scheduling_status,
-        "scheduling_reason": scheduling_reason,
-        "scheduling_label": scheduling_label,
-        "scheduling_reasons": scheduling_reasons,
+        "scheduling_state": scheduling.state.code(),
+        "scheduling_status": scheduling.legacy_status,
+        "scheduling_reason": scheduling.reason,
+        "scheduling_reason_label": scheduling.reason_label,
+        "scheduling_label": scheduling.label,
+        "scheduling_blocking": scheduling.blocking,
+        "scheduling_ttl_seconds": scheduling.ttl_seconds,
+        "scheduling_reasons": scheduling.reasons,
     })
 }
 

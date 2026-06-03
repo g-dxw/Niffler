@@ -1586,8 +1586,9 @@ async fn gateway_marks_account_blocked_pool_key_in_list_keys_response() {
     assert_eq!(keys.len(), 1);
     assert_eq!(keys[0]["account_status_code"], json!("account_disabled"));
     assert_eq!(keys[0]["account_status_blocked"], json!(true));
+    assert_eq!(keys[0]["scheduling_state"], json!("blocked"));
     assert_eq!(keys[0]["scheduling_status"], json!("blocked"));
-    assert_eq!(keys[0]["scheduling_reason"], json!("account_blocked"));
+    assert_eq!(keys[0]["scheduling_reason"], json!("account_disabled"));
     assert_eq!(keys[0]["scheduling_label"], json!("账号停用"));
     assert_eq!(
         keys[0]["status_snapshot"]["account"]["source"],
@@ -1596,7 +1597,7 @@ async fn gateway_marks_account_blocked_pool_key_in_list_keys_response() {
 }
 
 #[tokio::test]
-async fn gateway_ignores_health_signals_in_pool_scheduling_status() {
+async fn gateway_maps_legacy_circuit_to_pool_scheduling_state() {
     let mut provider = sample_provider("provider-openai", "openai", 10).with_transport_fields(
         true,
         false,
@@ -1671,12 +1672,14 @@ async fn gateway_ignores_health_signals_in_pool_scheduling_status() {
     assert_eq!(keys.len(), 2);
     assert_eq!(keys[0]["key_name"], json!("circuit-open"));
     assert_eq!(keys[0]["circuit_breaker_open"], json!(true));
-    assert_eq!(keys[0]["scheduling_status"], json!("available"));
-    assert_eq!(keys[0]["scheduling_reason"], json!("available"));
-    assert_eq!(keys[0]["scheduling_label"], json!("可用"));
+    assert_eq!(keys[0]["scheduling_state"], json!("temporary_unavailable"));
+    assert_eq!(keys[0]["scheduling_status"], json!("degraded"));
+    assert_eq!(keys[0]["scheduling_reason"], json!("legacy_circuit_open"));
+    assert_eq!(keys[0]["scheduling_label"], json!("暂时不可用"));
 
     assert_eq!(keys[1]["key_name"], json!("low-health"));
     assert_eq!(keys[1]["health_score"], json!(0.2));
+    assert_eq!(keys[1]["scheduling_state"], json!("available"));
     assert_eq!(keys[1]["scheduling_status"], json!("available"));
     assert_eq!(keys[1]["scheduling_reason"], json!("available"));
     assert_eq!(keys[1]["scheduling_label"], json!("可用"));
@@ -2307,6 +2310,7 @@ async fn gateway_marks_exhausted_codex_pool_key_as_blocked_when_flag_enabled() {
             "code": "account_quota_exhausted",
             "label": "额度耗尽",
             "blocking": true,
+            "state": "quota_exhausted",
             "source": "quota",
             "ttl_seconds": serde_json::Value::Null,
             "detail": serde_json::Value::Null,

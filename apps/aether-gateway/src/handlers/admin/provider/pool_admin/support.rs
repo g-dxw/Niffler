@@ -107,9 +107,17 @@ pub(crate) fn parse_admin_pool_status_filter(query: Option<&str>) -> Result<Stri
         .trim()
         .to_ascii_lowercase();
     match value.as_str() {
-        "all" | "active" | "available" | "invalid" | "inactive" | "quota_exhausted"
-        | "cooldown" | "blocked" => Ok(value),
-        _ => Err("status must be one of: all, available, invalid, inactive, quota_exhausted, cooldown, blocked".to_string()),
+        "all"
+        | "active"
+        | "available"
+        | "invalid"
+        | "inactive"
+        | "disabled"
+        | "quota_exhausted"
+        | "cooldown"
+        | "temporary_unavailable"
+        | "blocked" => Ok(value),
+        _ => Err("status must be one of: all, available, invalid, disabled, quota_exhausted, temporary_unavailable, blocked".to_string()),
     }
 }
 

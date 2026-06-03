@@ -1608,6 +1608,7 @@ import type {
   PoolKeyDetail,
   PoolKeysPageResponse,
   PoolPresetMeta,
+  PoolSchedulingState,
 } from '@/api/endpoints/pool'
 import type {
   ClaudeCodeAdvancedConfig,
@@ -1736,9 +1737,9 @@ const poolKeyStatusFilterOptions: Array<{ value: PoolManagementViewState['status
   { value: 'all', label: '全部状态' },
   { value: 'available', label: '可用' },
   { value: 'invalid', label: '已失效' },
-  { value: 'inactive', label: '禁用' },
+  { value: 'disabled', label: '禁用' },
   { value: 'quota_exhausted', label: '额度耗尽' },
-  { value: 'cooldown', label: '冷却中' },
+  { value: 'temporary_unavailable', label: '暂时不可用' },
   { value: 'blocked', label: '异常' },
 ]
 const poolScoreHardStateOptions = [
@@ -2839,7 +2840,7 @@ function toEndpointApiKey(key: PoolKeyDetail): EndpointAPIKey {
     rpm_limit: key.rpm_limit ?? null,
     allowed_models: key.allowed_models ?? null,
     capabilities: key.capabilities ?? null,
-    cache_ttl_minutes: key.cache_ttl_minutes ?? 5,
+    cache_ttl_minutes: key.cache_ttl_minutes ?? 60,
     max_probe_interval_minutes: key.max_probe_interval_minutes ?? 32,
     health_score: key.health_score ?? 1,
     circuit_breaker_open: key.circuit_breaker_open ?? false,
@@ -3211,13 +3212,15 @@ async function toggleKeyActive(key: PoolKeyDetail) {
     if (nextStatus) {
       delete key.scheduling_label
       delete key.scheduling_status
-      if (key.scheduling_reason === 'manual_disabled') {
+      delete key.scheduling_state
+      if (key.scheduling_reason === 'disabled') {
         delete key.scheduling_reason
       }
     } else {
+      key.scheduling_state = 'disabled'
       key.scheduling_label = '禁用'
       key.scheduling_status = 'blocked'
-      key.scheduling_reason = 'manual_disabled'
+      key.scheduling_reason = 'disabled'
     }
     success(nextStatus ? '账号已启用' : '账号已停用')
     await loadKeys()
@@ -3468,55 +3471,39 @@ function formatCooldownReason(reason: string): string {
 
 type PoolStatusVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'dark'
 
-function isHealthDerivedSchedulingReason(reason: string | null | undefined): boolean {
-  const normalized = String(reason || '').trim().toLowerCase()
-  return normalized === 'health_low'
-    || normalized === 'health_degraded'
-    || normalized === 'health'
-    || normalized === 'circuit_open'
-    || normalized === 'circuit_breaker'
-}
-
-function isHealthDerivedSchedulingLabel(label: string | null | undefined): boolean {
-  const normalized = String(label || '').trim()
-  return normalized === '健康低'
-    || normalized === '健康度较低'
-    || normalized === '降级'
-    || normalized === '熔断'
-    || normalized === '熔断中'
-}
-
 function getVisibleSchedulingReason(key: PoolKeyDetail): string | null {
   const reason = String(key.scheduling_reason || '').trim()
-  if (!reason || isHealthDerivedSchedulingReason(reason)) return null
+  if (!reason) return null
   return reason
 }
 
 function getVisibleSchedulingReasons(key: PoolKeyDetail) {
-  return (key.scheduling_reasons ?? []).filter((item) => {
-    const source = String(item.source || '').trim().toLowerCase()
-    return source !== 'health'
-      && !isHealthDerivedSchedulingReason(item.code)
-      && !isHealthDerivedSchedulingLabel(item.label)
-  })
+  return key.scheduling_reasons ?? []
+}
+
+function getSchedulingState(key: PoolKeyDetail): PoolSchedulingState {
+  if (
+    key.scheduling_state === 'available'
+    || key.scheduling_state === 'temporary_unavailable'
+    || key.scheduling_state === 'quota_exhausted'
+    || key.scheduling_state === 'blocked'
+    || key.scheduling_state === 'invalid'
+    || key.scheduling_state === 'disabled'
+  ) {
+    return key.scheduling_state
+  }
+  if (key.scheduling_reason === 'legacy_circuit_open') return 'temporary_unavailable'
+  if (key.scheduling_status === 'degraded') return 'temporary_unavailable'
+  if (key.scheduling_status === 'blocked') return 'blocked'
+  if (!key.is_active) return 'disabled'
+  return 'available'
 }
 
 function getSchedulingStatus(key: PoolKeyDetail): 'available' | 'degraded' | 'blocked' {
-  if (getAccountAlertLabel(key)) return 'blocked'
-
-  const status = key.scheduling_status
-  if (
-    (status === 'available' || status === 'degraded' || status === 'blocked')
-    && !isHealthDerivedSchedulingReason(key.scheduling_reason)
-    && !isHealthDerivedSchedulingLabel(key.scheduling_label)
-  ) {
-    return status
-  }
-
-  if (!key.is_active) return 'blocked'
-  if (key.cooldown_reason) return 'degraded'
-  if (key.cost_limit != null && key.cost_limit > 0 && key.cost_window_usage >= key.cost_limit) return 'blocked'
-  return 'available'
+  const state = getSchedulingState(key)
+  if (state === 'available') return 'available'
+  if (state === 'temporary_unavailable') return 'degraded'
+  return 'blocked'
 }
 
 function compactPoolStatusLabel(label: string | null | undefined): string | null {
@@ -3549,40 +3536,30 @@ function getOAuthStatusBadgeLabel(status: ReturnType<typeof getVisibleOAuthState
 }
 
 function getSchedulingBadgeLabel(key: PoolKeyDetail): string {
-  const accountAlert = getAccountAlertLabel(key)
-  if (accountAlert) return compactPoolStatusLabel(accountAlert) || accountAlert
-
   const rawLabel = String(key.scheduling_label || '').trim()
-  if (
-    rawLabel
-    && !isHealthDerivedSchedulingReason(key.scheduling_reason)
-    && !isHealthDerivedSchedulingLabel(rawLabel)
-  ) {
+  if (rawLabel) {
     if (rawLabel === '禁用' || rawLabel === '停用') return '禁用'
     return compactPoolStatusLabel(rawLabel) || rawLabel
   }
 
-  if (!key.is_active) return '禁用'
-  if (key.cooldown_reason) return '冷却中'
-  if (key.cost_limit != null && key.cost_limit > 0 && key.cost_window_usage >= key.cost_limit) return '超限'
+  const accountAlert = getAccountAlertLabel(key)
+  if (accountAlert) return compactPoolStatusLabel(accountAlert) || accountAlert
+
+  const state = getSchedulingState(key)
+  if (state === 'disabled') return '禁用'
+  if (state === 'invalid') return '已失效'
+  if (state === 'blocked') return '账号异常'
+  if (state === 'quota_exhausted') return '额度耗尽'
+  if (state === 'temporary_unavailable') return '暂不可用'
   return '可用'
 }
 
 function getSchedulingBadgeVariant(key: PoolKeyDetail): PoolStatusVariant {
-  if (getAccountAlertLabel(key)) return 'destructive'
-
-  const reason = getVisibleSchedulingReason(key)
-  if (reason === 'manual_disabled' || reason === 'inactive') return 'secondary'
-  if (reason === 'account_blocked' || reason === 'account_quota_exhausted' || reason === 'cost_exhausted') return 'destructive'
-  if (reason === 'cooldown') return 'warning'
-  if (reason === 'cost_soft' || reason === 'cost') return 'warning'
-  if (reason === 'available') return 'default'
-  if (!reason && !key.is_active) return 'secondary'
-
-  const status = getSchedulingStatus(key)
-  if (status === 'blocked') return 'destructive'
-  if (status === 'degraded') return 'warning'
-  return 'default'
+  const state = getSchedulingState(key)
+  if (state === 'available') return 'default'
+  if (state === 'temporary_unavailable') return 'warning'
+  if (state === 'disabled') return 'secondary'
+  return 'destructive'
 }
 
 function getSchedulingTitle(key: PoolKeyDetail): string {
@@ -3598,9 +3575,8 @@ function getSchedulingTitle(key: PoolKeyDetail): string {
     }).join('\n')
   }
 
-  if (key.cooldown_reason) {
-    const ttl = key.cooldown_ttl_seconds ? ` (${formatTTL(key.cooldown_ttl_seconds)})` : ''
-    return `${formatCooldownReason(key.cooldown_reason)}${ttl}`
+  if (key.scheduling_ttl_seconds) {
+    return `${getSchedulingBadgeLabel(key)} (${formatTTL(key.scheduling_ttl_seconds)})`
   }
   return getSchedulingBadgeLabel(key)
 }

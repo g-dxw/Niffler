@@ -16,6 +16,7 @@ use aether_pool_core::{
     PoolMemberSignals, PoolRuntimeState, PoolSchedulingConfig, PoolSchedulingPreset,
     POOL_ACCOUNT_BLOCKED_SKIP_REASON, POOL_ACCOUNT_EXHAUSTED_SKIP_REASON,
     POOL_COOLDOWN_SKIP_REASON, POOL_COST_LIMIT_REACHED_SKIP_REASON,
+    POOL_TEMPORARY_UNAVAILABLE_SKIP_REASON,
 };
 use aether_provider_pool::ProviderPoolService;
 use aether_routing_core::{RankingOverlay, ResolvedRoutingPolicy};
@@ -24,7 +25,7 @@ use tracing::warn;
 use crate::ai_serving::{
     candidate_auth_channel_skip_reason, candidate_common_transport_skip_reason,
     provider_key_pool_score_scope, read_candidate_transport_snapshot,
-    record_local_runtime_candidate_skip_reason, CandidateTransportPolicyFacts,
+    record_local_runtime_candidate_skip_reason_counts, CandidateTransportPolicyFacts,
     EligibleLocalExecutionCandidate, LocalExecutionCandidateKind, PlannerAppState,
     SkippedLocalExecutionCandidate,
 };
@@ -512,10 +513,10 @@ impl<'a> PoolKeyCursor<'a> {
             return;
         };
         self.exhaustion_skip_recorded = true;
-        record_local_runtime_candidate_skip_reason(
+        record_local_runtime_candidate_skip_reason_counts(
             self.state.app(),
             trace_id,
-            self.runtime_miss_pool_exhaustion_skip_reason(),
+            &self.skip_reason_counts,
         );
     }
 
@@ -1097,7 +1098,37 @@ fn build_pool_catalog_key_context(
     let auth_config = parse_catalog_auth_config_json(state.app(), key);
     let mut signals =
         provider_pool_service.member_signals(provider_type, key, auth_config.as_ref());
-    signals.account_blocked |= admin_provider_pool_pure::admin_pool_key_is_known_banned(key);
+    let scheduling = admin_provider_pool_pure::admin_pool_resolve_scheduling_state(
+        admin_provider_pool_pure::AdminPoolSchedulingStateInput {
+            key,
+            now_unix_secs: current_unix_ms() / 1000,
+            cooldown_reason: None,
+            cooldown_ttl_seconds: None,
+            account_blocked: signals.account_blocked,
+            account_status_code: None,
+            account_status_label: None,
+            account_status_reason: None,
+            account_status_source: None,
+            account_quota_exhausted: signals.quota_exhausted,
+            circuit_breaker_open: admin_provider_pool_pure::admin_pool_key_circuit_breaker_open(
+                key,
+            ),
+        },
+    );
+    match scheduling.state {
+        admin_provider_pool_pure::ProviderKeySchedulingState::Disabled
+        | admin_provider_pool_pure::ProviderKeySchedulingState::Invalid
+        | admin_provider_pool_pure::ProviderKeySchedulingState::Blocked => {
+            signals.account_blocked = true;
+        }
+        admin_provider_pool_pure::ProviderKeySchedulingState::QuotaExhausted => {
+            signals.quota_exhausted = true;
+        }
+        admin_provider_pool_pure::ProviderKeySchedulingState::TemporaryUnavailable => {
+            signals.temporary_unavailable = true;
+        }
+        admin_provider_pool_pure::ProviderKeySchedulingState::Available => {}
+    }
     signals.health_score = health_score;
     signals.latency_avg_ms = latency_avg_ms;
     signals.catalog_lru_score = Some(key.last_used_at_unix_secs.unwrap_or(0) as f64);
@@ -2564,8 +2595,12 @@ mod tests {
             .take_local_execution_runtime_miss_diagnostic(trace_id)
             .expect("runtime miss diagnostic should exist");
         assert_eq!(diagnostic.reason, "all_candidates_skipped");
-        assert_eq!(diagnostic.skipped_candidate_count, Some(1));
-        assert_eq!(diagnostic.skip_reasons.get("pool_cooldown"), Some(&1));
+        assert_eq!(diagnostic.skipped_candidate_count, Some(3));
+        assert_eq!(diagnostic.skip_reasons.get("pool_cooldown"), Some(&2));
+        assert_eq!(
+            diagnostic.skip_reasons.get("transport_snapshot_missing"),
+            Some(&1)
+        );
     }
 
     #[tokio::test]

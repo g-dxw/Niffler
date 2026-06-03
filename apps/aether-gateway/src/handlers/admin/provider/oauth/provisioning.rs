@@ -155,7 +155,7 @@ pub(crate) async fn create_provider_oauth_catalog_key(
     )
     .map_err(|err| GatewayError::Internal(err.to_string()))?;
     record.internal_priority = 50;
-    record.cache_ttl_minutes = 5;
+    record.cache_ttl_minutes = 60;
     record.max_probe_interval_minutes = 32;
     record.request_count = Some(0);
     record.success_count = Some(0);

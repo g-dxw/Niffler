@@ -264,10 +264,10 @@
             min="0"
             max="60"
             class="h-8"
-            @update:model-value="(v) => form.cache_ttl_minutes = parseNumberInput(v, { min: 0, max: 60 }) ?? 5"
+            @update:model-value="(v) => form.cache_ttl_minutes = parseNumberInput(v, { min: 0, max: 60 }) ?? 60"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            分钟，0禁用
+            分钟，0 禁用，默认 60 分钟
           </p>
         </div>
         <div>
@@ -709,7 +709,7 @@ const form = ref({
   internal_priority: 10,
   rpm_limit: undefined as number | null | undefined,  // RPM 限制（null=自适应，undefined=保持原值）
   concurrent_limit: undefined as number | null | undefined,  // 并发请求上限（null/0=不限制，undefined=保持原值）
-  cache_ttl_minutes: 5,
+  cache_ttl_minutes: 60,
   max_probe_interval_minutes: 32,
   note: '',
   is_active: true,
@@ -803,7 +803,7 @@ function resetForm() {
     internal_priority: 10,
     rpm_limit: undefined,
     concurrent_limit: undefined,
-    cache_ttl_minutes: 5,
+    cache_ttl_minutes: 60,
     max_probe_interval_minutes: 32,
     note: '',
     is_active: true,
@@ -854,7 +854,7 @@ function loadKeyData() {
     // 保留原始的 null/undefined 状态，null 表示自适应模式
     rpm_limit: props.editingKey.rpm_limit ?? undefined,
     concurrent_limit: props.editingKey.concurrent_limit ?? undefined,
-    cache_ttl_minutes: props.editingKey.cache_ttl_minutes ?? 5,
+    cache_ttl_minutes: props.editingKey.cache_ttl_minutes ?? 60,
     max_probe_interval_minutes: props.editingKey.max_probe_interval_minutes ?? 32,
     note: props.editingKey.note || '',
     is_active: props.editingKey.is_active,

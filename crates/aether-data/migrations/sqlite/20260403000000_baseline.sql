@@ -258,7 +258,7 @@ CREATE TABLE IF NOT EXISTS provider_api_keys (
     global_priority_by_format TEXT,
     allowed_models TEXT,
     expires_at INTEGER,
-    cache_ttl_minutes INTEGER NOT NULL DEFAULT 5,
+    cache_ttl_minutes INTEGER NOT NULL DEFAULT 60,
     max_probe_interval_minutes INTEGER NOT NULL DEFAULT 32,
     proxy TEXT,
     fingerprint TEXT,

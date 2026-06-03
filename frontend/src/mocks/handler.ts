@@ -575,9 +575,9 @@ function getMockEndpointExtras(apiFormat: string) {
 
 // Mock Endpoint Keys
 const MOCK_ENDPOINT_KEYS = [
-  { id: 'ekey-001', provider_id: 'provider-001', api_formats: ['claude:messages'], api_key_masked: 'sk-ant...abc1', auth_type: 'api_key', name: 'Primary Key', rate_multiplier: 1.0, internal_priority: 1, health_score: 0.98, consecutive_failures: 0, request_count: 5000, success_count: 4950, error_count: 50, success_rate: 0.99, avg_response_time_ms: 1200, cache_ttl_minutes: 5, max_probe_interval_minutes: 32, is_active: true, created_at: '2024-01-01T00:00:00Z', updated_at: new Date().toISOString() },
-  { id: 'ekey-002', provider_id: 'provider-001', api_formats: ['claude:messages'], api_key_masked: 'sk-ant...def2', auth_type: 'api_key', name: 'Backup Key', rate_multiplier: 1.0, internal_priority: 2, health_score: 0.95, consecutive_failures: 1, request_count: 2000, success_count: 1950, error_count: 50, success_rate: 0.975, avg_response_time_ms: 1350, cache_ttl_minutes: 5, max_probe_interval_minutes: 32, is_active: true, created_at: '2024-02-01T00:00:00Z', updated_at: new Date().toISOString() },
-  { id: 'ekey-003', provider_id: 'provider-002', api_formats: ['openai:chat'], api_key_masked: 'sk-oai...ghi3', auth_type: 'oauth', name: 'OpenAI OAuth', oauth_email: 'oauth-demo@aether.dev', oauth_expires_at: Math.floor(Date.now() / 1000) + 6 * 3600, oauth_plan_type: 'pro', oauth_account_id: 'acct-demo-002', rate_multiplier: 1.0, internal_priority: 1, health_score: 0.97, consecutive_failures: 0, request_count: 3500, success_count: 3450, error_count: 50, success_rate: 0.986, avg_response_time_ms: 900, cache_ttl_minutes: 5, max_probe_interval_minutes: 32, is_active: true, created_at: '2024-01-15T00:00:00Z', updated_at: new Date().toISOString() }
+  { id: 'ekey-001', provider_id: 'provider-001', api_formats: ['claude:messages'], api_key_masked: 'sk-ant...abc1', auth_type: 'api_key', name: 'Primary Key', rate_multiplier: 1.0, internal_priority: 1, health_score: 0.98, consecutive_failures: 0, request_count: 5000, success_count: 4950, error_count: 50, success_rate: 0.99, avg_response_time_ms: 1200, cache_ttl_minutes: 60, max_probe_interval_minutes: 32, is_active: true, created_at: '2024-01-01T00:00:00Z', updated_at: new Date().toISOString() },
+  { id: 'ekey-002', provider_id: 'provider-001', api_formats: ['claude:messages'], api_key_masked: 'sk-ant...def2', auth_type: 'api_key', name: 'Backup Key', rate_multiplier: 1.0, internal_priority: 2, health_score: 0.95, consecutive_failures: 1, request_count: 2000, success_count: 1950, error_count: 50, success_rate: 0.975, avg_response_time_ms: 1350, cache_ttl_minutes: 60, max_probe_interval_minutes: 32, is_active: true, created_at: '2024-02-01T00:00:00Z', updated_at: new Date().toISOString() },
+  { id: 'ekey-003', provider_id: 'provider-002', api_formats: ['openai:chat'], api_key_masked: 'sk-oai...ghi3', auth_type: 'oauth', name: 'OpenAI OAuth', oauth_email: 'oauth-demo@aether.dev', oauth_expires_at: Math.floor(Date.now() / 1000) + 6 * 3600, oauth_plan_type: 'pro', oauth_account_id: 'acct-demo-002', rate_multiplier: 1.0, internal_priority: 1, health_score: 0.97, consecutive_failures: 0, request_count: 3500, success_count: 3450, error_count: 50, success_rate: 0.986, avg_response_time_ms: 900, cache_ttl_minutes: 60, max_probe_interval_minutes: 32, is_active: true, created_at: '2024-01-15T00:00:00Z', updated_at: new Date().toISOString() }
 ]
 
 // Mock Endpoints
@@ -1596,7 +1596,7 @@ function generateMockKeysForProvider(providerId: string, count: number = 2) {
       error_count: Math.floor(Math.random() * 100),
       success_rate: 0.95 + Math.random() * 0.04,
       avg_response_time_ms: 800 + Math.floor(Math.random() * 600),
-      cache_ttl_minutes: 5,
+      cache_ttl_minutes: 60,
       max_probe_interval_minutes: 32,
       is_active: true,
       created_at: '2024-01-01T00:00:00Z',
@@ -1909,7 +1909,7 @@ registerDynamicRoute('POST', '/api/admin/endpoints/providers/:providerId/keys', 
     rpm_limit: body.rpm_limit ?? null,
     allowed_models: body.allowed_models ?? null,
     capabilities: body.capabilities ?? null,
-    cache_ttl_minutes: body.cache_ttl_minutes ?? 5,
+    cache_ttl_minutes: body.cache_ttl_minutes ?? 60,
     max_probe_interval_minutes: body.max_probe_interval_minutes ?? 32,
     health_score: 1.0,
     consecutive_failures: 0,

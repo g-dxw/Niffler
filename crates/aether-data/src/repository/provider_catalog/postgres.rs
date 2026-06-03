@@ -2451,7 +2451,7 @@ fn map_key_row(row: &PgRow) -> Result<StoredProviderCatalogKey, DataLayerError> 
         key.allow_auth_channel_mismatch_formats =
             row.try_get("allow_auth_channel_mismatch_formats").ok();
         key.internal_priority = row.try_get("internal_priority").unwrap_or(50);
-        key.cache_ttl_minutes = row.try_get("cache_ttl_minutes").unwrap_or(5);
+        key.cache_ttl_minutes = row.try_get("cache_ttl_minutes").unwrap_or(60);
         key.max_probe_interval_minutes = row.try_get("max_probe_interval_minutes").unwrap_or(32);
         key.last_429_type = row.try_get("last_429_type").ok();
         key.utilization_samples = row.try_get("utilization_samples").ok();

@@ -254,3 +254,16 @@ pub(crate) fn record_local_runtime_candidate_skip_reason(
     let port = GatewayRuntimeMissDiagnosticPort { state: Some(state) };
     record_ai_runtime_candidate_skip_reason(&port, trace_id, skip_reason);
 }
+
+pub(crate) fn record_local_runtime_candidate_skip_reason_counts(
+    state: &AppState,
+    trace_id: &str,
+    skip_reason_counts: &std::collections::BTreeMap<&'static str, u32>,
+) {
+    let port = GatewayRuntimeMissDiagnosticPort { state: Some(state) };
+    for (skip_reason, count) in skip_reason_counts {
+        for _ in 0..*count {
+            record_ai_runtime_candidate_skip_reason(&port, trace_id, skip_reason);
+        }
+    }
+}

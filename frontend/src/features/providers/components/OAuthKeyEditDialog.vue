@@ -103,10 +103,10 @@
             min="0"
             max="60"
             class="h-8"
-            @update:model-value="(v) => form.cache_ttl_minutes = parseNumberInput(v, { min: 0, max: 60 }) ?? 5"
+            @update:model-value="(v) => form.cache_ttl_minutes = parseNumberInput(v, { min: 0, max: 60 }) ?? 60"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            分钟，0禁用
+            分钟，0 禁用，默认 60 分钟
           </p>
         </div>
         <div>
@@ -262,7 +262,7 @@ const form = ref({
   internal_priority: 10,
   rpm_limit: undefined as number | null | undefined,
   concurrent_limit: undefined as number | null | undefined,
-  cache_ttl_minutes: 5,
+  cache_ttl_minutes: 60,
   max_probe_interval_minutes: 32,
   note: '',
   auto_fetch_models: false,
@@ -298,7 +298,7 @@ function resetForm() {
     internal_priority: 10,
     rpm_limit: undefined,
     concurrent_limit: undefined,
-    cache_ttl_minutes: 5,
+    cache_ttl_minutes: 60,
     max_probe_interval_minutes: 32,
     note: '',
     auto_fetch_models: false,
@@ -316,7 +316,7 @@ function loadKeyData() {
     internal_priority: props.editingKey.internal_priority ?? 10,
     rpm_limit: props.editingKey.rpm_limit ?? undefined,
     concurrent_limit: props.editingKey.concurrent_limit ?? undefined,
-    cache_ttl_minutes: props.editingKey.cache_ttl_minutes ?? 5,
+    cache_ttl_minutes: props.editingKey.cache_ttl_minutes ?? 60,
     max_probe_interval_minutes: props.editingKey.max_probe_interval_minutes ?? 32,
     note: props.editingKey.note || '',
     auto_fetch_models: props.editingKey.auto_fetch_models ?? false,

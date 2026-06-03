@@ -921,25 +921,9 @@ fn admin_pool_health_score(key: &StoredProviderCatalogKey) -> f64 {
     }
 }
 
-fn admin_pool_circuit_breaker_open(key: &StoredProviderCatalogKey) -> bool {
-    key.circuit_breaker_by_format
-        .as_ref()
-        .and_then(serde_json::Value::as_object)
-        .map(|formats| {
-            formats
-                .values()
-                .filter_map(serde_json::Value::as_object)
-                .any(|item| {
-                    item.get("open")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(false)
-                })
-        })
-        .unwrap_or(false)
-}
-
 fn admin_pool_scheduling_payload(
     key: &StoredProviderCatalogKey,
+    now_unix_secs: u64,
     cooldown_reason: Option<&str>,
     cooldown_ttl_seconds: Option<u64>,
     account_blocked: bool,
@@ -948,72 +932,22 @@ fn admin_pool_scheduling_payload(
     account_status_reason: Option<&str>,
     account_status_source: Option<&str>,
     account_quota_exhausted: bool,
-) -> (String, String, String, Vec<serde_json::Value>) {
-    if !key.is_active {
-        return (
-            "blocked".to_string(),
-            "inactive".to_string(),
-            "已禁用".to_string(),
-            vec![json!({
-                "code": "inactive",
-                "label": "已禁用",
-                "blocking": true,
-                "source": "manual",
-                "ttl_seconds": serde_json::Value::Null,
-                "detail": serde_json::Value::Null,
-            })],
-        );
-    }
-    if account_blocked {
-        return (
-            "blocked".to_string(),
-            "account_blocked".to_string(),
-            account_status_label.unwrap_or("账号异常").to_string(),
-            vec![json!({
-                "code": account_status_code.unwrap_or("account_blocked"),
-                "label": account_status_label.unwrap_or("账号异常"),
-                "blocking": true,
-                "source": account_status_source,
-                "ttl_seconds": serde_json::Value::Null,
-                "detail": account_status_reason,
-            })],
-        );
-    }
-    if account_quota_exhausted {
-        return (
-            "blocked".to_string(),
-            "account_quota_exhausted".to_string(),
-            "额度耗尽".to_string(),
-            vec![json!({
-                "code": "account_quota_exhausted",
-                "label": "额度耗尽",
-                "blocking": true,
-                "source": "quota",
-                "ttl_seconds": serde_json::Value::Null,
-                "detail": serde_json::Value::Null,
-            })],
-        );
-    }
-    if let Some(reason) = cooldown_reason {
-        return (
-            "degraded".to_string(),
-            "cooldown".to_string(),
-            "冷却中".to_string(),
-            vec![json!({
-                "code": "cooldown",
-                "label": "冷却中",
-                "blocking": true,
-                "source": "pool",
-                "ttl_seconds": cooldown_ttl_seconds,
-                "detail": reason,
-            })],
-        );
-    }
-    (
-        "available".to_string(),
-        "available".to_string(),
-        "可用".to_string(),
-        Vec::new(),
+    circuit_breaker_open: bool,
+) -> admin_provider_pool_pure::AdminPoolSchedulingStatePayload {
+    admin_provider_pool_pure::admin_pool_resolve_scheduling_state(
+        admin_provider_pool_pure::AdminPoolSchedulingStateInput {
+            key,
+            now_unix_secs,
+            cooldown_reason,
+            cooldown_ttl_seconds,
+            account_blocked,
+            account_status_code,
+            account_status_label,
+            account_status_reason,
+            account_status_source,
+            account_quota_exhausted,
+            circuit_breaker_open,
+        },
     )
 }
 pub(super) fn build_admin_pool_key_payload(
@@ -1032,7 +966,7 @@ pub(super) fn build_admin_pool_key_payload(
         .as_ref()
         .and_then(|_| runtime.cooldown_ttl_by_key.get(&key.id).copied());
     let health_score = admin_pool_health_score(key);
-    let circuit_breaker_open = admin_pool_circuit_breaker_open(key);
+    let circuit_breaker_open = admin_provider_pool_pure::admin_pool_key_circuit_breaker_open(key);
     let auth_semantics = provider_key_auth_semantics(key, provider_type);
     let account_quota_exhausted = pool_config
         .as_ref()
@@ -1110,18 +1044,19 @@ pub(super) fn build_admin_pool_key_payload(
         .unwrap_or(false);
     let account_status_source =
         admin_pool_trimmed_string(account_snapshot.and_then(|item| item.get("source")));
-    let (scheduling_status, scheduling_reason, scheduling_label, scheduling_reasons) =
-        admin_pool_scheduling_payload(
-            key,
-            cooldown_reason.as_deref(),
-            cooldown_ttl_seconds,
-            account_status_blocked,
-            account_status_code.as_deref(),
-            account_status_label.as_deref(),
-            account_status_reason.as_deref(),
-            account_status_source.as_deref(),
-            account_quota_exhausted,
-        );
+    let scheduling = admin_pool_scheduling_payload(
+        key,
+        now_unix_secs,
+        cooldown_reason.as_deref(),
+        cooldown_ttl_seconds,
+        account_status_blocked,
+        account_status_code.as_deref(),
+        account_status_label.as_deref(),
+        account_status_reason.as_deref(),
+        account_status_source.as_deref(),
+        account_quota_exhausted,
+        circuit_breaker_open,
+    );
 
     let mut payload = serde_json::Map::new();
     payload.insert("key_id".to_string(), json!(key.id));
@@ -1352,10 +1287,29 @@ pub(super) fn build_admin_pool_key_payload(
         "last_used_at".to_string(),
         json!(key.last_used_at_unix_secs.and_then(unix_secs_to_rfc3339)),
     );
-    payload.insert("scheduling_status".to_string(), json!(scheduling_status));
-    payload.insert("scheduling_reason".to_string(), json!(scheduling_reason));
-    payload.insert("scheduling_label".to_string(), json!(scheduling_label));
-    payload.insert("scheduling_reasons".to_string(), json!(scheduling_reasons));
+    payload.insert(
+        "scheduling_state".to_string(),
+        json!(scheduling.state.code()),
+    );
+    payload.insert(
+        "scheduling_status".to_string(),
+        json!(scheduling.legacy_status),
+    );
+    payload.insert("scheduling_reason".to_string(), json!(scheduling.reason));
+    payload.insert(
+        "scheduling_reason_label".to_string(),
+        json!(scheduling.reason_label),
+    );
+    payload.insert("scheduling_label".to_string(), json!(scheduling.label));
+    payload.insert(
+        "scheduling_blocking".to_string(),
+        json!(scheduling.blocking),
+    );
+    payload.insert(
+        "scheduling_ttl_seconds".to_string(),
+        json!(scheduling.ttl_seconds),
+    );
+    payload.insert("scheduling_reasons".to_string(), json!(scheduling.reasons));
 
     serde_json::Value::Object(payload)
 }

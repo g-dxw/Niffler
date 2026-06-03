@@ -226,7 +226,7 @@ function createProviderKey(overrides: Partial<EndpointAPIKey> = {}): EndpointAPI
     concurrent_limit: null,
     allowed_models: null,
     capabilities: null,
-    cache_ttl_minutes: 5,
+    cache_ttl_minutes: 60,
     max_probe_interval_minutes: 32,
     health_score: 100,
     consecutive_failures: 0,

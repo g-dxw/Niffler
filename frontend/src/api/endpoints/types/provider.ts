@@ -220,6 +220,14 @@ export interface ProviderEndpoint {
  */
 export type AllowedModels = string[] | null
 
+export type ProviderKeySchedulingState =
+  | 'disabled'
+  | 'invalid'
+  | 'blocked'
+  | 'quota_exhausted'
+  | 'temporary_unavailable'
+  | 'available'
+
 // AllowedModels 类型守卫函数
 export function isAllowedModelsList(value: AllowedModels): value is string[] {
   return Array.isArray(value)
@@ -257,6 +265,13 @@ export interface EndpointAPIKey {
   // 聚合字段（从 health_by_format 计算，用于列表显示）
   health_score: number
   circuit_breaker_open?: boolean
+  scheduling_state?: ProviderKeySchedulingState
+  scheduling_status?: 'available' | 'degraded' | 'blocked'
+  scheduling_reason?: string
+  scheduling_reason_label?: string
+  scheduling_label?: string
+  scheduling_blocking?: boolean
+  scheduling_ttl_seconds?: number | null
   consecutive_failures: number
   last_failure_at?: string
   request_count: number

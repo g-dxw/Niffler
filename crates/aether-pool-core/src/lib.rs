@@ -7,6 +7,7 @@ pub use scheduler::{
     PoolSchedulerOutcome, PoolSchedulingConfig, PoolSchedulingPreset, PoolSkippedCandidate,
     POOL_ACCOUNT_BLOCKED_SKIP_REASON, POOL_ACCOUNT_EXHAUSTED_SKIP_REASON,
     POOL_COOLDOWN_SKIP_REASON, POOL_COST_LIMIT_REACHED_SKIP_REASON,
+    POOL_TEMPORARY_UNAVAILABLE_SKIP_REASON,
 };
 pub use scoring::{
     probe_freshness_score, probe_freshness_score_with_ttl, score_pool_member,
