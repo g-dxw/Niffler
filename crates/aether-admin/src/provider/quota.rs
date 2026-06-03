@@ -275,6 +275,56 @@ fn codex_write_window(
     }
 }
 
+fn codex_window_minutes(source: &serde_json::Map<String, serde_json::Value>) -> Option<u64> {
+    source
+        .get("window_minutes")
+        .and_then(coerce_json_u64)
+        .or_else(|| {
+            source
+                .get("limit_window_seconds")
+                .and_then(coerce_json_u64)
+                .map(|seconds| seconds / 60)
+        })
+}
+
+fn codex_window_has_materialized_limit(
+    source: &serde_json::Map<String, serde_json::Value>,
+    updated_at_unix_secs: u64,
+) -> bool {
+    if codex_window_minutes(source).is_some_and(|minutes| minutes > 0) {
+        return true;
+    }
+    if source
+        .get("reset_after_seconds")
+        .and_then(coerce_json_u64)
+        .is_some_and(|seconds| seconds > 0)
+    {
+        return true;
+    }
+    if source
+        .get("reset_at")
+        .and_then(coerce_json_u64)
+        .is_some_and(|reset_at| reset_at > updated_at_unix_secs)
+    {
+        return true;
+    }
+    source
+        .get("used_percent")
+        .and_then(coerce_json_f64)
+        .is_some_and(|used_percent| used_percent > 0.0)
+}
+
+fn codex_write_window_if_materialized(
+    target: &mut serde_json::Map<String, serde_json::Value>,
+    source: &serde_json::Map<String, serde_json::Value>,
+    target_prefix: &str,
+    updated_at_unix_secs: u64,
+) {
+    if codex_window_has_materialized_limit(source, updated_at_unix_secs) {
+        codex_write_window(target, source, target_prefix);
+    }
+}
+
 fn codex_find_spark_rate_limit(
     root: &serde_json::Map<String, serde_json::Value>,
 ) -> Option<&serde_json::Map<String, serde_json::Value>> {
@@ -323,12 +373,30 @@ pub fn parse_codex_wham_usage_response(
         .cloned()
         .unwrap_or_default();
 
-    let use_paid_windows = !secondary_window.is_empty() && plan_type.as_deref() != Some("free");
+    let has_paid_plan = plan_type.as_deref() != Some("free");
+    let use_paid_windows = has_paid_plan
+        && (!secondary_window.is_empty()
+            || codex_window_minutes(&primary_window).is_some_and(|minutes| minutes == 300));
     if use_paid_windows {
-        codex_write_window(&mut result, &secondary_window, "primary");
-        codex_write_window(&mut result, &primary_window, "secondary");
+        codex_write_window_if_materialized(
+            &mut result,
+            &secondary_window,
+            "primary",
+            updated_at_unix_secs,
+        );
+        codex_write_window_if_materialized(
+            &mut result,
+            &primary_window,
+            "secondary",
+            updated_at_unix_secs,
+        );
     } else {
-        codex_write_window(&mut result, &primary_window, "primary");
+        codex_write_window_if_materialized(
+            &mut result,
+            &primary_window,
+            "primary",
+            updated_at_unix_secs,
+        );
     }
 
     if let Some(spark_rate_limit) = codex_find_spark_rate_limit(root) {
@@ -336,13 +404,23 @@ pub fn parse_codex_wham_usage_response(
             .get("primary_window")
             .and_then(serde_json::Value::as_object)
         {
-            codex_write_window(&mut result, primary_window, "spark_primary");
+            codex_write_window_if_materialized(
+                &mut result,
+                primary_window,
+                "spark_primary",
+                updated_at_unix_secs,
+            );
         }
         if let Some(secondary_window) = spark_rate_limit
             .get("secondary_window")
             .and_then(serde_json::Value::as_object)
         {
-            codex_write_window(&mut result, secondary_window, "spark_secondary");
+            codex_write_window_if_materialized(
+                &mut result,
+                secondary_window,
+                "spark_secondary",
+                updated_at_unix_secs,
+            );
         }
     }
 
@@ -546,12 +624,30 @@ pub fn parse_codex_usage_headers(
 
     let primary_window = read_window("primary");
     let secondary_window = read_window("secondary");
-    let use_paid_windows = !secondary_window.is_empty() && plan_type.as_deref() != Some("free");
+    let has_paid_plan = plan_type.as_deref() != Some("free");
+    let use_paid_windows = has_paid_plan
+        && (!secondary_window.is_empty()
+            || codex_window_minutes(&primary_window).is_some_and(|minutes| minutes == 300));
     if use_paid_windows {
-        codex_write_window(&mut result, &secondary_window, "primary");
-        codex_write_window(&mut result, &primary_window, "secondary");
+        codex_write_window_if_materialized(
+            &mut result,
+            &secondary_window,
+            "primary",
+            updated_at_unix_secs,
+        );
+        codex_write_window_if_materialized(
+            &mut result,
+            &primary_window,
+            "secondary",
+            updated_at_unix_secs,
+        );
     } else {
-        codex_write_window(&mut result, &primary_window, "primary");
+        codex_write_window_if_materialized(
+            &mut result,
+            &primary_window,
+            "primary",
+            updated_at_unix_secs,
+        );
     }
 
     if let Some(value) = normalized
@@ -1348,6 +1444,54 @@ mod tests {
             parsed.get("spark_secondary_window_minutes"),
             Some(&json!(10_080u64))
         );
+    }
+
+    #[test]
+    fn parses_codex_paid_primary_only_window_as_five_hour() {
+        let parsed = parse_codex_wham_usage_response(
+            &json!({
+                "plan_type": "plus",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 12.5,
+                        "reset_after_seconds": 18_000,
+                        "reset_at": 1_900_000_000u64,
+                        "window_minutes": 300
+                    }
+                }
+            }),
+            1_777_000_000,
+        )
+        .expect("codex wham usage should parse");
+
+        assert_eq!(parsed.get("primary_used_percent"), None);
+        assert_eq!(parsed.get("secondary_used_percent"), Some(&json!(12.5)));
+        assert_eq!(parsed.get("secondary_window_minutes"), Some(&json!(300u64)));
+    }
+
+    #[test]
+    fn ignores_codex_wham_zero_length_quota_window() {
+        let parsed = parse_codex_wham_usage_response(
+            &json!({
+                "plan_type": "plus",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 0.0,
+                        "reset_after_seconds": 0,
+                        "reset_at": 1_777_000_000u64,
+                        "window_minutes": 0
+                    }
+                }
+            }),
+            1_777_000_000,
+        )
+        .expect("codex wham usage should parse");
+
+        assert_eq!(parsed.get("primary_used_percent"), None);
+        assert_eq!(parsed.get("secondary_used_percent"), None);
+        assert_eq!(parsed.get("primary_window_minutes"), None);
+        assert_eq!(parsed.get("secondary_window_minutes"), None);
+        assert_eq!(parsed.get("plan_type"), Some(&json!("plus")));
     }
 
     #[test]

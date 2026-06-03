@@ -111,6 +111,19 @@ fn merge_upstream_metadata(
         .unwrap_or_default();
     if let Some(update_object) = updates.as_object() {
         for (key, value) in update_object {
+            if key == "codex" {
+                if let (Some(current_object), Some(update_object)) = (
+                    merged.get(key).and_then(serde_json::Value::as_object),
+                    value.as_object(),
+                ) {
+                    let mut next = current_object.clone();
+                    for (field, field_value) in update_object {
+                        next.insert(field.clone(), field_value.clone());
+                    }
+                    merged.insert(key.clone(), serde_json::Value::Object(next));
+                    continue;
+                }
+            }
             merged.insert(key.clone(), value.clone());
         }
     }

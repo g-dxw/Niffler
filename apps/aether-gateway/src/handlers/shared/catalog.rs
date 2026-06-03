@@ -674,6 +674,62 @@ fn preserve_quota_window_usage_state(current_status_snapshot: Option<&Value>, qu
     }
 }
 
+fn preserve_missing_codex_quota_windows(
+    current_status_snapshot: Option<&Value>,
+    quota: &mut Value,
+) {
+    let Some(current_windows) = current_status_snapshot
+        .and_then(Value::as_object)
+        .and_then(|snapshot| snapshot.get("quota"))
+        .and_then(Value::as_object)
+        .and_then(|quota| quota.get("windows"))
+        .and_then(Value::as_array)
+    else {
+        return;
+    };
+    let observed_at = quota
+        .get("observed_at")
+        .or_else(|| quota.get("updated_at"))
+        .and_then(admin_provider_quota_pure::coerce_json_u64);
+    let Some(next_windows) = quota.get_mut("windows").and_then(Value::as_array_mut) else {
+        return;
+    };
+
+    for current_window in current_windows {
+        let Some(current_code) = current_window
+            .get("code")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|code| !code.is_empty())
+        else {
+            continue;
+        };
+        if next_windows
+            .iter()
+            .filter_map(Value::as_object)
+            .any(|window| {
+                window
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .is_some_and(|code| code.eq_ignore_ascii_case(current_code))
+            })
+        {
+            continue;
+        }
+        let Some(reset_at) = current_window
+            .get("reset_at")
+            .and_then(admin_provider_quota_pure::coerce_json_u64)
+        else {
+            continue;
+        };
+        if observed_at.is_some_and(|observed_at| reset_at <= observed_at) {
+            continue;
+        }
+        next_windows.push(current_window.clone());
+    }
+}
+
 fn codex_default_window_minutes(code: &str) -> Option<u64> {
     if code.eq_ignore_ascii_case("5h") || code.eq_ignore_ascii_case("spark_5h") {
         Some(300)
@@ -1339,6 +1395,7 @@ pub(crate) fn sync_provider_key_quota_status_snapshot(
         _ => None,
     }?;
     if normalized_provider_type == "codex" {
+        preserve_missing_codex_quota_windows(status_snapshot, &mut quota);
         preserve_quota_window_usage_state(status_snapshot, &mut quota);
     }
 
@@ -2453,6 +2510,98 @@ mod tests {
                 .and_then(|usage| usage.get("total_cost_usd")),
             Some(&json!("0.30000000"))
         );
+    }
+
+    #[test]
+    fn sync_provider_key_quota_status_snapshot_preserves_missing_active_codex_windows() {
+        let current_status_snapshot = json!({
+            "quota": {
+                "version": 2,
+                "provider_type": "codex",
+                "windows": [
+                    {
+                        "code": "weekly",
+                        "label": "周",
+                        "used_ratio": 0.16,
+                        "remaining_ratio": 0.84,
+                        "reset_at": 1_900_000_000u64,
+                        "reset_seconds": 530_000u64,
+                        "window_minutes": 10_080u64
+                    },
+                    {
+                        "code": "5h",
+                        "label": "5H",
+                        "used_ratio": 0.05,
+                        "remaining_ratio": 0.95,
+                        "reset_at": 1_800_000_000u64,
+                        "reset_seconds": 12_000u64,
+                        "window_minutes": 300u64
+                    }
+                ]
+            }
+        });
+        let upstream_metadata = json!({
+            "codex": {
+                "updated_at": 1_777_000_000u64,
+                "plan_type": "plus"
+            }
+        });
+
+        let payload = sync_provider_key_quota_status_snapshot(
+            Some(&current_status_snapshot),
+            "codex",
+            Some(&upstream_metadata),
+            "refresh_api",
+        )
+        .expect("quota snapshot should sync");
+        let windows = payload["quota"]["windows"]
+            .as_array()
+            .expect("quota windows should exist");
+
+        assert!(windows
+            .iter()
+            .any(|window| window.get("code") == Some(&json!("weekly"))));
+        assert!(windows
+            .iter()
+            .any(|window| window.get("code") == Some(&json!("5h"))));
+    }
+
+    #[test]
+    fn sync_provider_key_quota_status_snapshot_does_not_preserve_expired_missing_codex_windows() {
+        let current_status_snapshot = json!({
+            "quota": {
+                "version": 2,
+                "provider_type": "codex",
+                "windows": [
+                    {
+                        "code": "5h",
+                        "reset_at": 1_776_999_999u64,
+                        "window_minutes": 300u64
+                    }
+                ]
+            }
+        });
+        let upstream_metadata = json!({
+            "codex": {
+                "updated_at": 1_777_000_000u64,
+                "plan_type": "plus"
+            }
+        });
+
+        let payload = sync_provider_key_quota_status_snapshot(
+            Some(&current_status_snapshot),
+            "codex",
+            Some(&upstream_metadata),
+            "refresh_api",
+        )
+        .expect("quota snapshot should sync");
+        let windows = payload["quota"]["windows"]
+            .as_array()
+            .expect("quota windows should exist");
+
+        assert!(!windows
+            .iter()
+            .any(|window| window.get("code") == Some(&json!("5h"))));
     }
 
     #[test]

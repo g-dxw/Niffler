@@ -167,6 +167,19 @@ fn merge_metadata_object(
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
+    if section_key == "codex" {
+        if let (Some(current_object), Some(section_object)) = (
+            merged.get(section_key).and_then(Value::as_object),
+            section_value.as_object(),
+        ) {
+            let mut next = current_object.clone();
+            for (field, field_value) in section_object {
+                next.insert(field.clone(), field_value.clone());
+            }
+            merged.insert(section_key.to_string(), Value::Object(next));
+            return Some(Value::Object(merged));
+        }
+    }
     merged.insert(section_key.to_string(), section_value);
     Some(Value::Object(merged))
 }
