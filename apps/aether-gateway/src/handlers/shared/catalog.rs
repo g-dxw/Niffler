@@ -740,6 +740,29 @@ fn codex_default_window_minutes(code: &str) -> Option<u64> {
     }
 }
 
+fn codex_quota_window_has_materialized_limit(
+    used_percent: Option<f64>,
+    reset_at: Option<u64>,
+    reset_seconds: Option<u64>,
+    explicit_window_minutes: Option<u64>,
+    observed_at_unix_secs: Option<u64>,
+) -> bool {
+    if explicit_window_minutes.is_some_and(|minutes| minutes > 0) {
+        return true;
+    }
+    if reset_seconds.is_some_and(|seconds| seconds > 0) {
+        return true;
+    }
+    if reset_at.is_some_and(|reset_at| {
+        observed_at_unix_secs
+            .map(|observed_at| reset_at > observed_at)
+            .unwrap_or(reset_at > 0)
+    }) {
+        return true;
+    }
+    used_percent.is_some_and(|used_percent| used_percent > 0.0)
+}
+
 fn codex_quota_window_snapshot(
     metadata: &Map<String, Value>,
     prefix: &str,
@@ -781,11 +804,13 @@ fn codex_quota_window_snapshot(
         .get(&window_minutes_key)
         .and_then(admin_provider_quota_pure::coerce_json_u64);
 
-    if used_percent.is_none()
-        && reset_at.is_none()
-        && reset_seconds.is_none()
-        && explicit_window_minutes.is_none()
-    {
+    if !codex_quota_window_has_materialized_limit(
+        used_percent,
+        reset_at,
+        reset_seconds,
+        explicit_window_minutes,
+        observed_at_unix_secs,
+    ) {
         return None;
     }
 
@@ -2559,6 +2584,55 @@ mod tests {
             .expect("quota windows should exist");
 
         assert!(windows
+            .iter()
+            .any(|window| window.get("code") == Some(&json!("weekly"))));
+        assert!(windows
+            .iter()
+            .any(|window| window.get("code") == Some(&json!("5h"))));
+    }
+
+    #[test]
+    fn sync_provider_key_quota_status_snapshot_ignores_zero_length_codex_refresh_window() {
+        let current_status_snapshot = json!({
+            "quota": {
+                "version": 2,
+                "provider_type": "codex",
+                "windows": [
+                    {
+                        "code": "5h",
+                        "label": "5H",
+                        "used_ratio": 0.05,
+                        "remaining_ratio": 0.95,
+                        "reset_at": 1_800_000_000u64,
+                        "reset_seconds": 12_000u64,
+                        "window_minutes": 300u64
+                    }
+                ]
+            }
+        });
+        let upstream_metadata = json!({
+            "codex": {
+                "updated_at": 1_777_000_000u64,
+                "plan_type": "plus",
+                "primary_used_percent": 0.0,
+                "primary_reset_after_seconds": 0u64,
+                "primary_reset_at": 1_777_000_000u64,
+                "primary_window_minutes": 0u64
+            }
+        });
+
+        let payload = sync_provider_key_quota_status_snapshot(
+            Some(&current_status_snapshot),
+            "codex",
+            Some(&upstream_metadata),
+            "refresh_api",
+        )
+        .expect("quota snapshot should sync");
+        let windows = payload["quota"]["windows"]
+            .as_array()
+            .expect("quota windows should exist");
+
+        assert!(!windows
             .iter()
             .any(|window| window.get("code") == Some(&json!("weekly"))));
         assert!(windows
