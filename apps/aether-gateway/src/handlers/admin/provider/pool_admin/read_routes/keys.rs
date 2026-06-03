@@ -171,13 +171,11 @@ fn admin_pool_key_summary_payload(
         .collect::<Vec<_>>();
     let statuses = status_order
         .iter()
-        .filter_map(|code| {
-            by_status.get(*code).map(|count| {
-                json!({
-                    "code": code,
-                    "label": admin_pool_status_label(code),
-                    "count": count,
-                })
+        .map(|code| {
+            json!({
+                "code": code,
+                "label": admin_pool_status_label(code),
+                "count": by_status.get(*code).copied().unwrap_or(0),
             })
         })
         .collect::<Vec<_>>();
