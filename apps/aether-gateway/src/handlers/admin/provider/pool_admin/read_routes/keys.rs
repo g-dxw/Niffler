@@ -67,9 +67,6 @@ fn admin_pool_key_status_bucket(
             account_status_reason: None,
             account_status_source: None,
             account_quota_exhausted,
-            circuit_breaker_open: admin_provider_pool_pure::admin_pool_key_circuit_breaker_open(
-                key,
-            ),
         },
     );
     scheduling.state.code()

@@ -617,7 +617,6 @@ import { recoverKeyHealth } from '@/api/endpoints/health'
 import { parseApiError } from '@/utils/errorParser'
 import { useToast } from '@/composables/useToast'
 import { useClipboard } from '@/composables/useClipboard'
-import { useCountdownTimer, getProbeCountdown } from '@/composables/useCountdownTimer'
 import { MAX_MODEL_NAME_LENGTH, createLRURegexCache, getCompiledModelMappingRegex } from '@/features/models/utils/model-mapping-regex'
 import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 
@@ -638,7 +637,6 @@ const emit = defineEmits<{
 
 const { success: showSuccess, error: showError } = useToast()
 const { copyToClipboard } = useClipboard()
-const { tick: countdownTick, start: startCountdownTimer } = useCountdownTimer()
 
 // 使用外部传入的数据或内部状态
 const internalRoutingData = ref<ModelRoutingPreviewResponse | null>(null)
@@ -1262,7 +1260,6 @@ function getKeySchedulingState(key: RoutingKeyInfo): NonNullable<RoutingKeyInfo[
     return key.scheduling_state
   }
   if (!key.is_active) return 'disabled'
-  if (key.circuit_breaker_open) return 'temporary_unavailable'
   return 'available'
 }
 
@@ -1319,16 +1316,9 @@ function getKeyTooltip(key: RoutingKeyInfo): string {
   parts.push(`健康度: ${((key.health_score || 0) * 100).toFixed(0)}%`)
   if (key.circuit_breaker_open) {
     const formats = key.circuit_breaker_formats.join(', ')
-    parts.push(`健康熔断: ${formats || '已打开'}${getKeyProbeCountdown(key)}`)
+    parts.push(`历史熔断记录: ${formats || '已打开'}`)
   }
   return parts.join('\n')
-}
-
-// 获取 Key 探测倒计时（用于 RoutingKeyInfo）
-function getKeyProbeCountdown(key: RoutingKeyInfo): string {
-  if (!key.circuit_breaker_open) return ''
-  const countdown = getProbeCountdown(key.next_probe_at, countdownTick.value)
-  return countdown ? ` · ${countdown}` : ''
 }
 
 // 恢复 Key 健康状态（仅恢复指定 API 格式）
@@ -1358,7 +1348,6 @@ onMounted(() => {
   if (props.routingData === undefined) {
     loadRoutingData()
   }
-  startCountdownTimer()
 })
 
 // 暴露方法给父组件

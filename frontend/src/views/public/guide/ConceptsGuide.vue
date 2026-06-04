@@ -155,8 +155,8 @@ import { BookOpen } from 'lucide-vue-next'
           </ul>
         </li>
         <li>
-          <strong class="text-[#262624] dark:text-[#f1ead8] font-medium">熔断探测：</strong><br>
-          当同一个提供商Key字连续若干次请求失败后，会进入熔断状态，之后每间N分钟进行探测请求，若请求成功解除熔断后续正常请求，否则按以指数级增长探测时间以待下次探测，最大探测间隔不会增长超过32分钟。
+          <strong class="text-[#262624] dark:text-[#f1ead8] font-medium">账号状态：</strong><br>
+          系统按禁用、已失效、账号异常、额度耗尽、暂时不可用、可用来判断账号是否参与调度。暂时不可用会显示恢复时间，到期后自动恢复。
         </li>
         <li>
           <strong class="text-[#262624] dark:text-[#f1ead8] font-medium">自动获取上游模型：</strong><br>

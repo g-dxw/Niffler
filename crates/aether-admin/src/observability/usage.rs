@@ -501,8 +501,12 @@ fn admin_usage_extract_local_runtime_miss_reason_summary(message: &str) -> Optio
 fn admin_usage_scheduling_failure_json(
     item: &StoredRequestUsageAudit,
     client_error: &Value,
+    upstream_error: &Value,
 ) -> Value {
     if item.routing_execution_path() != Some("local_execution_runtime_miss") {
+        return Value::Null;
+    }
+    if admin_usage_has_upstream_response_error(upstream_error) {
         return Value::Null;
     }
 
@@ -580,6 +584,30 @@ fn admin_usage_error_domain_type(domain: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn admin_usage_error_domain_status_code(domain: &Value) -> Option<u64> {
+    domain.get("status_code").and_then(Value::as_u64)
+}
+
+fn admin_usage_error_domain_display_message(domain: &Value) -> Option<String> {
+    admin_usage_error_domain_message(domain).or_else(|| {
+        let source = domain.get("source").and_then(Value::as_str)?;
+        if source != "upstream_response" {
+            return None;
+        }
+        let status_code = admin_usage_error_domain_status_code(domain)?;
+        Some(format!("上游返回 HTTP {status_code}"))
+    })
+}
+
+fn admin_usage_has_upstream_response_error(domain: &Value) -> bool {
+    if domain.is_null() {
+        return false;
+    }
+    admin_usage_error_domain_message(domain).is_some()
+        || admin_usage_error_domain_status_code(domain).is_some()
+        || !domain.get("body").unwrap_or(&Value::Null).is_null()
+}
+
 fn admin_usage_error_domain_source(domain: &Value) -> Option<String> {
     domain
         .get("source")
@@ -595,11 +623,13 @@ fn admin_usage_failure_summary_json(
     upstream_error: &Value,
     client_error: &Value,
 ) -> Value {
-    let selected = [client_error, upstream_error, request_error]
+    let selected = [upstream_error, client_error, request_error]
         .into_iter()
-        .find(|domain| !domain.is_null() && admin_usage_error_domain_message(domain).is_some());
+        .find(|domain| {
+            !domain.is_null() && admin_usage_error_domain_display_message(domain).is_some()
+        });
     let message = selected
-        .and_then(admin_usage_error_domain_message)
+        .and_then(admin_usage_error_domain_display_message)
         .or_else(|| {
             item.error_message
                 .as_deref()
@@ -633,13 +663,19 @@ fn admin_usage_error_domains_json(item: &StoredRequestUsageAudit) -> Value {
         || item.provider_request_body.is_some()
         || item.provider_request_body_ref.is_some();
     let upstream_error = if has_upstream_attempt {
+        let upstream_fallback_message =
+            if item.routing_execution_path() == Some("local_execution_runtime_miss") {
+                None
+            } else {
+                item.error_message.as_deref()
+            };
         admin_usage_error_domain_json(
             "upstream_response",
             item.status_code,
             item.response_headers.as_ref(),
             item.response_body.as_ref(),
             item.error_category.as_deref(),
-            item.error_message.as_deref(),
+            upstream_fallback_message,
         )
     } else {
         Value::Null
@@ -2458,8 +2494,11 @@ pub fn build_admin_usage_detail_payload(
     payload["upstream_error"] = error_domains["upstream_error"].clone();
     payload["client_error"] = error_domains["client_error"].clone();
     payload["failure_summary"] = error_domains["failure_summary"].clone();
-    payload["scheduling_failure"] =
-        admin_usage_scheduling_failure_json(item, &error_domains["client_error"]);
+    payload["scheduling_failure"] = admin_usage_scheduling_failure_json(
+        item,
+        &error_domains["client_error"],
+        &error_domains["upstream_error"],
+    );
     payload["error_flow"] = error_flow;
     payload["has_request_body"] = json!(admin_usage_has_body_value(
         item,
@@ -3175,13 +3214,113 @@ mod tests {
             payload["client_error"]["message"],
             "local execution runtime exhausted"
         );
-        assert_eq!(payload["failure_summary"]["source"], "client_response");
+        assert_eq!(payload["failure_summary"]["source"], "upstream_response");
         assert_eq!(
             payload["failure_summary"]["message"],
-            "local execution runtime exhausted"
+            "execution runtime stream returned retryable status 400"
         );
         assert_eq!(payload["error_flow"]["propagation"], "converted");
         assert!(payload["request_error"].is_null());
+    }
+
+    #[test]
+    fn detail_payload_prefers_upstream_error_over_local_runtime_miss_notice() {
+        let item = StoredRequestUsageAudit {
+            candidate_id: Some("candidate-1".to_string()),
+            execution_path: Some("local_execution_runtime_miss".to_string()),
+            local_execution_runtime_miss_reason: Some("no_local_stream_plans".to_string()),
+            error_category: Some("http_error".to_string()),
+            response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            response_body: Some(json!({
+                "error": {
+                    "type": "overloaded_error",
+                    "message": "upstream overloaded",
+                    "code": "overloaded"
+                }
+            })),
+            client_response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            client_response_body: Some(json!({
+                "error": {
+                    "type": "http_error",
+                    "message": "local execution runtime exhausted"
+                }
+            })),
+            ..sample_usage(
+                "failed",
+                Some(503),
+                Some("找到了可尝试提供商，但无法为本次流式请求构建本地执行计划（原因代码: no_local_stream_plans）"),
+            )
+        };
+
+        let payload = build_admin_usage_detail_payload(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+            true,
+            Some(json!({"model": "claude-opus-4-8", "stream": true})),
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(payload["upstream_error"]["source"], "upstream_response");
+        assert_eq!(payload["upstream_error"]["status_code"], json!(503));
+        assert_eq!(payload["upstream_error"]["message"], "upstream overloaded");
+        assert_eq!(payload["failure_summary"]["source"], "upstream_response");
+        assert_eq!(payload["failure_summary"]["message"], "upstream overloaded");
+        assert!(payload["scheduling_failure"].is_null());
+    }
+
+    #[test]
+    fn detail_payload_uses_upstream_status_when_body_has_no_message() {
+        let item = StoredRequestUsageAudit {
+            candidate_id: Some("candidate-1".to_string()),
+            execution_path: Some("local_execution_runtime_miss".to_string()),
+            local_execution_runtime_miss_reason: Some("no_local_stream_plans".to_string()),
+            error_category: Some("http_error".to_string()),
+            response_headers: Some(json!({
+                "content-type": "text/plain"
+            })),
+            response_body: None,
+            client_response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            client_response_body: Some(json!({
+                "error": {
+                    "type": "http_error",
+                    "message": "local execution runtime exhausted"
+                }
+            })),
+            ..sample_usage(
+                "failed",
+                Some(503),
+                Some("找到了可尝试提供商，但无法为本次流式请求构建本地执行计划（原因代码: no_local_stream_plans）"),
+            )
+        };
+
+        let payload = build_admin_usage_detail_payload(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+            false,
+            Some(json!({"model": "claude-opus-4-8", "stream": true})),
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(payload["upstream_error"]["source"], "upstream_response");
+        assert_eq!(payload["upstream_error"]["status_code"], json!(503));
+        assert!(payload["upstream_error"]["message"].is_null());
+        assert_eq!(payload["failure_summary"]["source"], "upstream_response");
+        assert_eq!(payload["failure_summary"]["message"], "上游返回 HTTP 503");
+        assert!(payload["scheduling_failure"].is_null());
     }
 
     #[test]

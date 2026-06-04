@@ -256,9 +256,9 @@ export interface EndpointAPIKey {
   concurrent_limit?: number | null  // 并发请求上限，null/0 表示不限制
   allowed_models?: AllowedModels  // 允许使用的模型列表（null=不限制）
   capabilities?: Record<string, boolean> | null  // 能力标签配置（如 cache_1h, context_1m）
-  // 缓存与熔断配置
+  // 缓存与历史健康兼容配置
   cache_ttl_minutes: number  // 缓存 TTL（分钟），0=禁用
-  max_probe_interval_minutes: number  // 熔断探测间隔（分钟）
+  max_probe_interval_minutes: number  // 历史健康间隔（分钟，兼容字段）
   // 按 endpoint signature 的健康度数据
   health_by_format?: Record<string, FormatHealthData>
   circuit_breaker_by_format?: Record<string, FormatCircuitBreakerData>

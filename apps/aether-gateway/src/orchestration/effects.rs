@@ -20,7 +20,6 @@ use tracing::warn;
 use super::{
     local_failover_error_message, project_local_adaptive_rate_limit,
     project_local_adaptive_success, project_local_failure_health, project_local_key_circuit_closed,
-    project_local_key_circuit_failure, project_local_key_circuit_open,
     project_local_success_health, LocalFailoverClassification,
 };
 use crate::ai_serving::extract_pool_sticky_session_token;
@@ -30,7 +29,7 @@ use crate::client_session_affinity::{
 use crate::clock::current_unix_secs;
 use crate::handlers::shared::provider_pool::admin_provider_pool_config_from_config_value;
 use crate::handlers::shared::provider_pool::{
-    admin_provider_pool_key_circuit_breaker_reason, record_admin_provider_pool_error,
+    admin_provider_pool_key_hard_error_reason, record_admin_provider_pool_error,
     record_admin_provider_pool_stream_timeout, record_admin_provider_pool_success,
     release_admin_provider_pool_key_lease, AdminProviderPoolConfig,
 };
@@ -563,28 +562,12 @@ async fn record_health_failure_effect(
     ) else {
         return;
     };
-    let consecutive_failures = health_by_format
-        .get(api_format)
-        .and_then(|value| value.get("consecutive_failures"))
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    let circuit_breaker_by_format = project_local_key_circuit_failure(
-        current_key.circuit_breaker_by_format.as_ref(),
-        api_format,
-        observed_at_unix_secs,
-        consecutive_failures,
-        current_key.max_probe_interval_minutes,
-    );
-    let circuit_breaker_update = circuit_breaker_by_format
-        .as_ref()
-        .or(current_key.circuit_breaker_by_format.as_ref());
-
     if let Err(err) = state
         .update_provider_catalog_key_health_state(
             &context.plan.key_id,
             current_key.is_active,
             Some(&health_by_format),
-            circuit_breaker_update,
+            current_key.circuit_breaker_by_format.as_ref(),
         )
         .await
     {
@@ -687,9 +670,9 @@ async fn record_pool_error_effect(
     context: LocalExecutionEffectContext<'_>,
     effect: LocalPoolErrorEffect<'_>,
 ) {
-    let circuit_reason =
-        admin_provider_pool_key_circuit_breaker_reason(effect.status_code, effect.error_body);
-    if circuit_reason.is_none()
+    let hard_error_reason =
+        admin_provider_pool_key_hard_error_reason(effect.status_code, effect.error_body);
+    if hard_error_reason.is_none()
         && !local_candidate_failure_should_record_pool_error(
             effect.classification,
             effect.status_code,
@@ -701,10 +684,6 @@ async fn record_pool_error_effect(
     let Some(pool_context) = resolve_pool_feedback_context(state, context).await else {
         return;
     };
-
-    if let Some(reason) = circuit_reason {
-        open_pool_key_circuit_breaker(state, context, &reason).await;
-    }
 
     record_admin_provider_pool_error(
         state.runtime_state.as_ref(),
@@ -731,50 +710,6 @@ async fn record_pool_error_effect(
         }),
     )
     .await;
-}
-
-async fn open_pool_key_circuit_breaker(
-    state: &AppState,
-    context: LocalExecutionEffectContext<'_>,
-    reason: &str,
-) {
-    let api_format = context.plan.provider_api_format.trim();
-    if api_format.is_empty() {
-        return;
-    }
-
-    let Some(current_key) = state
-        .read_provider_catalog_keys_by_ids(std::slice::from_ref(&context.plan.key_id))
-        .await
-        .ok()
-        .and_then(|mut keys| keys.drain(..).next())
-    else {
-        return;
-    };
-    let Some(circuit_breaker_by_format) = project_local_key_circuit_open(
-        current_key.circuit_breaker_by_format.as_ref(),
-        api_format,
-        reason,
-        current_unix_secs(),
-        current_key.max_probe_interval_minutes,
-    ) else {
-        return;
-    };
-
-    if let Err(err) = state
-        .update_provider_catalog_key_health_state(
-            &context.plan.key_id,
-            current_key.is_active,
-            current_key.health_by_format.as_ref(),
-            Some(&circuit_breaker_by_format),
-        )
-        .await
-    {
-        warn!(
-            "gateway orchestration effects: failed to open pool key circuit for provider {} endpoint {} key {}: {:?}",
-            context.plan.provider_id, context.plan.endpoint_id, context.plan.key_id, err
-        );
-    }
 }
 
 async fn record_oauth_invalidation_effect(
@@ -960,6 +895,10 @@ fn pool_score_hard_state_for_status(
     status_code: u16,
     error_body: Option<&str>,
 ) -> Option<PoolMemberHardState> {
+    if let Some(reason) = admin_provider_pool_key_hard_error_reason(status_code, error_body) {
+        return Some(pool_score_hard_state_for_hard_error_reason(&reason));
+    }
+
     match status_code {
         401 | 403 => Some(PoolMemberHardState::AuthInvalid),
         402 => Some(PoolMemberHardState::QuotaExhausted),
@@ -979,6 +918,22 @@ fn pool_score_hard_state_for_status(
                 None
             }
         }
+    }
+}
+
+fn pool_score_hard_state_for_hard_error_reason(reason: &str) -> PoolMemberHardState {
+    let reason = reason.trim().to_ascii_lowercase();
+    if reason.starts_with("payment_required_402") || reason.contains("quota") {
+        PoolMemberHardState::QuotaExhausted
+    } else if reason.contains("workspace_deactivated")
+        || reason.contains("account_deactivated")
+        || reason.contains("account_disabled")
+        || reason.contains("account_locked")
+        || reason.contains("forbidden")
+    {
+        PoolMemberHardState::Banned
+    } else {
+        PoolMemberHardState::AuthInvalid
     }
 }
 
@@ -1277,6 +1232,24 @@ mod tests {
         ));
         let pool_scores = Arc::new(InMemoryPoolMemberScoreRepository::seed(vec![
             sample_codex_pool_score(PoolMemberHardState::QuotaExhausted),
+        ]));
+        AppState::new()
+            .expect("gateway state should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_provider_catalog_repository_for_tests(provider_catalog)
+                    .with_pool_score_repository_for_tests(pool_scores)
+                    .with_encryption_key_for_tests(DEVELOPMENT_ENCRYPTION_KEY),
+            )
+    }
+
+    fn codex_state_with_pool_score(hard_state: PoolMemberHardState) -> AppState {
+        let provider_catalog = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+            vec![sample_codex_provider()],
+            vec![sample_codex_endpoint()],
+            vec![sample_codex_key()],
+        ));
+        let pool_scores = Arc::new(InMemoryPoolMemberScoreRepository::seed(vec![
+            sample_codex_pool_score(hard_state),
         ]));
         AppState::new()
             .expect("gateway state should build")
@@ -1825,7 +1798,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pool_account_error_opens_key_circuit() {
+    async fn pool_account_error_does_not_open_legacy_circuit() {
         let Some(redis) = start_managed_redis_or_skip().await else {
             return;
         };
@@ -1854,15 +1827,34 @@ mod tests {
             .into_iter()
             .next()
             .expect("stored key should exist");
-        let circuit = stored_key
+        assert!(stored_key
             .circuit_breaker_by_format
             .as_ref()
             .and_then(|value| value.get("openai:responses"))
-            .expect("format circuit should be stored");
-        assert_eq!(circuit["open"], json!(true));
-        assert_eq!(circuit["reason"], json!("account_deactivated_401"));
-        assert!(circuit["next_probe_at"].is_string());
-        assert!(circuit["next_probe_at_unix_secs"].as_u64().is_some());
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn pool_account_hard_error_records_replacement_hard_state() {
+        let state = codex_state_with_pool_score(PoolMemberHardState::Unknown);
+        let plan = sample_codex_plan();
+
+        apply_local_execution_effect(
+            &state,
+            LocalExecutionEffectContext {
+                plan: &plan,
+                report_context: None,
+            },
+            LocalExecutionEffect::PoolError(LocalPoolErrorEffect {
+                status_code: 400,
+                classification: LocalFailoverClassification::StopErrorPattern,
+                headers: &BTreeMap::new(),
+                error_body: Some(r#"{"error":{"message":"deactivated_workspace"}}"#),
+            }),
+        )
+        .await;
+
+        assert!(!read_codex_pool_score_state(&state).await.schedulable());
     }
 
     #[tokio::test]
@@ -2013,7 +2005,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_failure_opens_circuit_after_eight_consecutive_failures() {
+    async fn health_failure_keeps_legacy_circuit_closed_after_eight_consecutive_failures() {
         let state = health_state();
         let plan = sample_plan();
 
@@ -2039,22 +2031,17 @@ mod tests {
             .into_iter()
             .next()
             .expect("stored key should exist");
-        let circuit = stored_key
+        let health = stored_key
+            .health_by_format
+            .as_ref()
+            .and_then(|value| value.get("openai:chat"))
+            .expect("format health should be stored");
+        assert_eq!(health["consecutive_failures"], json!(8));
+        assert!(stored_key
             .circuit_breaker_by_format
             .as_ref()
             .and_then(|value| value.get("openai:chat"))
-            .expect("format circuit should be stored");
-        assert_eq!(circuit["open"], json!(true));
-        assert_eq!(circuit["reason"], json!("consecutive_failures_8"));
-        assert_eq!(circuit["probe_interval_minutes"], json!(1));
-        assert!(circuit["next_probe_at_unix_secs"].as_u64().is_some());
-        assert_eq!(
-            circuit["request_results_window"]
-                .as_array()
-                .map(Vec::len)
-                .unwrap_or_default(),
-            8
-        );
+            .is_none());
     }
 
     #[tokio::test]

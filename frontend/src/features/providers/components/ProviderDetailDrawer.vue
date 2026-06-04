@@ -991,7 +991,7 @@
                         <span v-else>{{ key.rpm_limit }} RPM</span>
                       </template>
                       <span class="text-muted-foreground/40">|</span>
-                      <!-- API 格式：展开显示每个格式、倍率、熔断状态 -->
+                      <!-- API 格式：展开显示每个格式、倍率、历史健康记录 -->
                       <template
                         v-for="(format, idx) in getKeyApiFormats(key, endpoint)"
                         :key="format"
@@ -1021,10 +1021,6 @@
                           @keydown="(e) => handleMultiplierKeydown(e, key, format)"
                           @blur="handleMultiplierBlur(key, format)"
                         >
-                        <span
-                          v-if="getFormatProbeCountdown(key, format)"
-                          :class="{ 'text-destructive': isFormatCircuitOpen(key, format) }"
-                        >{{ getFormatProbeCountdown(key, format) }}</span>
                       </template>
                     </div>
                   </div>
@@ -1260,7 +1256,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useClipboard } from '@/composables/useClipboard'
-import { useCountdownTimer, formatCountdown, getCodexResetCountdown } from '@/composables/useCountdownTimer'
+import { useCountdownTimer, getCodexResetCountdown } from '@/composables/useCountdownTimer'
 import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 import {
   getProvider,
@@ -3566,7 +3562,6 @@ function getKeySchedulingState(key: EndpointAPIKey): NonNullable<EndpointAPIKey[
     return key.scheduling_state
   }
   if (!key.is_active) return 'disabled'
-  if (key.circuit_breaker_open) return 'temporary_unavailable'
   return 'available'
 }
 
@@ -3618,49 +3613,23 @@ function getOpenCircuitEntries(key: EndpointAPIKey): Array<[string, NonNullable<
     .filter(([, value]) => value?.open === true)
 }
 
-function getKeyCircuitProbeCountdown(key: EndpointAPIKey): string {
-  void countdownTick.value
-  const nextProbe = getOpenCircuitEntries(key)
-    .map(([, value]) => {
-      if (typeof value.next_probe_at_unix_secs === 'number' && Number.isFinite(value.next_probe_at_unix_secs)) {
-        return value.next_probe_at_unix_secs * 1000
-      }
-      if (value.next_probe_at) {
-        const ms = new Date(value.next_probe_at).getTime()
-        return Number.isFinite(ms) ? ms : null
-      }
-      return null
-    })
-    .filter((value): value is number => value !== null)
-    .sort((a, b) => a - b)[0]
-  if (!nextProbe) {
-    return ''
-  }
-  const diffMs = nextProbe - Date.now()
-  return diffMs > 0 ? ` ${formatCountdown(diffMs)}` : ' 探测中'
-}
-
 function getKeyCircuitBreakerTitle(key: EndpointAPIKey): string {
   const entries = getOpenCircuitEntries(key)
-  if (entries.length === 0) return '熔断器已打开'
+  if (entries.length === 0) return '存在历史熔断记录'
   const parts = entries.map(([format, value]) => {
     const label = formatApiFormatShort(format)
     const reason = value.reason ? `原因: ${value.reason}` : '原因: 连续失败'
-    const interval = typeof value.probe_interval_minutes === 'number'
-      ? `探测间隔: ${value.probe_interval_minutes} 分钟`
-      : ''
-    const countdown = getFormatProbeCountdown(key, format).trim()
-    return [label, reason, interval, countdown ? `状态: ${countdown}` : '']
+    return [label, reason]
       .filter(Boolean)
       .join(' / ')
   })
-  parts.push('点击恢复按钮可重置熔断器')
+  parts.push('这是历史健康记录，不参与当前调度状态')
   return parts.join('\n')
 }
 
 function getRecoverKeyTitle(key: EndpointAPIKey): string {
   if (key.circuit_breaker_open) {
-    return '重置熔断器并恢复健康状态'
+    return '清理历史健康记录并恢复健康状态'
   }
   return '刷新健康状态'
 }
@@ -3681,43 +3650,11 @@ function getAutoFetchStatusTitle(key: EndpointAPIKey): string {
   return parts.join('\n')
 }
 
-// 检查指定格式是否熔断
+// 检查指定格式是否存在历史健康记录
 function isFormatCircuitOpen(key: EndpointAPIKey, format: string): boolean {
   if (!key.circuit_breaker_by_format) return false
   const formatData = key.circuit_breaker_by_format[format]
   return formatData?.open === true
-}
-
-// 获取指定格式的探测倒计时（如果熔断，返回带空格前缀的倒计时文本）
-function getFormatProbeCountdown(key: EndpointAPIKey, format: string): string {
-  // 触发响应式更新
-  void countdownTick.value
-
-  if (!key.circuit_breaker_by_format) return ''
-  const formatData = key.circuit_breaker_by_format[format]
-  if (!formatData?.open) return ''
-
-  // 半开状态
-  if (formatData.half_open_until) {
-    const halfOpenUntil = new Date(formatData.half_open_until)
-    const now = new Date()
-    if (halfOpenUntil > now) {
-      return ' 探测中'
-    }
-  }
-  // 等待探测
-  if (formatData.next_probe_at_unix_secs || formatData.next_probe_at) {
-    const nextProbeMs = typeof formatData.next_probe_at_unix_secs === 'number'
-      ? formatData.next_probe_at_unix_secs * 1000
-      : new Date(formatData.next_probe_at || '').getTime()
-    const diffMs = nextProbeMs - Date.now()
-    if (diffMs > 0) {
-      return ` ${formatCountdown(diffMs)}`
-    } else {
-      return ' 探测中'
-    }
-  }
-  return ''
 }
 
 // 加载系统级格式转换配置

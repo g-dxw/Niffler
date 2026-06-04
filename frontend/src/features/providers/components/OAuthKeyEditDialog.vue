@@ -109,25 +109,6 @@
             分钟，0 禁用，默认 60 分钟
           </p>
         </div>
-        <div>
-          <Label
-            for="max_probe_interval_minutes"
-            class="text-xs"
-          >熔断探测</Label>
-          <Input
-            id="max_probe_interval_minutes"
-            :model-value="form.max_probe_interval_minutes ?? ''"
-            type="number"
-            min="0"
-            max="32"
-            placeholder="32"
-            class="h-8"
-            @update:model-value="(v) => form.max_probe_interval_minutes = parseNumberInput(v, { min: 0, max: 32 }) ?? 32"
-          />
-          <p class="text-xs text-muted-foreground mt-0.5">
-            0-32分钟
-          </p>
-        </div>
       </div>
 
       <!-- 自动获取模型 -->
@@ -263,7 +244,6 @@ const form = ref({
   rpm_limit: undefined as number | null | undefined,
   concurrent_limit: undefined as number | null | undefined,
   cache_ttl_minutes: 60,
-  max_probe_interval_minutes: 32,
   note: '',
   auto_fetch_models: false,
   model_include_patterns_text: '',
@@ -299,7 +279,6 @@ function resetForm() {
     rpm_limit: undefined,
     concurrent_limit: undefined,
     cache_ttl_minutes: 60,
-    max_probe_interval_minutes: 32,
     note: '',
     auto_fetch_models: false,
     model_include_patterns_text: '',
@@ -317,7 +296,6 @@ function loadKeyData() {
     rpm_limit: props.editingKey.rpm_limit ?? undefined,
     concurrent_limit: props.editingKey.concurrent_limit ?? undefined,
     cache_ttl_minutes: props.editingKey.cache_ttl_minutes ?? 60,
-    max_probe_interval_minutes: props.editingKey.max_probe_interval_minutes ?? 32,
     note: props.editingKey.note || '',
     auto_fetch_models: props.editingKey.auto_fetch_models ?? false,
     model_include_patterns_text: (props.editingKey.model_include_patterns || []).join(', '),
@@ -382,7 +360,6 @@ async function handleSave() {
       rpm_limit: form.value.rpm_limit,
       concurrent_limit: form.value.concurrent_limit,
       cache_ttl_minutes: form.value.cache_ttl_minutes,
-      max_probe_interval_minutes: form.value.max_probe_interval_minutes,
       note: form.value.note,
       allowed_models: shouldClearAllowedModels ? null : undefined,
       auto_fetch_models: form.value.auto_fetch_models,

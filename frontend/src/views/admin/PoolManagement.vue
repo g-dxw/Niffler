@@ -3588,7 +3588,6 @@ function getSchedulingState(key: PoolKeyDetail): PoolSchedulingState {
   ) {
     return key.scheduling_state
   }
-  if (key.scheduling_reason === 'legacy_circuit_open') return 'temporary_unavailable'
   if (key.scheduling_status === 'degraded') return 'temporary_unavailable'
   if (key.scheduling_status === 'blocked') return 'blocked'
   if (!key.is_active) return 'disabled'

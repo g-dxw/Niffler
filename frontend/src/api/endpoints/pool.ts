@@ -190,7 +190,6 @@ export interface PoolKeyDetail {
     | 'disabled'
     | 'oauth_invalid'
     | 'temporary_unavailable'
-    | 'legacy_circuit_open'
     | 'cost_exhausted'
     | 'cost_soft'
     | 'cost'

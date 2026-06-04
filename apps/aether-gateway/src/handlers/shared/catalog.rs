@@ -1549,7 +1549,6 @@ pub(crate) fn provider_key_scheduling_state_payload(
     key: &StoredProviderCatalogKey,
     provider_type: &str,
     status_snapshot: &Value,
-    circuit_breaker_open: bool,
     now_unix_secs: u64,
 ) -> admin_provider_pool_pure::AdminPoolSchedulingStatePayload {
     let account_status_code = status_snapshot_string(status_snapshot, "account", "code");
@@ -1575,7 +1574,6 @@ pub(crate) fn provider_key_scheduling_state_payload(
             account_status_reason: account_status_reason.as_deref(),
             account_status_source: account_status_source.as_deref(),
             account_quota_exhausted,
-            circuit_breaker_open,
         },
     )
 }
@@ -2032,13 +2030,8 @@ pub(crate) fn build_admin_provider_key_response(
         "circuit_breaker_open".to_string(),
         json!(circuit_breaker_open),
     );
-    let scheduling = provider_key_scheduling_state_payload(
-        key,
-        provider_type,
-        &status_snapshot,
-        circuit_breaker_open,
-        now_unix_secs,
-    );
+    let scheduling =
+        provider_key_scheduling_state_payload(key, provider_type, &status_snapshot, now_unix_secs);
     payload.insert(
         "scheduling_state".to_string(),
         json!(scheduling.state.code()),

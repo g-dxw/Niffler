@@ -197,7 +197,6 @@ pub(crate) async fn build_admin_global_model_routing_payload(
                         key,
                         &provider.provider_type,
                         &status_snapshot,
-                        circuit_breaker_open,
                         now_unix_secs,
                     );
                     let circuit_breaker_formats = key

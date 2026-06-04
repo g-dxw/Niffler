@@ -103,6 +103,27 @@ fn aether_data_backend_pool_modules_do_not_own_maintenance_sql() {
 }
 
 #[test]
+fn referral_postgres_queries_cast_numeric_amount_columns_before_f64_decoding() {
+    let source = read_workspace_file("apps/aether-gateway/src/data/state/referrals.rs");
+    let production = production_source(&source);
+
+    for required in [
+        "SELECT id, user_id, CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd, payment_method, status, order_kind",
+        "CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd",
+        "CAST(rw.amount_usd AS DOUBLE PRECISION) AS amount_usd",
+        "CAST(balance AS DOUBLE PRECISION) AS balance",
+        "CAST(gift_balance AS DOUBLE PRECISION) AS gift_balance",
+        "CAST(reversed_amount_usd AS DOUBLE PRECISION) AS reversed_amount_usd",
+        "CAST(pending_reversal_amount_usd AS DOUBLE PRECISION) AS pending_reversal_amount_usd",
+    ] {
+        assert!(
+            production.contains(required),
+            "PostgreSQL referral SQL should cast numeric values before f64 decoding: {required}"
+        );
+    }
+}
+
+#[test]
 fn testkit_does_not_copy_aether_business_schema_sql() {
     let owner_relay_baseline =
         read_workspace_file("crates/aether-testkit/src/bin/multi_instance_owner_relay_baseline.rs");

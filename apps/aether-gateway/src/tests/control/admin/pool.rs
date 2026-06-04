@@ -1597,7 +1597,7 @@ async fn gateway_marks_account_blocked_pool_key_in_list_keys_response() {
 }
 
 #[tokio::test]
-async fn gateway_maps_legacy_circuit_to_pool_scheduling_state() {
+async fn gateway_keeps_legacy_circuit_as_health_only_in_pool_scheduling_state() {
     let mut provider = sample_provider("provider-openai", "openai", 10).with_transport_fields(
         true,
         false,
@@ -1672,10 +1672,10 @@ async fn gateway_maps_legacy_circuit_to_pool_scheduling_state() {
     assert_eq!(keys.len(), 2);
     assert_eq!(keys[0]["key_name"], json!("circuit-open"));
     assert_eq!(keys[0]["circuit_breaker_open"], json!(true));
-    assert_eq!(keys[0]["scheduling_state"], json!("temporary_unavailable"));
-    assert_eq!(keys[0]["scheduling_status"], json!("degraded"));
-    assert_eq!(keys[0]["scheduling_reason"], json!("legacy_circuit_open"));
-    assert_eq!(keys[0]["scheduling_label"], json!("暂时不可用"));
+    assert_eq!(keys[0]["scheduling_state"], json!("available"));
+    assert_eq!(keys[0]["scheduling_status"], json!("available"));
+    assert_eq!(keys[0]["scheduling_reason"], json!("available"));
+    assert_eq!(keys[0]["scheduling_label"], json!("可用"));
 
     assert_eq!(keys[1]["key_name"], json!("low-health"));
     assert_eq!(keys[1]["health_score"], json!(0.2));

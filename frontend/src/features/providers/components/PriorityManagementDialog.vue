@@ -919,7 +919,6 @@ function normalizeKeySchedulingState(value: unknown): KeyWithMeta['scheduling_st
 function getKeySchedulingState(key: KeyWithMeta): NonNullable<KeyWithMeta['scheduling_state']> {
   if (key.scheduling_state) return key.scheduling_state
   if (!key.is_active || !key.provider_active) return 'disabled'
-  if (key.circuit_breaker_open) return 'temporary_unavailable'
   return 'available'
 }
 

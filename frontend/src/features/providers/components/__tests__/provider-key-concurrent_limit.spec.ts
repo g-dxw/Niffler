@@ -290,6 +290,12 @@ function lastUpdatePayload() {
   return calls[calls.length - 1][1] as Record<string, unknown>
 }
 
+function lastAddPayload() {
+  const calls = endpointMocks.addProviderKey.mock.calls
+  expect(calls.length).toBeGreaterThan(0)
+  return calls[calls.length - 1][1] as Record<string, unknown>
+}
+
 beforeEach(() => {
   endpointMocks.addProviderKey.mockReset()
   endpointMocks.updateProviderKey.mockReset()
@@ -309,6 +315,46 @@ afterEach(() => {
 })
 
 describe('provider key concurrent_limit form behavior', () => {
+  it('does not expose or submit legacy probe interval in the normal key form', async () => {
+    const root = mountDialog(KeyFormDialog, {
+      open: true,
+      endpoint: null,
+      editingKey: null,
+      providerId: 'provider-1',
+      providerType: 'openai',
+      availableApiFormats: ['openai:chat'],
+    })
+    await settle()
+
+    expect(root.querySelector('#max_probe_interval_minutes')).toBeNull()
+    expect(root.textContent).not.toContain('探测间隔')
+
+    const nameInput = root.querySelector<HTMLInputElement>('input[placeholder="例如：主 Key、备用 Key 1"]')
+    expect(nameInput).not.toBeNull()
+    updateInput(nameInput as HTMLInputElement, 'Primary key')
+    await submit(root)
+
+    expect(lastAddPayload()).not.toHaveProperty('max_probe_interval_minutes')
+  })
+
+  it('does not expose or submit legacy probe interval in the OAuth edit form', async () => {
+    const root = mountDialog(OAuthKeyEditDialog, {
+      open: true,
+      editingKey: createProviderKey({
+        id: 'oauth-key-no-probe',
+        auth_type: 'oauth',
+      }),
+    })
+    await settle()
+
+    expect(root.querySelector('#max_probe_interval_minutes')).toBeNull()
+    expect(root.textContent).not.toContain('探测间隔')
+
+    await submit(root)
+
+    expect(lastUpdatePayload()).not.toHaveProperty('max_probe_interval_minutes')
+  })
+
   it('lets Vertex AI keys switch to Service Account JSON and submit auth_config', async () => {
     const root = mountDialog(KeyFormDialog, {
       open: true,

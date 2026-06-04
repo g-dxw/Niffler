@@ -932,7 +932,6 @@ fn admin_pool_scheduling_payload(
     account_status_reason: Option<&str>,
     account_status_source: Option<&str>,
     account_quota_exhausted: bool,
-    circuit_breaker_open: bool,
 ) -> admin_provider_pool_pure::AdminPoolSchedulingStatePayload {
     admin_provider_pool_pure::admin_pool_resolve_scheduling_state(
         admin_provider_pool_pure::AdminPoolSchedulingStateInput {
@@ -946,7 +945,6 @@ fn admin_pool_scheduling_payload(
             account_status_reason,
             account_status_source,
             account_quota_exhausted,
-            circuit_breaker_open,
         },
     )
 }
@@ -1067,7 +1065,6 @@ pub(super) fn build_admin_pool_key_payload(
         account_status_reason.as_deref(),
         account_status_source.as_deref(),
         account_quota_exhausted,
-        circuit_breaker_open,
     );
 
     let mut payload = serde_json::Map::new();

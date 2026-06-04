@@ -112,7 +112,6 @@ pub struct AdminPoolSchedulingStateInput<'a> {
     pub account_status_reason: Option<&'a str>,
     pub account_status_source: Option<&'a str>,
     pub account_quota_exhausted: bool,
-    pub circuit_breaker_open: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -311,15 +310,6 @@ pub fn admin_pool_resolve_scheduling_state(
             input.cooldown_ttl_seconds,
             Some(reason),
         )
-    } else if input.circuit_breaker_open {
-        (
-            ProviderKeySchedulingState::TemporaryUnavailable,
-            "legacy_circuit_open",
-            "暂时不可用",
-            "legacy_circuit_breaker",
-            None,
-            None,
-        )
     } else {
         (
             ProviderKeySchedulingState::Available,
@@ -373,7 +363,6 @@ fn admin_pool_scheduling_payload(
         account_status_reason: None,
         account_status_source: None,
         account_quota_exhausted: false,
-        circuit_breaker_open: admin_pool_key_circuit_breaker_open(key),
     })
 }
 
@@ -850,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn build_admin_pool_key_payload_maps_legacy_circuit_to_temporary_unavailable() {
+    fn build_admin_pool_key_payload_keeps_legacy_circuit_as_health_only() {
         let mut key = sample_key(None);
         key.health_by_format = Some(json!({
             "openai:chat": {
@@ -867,11 +856,11 @@ mod tests {
 
         assert_eq!(payload["health_score"], json!(0.2));
         assert_eq!(payload["circuit_breaker_open"], json!(true));
-        assert_eq!(payload["scheduling_state"], json!("temporary_unavailable"));
-        assert_eq!(payload["scheduling_status"], json!("degraded"));
-        assert_eq!(payload["scheduling_reason"], json!("legacy_circuit_open"));
-        assert_eq!(payload["scheduling_label"], json!("暂时不可用"));
-        assert_eq!(payload["scheduling_blocking"], json!(true));
+        assert_eq!(payload["scheduling_state"], json!("available"));
+        assert_eq!(payload["scheduling_status"], json!("available"));
+        assert_eq!(payload["scheduling_reason"], json!("available"));
+        assert_eq!(payload["scheduling_label"], json!("可用"));
+        assert_eq!(payload["scheduling_blocking"], json!(false));
     }
 
     #[test]
@@ -890,7 +879,6 @@ mod tests {
             account_status_reason: None,
             account_status_source: None,
             account_quota_exhausted: false,
-            circuit_breaker_open: true,
         });
 
         assert_eq!(state.state, ProviderKeySchedulingState::Disabled);
@@ -915,7 +903,6 @@ mod tests {
             account_status_reason: None,
             account_status_source: None,
             account_quota_exhausted: false,
-            circuit_breaker_open: true,
         });
 
         assert_eq!(state.state, ProviderKeySchedulingState::Invalid);

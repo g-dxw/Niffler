@@ -7,8 +7,9 @@ use aether_data_contracts::repository::candidate_selection::{
     StoredPoolKeyCandidateRowsByKeyIdsQuery, StoredPoolKeyCandidateRowsQuery,
 };
 use aether_data_contracts::repository::pool_scores::{
-    ListRankedPoolMembersQuery, PoolMemberHardState, PoolMemberIdentity,
-    PoolMemberScheduleFeedback, PoolScoreScope, StoredPoolMemberScore, POOL_KIND_PROVIDER_KEY_POOL,
+    GetPoolMemberScoresByIdsQuery, ListRankedPoolMembersQuery, PoolMemberHardState,
+    PoolMemberIdentity, PoolMemberScheduleFeedback, PoolScoreScope, StoredPoolMemberScore,
+    POOL_KIND_PROVIDER_KEY_POOL,
 };
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogKey;
 use aether_pool_core::{
@@ -24,7 +25,7 @@ use tracing::warn;
 
 use crate::ai_serving::{
     candidate_auth_channel_skip_reason, candidate_common_transport_skip_reason,
-    provider_key_pool_score_scope, read_candidate_transport_snapshot,
+    provider_key_pool_score_id, provider_key_pool_score_scope, read_candidate_transport_snapshot,
     record_local_runtime_candidate_skip_reason_counts, CandidateTransportPolicyFacts,
     EligibleLocalExecutionCandidate, LocalExecutionCandidateKind, PlannerAppState,
     SkippedLocalExecutionCandidate,
@@ -1024,6 +1025,7 @@ async fn read_pool_catalog_key_contexts_by_id(
     candidates: &[EligibleLocalExecutionCandidate],
 ) -> BTreeMap<String, PoolCatalogKeyContext> {
     let mut key_ids = Vec::new();
+    let mut provider_id_by_key_id = BTreeMap::<String, String>::new();
     let mut provider_type_by_key_id = BTreeMap::<String, String>::new();
 
     for candidate in candidates {
@@ -1033,6 +1035,7 @@ async fn read_pool_catalog_key_contexts_by_id(
         let key_id = candidate.candidate.key_id.clone();
         if let Entry::Vacant(entry) = provider_type_by_key_id.entry(key_id.clone()) {
             entry.insert(candidate.transport.provider.provider_type.clone());
+            provider_id_by_key_id.insert(key_id.clone(), candidate.candidate.provider_id.clone());
             key_ids.push(key_id);
         }
     }
@@ -1057,6 +1060,8 @@ async fn read_pool_catalog_key_contexts_by_id(
         }
     };
 
+    let score_hard_state_by_key_id =
+        read_pool_score_hard_states_by_key_id(state, &provider_id_by_key_id).await;
     let provider_pool_service = ProviderPoolService::with_builtin_adapters();
 
     keys.into_iter()
@@ -1065,12 +1070,78 @@ async fn read_pool_catalog_key_contexts_by_id(
                 .get(&key.id)
                 .map(String::as_str)
                 .unwrap_or_default();
-            (
-                key.id.clone(),
-                build_pool_catalog_key_context(state, &provider_pool_service, &key, provider_type),
-            )
+            let mut context =
+                build_pool_catalog_key_context(state, &provider_pool_service, &key, provider_type);
+            if let Some(hard_state) = score_hard_state_by_key_id.get(&key.id).copied() {
+                apply_pool_score_hard_state_to_context(&mut context, hard_state);
+            }
+            (key.id.clone(), context)
         })
         .collect()
+}
+
+async fn read_pool_score_hard_states_by_key_id(
+    state: PlannerAppState<'_>,
+    provider_id_by_key_id: &BTreeMap<String, String>,
+) -> BTreeMap<String, PoolMemberHardState> {
+    if provider_id_by_key_id.is_empty() {
+        return BTreeMap::new();
+    }
+
+    let scope = provider_key_pool_score_scope();
+    let mut score_id_to_key_id = BTreeMap::<String, String>::new();
+    for (key_id, provider_id) in provider_id_by_key_id {
+        let identity = PoolMemberIdentity::provider_api_key(provider_id.clone(), key_id.clone());
+        let score_id = provider_key_pool_score_id(&identity, &scope);
+        score_id_to_key_id.insert(score_id, key_id.clone());
+    }
+    let score_ids = score_id_to_key_id.keys().cloned().collect::<Vec<_>>();
+
+    let scores = match state
+        .app()
+        .data
+        .get_pool_member_scores_by_ids(&GetPoolMemberScoresByIdsQuery { ids: score_ids })
+        .await
+    {
+        Ok(scores) => scores,
+        Err(err) => {
+            warn!(
+                error = ?err,
+                key_count = provider_id_by_key_id.len(),
+                "gateway pool scheduler: failed to read pool score hard states"
+            );
+            return BTreeMap::new();
+        }
+    };
+
+    scores
+        .into_iter()
+        .filter_map(|score| {
+            score_id_to_key_id
+                .get(&score.id)
+                .map(|key_id| (key_id.clone(), score.hard_state))
+        })
+        .collect()
+}
+
+fn apply_pool_score_hard_state_to_context(
+    context: &mut PoolCatalogKeyContext,
+    hard_state: PoolMemberHardState,
+) {
+    match hard_state {
+        PoolMemberHardState::Available | PoolMemberHardState::Unknown => {}
+        PoolMemberHardState::Cooldown => {
+            context.temporary_unavailable = true;
+        }
+        PoolMemberHardState::QuotaExhausted => {
+            context.quota_exhausted = true;
+        }
+        PoolMemberHardState::AuthInvalid
+        | PoolMemberHardState::Banned
+        | PoolMemberHardState::Inactive => {
+            context.account_blocked = true;
+        }
+    }
 }
 
 fn build_pool_catalog_key_context(
@@ -1110,9 +1181,6 @@ fn build_pool_catalog_key_context(
             account_status_reason: None,
             account_status_source: None,
             account_quota_exhausted: signals.quota_exhausted,
-            circuit_breaker_open: admin_provider_pool_pure::admin_pool_key_circuit_breaker_open(
-                key,
-            ),
         },
     );
     match scheduling.state {
@@ -1495,7 +1563,8 @@ mod tests {
         ROUTING_PROFILE_DISALLOWED_KEY_SKIP_REASON,
     };
     use crate::ai_serving::{
-        apply_local_runtime_candidate_terminal_reason, EligibleLocalExecutionCandidate,
+        apply_local_runtime_candidate_terminal_reason, provider_key_pool_score_id,
+        provider_key_pool_score_scope, EligibleLocalExecutionCandidate,
         LocalExecutionCandidateKind, PlannerAppState,
     };
     use crate::data::GatewayDataState;
@@ -1505,9 +1574,13 @@ mod tests {
     use crate::orchestration::LocalExecutionCandidateMetadata;
     use crate::{AppState, LocalExecutionRuntimeMissDiagnostic};
     use aether_data::repository::candidate_selection::InMemoryMinimalCandidateSelectionReadRepository;
+    use aether_data::repository::pool_scores::InMemoryPoolMemberScoreRepository;
     use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
     use aether_data_contracts::repository::candidate_selection::{
         StoredMinimalCandidateSelectionRow, StoredPoolKeyCandidateOrder,
+    };
+    use aether_data_contracts::repository::pool_scores::{
+        PoolMemberHardState, PoolMemberIdentity, PoolMemberProbeStatus, StoredPoolMemberScore,
     };
     use aether_data_contracts::repository::provider_catalog::{
         StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -2914,6 +2987,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pool_key_cursor_skips_unschedulable_pool_score_in_page_path() {
+        let provider_config = Some(json!({ "pool_advanced": {} }));
+        let (provider, endpoint, keys, rows) = large_pool_fixture(1, provider_config.clone());
+        let identity = PoolMemberIdentity::provider_api_key("provider-pool", "key-00000");
+        let score = sample_pool_member_score(identity, PoolMemberHardState::AuthInvalid);
+        let data_state =
+            GatewayDataState::with_provider_catalog_and_minimal_candidate_selection_for_tests(
+                Arc::new(InMemoryProviderCatalogReadRepository::seed(
+                    vec![provider],
+                    vec![endpoint],
+                    keys,
+                )),
+                Arc::new(InMemoryMinimalCandidateSelectionReadRepository::seed(rows)),
+            )
+            .with_pool_score_repository_for_tests(Arc::new(
+                InMemoryPoolMemberScoreRepository::seed(vec![score]),
+            ))
+            .with_encryption_key_for_tests(aether_crypto::DEVELOPMENT_ENCRYPTION_KEY);
+        let app = AppState::new()
+            .expect("state should build")
+            .with_data_state_for_tests(data_state);
+        let group = sample_eligible_candidate(
+            "provider-pool",
+            "endpoint-1",
+            "pool-group",
+            10,
+            provider_config,
+        );
+        let mut cursor = PoolKeyCursor::new(PlannerAppState::new(&app), group, None, None, None);
+        cursor.page_size = 1;
+        cursor.max_scanned_keys = 1;
+
+        assert!(cursor.next_key().await.is_none());
+        assert_eq!(
+            cursor
+                .skip_reason_counts
+                .get(aether_pool_core::POOL_ACCOUNT_BLOCKED_SKIP_REASON),
+            Some(&1)
+        );
+    }
+
+    #[tokio::test]
     async fn pool_key_cursor_simulates_large_lru_pool_with_lazy_pages_and_dynamic_skips() {
         const KEY_COUNT: usize = 2048;
         let provider_config = Some(json!({
@@ -3245,6 +3360,38 @@ mod tests {
                     vec![key],
                 )),
             ))
+    }
+
+    fn sample_pool_member_score(
+        identity: PoolMemberIdentity,
+        hard_state: PoolMemberHardState,
+    ) -> StoredPoolMemberScore {
+        let scope = provider_key_pool_score_scope();
+        StoredPoolMemberScore {
+            id: provider_key_pool_score_id(&identity, &scope),
+            pool_kind: identity.pool_kind,
+            pool_id: identity.pool_id,
+            member_kind: identity.member_kind,
+            member_id: identity.member_id,
+            capability: scope.capability,
+            scope_kind: scope.scope_kind,
+            scope_id: scope.scope_id,
+            score: 0.5,
+            hard_state,
+            score_version: 1,
+            score_reason: json!({}),
+            last_ranked_at: Some(1_700_000_000),
+            last_scheduled_at: None,
+            last_success_at: None,
+            last_failure_at: None,
+            failure_count: 0,
+            last_probe_attempt_at: None,
+            last_probe_success_at: None,
+            last_probe_failure_at: None,
+            probe_failure_count: 0,
+            probe_status: PoolMemberProbeStatus::Ok,
+            updated_at: 1_700_000_000,
+        }
     }
 
     fn large_pool_fixture(

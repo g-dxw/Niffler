@@ -782,8 +782,8 @@ INSERT INTO users (
   auth_source, email_verified, rate_limit, rate_limit_mode, metadata
 ) VALUES (
   {id}, {external_id}, {email}, {username}, {password_hash}, {role}::userrole,
-  {providers}, 'specific',
-  {formats}, 'specific',
+  NULL, 'unrestricted',
+  NULL, 'unrestricted',
   NULL, 'unrestricted',
   {is_active}, false, {created_at}, {updated_at}, {last_login_at},
   'local'::authsource, true, {rate_limit}, {rate_limit_mode}, {metadata}
@@ -811,8 +811,6 @@ ON CONFLICT (id) DO UPDATE SET
                 username=sql_value(username_from_user(user)),
                 password_hash=sql_value(user.get("password_hash")),
                 role=sql_value(role),
-                providers=sql_json([CODEX_PROVIDER_ID]),
-                formats=sql_json([CODEX_FORMAT]),
                 is_active=sql_value(is_active),
                 created_at=sql_ts(user.get("created_at")),
                 updated_at=sql_ts(user.get("updated_at")),
@@ -1072,7 +1070,7 @@ INSERT INTO api_keys (
 ) VALUES (
   {id}, {user_id}, {key_hash}, {key_encrypted}, {name}, {key_prefix}, 'active',
   0, 0, 0, false,
-  {providers}, {formats}, NULL,
+  NULL, NULL, NULL,
   {rate_limit}, {concurrent_limit}, NULL, {feature_settings},
   true, {last_used_at}, {expires_at}, false,
   {metadata}, {created_at}, {updated_at}, false
@@ -1102,8 +1100,6 @@ ON CONFLICT (id) DO UPDATE SET
                 key_encrypted=sql_value(encrypt_fernet(encryption_key, raw_key)),
                 name=sql_value(key.get("name") or "sub2api API Key"),
                 key_prefix=sql_value(api_key_prefix(raw_key)),
-                providers=sql_json([CODEX_PROVIDER_ID]),
-                formats=sql_json([CODEX_FORMAT]),
                 rate_limit=sql_value(effective_rpm),
                 concurrent_limit=sql_value(concurrency),
                 feature_settings=sql_json(feature_settings, jsonb=True),
@@ -1114,25 +1110,6 @@ ON CONFLICT (id) DO UPDATE SET
                 updated_at=sql_ts(key.get("updated_at")),
             ).strip()
         )
-        lines.append(
-            """
-INSERT INTO api_key_provider_mappings (
-  id, api_key_id, provider_id, priority_adjustment,
-  weight_multiplier, is_enabled, created_at, updated_at
-) VALUES (
-  {id}, {api_key_id}, {provider_id}, 0,
-  1.0, true, now(), now()
-)
-ON CONFLICT (api_key_id, provider_id) DO UPDATE SET
-  is_enabled = true,
-  updated_at = now();
-""".format(
-                id=sql_value(f"sub2api-api-key-provider-{key['id']}-codex"),
-                api_key_id=sql_value(source_api_key_id(key["id"])),
-                provider_id=sql_value(CODEX_PROVIDER_ID),
-            ).strip()
-        )
-
     for sub in data["subscriptions"]:
         user = users_by_id.get(sub["user_id"])
         if not user:

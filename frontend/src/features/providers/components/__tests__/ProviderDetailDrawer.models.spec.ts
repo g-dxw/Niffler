@@ -204,7 +204,6 @@ vi.mock('@/composables/useEscapeKey', () => ({
 }))
 
 vi.mock('@/composables/useCountdownTimer', () => ({
-  formatCountdown: vi.fn(() => ''),
   getCodexResetCountdown: vi.fn(() => null),
   useCountdownTimer: () => ({
     tick: { value: 0 },

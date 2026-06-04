@@ -1258,8 +1258,11 @@ LIMIT 1
                 r#"
 SELECT
   id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
-  trigger_point, amount_usd, status, wallet_transaction_id, idempotency_key,
-  reversed_amount_usd, pending_reversal_amount_usd, admin_operator_id, admin_note,
+  trigger_point, CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  status, wallet_transaction_id, idempotency_key,
+  CAST(reversed_amount_usd AS DOUBLE PRECISION) AS reversed_amount_usd,
+  CAST(pending_reversal_amount_usd AS DOUBLE PRECISION) AS pending_reversal_amount_usd,
+  admin_operator_id, admin_note,
   EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix_secs,
   EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at_unix_secs
 FROM referral_rewards
@@ -1334,8 +1337,11 @@ LIMIT ?
                 r#"
 SELECT
   id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
-  trigger_point, amount_usd, status, wallet_transaction_id, idempotency_key,
-  reversed_amount_usd, pending_reversal_amount_usd, admin_operator_id, admin_note,
+  trigger_point, CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  status, wallet_transaction_id, idempotency_key,
+  CAST(reversed_amount_usd AS DOUBLE PRECISION) AS reversed_amount_usd,
+  CAST(pending_reversal_amount_usd AS DOUBLE PRECISION) AS pending_reversal_amount_usd,
+  admin_operator_id, admin_note,
   EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix_secs,
   EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at_unix_secs
 FROM referral_rewards
@@ -1402,8 +1408,11 @@ LIMIT 1
                 r#"
 SELECT
   id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
-  trigger_point, amount_usd, status, wallet_transaction_id, idempotency_key,
-  reversed_amount_usd, pending_reversal_amount_usd, admin_operator_id, admin_note,
+  trigger_point, CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  status, wallet_transaction_id, idempotency_key,
+  CAST(reversed_amount_usd AS DOUBLE PRECISION) AS reversed_amount_usd,
+  CAST(pending_reversal_amount_usd AS DOUBLE PRECISION) AS pending_reversal_amount_usd,
+  admin_operator_id, admin_note,
   EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix_secs,
   EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at_unix_secs
 FROM referral_rewards
@@ -1470,8 +1479,11 @@ LIMIT 1
                 r#"
 SELECT
   id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
-  trigger_point, amount_usd, status, wallet_transaction_id, idempotency_key,
-  reversed_amount_usd, pending_reversal_amount_usd, admin_operator_id, admin_note,
+  trigger_point, CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  status, wallet_transaction_id, idempotency_key,
+  CAST(reversed_amount_usd AS DOUBLE PRECISION) AS reversed_amount_usd,
+  CAST(pending_reversal_amount_usd AS DOUBLE PRECISION) AS pending_reversal_amount_usd,
+  admin_operator_id, admin_note,
   EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix_secs,
   EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at_unix_secs
 FROM referral_rewards
@@ -1632,7 +1644,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
         if let Some(backend) = backends.postgres() {
             let row = sqlx::query(
                 r#"
-SELECT id, user_id, amount_usd, payment_method, status, order_kind
+SELECT id, user_id, CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd, payment_method, status, order_kind
 FROM payment_orders
 WHERE id = $1
 "#,
@@ -1684,7 +1696,9 @@ WHERE id = ?
         if let Some(backend) = backends.postgres() {
             let row = sqlx::query(
                 r#"
-SELECT amount_usd, refunded_amount_usd
+SELECT
+  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd
 FROM payment_orders
 WHERE id = $1
 "#,
@@ -1903,7 +1917,9 @@ WHERE id = ? AND status IN ('pending', 'failed')
             let row = sqlx::query(
                 r#"
 SELECT
-  rw.id, rw.inviter_user_id, rw.invitee_user_id, rw.amount_usd, rw.reward_type,
+  rw.id, rw.inviter_user_id, rw.invitee_user_id,
+  CAST(rw.amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  rw.reward_type,
   rw.trigger_point, wallets.id AS wallet_id
 FROM referral_rewards rw
 JOIN wallets ON wallets.user_id = rw.inviter_user_id
@@ -1994,7 +2010,9 @@ WHERE id = $1 AND status IN ('pending', 'failed')
             }
             let wallet = sqlx::query(
                 r#"
-SELECT balance, gift_balance
+SELECT
+  CAST(balance AS DOUBLE PRECISION) AS balance,
+  CAST(gift_balance AS DOUBLE PRECISION) AS gift_balance
 FROM wallets
 WHERE id = $1
 FOR UPDATE
@@ -2133,7 +2151,9 @@ WHERE id = $1
                 .map_err(DataLayerError::postgres)?;
             let reward_row = sqlx::query(
                 r#"
-SELECT reversed_amount_usd, pending_reversal_amount_usd
+SELECT
+  CAST(reversed_amount_usd AS DOUBLE PRECISION) AS reversed_amount_usd,
+  CAST(pending_reversal_amount_usd AS DOUBLE PRECISION) AS pending_reversal_amount_usd
 FROM referral_rewards
 WHERE id = $1
 FOR UPDATE
@@ -2157,7 +2177,10 @@ FOR UPDATE
             }
             let wallet = sqlx::query(
                 r#"
-SELECT id, balance, gift_balance
+SELECT
+  id,
+  CAST(balance AS DOUBLE PRECISION) AS balance,
+  CAST(gift_balance AS DOUBLE PRECISION) AS gift_balance
 FROM wallets
 WHERE user_id = $1
 FOR UPDATE
