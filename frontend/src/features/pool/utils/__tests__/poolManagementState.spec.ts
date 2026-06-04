@@ -63,7 +63,7 @@ describe('poolManagementState', () => {
     expect(state).toEqual({
       providerId: 'provider-b',
       search: 'query search',
-      status: 'inactive',
+      status: 'disabled',
       planType: 'team',
       page: 3,
       pageSize: 100,
@@ -123,7 +123,7 @@ describe('poolManagementState', () => {
     expect(readPoolManagementViewState({}, storage)).toMatchObject({
       providerId: 'provider-g',
       search: 'score search',
-      status: 'cooldown',
+      status: 'temporary_unavailable',
       planType: 'all',
       page: 3,
       pageSize: 25,

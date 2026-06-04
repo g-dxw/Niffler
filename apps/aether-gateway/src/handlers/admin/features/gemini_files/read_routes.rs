@@ -10,6 +10,7 @@ use crate::handlers::admin::shared::{
     is_admin_gemini_files_mappings_root, is_admin_gemini_files_stats_root,
     query_param_optional_bool, query_param_value, unix_secs_to_rfc3339,
 };
+use crate::handlers::shared::parse_catalog_auth_config_json;
 use crate::GatewayError;
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogKey;
 use axum::body::Body;
@@ -25,6 +26,30 @@ struct AdminGeminiFilesPageQuery {
     page_size: usize,
     include_expired: bool,
     search: Option<String>,
+}
+
+struct AdminGeminiFilesKeyIdentity {
+    name: String,
+    oauth_email: serde_json::Value,
+    oauth_phone: serde_json::Value,
+}
+
+fn admin_gemini_files_auth_config_string(
+    auth_config: Option<&serde_json::Map<String, serde_json::Value>>,
+    fields: &[&str],
+) -> serde_json::Value {
+    for field in fields {
+        let Some(value) = auth_config
+            .and_then(|config| config.get(*field))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        return json!(value);
+    }
+    serde_json::Value::Null
 }
 
 fn admin_gemini_files_page_query(
@@ -61,13 +86,29 @@ fn admin_gemini_files_page_query(
     }))
 }
 
-async fn admin_gemini_files_key_name_map(
+async fn admin_gemini_files_key_identity_map(
     state: &AdminAppState<'_>,
-) -> Result<BTreeMap<String, String>, GatewayError> {
+) -> Result<BTreeMap<String, AdminGeminiFilesKeyIdentity>, GatewayError> {
     let capable_keys = admin_gemini_files_all_keys(state).await?;
     Ok(capable_keys
         .into_iter()
-        .map(|key| (key.id, key.name))
+        .map(|key| {
+            let auth_config = parse_catalog_auth_config_json(state.app(), &key);
+            (
+                key.id,
+                AdminGeminiFilesKeyIdentity {
+                    name: key.name,
+                    oauth_email: admin_gemini_files_auth_config_string(
+                        auth_config.as_ref(),
+                        &["email", "oauth_email"],
+                    ),
+                    oauth_phone: admin_gemini_files_auth_config_string(
+                        auth_config.as_ref(),
+                        &["phone", "phone_number", "mobile", "mobile_phone"],
+                    ),
+                },
+            )
+        })
         .collect())
 }
 
@@ -103,9 +144,15 @@ async fn admin_gemini_files_capable_keys(
         .into_iter()
         .filter(admin_gemini_files_key_capable)
         .map(|key| {
+            let auth_config = parse_catalog_auth_config_json(state.app(), &key);
             json!({
                 "id": key.id,
                 "name": key.name,
+                "oauth_email": admin_gemini_files_auth_config_string(auth_config.as_ref(), &["email", "oauth_email"]),
+                "oauth_phone": admin_gemini_files_auth_config_string(
+                    auth_config.as_ref(),
+                    &["phone", "phone_number", "mobile", "mobile_phone"],
+                ),
                 "provider_name": provider_name_by_id.get(key.provider_id.as_str()).copied(),
             })
         })
@@ -127,7 +174,7 @@ async fn admin_gemini_files_all_keys(
 
 fn build_admin_gemini_file_mapping_payload(
     mapping: &aether_data::repository::gemini_file_mappings::StoredGeminiFileMapping,
-    key_name: Option<&str>,
+    key_identity: Option<&AdminGeminiFilesKeyIdentity>,
     username: Option<&str>,
     now_unix_secs: u64,
 ) -> serde_json::Value {
@@ -135,7 +182,13 @@ fn build_admin_gemini_file_mapping_payload(
         "id": mapping.id,
         "file_name": mapping.file_name,
         "key_id": mapping.key_id,
-        "key_name": key_name,
+        "key_name": key_identity.map(|identity| identity.name.as_str()),
+        "oauth_email": key_identity
+            .map(|identity| identity.oauth_email.clone())
+            .unwrap_or(serde_json::Value::Null),
+        "oauth_phone": key_identity
+            .map(|identity| identity.oauth_phone.clone())
+            .unwrap_or(serde_json::Value::Null),
         "user_id": mapping.user_id,
         "username": username,
         "display_name": mapping.display_name,
@@ -181,7 +234,7 @@ pub(super) async fn maybe_build_local_admin_gemini_files_read_response(
                     },
                 )
                 .await?;
-            let key_name_by_id = admin_gemini_files_key_name_map(state).await?;
+            let key_identity_by_id = admin_gemini_files_key_identity_map(state).await?;
             let username_by_id =
                 admin_gemini_files_username_map(state, mappings.items.iter()).await?;
             let items = mappings
@@ -190,9 +243,7 @@ pub(super) async fn maybe_build_local_admin_gemini_files_read_response(
                 .map(|mapping| {
                     build_admin_gemini_file_mapping_payload(
                         mapping,
-                        key_name_by_id
-                            .get(mapping.key_id.as_str())
-                            .map(String::as_str),
+                        key_identity_by_id.get(mapping.key_id.as_str()),
                         username_by_id
                             .get(mapping.user_id.as_deref().unwrap_or(""))
                             .map(String::as_str),

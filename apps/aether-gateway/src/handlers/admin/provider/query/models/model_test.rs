@@ -25,8 +25,8 @@ use crate::handlers::shared::provider_pool::{
     AdminProviderPoolConfig, AdminProviderPoolRuntimeState,
 };
 use crate::handlers::shared::{
-    parse_catalog_auth_config_json, provider_key_health_summary,
-    provider_key_status_snapshot_payload,
+    parse_catalog_auth_config_json, provider_key_account_label_from_auth_config,
+    provider_key_health_summary, provider_key_status_snapshot_payload,
 };
 use crate::model_fetch::ModelFetchRuntimeState;
 use crate::provider_key_auth::{
@@ -3206,10 +3206,14 @@ async fn build_admin_provider_query_kiro_failover_response(
         }
         let is_success = execution.status == "success";
         let response_body = execution.response_body.clone();
+        let key_account_label = provider_key_account_label_from_auth_config(
+            parse_catalog_auth_config_json(app_state, &candidate.key).as_ref(),
+        );
         attempts.push(provider_query_test_attempt_payload(
             candidate_index,
             candidate,
             &execution,
+            key_account_label.as_deref(),
         ));
         if is_success {
             success_body = response_body;

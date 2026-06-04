@@ -18,6 +18,24 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+fn routing_auth_config_string(
+    auth_config: Option<&serde_json::Map<String, serde_json::Value>>,
+    fields: &[&str],
+) -> serde_json::Value {
+    for field in fields {
+        let Some(value) = auth_config
+            .and_then(|config| config.get(*field))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        return json!(value);
+    }
+    serde_json::Value::Null
+}
+
 pub(crate) async fn build_admin_global_model_routing_payload(
     state: &AdminAppState<'_>,
     global_model_id: &str,
@@ -164,6 +182,13 @@ pub(crate) async fn build_admin_global_model_routing_payload(
                     let effective_rpm = key.learned_rpm_limit.or(key.rpm_limit);
                     let is_adaptive = key.rpm_limit.is_none();
                     let allowed_models = json_string_list(key.allowed_models.as_ref());
+                    let auth_config = state.parse_catalog_auth_config_json(key);
+                    let oauth_email =
+                        routing_auth_config_string(auth_config.as_ref(), &["email", "oauth_email"]);
+                    let oauth_phone = routing_auth_config_string(
+                        auth_config.as_ref(),
+                        &["phone", "phone_number", "mobile", "mobile_phone"],
+                    );
                     let circuit_breaker_open =
                         is_provider_key_circuit_open(key, &endpoint.api_format);
                     let status_snapshot =
@@ -203,6 +228,8 @@ pub(crate) async fn build_admin_global_model_routing_payload(
                     let payload = json!({
                         "id": key.id,
                         "name": key.name,
+                        "oauth_email": oauth_email,
+                        "oauth_phone": oauth_phone,
                         "masked_key": state.masked_catalog_api_key(key),
                         "is_active": key.is_active,
                         "is_adaptive": is_adaptive,
@@ -297,9 +324,15 @@ pub(crate) async fn build_admin_global_model_routing_payload(
             .get(&key.provider_id)
             .cloned()
             .unwrap_or_default();
+        let auth_config = state.parse_catalog_auth_config_json(&key);
         all_keys_whitelist.push(json!({
             "key_id": key.id,
             "key_name": key.name,
+            "oauth_email": routing_auth_config_string(auth_config.as_ref(), &["email", "oauth_email"]),
+            "oauth_phone": routing_auth_config_string(
+                auth_config.as_ref(),
+                &["phone", "phone_number", "mobile", "mobile_phone"],
+            ),
             "masked_key": state.masked_catalog_api_key(&key),
             "provider_id": key.provider_id,
             "provider_name": provider_name,

@@ -14,6 +14,8 @@ export type RoutingKeySchedulingState =
 export interface RoutingKeyInfo {
   id: string
   name: string
+  oauth_email?: string | null
+  oauth_phone?: string | null
   masked_key: string
   internal_priority: number
   global_priority_by_format?: Record<string, number> | null  // 按 API 格式的全局优先级
@@ -93,6 +95,8 @@ export interface RoutingProviderInfo {
 export interface GlobalKeyWhitelistItem {
   key_id: string
   key_name: string
+  oauth_email?: string | null
+  oauth_phone?: string | null
   masked_key: string
   provider_id: string
   provider_name: string

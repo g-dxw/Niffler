@@ -441,7 +441,7 @@
           </div>
           <div class="mt-1.5 space-y-0.5">
             <div class="truncate font-medium">
-              {{ attempt.key_name || maskKey(attempt.key_id) }}
+              {{ formatAttemptAccountDisplay(attempt) }}
             </div>
             <div
               v-if="attemptImagePreviews(attempt).length > 0"
@@ -521,9 +521,9 @@
               <td class="px-3 py-2">
                 <div
                   class="truncate font-medium"
-                  :title="attempt.key_name || attempt.key_id"
+                  :title="formatAttemptAccountTitle(attempt)"
                 >
-                  {{ attempt.key_name || maskKey(attempt.key_id) }}
+                  {{ formatAttemptAccountDisplay(attempt) }}
                 </div>
               </td>
               <td class="px-3 py-2">
@@ -599,7 +599,7 @@
             <span class="font-medium text-foreground">
               {{ formatAttemptIndex(selectedInspectionAttempt) }}
             </span>
-            <span>{{ selectedInspectionAttempt.key_name || maskKey(selectedInspectionAttempt.key_id) }}</span>
+            <span>{{ formatAttemptAccountDisplay(selectedInspectionAttempt) }}</span>
             <span>·</span>
             <span>{{ formatApiFormat(selectedInspectionAttempt.endpoint_api_format) }}</span>
           </div>
@@ -964,6 +964,7 @@ type SummaryView = {
   stop_reason?: string | null
   winning_candidate_index?: number | null
   winning_key_name?: string | null
+  winning_key_account_label?: string | null
   winning_key_id?: string | null
   winning_auth_type?: string | null
   winning_effective_model?: string | null
@@ -1005,6 +1006,7 @@ function normalizeCandidateSummary(summary: TestCandidateSummary | null | undefi
     stop_reason: summary.stop_reason ?? null,
     winning_candidate_index: summary.winning_candidate_index ?? null,
     winning_key_name: summary.winning_key_name ?? null,
+    winning_key_account_label: summary.winning_key_account_label ?? null,
     winning_key_id: summary.winning_key_id ?? null,
     winning_auth_type: summary.winning_auth_type ?? null,
     winning_effective_model: summary.winning_effective_model ?? null,
@@ -1057,6 +1059,7 @@ function deriveSummaryFromAttempts(result: TestModelFailoverResponse | null): Su
     stop_reason: stopReason,
     winning_candidate_index: winningAttempt?.candidate_index ?? null,
     winning_key_name: winningAttempt?.key_name ?? null,
+    winning_key_account_label: winningAttempt?.key_account_label ?? null,
     winning_key_id: winningAttempt?.key_id ?? null,
     winning_auth_type: winningAttempt?.auth_type ?? null,
     winning_effective_model: winningAttempt?.effective_model ?? null,
@@ -1253,7 +1256,7 @@ const selectedInspectionImagePreviews = computed(() => (
 
 const resultWinningTitle = computed(() => {
   const summary = resultSummary.value
-  const keyName = summary.winning_key_name || summary.winning_key_id
+  const keyName = summary.winning_key_account_label || summary.winning_key_name || summary.winning_key_id
   if (keyName) return keyName
   if (props.result?.success) return `已命中 ${candidateNoun.value}`
   return `无${resultEntityLabel.value}`
@@ -1350,6 +1353,14 @@ function attemptRowClass(status: string, selected = false) {
 function maskKey(key: string): string {
   if (key.length <= 8) return key
   return `${key.slice(0, 4)}...${key.slice(-4)}`
+}
+
+function formatAttemptAccountDisplay(attempt: TestAttemptDetail): string {
+  return attempt.key_account_label || attempt.key_name || (attempt.key_id ? maskKey(attempt.key_id) : '-')
+}
+
+function formatAttemptAccountTitle(attempt: TestAttemptDetail): string {
+  return attempt.key_account_label || attempt.key_name || attempt.key_id || '-'
 }
 
 function formatAuthType(authType: string): string {

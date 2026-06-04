@@ -8,6 +8,7 @@ pub(super) fn provider_query_test_attempt_payload(
     candidate_index: usize,
     candidate: &ProviderQueryTestCandidate,
     execution: &ProviderQueryExecutionOutcome,
+    key_account_label: Option<&str>,
 ) -> Value {
     let endpoint_route = provider_query_endpoint_route_payload(candidate, execution);
     let endpoint_product = endpoint_route
@@ -33,6 +34,7 @@ pub(super) fn provider_query_test_attempt_payload(
         "endpoint_action": endpoint_action,
         "endpoint_batch_strategy": endpoint_batch_strategy,
         "key_name": provider_query_key_display_name(&candidate.key),
+        "key_account_label": key_account_label,
         "key_id": candidate.key.id,
         "auth_type": candidate.key.auth_type,
         "effective_model": candidate.effective_model,
@@ -274,6 +276,10 @@ pub(super) fn provider_query_candidate_summary_payload(
             .unwrap_or(Value::Null),
         "winning_key_name": winning_attempt
             .and_then(|attempt| attempt.get("key_name"))
+            .cloned()
+            .unwrap_or(Value::Null),
+        "winning_key_account_label": winning_attempt
+            .and_then(|attempt| attempt.get("key_account_label"))
             .cloned()
             .unwrap_or(Value::Null),
         "winning_key_id": winning_attempt

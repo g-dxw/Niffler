@@ -158,6 +158,7 @@ import {
   isUsageUpstreamStream,
   resolveDisplayRequestStatus,
 } from '@/features/usage/utils/status'
+import { applyUsageActiveRequestUpdate } from '@/features/usage/utils/activeRequestUpdates'
 import type { DateRangeParams, FilterStatusValue, RequestStatus } from '@/features/usage/types'
 import type { UserOption } from '@/features/usage/components/UsageRecordsTable.vue'
 import { log } from '@/utils/logger'
@@ -468,66 +469,7 @@ async function pollActiveRequests() {
         record.image_progress = update.image_progress ?? null
       }
       if (shouldApplyData) {
-        // 进行中状态也需要持续更新（provider/key/TTFB 可能在 streaming 后才落库）
-        record.input_tokens = update.input_tokens
-        record.effective_input_tokens = update.effective_input_tokens ?? record.effective_input_tokens
-        record.output_tokens = update.output_tokens
-        record.cache_creation_input_tokens = update.cache_creation_input_tokens ?? undefined
-        record.cache_creation_ephemeral_5m_input_tokens =
-          update.cache_creation_ephemeral_5m_input_tokens ?? undefined
-        record.cache_creation_ephemeral_1h_input_tokens =
-          update.cache_creation_ephemeral_1h_input_tokens ?? undefined
-        record.cache_read_input_tokens = update.cache_read_input_tokens ?? undefined
-        record.official_cost = update.official_cost ?? undefined
-        record.cost = update.cost
-        record.sales_multiplier = update.sales_multiplier ?? undefined
-        record.actual_cost = update.actual_cost ?? undefined
-        record.rate_multiplier = update.rate_multiplier ?? undefined
-        record.response_time_ms = update.response_time_ms ?? undefined
-        record.first_byte_time_ms = update.first_byte_time_ms ?? undefined
-        record.status_code = update.status_code ?? undefined
-        record.error_message = update.error_message ?? undefined
-        if (typeof update.upstream_is_stream === 'boolean') {
-          record.upstream_is_stream = update.upstream_is_stream
-          record.is_stream = update.upstream_is_stream
-        } else if (typeof update.is_stream === 'boolean') {
-          record.is_stream = update.is_stream
-          record.upstream_is_stream = update.is_stream
-        }
-        if (typeof update.client_is_stream === 'boolean') {
-          record.client_is_stream = update.client_is_stream
-          record.client_requested_stream = update.client_is_stream
-        } else if (typeof update.client_requested_stream === 'boolean') {
-          record.client_requested_stream = update.client_requested_stream
-          record.client_is_stream = update.client_requested_stream
-        }
-        // API 格式/格式转换：streaming 时已可确定，轮询时同步更新
-        if (update.api_format != null) record.api_format = update.api_format
-        if (update.endpoint_api_format != null) record.endpoint_api_format = update.endpoint_api_format
-        if (update.has_format_conversion != null) record.has_format_conversion = update.has_format_conversion
-        if (typeof update.has_fallback === 'boolean') {
-          record.has_fallback = record.has_fallback === true || update.has_fallback
-        }
-        // 模型映射：streaming 时已可确定
-        if ('target_model' in update && (typeof update.target_model === 'string' || update.target_model === null)) {
-          record.target_model = update.target_model
-        }
-        // 管理员接口返回额外字段
-        // 只有当返回的 provider 不是 pending/unknown/unknow 时才更新，避免覆盖已有的正确值
-        if ('provider' in update && typeof update.provider === 'string') {
-          const updateProviderLabel = update.provider.trim().toLowerCase()
-          if (updateProviderLabel && !['pending', 'unknown', 'unknow'].includes(updateProviderLabel)) {
-            record.provider = update.provider
-          }
-        }
-        if ('api_key_name' in update) {
-          record.api_key_name = typeof update.api_key_name === 'string' ? update.api_key_name : undefined
-        }
-        if ('provider_key_name' in update) {
-          record.provider_key_name = typeof update.provider_key_name === 'string'
-            ? update.provider_key_name
-            : undefined
-        }
+        applyUsageActiveRequestUpdate(record, update)
       }
     }
 

@@ -288,12 +288,15 @@
                         </div>
                         <div class="flex flex-col min-w-0">
                           <div class="flex items-center gap-1.5">
-                            <span
-                              class="text-sm font-medium truncate"
-                              :class="key.name ? 'cursor-pointer hover:text-primary transition-colors' : ''"
-                              :title="key.name ? '点击复制' : ''"
-                              @click.stop="key.name && copyToClipboard(key.name)"
-                            >{{ key.name || '未命名密钥' }}</span>
+                            <button
+                              type="button"
+                              class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
+                              :class="!(key.is_active) ? 'text-muted-foreground' : ''"
+                              :title="`${getProviderAccountDisplayName(key)}\n点击复制`"
+                              @click.stop="copyProviderAccountDisplay(key)"
+                            >
+                              {{ getProviderAccountDisplayName(key) }}
+                            </button>
                             <!-- OAuth 订阅类型标签 (Codex) -->
                             <Badge
                               v-if="key.oauth_plan_type"
@@ -1166,7 +1169,7 @@
     v-if="open"
     :model-value="deleteKeyConfirmOpen"
     title="删除密钥"
-    :description="`确定要删除密钥 ${keyToDelete?.api_key_masked} 吗？`"
+    :description="`确定要删除账号 ${keyToDelete ? getProviderAccountDisplayName(keyToDelete) : ''} 吗？`"
     confirm-text="删除"
     cancel-text="取消"
     type="danger"
@@ -1212,7 +1215,7 @@
     :open="antigravityQuotaDialogOpen"
     :metadata="antigravityQuotaDialogKey.upstream_metadata"
     :quota-snapshot="antigravityQuotaDialogKey.status_snapshot?.quota ?? null"
-    :key-name="antigravityQuotaDialogKey.name || '未命名密钥'"
+    :key-name="getProviderAccountDisplayName(antigravityQuotaDialogKey)"
     :provider-id="providerId"
     :key-id="antigravityQuotaDialogKey.id"
     @update:open="antigravityQuotaDialogOpen = $event"
@@ -1258,6 +1261,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useClipboard } from '@/composables/useClipboard'
 import { useCountdownTimer, formatCountdown, getCodexResetCountdown } from '@/composables/useCountdownTimer'
+import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 import {
   getProvider,
   getProviderEndpoints,
@@ -1800,6 +1804,16 @@ async function copyFullKey(key: EndpointAPIKey) {
   }
 }
 
+function getProviderAccountDisplayName(key: EndpointAPIKey): string {
+  return getAccountDisplayName(key, '未命名账号')
+}
+
+async function copyProviderAccountDisplay(key: EndpointAPIKey): Promise<void> {
+  const text = getAccountCopyText(key)
+  if (!text) return
+  await copyToClipboard(text)
+}
+
 // 下载 OAuth 凭据文件（后端统一导出，前端只负责下载）
 async function downloadRefreshToken(key: EndpointAPIKey) {
   try {
@@ -1924,7 +1938,7 @@ async function handleClearOAuthInvalid(key: EndpointAPIKey) {
 
   const confirmed = await confirm({
     title: '清除账号异常标记',
-    message: `确认账号 "${key.name || key.id.slice(0, 8)}" 已手动完成验证？清除后系统会按当前手动开关和调度状态重新评估该 Key。`,
+    message: `确认账号 "${getProviderAccountDisplayName(key)}" 已手动完成验证？清除后系统会按当前手动开关和调度状态重新评估该 Key。`,
     confirmText: '确认清除',
     variant: 'default',
   })

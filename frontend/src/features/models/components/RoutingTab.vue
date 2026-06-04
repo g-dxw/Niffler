@@ -168,12 +168,15 @@
                             <!-- Key 信息：两行 -->
                             <div class="min-w-0 flex-1">
                               <!-- 第一行：Key 名称 -->
-                              <div
-                                class="text-sm font-medium truncate"
+                              <button
+                                type="button"
+                                class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
                                 :class="getKeyNameClass(keyEntry.key)"
+                                :title="`${getRoutingAccountDisplayName(keyEntry.key)}\n点击复制`"
+                                @click.stop="copyRoutingAccountDisplay(keyEntry.key)"
                               >
-                                {{ keyEntry.key.name }}
-                              </div>
+                                {{ getRoutingAccountDisplayName(keyEntry.key) }}
+                              </button>
                               <!-- 第二行：提供商名 · sk · 模型映射 -->
                               <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
                                 <span>{{ keyEntry.provider.name }}</span>
@@ -454,12 +457,15 @@
                                       >
                                         <!-- 名称 + sk + 映射（垂直堆叠） -->
                                         <div class="min-w-0 flex flex-col">
-                                          <span
-                                            class="font-medium truncate"
+                                          <button
+                                            type="button"
+                                            class="min-w-0 truncate text-left font-medium transition-colors hover:text-primary"
                                             :class="getKeyNameClass(key)"
+                                            :title="`${getRoutingAccountDisplayName(key)}\n点击复制`"
+                                            @click.stop="copyRoutingAccountDisplay(key)"
                                           >
-                                            {{ key.name }}
-                                          </span>
+                                            {{ getRoutingAccountDisplayName(key) }}
+                                          </button>
                                           <div class="flex items-center gap-1">
                                             <code class="font-mono text-[10px] text-muted-foreground/60">
                                               {{ key.masked_key }}
@@ -610,8 +616,10 @@ import { formatApiFormat } from '@/api/endpoints/types/api-format'
 import { recoverKeyHealth } from '@/api/endpoints/health'
 import { parseApiError } from '@/utils/errorParser'
 import { useToast } from '@/composables/useToast'
+import { useClipboard } from '@/composables/useClipboard'
 import { useCountdownTimer, getProbeCountdown } from '@/composables/useCountdownTimer'
 import { MAX_MODEL_NAME_LENGTH, createLRURegexCache, getCompiledModelMappingRegex } from '@/features/models/utils/model-mapping-regex'
+import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 
 const props = defineProps<{
   globalModelId: string
@@ -629,6 +637,7 @@ const emit = defineEmits<{
 }>()
 
 const { success: showSuccess, error: showError } = useToast()
+const { copyToClipboard } = useClipboard()
 const { tick: countdownTick, start: startCountdownTimer } = useCountdownTimer()
 
 // 使用外部传入的数据或内部状态
@@ -1289,10 +1298,20 @@ function getKeyNameClass(key: RoutingKeyInfo): string {
   return ''
 }
 
+function getRoutingAccountDisplayName(key: RoutingKeyInfo): string {
+  return getAccountDisplayName(key, '未命名账号')
+}
+
+async function copyRoutingAccountDisplay(key: RoutingKeyInfo): Promise<void> {
+  const text = getAccountCopyText(key)
+  if (!text) return
+  await copyToClipboard(text)
+}
+
 // 获取 Key 提示信息
 function getKeyTooltip(key: RoutingKeyInfo): string {
   const parts: string[] = []
-  parts.push(`名称: ${key.name}`)
+  parts.push(`账号: ${getRoutingAccountDisplayName(key)}`)
   parts.push(`状态: ${getKeySchedulingLabel(key)}`)
   if (key.scheduling_reason_label) {
     parts.push(`原因: ${key.scheduling_reason_label}`)

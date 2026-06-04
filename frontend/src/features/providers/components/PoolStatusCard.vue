@@ -93,7 +93,14 @@
         <!-- Row 1: name + cooldown + actions -->
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-2 min-w-0">
-            <span class="text-sm font-medium truncate">{{ key.key_name || '未命名' }}</span>
+            <button
+              type="button"
+              class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
+              :title="`${getPoolStatusAccountDisplayName(key)}\n点击复制`"
+              @click.stop="copyPoolStatusAccountDisplay(key)"
+            >
+              {{ getPoolStatusAccountDisplayName(key) }}
+            </button>
             <Badge
               v-if="key.cooldown_reason"
               variant="destructive"
@@ -203,9 +210,11 @@ import { onMounted, ref } from 'vue'
 import { RefreshCw, RotateCcw } from 'lucide-vue-next'
 
 import { getPoolStatus, clearPoolCooldown, resetPoolCost } from '@/api/endpoints/pool'
-import type { PoolStatusResponse } from '@/api/endpoints/pool'
+import type { PoolKeyStatus, PoolStatusResponse } from '@/api/endpoints/pool'
 import { parseApiError } from '@/utils/errorParser'
 import { useToast } from '@/composables/useToast'
+import { useClipboard } from '@/composables/useClipboard'
+import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 
 import Card from '@/components/ui/card.vue'
 import Badge from '@/components/ui/badge.vue'
@@ -218,6 +227,7 @@ const props = defineProps<{
 }>()
 
 const { error: showError, success } = useToast()
+const { copyToClipboard } = useClipboard()
 
 const poolStatus = ref<PoolStatusResponse | null>(null)
 const initialLoading = ref(true)
@@ -278,6 +288,16 @@ const COOLDOWN_REASON_MAP: Record<string, string> = {
 
 function formatCooldownReason(reason: string): string {
   return COOLDOWN_REASON_MAP[reason] || reason
+}
+
+function getPoolStatusAccountDisplayName(key: PoolKeyStatus): string {
+  return getAccountDisplayName(key, '未命名账号')
+}
+
+async function copyPoolStatusAccountDisplay(key: PoolKeyStatus): Promise<void> {
+  const text = getAccountCopyText(key)
+  if (!text) return
+  await copyToClipboard(text)
 }
 
 function formatTTL(seconds: number): string {

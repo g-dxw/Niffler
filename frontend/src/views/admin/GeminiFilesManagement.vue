@@ -105,21 +105,38 @@
           选择要上传到的 Key（可多选）：
         </p>
         <div class="flex flex-wrap gap-2">
-          <button
+          <div
             v-for="key in capableKeys"
             :key="key.id"
+            role="button"
+            tabindex="0"
             class="px-3 py-1.5 text-xs rounded-lg border transition-colors"
             :class="selectedKeyIds.includes(key.id)
               ? 'border-primary bg-primary/10 text-primary'
               : 'border-border hover:border-primary/50'"
             @click="toggleKeySelection(key.id)"
+            @keydown.enter.prevent="toggleKeySelection(key.id)"
+            @keydown.space.prevent="toggleKeySelection(key.id)"
           >
-            <span class="font-medium">{{ key.name }}</span>
+            <span
+              class="min-w-0 font-medium"
+              :title="getGeminiAccountDisplayName(key)"
+            >
+              {{ getGeminiAccountDisplayName(key) }}
+            </span>
             <span
               v-if="key.provider_name"
               class="text-muted-foreground ml-1"
             >({{ key.provider_name }})</span>
-          </button>
+            <button
+              type="button"
+              class="ml-1 inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+              title="复制账号"
+              @click.stop="copyGeminiAccountDisplay(key)"
+            >
+              <Copy class="h-3 w-3" />
+            </button>
+          </div>
         </div>
       </div>
       <div
@@ -342,13 +359,16 @@
                   <User class="w-3 h-3" />
                   {{ mapping.username }}
                 </span>
-                <span
-                  v-if="mapping.key_name"
+                <button
+                  v-if="getGeminiMappingAccountDisplayName(mapping)"
+                  type="button"
                   class="flex items-center gap-1"
+                  :title="`${getGeminiMappingAccountDisplayName(mapping)}\n点击复制`"
+                  @click.stop="copyGeminiMappingAccountDisplay(mapping)"
                 >
                   <Key class="w-3 h-3" />
-                  {{ mapping.key_name }}
-                </span>
+                  {{ getGeminiMappingAccountDisplayName(mapping) }}
+                </button>
                 <span class="flex items-center gap-1">
                   <Clock class="w-3 h-3" />
                   {{ formatDate(mapping.created_at) }}
@@ -415,6 +435,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useToast } from '@/composables/useToast'
+import { useClipboard } from '@/composables/useClipboard'
 import Card from '@/components/ui/card.vue'
 import Badge from '@/components/ui/badge.vue'
 import Button from '@/components/ui/button.vue'
@@ -434,13 +455,16 @@ import {
   Image,
   FileText,
   Music,
+  Copy,
   Upload
 } from 'lucide-vue-next'
 import { geminiFilesApi, type FileMappingStatsResponse, type FileMappingResponse, type CapableKeyResponse } from '@/api/gemini-files'
 import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
+import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 
 const { toast } = useToast()
+const { copyToClipboard } = useClipboard()
 
 // 状态
 const loading = ref(false)
@@ -497,6 +521,35 @@ function toggleKeySelection(keyId: string) {
   } else {
     selectedKeyIds.value.splice(index, 1)
   }
+}
+
+function getGeminiAccountDisplayName(key: CapableKeyResponse): string {
+  return getAccountDisplayName(key, '未命名账号')
+}
+
+async function copyGeminiAccountDisplay(key: CapableKeyResponse): Promise<void> {
+  const text = getAccountCopyText(key)
+  if (!text) return
+  await copyToClipboard(text)
+}
+
+function getGeminiMappingAccountDisplayName(mapping: FileMappingResponse): string | null {
+  const displayName = getAccountDisplayName({
+    key_name: mapping.key_name,
+    oauth_email: mapping.oauth_email,
+    oauth_phone: mapping.oauth_phone,
+  }, '')
+  return displayName || null
+}
+
+async function copyGeminiMappingAccountDisplay(mapping: FileMappingResponse): Promise<void> {
+  const text = getAccountCopyText({
+    key_name: mapping.key_name,
+    oauth_email: mapping.oauth_email,
+    oauth_phone: mapping.oauth_phone,
+  })
+  if (!text) return
+  await copyToClipboard(text)
 }
 
 function toggleSelectAll() {

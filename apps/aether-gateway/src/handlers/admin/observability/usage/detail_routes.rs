@@ -1,5 +1,7 @@
-use super::analytics::admin_usage_api_key_names;
-use super::analytics::admin_usage_provider_key_names;
+use super::analytics::{
+    admin_usage_api_key_names, admin_usage_provider_key_account_labels,
+    admin_usage_provider_key_names,
+};
 use super::replay::{
     admin_usage_curl_headers, admin_usage_curl_url, admin_usage_headers_from_value,
     admin_usage_id_from_action_path, admin_usage_id_from_detail_path,
@@ -12,7 +14,8 @@ use crate::handlers::admin::shared::{attach_admin_audit_response, query_param_bo
 use crate::GatewayError;
 use aether_admin::observability::usage::{
     admin_usage_bad_request_response, admin_usage_data_unavailable_response,
-    admin_usage_provider_key_name, ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL,
+    admin_usage_provider_key_account_label, admin_usage_provider_key_name,
+    ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL,
 };
 use aether_data_contracts::repository::usage::UsageBodyField;
 use axum::{
@@ -162,16 +165,20 @@ pub(super) async fn maybe_build_local_admin_usage_detail_response(
             };
 
             let user_ids = item.user_id.clone().into_iter().collect::<Vec<_>>();
-            let (users_by_id, provider_key_names, api_key_names): (
+            let (users_by_id, provider_key_names, provider_key_account_labels, api_key_names): (
                 BTreeMap<String, aether_data::repository::users::StoredUserSummary>,
+                BTreeMap<String, String>,
                 BTreeMap<String, String>,
                 BTreeMap<String, String>,
             ) = try_join!(
                 state.resolve_auth_user_summaries_by_ids(&user_ids),
                 admin_usage_provider_key_names(state, std::slice::from_ref(&item)),
+                admin_usage_provider_key_account_labels(state, std::slice::from_ref(&item)),
                 admin_usage_api_key_names(state, std::slice::from_ref(&item)),
             )?;
             let provider_key_name = admin_usage_provider_key_name(&item, &provider_key_names);
+            let provider_key_account_label =
+                admin_usage_provider_key_account_label(&item, &provider_key_account_labels);
 
             let mut detail_item = item.clone();
             let request_body = if include_bodies {
@@ -214,6 +221,7 @@ pub(super) async fn maybe_build_local_admin_usage_detail_response(
                 state.has_auth_user_data_reader(),
                 state.has_auth_api_key_data_reader(),
                 provider_key_name.as_deref(),
+                provider_key_account_label.as_deref(),
                 include_bodies,
                 request_body,
                 &default_headers,

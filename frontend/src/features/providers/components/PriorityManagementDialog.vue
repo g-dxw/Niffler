@@ -272,10 +272,15 @@
                     <div class="flex-1 min-w-0">
                       <!-- 第一行：Key 名称 + Key 级别状态 -->
                       <div class="flex items-center gap-1.5">
-                        <span
-                          class="text-sm font-medium truncate"
+                        <button
+                          type="button"
+                          class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
                           :class="!(key.is_active && key.provider_active) ? 'text-muted-foreground' : ''"
-                        >{{ key.name }}</span>
+                          :title="`${getPriorityAccountDisplayName(key)}\n点击复制`"
+                          @click.stop="copyPriorityAccountDisplay(key)"
+                        >
+                          {{ getPriorityAccountDisplayName(key) }}
+                        </button>
                         <Badge
                           v-if="key.is_pool_aggregate"
                           variant="outline"
@@ -461,11 +466,13 @@ import { Dialog } from '@/components/ui'
 import Button from '@/components/ui/button.vue'
 import Badge from '@/components/ui/badge.vue'
 import { useToast } from '@/composables/useToast'
+import { useClipboard } from '@/composables/useClipboard'
 import { parseApiError } from '@/utils/errorParser'
 import { updateProvider, updateProviderKey } from '@/api/endpoints'
 import { getProvidersSummary, type ProviderWithEndpointsSummary } from '@/api/endpoints'
 import { adminApi } from '@/api/admin'
 import { batchQueryBalance, type ActionResultResponse, type BalanceInfo } from '@/api/providerOps'
+import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 import {
   sortApiFormats,
   groupApiFormats,
@@ -480,6 +487,8 @@ interface KeyWithMeta {
   id: string
   provider_id: string
   name: string
+  oauth_email?: string | null
+  oauth_phone?: string | null
   api_key_masked: string
   internal_priority: number
   global_priority_by_format: Record<string, number> | null
@@ -516,6 +525,7 @@ const emit = defineEmits<{
 }>()
 
 const { success, error: showError } = useToast()
+const { copyToClipboard } = useClipboard()
 
 // 内部状态
 const internalOpen = computed(() => props.modelValue)
@@ -946,6 +956,16 @@ function getKeySchedulingTitle(key: KeyWithMeta): string {
   return parts.join('\n')
 }
 
+function getPriorityAccountDisplayName(key: KeyWithMeta): string {
+  return getAccountDisplayName(key, '未命名账号')
+}
+
+async function copyPriorityAccountDisplay(key: KeyWithMeta): Promise<void> {
+  const text = getAccountCopyText(key)
+  if (!text) return
+  await copyToClipboard(text)
+}
+
 // 可用的 API 格式
 const availableFormats = computed(() => {
   return sortApiFormats(Object.keys(keysByFormat.value))
@@ -1147,6 +1167,8 @@ async function loadKeysByFormat() {
           id: String(key.id || ''),
           provider_id: providerId,
           name: String(key.name || 'Unnamed Key'),
+          oauth_email: typeof key.oauth_email === 'string' ? key.oauth_email : null,
+          oauth_phone: typeof key.oauth_phone === 'string' ? key.oauth_phone : null,
           api_key_masked: String(key.api_key_masked || '***'),
           internal_priority: toNumberOrNull(key.internal_priority) ?? 0,
           global_priority_by_format: Object.keys(priorityMap).length > 0 ? priorityMap : null,

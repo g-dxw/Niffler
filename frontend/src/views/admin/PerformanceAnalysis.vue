@@ -460,7 +460,16 @@
                         </Badge>
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        {{ item.key_name || item.key_id }} · {{ item.api_format || '未知格式' }}
+                        <button
+                          type="button"
+                          class="transition-colors hover:text-foreground"
+                          :title="`${getCircuitHistoryAccountDisplay(item)}\n点击复制`"
+                          @click="copyCircuitHistoryAccount(item)"
+                        >
+                          {{ getCircuitHistoryAccountDisplay(item) }}
+                          <Copy class="ml-1 inline h-3 w-3" />
+                        </button>
+                        · {{ item.api_format || '未知格式' }}
                       </div>
                     </div>
                     <span class="shrink-0 text-xs text-muted-foreground">
@@ -834,6 +843,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Copy,
   FilterX,
   GitBranch,
   Gauge,
@@ -869,6 +879,7 @@ import SelectContent from '@/components/ui/select-content.vue'
 import SelectItem from '@/components/ui/select-item.vue'
 import SelectTrigger from '@/components/ui/select-trigger.vue'
 import SelectValue from '@/components/ui/select-value.vue'
+import { useClipboard } from '@/composables/useClipboard'
 import { useToast } from '@/composables/useToast'
 import { getDateRangeFromPeriod } from '@/features/usage/composables'
 import type { DateRangeParams } from '@/features/usage/types'
@@ -889,6 +900,7 @@ type ProviderPerformanceParams = NonNullable<Parameters<typeof adminApi.getProvi
 
 const timeRange = ref<DateRangeParams>(getDateRangeFromPeriod('last7days'))
 const { error: showError } = useToast()
+const { copyToClipboard } = useClipboard()
 
 const percentiles = ref<PercentileItem[]>([])
 const percentileLoading = ref(false)
@@ -927,6 +939,14 @@ let hasPendingLoadAll = false
 let loadAllDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let providerPerformanceDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let liveRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+function getCircuitHistoryAccountDisplay(item: AdminMonitoringCircuitHistoryItem): string {
+  return item.key_account_label || item.key_name || item.key_id
+}
+
+async function copyCircuitHistoryAccount(item: AdminMonitoringCircuitHistoryItem): Promise<void> {
+  await copyToClipboard(getCircuitHistoryAccountDisplay(item))
+}
 
 function buildTimeRangeParams() {
   return {

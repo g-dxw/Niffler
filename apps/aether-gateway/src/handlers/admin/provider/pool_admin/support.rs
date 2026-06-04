@@ -117,7 +117,7 @@ pub(crate) fn parse_admin_pool_status_filter(query: Option<&str>) -> Result<Stri
         | "cooldown"
         | "temporary_unavailable"
         | "blocked" => Ok(value),
-        _ => Err("status must be one of: all, available, invalid, disabled, quota_exhausted, temporary_unavailable, blocked".to_string()),
+        _ => Err("status must be one of: all, active, available, invalid, disabled, quota_exhausted, temporary_unavailable, blocked".to_string()),
     }
 }
 

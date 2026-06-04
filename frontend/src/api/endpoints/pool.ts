@@ -21,6 +21,8 @@ export type PoolSchedulingState =
 export interface PoolKeyStatus {
   key_id: string
   key_name: string
+  oauth_email?: string | null
+  oauth_phone?: string | null
   is_active: boolean
   cooldown_reason: string | null
   cooldown_ttl_seconds: number | null
@@ -135,6 +137,8 @@ export interface PoolKeyDetail {
   oauth_invalid_at?: number | null  // 兼容字段；优先使用 status_snapshot.oauth
   oauth_invalid_reason?: string | null  // 兼容字段；优先使用 status_snapshot.oauth
   oauth_plan_type?: string | null
+  oauth_email?: string | null
+  oauth_phone?: string | null
   oauth_account_id?: string | null
   oauth_account_user_id?: string | null
   oauth_account_name?: string | null
@@ -298,7 +302,7 @@ export interface PoolKeysQuery {
   page?: number
   page_size?: number
   search?: string
-  status?: 'all' | 'active' | 'available' | 'invalid' | 'temporary_unavailable' | 'disabled' | 'cooldown' | 'inactive' | 'quota_exhausted' | 'blocked'
+  status?: 'all' | 'active' | 'available' | 'invalid' | 'temporary_unavailable' | 'disabled' | 'quota_exhausted' | 'blocked'
   plan_type?: string
   quick_selectors?: string[]
   search_scope?: 'name' | 'full'

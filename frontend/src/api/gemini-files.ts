@@ -9,6 +9,8 @@ export interface FileMappingResponse {
   file_name: string
   key_id: string
   key_name: string | null
+  oauth_email?: string | null
+  oauth_phone?: string | null
   user_id: string | null
   username: string | null
   display_name: string | null
@@ -43,6 +45,8 @@ export interface ListMappingsParams {
 export interface CapableKeyResponse {
   id: string
   name: string
+  oauth_email?: string | null
+  oauth_phone?: string | null
   provider_name: string | null
 }
 

@@ -1,6 +1,8 @@
 use super::super::stats::resolve_admin_usage_time_range;
-use super::analytics::admin_usage_api_key_names;
-use super::analytics::admin_usage_provider_key_names;
+use super::analytics::{
+    admin_usage_api_key_names, admin_usage_provider_key_account_labels,
+    admin_usage_provider_key_names,
+};
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::query_param_value;
 use crate::GatewayError;
@@ -8,10 +10,10 @@ use aether_admin::observability::usage::{
     admin_usage_bad_request_response, admin_usage_client_family,
     admin_usage_data_unavailable_response, admin_usage_has_fallback, admin_usage_is_failed,
     admin_usage_matches_search, admin_usage_matches_username, admin_usage_parse_ids,
-    admin_usage_parse_limit, admin_usage_parse_offset, admin_usage_provider_key_name,
-    admin_usage_record_json, build_admin_usage_active_requests_response,
-    build_admin_usage_records_response, build_admin_usage_summary_stats_response_from_summary,
-    ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL,
+    admin_usage_parse_limit, admin_usage_parse_offset, admin_usage_provider_key_account_label,
+    admin_usage_provider_key_name, admin_usage_record_json,
+    build_admin_usage_active_requests_response, build_admin_usage_records_response,
+    build_admin_usage_summary_stats_response_from_summary, ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL,
 };
 use aether_data::repository::users::StoredUserSummary;
 use aether_data_contracts::repository::{
@@ -285,6 +287,7 @@ fn build_admin_usage_records_response_with_attempt_flags(
     auth_user_reader_available: bool,
     auth_api_key_reader_available: bool,
     provider_key_names: &BTreeMap<String, String>,
+    provider_key_account_labels: &BTreeMap<String, String>,
     attempt_flags_by_usage_id: &BTreeMap<String, AdminUsageAttemptFlags>,
     request_candidate_reader_available: bool,
     total: usize,
@@ -295,6 +298,8 @@ fn build_admin_usage_records_response_with_attempt_flags(
         .iter()
         .map(|item| {
             let provider_key_name = admin_usage_provider_key_name(item, provider_key_names);
+            let provider_key_account_label =
+                admin_usage_provider_key_account_label(item, provider_key_account_labels);
             let mut record = admin_usage_record_json(
                 item,
                 users_by_id,
@@ -302,6 +307,7 @@ fn build_admin_usage_records_response_with_attempt_flags(
                 auth_user_reader_available,
                 auth_api_key_reader_available,
                 provider_key_name.as_deref(),
+                provider_key_account_label.as_deref(),
             );
             let flags = admin_usage_attempt_flags_for_item(
                 item,
@@ -558,6 +564,8 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
                         state.has_auth_api_key_data_reader(),
                         &BTreeMap::new(),
                         &BTreeMap::new(),
+                        &BTreeMap::new(),
+                        &BTreeMap::new(),
                     )));
                 };
                 state
@@ -581,6 +589,14 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
             };
             let api_key_names = admin_usage_api_key_names(state, &items).await?;
             let provider_key_names = admin_usage_provider_key_names(state, &items).await?;
+            let provider_key_account_labels =
+                admin_usage_provider_key_account_labels(state, &items).await?;
+            let attempt_flags_by_usage_id =
+                resolve_admin_usage_attempt_flags_by_usage_id(state, &items).await?;
+            let fallback_flags_by_usage_id = attempt_flags_by_usage_id
+                .iter()
+                .map(|(usage_id, flags)| (usage_id.clone(), flags.has_fallback))
+                .collect::<BTreeMap<_, _>>();
             let image_progress_by_request_id =
                 resolve_admin_usage_image_progress_by_request_id(state, &items).await?;
 
@@ -589,6 +605,8 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
                 &api_key_names,
                 state.has_auth_api_key_data_reader(),
                 &provider_key_names,
+                &provider_key_account_labels,
+                &fallback_flags_by_usage_id,
                 &image_progress_by_request_id,
             )));
         }
@@ -632,6 +650,7 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
                     &BTreeMap::new(),
                     state.has_auth_user_data_reader(),
                     state.has_auth_api_key_data_reader(),
+                    &BTreeMap::new(),
                     &BTreeMap::new(),
                     0,
                     limit,
@@ -756,6 +775,8 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
                 state.resolve_auth_user_summaries_by_ids(&user_ids).await?;
             let api_key_names = admin_usage_api_key_names(state, &usage).await?;
             let provider_key_names = admin_usage_provider_key_names(state, &usage).await?;
+            let provider_key_account_labels =
+                admin_usage_provider_key_account_labels(state, &usage).await?;
             let attempt_flags_by_usage_id =
                 resolve_admin_usage_attempt_flags_by_usage_id(state, &usage).await?;
 
@@ -766,6 +787,7 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
                 state.has_auth_user_data_reader(),
                 state.has_auth_api_key_data_reader(),
                 &provider_key_names,
+                &provider_key_account_labels,
                 &attempt_flags_by_usage_id,
                 state.has_request_candidate_data_reader(),
                 total,

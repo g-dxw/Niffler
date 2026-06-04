@@ -505,6 +505,7 @@ export const usageApi = {
       provider?: string | null
       api_key_name?: string | null
       provider_key_name?: string | null
+      provider_key_account_label?: string | null
       api_format?: string | null
       endpoint_api_format?: string | null
       is_stream?: boolean | null

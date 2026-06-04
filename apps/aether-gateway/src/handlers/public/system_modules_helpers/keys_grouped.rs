@@ -1,5 +1,5 @@
 use super::enabled_key_capability_short_names;
-use crate::handlers::shared::unix_secs_to_rfc3339;
+use crate::handlers::shared::{parse_catalog_auth_config_json, unix_secs_to_rfc3339};
 use crate::provider_key_auth::provider_key_effective_api_formats;
 use crate::AppState;
 use serde_json::json;
@@ -12,6 +12,24 @@ fn grouped_key_masked_label(auth_type: &str) -> &'static str {
         "oauth" => "[OAuth Token]",
         _ => "[API Key]",
     }
+}
+
+fn grouped_key_auth_config_string(
+    auth_config: Option<&serde_json::Map<String, serde_json::Value>>,
+    fields: &[&str],
+) -> serde_json::Value {
+    for field in fields {
+        let Some(value) = auth_config
+            .and_then(|config| config.get(*field))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        return json!(value);
+    }
+    serde_json::Value::Null
 }
 
 pub(crate) async fn build_admin_keys_grouped_by_format_payload(
@@ -123,6 +141,13 @@ pub(crate) async fn build_admin_keys_grouped_by_format_payload(
             .cloned()
             .unwrap_or_default();
         let capability_names = enabled_key_capability_short_names(key.capabilities.as_ref());
+        let auth_config = parse_catalog_auth_config_json(state, &key);
+        let oauth_email =
+            grouped_key_auth_config_string(auth_config.as_ref(), &["email", "oauth_email"]);
+        let oauth_phone = grouped_key_auth_config_string(
+            auth_config.as_ref(),
+            &["phone", "phone_number", "mobile", "mobile_phone"],
+        );
         let api_formats = provider_key_effective_api_formats(
             &key,
             provider_type,
@@ -148,6 +173,8 @@ pub(crate) async fn build_admin_keys_grouped_by_format_payload(
                 "id": key.id,
                 "provider_id": key.provider_id,
                 "name": key.name,
+                "oauth_email": oauth_email,
+                "oauth_phone": oauth_phone,
                 "auth_type": key.auth_type,
                 "api_key_masked": grouped_key_masked_label(&key.auth_type),
                 "internal_priority": key.internal_priority,

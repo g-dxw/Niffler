@@ -928,6 +928,16 @@ pub fn admin_usage_provider_key_name(
         .or_else(|| item.routing_key_name().map(ToOwned::to_owned))
 }
 
+pub fn admin_usage_provider_key_account_label(
+    item: &StoredRequestUsageAudit,
+    provider_key_account_labels: &BTreeMap<String, String>,
+) -> Option<String> {
+    item.provider_api_key_id
+        .as_ref()
+        .and_then(|key_id| provider_key_account_labels.get(key_id))
+        .cloned()
+}
+
 fn admin_usage_request_body_stream_flag(item: &StoredRequestUsageAudit) -> Option<bool> {
     item.request_body
         .as_ref()
@@ -1172,6 +1182,7 @@ fn admin_usage_active_request_json(
     item: &StoredRequestUsageAudit,
     api_key_name: Option<String>,
     provider_key_name: Option<String>,
+    provider_key_account_label: Option<String>,
     image_progress: Option<&Value>,
 ) -> Value {
     let cache_creation_input_tokens = admin_usage_cache_creation_tokens(item);
@@ -1211,6 +1222,7 @@ fn admin_usage_active_request_json(
         "provider": item.provider_name,
         "api_key_name": api_key_name,
         "provider_key_name": provider_key_name,
+        "provider_key_account_label": provider_key_account_label,
         "is_stream": item.is_stream,
         "upstream_is_stream": upstream_is_stream,
         "client_requested_stream": client_is_stream,
@@ -1245,6 +1257,7 @@ pub fn admin_usage_record_json(
     auth_user_reader_available: bool,
     auth_api_key_reader_available: bool,
     provider_key_name: Option<&str>,
+    provider_key_account_label: Option<&str>,
 ) -> Value {
     let rate_multiplier = item.settlement_rate_multiplier();
     let input_price_per_1m = item.settlement_input_price_per_1m();
@@ -1321,6 +1334,7 @@ pub fn admin_usage_record_json(
         "has_format_conversion": item.has_format_conversion,
         "api_key_name": api_key_name,
         "provider_key_name": provider_key_name,
+        "provider_key_account_label": provider_key_account_label,
         "model_version": Value::Null,
     });
     let object = payload
@@ -2272,20 +2286,29 @@ pub fn build_admin_usage_active_requests_response(
     api_key_names: &BTreeMap<String, String>,
     auth_api_key_reader_available: bool,
     provider_key_names: &BTreeMap<String, String>,
+    provider_key_account_labels: &BTreeMap<String, String>,
+    fallback_flags_by_usage_id: &BTreeMap<String, bool>,
     image_progress_by_request_id: &BTreeMap<String, Value>,
 ) -> Response<Body> {
     let payload: Vec<_> = items
         .iter()
         .map(|item| {
             let provider_key_name = admin_usage_provider_key_name(item, provider_key_names);
+            let provider_key_account_label =
+                admin_usage_provider_key_account_label(item, provider_key_account_labels);
             let api_key_name =
                 admin_usage_api_key_name(item, api_key_names, auth_api_key_reader_available);
-            admin_usage_active_request_json(
+            let mut value = admin_usage_active_request_json(
                 item,
                 api_key_name,
                 provider_key_name,
+                provider_key_account_label,
                 image_progress_by_request_id.get(&item.request_id),
-            )
+            );
+            if let Some(has_fallback) = fallback_flags_by_usage_id.get(&item.id) {
+                value["has_fallback"] = json!(has_fallback);
+            }
+            value
         })
         .collect();
 
@@ -2300,6 +2323,7 @@ pub fn build_admin_usage_records_response(
     auth_user_reader_available: bool,
     auth_api_key_reader_available: bool,
     provider_key_names: &BTreeMap<String, String>,
+    provider_key_account_labels: &BTreeMap<String, String>,
     total: usize,
     limit: usize,
     offset: usize,
@@ -2308,6 +2332,8 @@ pub fn build_admin_usage_records_response(
         .iter()
         .map(|item| {
             let provider_key_name = admin_usage_provider_key_name(item, provider_key_names);
+            let provider_key_account_label =
+                admin_usage_provider_key_account_label(item, provider_key_account_labels);
             admin_usage_record_json(
                 item,
                 users_by_id,
@@ -2315,6 +2341,7 @@ pub fn build_admin_usage_records_response(
                 auth_user_reader_available,
                 auth_api_key_reader_available,
                 provider_key_name.as_deref(),
+                provider_key_account_label.as_deref(),
             )
         })
         .collect();
@@ -2365,6 +2392,7 @@ pub fn build_admin_usage_detail_payload(
     auth_user_reader_available: bool,
     auth_api_key_reader_available: bool,
     provider_key_name: Option<&str>,
+    provider_key_account_label: Option<&str>,
     include_bodies: bool,
     request_body: Option<Value>,
     default_headers: &BTreeMap<String, String>,
@@ -2376,6 +2404,7 @@ pub fn build_admin_usage_detail_payload(
         auth_user_reader_available,
         auth_api_key_reader_available,
         provider_key_name,
+        provider_key_account_label,
     );
     let mut metadata = match item.request_metadata.clone() {
         Some(Value::Object(object)) => Value::Object(object),
@@ -2520,13 +2549,77 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        admin_usage_active_request_json, admin_usage_client_is_stream, admin_usage_has_body_value,
-        admin_usage_has_fallback, admin_usage_is_failed, admin_usage_is_success,
-        admin_usage_matches_search, admin_usage_matches_status, admin_usage_matches_username,
-        admin_usage_record_json, admin_usage_resolve_request_capture_body,
-        admin_usage_total_tokens, admin_usage_upstream_is_stream, build_admin_usage_detail_payload,
+        admin_usage_active_request_json as raw_admin_usage_active_request_json,
+        admin_usage_client_is_stream, admin_usage_has_body_value, admin_usage_has_fallback,
+        admin_usage_is_failed, admin_usage_is_success, admin_usage_matches_search,
+        admin_usage_matches_status, admin_usage_matches_username,
+        admin_usage_record_json as raw_admin_usage_record_json,
+        admin_usage_resolve_request_capture_body, admin_usage_total_tokens,
+        admin_usage_upstream_is_stream,
+        build_admin_usage_detail_payload as raw_build_admin_usage_detail_payload,
     };
     use aether_data_contracts::repository::usage::{StoredRequestUsageAudit, UsageBodyField};
+
+    fn admin_usage_active_request_json(
+        item: &StoredRequestUsageAudit,
+        api_key_name: Option<String>,
+        provider_key_name: Option<String>,
+        image_progress: Option<&serde_json::Value>,
+    ) -> serde_json::Value {
+        raw_admin_usage_active_request_json(
+            item,
+            api_key_name,
+            provider_key_name,
+            None,
+            image_progress,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn admin_usage_record_json(
+        item: &StoredRequestUsageAudit,
+        users_by_id: &BTreeMap<String, aether_data::repository::users::StoredUserSummary>,
+        api_key_names: &BTreeMap<String, String>,
+        auth_user_reader_available: bool,
+        auth_api_key_reader_available: bool,
+        provider_key_name: Option<&str>,
+    ) -> serde_json::Value {
+        raw_admin_usage_record_json(
+            item,
+            users_by_id,
+            api_key_names,
+            auth_user_reader_available,
+            auth_api_key_reader_available,
+            provider_key_name,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_admin_usage_detail_payload(
+        item: &StoredRequestUsageAudit,
+        users_by_id: &BTreeMap<String, aether_data::repository::users::StoredUserSummary>,
+        api_key_names: &BTreeMap<String, String>,
+        auth_user_reader_available: bool,
+        auth_api_key_reader_available: bool,
+        provider_key_name: Option<&str>,
+        include_bodies: bool,
+        request_body: Option<serde_json::Value>,
+        default_headers: &BTreeMap<String, String>,
+    ) -> serde_json::Value {
+        raw_build_admin_usage_detail_payload(
+            item,
+            users_by_id,
+            api_key_names,
+            auth_user_reader_available,
+            auth_api_key_reader_available,
+            provider_key_name,
+            None,
+            include_bodies,
+            request_body,
+            default_headers,
+        )
+    }
 
     fn sample_usage(
         status: &str,

@@ -3,6 +3,24 @@ use crate::handlers::admin::provider::pool::config::admin_provider_pool_config;
 use crate::handlers::admin::request::AdminAppState;
 use serde_json::json;
 
+fn pool_status_auth_config_string(
+    auth_config: Option<&serde_json::Map<String, serde_json::Value>>,
+    fields: &[&str],
+) -> serde_json::Value {
+    for field in fields {
+        let Some(value) = auth_config
+            .and_then(|config| config.get(*field))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        return json!(value);
+    }
+    serde_json::Value::Null
+}
+
 pub(crate) async fn build_admin_provider_pool_status_payload(
     state: &AdminAppState<'_>,
     provider_id: &str,
@@ -50,9 +68,15 @@ pub(crate) async fn build_admin_provider_pool_status_payload(
         .into_iter()
         .map(|key| {
             let cooldown_reason = runtime.cooldown_reason_by_key.get(&key.id).cloned();
+            let auth_config = state.parse_catalog_auth_config_json(&key);
             json!({
                 "key_id": key.id,
                 "key_name": key.name,
+                "oauth_email": pool_status_auth_config_string(auth_config.as_ref(), &["email", "oauth_email"]),
+                "oauth_phone": pool_status_auth_config_string(
+                    auth_config.as_ref(),
+                    &["phone", "phone_number", "mobile", "mobile_phone"],
+                ),
                 "is_active": key.is_active,
                 "cooldown_reason": cooldown_reason,
                 "cooldown_ttl_seconds": cooldown_reason

@@ -87,6 +87,7 @@ export interface AdminMonitoringCircuitHistoryItem {
   provider_id: string
   provider_name?: string | null
   key_name?: string | null
+  key_account_label?: string | null
   api_format?: string | null
   reason?: string | null
   recovery_seconds?: number | null

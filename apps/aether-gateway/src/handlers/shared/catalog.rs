@@ -1738,6 +1738,55 @@ fn derive_catalog_oauth_plan_type(
     })
 }
 
+fn catalog_auth_config_string(
+    auth_config: Option<&serde_json::Map<String, serde_json::Value>>,
+    fields: &[&str],
+) -> serde_json::Value {
+    for field in fields {
+        let Some(value) = auth_config
+            .and_then(|config| config.get(*field))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        return json!(value);
+    }
+    serde_json::Value::Null
+}
+
+pub(crate) fn provider_key_account_label_from_auth_config(
+    auth_config: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    for field in [
+        "email",
+        "oauth_email",
+        "phone",
+        "phone_number",
+        "mobile",
+        "oauth_phone",
+    ] {
+        let Some(value) = auth_config
+            .and_then(|config| config.get(field))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if !parts.iter().any(|part| part == value) {
+            parts.push(value.to_string());
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" / "))
+    }
+}
+
 pub(crate) fn build_admin_provider_key_response(
     state: &AppState,
     key: &StoredProviderCatalogKey,
@@ -1886,11 +1935,18 @@ pub(crate) fn build_admin_provider_key_response(
     payload.insert(
         "oauth_email".to_string(),
         if auth_semantics.can_show_oauth_metadata() {
-            auth_config
-                .as_ref()
-                .and_then(|config| config.get("email"))
-                .cloned()
-                .unwrap_or(serde_json::Value::Null)
+            catalog_auth_config_string(auth_config.as_ref(), &["email", "oauth_email"])
+        } else {
+            serde_json::Value::Null
+        },
+    );
+    payload.insert(
+        "oauth_phone".to_string(),
+        if auth_semantics.can_show_oauth_metadata() {
+            catalog_auth_config_string(
+                auth_config.as_ref(),
+                &["phone", "phone_number", "mobile", "mobile_phone"],
+            )
         } else {
             serde_json::Value::Null
         },

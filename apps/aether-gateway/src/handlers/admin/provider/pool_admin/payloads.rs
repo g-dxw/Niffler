@@ -1006,6 +1006,18 @@ pub(super) fn build_admin_pool_key_payload(
     } else {
         None
     };
+    let oauth_email = auth_semantics
+        .can_show_oauth_metadata()
+        .then(|| admin_pool_trimmed_string_from_map(auth_config.as_ref(), "email"))
+        .flatten();
+    let oauth_phone = auth_semantics
+        .can_show_oauth_metadata()
+        .then(|| {
+            ["phone", "phone_number", "mobile", "mobile_phone"]
+                .iter()
+                .find_map(|field| admin_pool_trimmed_string_from_map(auth_config.as_ref(), field))
+        })
+        .flatten();
     let oauth_account_id = auth_semantics
         .can_show_oauth_metadata()
         .then(|| admin_pool_trimmed_string_from_map(auth_config.as_ref(), "account_id"))
@@ -1108,6 +1120,8 @@ pub(super) fn build_admin_pool_key_payload(
             .flatten()),
     );
     payload.insert("oauth_plan_type".to_string(), json!(oauth_plan_type));
+    payload.insert("oauth_email".to_string(), json!(oauth_email));
+    payload.insert("oauth_phone".to_string(), json!(oauth_phone));
     payload.insert("oauth_account_id".to_string(), json!(oauth_account_id));
     payload.insert("oauth_account_name".to_string(), json!(oauth_account_name));
     payload.insert(

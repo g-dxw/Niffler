@@ -601,17 +601,19 @@
             <div class="flex min-w-0 items-center gap-1">
               <div class="flex min-w-0 flex-col text-xs gap-0.5">
                 <span class="truncate">{{ record.provider }}</span>
-                <span
-                  v-if="record.provider_key_name"
-                  class="text-muted-foreground truncate"
-                  :title="record.provider_key_name"
+                <button
+                  v-if="getProviderAccountDisplay(record)"
+                  type="button"
+                  class="truncate text-left text-muted-foreground transition-colors hover:text-foreground"
+                  :title="`${getProviderAccountDisplay(record)}\n点击复制`"
+                  @click.stop="copyProviderAccountDisplay(record)"
                 >
-                  {{ record.provider_key_name }}
+                  {{ getProviderAccountDisplay(record) }}
                   <span
                     v-if="record.rate_multiplier && record.rate_multiplier !== 1.0"
                     class="text-foreground/60"
                   >({{ record.rate_multiplier }}x)</span>
-                </span>
+                </button>
               </div>
               <!-- 故障转移图标（优先显示） -->
               <svg
@@ -923,6 +925,7 @@ import {
   resolveUsageStreamLabelSegments
 } from '../utils/status'
 import { useRowClick } from '@/composables/useRowClick'
+import { useClipboard } from '@/composables/useClipboard'
 import { formatApiFormat } from '@/api/endpoints/types/api-format'
 import type { DateRangeParams, UsageRecord } from '../types'
 import { MultiSelect, TimeRangePicker } from '@/components/common'
@@ -1047,6 +1050,18 @@ const emit = defineEmits<{
   'showDetail': [id: string]
   'prefetchDetail': [id: string]
 }>()
+
+const { copyToClipboard } = useClipboard()
+
+function getProviderAccountDisplay(record: UsageRecord): string {
+  return record.provider_key_account_label || record.provider_key_name || ''
+}
+
+async function copyProviderAccountDisplay(record: UsageRecord): Promise<void> {
+  const text = getProviderAccountDisplay(record)
+  if (!text) return
+  await copyToClipboard(text)
+}
 
 // 静态常量（放在 defineProps/defineEmits 之后）
 const AVAILABLE_API_FORMATS = [

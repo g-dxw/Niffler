@@ -98,6 +98,7 @@ export interface UsageRecord {
   provider?: string  // 仅管理员可见
   api_key_name?: string
   provider_key_name?: string | null
+  provider_key_account_label?: string | null
   rate_multiplier?: number | null
   sales_multiplier?: number | null
   model: string

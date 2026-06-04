@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY};
 use aether_data::repository::auth::{
     InMemoryAuthApiKeySnapshotRepository, StoredAuthApiKeySnapshot,
 };
@@ -347,7 +348,6 @@ async fn gateway_handles_admin_usage_stats_locally_with_trusted_admin_principal(
             DAY_2_UNIX_SECS,
         ),
     ]));
-
     let gateway = build_router_with_state(
         AppState::new()
             .expect("gateway should build")
@@ -927,8 +927,31 @@ async fn gateway_handles_admin_usage_active_locally_with_trusted_admin_principal
             DAY_1_UNIX_SECS,
         ),
     ]));
+    let request_candidate_repository = Arc::new(InMemoryRequestCandidateRepository::seed(vec![
+        sample_request_candidate(
+            "cand-active-success",
+            "req-pending",
+            1,
+            0,
+            RequestCandidateStatus::Success,
+        ),
+        sample_request_candidate(
+            "cand-active-unused",
+            "req-pending",
+            0,
+            0,
+            RequestCandidateStatus::Unused,
+        ),
+    ]));
     let mut provider_key = sample_key("provider-key-1", "provider-1", "openai:chat", "sk-upstream");
     provider_key.name = "upstream-primary".to_string();
+    provider_key.encrypted_auth_config = Some(
+        encrypt_python_fernet_plaintext(
+            DEVELOPMENT_ENCRYPTION_KEY,
+            r#"{"email":"usage-active@example.com","phone":"+15550001111"}"#,
+        )
+        .expect("auth config ciphertext should build"),
+    );
     let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
         vec![sample_provider("provider-1", "OpenAI", 10)],
         vec![sample_endpoint(
@@ -948,9 +971,12 @@ async fn gateway_handles_admin_usage_active_locally_with_trusted_admin_principal
         AppState::new()
             .expect("gateway should build")
             .with_data_state_for_tests(
-                GatewayDataState::with_usage_reader_for_tests(usage_repository)
-                    .with_provider_catalog_reader(provider_catalog_repository)
-                    .with_auth_api_key_reader(auth_repository),
+                GatewayDataState::with_request_candidate_and_usage_repository_for_tests(
+                    request_candidate_repository,
+                    usage_repository,
+                )
+                .with_provider_catalog_reader(provider_catalog_repository)
+                .with_auth_api_key_reader(auth_repository),
             ),
     );
     let (gateway_url, gateway_handle) = start_server(gateway).await;
@@ -970,10 +996,14 @@ async fn gateway_handles_admin_usage_active_locally_with_trusted_admin_principal
     assert_eq!(payload["requests"][0]["effective_input_tokens"], 5);
     assert_eq!(payload["requests"][0]["provider"], "OpenAI");
     assert_eq!(payload["requests"][0]["api_key_name"], "fresh-primary");
-    assert_eq!(payload["requests"][0]["has_fallback"], true);
+    assert_eq!(payload["requests"][0]["has_fallback"], false);
     assert_eq!(
         payload["requests"][0]["provider_key_name"],
         "upstream-primary"
+    );
+    assert_eq!(
+        payload["requests"][0]["provider_key_account_label"],
+        "usage-active@example.com / +15550001111"
     );
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
@@ -1153,6 +1183,13 @@ async fn gateway_handles_admin_usage_records_locally_with_trusted_admin_principa
     ]));
     let mut provider_key = sample_key("provider-key-1", "provider-1", "openai:chat", "sk-upstream");
     provider_key.name = "upstream-primary".to_string();
+    provider_key.encrypted_auth_config = Some(
+        encrypt_python_fernet_plaintext(
+            DEVELOPMENT_ENCRYPTION_KEY,
+            r#"{"email":"usage-record@example.com","phone":"+15550002222"}"#,
+        )
+        .expect("auth config ciphertext should build"),
+    );
     let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
         vec![sample_provider("provider-1", "OpenAI", 10)],
         vec![sample_endpoint(
@@ -1196,6 +1233,10 @@ async fn gateway_handles_admin_usage_records_locally_with_trusted_admin_principa
     assert_eq!(
         payload["records"][0]["provider_key_name"],
         "upstream-primary"
+    );
+    assert_eq!(
+        payload["records"][0]["provider_key_account_label"],
+        "usage-record@example.com / +15550002222"
     );
     assert_eq!(payload["records"][0]["effective_input_tokens"], 35);
     assert_eq!(payload["records"][0]["first_byte_time_ms"], 120);

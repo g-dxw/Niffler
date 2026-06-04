@@ -266,6 +266,7 @@ export interface TestAttemptDetail {
   endpoint_api_format: string
   endpoint_base_url: string
   key_name: string | null
+  key_account_label?: string | null
   key_id: string
   auth_type: string
   effective_model?: string | null
@@ -294,6 +295,7 @@ export interface TestCandidateSummary {
   stop_reason?: 'first_success' | 'exhausted' | 'all_skipped' | 'no_candidate' | 'pending' | string
   winning_candidate_index?: number | null
   winning_key_name?: string | null
+  winning_key_account_label?: string | null
   winning_key_id?: string | null
   winning_auth_type?: string | null
   winning_effective_model?: string | null

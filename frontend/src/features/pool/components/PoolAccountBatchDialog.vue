@@ -123,7 +123,14 @@
               />
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">
-                  <span class="text-xs font-medium truncate">{{ row.key.key_name || '未命名' }}</span>
+                  <button
+                    type="button"
+                    class="min-w-0 truncate text-left text-xs font-medium transition-colors hover:text-primary"
+                    :title="`${getBatchAccountDisplayName(row.key)}\n点击复制`"
+                    @click.stop.prevent="copyBatchAccountDisplay(row.key)"
+                  >
+                    {{ getBatchAccountDisplayName(row.key) }}
+                  </button>
                   <Badge
                     variant="outline"
                     class="text-[10px] px-1 py-0 h-4 shrink-0"
@@ -276,6 +283,7 @@ import ProxyNodeSelect from '@/features/providers/components/ProxyNodeSelect.vue
 import { RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
+import { useClipboard } from '@/composables/useClipboard'
 import { parseApiError } from '@/utils/errorParser'
 import {
   listPoolKeys,
@@ -302,6 +310,7 @@ import {
 } from '@/utils/providerKeyStatus'
 import { getQuotaDisplayText } from '@/utils/providerKeyQuota'
 import { runChunkedBatchAction } from '@/utils/batchAction'
+import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 
 type QuickSelectorValue =
   | 'banned'
@@ -382,6 +391,7 @@ const ACTION_OPTIONS: BatchActionOption[] = [
 
 const { success, warning, error: showError } = useToast()
 const { confirm } = useConfirm()
+const { copyToClipboard } = useClipboard()
 const proxyNodesStore = useProxyNodesStore()
 
 const loading = ref(false)
@@ -517,6 +527,16 @@ function getStatusBadgeTitle(key: PoolKeyDetail): string {
 
   const oauthTitle = getOAuthStatusTitle(key, 0)
   return oauthTitle || label
+}
+
+function getBatchAccountDisplayName(key: PoolKeyDetail): string {
+  return getAccountDisplayName(key, '未命名账号')
+}
+
+async function copyBatchAccountDisplay(key: PoolKeyDetail): Promise<void> {
+  const text = getAccountCopyText(key)
+  if (!text) return
+  await copyToClipboard(text)
 }
 
 function formatRelativeTime(value: string): string {

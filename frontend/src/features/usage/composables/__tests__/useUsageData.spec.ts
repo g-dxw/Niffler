@@ -219,4 +219,53 @@ describe('useUsageData', () => {
     expect(providerStats.value.map(item => item.provider)).toEqual(['OpenAI'])
     expect(availableProviders.value).toEqual(['OpenAI'])
   })
+
+  it('uses refreshed fallback flags even when preserving a newer local status', async () => {
+    const isAdminPage = ref(true)
+    const { loadRecords, currentRecords } = useUsageData({ isAdminPage })
+    const dateRange = { preset: 'last7days', tz_offset_minutes: 0 }
+
+    getAllUsageRecordsMock
+      .mockResolvedValueOnce({
+        records: [
+          buildUsageRecord({
+            status: 'completed',
+            has_fallback: true,
+            provider: 'https://c-api.cc/',
+            cost: 0,
+          }),
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      })
+      .mockResolvedValueOnce({
+        records: [
+          buildUsageRecord({
+            status: 'streaming',
+            has_fallback: false,
+            provider: 'unknown',
+            cost: 0.00326455,
+            charge_breakdown: {
+              official_cost: 0.065291,
+              package_debit: 0,
+              wallet_debit: 0.00326455,
+              wallet_multiplier: 0.05,
+              user_debit: 0.00326455,
+            },
+          }),
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      })
+
+    await loadRecords({ page: 1, pageSize: 20 }, undefined, dateRange)
+    await loadRecords({ page: 1, pageSize: 20 }, undefined, dateRange)
+
+    expect(currentRecords.value[0].status).toBe('completed')
+    expect(currentRecords.value[0].provider).toBe('https://c-api.cc/')
+    expect(currentRecords.value[0].has_fallback).toBe(false)
+    expect(currentRecords.value[0].charge_breakdown?.wallet_debit).toBe(0.00326455)
+  })
 })

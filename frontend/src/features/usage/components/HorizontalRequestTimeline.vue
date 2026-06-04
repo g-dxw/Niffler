@@ -224,13 +224,13 @@
                     </span>
                   </div>
                   <div
-                    v-if="currentAttempt.key_name || currentAttempt.key_id"
+                    v-if="currentAttemptAccountDisplay"
                     class="info-item"
                   >
                     <span class="info-label">{{ isOAuthType(currentAttempt.key_auth_type) ? '账号' : '密钥' }}</span>
                     <span class="info-value info-value-stacked">
                       <span class="key-name">
-                        {{ currentAttempt.key_name || '未知' }}
+                        {{ currentAttemptAccountDisplay }}
                         <span
                           v-if="currentAttempt.key_auth_type && currentAttempt.key_auth_type !== 'api_key'"
                           class="auth-type-tag"
@@ -1060,6 +1060,10 @@ const currentAttempt = computed(() => {
 
 const currentAttemptDisplayStatus = computed(() => getDisplayStatus(currentAttempt.value))
 
+const currentAttemptAccountDisplay = computed(() => (
+  currentAttempt.value ? formatCandidateAccountDisplay(currentAttempt.value) : ''
+))
+
 watch(currentAttempt, (attempt) => {
   emit('selectAttempt', attempt ?? null)
 }, { immediate: true })
@@ -1558,10 +1562,14 @@ const formatCandidateAttemptIndex = (attempt: CandidateRecord): string => {
     : `#${attempt.candidate_index}`
 }
 
+const formatCandidateAccountDisplay = (attempt: CandidateRecord): string => {
+  return attempt.key_account_label || attempt.key_name || attempt.key_preview || '未知 Key'
+}
+
 const formatAttemptDotTitle = (attempt: CandidateRecord): string => {
   const parts = [
     formatCandidateAttemptIndex(attempt),
-    attempt.key_name || attempt.key_account_label || attempt.key_preview || '未知 Key',
+    formatCandidateAccountDisplay(attempt),
     getStatusLabel(getDisplayStatus(attempt)),
   ]
   return parts.filter(Boolean).join(' · ')

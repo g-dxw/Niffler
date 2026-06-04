@@ -19,6 +19,8 @@ const props = withDefaults(defineProps<{
   filterActive?: boolean
   filterTitle?: string
   filterContentClass?: string
+  resizable?: boolean
+  resizeColumnKey?: string
 }>(), {
   columnKey: undefined,
   sortable: true,
@@ -30,10 +32,13 @@ const props = withDefaults(defineProps<{
   filterActive: false,
   filterTitle: '筛选',
   filterContentClass: undefined,
+  resizable: false,
+  resizeColumnKey: undefined,
 })
 
 const emit = defineEmits<{
   sort: [payload: { key: string, direction: SortDirection }]
+  resizeStart: [payload: { key: string, event: PointerEvent }]
 }>()
 
 defineOptions({
@@ -97,6 +102,14 @@ function handleSort() {
   emit('sort', {
     key: props.columnKey,
     direction: nextDirection.value,
+  })
+}
+
+function handleResizeStart(event: PointerEvent) {
+  if (!props.resizable || !props.resizeColumnKey) return
+  emit('resizeStart', {
+    key: props.resizeColumnKey,
+    event,
   })
 }
 
@@ -172,7 +185,7 @@ onBeforeUnmount(() => {
 <template>
   <TableHead
     v-bind="attrs"
-    :class="cn(props.class, (canSort || hasFilter) && 'select-none')"
+    :class="cn(props.class, (canSort || hasFilter) && 'select-none', props.resizable && 'relative pr-3')"
     :aria-sort="ariaSort"
   >
     <div
@@ -225,5 +238,14 @@ onBeforeUnmount(() => {
         <slot />
       </span>
     </div>
+    <button
+      v-if="resizable && resizeColumnKey"
+      type="button"
+      class="absolute inset-y-2 right-0 w-2 cursor-col-resize rounded-sm opacity-0 transition-opacity hover:bg-primary/40 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
+      title="拖动调整列宽"
+      aria-label="拖动调整列宽"
+      @pointerdown.stop.prevent="handleResizeStart"
+      @click.stop.prevent
+    />
   </TableHead>
 </template>

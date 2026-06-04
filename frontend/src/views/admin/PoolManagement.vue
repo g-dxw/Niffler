@@ -466,22 +466,34 @@
           <Table class="w-full table-fixed">
             <TableHeader>
               <TableRow class="border-b border-border/60 hover:bg-transparent">
-                <TableHead
+                <SortableTableHead
                   class="font-semibold whitespace-nowrap"
+                  :sortable="false"
+                  resize-column-key="name"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.name }"
+                  @resize-start="handlePoolColumnResizeStart"
                 >
-                  名称
-                </TableHead>
-                <TableHead
+                  账号
+                </SortableTableHead>
+                <SortableTableHead
                   v-if="showAccountQuotaColumn"
                   class="font-semibold whitespace-nowrap"
+                  :sortable="false"
+                  resize-column-key="quota"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.quota }"
+                  @resize-start="handlePoolColumnResizeStart"
                 >
                   配额
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   class="px-2 font-semibold text-center whitespace-nowrap"
+                  :sortable="false"
+                  resize-column-key="stats"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.stats }"
+                  @resize-start="handlePoolColumnResizeStart"
                 >
                   <div class="flex items-center justify-center gap-1.5">
                     <button
@@ -498,7 +510,7 @@
                     </button>
                     <span>统计</span>
                   </div>
-                </TableHead>
+                </SortableTableHead>
                 <SortableTableHead
                   class="font-semibold text-center whitespace-nowrap"
                   column-key="imported_at"
@@ -506,8 +518,11 @@
                   :direction="sortOrder"
                   default-direction="desc"
                   align="center"
+                  resize-column-key="imported"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.imported }"
                   title="按导入时间排序"
+                  @resize-start="handlePoolColumnResizeStart"
                   @sort="handleTableSort"
                 >
                   导入时间
@@ -519,8 +534,11 @@
                   :direction="sortOrder"
                   default-direction="desc"
                   align="center"
+                  resize-column-key="lastUsed"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.lastUsed }"
                   title="按最后使用时间排序"
+                  @resize-start="handlePoolColumnResizeStart"
                   @sort="handleTableSort"
                 >
                   最后使用
@@ -532,8 +550,11 @@
                   :direction="sortOrder"
                   default-direction="desc"
                   align="center"
+                  resize-column-key="score"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.score }"
                   title="按分数排序"
+                  @resize-start="handlePoolColumnResizeStart"
                   @sort="handleTableSort"
                 >
                   分数
@@ -546,7 +567,10 @@
                   :filter-active="statusFilter !== 'all'"
                   filter-title="筛选状态"
                   filter-content-class="w-44 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                  resize-column-key="status"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.status }"
+                  @resize-start="handlePoolColumnResizeStart"
                 >
                   状态
                   <template #filter="{ close }">
@@ -557,12 +581,16 @@
                     />
                   </template>
                 </SortableTableHead>
-                <TableHead
+                <SortableTableHead
                   class="px-2 font-semibold text-center whitespace-nowrap"
+                  :sortable="false"
+                  resize-column-key="actions"
+                  :resizable="true"
                   :style="{ width: desktopColumnWidths.actions }"
+                  @resize-start="handlePoolColumnResizeStart"
                 >
                   操作
-                </TableHead>
+                </SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -577,9 +605,14 @@
                 >
                   <div class="min-w-0">
                     <div class="flex items-center gap-1.5 min-w-0">
-                      <span class="text-sm truncate block">
-                        {{ key.key_name || '未命名' }}
-                      </span>
+                      <button
+                        type="button"
+                        class="min-w-0 truncate text-left text-sm transition-colors hover:text-primary"
+                        :title="`${getPoolAccountDisplayName(key)}\n点击复制`"
+                        @click.stop="copyPoolAccountDisplay(key)"
+                      >
+                        {{ getPoolAccountDisplayName(key) }}
+                      </button>
                     </div>
                     <div class="flex items-center flex-wrap gap-1 text-[11px] text-muted-foreground mt-0.5 min-w-0">
                       <input
@@ -1001,9 +1034,14 @@
             :class="keyUiStateMap[key.key_id]?.rowClass || ''"
           >
             <div class="space-y-3">
-              <div class="text-sm font-medium truncate">
-                {{ key.key_name || '未命名' }}
-              </div>
+              <button
+                type="button"
+                class="max-w-full truncate text-left text-sm font-medium transition-colors hover:text-primary"
+                :title="`${getPoolAccountDisplayName(key)}\n点击复制`"
+                @click.stop="copyPoolAccountDisplay(key)"
+              >
+                {{ getPoolAccountDisplayName(key) }}
+              </button>
 
               <div class="flex flex-wrap items-center gap-1.5">
                 <Badge
@@ -1588,6 +1626,7 @@ import { useCountdownTimer, getCodexResetCountdown } from '@/composables/useCoun
 import { useConfirm } from '@/composables/useConfirm'
 import { useRouteQuery } from '@/composables/useRouteQuery'
 import { parseApiError } from '@/utils/errorParser'
+import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 import {
   getPoolOverview,
   getPoolSchedulingPresets,
@@ -2137,29 +2176,75 @@ const showAccountQuotaColumn = computed(() => {
     || selectedProviderType.value === 'chatgpt_web'
 })
 
+type PoolDesktopColumnKey = 'name' | 'quota' | 'stats' | 'imported' | 'lastUsed' | 'score' | 'status' | 'actions'
+const poolColumnWidths = ref<Partial<Record<PoolDesktopColumnKey, number>>>({})
+let poolColumnResizeCleanup: (() => void) | null = null
+
+function poolColumnWidthStyle(column: PoolDesktopColumnKey, fallback: string): string {
+  const width = poolColumnWidths.value[column]
+  return typeof width === 'number' && Number.isFinite(width) ? `${width}px` : fallback
+}
+
 const desktopColumnWidths = computed(() => {
   if (showAccountQuotaColumn.value) {
     return {
-      name: '21%',
-      quota: '18%',
-      stats: '13%',
-      imported: '10%',
-      lastUsed: '8%',
-      score: '9%',
-      status: '7%',
-      actions: '14%',
+      name: poolColumnWidthStyle('name', '21%'),
+      quota: poolColumnWidthStyle('quota', '18%'),
+      stats: poolColumnWidthStyle('stats', '13%'),
+      imported: poolColumnWidthStyle('imported', '10%'),
+      lastUsed: poolColumnWidthStyle('lastUsed', '8%'),
+      score: poolColumnWidthStyle('score', '9%'),
+      status: poolColumnWidthStyle('status', '7%'),
+      actions: poolColumnWidthStyle('actions', '14%'),
     }
   }
   return {
-    name: '31%',
+    name: poolColumnWidthStyle('name', '31%'),
     quota: '0%',
-    stats: '15%',
-    imported: '11%',
-    lastUsed: '11%',
-    score: '9%',
-    status: '8%',
-    actions: '15%',
+    stats: poolColumnWidthStyle('stats', '15%'),
+    imported: poolColumnWidthStyle('imported', '11%'),
+    lastUsed: poolColumnWidthStyle('lastUsed', '11%'),
+    score: poolColumnWidthStyle('score', '9%'),
+    status: poolColumnWidthStyle('status', '8%'),
+    actions: poolColumnWidthStyle('actions', '15%'),
   }
+})
+
+function handlePoolColumnResizeStart(payload: { key: string, event: PointerEvent }) {
+  const column = payload.key as PoolDesktopColumnKey
+  const header = (payload.event.currentTarget as HTMLElement | null)?.closest('th') as HTMLElement | null
+  if (!header) return
+
+  poolColumnResizeCleanup?.()
+  const startX = payload.event.clientX
+  const startWidth = header.getBoundingClientRect().width
+
+  const handlePointerMove = (event: PointerEvent) => {
+    const nextWidth = Math.max(64, Math.round(startWidth + event.clientX - startX))
+    poolColumnWidths.value = {
+      ...poolColumnWidths.value,
+      [column]: nextWidth,
+    }
+  }
+  const stopResize = () => {
+    window.removeEventListener('pointermove', handlePointerMove)
+    window.removeEventListener('pointerup', stopResize)
+    window.removeEventListener('pointercancel', stopResize)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    poolColumnResizeCleanup = null
+  }
+
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('pointermove', handlePointerMove)
+  window.addEventListener('pointerup', stopResize)
+  window.addEventListener('pointercancel', stopResize)
+  poolColumnResizeCleanup = stopResize
+}
+
+onBeforeUnmount(() => {
+  poolColumnResizeCleanup?.()
 })
 
 async function selectProvider(
@@ -2860,7 +2945,8 @@ function toEndpointApiKey(key: PoolKeyDetail): EndpointAPIKey {
     model_include_patterns: key.model_include_patterns || [],
     model_exclude_patterns: key.model_exclude_patterns || [],
     oauth_expires_at: key.oauth_expires_at ?? null,
-    oauth_email: null,
+    oauth_email: key.oauth_email ?? null,
+    oauth_phone: key.oauth_phone ?? null,
     oauth_plan_type: key.oauth_plan_type ?? null,
     oauth_account_id: key.oauth_account_id ?? null,
     oauth_account_user_id: key.oauth_account_user_id ?? null,
@@ -3054,7 +3140,7 @@ async function clearKeyProxy(key: PoolKeyDetail) {
 async function handleDeleteKey(key: PoolKeyDetail) {
   const confirmed = await confirm({
     title: '删除账号',
-    message: `确定要删除账号 "${key.key_name || key.key_id.slice(0, 8)}" 吗？`,
+    message: `确定要删除账号 "${getPoolAccountDisplayName(key)}" 吗？`,
     confirmText: '删除',
     variant: 'destructive',
   })
@@ -3185,7 +3271,7 @@ async function handleResetCycleStats(key: PoolKeyDetail) {
 
   const confirmed = await confirm({
     title: '重置周期统计',
-    message: `确定要将账号 "${key.key_name || key.key_id.slice(0, 8)}" 的 5H / 周统计从当前时间重新开始计算吗？`,
+    message: `确定要将账号 "${getPoolAccountDisplayName(key)}" 的 5H / 周统计从当前时间重新开始计算吗？`,
     confirmText: '重置',
   })
   if (!confirmed) return
@@ -3326,6 +3412,16 @@ function getProviderProxyNodeName(): string | null {
   if (!nodeId) return null
   const node = proxyNodesStore.nodes.find(n => n.id === nodeId)
   return node ? node.name : `${nodeId.slice(0, 8)}...`
+}
+
+function getPoolAccountDisplayName(key: PoolKeyDetail): string {
+  return getAccountDisplayName(key, '未命名账号')
+}
+
+async function copyPoolAccountDisplay(key: PoolKeyDetail): Promise<void> {
+  const text = getAccountCopyText(key)
+  if (!text) return
+  await copyToClipboard(text)
 }
 
 function getProviderProxyButtonTitle(): string {

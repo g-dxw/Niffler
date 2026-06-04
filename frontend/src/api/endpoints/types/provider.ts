@@ -313,6 +313,7 @@ export interface EndpointAPIKey {
   // OAuth 相关
   oauth_expires_at?: number | null  // OAuth Token 过期时间（Unix 时间戳）
   oauth_email?: string | null  // OAuth 授权的邮箱
+  oauth_phone?: string | null  // OAuth 账号手机号
   oauth_plan_type?: string | null  // Codex 订阅类型: plus/free/team/enterprise
   oauth_account_id?: string | null  // Codex ChatGPT 账号 ID
   oauth_account_user_id?: string | null  // Codex ChatGPT account-user 联合 ID

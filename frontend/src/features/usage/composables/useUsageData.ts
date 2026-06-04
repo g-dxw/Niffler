@@ -500,10 +500,11 @@ export function useUsageData(options: UseUsageDataOptions) {
             existing.cache_creation_ephemeral_1h_input_tokens
             ?? record.cache_creation_ephemeral_1h_input_tokens,
           cache_read_input_tokens: existing.cache_read_input_tokens ?? record.cache_read_input_tokens,
-          official_cost: existing.official_cost ?? record.official_cost,
-          cost: existing.cost || record.cost,
-          sales_multiplier: existing.sales_multiplier ?? record.sales_multiplier,
-          actual_cost: existing.actual_cost ?? record.actual_cost,
+          official_cost: record.official_cost ?? existing.official_cost,
+          cost: Number.isFinite(record.cost) ? record.cost : existing.cost,
+          sales_multiplier: record.sales_multiplier ?? existing.sales_multiplier,
+          actual_cost: record.actual_cost ?? existing.actual_cost,
+          charge_breakdown: record.charge_breakdown ?? existing.charge_breakdown,
           response_time_ms: existing.response_time_ms ?? record.response_time_ms,
           first_byte_time_ms: existing.first_byte_time_ms ?? record.first_byte_time_ms,
           is_stream: upstreamIsStream,
@@ -513,10 +514,13 @@ export function useUsageData(options: UseUsageDataOptions) {
           api_format: existing.api_format || record.api_format,
           endpoint_api_format: existing.endpoint_api_format || record.endpoint_api_format,
           has_format_conversion: existing.has_format_conversion ?? record.has_format_conversion,
-          has_fallback: existing.has_fallback === true || record.has_fallback === true,
+          has_fallback: typeof record.has_fallback === 'boolean'
+            ? record.has_fallback
+            : existing.has_fallback,
           api_key_name: existing.api_key_name || record.api_key_name,
           provider_key_name: existing.provider_key_name || record.provider_key_name,
-          rate_multiplier: existing.rate_multiplier ?? record.rate_multiplier,
+          provider_key_account_label: existing.provider_key_account_label || record.provider_key_account_label,
+          rate_multiplier: record.rate_multiplier ?? existing.rate_multiplier,
           target_model: existing.target_model || record.target_model
         }
       }
