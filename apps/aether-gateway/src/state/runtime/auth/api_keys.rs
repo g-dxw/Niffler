@@ -103,6 +103,21 @@ impl AppState {
         Ok(names)
     }
 
+    pub(crate) async fn summarize_auth_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<aether_data::repository::auth::AuthApiKeyGroupReferenceSummary, GatewayError> {
+        if !self.has_auth_api_key_data_reader() {
+            return Ok(aether_data::repository::auth::AuthApiKeyGroupReferenceSummary::default());
+        }
+
+        self.data
+            .summarize_auth_api_key_group_references(group_id, limit)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn touch_auth_api_key_last_used_best_effort(&self, api_key_id: &str) {
         let api_key_id = api_key_id.trim();
         if api_key_id.is_empty() || !self.data.has_auth_api_key_writer() {

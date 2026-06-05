@@ -603,6 +603,115 @@ fn quota_windows_all_exhausted(windows: &[Value]) -> bool {
     total > 0 && exhausted == total
 }
 
+fn provider_key_status_snapshot_now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn normalize_elapsed_codex_quota_windows_at(quota: &mut Value, now_unix_secs: u64) {
+    let Some(windows) = quota.get_mut("windows").and_then(Value::as_array_mut) else {
+        return;
+    };
+
+    for window in windows.iter_mut().filter_map(Value::as_object_mut) {
+        let Some(reset_at) = window
+            .get("reset_at")
+            .and_then(admin_provider_quota_pure::coerce_json_u64)
+        else {
+            continue;
+        };
+        if reset_at > now_unix_secs {
+            continue;
+        }
+
+        window.insert("used_ratio".to_string(), json!(0.0));
+        window.insert("remaining_ratio".to_string(), json!(1.0));
+        window.insert("is_exhausted".to_string(), json!(false));
+        window.insert("reset_seconds".to_string(), json!(0u64));
+        window.insert(
+            "usage".to_string(),
+            json!({
+                "request_count": 0,
+                "total_tokens": 0,
+                "total_cost_usd": "0.00000000",
+            }),
+        );
+    }
+}
+
+fn codex_quota_window_is_primary(window: &Map<String, Value>) -> bool {
+    window
+        .get("code")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|code| code.eq_ignore_ascii_case("weekly") || code.eq_ignore_ascii_case("5h"))
+}
+
+fn refresh_codex_quota_summary_from_windows(quota: &mut Value) {
+    let Some(quota_object) = quota.as_object_mut() else {
+        return;
+    };
+    let Some(windows) = quota_object.get("windows").and_then(Value::as_array) else {
+        return;
+    };
+
+    let primary_windows = windows
+        .iter()
+        .filter_map(Value::as_object)
+        .filter(|window| codex_quota_window_is_primary(window))
+        .collect::<Vec<_>>();
+    let usage_ratio = primary_windows
+        .iter()
+        .filter_map(|window| window.get("used_ratio"))
+        .filter_map(Value::as_f64)
+        .max_by(f64::total_cmp);
+    let credits = quota_object.get("credits").and_then(Value::as_object);
+    let credits_has_credits = credits
+        .and_then(|credits| credits.get("has_credits"))
+        .and_then(admin_provider_quota_pure::coerce_json_bool);
+    let credits_unlimited = credits
+        .and_then(|credits| credits.get("unlimited"))
+        .and_then(admin_provider_quota_pure::coerce_json_bool);
+    let exhausted_by_credits = primary_windows.is_empty()
+        && credits_unlimited != Some(true)
+        && credits_has_credits == Some(false);
+    let exhausted_by_window = usage_ratio.is_some_and(|value| value >= 1.0 - 1e-6);
+    let exhausted = exhausted_by_credits || exhausted_by_window;
+
+    quota_object.insert("usage_ratio".to_string(), json!(usage_ratio));
+    quota_object.insert("exhausted".to_string(), json!(exhausted));
+    quota_object.insert(
+        "code".to_string(),
+        json!(if exhausted { "exhausted" } else { "ok" }),
+    );
+    quota_object.insert(
+        "label".to_string(),
+        if exhausted {
+            json!("额度耗尽")
+        } else {
+            Value::Null
+        },
+    );
+    quota_object.insert(
+        "reason".to_string(),
+        if exhausted_by_credits {
+            json!("无可用积分")
+        } else if exhausted_by_window {
+            json!("额度窗口已耗尽")
+        } else {
+            Value::Null
+        },
+    );
+}
+
+fn normalize_codex_quota_windows_for_display_at(quota: &mut Value, now_unix_secs: u64) {
+    normalize_elapsed_codex_quota_windows_at(quota, now_unix_secs);
+    refresh_codex_quota_summary_from_windows(quota);
+}
+
 fn preserve_quota_window_usage_state(current_status_snapshot: Option<&Value>, quota: &mut Value) {
     let Some(current_windows) = current_status_snapshot
         .and_then(Value::as_object)
@@ -1423,6 +1532,10 @@ pub(crate) fn sync_provider_key_quota_status_snapshot(
     if normalized_provider_type == "codex" {
         preserve_missing_codex_quota_windows(status_snapshot, &mut quota);
         preserve_quota_window_usage_state(status_snapshot, &mut quota);
+        normalize_codex_quota_windows_for_display_at(
+            &mut quota,
+            provider_key_status_snapshot_now_unix_secs(),
+        );
     }
 
     let default_snapshot = default_provider_key_status_snapshot();
@@ -1490,7 +1603,7 @@ pub(crate) fn provider_key_status_snapshot_payload(
         .and_then(|snapshot| snapshot.get("quota"))
         .and_then(Value::as_object);
 
-    let payload = if quota_snapshot_has_materialized_data(quota_snapshot, provider_type) {
+    let mut payload = if quota_snapshot_has_materialized_data(quota_snapshot, provider_type) {
         status_snapshot
             .cloned()
             .unwrap_or_else(default_provider_key_status_snapshot)
@@ -1504,6 +1617,17 @@ pub(crate) fn provider_key_status_snapshot_payload(
         .or_else(|| status_snapshot.cloned())
         .unwrap_or_else(default_provider_key_status_snapshot)
     };
+    if provider_type.trim().eq_ignore_ascii_case("codex") {
+        if let Some(quota) = payload
+            .as_object_mut()
+            .and_then(|snapshot| snapshot.get_mut("quota"))
+        {
+            normalize_codex_quota_windows_for_display_at(
+                quota,
+                provider_key_status_snapshot_now_unix_secs(),
+            );
+        }
+    }
 
     let mut snapshot = provider_key_status_snapshot_object(Some(&payload))
         .or_else(|| default_provider_key_status_snapshot().as_object().cloned())
@@ -2563,6 +2687,78 @@ mod tests {
                 .and_then(Value::as_object)
                 .and_then(|window| window.get("used_ratio")),
             Some(&json!(0.25))
+        );
+    }
+
+    #[test]
+    fn provider_key_status_snapshot_payload_normalizes_elapsed_codex_window_for_display() {
+        let mut key = sample_catalog_key();
+        key.status_snapshot = Some(json!({
+            "quota": {
+                "version": 2,
+                "provider_type": "codex",
+                "code": "exhausted",
+                "exhausted": true,
+                "usage_ratio": 1.0,
+                "updated_at": 100u64,
+                "windows": [
+                    {
+                        "code": "5h",
+                        "label": "5H",
+                        "used_ratio": 1.0,
+                        "remaining_ratio": 0.0,
+                        "is_exhausted": true,
+                        "reset_at": 1u64,
+                        "reset_seconds": 3600u64,
+                        "window_minutes": 300u64,
+                        "usage": {
+                            "request_count": 12,
+                            "total_tokens": 3456,
+                            "total_cost_usd": "7.89000000"
+                        }
+                    }
+                ]
+            }
+        }));
+
+        let payload = provider_key_status_snapshot_payload(&key, "codex");
+        let quota = payload
+            .get("quota")
+            .and_then(Value::as_object)
+            .expect("quota snapshot should exist");
+        assert_eq!(quota.get("code"), Some(&json!("ok")));
+        assert_eq!(quota.get("exhausted"), Some(&json!(false)));
+        assert_eq!(quota.get("usage_ratio"), Some(&json!(0.0)));
+
+        let five_h = payload["quota"]["windows"]
+            .as_array()
+            .expect("quota windows should exist")
+            .iter()
+            .filter_map(Value::as_object)
+            .find(|window| window.get("code") == Some(&json!("5h")))
+            .expect("5h window should exist");
+
+        assert_eq!(five_h.get("used_ratio"), Some(&json!(0.0)));
+        assert_eq!(five_h.get("remaining_ratio"), Some(&json!(1.0)));
+        assert_eq!(five_h.get("is_exhausted"), Some(&json!(false)));
+        assert_eq!(five_h.get("reset_seconds"), Some(&json!(0u64)));
+        assert_eq!(
+            five_h
+                .get("usage")
+                .and_then(|usage| usage.get("request_count")),
+            Some(&json!(0))
+        );
+        assert_eq!(
+            five_h
+                .get("usage")
+                .and_then(|usage| usage.get("total_tokens")),
+            Some(&json!(0))
+        );
+        assert_eq!(
+            five_h
+                .get("usage")
+                .and_then(|usage| usage.get("total_cost_usd")),
+            Some(&json!("0.00000000"))
         );
     }
 

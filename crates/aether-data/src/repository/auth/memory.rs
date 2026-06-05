@@ -5,10 +5,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 
 use super::types::{
-    AuthApiKeyExportSummary, AuthApiKeyLookupKey, AuthApiKeyReadRepository,
-    AuthApiKeyWriteRepository, CreateStandaloneApiKeyRecord, CreateUserApiKeyRecord,
-    StandaloneApiKeyExportListQuery, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
-    UpdateStandaloneApiKeyBasicRecord, UpdateUserApiKeyBasicRecord,
+    AuthApiKeyExportSummary, AuthApiKeyGroupReference, AuthApiKeyGroupReferenceSummary,
+    AuthApiKeyLookupKey, AuthApiKeyReadRepository, AuthApiKeyWriteRepository,
+    CreateStandaloneApiKeyRecord, CreateUserApiKeyRecord, StandaloneApiKeyExportListQuery,
+    StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot, UpdateStandaloneApiKeyBasicRecord,
+    UpdateUserApiKeyBasicRecord,
 };
 use crate::repository::usage::{ApiKeyUsageContribution, ApiKeyUsageDelta};
 use crate::DataLayerError;
@@ -290,6 +291,44 @@ impl AuthApiKeyReadRepository for InMemoryAuthApiKeySnapshotRepository {
             })
             .cloned()
             .collect())
+    }
+
+    async fn summarize_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<AuthApiKeyGroupReferenceSummary, DataLayerError> {
+        let index = self
+            .index
+            .read()
+            .expect("auth api key snapshot repository lock");
+        let mut items = index
+            .export_by_api_key_id
+            .values()
+            .filter(|record| !record.is_standalone && record.group_id.as_deref() == Some(group_id))
+            .map(|record| {
+                let snapshot = index.by_api_key_id.get(&record.api_key_id);
+                AuthApiKeyGroupReference {
+                    user_id: record.user_id.clone(),
+                    username: snapshot
+                        .map(|snapshot| snapshot.username.clone())
+                        .unwrap_or_else(|| record.user_id.clone()),
+                    email: snapshot.and_then(|snapshot| snapshot.email.clone()),
+                    api_key_id: record.api_key_id.clone(),
+                    api_key_name: record.name.clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|left, right| {
+            left.username
+                .cmp(&right.username)
+                .then_with(|| left.user_id.cmp(&right.user_id))
+                .then_with(|| left.api_key_name.cmp(&right.api_key_name))
+                .then_with(|| left.api_key_id.cmp(&right.api_key_id))
+        });
+        let total = u64::try_from(items.len()).unwrap_or(u64::MAX);
+        items.truncate(limit);
+        Ok(AuthApiKeyGroupReferenceSummary { total, items })
     }
 
     async fn list_export_standalone_api_keys_page(

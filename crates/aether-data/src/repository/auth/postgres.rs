@@ -3,10 +3,11 @@ use futures_util::{stream::TryStream, TryStreamExt};
 use sqlx::{postgres::PgRow, PgPool, Row};
 
 use super::types::{
-    AuthApiKeyExportSummary, AuthApiKeyLookupKey, AuthApiKeyReadRepository,
-    AuthApiKeyWriteRepository, CreateStandaloneApiKeyRecord, CreateUserApiKeyRecord,
-    StandaloneApiKeyExportListQuery, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
-    UpdateStandaloneApiKeyBasicRecord, UpdateUserApiKeyBasicRecord,
+    AuthApiKeyExportSummary, AuthApiKeyGroupReference, AuthApiKeyGroupReferenceSummary,
+    AuthApiKeyLookupKey, AuthApiKeyReadRepository, AuthApiKeyWriteRepository,
+    CreateStandaloneApiKeyRecord, CreateUserApiKeyRecord, StandaloneApiKeyExportListQuery,
+    StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot, UpdateStandaloneApiKeyBasicRecord,
+    UpdateUserApiKeyBasicRecord,
 };
 use crate::{
     error::{postgres_error, SqlxResultExt},
@@ -252,6 +253,28 @@ FROM api_keys
 LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
 WHERE LOWER(COALESCE(api_keys.name, '')) LIKE $1
 ORDER BY api_keys.id ASC
+"#;
+
+const COUNT_API_KEY_GROUP_REFERENCES_SQL: &str = r#"
+SELECT COUNT(*)::BIGINT AS total
+FROM api_keys
+WHERE group_id = $1
+  AND is_standalone = FALSE
+"#;
+
+const LIST_API_KEY_GROUP_REFERENCES_SQL: &str = r#"
+SELECT
+  users.id AS user_id,
+  users.username,
+  users.email,
+  api_keys.id AS api_key_id,
+  api_keys.name AS api_key_name
+FROM api_keys
+JOIN users ON users.id = api_keys.user_id
+WHERE api_keys.group_id = $1
+  AND api_keys.is_standalone = FALSE
+ORDER BY users.username ASC, users.id ASC, api_keys.name ASC NULLS LAST, api_keys.id ASC
+LIMIT $2
 "#;
 
 const LIST_EXPORT_STANDALONE_SQL: &str = r#"
@@ -982,6 +1005,32 @@ impl SqlxAuthApiKeySnapshotReadRepository {
         })
     }
 
+    pub async fn summarize_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<AuthApiKeyGroupReferenceSummary, DataLayerError> {
+        let limit = i64::try_from(limit)
+            .map_err(|_| DataLayerError::InvalidInput("limit is too large".to_string()))?;
+        let count_row = sqlx::query(COUNT_API_KEY_GROUP_REFERENCES_SQL)
+            .bind(group_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_postgres_err()?;
+        let total = row_get::<i64>(&count_row, "total")?.max(0) as u64;
+        let rows = sqlx::query(LIST_API_KEY_GROUP_REFERENCES_SQL)
+            .bind(group_id)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .map_postgres_err()?;
+        let items = rows
+            .iter()
+            .map(map_api_key_group_reference_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(AuthApiKeyGroupReferenceSummary { total, items })
+    }
+
     pub async fn summarize_export_non_standalone_api_keys(
         &self,
         now_unix_secs: u64,
@@ -1101,6 +1150,14 @@ impl AuthApiKeyReadRepository for SqlxAuthApiKeySnapshotReadRepository {
         name_search: &str,
     ) -> Result<Vec<StoredAuthApiKeyExportRecord>, DataLayerError> {
         Self::list_export_api_keys_by_name_search(self, name_search).await
+    }
+
+    async fn summarize_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<AuthApiKeyGroupReferenceSummary, DataLayerError> {
+        Self::summarize_api_key_group_references(self, group_id, limit).await
     }
 
     async fn list_export_standalone_api_keys_page(
@@ -1545,6 +1602,18 @@ where
         Err(sqlx::Error::ColumnNotFound(_)) => Ok(None),
         Err(err) => Err(postgres_error(err)),
     }
+}
+
+fn map_api_key_group_reference_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AuthApiKeyGroupReference, DataLayerError> {
+    Ok(AuthApiKeyGroupReference {
+        user_id: row_get(row, "user_id")?,
+        username: row_get(row, "username")?,
+        email: row_get(row, "email")?,
+        api_key_id: row_get(row, "api_key_id")?,
+        api_key_name: row_get(row, "api_key_name")?,
+    })
 }
 
 fn map_auth_api_key_snapshot_row(

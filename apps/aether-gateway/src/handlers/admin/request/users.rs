@@ -102,6 +102,16 @@ impl<'a> AdminAppState<'a> {
         self.app.delete_user_group(group_id).await
     }
 
+    pub(crate) async fn summarize_auth_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<aether_data::repository::auth::AuthApiKeyGroupReferenceSummary, GatewayError> {
+        self.app
+            .summarize_auth_api_key_group_references(group_id, limit)
+            .await
+    }
+
     pub(crate) async fn list_user_group_members(
         &self,
         group_id: &str,

@@ -20,8 +20,8 @@ use aether_data::repository::audit::{
     StoredUserAuditLogPage,
 };
 use aether_data::repository::auth::{
-    AuthApiKeyLookupKey, AuthApiKeyReadRepository, AuthApiKeyWriteRepository,
-    StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
+    AuthApiKeyGroupReferenceSummary, AuthApiKeyLookupKey, AuthApiKeyReadRepository,
+    AuthApiKeyWriteRepository, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
 };
 use aether_data::repository::auth_modules::{
     AuthModuleReadRepository, AuthModuleWriteRepository, StoredLdapModuleConfig,

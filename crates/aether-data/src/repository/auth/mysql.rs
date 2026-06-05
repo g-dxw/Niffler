@@ -2,10 +2,11 @@ use async_trait::async_trait;
 use sqlx::{mysql::MySqlRow, MySql, QueryBuilder, Row};
 
 use super::types::{
-    AuthApiKeyExportSummary, AuthApiKeyLookupKey, AuthApiKeyReadRepository,
-    AuthApiKeyWriteRepository, CreateStandaloneApiKeyRecord, CreateUserApiKeyRecord,
-    StandaloneApiKeyExportListQuery, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
-    UpdateStandaloneApiKeyBasicRecord, UpdateUserApiKeyBasicRecord,
+    AuthApiKeyExportSummary, AuthApiKeyGroupReference, AuthApiKeyGroupReferenceSummary,
+    AuthApiKeyLookupKey, AuthApiKeyReadRepository, AuthApiKeyWriteRepository,
+    CreateStandaloneApiKeyRecord, CreateUserApiKeyRecord, StandaloneApiKeyExportListQuery,
+    StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot, UpdateStandaloneApiKeyBasicRecord,
+    UpdateUserApiKeyBasicRecord,
 };
 use crate::driver::mysql::MysqlPool;
 use crate::error::SqlResultExt;
@@ -287,6 +288,57 @@ impl AuthApiKeyReadRepository for MysqlAuthApiKeyReadRepository {
             .push_bind(format!("%{}%", name_search.to_ascii_lowercase()))
             .push(" ORDER BY api_keys.id ASC");
         self.fetch_export_rows(builder).await
+    }
+
+    async fn summarize_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<AuthApiKeyGroupReferenceSummary, DataLayerError> {
+        let limit = i64::try_from(limit).map_err(|_| {
+            DataLayerError::InvalidInput(format!("invalid api key group reference limit: {limit}"))
+        })?;
+        let mut count_builder =
+            QueryBuilder::<MySql>::new("SELECT COUNT(*) AS total FROM api_keys WHERE group_id = ");
+        count_builder
+            .push_bind(group_id)
+            .push(" AND is_standalone = 0");
+        let count_row = count_builder
+            .build()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let total = count_row.try_get::<i64, _>("total").map_sql_err()?.max(0) as u64;
+
+        let mut list_builder = QueryBuilder::<MySql>::new(
+            r#"
+SELECT
+  users.id AS user_id,
+  users.username,
+  users.email,
+  api_keys.id AS api_key_id,
+  api_keys.name AS api_key_name
+FROM api_keys
+JOIN users ON users.id = api_keys.user_id
+WHERE api_keys.group_id =
+"#,
+        );
+        list_builder
+            .push_bind(group_id)
+            .push(" AND api_keys.is_standalone = 0")
+            .push(" ORDER BY users.username ASC, users.id ASC, api_keys.name ASC, api_keys.id ASC")
+            .push(" LIMIT ")
+            .push_bind(limit);
+        let rows = list_builder
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_api_key_group_reference_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(AuthApiKeyGroupReferenceSummary { total, items })
     }
 
     async fn list_export_standalone_api_keys_page(
@@ -1001,6 +1053,18 @@ fn map_auth_api_key_export_row(
             row.try_get("created_at_unix_secs").map_sql_err()?,
             row.try_get("updated_at_unix_secs").map_sql_err()?,
         )
+    })
+}
+
+fn map_api_key_group_reference_row(
+    row: &MySqlRow,
+) -> Result<AuthApiKeyGroupReference, DataLayerError> {
+    Ok(AuthApiKeyGroupReference {
+        user_id: row.try_get("user_id").map_sql_err()?,
+        username: row.try_get("username").map_sql_err()?,
+        email: row.try_get("email").map_sql_err()?,
+        api_key_id: row.try_get("api_key_id").map_sql_err()?,
+        api_key_name: row.try_get("api_key_name").map_sql_err()?,
     })
 }
 

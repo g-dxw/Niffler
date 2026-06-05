@@ -741,6 +741,113 @@ async fn gateway_allows_default_user_group_access_policy_updates() {
 }
 
 #[tokio::test]
+async fn gateway_rejects_user_group_delete_when_api_keys_still_use_group() {
+    let upstream = Router::new().fallback(any(|_request: Request| async {
+        (StatusCode::OK, Body::from("unexpected upstream hit"))
+    }));
+
+    let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![
+        sample_admin_user("user-1"),
+    ]));
+    let group = user_repository
+        .create_user_group(UpsertUserGroupRecord {
+            name: "Default".to_string(),
+            description: None,
+            visibility: "public".to_string(),
+            priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
+            allowed_providers: None,
+            allowed_providers_mode: "unrestricted".to_string(),
+            allowed_api_formats: None,
+            allowed_api_formats_mode: "unrestricted".to_string(),
+            allowed_models: None,
+            allowed_models_mode: "unrestricted".to_string(),
+            rate_limit: None,
+            rate_limit_mode: "system".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
+        })
+        .await
+        .expect("group should create")
+        .expect("group should exist");
+    let api_key_snapshot = StoredAuthApiKeySnapshot::new_with_group(
+        "user-1".to_string(),
+        "alice".to_string(),
+        Some("alice@example.com".to_string()),
+        "user".to_string(),
+        "local".to_string(),
+        true,
+        false,
+        Some(json!(["openai"])),
+        Some(json!(["openai:chat"])),
+        Some(json!(["gpt-4.1"])),
+        "key-1".to_string(),
+        Some("Billing key".to_string()),
+        Some(group.id.clone()),
+        Some(group.name.clone()),
+        Some(group.visibility.clone()),
+        Some(1.0),
+        None,
+        true,
+        false,
+        false,
+        Some(60),
+        Some(5),
+        Some(200),
+        Some(json!(["openai"])),
+        Some(json!(["openai:chat"])),
+        Some(json!(["gpt-4.1"])),
+    )
+    .expect("api key snapshot should build");
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+        Some("hash-key-1".to_string()),
+        api_key_snapshot,
+    )]));
+
+    let (_upstream_url, upstream_handle) = start_server(upstream).await;
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_auth_api_key_repository_for_tests(auth_repository)
+                    .with_user_reader(user_repository.clone()),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .delete(format!("{gateway_url}/api/admin/user-groups/{}", group.id))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    let detail = payload["detail"].as_str().expect("detail should exist");
+    assert!(detail.contains("还有 1 把 API Key 正在使用"));
+    assert!(detail.contains("改到其他分组或删除"));
+    assert!(detail.contains("Billing key"));
+    assert!(detail.contains("alice@example.com"));
+    assert!(!detail.contains("postgres"));
+    assert!(!detail.contains("api_keys_group_id_fkey"));
+    assert_eq!(payload["api_key_count"], json!(1));
+    assert_eq!(payload["api_keys"][0]["name"], "Billing key");
+    assert!(user_repository
+        .find_user_group_by_id(&group.id)
+        .await
+        .expect("group lookup should run")
+        .is_some());
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
 async fn gateway_allows_removing_default_group_members_when_other_group_remains() {
     let upstream = Router::new().fallback(any(|_request: Request| async {
         (StatusCode::OK, Body::from("unexpected upstream hit"))

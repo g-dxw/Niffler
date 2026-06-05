@@ -1,15 +1,16 @@
 use super::{
-    AuthApiKeyLookupKey, CreateManagementTokenRecord, DataLayerError, GatewayAuthApiKeySnapshot,
-    GatewayDataState, ManagementTokenCounterDelta, ManagementTokenListQuery, ProxyNodeCounterDelta,
-    ProxyNodeHeartbeatMutation, ProxyNodeManualCreateMutation, ProxyNodeManualUpdateMutation,
-    ProxyNodeRegistrationMutation, ProxyNodeRemoteConfigMutation, ProxyNodeTrafficMutation,
-    ProxyNodeTunnelStatusMutation, RegenerateManagementTokenSecret, StoredAuthApiKeyExportRecord,
-    StoredAuthApiKeySnapshot, StoredLdapModuleConfig, StoredManagementToken,
-    StoredManagementTokenListPage, StoredManagementTokenWithUser, StoredOAuthProviderConfig,
-    StoredOAuthProviderModuleConfig, StoredProxyFleetMetricsBucket, StoredProxyNode,
-    StoredProxyNodeEvent, StoredProxyNodeMetricsBucket, StoredUserAuthRecord,
-    StoredUserOAuthLinkSummary, StoredUserPreferenceRecord, StoredUserSessionRecord,
-    StoredWalletSnapshot, UpdateManagementTokenRecord, UpsertOAuthProviderConfigRecord,
+    AuthApiKeyGroupReferenceSummary, AuthApiKeyLookupKey, CreateManagementTokenRecord,
+    DataLayerError, GatewayAuthApiKeySnapshot, GatewayDataState, ManagementTokenCounterDelta,
+    ManagementTokenListQuery, ProxyNodeCounterDelta, ProxyNodeHeartbeatMutation,
+    ProxyNodeManualCreateMutation, ProxyNodeManualUpdateMutation, ProxyNodeRegistrationMutation,
+    ProxyNodeRemoteConfigMutation, ProxyNodeTrafficMutation, ProxyNodeTunnelStatusMutation,
+    RegenerateManagementTokenSecret, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
+    StoredLdapModuleConfig, StoredManagementToken, StoredManagementTokenListPage,
+    StoredManagementTokenWithUser, StoredOAuthProviderConfig, StoredOAuthProviderModuleConfig,
+    StoredProxyFleetMetricsBucket, StoredProxyNode, StoredProxyNodeEvent,
+    StoredProxyNodeMetricsBucket, StoredUserAuthRecord, StoredUserOAuthLinkSummary,
+    StoredUserPreferenceRecord, StoredUserSessionRecord, StoredWalletSnapshot,
+    UpdateManagementTokenRecord, UpsertOAuthProviderConfigRecord,
 };
 use crate::LocalMutationOutcome;
 use aether_data::repository::auth::{
@@ -1460,6 +1461,21 @@ impl GatewayDataState {
                     .await
             }
             None => Ok(Vec::new()),
+        }
+    }
+
+    pub(crate) async fn summarize_auth_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<AuthApiKeyGroupReferenceSummary, DataLayerError> {
+        match &self.auth_api_key_reader {
+            Some(repository) => {
+                repository
+                    .summarize_api_key_group_references(group_id, limit)
+                    .await
+            }
+            None => Ok(AuthApiKeyGroupReferenceSummary::default()),
         }
     }
 

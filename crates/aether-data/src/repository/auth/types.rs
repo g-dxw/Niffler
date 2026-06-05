@@ -599,6 +599,21 @@ pub struct AuthApiKeyExportSummary {
     pub active: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AuthApiKeyGroupReference {
+    pub user_id: String,
+    pub username: String,
+    pub email: Option<String>,
+    pub api_key_id: String,
+    pub api_key_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct AuthApiKeyGroupReferenceSummary {
+    pub total: u64,
+    pub items: Vec<AuthApiKeyGroupReference>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StandaloneApiKeyExportListQuery {
     pub skip: usize,
@@ -712,6 +727,15 @@ pub trait AuthApiKeyReadRepository: Send + Sync {
         &self,
         name_search: &str,
     ) -> Result<Vec<StoredAuthApiKeyExportRecord>, crate::DataLayerError>;
+
+    async fn summarize_api_key_group_references(
+        &self,
+        group_id: &str,
+        limit: usize,
+    ) -> Result<AuthApiKeyGroupReferenceSummary, crate::DataLayerError> {
+        let _ = (group_id, limit);
+        Ok(AuthApiKeyGroupReferenceSummary::default())
+    }
 
     async fn list_export_standalone_api_keys_page(
         &self,

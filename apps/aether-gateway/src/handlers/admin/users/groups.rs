@@ -60,6 +60,8 @@ struct AdminDefaultUserGroupPayload {
     group_id: Option<String>,
 }
 
+const DELETE_USER_GROUP_API_KEY_REFERENCE_LIMIT: usize = 5;
+
 pub(in super::super) async fn build_admin_list_user_groups_response(
     state: &AdminAppState<'_>,
 ) -> Result<Response<Body>, GatewayError> {
@@ -162,7 +164,25 @@ pub(in super::super) async fn build_admin_delete_user_group_response(
     if read_default_user_group_id(state).await?.as_deref() == Some(group_id.as_str()) {
         return Ok(bad_request_owned("默认用户组不能删除".to_string()));
     }
-    if !state.delete_user_group(&group_id).await? {
+    let api_key_references = state
+        .summarize_auth_api_key_group_references(
+            &group_id,
+            DELETE_USER_GROUP_API_KEY_REFERENCE_LIMIT,
+        )
+        .await?;
+    if api_key_references.total > 0 {
+        return Ok(user_group_api_key_conflict_response(api_key_references));
+    }
+    let deleted = match state.delete_user_group(&group_id).await {
+        Ok(deleted) => deleted,
+        Err(err) if is_api_key_group_reference_delete_error(&err) => {
+            return Ok(user_group_api_key_conflict_response(
+                aether_data::repository::auth::AuthApiKeyGroupReferenceSummary::default(),
+            ))
+        }
+        Err(err) => return Err(err),
+    };
+    if !deleted {
         return Ok(not_found("用户分组不存在"));
     }
     Ok(attach_admin_audit_response(
@@ -573,9 +593,90 @@ fn not_found(detail: &'static str) -> Response<Body> {
         .into_response()
 }
 
+fn user_group_api_key_conflict_response(
+    summary: aether_data::repository::auth::AuthApiKeyGroupReferenceSummary,
+) -> Response<Body> {
+    let examples = summary
+        .items
+        .iter()
+        .map(format_api_key_group_reference)
+        .collect::<Vec<_>>();
+    let example_count = u64::try_from(examples.len()).unwrap_or(u64::MAX);
+    let extra_suffix = if summary.total > example_count {
+        " 等"
+    } else {
+        ""
+    };
+    let detail = if examples.is_empty() && summary.total == 0 {
+        "这个分组还有 API Key 正在使用，不能删除。先在「用户管理」里编辑这些 API Key，改到其他分组或删除后再试。".to_string()
+    } else if examples.is_empty() {
+        format!(
+            "这个分组还有 {} 把 API Key 正在使用，不能删除。先在「用户管理」里编辑这些 API Key，改到其他分组或删除后再试。",
+            summary.total
+        )
+    } else {
+        format!(
+            "这个分组还有 {} 把 API Key 正在使用，不能删除。先在「用户管理」里编辑这些 API Key，改到其他分组或删除后再试。当前占用：{}{}。",
+            summary.total,
+            examples.join("、"),
+            extra_suffix
+        )
+    };
+    let api_keys = summary
+        .items
+        .into_iter()
+        .map(|item| {
+            json!({
+                "id": item.api_key_id,
+                "name": item.api_key_name,
+                "user_id": item.user_id,
+                "username": item.username,
+                "email": item.email,
+            })
+        })
+        .collect::<Vec<_>>();
+    (
+        http::StatusCode::CONFLICT,
+        Json(json!({
+            "detail": detail,
+            "api_key_count": summary.total,
+            "api_keys": api_keys,
+        })),
+    )
+        .into_response()
+}
+
+fn format_api_key_group_reference(
+    item: &aether_data::repository::auth::AuthApiKeyGroupReference,
+) -> String {
+    let key_name = item
+        .api_key_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(item.api_key_id.as_str());
+    let email = item
+        .email
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let user_label = match email {
+        Some(email) if email != item.username => format!("{} / {}", item.username, email),
+        _ => item.username.clone(),
+    };
+    format!("{key_name}（用户：{user_label}）")
+}
+
 fn is_duplicate_group_name_error(err: &GatewayError) -> bool {
     match err {
         GatewayError::Internal(message) => message.contains("duplicate user group name"),
+        _ => false,
+    }
+}
+
+fn is_api_key_group_reference_delete_error(err: &GatewayError) -> bool {
+    match err {
+        GatewayError::Internal(message) => message.contains("api_keys_group_id_fkey"),
         _ => false,
     }
 }
