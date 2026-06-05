@@ -378,6 +378,10 @@ fn admin_usage_error_code_from_body(body: &Value) -> Option<Value> {
         .or_else(|| body.get("code").cloned())
 }
 
+fn admin_usage_status_code_is_error(status_code: Option<u64>) -> bool {
+    status_code.is_some_and(|value| !(200..300).contains(&value))
+}
+
 fn admin_usage_header_content_type(headers: Option<&Value>) -> Option<String> {
     let object = headers?.as_object()?;
     for (key, value) in object {
@@ -412,13 +416,12 @@ fn admin_usage_error_domain_json(
         });
     let code = body.and_then(admin_usage_error_code_from_body);
     let content_type = admin_usage_header_content_type(headers);
+    let status_is_error = admin_usage_status_code_is_error(status_code.map(u64::from));
+    let body_has_error_payload = body
+        .and_then(|value| value.get("error"))
+        .is_some_and(|value| !value.is_null());
 
-    if status_code.is_none()
-        && error_type.is_none()
-        && message.is_none()
-        && code.is_none()
-        && body.is_none()
-    {
+    if !status_is_error && message.is_none() && code.is_none() && !body_has_error_payload {
         return Value::Null;
     }
 
@@ -595,6 +598,9 @@ fn admin_usage_error_domain_display_message(domain: &Value) -> Option<String> {
             return None;
         }
         let status_code = admin_usage_error_domain_status_code(domain)?;
+        if !admin_usage_status_code_is_error(Some(status_code)) {
+            return None;
+        }
         Some(format!("上游返回 HTTP {status_code}"))
     })
 }
@@ -604,7 +610,7 @@ fn admin_usage_has_upstream_response_error(domain: &Value) -> bool {
         return false;
     }
     admin_usage_error_domain_message(domain).is_some()
-        || admin_usage_error_domain_status_code(domain).is_some()
+        || admin_usage_status_code_is_error(admin_usage_error_domain_status_code(domain))
         || !domain.get("body").unwrap_or(&Value::Null).is_null()
 }
 
@@ -2716,6 +2722,54 @@ mod tests {
         assert!(!admin_usage_is_failed(&item));
         assert!(!admin_usage_matches_status(&item, Some("failed")));
         assert!(admin_usage_matches_status(&item, Some("completed")));
+    }
+
+    #[test]
+    fn completed_http_200_detail_does_not_emit_failure_summary() {
+        let item = StoredRequestUsageAudit {
+            response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            response_body: Some(json!({
+                "id": "resp-1",
+                "object": "response",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            { "type": "output_text", "text": "ok" }
+                        ]
+                    }
+                ]
+            })),
+            client_response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            client_response_body: Some(json!({
+                "id": "resp-1",
+                "object": "response",
+                "status": "completed"
+            })),
+            ..sample_usage("completed", Some(200), None)
+        };
+
+        let payload = build_admin_usage_detail_payload(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+            true,
+            Some(json!({"model": "gpt-5.5", "stream": true})),
+            &BTreeMap::new(),
+        );
+
+        assert!(payload["upstream_error"].is_null());
+        assert!(payload["client_error"].is_null());
+        assert!(payload["failure_summary"].is_null());
+        assert!(payload["error_flow"].is_null());
     }
 
     #[test]
