@@ -3485,14 +3485,24 @@ WHERE id = ?
 UPDATE "usage"
 SET status = 'completed',
     status_code = 200,
-    error_message = NULL
+    error_message = NULL,
+    billing_status = 'settled',
+    finalized_at = ?
 WHERE request_id = ?
 "#,
                     )
+                    .bind(to_i64(now_unix_secs, "usage finalized_at")?)
                     .bind(&row.request_id)
                     .execute(&mut *tx)
                     .await
                     .map_sql_err()?;
+                    upsert_usage_settlement_snapshot_sqlite(
+                        &mut tx,
+                        &row.request_id,
+                        "settled",
+                        now_unix_secs,
+                    )
+                    .await?;
                     sqlx::query(
                         r#"
 UPDATE request_candidates
@@ -3532,9 +3542,10 @@ WHERE request_id = ?
                     .execute(&mut *tx)
                     .await
                     .map_sql_err()?;
-                    upsert_void_usage_settlement_snapshot_sqlite(
+                    upsert_usage_settlement_snapshot_sqlite(
                         &mut tx,
                         &row.request_id,
+                        "void",
                         now_unix_secs,
                     )
                     .await?;
@@ -3634,9 +3645,10 @@ fn candidate_row_is_completed(row: &SqliteRow) -> Result<bool, DataLayerError> {
         .unwrap_or(false))
 }
 
-async fn upsert_void_usage_settlement_snapshot_sqlite(
+async fn upsert_usage_settlement_snapshot_sqlite(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     request_id: &str,
+    billing_status: &str,
     now_unix_secs: u64,
 ) -> Result<(), DataLayerError> {
     let now = to_i64(now_unix_secs, "usage settlement snapshot timestamp")?;
@@ -3648,15 +3660,16 @@ INSERT INTO usage_settlement_snapshots (
   finalized_at,
   created_at,
   updated_at
-) VALUES (?, 'void', ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (request_id)
 DO UPDATE SET
   billing_status = excluded.billing_status,
-  finalized_at = COALESCE(usage_settlement_snapshots.finalized_at, excluded.finalized_at),
+  finalized_at = excluded.finalized_at,
   updated_at = excluded.updated_at
 "#,
     )
     .bind(request_id)
+    .bind(billing_status)
     .bind(now)
     .bind(now)
     .bind(now)
@@ -4055,6 +4068,8 @@ INSERT INTO request_candidates (
             .expect("recovered usage should exist");
         assert_eq!(recovered.status, "completed");
         assert_eq!(recovered.status_code, Some(200));
+        assert_eq!(recovered.billing_status, "settled");
+        assert_eq!(recovered.finalized_at_unix_secs, Some(10));
 
         let failed = repository
             .find_by_request_id("request-failed")
@@ -4093,13 +4108,28 @@ ORDER BY request_id
             ]
         );
 
-        let snapshot = sqlx::query_as::<_, (String, Option<i64>)>(
-            "SELECT billing_status, finalized_at FROM usage_settlement_snapshots WHERE request_id = 'request-failed'",
+        let snapshots = sqlx::query_as::<_, (String, String, Option<i64>)>(
+            r#"
+SELECT request_id, billing_status, finalized_at
+FROM usage_settlement_snapshots
+WHERE request_id IN ('request-failed', 'request-recovered')
+ORDER BY request_id
+"#,
         )
-        .fetch_one(&pool)
+        .fetch_all(&pool)
         .await
-        .expect("void settlement snapshot should load");
-        assert_eq!(snapshot, ("void".to_string(), Some(10)));
+        .expect("settlement snapshots should load");
+        assert_eq!(
+            snapshots,
+            vec![
+                ("request-failed".to_string(), "void".to_string(), Some(10)),
+                (
+                    "request-recovered".to_string(),
+                    "settled".to_string(),
+                    Some(10)
+                ),
+            ]
+        );
     }
 
     #[tokio::test]

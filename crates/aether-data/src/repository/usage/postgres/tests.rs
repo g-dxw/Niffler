@@ -856,6 +856,17 @@ fn usage_sql_recovers_void_failures_before_upsert_and_settlement() {
 }
 
 #[test]
+fn recovered_stale_usage_sql_finalizes_settlement_state() {
+    assert!(super::UPDATE_RECOVERED_STALE_USAGE_SQL.contains("status = 'completed'"));
+    assert!(super::UPDATE_RECOVERED_STALE_USAGE_SQL.contains("billing_status = 'settled'"));
+    assert!(super::UPDATE_RECOVERED_STALE_USAGE_SQL.contains("finalized_at = $2"));
+    assert!(
+        super::UPDATE_RECOVERED_STALE_USAGE_SQL.contains("INSERT INTO usage_settlement_snapshots")
+    );
+    assert!(super::UPDATE_RECOVERED_STALE_USAGE_SQL.contains("SELECT request_id, 'settled', $2"));
+}
+
+#[test]
 fn prepare_usage_body_storage_detaches_small_payloads_into_blob_storage() {
     let payload = json!({"message": "hello"});
     let storage = prepare_usage_body_storage(Some(&payload)).expect("storage should serialize");

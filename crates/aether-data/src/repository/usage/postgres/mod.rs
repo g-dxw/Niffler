@@ -1655,11 +1655,28 @@ WHERE request_id = ANY($1)
 "#;
 
 const UPDATE_RECOVERED_STALE_USAGE_SQL: &str = r#"
-UPDATE usage
-SET status = 'completed',
-    status_code = 200,
-    error_message = NULL
-WHERE request_id = $1
+WITH updated_usage AS (
+    UPDATE usage
+    SET status = 'completed',
+        status_code = 200,
+        error_message = NULL,
+        billing_status = 'settled',
+        finalized_at = $2
+    WHERE request_id = $1
+    RETURNING request_id
+)
+INSERT INTO usage_settlement_snapshots (
+    request_id,
+    billing_status,
+    finalized_at
+)
+SELECT request_id, 'settled', $2
+FROM updated_usage
+ON CONFLICT (request_id)
+DO UPDATE SET
+    billing_status = EXCLUDED.billing_status,
+    finalized_at = EXCLUDED.finalized_at,
+    updated_at = NOW()
 "#;
 
 const UPDATE_FAILED_STALE_USAGE_SQL: &str = r#"
@@ -8279,6 +8296,7 @@ ORDER BY "usage".user_id ASC
                 if completed_request_ids.contains(&row.request_id) {
                     sqlx::query(UPDATE_RECOVERED_STALE_USAGE_SQL)
                         .bind(&row.request_id)
+                        .bind(now)
                         .execute(&mut *tx)
                         .await
                         .map_postgres_err()?;

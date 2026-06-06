@@ -2316,27 +2316,36 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
             .expect("usage repository lock")
             .values()
         {
-            let Some(provider_api_key_id) = item.provider_api_key_id.as_deref() else {
+            let Some(contribution) = provider_api_key_usage_contribution(item) else {
                 continue;
             };
-            if !provider_api_key_id_set.contains(&provider_api_key_id) {
+            if contribution.success_count <= 0 {
+                continue;
+            }
+            if !provider_api_key_id_set.contains(&contribution.key_id.as_str()) {
                 continue;
             }
             let entry = summaries
-                .entry(provider_api_key_id.to_string())
+                .entry(contribution.key_id.clone())
                 .or_insert_with(|| StoredProviderApiKeyUsageSummary {
-                    provider_api_key_id: provider_api_key_id.to_string(),
+                    provider_api_key_id: contribution.key_id.clone(),
                     ..StoredProviderApiKeyUsageSummary::default()
                 });
-            entry.request_count = entry.request_count.saturating_add(1);
-            entry.total_tokens = entry.total_tokens.saturating_add(item.total_tokens);
-            entry.total_cost_usd += item.total_cost_usd;
-            entry.last_used_at_unix_secs = Some(
-                entry
-                    .last_used_at_unix_secs
-                    .unwrap_or_default()
-                    .max(item.created_at_unix_ms),
-            );
+            entry.request_count = entry
+                .request_count
+                .saturating_add(u64::try_from(contribution.request_count).unwrap_or_default());
+            entry.total_tokens = entry
+                .total_tokens
+                .saturating_add(u64::try_from(contribution.total_tokens).unwrap_or_default());
+            entry.total_cost_usd += contribution.total_cost_usd;
+            entry.last_used_at_unix_secs = match (
+                entry.last_used_at_unix_secs,
+                contribution.last_used_at_unix_secs,
+            ) {
+                (Some(existing), Some(candidate)) => Some(existing.max(candidate)),
+                (None, Some(candidate)) => Some(candidate),
+                (existing, None) => existing,
+            };
         }
         Ok(summaries)
     }

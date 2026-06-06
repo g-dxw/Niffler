@@ -492,14 +492,24 @@ WHERE id = ?
 UPDATE `usage`
 SET status = 'completed',
     status_code = 200,
-    error_message = NULL
+    error_message = NULL,
+    billing_status = 'settled',
+    finalized_at = ?
 WHERE request_id = ?
 "#,
                     )
+                    .bind(to_i64(now_unix_secs, "usage finalized_at")?)
                     .bind(&row.request_id)
                     .execute(&mut *tx)
                     .await
                     .map_sql_err()?;
+                    upsert_usage_settlement_snapshot_mysql(
+                        &mut tx,
+                        &row.request_id,
+                        "settled",
+                        now_unix_secs,
+                    )
+                    .await?;
                     sqlx::query(
                         r#"
 UPDATE request_candidates
@@ -539,9 +549,10 @@ WHERE request_id = ?
                     .execute(&mut *tx)
                     .await
                     .map_sql_err()?;
-                    upsert_void_usage_settlement_snapshot_mysql(
+                    upsert_usage_settlement_snapshot_mysql(
                         &mut tx,
                         &row.request_id,
+                        "void",
                         now_unix_secs,
                     )
                     .await?;
@@ -652,9 +663,10 @@ fn candidate_row_is_completed(row: &MySqlRow) -> Result<bool, DataLayerError> {
         .unwrap_or(false))
 }
 
-async fn upsert_void_usage_settlement_snapshot_mysql(
+async fn upsert_usage_settlement_snapshot_mysql(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     request_id: &str,
+    billing_status: &str,
     now_unix_secs: u64,
 ) -> Result<(), DataLayerError> {
     let now = to_i64(now_unix_secs, "usage settlement snapshot timestamp")?;
@@ -666,14 +678,15 @@ INSERT INTO usage_settlement_snapshots (
   finalized_at,
   created_at,
   updated_at
-) VALUES (?, 'void', ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
   billing_status = VALUES(billing_status),
-  finalized_at = COALESCE(usage_settlement_snapshots.finalized_at, VALUES(finalized_at)),
+  finalized_at = VALUES(finalized_at),
   updated_at = VALUES(updated_at)
 "#,
     )
     .bind(request_id)
+    .bind(billing_status)
     .bind(now)
     .bind(now)
     .bind(now)

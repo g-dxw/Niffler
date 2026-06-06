@@ -113,6 +113,24 @@ after the request-path lock pressure is removed.
 - advisory lock per `request_id` for idempotent request transitions
 - wallet row lock only inside settlement, where correctness depends on it
 
+### Stale pending cleanup
+
+The stale pending cleanup worker may recover a stuck `pending` or `streaming`
+usage row as `completed` when the matching request candidate already succeeded.
+Recovered rows do not have a terminal usage payload, so they cannot be charged
+from token or price facts that were never written. They must still be finalized
+as zero-charge settled records:
+
+- set `usage.status = 'completed'`
+- set `usage.billing_status = 'settled'`
+- set `usage.finalized_at`
+- upsert `usage_settlement_snapshots.billing_status = 'settled'`
+- keep existing token, cost, wallet, and pricing snapshot fields unchanged
+
+This prevents successful recovered rows from remaining indefinitely as
+`completed/pending` and keeps admin usage records, readiness checks, and wallet
+debit displays aligned with the persisted billing state.
+
 ### Remove from request path
 
 - direct `UPDATE api_keys`
