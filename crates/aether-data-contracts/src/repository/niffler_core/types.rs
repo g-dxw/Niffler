@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NifflerAccountStatus {
@@ -529,6 +531,138 @@ pub fn default_platform_error_message(code: &str) -> Option<&'static NifflerDefa
     NIFFLER_DEFAULT_PLATFORM_ERROR_MESSAGES
         .iter()
         .find(|message| message.code == code)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerReadinessSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerShadowTableStatus {
+    pub database_driver: Option<String>,
+    pub expected_tables: u64,
+    pub existing_tables: u64,
+    pub all_present: bool,
+    pub tables: Vec<NifflerShadowTableItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerShadowTableItem {
+    pub table_name: String,
+    pub exists: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerCoreReadinessSummary {
+    pub providers_total: u64,
+    pub providers_active: u64,
+    pub provider_keys_total: u64,
+    pub provider_keys_active: u64,
+    pub routing_groups_total: u64,
+    pub routing_groups_enabled: u64,
+    pub global_models_total: u64,
+    pub global_models_active: u64,
+    pub recent_problem_usage_sample_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerCoreMappingSummary {
+    pub legacy_count: u64,
+    pub mapped_count: u64,
+    pub blocked_count: u64,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerDisabledProviderReference {
+    pub routing_group_id: String,
+    pub routing_group_name: String,
+    pub provider_id: String,
+    pub provider_name: String,
+    pub source_field: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerKeyScopeResidue {
+    pub subject_kind: String,
+    pub key_id: String,
+    pub key_name: Option<String>,
+    pub owner_label: Option<String>,
+    pub residue_fields: Vec<String>,
+    pub impact: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerGroupPolicyGap {
+    pub routing_group_id: String,
+    pub routing_group_name: String,
+    pub gap_kind: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerPriceGap {
+    pub scope: String,
+    pub provider_id: Option<String>,
+    pub provider_name: Option<String>,
+    pub model_id: Option<String>,
+    pub model_name: String,
+    pub missing_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerUsageAnomaly {
+    pub usage_id: String,
+    pub request_id: String,
+    pub created_at_unix_ms: u64,
+    pub provider_name: String,
+    pub provider_id: Option<String>,
+    pub provider_api_key_id: Option<String>,
+    pub model: String,
+    pub status: String,
+    pub billing_status: String,
+    pub status_code: Option<u16>,
+    pub error_category: Option<String>,
+    pub diagnosis: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerRouteSkipReasonSummary {
+    pub reason: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerReadinessIssue {
+    pub severity: NifflerReadinessSeverity,
+    pub code: String,
+    pub title: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerCoreReadinessReport {
+    pub schema_version: u32,
+    pub generated_at_unix_secs: u64,
+    pub recent_days: u32,
+    pub shadow_tables: NifflerShadowTableStatus,
+    pub summary: NifflerCoreReadinessSummary,
+    pub provider_mapping: NifflerCoreMappingSummary,
+    pub account_mapping: NifflerCoreMappingSummary,
+    pub product_plan_mapping: NifflerCoreMappingSummary,
+    pub provider_status_counts: BTreeMap<String, u64>,
+    pub account_status_counts: BTreeMap<String, u64>,
+    pub disabled_provider_references: Vec<NifflerDisabledProviderReference>,
+    pub key_scope_residue: Vec<NifflerKeyScopeResidue>,
+    pub group_policy_gaps: Vec<NifflerGroupPolicyGap>,
+    pub price_gaps: Vec<NifflerPriceGap>,
+    pub recent_usage_anomalies: Vec<NifflerUsageAnomaly>,
+    pub route_skip_reasons: Vec<NifflerRouteSkipReasonSummary>,
+    pub issues: Vec<NifflerReadinessIssue>,
 }
 
 fn validate_required(field: &str, value: &str) -> Result<(), crate::DataLayerError> {

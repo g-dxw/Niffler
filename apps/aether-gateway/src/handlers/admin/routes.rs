@@ -1,6 +1,6 @@
 use super::{
-    announcements, auth, billing, endpoint, features, model, observability, provider, referrals,
-    request, routing, system, users,
+    announcements, auth, billing, endpoint, features, model, niffler, observability, provider,
+    referrals, request, routing, system, users,
 };
 
 pub(crate) async fn maybe_build_local_admin_response(
@@ -13,6 +13,10 @@ pub(crate) async fn maybe_build_local_admin_response(
     }
 
     if let Some(response) = model::maybe_build_local_admin_model_response(request).await? {
+        return Ok(Some(response));
+    }
+
+    if let Some(response) = niffler::maybe_build_local_admin_niffler_response(request).await? {
         return Ok(Some(response));
     }
 

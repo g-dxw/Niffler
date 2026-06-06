@@ -4,6 +4,7 @@ mod billing;
 pub(super) mod endpoint;
 pub(super) mod features;
 mod model;
+mod niffler;
 pub(super) mod observability;
 pub(super) mod provider;
 mod referrals;

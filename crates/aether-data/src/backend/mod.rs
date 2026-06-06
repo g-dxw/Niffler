@@ -20,6 +20,8 @@ mod transactions;
 mod wallet;
 mod write;
 
+use std::collections::BTreeSet;
+
 use crate::maintenance::DatabasePoolSummary;
 pub use leases::DataLeaseBackends;
 pub use mysql::MysqlBackend;
@@ -170,6 +172,42 @@ impl DataBackends {
             || self.read.has_any()
             || self.transactions.has_any()
             || self.write.has_any()
+    }
+
+    pub async fn check_table_existence(
+        &self,
+        table_names: &[&str],
+    ) -> Result<Vec<(String, bool)>, DataLayerError> {
+        let existing = match self.sql_backend() {
+            Some(SqlBackendRef::Postgres(backend)) => sqlx::query_scalar::<_, String>(
+                "SELECT table_name FROM information_schema.tables \
+                 WHERE table_schema = 'public' AND table_name LIKE 'niffler_%'",
+            )
+            .fetch_all(backend.pool())
+            .await
+            .map_err(DataLayerError::sql)?,
+            Some(SqlBackendRef::Mysql(backend)) => sqlx::query_scalar::<_, String>(
+                "SELECT table_name FROM information_schema.tables \
+                 WHERE table_schema = DATABASE() AND table_name LIKE 'niffler_%'",
+            )
+            .fetch_all(backend.pool())
+            .await
+            .map_err(DataLayerError::sql)?,
+            Some(SqlBackendRef::Sqlite(backend)) => sqlx::query_scalar::<_, String>(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'niffler_%'",
+            )
+            .fetch_all(backend.pool())
+            .await
+            .map_err(DataLayerError::sql)?,
+            None => Vec::new(),
+        }
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+
+        Ok(table_names
+            .iter()
+            .map(|table_name| ((*table_name).to_string(), existing.contains(*table_name)))
+            .collect())
     }
 }
 

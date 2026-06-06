@@ -736,6 +736,7 @@ const navigation = computed(() => {
   // 系统菜单项（静态部分）
   const systemItems: { name: string; href: string; icon: LucideIcon }[] = [
     { name: '公告管理', href: '/admin/announcements', icon: Megaphone },
+    { name: '核心对账', href: '/admin/niffler-core', icon: Gauge },
     { name: '缓存监控', href: '/admin/cache-monitoring', icon: Gauge },
   ]
 

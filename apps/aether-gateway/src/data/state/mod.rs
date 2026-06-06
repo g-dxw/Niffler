@@ -316,6 +316,28 @@ impl fmt::Debug for GatewayDataState {
     }
 }
 
+impl GatewayDataState {
+    pub(crate) fn database_driver_name(&self) -> Option<String> {
+        self.backends
+            .as_ref()
+            .and_then(|backends| backends.database_driver())
+            .map(|driver| driver.as_str().to_string())
+    }
+
+    pub(crate) async fn check_table_existence(
+        &self,
+        table_names: &[&str],
+    ) -> Result<Vec<(String, bool)>, DataLayerError> {
+        match &self.backends {
+            Some(backends) => backends.check_table_existence(table_names).await,
+            None => Ok(table_names
+                .iter()
+                .map(|table_name| ((*table_name).to_string(), false))
+                .collect()),
+        }
+    }
+}
+
 mod auth;
 mod candidate_cache;
 mod catalog;

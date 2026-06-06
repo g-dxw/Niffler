@@ -228,6 +228,11 @@ const routes: RouteRecordRaw[] = [
         component: () => importWithRetry(() => import('@/views/admin/RoutingProfiles.vue'))
       },
       {
+        path: 'niffler-core',
+        name: 'NifflerCoreReadiness',
+        component: () => importWithRetry(() => import('@/views/admin/NifflerCoreReadiness.vue'))
+      },
+      {
         path: 'health-monitor',
         name: 'HealthMonitor',
         component: () => importWithRetry(() => import('@/views/shared/HealthMonitor.vue'))
