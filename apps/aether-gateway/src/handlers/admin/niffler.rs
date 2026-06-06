@@ -1,5 +1,6 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
+use aether_data::repository::users::StoredUserGroup;
 use aether_data_contracts::repository::global_models::{
     AdminGlobalModelListQuery, AdminProviderModelListQuery, StoredAdminGlobalModel,
     StoredAdminProviderModel,
@@ -14,8 +15,7 @@ use aether_data_contracts::repository::niffler_core::{
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogKey, StoredProviderCatalogProvider,
 };
-use aether_data_contracts::repository::usage::UsageAuditListQuery;
-use aether_routing_core::{RoutingAction, RoutingGroupConfig};
+use aether_data_contracts::repository::usage::{StoredRequestUsageAudit, UsageAuditListQuery};
 use axum::{
     body::Body,
     http,
@@ -105,11 +105,7 @@ async fn build_readiness_report(
     } else {
         Vec::new()
     };
-    let routing_groups = if state.has_routing_group_data_reader() {
-        state.list_routing_groups().await?
-    } else {
-        Vec::new()
-    };
+    let user_groups = state.list_user_groups().await?;
     let global_models = if state.has_global_model_data_reader() {
         state
             .list_admin_global_models(&AdminGlobalModelListQuery {
@@ -130,9 +126,9 @@ async fn build_readiness_report(
         .collect::<BTreeMap<_, _>>();
 
     let disabled_provider_references =
-        collect_disabled_provider_references(&routing_groups, &provider_map);
+        collect_disabled_provider_references(&user_groups, &provider_map);
     let key_scope_residue = collect_key_scope_residue(&keys);
-    let group_policy_gaps = collect_group_policy_gaps(&routing_groups);
+    let group_policy_gaps = collect_group_policy_gaps(&user_groups);
     let price_gaps = collect_price_gaps(&global_models, &provider_models, &provider_map);
     let (recent_usage_anomalies, recent_problem_usage_sample_count) =
         collect_recent_usage_anomalies(state, recent_days, generated_at_unix_secs).await?;
@@ -162,9 +158,11 @@ async fn build_readiness_report(
                 .count() as u64,
             provider_keys_total: keys.len() as u64,
             provider_keys_active: keys.iter().filter(|key| key.is_active).count() as u64,
-            routing_groups_total: routing_groups.len() as u64,
-            routing_groups_enabled: routing_groups.iter().filter(|group| group.enabled).count()
-                as u64,
+            product_plans_total: user_groups.len() as u64,
+            product_plans_public: user_groups
+                .iter()
+                .filter(|group| group.visibility.trim().eq_ignore_ascii_case("public"))
+                .count() as u64,
             global_models_total: global_models.len() as u64,
             global_models_active: global_models.iter().filter(|model| model.is_active).count()
                 as u64,
@@ -198,11 +196,12 @@ async fn build_readiness_report(
             notes: vec!["启用且未标记 OAuth 失效的 Provider Key 可以映射为上游账号。".to_string()],
         },
         product_plan_mapping: NifflerCoreMappingSummary {
-            legacy_count: routing_groups.len() as u64,
-            mapped_count: routing_groups.iter().filter(|group| group.enabled).count() as u64,
-            blocked_count: routing_groups.iter().filter(|group| !group.enabled).count() as u64,
+            legacy_count: user_groups.len() as u64,
+            mapped_count: user_groups.len() as u64,
+            blocked_count: 0,
             notes: vec![
-                "启用分组可以映射为产品策略；空模型范围需要在新策略中明确确认。".to_string(),
+                "旧用户分组可以映射为产品策略；公开/内部只影响是否允许用户 Key 公开绑定。"
+                    .to_string(),
             ],
         },
         provider_status_counts,
@@ -263,48 +262,27 @@ async fn read_provider_models(
 }
 
 fn collect_disabled_provider_references(
-    routing_groups: &[aether_data_contracts::repository::routing_profiles::StoredRoutingGroup],
+    user_groups: &[StoredUserGroup],
     provider_map: &BTreeMap<&str, &StoredProviderCatalogProvider>,
 ) -> Vec<NifflerDisabledProviderReference> {
     let mut references = Vec::new();
-    for group in routing_groups {
-        let Ok(config) = serde_json::from_value::<RoutingGroupConfig>(group.config_json.clone())
-        else {
+    for group in user_groups {
+        if !group
+            .allowed_providers_mode
+            .trim()
+            .eq_ignore_ascii_case("specific")
+        {
             continue;
-        };
-        for policy in config.model_policies {
-            for provider_id in policy.allowed_providers {
-                push_disabled_provider_reference(
-                    &mut references,
-                    group,
-                    &provider_id,
-                    "model_policies.allowed_providers",
-                    provider_map,
-                );
-            }
-            for provider_id in policy.provider_priority_overrides.keys() {
+        }
+        if let Some(provider_ids) = &group.allowed_providers {
+            for provider_id in provider_ids {
                 push_disabled_provider_reference(
                     &mut references,
                     group,
                     provider_id,
-                    "model_policies.provider_priority_overrides",
+                    "allowed_providers",
                     provider_map,
                 );
-            }
-        }
-        for rule in config.rules {
-            for action in rule.actions {
-                if let RoutingAction::RestrictProviders { provider_ids } = action {
-                    for provider_id in provider_ids {
-                        push_disabled_provider_reference(
-                            &mut references,
-                            group,
-                            &provider_id,
-                            "rules.restrict_providers",
-                            provider_map,
-                        );
-                    }
-                }
             }
         }
     }
@@ -314,19 +292,24 @@ fn collect_disabled_provider_references(
 
 fn push_disabled_provider_reference(
     references: &mut Vec<NifflerDisabledProviderReference>,
-    group: &aether_data_contracts::repository::routing_profiles::StoredRoutingGroup,
+    group: &StoredUserGroup,
     provider_id: &str,
     source_field: &str,
     provider_map: &BTreeMap<&str, &StoredProviderCatalogProvider>,
 ) {
-    let Some(provider) = provider_map.get(provider_id) else {
+    let Some(provider) = provider_map.get(provider_id).copied().or_else(|| {
+        provider_map
+            .values()
+            .copied()
+            .find(|provider| provider.name == provider_id)
+    }) else {
         return;
     };
     if provider.is_active {
         return;
     }
     let exists = references.iter().any(|item| {
-        item.routing_group_id == group.id
+        item.product_plan_id == group.id
             && item.provider_id == provider.id
             && item.source_field == source_field
     });
@@ -334,8 +317,8 @@ fn push_disabled_provider_reference(
         return;
     }
     references.push(NifflerDisabledProviderReference {
-        routing_group_id: group.id.clone(),
-        routing_group_name: group.name.clone(),
+        product_plan_id: group.id.clone(),
+        product_plan_name: group.name.clone(),
         provider_id: provider.id.clone(),
         provider_name: provider.name.clone(),
         source_field: source_field.to_string(),
@@ -407,49 +390,40 @@ fn value_has_content(value: &serde_json::Value) -> bool {
     }
 }
 
-fn collect_group_policy_gaps(
-    routing_groups: &[aether_data_contracts::repository::routing_profiles::StoredRoutingGroup],
-) -> Vec<NifflerGroupPolicyGap> {
+fn collect_group_policy_gaps(user_groups: &[StoredUserGroup]) -> Vec<NifflerGroupPolicyGap> {
     let mut gaps = Vec::new();
-    for group in routing_groups {
-        let Ok(config) = serde_json::from_value::<RoutingGroupConfig>(group.config_json.clone())
-        else {
+    for group in user_groups {
+        if !group
+            .allowed_models_mode
+            .trim()
+            .eq_ignore_ascii_case("specific")
+        {
             gaps.push(NifflerGroupPolicyGap {
-                routing_group_id: group.id.clone(),
-                routing_group_name: group.name.clone(),
-                gap_kind: "invalid_config_json".to_string(),
-                message: "分组配置不是合法的调度配置，新产品策略无法直接映射。".to_string(),
+                product_plan_id: group.id.clone(),
+                product_plan_name: group.name.clone(),
+                gap_kind: "unrestricted_models".to_string(),
+                message:
+                    "这个用户分组当前允许全部模型；迁移为产品策略前需要确认是否继续开放全部模型。"
+                        .to_string(),
             });
-            continue;
-        };
-        if config.allowed_models.is_empty() {
-            gaps.push(NifflerGroupPolicyGap {
-                routing_group_id: group.id.clone(),
-                routing_group_name: group.name.clone(),
-                gap_kind: "all_models_allowed".to_string(),
-                message: "旧分组没有限制模型，旧逻辑表示全部模型可用；迁移后需要明确是否继续开放全部模型。"
-                    .to_string(),
-            });
-        }
-        let allowed_models = config
-            .allowed_models
-            .iter()
-            .map(|model| model.as_str())
-            .collect::<BTreeSet<_>>();
-        if !allowed_models.is_empty() {
-            for policy in config.model_policies {
-                if !allowed_models.contains(policy.model.as_str()) {
-                    gaps.push(NifflerGroupPolicyGap {
-                        routing_group_id: group.id.clone(),
-                        routing_group_name: group.name.clone(),
-                        gap_kind: "policy_model_outside_allowed_models".to_string(),
-                        message: format!(
-                            "模型 {} 有单独策略，但不在分组允许模型列表里。",
-                            policy.model
-                        ),
-                    });
-                }
+            if gaps.len() >= MAX_ISSUE_ITEMS {
+                break;
             }
+            continue;
+        }
+        if group
+            .allowed_models
+            .as_ref()
+            .is_none_or(|models| models.is_empty())
+        {
+            gaps.push(NifflerGroupPolicyGap {
+                product_plan_id: group.id.clone(),
+                product_plan_name: group.name.clone(),
+                gap_kind: "empty_specific_models".to_string(),
+                message:
+                    "这个用户分组设置为只允许指定模型，但模型列表为空；迁移前需要明确可售模型。"
+                        .to_string(),
+            });
         }
         if gaps.len() >= MAX_ISSUE_ITEMS {
             break;
@@ -576,7 +550,7 @@ async fn collect_recent_usage_anomalies(
         anomalies.push(NifflerUsageAnomaly {
             usage_id: row.id,
             request_id: row.request_id,
-            created_at_unix_ms: row.created_at_unix_ms,
+            created_at_unix_secs: row.created_at_unix_ms,
             provider_name: row.provider_name,
             provider_id: row.provider_id,
             provider_api_key_id: row.provider_api_key_id,
@@ -595,19 +569,31 @@ async fn collect_recent_usage_anomalies(
     Ok((anomalies, count))
 }
 
-fn usage_anomaly_diagnosis(
-    row: &aether_data_contracts::repository::usage::StoredRequestUsageAudit,
-) -> Option<String> {
+fn usage_anomaly_diagnosis(row: &StoredRequestUsageAudit) -> Option<String> {
     let provider_unknown = row.provider_name.trim().eq_ignore_ascii_case("unknown")
         || row.provider_name.trim().is_empty()
         || row.provider_id.is_none();
+    if provider_unknown && is_api_key_concurrency_limited(row) {
+        return Some(
+            "平台在选择上游前拦截了这个请求：用户 API Key 并发数已达上限，所以没有实际 Provider 或账号。"
+                .to_string(),
+        );
+    }
     if provider_unknown {
         return Some(
-            "这条记录没有实际上游服务 ID，说明旧请求记录没有保存可展示的上游服务。".to_string(),
+            "这条记录没有实际 Provider ID，失败发生在选定上游前，或旧记录没有保存可展示的上游服务。"
+                .to_string(),
+        );
+    }
+    if row.billing_status.trim().eq_ignore_ascii_case("pending")
+        && row.status.trim().eq_ignore_ascii_case("completed")
+    {
+        return Some(
+            "请求已完成，但结算没有最终完成；当前记录没有可展示的钱包扣费快照。".to_string(),
         );
     }
     if row.billing_status.trim().eq_ignore_ascii_case("pending") {
-        return Some("这条记录的结算状态仍是 pending，页面无法展示最终扣费拆分。".to_string());
+        return Some("请求仍在进行或等待超时清理，暂时没有最终扣费拆分。".to_string());
     }
     if row.status.trim().eq_ignore_ascii_case("failed") && row.provider_api_key_id.is_none() {
         return Some(
@@ -616,6 +602,18 @@ fn usage_anomaly_diagnosis(
         );
     }
     None
+}
+
+fn is_api_key_concurrency_limited(row: &StoredRequestUsageAudit) -> bool {
+    row.error_message
+        .as_deref()
+        .is_some_and(|message| message.contains("API Key 并发请求数已达上限"))
+        || row
+            .routing_local_execution_runtime_miss_reason()
+            .is_some_and(|reason| reason == "api_key_concurrency_limit_reached")
+        || row
+            .routing_execution_path()
+            .is_some_and(|path| path == "local_api_key_concurrency_limited")
 }
 
 async fn collect_route_skip_reasons(
@@ -708,14 +706,6 @@ fn collect_issues(
             "后台无法读取旧 Provider 和上游账号数据。",
         ));
     }
-    if !state.has_routing_group_data_reader() {
-        issues.push(issue(
-            NifflerReadinessSeverity::Error,
-            "routing_group_reader_missing",
-            "分组数据不可读",
-            "后台无法读取旧分组配置，不能对账产品策略。",
-        ));
-    }
     if !state.has_global_model_data_reader() {
         issues.push(issue(
             NifflerReadinessSeverity::Error,
@@ -729,7 +719,7 @@ fn collect_issues(
             NifflerReadinessSeverity::Warning,
             "disabled_provider_referenced",
             "停用 Provider 仍被分组引用",
-            "旧分组里仍引用了停用 Provider，迁移后这些 Provider 不能被产品策略选择。",
+            "用户分组里仍引用了停用 Provider，迁移后这些 Provider 不能被产品策略选择。",
         ));
     }
     if !key_scope_residue.is_empty() {
@@ -745,7 +735,7 @@ fn collect_issues(
             NifflerReadinessSeverity::Warning,
             "group_policy_gaps",
             "分组策略需要确认",
-            "部分旧分组存在全部模型开放、配置不合法或模型策略冲突。",
+            "部分用户分组存在全部模型开放或指定模型列表为空，迁移为产品策略前需要确认。",
         ));
     }
     if !price_gaps.is_empty() {

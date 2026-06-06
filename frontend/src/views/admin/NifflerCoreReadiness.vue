@@ -68,7 +68,7 @@
     </div>
 
     <template v-else-if="report">
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard
           title="影子表"
           :value="`${report.shadow_tables.existing_tables}/${report.shadow_tables.expected_tables}`"
@@ -86,6 +86,12 @@
           :value="`${report.account_mapping.mapped_count}/${report.account_mapping.legacy_count}`"
           :description="`${report.account_mapping.blocked_count} 个不可直接调度`"
           :tone="report.account_mapping.blocked_count ? 'warning' : 'success'"
+        />
+        <MetricCard
+          title="产品策略映射"
+          :value="`${report.product_plan_mapping.mapped_count}/${report.product_plan_mapping.legacy_count}`"
+          :description="`${report.summary.product_plans_public} 个公开，${report.summary.product_plans_total - report.summary.product_plans_public} 个内部`"
+          :tone="report.product_plan_mapping.blocked_count ? 'warning' : 'success'"
         />
         <MetricCard
           title="请求记录异常"
@@ -214,7 +220,7 @@
                   {{ item.request_id }}
                 </div>
                 <div class="text-xs text-muted-foreground">
-                  {{ formatTime(item.created_at_unix_ms) }}
+                  {{ formatTime(item.created_at_unix_secs) }}
                 </div>
               </TableCell>
               <TableCell class="text-sm">
@@ -360,7 +366,7 @@ const accountStatusRows = computed(() => {
 
 const disabledProviderItems = computed(() => {
   return (report.value?.disabled_provider_references ?? []).map((item) => ({
-    title: `${item.routing_group_name} 引用了 ${item.provider_name}`,
+    title: `${item.product_plan_name} 引用了 ${item.provider_name}`,
     description: `来源字段：${item.source_field}`
   }))
 })
@@ -374,7 +380,7 @@ const keyResidueItems = computed(() => {
 
 const groupGapItems = computed(() => {
   return (report.value?.group_policy_gaps ?? []).map((item) => ({
-    title: item.routing_group_name,
+    title: item.product_plan_name,
     description: item.message
   }))
 })
@@ -421,11 +427,11 @@ function statusLabel(status: string): string {
   return labels[status] ?? status
 }
 
-function formatTime(unixMs: number): string {
-  if (!Number.isFinite(unixMs) || unixMs <= 0) {
+function formatTime(unixSecs: number): string {
+  if (!Number.isFinite(unixSecs) || unixSecs <= 0) {
     return '-'
   }
-  return new Date(unixMs).toLocaleString()
+  return new Date(unixSecs * 1000).toLocaleString()
 }
 
 watch(recentDays, () => {

@@ -562,8 +562,8 @@ pub struct NifflerCoreReadinessSummary {
     pub providers_active: u64,
     pub provider_keys_total: u64,
     pub provider_keys_active: u64,
-    pub routing_groups_total: u64,
-    pub routing_groups_enabled: u64,
+    pub product_plans_total: u64,
+    pub product_plans_public: u64,
     pub global_models_total: u64,
     pub global_models_active: u64,
     pub recent_problem_usage_sample_count: u64,
@@ -579,8 +579,8 @@ pub struct NifflerCoreMappingSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NifflerDisabledProviderReference {
-    pub routing_group_id: String,
-    pub routing_group_name: String,
+    pub product_plan_id: String,
+    pub product_plan_name: String,
     pub provider_id: String,
     pub provider_name: String,
     pub source_field: String,
@@ -598,8 +598,8 @@ pub struct NifflerKeyScopeResidue {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NifflerGroupPolicyGap {
-    pub routing_group_id: String,
-    pub routing_group_name: String,
+    pub product_plan_id: String,
+    pub product_plan_name: String,
     pub gap_kind: String,
     pub message: String,
 }
@@ -618,7 +618,7 @@ pub struct NifflerPriceGap {
 pub struct NifflerUsageAnomaly {
     pub usage_id: String,
     pub request_id: String,
-    pub created_at_unix_ms: u64,
+    pub created_at_unix_secs: u64,
     pub provider_name: String,
     pub provider_id: Option<String>,
     pub provider_api_key_id: Option<String>,

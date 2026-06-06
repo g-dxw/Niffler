@@ -20,8 +20,8 @@ export interface NifflerCoreReadinessSummary {
   providers_active: number
   provider_keys_total: number
   provider_keys_active: number
-  routing_groups_total: number
-  routing_groups_enabled: number
+  product_plans_total: number
+  product_plans_public: number
   global_models_total: number
   global_models_active: number
   recent_problem_usage_sample_count: number
@@ -35,8 +35,8 @@ export interface NifflerCoreMappingSummary {
 }
 
 export interface NifflerDisabledProviderReference {
-  routing_group_id: string
-  routing_group_name: string
+  product_plan_id: string
+  product_plan_name: string
   provider_id: string
   provider_name: string
   source_field: string
@@ -52,8 +52,8 @@ export interface NifflerKeyScopeResidue {
 }
 
 export interface NifflerGroupPolicyGap {
-  routing_group_id: string
-  routing_group_name: string
+  product_plan_id: string
+  product_plan_name: string
   gap_kind: string
   message: string
 }
@@ -70,7 +70,7 @@ export interface NifflerPriceGap {
 export interface NifflerUsageAnomaly {
   usage_id: string
   request_id: string
-  created_at_unix_ms: number
+  created_at_unix_secs: number
   provider_name: string
   provider_id?: string | null
   provider_api_key_id?: string | null
