@@ -1,8 +1,9 @@
 use http::Uri;
 
 use crate::control::management_token_required_permission;
+use crate::handlers::shared::local_proxy_route_requires_buffered_body;
 
-use super::{classify_control_route, headers};
+use super::{classify_control_route, headers, GatewayPublicRequestContext};
 
 #[test]
 fn classifies_admin_endpoint_health_api_formats_as_admin_proxy_route() {
@@ -234,6 +235,48 @@ fn classifies_admin_niffler_core_error_return_setting_writes_as_admin_proxy_rout
         Some("admin:routing_profiles:write")
     );
     assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
+fn admin_niffler_core_write_routes_buffer_request_body() {
+    let headers = headers(&[]);
+    let routes = [
+        (
+            http::Method::POST,
+            "/api/admin/niffler-core/upstream-services",
+        ),
+        (
+            http::Method::POST,
+            "/api/admin/niffler-core/upstream-services/service-1/accounts",
+        ),
+        (http::Method::POST, "/api/admin/niffler-core/product-plans"),
+        (
+            http::Method::POST,
+            "/api/admin/niffler-core/product-plans/plan-1/models",
+        ),
+        (
+            http::Method::POST,
+            "/api/admin/niffler-core/error-return-settings",
+        ),
+    ];
+
+    for (method, path) in routes {
+        let uri: Uri = path.parse().expect("uri should parse");
+        let decision =
+            classify_control_route(&method, &uri, &headers).expect("route should classify");
+        let context = GatewayPublicRequestContext::from_request_parts(
+            "trace-niffler-core-write",
+            &method,
+            &uri,
+            &headers,
+            Some(decision),
+        );
+
+        assert!(
+            local_proxy_route_requires_buffered_body(&context),
+            "{method} {path} should buffer request body"
+        );
+    }
 }
 
 #[test]

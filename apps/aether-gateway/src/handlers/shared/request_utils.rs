@@ -314,6 +314,17 @@ pub(crate) fn admin_proxy_local_requires_buffered_body(
                 | (Some("billing_manage"), http::Method::PUT, Some("update_plan"))
                 | (Some("billing_manage"), http::Method::PATCH, Some("set_plan_status"))
                 | (
+                    Some("niffler_core_manage"),
+                    http::Method::POST,
+                    Some(
+                        "create_upstream_service"
+                        | "create_upstream_account"
+                        | "create_product_plan"
+                        | "upsert_product_plan_model"
+                        | "create_error_return_setting",
+                    ),
+                )
+                | (
                     Some("payments_manage"),
                     http::Method::PUT,
                     Some("update_epay_gateway" | "update_dodopay_gateway"),
