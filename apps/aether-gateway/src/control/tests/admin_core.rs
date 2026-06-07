@@ -153,6 +153,61 @@ fn classifies_admin_niffler_core_upstream_account_writes_as_admin_proxy_route() 
 }
 
 #[test]
+fn classifies_admin_niffler_core_product_plan_writes_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/product-plans"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::POST, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(decision.route_kind.as_deref(), Some("create_product_plan"));
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:routing_profiles")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::POST, &decision).as_deref(),
+        Some("admin:routing_profiles:write")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
+fn classifies_admin_niffler_core_product_plan_model_writes_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/product-plans/plan-1/models"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::POST, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        decision.route_kind.as_deref(),
+        Some("upsert_product_plan_model")
+    );
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:routing_profiles")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::POST, &decision).as_deref(),
+        Some("admin:routing_profiles:write")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_admin_system_version_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/system/version"

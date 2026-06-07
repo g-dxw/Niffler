@@ -40,6 +40,27 @@ export interface NifflerUpstreamAccount {
   updated_at_unix_ms: number
 }
 
+export interface NifflerProductPlan {
+  id: string
+  display_name: string
+  is_public: boolean
+  is_active: boolean
+  sales_multiplier: number
+  description?: string | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
+export interface NifflerProductPlanModel {
+  id: string
+  product_plan_id: string
+  model_name: string
+  is_enabled: boolean
+  sales_multiplier_override?: number | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
 export interface NifflerListPage<T> {
   items: T[]
   total: number
@@ -70,6 +91,20 @@ export interface CreateNifflerUpstreamAccountPayload {
   auth_kind: 'api_key' | 'oauth' | 'custom_header'
   cost_multiplier?: number
   priority?: number
+}
+
+export interface CreateNifflerProductPlanPayload {
+  display_name: string
+  is_public?: boolean
+  is_active?: boolean
+  sales_multiplier?: number
+  description?: string | null
+}
+
+export interface UpsertNifflerProductPlanModelPayload {
+  model_name: string
+  is_enabled?: boolean
+  sales_multiplier_override?: number | null
 }
 
 export interface NifflerShadowTableItem {
@@ -287,6 +322,57 @@ export async function createNifflerUpstreamAccount(
 ): Promise<NifflerUpstreamAccount> {
   const response = await apiClient.post<NifflerUpstreamAccount>(
     `/api/admin/niffler-core/upstream-services/${encodeURIComponent(upstreamServiceId)}/accounts`,
+    payload
+  )
+  return response.data
+}
+
+export async function listNifflerProductPlans(params?: {
+  include_inactive?: boolean
+  public_only?: boolean
+  search?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerProductPlan>> {
+  const response = await apiClient.get<NifflerListPage<NifflerProductPlan>>(
+    '/api/admin/niffler-core/product-plans',
+    { params }
+  )
+  return response.data
+}
+
+export async function createNifflerProductPlan(
+  payload: CreateNifflerProductPlanPayload
+): Promise<NifflerProductPlan> {
+  const response = await apiClient.post<NifflerProductPlan>(
+    '/api/admin/niffler-core/product-plans',
+    payload
+  )
+  return response.data
+}
+
+export async function listNifflerProductPlanModels(
+  productPlanId: string,
+  params?: {
+    enabled_only?: boolean
+    search?: string
+    offset?: number
+    limit?: number
+  }
+): Promise<NifflerListPage<NifflerProductPlanModel>> {
+  const response = await apiClient.get<NifflerListPage<NifflerProductPlanModel>>(
+    `/api/admin/niffler-core/product-plans/${encodeURIComponent(productPlanId)}/models`,
+    { params }
+  )
+  return response.data
+}
+
+export async function upsertNifflerProductPlanModel(
+  productPlanId: string,
+  payload: UpsertNifflerProductPlanModelPayload
+): Promise<NifflerProductPlanModel> {
+  const response = await apiClient.post<NifflerProductPlanModel>(
+    `/api/admin/niffler-core/product-plans/${encodeURIComponent(productPlanId)}/models`,
     payload
   )
   return response.data

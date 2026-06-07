@@ -1,9 +1,13 @@
 use super::{
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
-    GatewayDataState, NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery,
+    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, DataLayerError, GatewayDataState,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
+    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
     StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
     StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -71,6 +75,54 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_niffler_product_plans(
+        &self,
+        query: &NifflerProductPlanListQuery,
+    ) -> Result<StoredNifflerProductPlanListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_product_plans(query).await,
+            None => Ok(StoredNifflerProductPlanListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
+    pub(crate) async fn find_niffler_product_plan_by_id(
+        &self,
+        product_plan_id: &str,
+    ) -> Result<Option<StoredNifflerProductPlan>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.find_product_plan_by_id(product_plan_id).await,
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn list_niffler_product_plan_models(
+        &self,
+        query: &NifflerProductPlanModelListQuery,
+    ) -> Result<StoredNifflerProductPlanModelListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_product_plan_models(query).await,
+            None => Ok(StoredNifflerProductPlanModelListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: CreateNifflerUpstreamServiceRecord,
@@ -112,6 +164,34 @@ impl GatewayDataState {
                 .upsert_upstream_service_capability(record)
                 .await
                 .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_product_plan(
+        &self,
+        record: CreateNifflerProductPlanRecord,
+    ) -> Result<Option<StoredNifflerProductPlan>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository.create_product_plan(record).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn upsert_niffler_product_plan_model(
+        &self,
+        record: UpsertNifflerProductPlanModelRecord,
+    ) -> Result<Option<StoredNifflerProductPlanModel>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository.upsert_product_plan_model(record).await.map(Some),
             None => Ok(None),
         }
     }

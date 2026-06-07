@@ -8,12 +8,12 @@
       <template #actions>
         <Button
           variant="outline"
-          :disabled="serviceLoading || accountLoading"
+          :disabled="serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading"
           @click="refreshAll"
         >
           <RefreshCw
             class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': serviceLoading || accountLoading }"
+            :class="{ 'animate-spin': serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading }"
           />
           刷新
         </Button>
@@ -29,7 +29,7 @@
               这是新模型入口，不会改动当前线上请求。
             </p>
             <p class="text-sm text-amber-800/80 dark:text-amber-100/75">
-              本页只写入新表：上游服务、上游账号、服务能力。账号不保存真实密钥内容，也不会进入旧 Provider、号池、计费或结算链路。
+              本页只写入新表：上游服务、上游账号、服务能力、产品策略、可售模型。账号不保存真实密钥内容，也不会进入旧 Provider、号池、用户模型、计费或结算链路。
             </p>
           </div>
         </div>
@@ -238,6 +238,210 @@
               </div>
             </div>
           </div>
+        </Card>
+      </div>
+
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+        <Card class="overflow-hidden">
+          <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold">
+                产品策略
+              </h2>
+              <p class="mt-1 text-sm text-muted-foreground">
+                登记以后要卖给用户的策略，不会影响当前用户 Key 和旧分组。
+              </p>
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                v-model="productPlanSearch"
+                class="h-9 sm:w-64"
+                placeholder="搜索策略名称"
+                @keyup.enter="loadProductPlans"
+              />
+              <Button
+                variant="outline"
+                class="h-9"
+                :disabled="productPlanLoading"
+                @click="loadProductPlans"
+              >
+                <Search class="mr-2 h-4 w-4" />
+                搜索
+              </Button>
+              <Button
+                class="h-9"
+                @click="productPlanDialogOpen = true"
+              >
+                <Plus class="mr-2 h-4 w-4" />
+                新增策略
+              </Button>
+            </div>
+          </div>
+
+          <div
+            v-if="productPlanError"
+            class="border-b border-destructive/20 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+          >
+            {{ productPlanError }}
+          </div>
+
+          <div
+            v-if="productPlanLoading && productPlans.length === 0"
+            class="flex items-center justify-center py-16 text-sm text-muted-foreground"
+          >
+            <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+            正在读取产品策略...
+          </div>
+
+          <div
+            v-else-if="productPlans.length === 0"
+            class="py-16 text-center"
+          >
+            <Tags class="mx-auto h-10 w-10 text-muted-foreground/50" />
+            <p class="mt-3 font-medium">
+              还没有产品策略
+            </p>
+            <p class="mt-1 text-sm text-muted-foreground">
+              先登记策略，再登记这个策略下可售的模型。
+            </p>
+          </div>
+
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>策略名称</TableHead>
+                <TableHead>默认销售倍率</TableHead>
+                <TableHead>公开</TableHead>
+                <TableHead>状态</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="plan in productPlans"
+                :key="plan.id"
+                class="cursor-pointer"
+                :class="selectedProductPlanId === plan.id ? 'bg-primary/5' : 'hover:bg-muted/40'"
+                @click="selectProductPlan(plan.id)"
+              >
+                <TableCell>
+                  <div class="font-medium">
+                    {{ plan.display_name }}
+                  </div>
+                  <div
+                    v-if="plan.description"
+                    class="mt-1 max-w-[360px] truncate text-xs text-muted-foreground"
+                  >
+                    {{ plan.description }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {{ formatMultiplier(plan.sales_multiplier) }}
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="plan.is_public ? 'outline' : 'secondary'">
+                    {{ plan.is_public ? '公开' : '内部' }}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="plan.is_active ? 'outline' : 'secondary'">
+                    {{ plan.is_active ? '启用' : '停用' }}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </Card>
+
+        <Card class="overflow-hidden">
+          <div class="flex flex-col gap-4 border-b border-border/70 p-5 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold">
+                可售模型
+              </h2>
+              <p class="mt-1 text-sm text-muted-foreground">
+                {{ selectedProductPlan ? `当前策略：${selectedProductPlan.display_name}` : '先选择左侧产品策略' }}
+              </p>
+            </div>
+            <Button
+              class="h-9"
+              :disabled="!selectedProductPlan"
+              @click="productPlanModelDialogOpen = true"
+            >
+              <Plus class="mr-2 h-4 w-4" />
+              新增模型
+            </Button>
+          </div>
+
+          <div
+            v-if="productPlanModelError"
+            class="border-b border-destructive/20 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+          >
+            {{ productPlanModelError }}
+          </div>
+
+          <div
+            v-if="!selectedProductPlan"
+            class="py-16 text-center"
+          >
+            <PackageCheck class="mx-auto h-10 w-10 text-muted-foreground/50" />
+            <p class="mt-3 font-medium">
+              请选择一个产品策略
+            </p>
+            <p class="mt-1 text-sm text-muted-foreground">
+              可售模型会登记到选中的策略下面。
+            </p>
+          </div>
+
+          <div
+            v-else-if="productPlanModelLoading && productPlanModels.length === 0"
+            class="flex items-center justify-center py-16 text-sm text-muted-foreground"
+          >
+            <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+            正在读取可售模型...
+          </div>
+
+          <div
+            v-else-if="productPlanModels.length === 0"
+            class="py-16 text-center"
+          >
+            <PackageCheck class="mx-auto h-10 w-10 text-muted-foreground/50" />
+            <p class="mt-3 font-medium">
+              这个策略下还没有模型
+            </p>
+            <p class="mt-1 text-sm text-muted-foreground">
+              这里登记的是新模型配置，不影响当前用户可用模型。
+            </p>
+          </div>
+
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>模型名称</TableHead>
+                <TableHead>销售倍率覆盖</TableHead>
+                <TableHead>状态</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="model in productPlanModels"
+                :key="model.id"
+              >
+                <TableCell>
+                  <div class="font-medium">
+                    {{ model.model_name }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {{ formatOptionalMultiplier(model.sales_multiplier_override) }}
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="model.is_enabled ? 'outline' : 'secondary'">
+                    {{ model.is_enabled ? '启用' : '停用' }}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </Card>
       </div>
     </div>
@@ -459,6 +663,142 @@
         </Button>
       </template>
     </Dialog>
+
+    <Dialog
+      v-model="productPlanDialogOpen"
+      size="lg"
+      title="新增产品策略"
+      description="只登记新模型里的产品策略，不绑定用户 Key。"
+      :icon="Tags"
+    >
+      <form
+        class="space-y-4"
+        @submit.prevent="submitProductPlan"
+      >
+        <div class="space-y-2">
+          <Label for="product-plan-name">策略名称</Label>
+          <Input
+            id="product-plan-name"
+            v-model="productPlanForm.display_name"
+            placeholder="例如 标准套餐策略"
+            required
+          />
+        </div>
+        <div class="space-y-2">
+          <Label for="product-plan-description">说明</Label>
+          <Input
+            id="product-plan-description"
+            v-model="productPlanForm.description"
+            placeholder="给管理员看的备注，可选"
+          />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <div class="space-y-2">
+            <Label for="product-plan-sales">钱包销售倍率</Label>
+            <Input
+              id="product-plan-sales"
+              v-model.number="productPlanForm.sales_multiplier"
+              type="number"
+              min="0"
+              step="0.0001"
+            />
+          </div>
+          <div class="flex items-center gap-3 pt-7">
+            <Switch
+              id="product-plan-public"
+              v-model="productPlanForm.is_public"
+            />
+            <Label for="product-plan-public">公开策略</Label>
+          </div>
+          <div class="flex items-center gap-3 pt-7">
+            <Switch
+              id="product-plan-active"
+              v-model="productPlanForm.is_active"
+            />
+            <Label for="product-plan-active">启用策略</Label>
+          </div>
+        </div>
+      </form>
+
+      <template #footer>
+        <Button
+          type="submit"
+          :disabled="savingProductPlan"
+          @click="submitProductPlan"
+        >
+          {{ savingProductPlan ? '保存中...' : '保存策略' }}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          :disabled="savingProductPlan"
+          @click="productPlanDialogOpen = false"
+        >
+          取消
+        </Button>
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model="productPlanModelDialogOpen"
+      size="lg"
+      title="新增可售模型"
+      description="只登记这个产品策略里的模型和销售倍率覆盖。"
+      :icon="PackageCheck"
+    >
+      <form
+        class="space-y-4"
+        @submit.prevent="submitProductPlanModel"
+      >
+        <div class="space-y-2">
+          <Label for="product-plan-model-name">模型名称</Label>
+          <Input
+            id="product-plan-model-name"
+            v-model="productPlanModelForm.model_name"
+            placeholder="例如 gpt-5.5"
+            required
+          />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="product-plan-model-sales">模型级销售倍率覆盖</Label>
+            <Input
+              id="product-plan-model-sales"
+              v-model="productPlanModelForm.sales_multiplier_override"
+              type="number"
+              min="0"
+              step="0.0001"
+              placeholder="留空则使用策略默认倍率"
+            />
+          </div>
+          <div class="flex items-center gap-3 pt-7">
+            <Switch
+              id="product-plan-model-enabled"
+              v-model="productPlanModelForm.is_enabled"
+            />
+            <Label for="product-plan-model-enabled">启用模型</Label>
+          </div>
+        </div>
+      </form>
+
+      <template #footer>
+        <Button
+          type="submit"
+          :disabled="savingProductPlanModel || !selectedProductPlan"
+          @click="submitProductPlanModel"
+        >
+          {{ savingProductPlanModel ? '保存中...' : '保存模型' }}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          :disabled="savingProductPlanModel"
+          @click="productPlanModelDialogOpen = false"
+        >
+          取消
+        </Button>
+      </template>
+    </Dialog>
   </PageContainer>
 </template>
 
@@ -468,10 +808,12 @@ import {
   AlertTriangle,
   KeyRound,
   Loader2,
+  PackageCheck,
   Plus,
   RefreshCw,
   Search,
   Server,
+  Tags,
 } from 'lucide-vue-next'
 import { PageContainer, PageHeader } from '@/components/layout'
 import {
@@ -496,36 +838,63 @@ import {
   TableRow,
 } from '@/components/ui'
 import {
+  createNifflerProductPlan,
   createNifflerUpstreamAccount,
   createNifflerUpstreamService,
+  listNifflerProductPlanModels,
+  listNifflerProductPlans,
   listNifflerUpstreamAccounts,
   listNifflerUpstreamServices,
+  upsertNifflerProductPlanModel,
+  type CreateNifflerProductPlanPayload,
   type CreateNifflerUpstreamAccountPayload,
   type CreateNifflerUpstreamServicePayload,
   type NifflerAccountStatus,
+  type NifflerProductPlan,
+  type NifflerProductPlanModel,
   type NifflerProtocolKind,
   type NifflerUpstreamAccount,
   type NifflerUpstreamService,
+  type UpsertNifflerProductPlanModelPayload,
 } from '@/api/niffler-core'
 import { useToast } from '@/composables/useToast'
 import { extractErrorMessage } from '@/utils/error'
 
 type CapabilityKey = keyof NonNullable<CreateNifflerUpstreamServicePayload['capabilities']>
+type ProductPlanForm = Required<Pick<CreateNifflerProductPlanPayload, 'display_name' | 'is_public' | 'is_active'>> & {
+  sales_multiplier: number | string
+  description: string
+}
+type ProductPlanModelForm = Omit<UpsertNifflerProductPlanModelPayload, 'sales_multiplier_override'> & {
+  sales_multiplier_override: number | string | null
+}
 
 const { success, error: showError } = useToast()
 
 const services = ref<NifflerUpstreamService[]>([])
 const accounts = ref<NifflerUpstreamAccount[]>([])
+const productPlans = ref<NifflerProductPlan[]>([])
+const productPlanModels = ref<NifflerProductPlanModel[]>([])
 const serviceLoading = ref(false)
 const accountLoading = ref(false)
+const productPlanLoading = ref(false)
+const productPlanModelLoading = ref(false)
 const savingService = ref(false)
 const savingAccount = ref(false)
+const savingProductPlan = ref(false)
+const savingProductPlanModel = ref(false)
 const serviceError = ref('')
 const accountError = ref('')
+const productPlanError = ref('')
+const productPlanModelError = ref('')
 const serviceSearch = ref('')
+const productPlanSearch = ref('')
 const selectedServiceId = ref<string | null>(null)
+const selectedProductPlanId = ref<string | null>(null)
 const serviceDialogOpen = ref(false)
 const accountDialogOpen = ref(false)
+const productPlanDialogOpen = ref(false)
+const productPlanModelDialogOpen = ref(false)
 
 const defaultServiceForm = (): CreateNifflerUpstreamServicePayload => ({
   display_name: '',
@@ -554,9 +923,26 @@ const defaultAccountForm = (): CreateNifflerUpstreamAccountPayload => ({
   priority: 0,
 })
 
+const defaultProductPlanForm = (): ProductPlanForm => ({
+  display_name: '',
+  is_public: false,
+  is_active: true,
+  sales_multiplier: 1,
+  description: '',
+})
+
+const defaultProductPlanModelForm = (): ProductPlanModelForm => ({
+  model_name: '',
+  is_enabled: true,
+  sales_multiplier_override: null,
+})
+
 const serviceForm = ref<CreateNifflerUpstreamServicePayload>(defaultServiceForm())
 const accountForm = ref<CreateNifflerUpstreamAccountPayload>(defaultAccountForm())
+const productPlanForm = ref<ProductPlanForm>(defaultProductPlanForm())
+const productPlanModelForm = ref<ProductPlanModelForm>(defaultProductPlanModelForm())
 let accountLoadSeq = 0
+let productPlanModelLoadSeq = 0
 
 const capabilityOptions: Array<{
   key: CapabilityKey
@@ -575,6 +961,10 @@ const selectedService = computed(() =>
   services.value.find(service => service.id === selectedServiceId.value) ?? null
 )
 
+const selectedProductPlan = computed(() =>
+  productPlans.value.find(plan => plan.id === selectedProductPlanId.value) ?? null
+)
+
 watch(serviceDialogOpen, (open) => {
   if (!open) {
     serviceForm.value = defaultServiceForm()
@@ -587,10 +977,25 @@ watch(accountDialogOpen, (open) => {
   }
 })
 
+watch(productPlanDialogOpen, (open) => {
+  if (!open) {
+    productPlanForm.value = defaultProductPlanForm()
+  }
+})
+
+watch(productPlanModelDialogOpen, (open) => {
+  if (!open) {
+    productPlanModelForm.value = defaultProductPlanModelForm()
+  }
+})
+
 async function refreshAll() {
-  await loadServices()
+  await Promise.all([loadServices(), loadProductPlans()])
   if (selectedServiceId.value) {
     await loadAccounts(selectedServiceId.value)
+  }
+  if (selectedProductPlanId.value) {
+    await loadProductPlanModels(selectedProductPlanId.value)
   }
 }
 
@@ -646,6 +1051,58 @@ async function selectService(serviceId: string) {
   await loadAccounts(serviceId)
 }
 
+async function loadProductPlans() {
+  productPlanLoading.value = true
+  productPlanError.value = ''
+  try {
+    const response = await listNifflerProductPlans({
+      include_inactive: true,
+      search: productPlanSearch.value.trim() || undefined,
+      limit: 100,
+    })
+    productPlans.value = response.items
+    if (!selectedProductPlanId.value && productPlans.value.length > 0) {
+      selectedProductPlanId.value = productPlans.value[0].id
+      await loadProductPlanModels(productPlans.value[0].id)
+    } else if (selectedProductPlanId.value && !productPlans.value.some(item => item.id === selectedProductPlanId.value)) {
+      selectedProductPlanId.value = productPlans.value[0]?.id ?? null
+      productPlanModels.value = []
+      if (selectedProductPlanId.value) {
+        await loadProductPlanModels(selectedProductPlanId.value)
+      }
+    }
+  } catch (err) {
+    productPlanError.value = extractErrorMessage(err, '读取产品策略失败')
+    showError(productPlanError.value)
+  } finally {
+    productPlanLoading.value = false
+  }
+}
+
+async function loadProductPlanModels(productPlanId: string) {
+  const seq = ++productPlanModelLoadSeq
+  productPlanModelLoading.value = true
+  productPlanModelError.value = ''
+  try {
+    const response = await listNifflerProductPlanModels(productPlanId, { limit: 100 })
+    if (seq !== productPlanModelLoadSeq) return
+    productPlanModels.value = response.items
+  } catch (err) {
+    if (seq !== productPlanModelLoadSeq) return
+    productPlanModelError.value = extractErrorMessage(err, '读取可售模型失败')
+    showError(productPlanModelError.value)
+  } finally {
+    if (seq === productPlanModelLoadSeq) {
+      productPlanModelLoading.value = false
+    }
+  }
+}
+
+async function selectProductPlan(productPlanId: string) {
+  selectedProductPlanId.value = productPlanId
+  await loadProductPlanModels(productPlanId)
+}
+
 async function submitService() {
   const payload = normalizeServicePayload(serviceForm.value)
   if (!payload) return
@@ -680,6 +1137,43 @@ async function submitAccount() {
     showError(extractErrorMessage(err, '新增上游账号失败'))
   } finally {
     savingAccount.value = false
+  }
+}
+
+async function submitProductPlan() {
+  const payload = normalizeProductPlanPayload(productPlanForm.value)
+  if (!payload) return
+
+  savingProductPlan.value = true
+  try {
+    const created = await createNifflerProductPlan(payload)
+    success('产品策略已登记')
+    productPlanDialogOpen.value = false
+    await loadProductPlans()
+    selectedProductPlanId.value = created.id
+    await loadProductPlanModels(created.id)
+  } catch (err) {
+    showError(extractErrorMessage(err, '新增产品策略失败'))
+  } finally {
+    savingProductPlan.value = false
+  }
+}
+
+async function submitProductPlanModel() {
+  if (!selectedProductPlanId.value) return
+  const payload = normalizeProductPlanModelPayload(productPlanModelForm.value)
+  if (!payload) return
+
+  savingProductPlanModel.value = true
+  try {
+    await upsertNifflerProductPlanModel(selectedProductPlanId.value, payload)
+    success('可售模型已保存')
+    productPlanModelDialogOpen.value = false
+    await loadProductPlanModels(selectedProductPlanId.value)
+  } catch (err) {
+    showError(extractErrorMessage(err, '保存可售模型失败'))
+  } finally {
+    savingProductPlanModel.value = false
   }
 }
 
@@ -749,6 +1243,55 @@ function normalizeAccountPayload(
   }
 }
 
+function normalizeProductPlanPayload(form: ProductPlanForm): CreateNifflerProductPlanPayload | null {
+  const displayName = form.display_name.trim()
+  if (!displayName) {
+    showError('策略名称不能为空')
+    return null
+  }
+
+  const salesMultiplier = Number(form.sales_multiplier ?? 1)
+  if (!Number.isFinite(salesMultiplier) || salesMultiplier < 0) {
+    showError('钱包销售倍率必须是非负数字')
+    return null
+  }
+
+  return {
+    display_name: displayName,
+    is_public: form.is_public,
+    is_active: form.is_active,
+    sales_multiplier: salesMultiplier,
+    description: emptyToNull(form.description),
+  }
+}
+
+function normalizeProductPlanModelPayload(
+  form: ProductPlanModelForm
+): UpsertNifflerProductPlanModelPayload | null {
+  const modelName = form.model_name.trim()
+  if (!modelName) {
+    showError('模型名称不能为空')
+    return null
+  }
+
+  const rawOverride = form.sales_multiplier_override
+  let salesMultiplierOverride: number | null = null
+  if (rawOverride !== null && rawOverride !== '') {
+    const parsed = Number(rawOverride)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      showError('模型级销售倍率覆盖必须是非负数字')
+      return null
+    }
+    salesMultiplierOverride = parsed
+  }
+
+  return {
+    model_name: modelName,
+    is_enabled: form.is_enabled ?? true,
+    sales_multiplier_override: salesMultiplierOverride,
+  }
+}
+
 function emptyToNull(value?: string | null): string | null {
   const normalized = value?.trim() ?? ''
   return normalized ? normalized : null
@@ -756,6 +1299,10 @@ function emptyToNull(value?: string | null): string | null {
 
 function formatMultiplier(value: number): string {
   return `${Number(value || 0).toFixed(4).replace(/\.?0+$/, '')}x`
+}
+
+function formatOptionalMultiplier(value?: number | null): string {
+  return value === null || value === undefined ? '使用策略默认倍率' : formatMultiplier(value)
 }
 
 function accountContactLabel(account: NifflerUpstreamAccount): string {
@@ -785,5 +1332,6 @@ function accountStatusLabel(status: NifflerAccountStatus): string {
 
 onMounted(() => {
   void loadServices()
+  void loadProductPlans()
 })
 </script>

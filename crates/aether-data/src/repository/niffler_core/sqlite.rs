@@ -3,12 +3,16 @@ use sqlx::{sqlite::SqliteRow, QueryBuilder, Row, Sqlite};
 
 use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, NifflerAccountStatus,
-    NifflerCoreReadRepository, NifflerCoreWriteRepository, NifflerProtocolKind,
-    NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery,
+    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerAccountStatus, NifflerCoreReadRepository,
+    NifflerCoreWriteRepository, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerProtocolKind, NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
+    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
     StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
     StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::sqlite::SqlitePool;
 use crate::error::SqlResultExt;
@@ -93,6 +97,47 @@ LIMIT 1
                 )
             })
     }
+
+    async fn reload_product_plan(
+        &self,
+        product_plan_id: &str,
+    ) -> Result<StoredNifflerProductPlan, DataLayerError> {
+        self.find_product_plan_by_id(product_plan_id)
+            .await?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue("niffler product plan missing after write".into())
+            })
+    }
+
+    async fn reload_product_plan_model(
+        &self,
+        product_plan_id: &str,
+        model_name: &str,
+    ) -> Result<StoredNifflerProductPlanModel, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, product_plan_id, model_name, is_enabled, sales_multiplier_override,
+  created_at_unix_ms, updated_at_unix_ms
+FROM niffler_product_plan_models
+WHERE product_plan_id = ? AND model_name = ?
+LIMIT 1
+"#,
+        )
+        .bind(product_plan_id)
+        .bind(model_name)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_product_plan_model_row)
+            .transpose()?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler product plan model missing after write".into(),
+                )
+            })
+    }
 }
 
 #[async_trait]
@@ -161,6 +206,75 @@ LIMIT 1
             .map(map_account_row)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StoredNifflerUpstreamAccountListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_product_plans(
+        &self,
+        query: &NifflerProductPlanListQuery,
+    ) -> Result<StoredNifflerProductPlanListPage, DataLayerError> {
+        let total = build_product_plan_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_product_plan_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_product_plan_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerProductPlanListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn find_product_plan_by_id(
+        &self,
+        product_plan_id: &str,
+    ) -> Result<Option<StoredNifflerProductPlan>, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, display_name, is_public, is_active, sales_multiplier, description,
+  created_at_unix_ms, updated_at_unix_ms
+FROM niffler_product_plans
+WHERE id = ?
+LIMIT 1
+"#,
+        )
+        .bind(product_plan_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref().map(map_product_plan_row).transpose()
+    }
+
+    async fn list_product_plan_models(
+        &self,
+        query: &NifflerProductPlanModelListQuery,
+    ) -> Result<StoredNifflerProductPlanModelListPage, DataLayerError> {
+        let total = build_product_plan_model_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_product_plan_model_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_product_plan_model_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerProductPlanModelListPage {
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
@@ -301,6 +415,78 @@ ON CONFLICT(upstream_service_id, protocol_kind, capability_kind) DO UPDATE SET
         .map_sql_err()?;
         self.reload_capability(&record.id).await
     }
+
+    async fn create_product_plan(
+        &self,
+        record: CreateNifflerProductPlanRecord,
+    ) -> Result<StoredNifflerProductPlan, DataLayerError> {
+        record.validate()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_product_plans (
+  id, display_name, is_public, is_active, sales_multiplier, description,
+  created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.display_name)
+        .bind(record.is_public)
+        .bind(record.is_active)
+        .bind(record.sales_multiplier)
+        .bind(&record.description)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.updated_at_unix_ms,
+            "updated_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_product_plan(&record.id).await
+    }
+
+    async fn upsert_product_plan_model(
+        &self,
+        record: UpsertNifflerProductPlanModelRecord,
+    ) -> Result<StoredNifflerProductPlanModel, DataLayerError> {
+        record.validate()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_product_plan_models (
+  id, product_plan_id, model_name, is_enabled, sales_multiplier_override,
+  created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(product_plan_id, model_name) DO UPDATE SET
+  is_enabled = excluded.is_enabled,
+  sales_multiplier_override = excluded.sales_multiplier_override,
+  updated_at_unix_ms = excluded.updated_at_unix_ms
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.product_plan_id)
+        .bind(&record.model_name)
+        .bind(record.is_enabled)
+        .bind(record.sales_multiplier_override)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.updated_at_unix_ms,
+            "updated_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_product_plan_model(&record.product_plan_id, &record.model_name)
+            .await
+    }
 }
 
 fn build_service_count_query(query: &NifflerUpstreamServiceListQuery) -> QueryBuilder<'_, Sqlite> {
@@ -404,6 +590,98 @@ fn push_account_filters(
     }
 }
 
+fn build_product_plan_count_query(query: &NifflerProductPlanListQuery) -> QueryBuilder<'_, Sqlite> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_product_plans");
+    push_product_plan_filters(&mut builder, query);
+    builder
+}
+
+fn build_product_plan_rows_query(query: &NifflerProductPlanListQuery) -> QueryBuilder<'_, Sqlite> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, display_name, is_public, is_active, sales_multiplier, description, \
+         created_at_unix_ms, updated_at_unix_ms FROM niffler_product_plans",
+    );
+    push_product_plan_filters(&mut builder, query);
+    builder.push(" ORDER BY created_at_unix_ms DESC, display_name ASC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_product_plan_filters(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    query: &NifflerProductPlanListQuery,
+) {
+    let mut has_where = false;
+    if !query.include_inactive {
+        builder.push(" WHERE is_active = TRUE");
+        has_where = true;
+    }
+    if query.public_only {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("is_public = TRUE");
+        has_where = true;
+    }
+    if let Some(search) = query
+        .search
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("(LOWER(display_name) LIKE LOWER(");
+        builder.push_bind(format!("%{search}%"));
+        builder.push(") OR LOWER(description) LIKE LOWER(");
+        builder.push_bind(format!("%{search}%"));
+        builder.push("))");
+    }
+}
+
+fn build_product_plan_model_count_query(
+    query: &NifflerProductPlanModelListQuery,
+) -> QueryBuilder<'_, Sqlite> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_product_plan_models");
+    push_product_plan_model_filters(&mut builder, query);
+    builder
+}
+
+fn build_product_plan_model_rows_query(
+    query: &NifflerProductPlanModelListQuery,
+) -> QueryBuilder<'_, Sqlite> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, product_plan_id, model_name, is_enabled, sales_multiplier_override, \
+         created_at_unix_ms, updated_at_unix_ms FROM niffler_product_plan_models",
+    );
+    push_product_plan_model_filters(&mut builder, query);
+    builder.push(" ORDER BY model_name ASC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_product_plan_model_filters(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    query: &NifflerProductPlanModelListQuery,
+) {
+    builder.push(" WHERE product_plan_id = ");
+    builder.push_bind(query.product_plan_id.clone());
+    if query.enabled_only {
+        builder.push(" AND is_enabled = TRUE");
+    }
+    if let Some(search) = query
+        .search
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        builder.push(" AND LOWER(model_name) LIKE LOWER(");
+        builder.push_bind(format!("%{search}%"));
+        builder.push(")");
+    }
+}
+
 fn map_service_row(row: &SqliteRow) -> Result<StoredNifflerUpstreamService, DataLayerError> {
     Ok(StoredNifflerUpstreamService {
         id: row.try_get("id").map_sql_err()?,
@@ -455,6 +733,45 @@ fn map_account_row(row: &SqliteRow) -> Result<StoredNifflerUpstreamAccount, Data
             row.try_get("config").map_sql_err()?,
             "niffler_upstream_accounts.config",
         )?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_product_plan_row(row: &SqliteRow) -> Result<StoredNifflerProductPlan, DataLayerError> {
+    Ok(StoredNifflerProductPlan {
+        id: row.try_get("id").map_sql_err()?,
+        display_name: row.try_get("display_name").map_sql_err()?,
+        is_public: row.try_get("is_public").map_sql_err()?,
+        is_active: row.try_get("is_active").map_sql_err()?,
+        sales_multiplier: row.try_get("sales_multiplier").map_sql_err()?,
+        description: row.try_get("description").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_product_plan_model_row(
+    row: &SqliteRow,
+) -> Result<StoredNifflerProductPlanModel, DataLayerError> {
+    Ok(StoredNifflerProductPlanModel {
+        id: row.try_get("id").map_sql_err()?,
+        product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        model_name: row.try_get("model_name").map_sql_err()?,
+        is_enabled: row.try_get("is_enabled").map_sql_err()?,
+        sales_multiplier_override: row.try_get("sales_multiplier_override").map_sql_err()?,
         created_at_unix_ms: super::u64_from_i64(
             row.try_get("created_at_unix_ms").map_sql_err()?,
             "created_at_unix_ms",

@@ -1,9 +1,13 @@
 use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery, StoredNifflerUpstreamAccount,
-    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
+    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
+    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
+    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
+    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
     UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
@@ -46,6 +50,36 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_niffler_product_plans(
+        &self,
+        query: &NifflerProductPlanListQuery,
+    ) -> Result<StoredNifflerProductPlanListPage, GatewayError> {
+        self.data
+            .list_niffler_product_plans(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn find_niffler_product_plan_by_id(
+        &self,
+        product_plan_id: &str,
+    ) -> Result<Option<StoredNifflerProductPlan>, GatewayError> {
+        self.data
+            .find_niffler_product_plan_by_id(product_plan_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn list_niffler_product_plan_models(
+        &self,
+        query: &NifflerProductPlanModelListQuery,
+    ) -> Result<StoredNifflerProductPlanModelListPage, GatewayError> {
+        self.data
+            .list_niffler_product_plan_models(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: CreateNifflerUpstreamServiceRecord,
@@ -72,6 +106,26 @@ impl AppState {
     ) -> Result<Option<StoredNifflerUpstreamServiceCapability>, GatewayError> {
         self.data
             .upsert_niffler_upstream_service_capability(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn create_niffler_product_plan(
+        &self,
+        record: CreateNifflerProductPlanRecord,
+    ) -> Result<Option<StoredNifflerProductPlan>, GatewayError> {
+        self.data
+            .create_niffler_product_plan(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn upsert_niffler_product_plan_model(
+        &self,
+        record: UpsertNifflerProductPlanModelRecord,
+    ) -> Result<Option<StoredNifflerProductPlanModel>, GatewayError> {
+        self.data
+            .upsert_niffler_product_plan_model(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

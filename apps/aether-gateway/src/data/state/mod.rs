@@ -111,10 +111,14 @@ use aether_data_contracts::repository::global_models::{
     StoredPublicGlobalModelPage, UpdateAdminGlobalModelRecord, UpsertAdminProviderModelRecord,
 };
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery, StoredNifflerUpstreamAccount,
-    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
+    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
+    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
+    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
+    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
     UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::pool_scores::{

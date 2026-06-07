@@ -7,14 +7,15 @@ use aether_data_contracts::repository::global_models::{
     StoredAdminProviderModel,
 };
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, NifflerAccountStatus,
-    NifflerCoreMappingSummary, NifflerCoreReadinessReport, NifflerCoreReadinessSummary,
-    NifflerDisabledProviderReference, NifflerGroupPolicyGap, NifflerKeyScopeResidue,
-    NifflerPriceGap, NifflerProtocolKind, NifflerReadinessIssue, NifflerReadinessSeverity,
-    NifflerRouteSkipReasonSummary, NifflerRouteSkipSample, NifflerServiceCapabilityKind,
-    NifflerShadowTableItem, NifflerShadowTableStatus, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceListQuery, NifflerUsageAnomaly,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerAccountStatus, NifflerCoreMappingSummary,
+    NifflerCoreReadinessReport, NifflerCoreReadinessSummary, NifflerDisabledProviderReference,
+    NifflerGroupPolicyGap, NifflerKeyScopeResidue, NifflerPriceGap, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerReadinessIssue,
+    NifflerReadinessSeverity, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
+    NifflerServiceCapabilityKind, NifflerShadowTableItem, NifflerShadowTableStatus,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery, NifflerUsageAnomaly,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -40,6 +41,7 @@ use uuid::Uuid;
 
 const READINESS_PATH: &str = "/api/admin/niffler-core/readiness";
 const UPSTREAM_SERVICES_PATH: &str = "/api/admin/niffler-core/upstream-services";
+const PRODUCT_PLANS_PATH: &str = "/api/admin/niffler-core/product-plans";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
 const MAX_USAGE_ITEMS: usize = 50;
@@ -105,6 +107,24 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
         ));
     }
 
+    if request_context.path().trim_end_matches('/') == PRODUCT_PLANS_PATH {
+        return Ok(Some(
+            build_product_plans_response(&state, &request_context, request.request_body()).await?,
+        ));
+    }
+
+    if let Some(product_plan_id) = product_plan_models_path_id(request_context.path()) {
+        return Ok(Some(
+            build_product_plan_models_response(
+                &state,
+                &request_context,
+                request.request_body(),
+                product_plan_id,
+            )
+            .await?,
+        ));
+    }
+
     Ok(None)
 }
 
@@ -161,6 +181,28 @@ struct AdminNifflerCreateUpstreamAccountRequest {
     cost_multiplier: f64,
     #[serde(default)]
     priority: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerCreateProductPlanRequest {
+    display_name: String,
+    #[serde(default)]
+    is_public: bool,
+    #[serde(default = "default_true")]
+    is_active: bool,
+    #[serde(default = "default_multiplier")]
+    sales_multiplier: f64,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerUpsertProductPlanModelRequest {
+    model_name: String,
+    #[serde(default = "default_true")]
+    is_enabled: bool,
+    #[serde(default)]
+    sales_multiplier_override: Option<f64>,
 }
 
 fn default_multiplier() -> f64 {
@@ -393,6 +435,169 @@ async fn create_upstream_account_response(
     ))
 }
 
+async fn build_product_plans_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            let query = NifflerProductPlanListQuery {
+                include_inactive: parse_bool_query(
+                    request_context.query_string(),
+                    "include_inactive",
+                )
+                .unwrap_or(false),
+                public_only: parse_bool_query(request_context.query_string(), "public_only")
+                    .unwrap_or(false),
+                search: query_param_value(request_context.query_string(), "search")
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+                limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
+            };
+            let page = state.list_niffler_product_plans(&query).await?;
+            Ok(Json(page).into_response())
+        }
+        method if method == http::Method::POST => {
+            create_product_plan_response(state, request_body).await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持列表和创建产品策略")),
+    }
+}
+
+async fn create_product_plan_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    let payload = match parse_required_body::<AdminNifflerCreateProductPlanRequest>(request_body) {
+        Ok(payload) => payload,
+        Err(response) => return Ok(response),
+    };
+    let display_name = match normalize_required_text(&payload.display_name, "产品策略名称", 200)
+    {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    if !payload.sales_multiplier.is_finite() || payload.sales_multiplier < 0.0 {
+        return Ok(niffler_bad_request("销售倍率必须是非负数字"));
+    }
+    let description = match normalize_optional_text(payload.description, 2_000) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let product_plan_id = Uuid::new_v4().to_string();
+    let record = CreateNifflerProductPlanRecord {
+        id: product_plan_id.clone(),
+        display_name,
+        is_public: payload.is_public,
+        is_active: payload.is_active,
+        sales_multiplier: payload.sales_multiplier,
+        description,
+        created_at_unix_ms: now_unix_ms,
+        updated_at_unix_ms: now_unix_ms,
+    };
+    let Some(created) = state.create_niffler_product_plan(record).await? else {
+        return Ok(niffler_data_unavailable_response());
+    };
+    Ok(attach_admin_audit_response(
+        (http::StatusCode::CREATED, Json(created)).into_response(),
+        "niffler_product_plan_created",
+        "create_niffler_product_plan",
+        "niffler_product_plan",
+        &product_plan_id,
+    ))
+}
+
+async fn build_product_plan_models_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    product_plan_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if state
+        .find_niffler_product_plan_by_id(&product_plan_id)
+        .await?
+        .is_none()
+    {
+        return Ok(niffler_not_found("产品策略不存在"));
+    }
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            let query = NifflerProductPlanModelListQuery {
+                product_plan_id,
+                enabled_only: parse_bool_query(request_context.query_string(), "enabled_only")
+                    .unwrap_or(false),
+                search: query_param_value(request_context.query_string(), "search")
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+                limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(100),
+            };
+            let page = state.list_niffler_product_plan_models(&query).await?;
+            Ok(Json(page).into_response())
+        }
+        method if method == http::Method::POST => {
+            upsert_product_plan_model_response(state, request_body, &product_plan_id).await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持列表和保存可售模型")),
+    }
+}
+
+async fn upsert_product_plan_model_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    product_plan_id: &str,
+) -> Result<Response<Body>, GatewayError> {
+    let payload =
+        match parse_required_body::<AdminNifflerUpsertProductPlanModelRequest>(request_body) {
+            Ok(payload) => payload,
+            Err(response) => return Ok(response),
+        };
+    let model_name = match normalize_required_text(&payload.model_name, "模型名称", 200) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    if let Some(value) = payload.sales_multiplier_override {
+        if !value.is_finite() || value < 0.0 {
+            return Ok(niffler_bad_request("模型销售倍率覆盖必须是非负数字"));
+        }
+    }
+
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let model_record_id = Uuid::new_v4().to_string();
+    let record = UpsertNifflerProductPlanModelRecord {
+        id: model_record_id.clone(),
+        product_plan_id: product_plan_id.to_string(),
+        model_name,
+        is_enabled: payload.is_enabled,
+        sales_multiplier_override: payload.sales_multiplier_override,
+        created_at_unix_ms: now_unix_ms,
+        updated_at_unix_ms: now_unix_ms,
+    };
+    let Some(saved) = state.upsert_niffler_product_plan_model(record).await? else {
+        return Ok(niffler_data_unavailable_response());
+    };
+    let saved_id = saved.id.clone();
+    Ok(attach_admin_audit_response(
+        Json(saved).into_response(),
+        "niffler_product_plan_model_saved",
+        "upsert_niffler_product_plan_model",
+        "niffler_product_plan_model",
+        &saved_id,
+    ))
+}
+
 fn build_capability_records(
     upstream_service_id: &str,
     protocol_kind: NifflerProtocolKind,
@@ -439,6 +644,14 @@ fn upstream_service_accounts_path_id(path: &str) -> Option<String> {
         .trim_end_matches('/')
         .strip_prefix("/api/admin/niffler-core/upstream-services/")?;
     let id = rest.strip_suffix("/accounts")?;
+    (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
+}
+
+fn product_plan_models_path_id(path: &str) -> Option<String> {
+    let rest = path
+        .trim_end_matches('/')
+        .strip_prefix("/api/admin/niffler-core/product-plans/")?;
+    let id = rest.strip_suffix("/models")?;
     (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
 }
 

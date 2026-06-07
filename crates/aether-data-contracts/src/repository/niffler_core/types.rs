@@ -517,6 +517,21 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         &self,
         query: &NifflerUpstreamAccountListQuery,
     ) -> Result<StoredNifflerUpstreamAccountListPage, crate::DataLayerError>;
+
+    async fn list_product_plans(
+        &self,
+        query: &NifflerProductPlanListQuery,
+    ) -> Result<StoredNifflerProductPlanListPage, crate::DataLayerError>;
+
+    async fn find_product_plan_by_id(
+        &self,
+        product_plan_id: &str,
+    ) -> Result<Option<StoredNifflerProductPlan>, crate::DataLayerError>;
+
+    async fn list_product_plan_models(
+        &self,
+        query: &NifflerProductPlanModelListQuery,
+    ) -> Result<StoredNifflerProductPlanModelListPage, crate::DataLayerError>;
 }
 
 #[async_trait]
@@ -535,6 +550,16 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: UpsertNifflerUpstreamServiceCapabilityRecord,
     ) -> Result<StoredNifflerUpstreamServiceCapability, crate::DataLayerError>;
+
+    async fn create_product_plan(
+        &self,
+        record: CreateNifflerProductPlanRecord,
+    ) -> Result<StoredNifflerProductPlan, crate::DataLayerError>;
+
+    async fn upsert_product_plan_model(
+        &self,
+        record: UpsertNifflerProductPlanModelRecord,
+    ) -> Result<StoredNifflerProductPlanModel, crate::DataLayerError>;
 }
 
 pub trait NifflerCoreRepository: NifflerCoreReadRepository + NifflerCoreWriteRepository {}
@@ -583,6 +608,90 @@ impl StoredNifflerProductPlanModel {
             self.sales_multiplier_override,
         )?;
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerProductPlanListQuery {
+    pub include_inactive: bool,
+    pub public_only: bool,
+    pub search: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerProductPlanListPage {
+    pub items: Vec<StoredNifflerProductPlan>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerProductPlanModelListQuery {
+    pub product_plan_id: String,
+    pub enabled_only: bool,
+    pub search: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerProductPlanModelListPage {
+    pub items: Vec<StoredNifflerProductPlanModel>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerProductPlanRecord {
+    pub id: String,
+    pub display_name: String,
+    pub is_public: bool,
+    pub is_active: bool,
+    pub sales_multiplier: f64,
+    pub description: Option<String>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl CreateNifflerProductPlanRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerProductPlan {
+            id: self.id.clone(),
+            display_name: self.display_name.clone(),
+            is_public: self.is_public,
+            is_active: self.is_active,
+            sales_multiplier: self.sales_multiplier,
+            description: self.description.clone(),
+            created_at_unix_ms: self.created_at_unix_ms,
+            updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpsertNifflerProductPlanModelRecord {
+    pub id: String,
+    pub product_plan_id: String,
+    pub model_name: String,
+    pub is_enabled: bool,
+    pub sales_multiplier_override: Option<f64>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl UpsertNifflerProductPlanModelRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerProductPlanModel {
+            id: self.id.clone(),
+            product_plan_id: self.product_plan_id.clone(),
+            model_name: self.model_name.clone(),
+            is_enabled: self.is_enabled,
+            sales_multiplier_override: self.sales_multiplier_override,
+            created_at_unix_ms: self.created_at_unix_ms,
+            updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
     }
 }
 

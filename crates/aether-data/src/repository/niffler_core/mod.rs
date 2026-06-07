@@ -3,13 +3,16 @@ mod postgres;
 mod sqlite;
 
 pub use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, NifflerAccountStatus,
-    NifflerCoreReadRepository, NifflerCoreRepository, NifflerCoreWriteRepository,
-    NifflerProtocolKind, NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerUpstreamAccount,
+    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerAccountStatus, NifflerCoreReadRepository,
+    NifflerCoreRepository, NifflerCoreWriteRepository, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerServiceCapabilityKind,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 pub use mysql::MysqlNifflerCoreRepository;
 pub use postgres::SqlxNifflerCoreRepository;
