@@ -516,10 +516,8 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
                 .collect::<BTreeMap<_, _>>();
             let provider_routes_by_usage_id = attempt_info_by_usage_id
                 .iter()
-                .filter_map(|(usage_id, info)| {
-                    (!info.provider_route.is_empty())
-                        .then(|| (usage_id.clone(), info.provider_route.clone()))
-                })
+                .filter(|(_, info)| !info.provider_route.is_empty())
+                .map(|(usage_id, info)| (usage_id.clone(), info.provider_route.clone()))
                 .collect::<BTreeMap<_, _>>();
             let image_progress_by_request_id =
                 resolve_admin_usage_image_progress_by_request_id(state, &items).await?;

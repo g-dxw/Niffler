@@ -1060,7 +1060,7 @@ mod tests {
             headers.get("authorization").map(String::as_str),
             Some("Bearer upstream-token")
         );
-        assert!(headers.get("x-api-key").is_none());
+        assert!(!headers.contains_key("x-api-key"));
         assert_eq!(headers.get("x-app").map(String::as_str), Some("cli"));
         assert_eq!(
             headers.get("anthropic-version").map(String::as_str),

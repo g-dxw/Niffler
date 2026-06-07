@@ -339,6 +339,10 @@ fn empty_database_snapshot_sql_includes_usage_body_blobs_and_audit_admin_role() 
         EMPTY_DATABASE_SNAPSHOT_SQL.contains("client_response_body_state character varying(32)")
     );
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL
+        .contains("CREATE TABLE IF NOT EXISTS public.niffler_upstream_services"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL
+        .contains("CREATE TABLE IF NOT EXISTS public.niffler_api_key_pauses"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL
         .contains("CREATE TABLE IF NOT EXISTS public.usage_routing_snapshots"));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL
         .contains("CREATE TABLE IF NOT EXISTS public.usage_settlement_snapshots"));
@@ -626,6 +630,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260531120000,
             20260601120000,
             20260606120000,
+            20260607120000,
         ]
     );
     assert_eq!(
@@ -653,6 +658,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260531120000,
             20260601120000,
             20260606120000,
+            20260607120000,
         ]
     );
 }
@@ -1180,12 +1186,14 @@ fn pending_migrations_from_applied_skips_versions_already_applied() {
             20260531120000,
             20260601120000,
             20260606120000,
+            20260607120000,
         ]
     );
 }
 
 #[test]
-fn pending_migrations_from_applied_is_empty_after_empty_database_snapshot_stamp() {
+fn pending_migrations_from_applied_after_empty_database_snapshot_stamp_returns_post_snapshot_incrementals(
+) {
     let applied = empty_database_snapshot_migrations(&POSTGRES_MIGRATOR)
         .expect("empty database snapshot migrations should resolve")
         .into_iter()
@@ -1196,11 +1204,16 @@ fn pending_migrations_from_applied_is_empty_after_empty_database_snapshot_stamp(
         .collect::<Vec<_>>();
 
     let pending = pending_migrations_from_applied(&applied);
+    let pending_versions = pending
+        .into_iter()
+        .map(|migration| migration.version)
+        .collect::<Vec<_>>();
 
-    assert!(
-            pending.is_empty(),
-            "empty database snapshot-stamped databases should not require a manual migration before first startup"
-        );
+    assert_eq!(
+        pending_versions,
+        vec![20260607120000],
+        "empty database snapshot-stamped databases should run only post-snapshot incrementals on first startup"
+    );
 }
 
 #[tokio::test]

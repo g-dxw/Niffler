@@ -2484,6 +2484,7 @@ pub fn build_admin_usage_summary_stats_response(
     build_admin_usage_summary_stats_response_from_summary(&summarize_admin_usage_stats(usage))
 }
 
+#[allow(clippy::too_many_arguments)] // response assembly keeps each precomputed lookup explicit
 pub fn build_admin_usage_active_requests_response(
     items: &[StoredRequestUsageAudit],
     api_key_names: &BTreeMap<String, String>,

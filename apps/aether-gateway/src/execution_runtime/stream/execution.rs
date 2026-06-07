@@ -4936,12 +4936,9 @@ mod tests {
             usage.response_body.is_none(),
             "upstream redirect did not include a body"
         );
-        assert_eq!(
-            usage
-                .client_response_body
-                .as_ref()
-                .and_then(|body| body.pointer("/error/upstream_status")),
-            Some(&json!(302))
+        assert!(
+            usage.client_response_body.is_none(),
+            "basic usage capture stores response headers and status without keeping the client body"
         );
         flush_request_candidate_status_writes(&state).await;
         let candidates = request_candidate_repository
