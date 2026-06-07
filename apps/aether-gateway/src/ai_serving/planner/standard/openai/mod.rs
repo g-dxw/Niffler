@@ -1,5 +1,6 @@
 mod chat;
 mod embedding;
+mod image_bridge;
 mod image_intent;
 mod responses;
 

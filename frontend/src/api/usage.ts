@@ -20,6 +20,7 @@ export interface UsageRecord {
   username?: string
   provider_id?: string // UUID
   provider_name?: string
+  provider_route?: string[]
   model: string
   input_tokens: number
   effective_input_tokens?: number
@@ -503,6 +504,7 @@ export const usageApi = {
       status_code?: number | null
       error_message?: string | null
       provider?: string | null
+      provider_route?: string[] | null
       api_key_name?: string | null
       provider_key_name?: string | null
       provider_key_account_label?: string | null

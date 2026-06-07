@@ -1039,9 +1039,10 @@ mod tests {
             .as_str()
             .unwrap_or_default()
             .contains("Responses native `image_generation` tool"));
-        assert!(
-            converted.get("tool_choice").is_none(),
-            "advertising the image tool must not force image generation"
+        assert_eq!(
+            converted["tool_choice"],
+            json!("auto"),
+            "auto advertises the tool without forcing image generation"
         );
     }
 

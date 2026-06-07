@@ -71,4 +71,15 @@ describe('applyUsageActiveRequestUpdate', () => {
 
     expect(record.provider).toBe('https://c-api.cc/')
   })
+
+  it('applies provider transfer routes from active updates', () => {
+    const record = buildRecord({ provider: 'cc-max(zzshu)1.0' })
+
+    applyUsageActiveRequestUpdate(record, {
+      id: 'usage-1',
+      provider_route: ['cc-max(link)1.0', 'cc-max(zzshu)1.0'],
+    })
+
+    expect(record.provider_route).toEqual(['cc-max(link)1.0', 'cc-max(zzshu)1.0'])
+  })
 })

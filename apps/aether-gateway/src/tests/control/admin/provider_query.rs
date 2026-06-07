@@ -3371,8 +3371,29 @@ async fn gateway_handles_openai_responses_test_model_locally() {
                 plan.body
                     .json_body
                     .as_ref()
-                    .and_then(|body| body.get("instructions")),
-                Some(&json!(""))
+                    .and_then(|body| body.get("instructions"))
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.contains("Responses native `image_generation` tool")),
+                Some(true)
+            );
+            assert_eq!(
+                plan.body
+                    .json_body
+                    .as_ref()
+                    .and_then(|body| body.get("tools"))
+                    .and_then(|tools| tools.as_array())
+                    .into_iter()
+                    .flatten()
+                    .any(|tool| tool.get("type") == Some(&json!("image_generation"))),
+                true
+            );
+            assert!(
+                plan.body
+                    .json_body
+                    .as_ref()
+                    .and_then(|body| body.get("tool_choice"))
+                    .is_none(),
+                "普通 Responses 测试请求不应强制选择图片工具"
             );
             assert_eq!(
                 plan.body

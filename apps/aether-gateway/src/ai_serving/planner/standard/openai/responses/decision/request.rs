@@ -16,10 +16,13 @@ use crate::ai_serving::planner::common::{
 };
 use crate::ai_serving::planner::spec_metadata::local_openai_responses_spec_metadata;
 use crate::ai_serving::planner::standard::{
-    apply_codex_openai_responses_special_body_edits, apply_codex_openai_responses_special_headers,
-    build_cross_format_openai_responses_request_body,
+    apply_codex_openai_responses_special_body_edits_with_bridge_model,
+    apply_codex_openai_responses_special_headers, build_cross_format_openai_responses_request_body,
     build_cross_format_openai_responses_upstream_url, build_local_openai_responses_request_body,
-    build_local_openai_responses_upstream_url, request_body_build_failure_extra_data,
+    build_local_openai_responses_upstream_url,
+    codex_openai_image_bridge_model_from_provider_config,
+    openai_responses_image_generation_tool_enabled_from_transport_config,
+    request_body_build_failure_extra_data,
 };
 use crate::ai_serving::transport::antigravity::{
     build_antigravity_safe_v1internal_request, build_antigravity_static_identity_headers,
@@ -52,6 +55,10 @@ use crate::ai_serving::{
 use crate::ai_serving::{ConversionMode, ExecutionStrategy};
 use crate::AppState;
 
+use super::super::super::image_bridge::{
+    build_openai_image_generation_tool, collect_openai_image_body_options,
+    openai_image_bridge_main_model, openai_image_generation_tool_choice,
+};
 use super::support::{
     mark_skipped_local_openai_responses_candidate,
     mark_skipped_local_openai_responses_candidate_with_extra_data,
@@ -279,6 +286,14 @@ pub(crate) async fn resolve_local_openai_responses_candidate_payload_parts(
     let force_body_stream_field =
         endpoint_config_forces_body_stream_field(transport.endpoint.config.as_ref());
     let effective_headers = input.effective_headers(&parts.headers);
+    let codex_image_bridge_model =
+        codex_openai_image_bridge_model_from_provider_config(transport.provider.config.as_ref());
+    let openai_responses_image_generation_tool_enabled =
+        openai_responses_image_generation_tool_enabled_from_transport_config(
+            transport.provider.provider_type.as_str(),
+            transport.provider.config.as_ref(),
+            transport.endpoint.config.as_ref(),
+        );
     let Some(mut base_provider_request_body) =
         (if is_grok && is_grok_text_provider_api_format(provider_api_format) {
             build_local_openai_responses_request_body(
@@ -292,6 +307,8 @@ pub(crate) async fn resolve_local_openai_responses_candidate_payload_parts(
                 Some(input.auth_context.api_key_id.as_str()),
                 effective_headers,
                 enable_model_directives,
+                codex_image_bridge_model,
+                openai_responses_image_generation_tool_enabled,
             )
         } else if needs_bidirectional_conversion {
             build_cross_format_openai_responses_request_body(
@@ -310,6 +327,8 @@ pub(crate) async fn resolve_local_openai_responses_candidate_payload_parts(
                 Some(input.auth_context.api_key_id.as_str()),
                 effective_headers,
                 enable_model_directives,
+                codex_image_bridge_model,
+                openai_responses_image_generation_tool_enabled,
             )
         } else {
             build_local_openai_responses_request_body(
@@ -327,6 +346,8 @@ pub(crate) async fn resolve_local_openai_responses_candidate_payload_parts(
                 Some(input.auth_context.api_key_id.as_str()),
                 effective_headers,
                 enable_model_directives,
+                codex_image_bridge_model,
+                openai_responses_image_generation_tool_enabled,
             )
         })
     else {
@@ -705,6 +726,7 @@ async fn resolve_openai_responses_to_openai_image_payload_parts(
         build_openai_image_provider_body_from_openai_responses_body(
             body_json,
             &input.requested_model,
+            Some(prepared_candidate.mapped_model.as_str()),
             upstream_is_stream,
         )
     }) else {
@@ -727,12 +749,15 @@ async fn resolve_openai_responses_to_openai_image_payload_parts(
     };
 
     if !is_chatgpt_web {
-        apply_codex_openai_responses_special_body_edits(
+        apply_codex_openai_responses_special_body_edits_with_bridge_model(
             &mut provider_request_body,
             transport.provider.provider_type.as_str(),
             provider_api_format,
             transport.endpoint.body_rules.as_ref(),
             Some(candidate.key_id.as_str()),
+            codex_openai_image_bridge_model_from_provider_config(
+                transport.provider.config.as_ref(),
+            ),
         );
     }
 
@@ -807,26 +832,37 @@ async fn resolve_openai_responses_to_openai_image_payload_parts(
 fn build_openai_image_provider_body_from_openai_responses_body(
     body_json: &Value,
     requested_model: &str,
+    mapped_image_model: Option<&str>,
     upstream_is_stream: bool,
 ) -> Option<(Value, Value)> {
     let object = body_json.as_object()?;
     let input = object.get("input")?.clone();
     let tool = openai_responses_image_generation_tool(object);
+    let body_options = collect_openai_image_body_options(object);
+    let request_model = object.get("model").and_then(Value::as_str);
 
     let mut body = serde_json::Map::new();
     body.insert("input".to_string(), input);
-    if let Some(model) = object
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            let requested_model = requested_model.trim();
-            (!requested_model.is_empty()).then_some(requested_model)
-        })
-    {
-        body.insert("model".to_string(), Value::String(model.to_string()));
+    if let Some(model) = openai_image_bridge_main_model(request_model, requested_model) {
+        body.insert("model".to_string(), Value::String(model));
     }
+    body.insert(
+        "tools".to_string(),
+        Value::Array(vec![build_openai_image_generation_tool(
+            tool.clone().unwrap_or_default(),
+            &body_options,
+            request_model,
+            requested_model,
+            mapped_image_model,
+        )]),
+    );
+    body.insert(
+        "tool_choice".to_string(),
+        object
+            .get("tool_choice")
+            .cloned()
+            .unwrap_or_else(openai_image_generation_tool_choice),
+    );
     for key in [
         "user",
         "metadata",
@@ -854,7 +890,7 @@ fn build_openai_image_provider_body_from_openai_responses_body(
     );
     for key in ["output_format", "partial_images", "size", "quality"] {
         let tool_value = tool.as_ref().and_then(|tool| tool.get(key));
-        if let Some(value) = tool_value.or_else(|| object.get(key)) {
+        if let Some(value) = tool_value.or_else(|| body_options.get(key)) {
             summary.insert(key.to_string(), value.clone());
         }
     }
@@ -1226,13 +1262,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn openai_responses_image_bridge_body_does_not_inject_tools() {
+    fn openai_responses_image_bridge_body_injects_image_tool() {
         let body_json = json!({
-            "model": "gpt-image-2",
+            "model": "gpt-5.5",
             "input": "Draw a glass city",
             "tools": [
                 {
                     "type": "image_generation",
+                    "model": "gpt-image-2",
                     "size": "1024x1024",
                     "output_format": "png"
                 }
@@ -1245,15 +1282,39 @@ mod tests {
         let (provider_body, summary) = build_openai_image_provider_body_from_openai_responses_body(
             &body_json,
             "gpt-image-2",
+            None,
             true,
         )
         .expect("responses image body should convert");
 
-        assert!(provider_body.get("tools").is_none());
-        assert_eq!(provider_body["model"], "gpt-image-2");
+        assert_eq!(provider_body["model"], "gpt-5.5");
         assert_eq!(provider_body["input"], "Draw a glass city");
+        assert_eq!(provider_body["tools"][0]["type"], "image_generation");
+        assert_eq!(provider_body["tools"][0]["model"], "gpt-image-2");
+        assert_eq!(provider_body["tool_choice"]["type"], "image_generation");
         assert_eq!(provider_body["stream"], true);
         assert_eq!(summary["operation"], "generate");
         assert_eq!(summary["output_format"], "png");
+    }
+
+    #[test]
+    fn openai_responses_image_bridge_does_not_use_image_model_as_main_model() {
+        let body_json = json!({
+            "model": "gpt-image-2",
+            "input": "Draw a glass city",
+            "tools": [{"type": "image_generation"}],
+            "tool_choice": {"type": "image_generation"}
+        });
+
+        let (provider_body, _) = build_openai_image_provider_body_from_openai_responses_body(
+            &body_json,
+            "gpt-image-2",
+            None,
+            false,
+        )
+        .expect("responses image body should convert");
+
+        assert!(provider_body.get("model").is_none());
+        assert_eq!(provider_body["tools"][0]["model"], "gpt-image-2");
     }
 }

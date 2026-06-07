@@ -19,6 +19,19 @@ fn object_keys(value: &Value) -> Vec<&str> {
         .collect()
 }
 
+fn has_image_generation_tool(value: &Value) -> bool {
+    value
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|tool| {
+            tool.get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|tool_type| tool_type == "image_generation")
+        })
+}
+
 fn sample_transport(base_url: &str, api_format: &str) -> GatewayProviderTransportSnapshot {
     GatewayProviderTransportSnapshot {
         provider: GatewayProviderTransportProvider {
@@ -93,6 +106,8 @@ fn builds_openai_chat_cross_format_request_body_from_openai_responses_source() {
         None,
         &http::HeaderMap::new(),
         false,
+        None,
+        false,
     )
     .expect("openai responses to openai chat body should build");
 
@@ -129,6 +144,8 @@ fn local_openai_responses_wrapper_preserves_body_order_after_edits() {
         Some("key-123"),
         &http::HeaderMap::new(),
         false,
+        None,
+        true,
     )
     .expect("local openai responses body should build");
 
@@ -150,7 +167,138 @@ fn local_openai_responses_wrapper_preserves_body_order_after_edits() {
         ]
     );
     assert_eq!(provider_request_body["parallel_tool_calls"], json!(true));
-    assert_eq!(provider_request_body["instructions"], json!(""));
+    assert!(provider_request_body["instructions"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Responses native `image_generation` tool"));
+    assert!(has_image_generation_tool(&provider_request_body));
+}
+
+#[test]
+fn third_party_openai_responses_default_does_not_inject_image_tool() {
+    let body_json = json!({
+        "model": "gpt-5.5",
+        "input": "draw a small fox"
+    });
+
+    let provider_request_body = build_local_openai_responses_request_body(
+        &body_json,
+        "gpt-5.5",
+        true,
+        false,
+        "custom",
+        "openai:responses",
+        None,
+        None,
+        &http::HeaderMap::new(),
+        false,
+        None,
+        false,
+    )
+    .expect("third-party responses body should build");
+
+    assert_eq!(provider_request_body["model"], "gpt-5.5");
+    assert!(!has_image_generation_tool(&provider_request_body));
+    assert!(provider_request_body.get("tool_choice").is_none());
+    assert!(provider_request_body.get("instructions").is_none());
+}
+
+#[test]
+fn third_party_openai_responses_enabled_injects_image_tool_for_dialogue() {
+    let body_json = json!({
+        "model": "gpt-5.5",
+        "input": "draw a small fox"
+    });
+
+    let provider_request_body = build_local_openai_responses_request_body(
+        &body_json,
+        "gpt-5.5",
+        true,
+        false,
+        "custom",
+        "openai:responses",
+        None,
+        None,
+        &http::HeaderMap::new(),
+        false,
+        None,
+        true,
+    )
+    .expect("third-party responses body should build");
+
+    assert_eq!(provider_request_body["model"], "gpt-5.5");
+    assert!(has_image_generation_tool(&provider_request_body));
+    assert_eq!(provider_request_body["tool_choice"], json!("auto"));
+    assert!(provider_request_body["instructions"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Responses native `image_generation` tool"));
+}
+
+#[test]
+fn third_party_openai_responses_enabled_bridges_gpt_image_model() {
+    let body_json = json!({
+        "model": "gpt-image-2",
+        "input": "draw a small fox"
+    });
+
+    let provider_request_body = build_local_openai_responses_request_body(
+        &body_json,
+        "gpt-image-2",
+        true,
+        false,
+        "custom",
+        "openai:responses",
+        None,
+        None,
+        &http::HeaderMap::new(),
+        false,
+        Some("gpt-5.5"),
+        true,
+    )
+    .expect("third-party responses body should build");
+
+    assert_eq!(provider_request_body["model"], "gpt-5.5");
+    assert_eq!(
+        provider_request_body["tools"][0]["type"],
+        "image_generation"
+    );
+    assert_eq!(provider_request_body["tools"][0]["model"], "gpt-image-2");
+    assert_eq!(
+        provider_request_body["tool_choice"]["type"],
+        "image_generation"
+    );
+}
+
+#[test]
+fn third_party_openai_chat_to_responses_enabled_injects_image_tool_for_dialogue() {
+    let body_json = json!({
+        "model": "gpt-5.5",
+        "messages": [{
+            "role": "user",
+            "content": "draw a small fox"
+        }]
+    });
+
+    let provider_request_body = super::build_cross_format_openai_chat_request_body(
+        &body_json,
+        "gpt-5.5",
+        "custom",
+        "openai:responses",
+        true,
+        false,
+        None,
+        None,
+        &http::HeaderMap::new(),
+        false,
+        None,
+        true,
+    )
+    .expect("third-party chat to responses body should build");
+
+    assert_eq!(provider_request_body["model"], "gpt-5.5");
+    assert!(has_image_generation_tool(&provider_request_body));
+    assert_eq!(provider_request_body["tool_choice"], json!("auto"));
 }
 
 #[test]
@@ -171,6 +319,8 @@ fn local_openai_responses_compact_wrapper_strips_store_for_same_format_requests(
         None,
         None,
         &http::HeaderMap::new(),
+        false,
+        None,
         false,
     )
     .expect("local openai compact body should build");
@@ -200,6 +350,8 @@ fn local_openai_responses_compact_wrapper_strips_include_for_codex_requests() {
         Some("key-123"),
         &http::HeaderMap::new(),
         false,
+        None,
+        true,
     )
     .expect("local codex compact body should build");
 
@@ -235,6 +387,8 @@ fn local_openai_responses_wrapper_applies_model_directive_before_body_rules() {
         None,
         &http::HeaderMap::new(),
         true,
+        None,
+        false,
     )
     .expect("local openai responses body should build");
 
@@ -285,6 +439,8 @@ fn strips_metadata_for_codex_openai_responses_requests() {
         None,
         &http::HeaderMap::new(),
         false,
+        None,
+        true,
     )
     .expect("claude cli to codex request should build");
 
@@ -320,11 +476,17 @@ fn applies_codex_defaults_unless_body_rules_handle_the_field() {
         None,
         &http::HeaderMap::new(),
         false,
+        None,
+        true,
     )
     .expect("claude cli to codex request should build");
 
     assert_eq!(provider_request_body["store"], true);
-    assert_eq!(provider_request_body["instructions"], "Custom instructions");
+    let instructions = provider_request_body["instructions"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(instructions.starts_with("Custom instructions"));
+    assert!(instructions.contains("Responses native `image_generation` tool"));
     assert_eq!(provider_request_body["metadata"]["trace_id"], "keep-me");
 }
 
@@ -350,6 +512,8 @@ fn injects_codex_prompt_cache_key_for_openai_responses_cross_format_requests() {
         Some("key-123"),
         &http::HeaderMap::new(),
         false,
+        None,
+        true,
     )
     .expect("claude cli to codex request should build");
 
@@ -380,6 +544,8 @@ fn injects_codex_prompt_cache_key_for_openai_chat_cross_format_requests() {
         Some("key-123"),
         &http::HeaderMap::new(),
         false,
+        None,
+        true,
     )
     .expect("openai chat to codex request should build");
 

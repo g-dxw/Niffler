@@ -16,9 +16,11 @@ use crate::ai_serving::planner::common::{
     request_requires_body_stream_field, OPENAI_CHAT_STREAM_PLAN_KIND,
 };
 use crate::ai_serving::planner::standard::{
-    apply_codex_openai_responses_special_body_edits, apply_codex_openai_responses_special_headers,
-    build_cross_format_openai_chat_request_body, build_cross_format_openai_chat_upstream_url,
-    build_local_openai_chat_request_body, build_local_openai_chat_upstream_url,
+    apply_codex_openai_responses_special_body_edits_with_bridge_model,
+    apply_codex_openai_responses_special_headers, build_cross_format_openai_chat_request_body,
+    build_cross_format_openai_chat_upstream_url, build_local_openai_chat_request_body,
+    build_local_openai_chat_upstream_url, codex_openai_image_bridge_model_from_provider_config,
+    openai_responses_image_generation_tool_enabled_from_transport_config,
     request_body_build_failure_extra_data,
 };
 use crate::ai_serving::transport::auth::resolve_local_openai_bearer_auth;
@@ -49,6 +51,10 @@ use crate::privacy::{
 use crate::{AppState, GatewayError};
 use tracing::warn;
 
+use super::super::super::image_bridge::{
+    build_openai_image_generation_tool, openai_image_bridge_main_model,
+    openai_image_generation_tool_choice,
+};
 use super::support::{
     mark_skipped_local_openai_chat_candidate,
     mark_skipped_local_openai_chat_candidate_with_extra_data,
@@ -208,6 +214,14 @@ pub(crate) async fn resolve_local_openai_chat_candidate_payload_parts(
             .await?;
     let body_json = redaction.body_json.as_ref();
     let effective_headers = input.effective_headers(&parts.headers);
+    let codex_image_bridge_model =
+        codex_openai_image_bridge_model_from_provider_config(transport.provider.config.as_ref());
+    let openai_responses_image_generation_tool_enabled =
+        openai_responses_image_generation_tool_enabled_from_transport_config(
+            transport.provider.provider_type.as_str(),
+            transport.provider.config.as_ref(),
+            transport.endpoint.config.as_ref(),
+        );
     let is_grok = transport
         .provider
         .provider_type
@@ -643,6 +657,8 @@ pub(crate) async fn resolve_local_openai_chat_candidate_payload_parts(
         Some(input.auth_context.api_key_id.as_str()),
         effective_headers,
         enable_model_directives,
+        codex_image_bridge_model,
+        openai_responses_image_generation_tool_enabled,
     ) else {
         mark_skipped_local_openai_chat_candidate_with_extra_data(
             state,
@@ -880,6 +896,7 @@ async fn resolve_openai_chat_to_openai_image_payload_parts(
         build_openai_image_provider_body_from_openai_chat_body(
             body_json,
             &input.requested_model,
+            Some(prepared_candidate.mapped_model.as_str()),
             upstream_is_stream,
         )
     }) else {
@@ -897,12 +914,15 @@ async fn resolve_openai_chat_to_openai_image_payload_parts(
         return Ok(None);
     };
     if !is_chatgpt_web {
-        apply_codex_openai_responses_special_body_edits(
+        apply_codex_openai_responses_special_body_edits_with_bridge_model(
             &mut provider_request_body,
             transport.provider.provider_type.as_str(),
             provider_api_format,
             transport.endpoint.body_rules.as_ref(),
             Some(candidate.key_id.as_str()),
+            codex_openai_image_bridge_model_from_provider_config(
+                transport.provider.config.as_ref(),
+            ),
         );
     }
 
@@ -978,6 +998,7 @@ async fn resolve_openai_chat_to_openai_image_payload_parts(
 fn build_openai_image_provider_body_from_openai_chat_body(
     body_json: &Value,
     requested_model: &str,
+    mapped_image_model: Option<&str>,
     upstream_is_stream: bool,
 ) -> Option<(Value, Value)> {
     let (prompt, images) = collect_openai_chat_image_prompt_and_images(body_json)?;
@@ -1014,19 +1035,25 @@ fn build_openai_image_provider_body_from_openai_chat_body(
     };
 
     let mut body = serde_json::Map::new();
-    if let Some(model) = body_json
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            let requested_model = requested_model.trim();
-            (!requested_model.is_empty()).then_some(requested_model)
-        })
-    {
-        body.insert("model".to_string(), Value::String(model.to_string()));
+    let request_model = body_json.get("model").and_then(Value::as_str);
+    if let Some(model) = openai_image_bridge_main_model(request_model, requested_model) {
+        body.insert("model".to_string(), Value::String(model));
     }
     body.insert("input".to_string(), input);
+    body.insert(
+        "tools".to_string(),
+        Value::Array(vec![build_openai_image_generation_tool(
+            serde_json::Map::new(),
+            &image_options,
+            request_model,
+            requested_model,
+            mapped_image_model,
+        )]),
+    );
+    body.insert(
+        "tool_choice".to_string(),
+        openai_image_generation_tool_choice(),
+    );
     if upstream_is_stream {
         body.insert("stream".to_string(), Value::Bool(true));
     }
@@ -1507,9 +1534,9 @@ mod tests {
     }
 
     #[test]
-    fn openai_chat_image_bridge_body_does_not_inject_tools() {
+    fn openai_chat_image_bridge_body_injects_image_tool() {
         let body_json = json!({
-            "model": "gpt-image-2",
+            "model": "gpt-5.5",
             "messages": [
                 {"role": "user", "content": "Draw a glass city"}
             ],
@@ -1517,12 +1544,19 @@ mod tests {
             "output_format": "png"
         });
 
-        let (provider_body, summary) =
-            build_openai_image_provider_body_from_openai_chat_body(&body_json, "gpt-image-2", true)
-                .expect("chat image body should convert");
+        let (provider_body, summary) = build_openai_image_provider_body_from_openai_chat_body(
+            &body_json,
+            "gpt-image-2",
+            None,
+            true,
+        )
+        .expect("chat image body should convert");
 
-        assert!(provider_body.get("tools").is_none());
-        assert_eq!(provider_body["model"], "gpt-image-2");
+        assert_eq!(provider_body["model"], "gpt-5.5");
+        assert_eq!(provider_body["tools"][0]["type"], "image_generation");
+        assert_eq!(provider_body["tools"][0]["model"], "gpt-image-2");
+        assert_eq!(provider_body["tools"][0]["size"], "1024x1024");
+        assert_eq!(provider_body["tool_choice"]["type"], "image_generation");
         assert_eq!(provider_body["stream"], true);
         assert_eq!(provider_body["input"][0]["content"], "Draw a glass city");
         assert_eq!(summary["operation"], "generate");

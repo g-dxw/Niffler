@@ -8,6 +8,7 @@ use crate::ai_serving::planner::candidate_preparation::{
     prepare_header_authenticated_candidate, OauthPreparationContext,
 };
 use crate::ai_serving::planner::spec_metadata::local_openai_image_spec_metadata;
+use crate::ai_serving::planner::standard::codex_openai_image_bridge_model_from_provider_config;
 use crate::ai_serving::pure::normalize_openai_image_request_with_options;
 use crate::ai_serving::transport::{
     build_grok_browser_headers, build_grok_upstream_url, build_openai_image_headers,
@@ -16,8 +17,8 @@ use crate::ai_serving::transport::{
     ProviderOpenAiImageHeadersInput, StandardProviderRequestHeadersInput, GROK_CHAT_PATH,
 };
 use crate::ai_serving::{
-    apply_codex_openai_responses_special_body_edits, apply_codex_openai_responses_special_headers,
-    build_chatgpt_web_image_request_body,
+    apply_codex_openai_responses_special_body_edits_with_bridge_model,
+    apply_codex_openai_responses_special_headers, build_chatgpt_web_image_request_body,
     build_gemini_image_request_body_from_openai_image_request,
     build_openai_image_provider_request_body, default_model_for_openai_image_operation,
     normalize_openai_image_request, request_conversion_direct_auth, CandidateFailureDiagnostic,
@@ -47,6 +48,22 @@ pub(super) struct LocalOpenAiImageCandidatePayloadParts {
     pub(super) upstream_url: String,
     pub(super) input_summary: Value,
     pub(super) transport_profile: Option<ResolvedTransportProfile>,
+}
+
+pub(crate) fn apply_openai_image_tool_model(provider_request_body: &mut Value, mapped_model: &str) {
+    let mapped_model = mapped_model.trim();
+    if mapped_model.is_empty() {
+        return;
+    }
+    let Some(tool) = provider_request_body
+        .get_mut("tools")
+        .and_then(Value::as_array_mut)
+        .and_then(|tools| tools.first_mut())
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    tool.insert("model".to_string(), Value::String(mapped_model.to_string()));
 }
 
 pub(super) async fn resolve_local_openai_image_candidate_payload_parts(
@@ -176,13 +193,22 @@ pub(super) async fn resolve_local_openai_image_candidate_payload_parts(
     } else {
         build_openai_image_provider_request_body(&normalized_request)
     };
+    if !is_chatgpt_web && !is_grok {
+        apply_openai_image_tool_model(
+            &mut provider_request_body,
+            prepared_candidate.mapped_model.as_str(),
+        );
+    }
     if !is_chatgpt_web {
-        apply_codex_openai_responses_special_body_edits(
+        apply_codex_openai_responses_special_body_edits_with_bridge_model(
             &mut provider_request_body,
             transport.provider.provider_type.as_str(),
             spec_metadata.api_format,
             transport.endpoint.body_rules.as_ref(),
             Some(candidate.key_id.as_str()),
+            codex_openai_image_bridge_model_from_provider_config(
+                transport.provider.config.as_ref(),
+            ),
         );
     }
 
@@ -244,13 +270,7 @@ pub(super) async fn resolve_local_openai_image_candidate_payload_parts(
         .unwrap_or_else(|| {
             default_model_for_openai_image_operation(normalized_request.operation).to_string()
         });
-    let mapped_model = provider_request_body
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_default()
-        .to_string();
+    let mapped_model = prepared_candidate.mapped_model;
 
     let input_summary = if is_chatgpt_web || is_grok {
         provider_request_body.clone()

@@ -14,7 +14,12 @@ mod normalize;
 mod openai;
 
 pub(crate) use self::codex::{
-    apply_codex_openai_responses_special_body_edits, apply_codex_openai_responses_special_headers,
+    apply_codex_openai_responses_special_body_edits,
+    apply_codex_openai_responses_special_body_edits_with_bridge_config,
+    apply_codex_openai_responses_special_body_edits_with_bridge_model,
+    apply_codex_openai_responses_special_headers,
+    codex_openai_image_bridge_model_from_provider_config,
+    openai_responses_image_generation_tool_enabled_from_transport_config,
 };
 pub(crate) use self::family::{
     build_local_stream_attempt_source, build_local_stream_plan_and_reports,
@@ -306,7 +311,16 @@ mod tests {
 
         assert!(converted.get("metadata").is_none());
         assert_eq!(converted["store"], false);
-        assert_eq!(converted["instructions"], "");
+        assert!(converted["instructions"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Responses native `image_generation` tool"));
+        assert!(converted["tools"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|tool| tool.get("type") == Some(&json!("image_generation"))));
+        assert_eq!(converted["tool_choice"], json!("auto"));
         assert_eq!(converted["include"], json!(["reasoning.encrypted_content"]));
         assert_eq!(converted["parallel_tool_calls"], true);
         assert_eq!(converted["reasoning"]["effort"], "medium");

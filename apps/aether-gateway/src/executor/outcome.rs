@@ -518,7 +518,7 @@ pub(crate) fn beautify_local_execution_client_error_message(message: &str) -> St
 }
 
 fn simplify_all_candidates_skipped_client_error_message(message: &str) -> Option<String> {
-    if !message.contains("候选提供商")
+    if !(message.contains("候选提供商") || message.contains("可尝试提供商"))
         || !(message.contains("全部不可用") || message.contains("都不满足本次"))
     {
         return None;

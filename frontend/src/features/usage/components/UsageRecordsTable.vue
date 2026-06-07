@@ -600,7 +600,26 @@
           >
             <div class="flex min-w-0 items-center gap-1">
               <div class="flex min-w-0 flex-col text-xs gap-0.5">
-                <span class="truncate">{{ record.provider }}</span>
+                <div
+                  v-if="getProviderRouteDisplay(record).length > 1"
+                  class="flex min-w-0 items-center gap-1"
+                  :title="getProviderRouteDisplay(record).join(' → ')"
+                >
+                  <template
+                    v-for="(provider, routeIndex) in getProviderRouteDisplay(record)"
+                    :key="`${record.id}-provider-route-${routeIndex}`"
+                  >
+                    <span class="truncate">{{ provider }}</span>
+                    <span
+                      v-if="routeIndex < getProviderRouteDisplay(record).length - 1"
+                      class="text-amber-600 dark:text-amber-400"
+                    >→</span>
+                  </template>
+                </div>
+                <span
+                  v-else
+                  class="truncate"
+                >{{ getProviderRouteDisplay(record)[0] || record.provider }}</span>
                 <button
                   v-if="getProviderAccountDisplay(record)"
                   type="button"
@@ -617,7 +636,7 @@
               </div>
               <!-- 故障转移图标（优先显示） -->
               <svg
-                v-if="record.has_fallback"
+                v-if="hasProviderTransfer(record)"
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -626,7 +645,7 @@
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0"
-                title="此请求发生了 Provider 故障转移"
+                :title="getProviderTransferTitle(record)"
               >
                 <path d="m16 3 4 4-4 4" />
                 <path d="M20 7H4" />
@@ -1053,8 +1072,42 @@ const emit = defineEmits<{
 
 const { copyToClipboard } = useClipboard()
 
+function normalizeProviderDisplayText(value: string | null | undefined): string {
+  return (value || '').trim().toLowerCase()
+}
+
+function getProviderRouteDisplay(record: UsageRecord): string[] {
+  const route = Array.isArray(record.provider_route)
+    ? record.provider_route
+      .map(item => item.trim())
+      .filter(Boolean)
+    : []
+  if (route.length > 0) {
+    return route
+  }
+  return record.provider ? [record.provider] : []
+}
+
+function getProviderTransferTitle(record: UsageRecord): string {
+  const route = getProviderRouteDisplay(record)
+  if (route.length > 1) {
+    return `服务切换：${route.join(' → ')}`
+  }
+  return '此请求发生过服务切换'
+}
+
+function hasProviderTransfer(record: UsageRecord): boolean {
+  return Boolean(record.has_fallback) && getProviderRouteDisplay(record).length > 1
+}
+
 function getProviderAccountDisplay(record: UsageRecord): string {
-  return record.provider_key_account_label || record.provider_key_name || ''
+  const accountDisplay = record.provider_key_account_label || record.provider_key_name || ''
+  if (!accountDisplay) return ''
+  const providerNames = new Set(getProviderRouteDisplay(record).map(normalizeProviderDisplayText))
+  if (providerNames.has(normalizeProviderDisplayText(accountDisplay))) {
+    return ''
+  }
+  return accountDisplay
 }
 
 async function copyProviderAccountDisplay(record: UsageRecord): Promise<void> {

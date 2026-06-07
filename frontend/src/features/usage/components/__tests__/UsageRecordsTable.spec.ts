@@ -352,6 +352,46 @@ describe('UsageRecordsTable', () => {
     expect(root.textContent).not.toContain('等待中')
   })
 
+  it('shows the real provider transfer path instead of repeating the final key name', () => {
+    const root = mountUsageRecordsTable([buildRecord({
+      provider: 'cc-max(zzshu)1.0',
+      provider_route: ['cc-max(link)1.0', 'cc-max(zzshu)1.0'],
+      provider_key_name: 'cc-max(zzshu)1.0',
+      has_fallback: true,
+    })])
+
+    expect(root.textContent).toContain('cc-max(link)1.0')
+    expect(root.textContent).toContain('→')
+    expect(root.textContent).toContain('cc-max(zzshu)1.0')
+    expect(root.textContent?.match(/cc-max\(zzshu\)1\.0/g)?.length).toBe(1)
+    const titles = [...root.querySelectorAll<HTMLElement>('[title]')].map((element) => element.title)
+    expect(titles.some(title => title.includes('cc-max(link)1.0 → cc-max(zzshu)1.0'))).toBe(true)
+  })
+
+  it('uses a single provider route instead of showing provider unknown', () => {
+    const root = mountUsageRecordsTable([buildRecord({
+      provider: 'unknown',
+      provider_route: ['cc-max(link)1.0'],
+      has_fallback: true,
+    })])
+
+    expect(root.textContent).toContain('cc-max(link)1.0')
+    expect(root.textContent).not.toContain('unknown')
+    expect(root.textContent).not.toContain('→')
+    const titles = [...root.querySelectorAll<HTMLElement>('[title]')].map((element) => element.title)
+    expect(titles.some(title => title.includes('服务切换'))).toBe(false)
+  })
+
+  it('still shows a distinct provider account under the provider name', () => {
+    const root = mountUsageRecordsTable([buildRecord({
+      provider: 'cc-max(zzshu)1.0',
+      provider_key_account_label: 'account@example.com',
+    })])
+
+    expect(root.textContent).toContain('cc-max(zzshu)1.0')
+    expect(root.textContent).toContain('account@example.com')
+  })
+
   it('renders output TPS in the non-admin usage table', () => {
     const root = mountUsageRecordsTable([buildRecord()], { isAdmin: false })
 

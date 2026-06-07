@@ -831,9 +831,9 @@ fn image_bridge_candidate_row(
         global_model_name: "gpt-image-2".to_string(),
         global_model_mappings: None,
         global_model_supports_streaming: Some(false),
-        model_provider_model_name: "gpt-image-2".to_string(),
+        model_provider_model_name: "upstream-image-model".to_string(),
         model_provider_model_mappings: Some(vec![StoredProviderModelMapping {
-            name: "gpt-image-2".to_string(),
+            name: "upstream-image-model".to_string(),
             priority: 1,
             api_formats: Some(vec!["openai:image".to_string()]),
             endpoint_ids: None,
@@ -1121,13 +1121,22 @@ async fn gateway_routes_openai_chat_stream_image_intent_to_openai_image_plan_wit
     assert!(seen_plan.plan_stream);
     assert_eq!(seen_plan.auth_header, "Bearer sk-upstream-image-bridge");
     assert_eq!(seen_plan.chatgpt_web_marker, "");
-    assert_eq!(seen_plan.body_json["model"], "gpt-image-2");
+    assert!(seen_plan.body_json.get("model").is_none());
     assert_eq!(seen_plan.body_json["stream"], true);
     assert_eq!(
         seen_plan.body_json["input"][0]["content"],
         "Draw a city made of glass"
     );
-    assert!(seen_plan.body_json.get("tools").is_none());
+    assert_eq!(seen_plan.body_json["tools"][0]["type"], "image_generation");
+    assert_eq!(
+        seen_plan.body_json["tools"][0]["model"],
+        "upstream-image-model"
+    );
+    assert_eq!(seen_plan.body_json["tools"][0]["size"], "1024x1024");
+    assert_eq!(
+        seen_plan.body_json["tool_choice"]["type"],
+        "image_generation"
+    );
 
     gateway_handle.abort();
     execution_runtime_handle.abort();
@@ -1183,7 +1192,17 @@ async fn gateway_routes_openai_responses_stream_image_intent_to_openai_image_pla
     assert_eq!(seen_plan.auth_header, "Bearer sk-upstream-image-bridge");
     assert_eq!(seen_plan.body_json["stream"], true);
     assert_eq!(seen_plan.body_json["input"], "Draw a mountain observatory");
-    assert!(seen_plan.body_json.get("tools").is_none());
+    assert!(seen_plan.body_json.get("model").is_none());
+    assert_eq!(seen_plan.body_json["tools"][0]["type"], "image_generation");
+    assert_eq!(
+        seen_plan.body_json["tools"][0]["model"],
+        "upstream-image-model"
+    );
+    assert_eq!(seen_plan.body_json["tools"][0]["size"], "1024x1024");
+    assert_eq!(
+        seen_plan.body_json["tool_choice"]["type"],
+        "image_generation"
+    );
 
     gateway_handle.abort();
     execution_runtime_handle.abort();

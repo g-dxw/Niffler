@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use super::{
     apply_codex_openai_responses_special_body_edits, apply_codex_openai_responses_special_headers,
+    openai_responses_image_generation_tool_enabled_from_transport_config,
 };
 use http::{HeaderMap, HeaderValue};
 use serde_json::json;
@@ -30,10 +31,54 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
     assert!(body.get("top_p").is_none());
     assert!(body.get("metadata").is_none());
     assert_eq!(body["store"], false);
-    assert_eq!(body["instructions"], "");
+    assert!(body["instructions"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Responses native `image_generation` tool"));
+    assert!(body["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|tool| tool.get("type") == Some(&json!("image_generation"))));
+    assert_eq!(body["tool_choice"], json!("auto"));
     assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
     assert_eq!(body["parallel_tool_calls"], true);
     assert!(body.get("reasoning").is_none());
+}
+
+#[test]
+fn image_generation_tool_config_defaults_to_oauth_provider_types_only() {
+    assert!(
+        openai_responses_image_generation_tool_enabled_from_transport_config("codex", None, None)
+    );
+    assert!(
+        openai_responses_image_generation_tool_enabled_from_transport_config(
+            "chatgpt_web",
+            None,
+            None
+        )
+    );
+    assert!(
+        !openai_responses_image_generation_tool_enabled_from_transport_config("custom", None, None)
+    );
+}
+
+#[test]
+fn endpoint_image_generation_tool_config_overrides_provider_config() {
+    assert!(
+        !openai_responses_image_generation_tool_enabled_from_transport_config(
+            "codex",
+            None,
+            Some(&json!({"openai_responses_image_generation_tool_enabled": false}))
+        )
+    );
+    assert!(
+        openai_responses_image_generation_tool_enabled_from_transport_config(
+            "custom",
+            Some(&json!({"openai_responses_image_generation_tool_enabled": false})),
+            Some(&json!({"openai_responses_image_generation_tool_enabled": true}))
+        )
+    );
 }
 
 #[test]

@@ -50,7 +50,7 @@ pub(crate) use self::runtime_miss::{
     record_local_runtime_candidate_skip_reason_counts,
 };
 pub(crate) use self::specialized::{
-    build_local_gemini_files_stream_attempt_source_for_kind,
+    apply_openai_image_tool_model, build_local_gemini_files_stream_attempt_source_for_kind,
     build_local_gemini_files_stream_plan_and_reports_for_kind,
     build_local_gemini_files_sync_attempt_source_for_kind,
     build_local_gemini_files_sync_plan_and_reports_for_kind,
@@ -75,6 +75,7 @@ pub(crate) use self::standard::{
     build_local_stream_plan_and_reports as build_standard_family_stream_plan_and_reports,
     build_local_sync_attempt_source as build_standard_family_sync_attempt_source,
     build_local_sync_plan_and_reports as build_standard_family_sync_plan_and_reports,
+    codex_openai_image_bridge_model_from_provider_config,
     set_local_openai_chat_execution_exhausted_diagnostic,
 };
 pub(crate) use self::state::{

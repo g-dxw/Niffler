@@ -506,12 +506,16 @@ pub fn build_openai_image_provider_request_body(request: &NormalizedOpenAiImageR
         }])
     };
 
+    let mut tool = request.tool.clone();
+    tool.entry("model".to_string()).or_insert_with(|| {
+        Value::String(request.requested_model.clone().unwrap_or_else(|| {
+            default_model_for_openai_image_operation(request.operation).to_string()
+        }))
+    });
+
     let mut body = Map::new();
     body.insert("input".to_string(), input);
-    body.insert(
-        "tools".to_string(),
-        Value::Array(vec![Value::Object(request.tool.clone())]),
-    );
+    body.insert("tools".to_string(), Value::Array(vec![Value::Object(tool)]));
     if let Some(user) = request.user.as_ref() {
         body.insert("user".to_string(), Value::String(user.clone()));
     }
@@ -1401,6 +1405,14 @@ mod tests {
         assert!(provider_request_body.get("model").is_none());
         assert!(provider_request_body.get("tool_choice").is_none());
         assert!(provider_request_body.get("stream").is_none());
+        assert_eq!(
+            provider_request_body
+                .get("tools")
+                .and_then(|value| value.get(0))
+                .and_then(|value| value.get("model"))
+                .and_then(|value| value.as_str()),
+            Some("gpt-image-2")
+        );
         apply_codex_openai_responses_special_body_edits(
             &mut provider_request_body,
             "codex",

@@ -213,6 +213,24 @@ fn sample_request_candidate(
     retry_index: i32,
     status: RequestCandidateStatus,
 ) -> StoredRequestCandidate {
+    sample_request_candidate_for_provider(
+        id,
+        request_id,
+        candidate_index,
+        retry_index,
+        status,
+        "provider-1",
+    )
+}
+
+fn sample_request_candidate_for_provider(
+    id: &str,
+    request_id: &str,
+    candidate_index: i32,
+    retry_index: i32,
+    status: RequestCandidateStatus,
+    provider_id: &str,
+) -> StoredRequestCandidate {
     let attempted = status.is_attempted(None);
     StoredRequestCandidate::new(
         id.to_string(),
@@ -223,7 +241,7 @@ fn sample_request_candidate(
         Some("primary".to_string()),
         candidate_index,
         retry_index,
-        Some("provider-1".to_string()),
+        Some(provider_id.to_string()),
         Some(format!("endpoint-{candidate_index}")),
         Some(format!("provider-key-{candidate_index}")),
         status,
@@ -1456,19 +1474,21 @@ async fn gateway_usage_record_attempt_flags_follow_request_candidate_timeline() 
             0,
             RequestCandidateStatus::Unused,
         ),
-        sample_request_candidate(
+        sample_request_candidate_for_provider(
             "cand-fallback-failed",
             "req-real-fallback",
             0,
             0,
             RequestCandidateStatus::Failed,
+            "provider-1",
         ),
-        sample_request_candidate(
+        sample_request_candidate_for_provider(
             "cand-fallback-success",
             "req-real-fallback",
             1,
             0,
             RequestCandidateStatus::Success,
+            "provider-2",
         ),
         sample_request_candidate(
             "cand-retry-failed",
@@ -1485,6 +1505,14 @@ async fn gateway_usage_record_attempt_flags_follow_request_candidate_timeline() 
             RequestCandidateStatus::Success,
         ),
     ]));
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![
+            sample_provider("provider-1", "OpenAI", 10),
+            sample_provider("provider-2", "Claude", 20),
+        ],
+        vec![],
+        vec![],
+    ));
     let gateway = build_router_with_state(
         AppState::new()
             .expect("gateway should build")
@@ -1492,7 +1520,8 @@ async fn gateway_usage_record_attempt_flags_follow_request_candidate_timeline() 
                 GatewayDataState::with_request_candidate_and_usage_repository_for_tests(
                     request_candidate_repository,
                     usage_repository,
-                ),
+                )
+                .with_provider_catalog_reader(provider_catalog_repository),
             ),
     );
     let (gateway_url, gateway_handle) = start_server(gateway).await;
@@ -1525,6 +1554,10 @@ async fn gateway_usage_record_attempt_flags_follow_request_candidate_timeline() 
     );
     assert_eq!(record_by_id("usage-real-fallback")["has_fallback"], true);
     assert_eq!(record_by_id("usage-real-fallback")["has_retry"], false);
+    assert_eq!(
+        record_by_id("usage-real-fallback")["provider_route"],
+        json!(["OpenAI", "Claude"])
+    );
     assert_eq!(record_by_id("usage-real-retry")["has_fallback"], false);
     assert_eq!(record_by_id("usage-real-retry")["has_retry"], true);
 

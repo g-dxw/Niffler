@@ -69,6 +69,11 @@ export function applyUsageActiveRequestUpdate(
   if ('provider' in update && typeof update.provider === 'string' && isVisibleProvider(update.provider)) {
     record.provider = update.provider
   }
+  if (Array.isArray(update.provider_route)) {
+    record.provider_route = update.provider_route.filter((item): item is string => (
+      typeof item === 'string' && item.trim().length > 0
+    ))
+  }
   if ('api_key_name' in update) {
     record.api_key_name = typeof update.api_key_name === 'string' ? update.api_key_name : undefined
   }

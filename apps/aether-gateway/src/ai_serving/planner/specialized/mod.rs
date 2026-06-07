@@ -13,7 +13,7 @@ pub(crate) use self::files::{
     maybe_build_sync_local_gemini_files_decision_payload,
 };
 pub(crate) use self::image::{
-    build_local_image_stream_attempt_source_for_kind,
+    apply_openai_image_tool_model, build_local_image_stream_attempt_source_for_kind,
     build_local_image_stream_plan_and_reports_for_kind,
     build_local_image_sync_attempt_source_for_kind,
     build_local_image_sync_plan_and_reports_for_kind,

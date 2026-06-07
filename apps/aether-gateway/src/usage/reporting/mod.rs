@@ -484,14 +484,6 @@ mod tests {
                 "x-codex-secondary-reset-after-seconds".to_string(),
                 "524059".to_string(),
             ),
-            (
-                "x-codex-primary-reset-at".to_string(),
-                "1776148929".to_string(),
-            ),
-            (
-                "x-codex-secondary-reset-at".to_string(),
-                "1776657828".to_string(),
-            ),
         ])
     }
 

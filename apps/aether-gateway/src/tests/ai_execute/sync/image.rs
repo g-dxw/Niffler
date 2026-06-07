@@ -749,6 +749,7 @@ async fn gateway_executes_codex_image_sync_via_local_decision_gate_after_oauth_r
         tool_size: String,
         tool_quality: String,
         tool_background: String,
+        tool_model: String,
         tool_choice_type: String,
         tool_has_n: bool,
         request_stream: bool,
@@ -850,7 +851,9 @@ async fn gateway_executes_codex_image_sync_via_local_decision_gate_after_oauth_r
             None,
             Some(20.0),
             None,
-            None,
+            Some(serde_json::json!({
+                "codex_image_generation_base_model": "gpt-5.5"
+            })),
         )
     }
 
@@ -1037,6 +1040,15 @@ async fn gateway_executes_codex_image_sync_via_local_decision_gate_after_oauth_r
                         .and_then(|value| value.as_str())
                         .unwrap_or_default()
                         .to_string(),
+                    tool_model: payload
+                        .get("body")
+                        .and_then(|value| value.get("json_body"))
+                        .and_then(|value| value.get("tools"))
+                        .and_then(|value| value.get(0))
+                        .and_then(|value| value.get("model"))
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
                     tool_choice_type: payload
                         .get("body")
                         .and_then(|value| value.get("json_body"))
@@ -1186,10 +1198,7 @@ async fn gateway_executes_codex_image_sync_via_local_decision_gate_after_oauth_r
         seen_execution_runtime_request.url,
         "https://chatgpt.com/backend-api/codex/responses"
     );
-    assert_eq!(
-        seen_execution_runtime_request.model,
-        CODEX_OPENAI_IMAGE_INTERNAL_MODEL
-    );
+    assert_eq!(seen_execution_runtime_request.model, "gpt-5.5");
     assert_eq!(
         seen_execution_runtime_request.authorization,
         "Bearer refreshed-codex-image-access-token"
@@ -1207,6 +1216,7 @@ async fn gateway_executes_codex_image_sync_via_local_decision_gate_after_oauth_r
     assert_eq!(seen_execution_runtime_request.tool_size, "1024x1024");
     assert_eq!(seen_execution_runtime_request.tool_quality, "high");
     assert_eq!(seen_execution_runtime_request.tool_background, "auto");
+    assert_eq!(seen_execution_runtime_request.tool_model, "gpt-image-2");
     assert_eq!(
         seen_execution_runtime_request.tool_choice_type,
         "image_generation"

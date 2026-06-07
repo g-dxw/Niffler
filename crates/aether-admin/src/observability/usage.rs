@@ -5,6 +5,7 @@ use aether_billing::{
 };
 use aether_data::repository::users::StoredUserSummary;
 use aether_data_contracts::repository::{
+    candidates::{RequestCandidateStatus, StoredRequestCandidate},
     provider_catalog::{StoredProviderCatalogEndpoint, StoredProviderCatalogProvider},
     usage::{StoredRequestUsageAudit, StoredUsageAuditSummary, UsageBodyField},
 };
@@ -255,6 +256,166 @@ pub fn admin_usage_is_failed(item: &StoredRequestUsageAudit) -> bool {
 
 pub fn admin_usage_has_fallback(item: &StoredRequestUsageAudit) -> bool {
     item.has_fallback()
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AdminUsageAttemptInfo {
+    pub has_fallback: bool,
+    pub has_retry: bool,
+    pub provider_route: Vec<String>,
+}
+
+pub fn admin_usage_attempt_status_filter(status: Option<&str>) -> Option<&'static str> {
+    match status?.trim().to_ascii_lowercase().as_str() {
+        "has_fallback" => Some("has_fallback"),
+        "has_retry" => Some("has_retry"),
+        _ => None,
+    }
+}
+
+fn admin_usage_candidate_failed_before_fallback(candidate: &StoredRequestCandidate) -> bool {
+    candidate.status.is_attempted(candidate.started_at_unix_ms)
+        && (matches!(
+            candidate.status,
+            RequestCandidateStatus::Failed | RequestCandidateStatus::Cancelled
+        ) || candidate.status_code.is_some_and(|code| code >= 400))
+}
+
+fn admin_usage_candidate_was_retried(candidate: &StoredRequestCandidate) -> bool {
+    candidate.retry_index > 0 && candidate.status.is_attempted(candidate.started_at_unix_ms)
+}
+
+fn admin_usage_final_candidate_index(
+    item: &StoredRequestUsageAudit,
+    candidates: &[StoredRequestCandidate],
+) -> Option<u64> {
+    if let Some(candidate_id) = item.routing_candidate_id() {
+        if let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| candidate.id == candidate_id)
+        {
+            return Some(u64::from(candidate.candidate_index));
+        }
+    }
+
+    item.routing_candidate_index().or_else(|| {
+        candidates
+            .iter()
+            .filter(|candidate| candidate.status.is_attempted(candidate.started_at_unix_ms))
+            .max_by(|left, right| {
+                left.candidate_index
+                    .cmp(&right.candidate_index)
+                    .then(left.retry_index.cmp(&right.retry_index))
+            })
+            .map(|candidate| u64::from(candidate.candidate_index))
+    })
+}
+
+fn admin_usage_provider_route(
+    item: &StoredRequestUsageAudit,
+    candidates: &[StoredRequestCandidate],
+    provider_names_by_id: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut route = Vec::new();
+    for candidate in candidates {
+        if !candidate.status.is_attempted(candidate.started_at_unix_ms) {
+            continue;
+        }
+        let Some(provider_id) = candidate.provider_id.as_deref() else {
+            continue;
+        };
+        let name = provider_names_by_id
+            .get(provider_id)
+            .cloned()
+            .unwrap_or_else(|| provider_id.to_string());
+        if route.last().is_some_and(|last| last == &name) {
+            continue;
+        }
+        route.push(name);
+    }
+
+    if route.is_empty()
+        && !matches!(
+            item.provider_name.trim().to_ascii_lowercase().as_str(),
+            "" | "pending" | "unknown" | "unknow"
+        )
+    {
+        route.push(item.provider_name.clone());
+    }
+
+    route
+}
+
+pub fn admin_usage_attempt_info_from_candidates(
+    item: &StoredRequestUsageAudit,
+    candidates: &[StoredRequestCandidate],
+    provider_names_by_id: &BTreeMap<String, String>,
+) -> AdminUsageAttemptInfo {
+    let final_candidate_index = admin_usage_final_candidate_index(item, candidates);
+    let has_retry = candidates.iter().any(admin_usage_candidate_was_retried);
+    let provider_route = admin_usage_provider_route(item, candidates, provider_names_by_id);
+    let has_fallback = provider_route.len() > 1
+        && final_candidate_index.is_some_and(|final_index| {
+            candidates.iter().any(|candidate| {
+                u64::from(candidate.candidate_index) < final_index
+                    && admin_usage_candidate_failed_before_fallback(candidate)
+            })
+        });
+
+    AdminUsageAttemptInfo {
+        has_fallback,
+        has_retry,
+        provider_route,
+    }
+}
+
+pub fn admin_usage_attempt_info_for_item(
+    item: &StoredRequestUsageAudit,
+    info_by_usage_id: &BTreeMap<String, AdminUsageAttemptInfo>,
+    request_candidate_reader_available: bool,
+) -> AdminUsageAttemptInfo {
+    info_by_usage_id.get(&item.id).cloned().unwrap_or_else(|| {
+        if request_candidate_reader_available {
+            AdminUsageAttemptInfo::default()
+        } else {
+            AdminUsageAttemptInfo {
+                has_fallback: admin_usage_has_fallback(item),
+                has_retry: false,
+                provider_route: Vec::new(),
+            }
+        }
+    })
+}
+
+pub fn admin_usage_matches_attempt_status(
+    item: &StoredRequestUsageAudit,
+    status: &str,
+    info_by_usage_id: &BTreeMap<String, AdminUsageAttemptInfo>,
+    request_candidate_reader_available: bool,
+) -> bool {
+    let info = admin_usage_attempt_info_for_item(
+        item,
+        info_by_usage_id,
+        request_candidate_reader_available,
+    );
+    match status {
+        "has_fallback" => info.has_fallback,
+        "has_retry" => info.has_retry,
+        _ => true,
+    }
+}
+
+pub fn admin_usage_matches_client_family(
+    item: &StoredRequestUsageAudit,
+    client_family: Option<&str>,
+) -> bool {
+    let Some(client_family) = client_family
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return true;
+    };
+    admin_usage_client_family(item).is_some_and(|value| value.eq_ignore_ascii_case(client_family))
 }
 
 pub fn admin_usage_matches_status(item: &StoredRequestUsageAudit, status: Option<&str>) -> bool {
@@ -2330,6 +2491,7 @@ pub fn build_admin_usage_active_requests_response(
     provider_key_names: &BTreeMap<String, String>,
     provider_key_account_labels: &BTreeMap<String, String>,
     fallback_flags_by_usage_id: &BTreeMap<String, bool>,
+    provider_routes_by_usage_id: &BTreeMap<String, Vec<String>>,
     image_progress_by_request_id: &BTreeMap<String, Value>,
 ) -> Response<Body> {
     let payload: Vec<_> = items
@@ -2349,6 +2511,9 @@ pub fn build_admin_usage_active_requests_response(
             );
             if let Some(has_fallback) = fallback_flags_by_usage_id.get(&item.id) {
                 value["has_fallback"] = json!(has_fallback);
+            }
+            if let Some(provider_route) = provider_routes_by_usage_id.get(&item.id) {
+                value["provider_route"] = json!(provider_route);
             }
             value
         })

@@ -2,8 +2,9 @@ use serde_json::Value;
 
 use crate::ai_serving::transport::apply_standard_provider_request_body_rules_with_request_headers;
 use crate::ai_serving::{
-    apply_codex_openai_responses_chat_body_edits,
+    apply_codex_openai_responses_chat_body_edits_with_bridge_config,
     apply_openai_responses_compact_special_body_edits,
+    apply_openai_responses_image_generation_bridge_body_edits,
     build_cross_format_openai_chat_request_body_with_model_directives as surface_build_cross_format_openai_chat_request_body,
     build_local_openai_chat_request_body_with_model_directives as surface_build_local_openai_chat_request_body,
     GatewayProviderTransportSnapshot,
@@ -60,6 +61,8 @@ pub(crate) fn build_cross_format_openai_chat_request_body(
     user_api_key_id: Option<&str>,
     request_headers: &http::HeaderMap,
     enable_model_directives: bool,
+    codex_image_bridge_model: Option<&str>,
+    openai_responses_image_generation_tool_enabled: bool,
 ) -> Option<Value> {
     let provider_request_body = surface_build_cross_format_openai_chat_request_body(
         body_json,
@@ -75,13 +78,23 @@ pub(crate) fn build_cross_format_openai_chat_request_body(
             body_json,
             request_headers,
         )?;
-    apply_codex_openai_responses_chat_body_edits(
+    apply_codex_openai_responses_chat_body_edits_with_bridge_config(
         &mut provider_request_body,
         provider_type,
         provider_api_format,
         body_rules,
         user_api_key_id,
+        codex_image_bridge_model,
+        openai_responses_image_generation_tool_enabled,
     );
+    if !provider_type.trim().eq_ignore_ascii_case("codex") {
+        apply_openai_responses_image_generation_bridge_body_edits(
+            &mut provider_request_body,
+            provider_api_format,
+            codex_image_bridge_model,
+            openai_responses_image_generation_tool_enabled,
+        );
+    }
     apply_openai_responses_compact_special_body_edits(
         &mut provider_request_body,
         provider_api_format,

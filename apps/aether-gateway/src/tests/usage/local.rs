@@ -368,7 +368,11 @@ async fn gateway_truncates_deep_request_echo_for_local_openai_chat_sync_usage_im
                     Arc::clone(&request_candidate_repository),
                     Arc::clone(&usage_repository),
                     DEVELOPMENT_ENCRYPTION_KEY,
-                ),
+                )
+                .with_system_config_values_for_tests([(
+                    "request_record_level".to_string(),
+                    json!("full"),
+                )]),
             )
             .with_usage_runtime_for_tests(UsageRuntimeConfig {
                 enabled: true,
@@ -524,10 +528,10 @@ async fn gateway_applies_system_max_request_body_size_to_local_openai_chat_sync_
                 Arc::clone(&usage_repository),
                 DEVELOPMENT_ENCRYPTION_KEY,
             )
-            .with_system_config_values_for_tests([(
-                "max_request_body_size".to_string(),
-                json!(128),
-            )]),
+            .with_system_config_values_for_tests([
+                ("request_record_level".to_string(), json!("full")),
+                ("max_request_body_size".to_string(), json!(128)),
+            ]),
         )
         .with_usage_runtime_for_tests(UsageRuntimeConfig {
             enabled: true,
@@ -795,7 +799,11 @@ async fn gateway_records_failed_usage_when_all_local_openai_chat_candidates_exha
                 Arc::clone(&request_candidate_repository),
                 Arc::clone(&usage_repository),
                 DEVELOPMENT_ENCRYPTION_KEY,
-            ),
+            )
+            .with_system_config_values_for_tests([(
+                "request_record_level".to_string(),
+                json!("full"),
+            )]),
         )
         .with_usage_runtime_for_tests(UsageRuntimeConfig {
             enabled: true,
@@ -921,7 +929,11 @@ async fn gateway_records_failed_usage_when_sync_runtime_transport_is_unavailable
                 Arc::clone(&request_candidate_repository),
                 Arc::clone(&usage_repository),
                 DEVELOPMENT_ENCRYPTION_KEY,
-            ),
+            )
+            .with_system_config_values_for_tests([(
+                "request_record_level".to_string(),
+                json!("full"),
+            )]),
         )
         .with_usage_runtime_for_tests(UsageRuntimeConfig {
             enabled: true,
@@ -1096,7 +1108,11 @@ async fn gateway_records_failed_usage_for_claude_runtime_miss_without_execution_
             Arc::clone(&request_candidate_repository),
             Arc::clone(&usage_repository),
             DEVELOPMENT_ENCRYPTION_KEY,
-        ),
+        )
+        .with_system_config_values_for_tests([(
+            "request_record_level".to_string(),
+            json!("full"),
+        )]),
     )
     .with_usage_runtime_for_tests(UsageRuntimeConfig {
         enabled: true,
@@ -1470,10 +1486,10 @@ async fn gateway_preserves_stream_usage_when_max_response_body_size_truncates_ca
                 Arc::clone(&usage_repository),
                 DEVELOPMENT_ENCRYPTION_KEY,
             )
-            .with_system_config_values_for_tests([(
-                "max_response_body_size".to_string(),
-                json!(128),
-            )]),
+            .with_system_config_values_for_tests([
+                ("request_record_level".to_string(), json!("full")),
+                ("max_response_body_size".to_string(), json!(128)),
+            ]),
         )
         .with_usage_runtime_for_tests(UsageRuntimeConfig {
             enabled: true,
@@ -1724,7 +1740,11 @@ async fn gateway_records_failed_usage_when_all_local_claude_cli_candidates_are_s
             Arc::clone(&request_candidate_repository),
             Arc::clone(&usage_repository),
             DEVELOPMENT_ENCRYPTION_KEY,
-        ),
+        )
+        .with_system_config_values_for_tests([(
+            "request_record_level".to_string(),
+            json!("full"),
+        )]),
     )
     .with_usage_runtime_for_tests(UsageRuntimeConfig {
         enabled: true,
@@ -1797,7 +1817,7 @@ async fn gateway_records_failed_usage_when_all_local_claude_cli_candidates_are_s
     assert_eq!(
         stored_usage.error_message.as_deref(),
         Some(
-            "找到 1 个支持模型 gpt-5.4 的候选提供商，但本次同步请求全部不可用：格式转换未启用 2 次（原因代码: all_candidates_skipped）"
+            "找到 1 个支持模型 gpt-5.4 的可尝试提供商，但本次同步请求全部不可用：格式转换未启用 2 次（原因代码: all_candidates_skipped）"
         )
     );
     assert_eq!(
@@ -2021,7 +2041,11 @@ fn gateway_keeps_failed_usage_request_capture_lightweight_for_large_local_claude
                         Arc::clone(&request_candidate_repository),
                         Arc::clone(&usage_repository),
                         DEVELOPMENT_ENCRYPTION_KEY,
-                    ),
+                    )
+                    .with_system_config_values_for_tests([(
+                        "request_record_level".to_string(),
+                        json!("full"),
+                    )]),
                 )
                 .with_usage_runtime_for_tests(UsageRuntimeConfig {
                     enabled: true,

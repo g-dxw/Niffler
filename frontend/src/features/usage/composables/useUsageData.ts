@@ -517,6 +517,9 @@ export function useUsageData(options: UseUsageDataOptions) {
           has_fallback: typeof record.has_fallback === 'boolean'
             ? record.has_fallback
             : existing.has_fallback,
+          provider_route: Array.isArray(record.provider_route)
+            ? record.provider_route
+            : existing.provider_route,
           api_key_name: existing.api_key_name || record.api_key_name,
           provider_key_name: existing.provider_key_name || record.provider_key_name,
           provider_key_account_label: existing.provider_key_account_label || record.provider_key_account_label,

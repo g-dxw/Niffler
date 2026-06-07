@@ -96,6 +96,7 @@ export interface UsageRecord {
     display: string | null
   } | null
   provider?: string  // 仅管理员可见
+  provider_route?: string[]
   api_key_name?: string
   provider_key_name?: string | null
   provider_key_account_label?: string | null

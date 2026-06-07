@@ -1953,13 +1953,22 @@ async fn provider_query_execute_openai_image_test_candidate(
     } else {
         crate::ai_serving::build_openai_image_provider_request_body(&normalized_request)
     };
+    if !is_chatgpt_web && !is_grok {
+        crate::ai_serving::apply_openai_image_tool_model(
+            &mut provider_request_body,
+            &candidate.effective_model,
+        );
+    }
     if !is_chatgpt_web {
-        crate::ai_serving::apply_codex_openai_responses_special_body_edits(
+        crate::ai_serving::apply_codex_openai_responses_special_body_edits_with_bridge_model(
             &mut provider_request_body,
             transport.provider.provider_type.as_str(),
             "openai:image",
             transport.endpoint.body_rules.as_ref(),
             Some(candidate.key.id.as_str()),
+            crate::ai_serving::codex_openai_image_bridge_model_from_provider_config(
+                transport.provider.config.as_ref(),
+            ),
         );
     }
 
@@ -2041,13 +2050,7 @@ async fn provider_query_execute_openai_image_test_candidate(
             )
             .to_string()
         });
-    let mapped_model = provider_request_body
-        .get("model")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(request_model.as_str())
-        .to_string();
+    let mapped_model = candidate.effective_model.clone();
     let image_request = if is_chatgpt_web || is_grok {
         provider_request_body.clone()
     } else {
@@ -2728,12 +2731,15 @@ async fn provider_query_execute_standard_test_candidate(
                     format!("Provider request body rules rejected {provider_api_format}"),
                 ));
             }
-            crate::ai_serving::apply_codex_openai_responses_special_body_edits(
+            crate::ai_serving::apply_codex_openai_responses_special_body_edits_with_bridge_model(
                 &mut provider_request_body,
                 transport.provider.provider_type.as_str(),
                 provider_api_format,
                 transport.endpoint.body_rules.as_ref(),
                 Some(candidate.key.id.as_str()),
+                crate::ai_serving::codex_openai_image_bridge_model_from_provider_config(
+                    transport.provider.config.as_ref(),
+                ),
             );
             crate::ai_serving::apply_openai_responses_compact_special_body_edits(
                 &mut provider_request_body,
