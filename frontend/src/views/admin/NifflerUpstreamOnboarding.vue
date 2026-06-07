@@ -21,14 +21,14 @@
     </PageHeader>
 
     <div class="mt-6 space-y-5">
-      <Card class="overflow-hidden border-amber-200/80 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/20">
+      <Card class="overflow-hidden border-warning/30 bg-warning/10">
         <div class="flex flex-col gap-3 p-5 md:flex-row md:items-start">
-          <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-warning" />
           <div class="space-y-1">
-            <p class="font-medium text-amber-900 dark:text-amber-200">
+            <p class="font-medium text-foreground">
               这是新模型入口，不会改动当前线上请求。
             </p>
-            <p class="text-sm text-amber-800/80 dark:text-amber-100/75">
+            <p class="text-sm text-muted-foreground">
               本页只写入新表：上游服务、上游账号、服务能力、产品策略、可售模型、错误文案规则。账号不保存真实密钥内容，也不会进入旧 Provider、号池、用户模型、计费、结算或错误返回链路。
             </p>
           </div>
@@ -64,7 +64,7 @@
               </Button>
               <Button
                 class="h-9"
-                @click="serviceDialogOpen = true"
+                @click="openServiceDialog"
               >
                 <Plus class="mr-2 h-4 w-4" />
                 新增服务
@@ -130,7 +130,7 @@
                   </div>
                 </TableCell>
                 <TableCell>
-                  {{ service.service_kind }}
+                  {{ serviceKindLabel(service.service_kind) }}
                 </TableCell>
                 <TableCell>
                   {{ service.default_api_format || '-' }}
@@ -575,49 +575,45 @@
             />
           </div>
           <div class="space-y-2">
-            <Label for="service-kind">服务类型</Label>
-            <Select v-model="serviceForm.service_kind">
-              <SelectTrigger id="service-kind">
-                <SelectValue placeholder="选择服务类型" />
+            <Label for="service-template">接入类型</Label>
+            <Select v-model="selectedServiceTemplateKey">
+              <SelectTrigger id="service-template">
+                <SelectValue placeholder="选择接入类型" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="codex">Codex / ChatGPT OAuth</SelectItem>
-                <SelectItem value="claude">Claude</SelectItem>
-                <SelectItem value="openai">OpenAI</SelectItem>
-                <SelectItem value="custom_openai">自定义 OpenAI 兼容</SelectItem>
-                <SelectItem value="custom">自定义服务</SelectItem>
+                <SelectItem
+                  v-for="template in nifflerServiceTemplates"
+                  :key="template.key"
+                  :value="template.key"
+                >
+                  {{ template.label }}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div class="space-y-2">
-            <Label for="protocol-kind">协议</Label>
-            <Select v-model="serviceForm.protocol_kind">
-              <SelectTrigger id="protocol-kind">
-                <SelectValue placeholder="选择协议" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="openai">OpenAI</SelectItem>
-                <SelectItem value="anthropic">Anthropic</SelectItem>
-                <SelectItem value="gemini">Gemini</SelectItem>
-                <SelectItem value="codex">Codex</SelectItem>
-                <SelectItem value="custom">自定义</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div class="space-y-2">
-            <Label for="api-format">默认 API 格式</Label>
-            <Input
-              id="api-format"
-              v-model="serviceForm.default_api_format"
-              placeholder="例如 openai、codex"
-            />
+
+          <div class="rounded-xl border border-border/70 bg-muted/30 p-4 sm:col-span-2">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <p class="text-sm text-muted-foreground">
+                {{ selectedServiceTemplate.description }}
+              </p>
+              <Badge variant="outline">
+                账号默认：{{ authKindLabel(selectedServiceTemplate.defaultAuthKind) }}
+              </Badge>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span class="rounded-md bg-background px-2 py-1">服务类型：{{ serviceForm.service_kind }}</span>
+              <span class="rounded-md bg-background px-2 py-1">协议：{{ serviceForm.protocol_kind }}</span>
+              <span class="rounded-md bg-background px-2 py-1">API 格式：{{ serviceForm.default_api_format }}</span>
+            </div>
           </div>
           <div class="space-y-2 sm:col-span-2">
             <Label for="base-url">Base URL</Label>
             <Input
               id="base-url"
               v-model="serviceForm.base_url"
-              placeholder="https://api.example.com"
+              :placeholder="selectedServiceTemplate.baseUrlPlaceholder"
+              :required="selectedServiceTemplate.baseUrlRequired"
             />
           </div>
           <div class="space-y-2">
@@ -637,15 +633,57 @@
             />
             <Label for="service-active">启用服务</Label>
           </div>
+
+          <details class="rounded-xl border border-border/70 p-4 sm:col-span-2">
+            <summary class="cursor-pointer text-sm font-medium">
+              高级字段
+            </summary>
+            <div class="mt-4 grid gap-4 sm:grid-cols-3">
+              <div class="space-y-2">
+                <Label for="service-kind">服务类型</Label>
+                <Input
+                  id="service-kind"
+                  v-model="serviceForm.service_kind"
+                  placeholder="例如 openai_compatible"
+                />
+              </div>
+              <div class="space-y-2">
+                <Label for="protocol-kind">协议</Label>
+                <Select v-model="serviceForm.protocol_kind">
+                  <SelectTrigger id="protocol-kind">
+                    <SelectValue placeholder="选择协议" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="openai">OpenAI</SelectItem>
+                    <SelectItem value="anthropic">Anthropic</SelectItem>
+                    <SelectItem value="gemini">Gemini</SelectItem>
+                    <SelectItem value="codex">Codex</SelectItem>
+                    <SelectItem value="custom">自定义</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="space-y-2">
+                <Label for="api-format">默认 API 格式</Label>
+                <Input
+                  id="api-format"
+                  v-model="serviceForm.default_api_format"
+                  placeholder="例如 openai、codex"
+                />
+              </div>
+            </div>
+          </details>
         </div>
 
         <div class="rounded-xl border border-border/70 p-4">
           <p class="text-sm font-medium">
             服务能力
           </p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            只显示当前协议可配置的能力；OpenAI Responses 生图工具不会出现在 Anthropic 或 Gemini 协议里。
+          </p>
           <div class="mt-3 grid gap-3 sm:grid-cols-2">
             <label
-              v-for="item in capabilityOptions"
+              v-for="item in visibleCapabilityOptions"
               :key="item.key"
               class="flex items-start gap-3 rounded-lg border border-border/50 p-3"
             >
@@ -792,7 +830,7 @@
           />
         </div>
         <div class="space-y-2">
-          <Label for="product-plan-description">说明</Label>
+          <Label for="product-plan-description">备注</Label>
           <Input
             id="product-plan-description"
             v-model="productPlanForm.description"
@@ -1146,8 +1184,18 @@ import {
 } from '@/api/niffler-core'
 import { useToast } from '@/composables/useToast'
 import { extractErrorMessage } from '@/utils/error'
+import {
+  DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY,
+  buildNifflerServiceFormFromTemplate,
+  filterCapabilityOptionsForProtocol,
+  getDefaultAuthKindForService,
+  getServiceKindLabel,
+  getNifflerServiceTemplate,
+  nifflerServiceTemplates,
+  type NifflerServiceCapabilityKey,
+  type NifflerServiceTemplateKey,
+} from './niffler-upstream-service-templates'
 
-type CapabilityKey = keyof NonNullable<CreateNifflerUpstreamServicePayload['capabilities']>
 type ProductPlanForm = Required<Pick<CreateNifflerProductPlanPayload, 'display_name' | 'is_public' | 'is_active'>> & {
   sales_multiplier: number | string
   description: string
@@ -1199,24 +1247,10 @@ const accountDialogOpen = ref(false)
 const productPlanDialogOpen = ref(false)
 const productPlanModelDialogOpen = ref(false)
 const errorReturnSettingDialogOpen = ref(false)
+const selectedServiceTemplateKey = ref<NifflerServiceTemplateKey>(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)
 
-const defaultServiceForm = (): CreateNifflerUpstreamServicePayload => ({
-  display_name: '',
-  service_kind: 'custom_openai',
-  protocol_kind: 'openai',
-  default_api_format: 'openai',
-  base_url: '',
-  cost_multiplier: 1,
-  is_active: true,
-  capabilities: {
-    text: true,
-    streaming: true,
-    images_endpoint: false,
-    openai_responses_image_tool: false,
-    model_list: true,
-    model_test: true,
-  },
-})
+const defaultServiceForm = (): CreateNifflerUpstreamServicePayload =>
+  buildNifflerServiceFormFromTemplate(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)
 
 const defaultAccountForm = (): CreateNifflerUpstreamAccountPayload => ({
   display_name: '',
@@ -1263,7 +1297,7 @@ let accountLoadSeq = 0
 let productPlanModelLoadSeq = 0
 
 const capabilityOptions: Array<{
-  key: CapabilityKey
+  key: NifflerServiceCapabilityKey
   label: string
   description: string
 }> = [
@@ -1283,17 +1317,66 @@ const selectedProductPlan = computed(() =>
   productPlans.value.find(plan => plan.id === selectedProductPlanId.value) ?? null
 )
 
+const selectedServiceTemplate = computed(() =>
+  getNifflerServiceTemplate(selectedServiceTemplateKey.value)
+)
+
+const visibleCapabilityOptions = computed(() =>
+  filterCapabilityOptionsForProtocol(
+    capabilityOptions,
+    (serviceForm.value.protocol_kind || selectedServiceTemplate.value.protocolKind) as NifflerProtocolKind
+  )
+)
+
 watch(serviceDialogOpen, (open) => {
   if (!open) {
+    selectedServiceTemplateKey.value = DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY
     serviceForm.value = defaultServiceForm()
   }
 })
 
+watch(selectedServiceTemplateKey, (templateKey) => {
+  serviceForm.value = buildNifflerServiceFormFromTemplate(templateKey, serviceForm.value)
+})
+
+watch(
+  () => serviceForm.value.protocol_kind,
+  (protocolKind) => {
+    clearHiddenCapabilities((protocolKind || selectedServiceTemplate.value.protocolKind) as NifflerProtocolKind)
+  }
+)
+
 watch(accountDialogOpen, (open) => {
   if (!open) {
     accountForm.value = defaultAccountForm()
+    return
+  }
+  if (selectedService.value) {
+    accountForm.value = {
+      ...defaultAccountForm(),
+      auth_kind: getDefaultAuthKindForService(selectedService.value),
+    }
   }
 })
+
+function openServiceDialog() {
+  selectedServiceTemplateKey.value = DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY
+  serviceForm.value = defaultServiceForm()
+  serviceDialogOpen.value = true
+}
+
+function clearHiddenCapabilities(protocolKind: NifflerProtocolKind) {
+  const visibleKeys = new Set(
+    filterCapabilityOptionsForProtocol(capabilityOptions, protocolKind).map(option => option.key)
+  )
+  const capabilities = serviceForm.value.capabilities ?? {}
+  for (const option of capabilityOptions) {
+    if (!visibleKeys.has(option.key)) {
+      capabilities[option.key] = false
+    }
+  }
+  serviceForm.value.capabilities = capabilities
+}
 
 watch(productPlanDialogOpen, (open) => {
   if (!open) {
@@ -1724,6 +1807,10 @@ function formatOptionalMultiplier(value?: number | null): string {
 function accountContactLabel(account: NifflerUpstreamAccount): string {
   const contacts = [account.email, account.phone].filter(Boolean)
   return contacts.length > 0 ? contacts.join(' / ') : '未填写邮箱或手机号'
+}
+
+function serviceKindLabel(value: string): string {
+  return getServiceKindLabel(value)
 }
 
 function authKindLabel(value: string): string {
