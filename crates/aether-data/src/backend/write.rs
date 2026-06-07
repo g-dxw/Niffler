@@ -10,6 +10,7 @@ use crate::repository::candidates::RequestCandidateWriteRepository;
 use crate::repository::gemini_file_mappings::GeminiFileMappingWriteRepository;
 use crate::repository::global_models::GlobalModelWriteRepository;
 use crate::repository::management_tokens::ManagementTokenWriteRepository;
+use crate::repository::niffler_core::NifflerCoreWriteRepository;
 use crate::repository::oauth_providers::OAuthProviderWriteRepository;
 use crate::repository::pool_scores::PoolMemberScoreWriteRepository;
 use crate::repository::provider_catalog::ProviderCatalogWriteRepository;
@@ -31,6 +32,7 @@ pub struct DataWriteRepositories {
     gemini_file_mappings: Option<Arc<dyn GeminiFileMappingWriteRepository>>,
     global_models: Option<Arc<dyn GlobalModelWriteRepository>>,
     management_tokens: Option<Arc<dyn ManagementTokenWriteRepository>>,
+    niffler_core: Option<Arc<dyn NifflerCoreWriteRepository>>,
     oauth_providers: Option<Arc<dyn OAuthProviderWriteRepository>>,
     pool_scores: Option<Arc<dyn PoolMemberScoreWriteRepository>>,
     proxy_nodes: Option<Arc<dyn ProxyNodeWriteRepository>>,
@@ -57,6 +59,7 @@ impl fmt::Debug for DataWriteRepositories {
             )
             .field("has_global_models", &self.global_models.is_some())
             .field("has_management_tokens", &self.management_tokens.is_some())
+            .field("has_niffler_core", &self.niffler_core.is_some())
             .field("has_oauth_providers", &self.oauth_providers.is_some())
             .field("has_pool_scores", &self.pool_scores.is_some())
             .field("has_proxy_nodes", &self.proxy_nodes.is_some())
@@ -110,6 +113,10 @@ impl DataWriteRepositories {
                 .map(PostgresBackend::management_token_write_repository)
                 .or_else(|| mysql.map(MysqlBackend::management_token_write_repository))
                 .or_else(|| sqlite.map(SqliteBackend::management_token_write_repository)),
+            niffler_core: postgres
+                .map(PostgresBackend::niffler_core_write_repository)
+                .or_else(|| mysql.map(MysqlBackend::niffler_core_write_repository))
+                .or_else(|| sqlite.map(SqliteBackend::niffler_core_write_repository)),
             oauth_providers: postgres
                 .map(PostgresBackend::oauth_provider_write_repository)
                 .or_else(|| mysql.map(MysqlBackend::oauth_provider_write_repository))
@@ -194,6 +201,10 @@ impl DataWriteRepositories {
         self.management_tokens.clone()
     }
 
+    pub fn niffler_core(&self) -> Option<Arc<dyn NifflerCoreWriteRepository>> {
+        self.niffler_core.clone()
+    }
+
     pub fn oauth_providers(&self) -> Option<Arc<dyn OAuthProviderWriteRepository>> {
         self.oauth_providers.clone()
     }
@@ -239,6 +250,7 @@ impl DataWriteRepositories {
             || self.gemini_file_mappings.is_some()
             || self.global_models.is_some()
             || self.management_tokens.is_some()
+            || self.niffler_core.is_some()
             || self.oauth_providers.is_some()
             || self.pool_scores.is_some()
             || self.proxy_nodes.is_some()
@@ -282,6 +294,7 @@ mod tests {
         assert!(write.gemini_file_mappings().is_some());
         assert!(write.global_models().is_some());
         assert!(write.management_tokens().is_some());
+        assert!(write.niffler_core().is_some());
         assert!(write.oauth_providers().is_some());
         assert!(write.proxy_nodes().is_some());
         assert!(write.provider_catalog().is_some());

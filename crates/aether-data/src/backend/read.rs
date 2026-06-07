@@ -13,6 +13,7 @@ use crate::repository::candidates::RequestCandidateReadRepository;
 use crate::repository::gemini_file_mappings::GeminiFileMappingReadRepository;
 use crate::repository::global_models::GlobalModelReadRepository;
 use crate::repository::management_tokens::ManagementTokenReadRepository;
+use crate::repository::niffler_core::NifflerCoreReadRepository;
 use crate::repository::oauth_providers::OAuthProviderReadRepository;
 use crate::repository::pool_scores::PoolScoreReadRepository;
 use crate::repository::provider_catalog::ProviderCatalogReadRepository;
@@ -35,6 +36,7 @@ pub struct DataReadRepositories {
     gemini_file_mappings: Option<Arc<dyn GeminiFileMappingReadRepository>>,
     global_models: Option<Arc<dyn GlobalModelReadRepository>>,
     management_tokens: Option<Arc<dyn ManagementTokenReadRepository>>,
+    niffler_core: Option<Arc<dyn NifflerCoreReadRepository>>,
     oauth_providers: Option<Arc<dyn OAuthProviderReadRepository>>,
     pool_scores: Option<Arc<dyn PoolScoreReadRepository>>,
     proxy_nodes: Option<Arc<dyn ProxyNodeReadRepository>>,
@@ -64,6 +66,7 @@ impl fmt::Debug for DataReadRepositories {
             )
             .field("has_global_models", &self.global_models.is_some())
             .field("has_management_tokens", &self.management_tokens.is_some())
+            .field("has_niffler_core", &self.niffler_core.is_some())
             .field("has_oauth_providers", &self.oauth_providers.is_some())
             .field("has_pool_scores", &self.pool_scores.is_some())
             .field("has_proxy_nodes", &self.proxy_nodes.is_some())
@@ -126,6 +129,10 @@ impl DataReadRepositories {
                 .map(PostgresBackend::management_token_read_repository)
                 .or_else(|| mysql.map(MysqlBackend::management_token_read_repository))
                 .or_else(|| sqlite.map(SqliteBackend::management_token_read_repository)),
+            niffler_core: postgres
+                .map(PostgresBackend::niffler_core_read_repository)
+                .or_else(|| mysql.map(MysqlBackend::niffler_core_read_repository))
+                .or_else(|| sqlite.map(SqliteBackend::niffler_core_read_repository)),
             oauth_providers: postgres
                 .map(PostgresBackend::oauth_provider_read_repository)
                 .or_else(|| mysql.map(MysqlBackend::oauth_provider_read_repository))
@@ -218,6 +225,10 @@ impl DataReadRepositories {
         self.management_tokens.clone()
     }
 
+    pub fn niffler_core(&self) -> Option<Arc<dyn NifflerCoreReadRepository>> {
+        self.niffler_core.clone()
+    }
+
     pub fn oauth_providers(&self) -> Option<Arc<dyn OAuthProviderReadRepository>> {
         self.oauth_providers.clone()
     }
@@ -278,6 +289,7 @@ impl DataReadRepositories {
             || self.gemini_file_mappings.is_some()
             || self.global_models.is_some()
             || self.management_tokens.is_some()
+            || self.niffler_core.is_some()
             || self.oauth_providers.is_some()
             || self.pool_scores.is_some()
             || self.proxy_nodes.is_some()
@@ -324,6 +336,7 @@ mod tests {
         assert!(read.gemini_file_mappings().is_some());
         assert!(read.global_models().is_some());
         assert!(read.management_tokens().is_some());
+        assert!(read.niffler_core().is_some());
         assert!(read.oauth_providers().is_some());
         assert!(read.proxy_nodes().is_some());
         assert!(read.minimal_candidate_selection().is_some());

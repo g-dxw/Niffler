@@ -4,6 +4,7 @@ import { adminBillingPlansApi, epayGatewayApi } from '@/api/billing'
 import { getProvidersSummary } from '@/api/endpoints/providers'
 import { getPoolOverview, getPoolSchedulingPresets, listPoolKeys } from '@/api/endpoints/pool'
 import { listGlobalModels } from '@/api/global-models'
+import { listNifflerUpstreamServices } from '@/api/niffler-core'
 import { listRoutingGroups } from '@/api/routing-profiles'
 import { usersApi } from '@/api/users'
 import { log } from '@/utils/logger'
@@ -40,6 +41,12 @@ const adminRouteWarmers: Record<string, () => Promise<void>> = {
         { is_active: true, limit: 1000 },
         { cacheTtlMs: NAV_DATA_CACHE_TTL_MS },
       ),
+    ])
+  },
+  '/admin/niffler-upstreams': async () => {
+    await Promise.allSettled([
+      import('@/views/admin/NifflerUpstreamOnboarding.vue'),
+      listNifflerUpstreamServices({ include_inactive: true, limit: 100 }),
     ])
   },
   '/admin/models': async () => {

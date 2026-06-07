@@ -783,6 +783,7 @@ const navigation = computed(() => {
       title: '管理',
       items: [
         { name: '用户管理', href: '/admin/users', icon: Users },
+        { name: '上游接入', href: '/admin/niffler-upstreams', icon: Server },
         { name: '提供商', href: '/admin/providers', icon: FolderTree },
         { name: '模型管理', href: '/admin/models', icon: Layers },
         { name: '调度策略', href: '/admin/routing', icon: SlidersHorizontal },

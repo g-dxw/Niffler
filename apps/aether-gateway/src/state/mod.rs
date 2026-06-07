@@ -9,6 +9,7 @@ mod catalog;
 mod core;
 mod cors;
 mod integrations;
+mod niffler_core;
 mod oauth;
 mod proxy;
 mod routing_profiles;

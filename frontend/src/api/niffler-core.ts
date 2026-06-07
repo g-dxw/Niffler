@@ -1,6 +1,76 @@
 import apiClient from './client'
 
 export type NifflerReadinessSeverity = 'info' | 'warning' | 'error'
+export type NifflerAccountStatus =
+  | 'available'
+  | 'disabled'
+  | 'invalid'
+  | 'quota_exhausted'
+  | 'cooling_down'
+export type NifflerProtocolKind = 'openai' | 'anthropic' | 'gemini' | 'codex' | 'custom'
+
+export interface NifflerUpstreamService {
+  id: string
+  display_name: string
+  service_kind: string
+  default_api_format?: string | null
+  base_url?: string | null
+  cost_multiplier: number
+  is_active: boolean
+  config?: Record<string, unknown> | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
+export interface NifflerUpstreamAccount {
+  id: string
+  upstream_service_id: string
+  display_name: string
+  email?: string | null
+  phone?: string | null
+  auth_kind: string
+  status: NifflerAccountStatus
+  cost_multiplier: number
+  priority: number
+  cooldown_until_unix_ms?: number | null
+  last_tested_at_unix_ms?: number | null
+  last_test_error?: string | null
+  config?: Record<string, unknown> | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
+export interface NifflerListPage<T> {
+  items: T[]
+  total: number
+}
+
+export interface CreateNifflerUpstreamServicePayload {
+  display_name: string
+  service_kind: string
+  protocol_kind?: NifflerProtocolKind
+  default_api_format?: string | null
+  base_url?: string | null
+  cost_multiplier?: number
+  is_active?: boolean
+  capabilities?: {
+    text?: boolean
+    streaming?: boolean
+    images_endpoint?: boolean
+    openai_responses_image_tool?: boolean
+    model_list?: boolean
+    model_test?: boolean
+  }
+}
+
+export interface CreateNifflerUpstreamAccountPayload {
+  display_name: string
+  email?: string | null
+  phone?: string | null
+  auth_kind: 'api_key' | 'oauth' | 'custom_header'
+  cost_multiplier?: number
+  priority?: number
+}
 
 export interface NifflerShadowTableItem {
   table_name: string
@@ -168,6 +238,56 @@ export async function getNifflerCoreReadiness(params?: {
   const response = await apiClient.get<NifflerCoreReadinessReport>(
     '/api/admin/niffler-core/readiness',
     { params }
+  )
+  return response.data
+}
+
+export async function listNifflerUpstreamServices(params?: {
+  include_inactive?: boolean
+  search?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerUpstreamService>> {
+  const response = await apiClient.get<NifflerListPage<NifflerUpstreamService>>(
+    '/api/admin/niffler-core/upstream-services',
+    { params }
+  )
+  return response.data
+}
+
+export async function createNifflerUpstreamService(
+  payload: CreateNifflerUpstreamServicePayload
+): Promise<NifflerUpstreamService> {
+  const response = await apiClient.post<NifflerUpstreamService>(
+    '/api/admin/niffler-core/upstream-services',
+    payload
+  )
+  return response.data
+}
+
+export async function listNifflerUpstreamAccounts(
+  upstreamServiceId: string,
+  params?: {
+    status?: NifflerAccountStatus
+    search?: string
+    offset?: number
+    limit?: number
+  }
+): Promise<NifflerListPage<NifflerUpstreamAccount>> {
+  const response = await apiClient.get<NifflerListPage<NifflerUpstreamAccount>>(
+    `/api/admin/niffler-core/upstream-services/${encodeURIComponent(upstreamServiceId)}/accounts`,
+    { params }
+  )
+  return response.data
+}
+
+export async function createNifflerUpstreamAccount(
+  upstreamServiceId: string,
+  payload: CreateNifflerUpstreamAccountPayload
+): Promise<NifflerUpstreamAccount> {
+  const response = await apiClient.post<NifflerUpstreamAccount>(
+    `/api/admin/niffler-core/upstream-services/${encodeURIComponent(upstreamServiceId)}/accounts`,
+    payload
   )
   return response.data
 }

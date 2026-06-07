@@ -34,6 +34,9 @@ use crate::repository::global_models::{
 use crate::repository::management_tokens::{
     ManagementTokenReadRepository, ManagementTokenWriteRepository, MysqlManagementTokenRepository,
 };
+use crate::repository::niffler_core::{
+    MysqlNifflerCoreRepository, NifflerCoreReadRepository, NifflerCoreWriteRepository,
+};
 use crate::repository::oauth_providers::{
     MysqlOAuthProviderRepository, OAuthProviderReadRepository, OAuthProviderWriteRepository,
 };
@@ -118,6 +121,14 @@ impl MysqlBackend {
 
     pub fn management_token_write_repository(&self) -> Arc<dyn ManagementTokenWriteRepository> {
         Arc::new(MysqlManagementTokenRepository::new(self.pool_clone()))
+    }
+
+    pub fn niffler_core_read_repository(&self) -> Arc<dyn NifflerCoreReadRepository> {
+        Arc::new(MysqlNifflerCoreRepository::new(self.pool_clone()))
+    }
+
+    pub fn niffler_core_write_repository(&self) -> Arc<dyn NifflerCoreWriteRepository> {
+        Arc::new(MysqlNifflerCoreRepository::new(self.pool_clone()))
     }
 
     pub fn auth_module_read_repository(&self) -> Arc<dyn AuthModuleReadRepository> {

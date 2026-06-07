@@ -34,6 +34,9 @@ use crate::repository::global_models::{
 use crate::repository::management_tokens::{
     ManagementTokenReadRepository, ManagementTokenWriteRepository, SqliteManagementTokenRepository,
 };
+use crate::repository::niffler_core::{
+    NifflerCoreReadRepository, NifflerCoreWriteRepository, SqliteNifflerCoreRepository,
+};
 use crate::repository::oauth_providers::{
     OAuthProviderReadRepository, OAuthProviderWriteRepository, SqliteOAuthProviderRepository,
 };
@@ -119,6 +122,14 @@ impl SqliteBackend {
 
     pub fn management_token_write_repository(&self) -> Arc<dyn ManagementTokenWriteRepository> {
         Arc::new(SqliteManagementTokenRepository::new(self.pool_clone()))
+    }
+
+    pub fn niffler_core_read_repository(&self) -> Arc<dyn NifflerCoreReadRepository> {
+        Arc::new(SqliteNifflerCoreRepository::new(self.pool_clone()))
+    }
+
+    pub fn niffler_core_write_repository(&self) -> Arc<dyn NifflerCoreWriteRepository> {
+        Arc::new(SqliteNifflerCoreRepository::new(self.pool_clone()))
     }
 
     pub fn auth_module_read_repository(&self) -> Arc<dyn AuthModuleReadRepository> {

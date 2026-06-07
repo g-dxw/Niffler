@@ -36,6 +36,9 @@ use crate::repository::global_models::{
 use crate::repository::management_tokens::{
     ManagementTokenReadRepository, ManagementTokenWriteRepository, SqlxManagementTokenRepository,
 };
+use crate::repository::niffler_core::{
+    NifflerCoreReadRepository, NifflerCoreWriteRepository, SqlxNifflerCoreRepository,
+};
 use crate::repository::oauth_providers::{
     OAuthProviderReadRepository, OAuthProviderWriteRepository, SqlxOAuthProviderRepository,
 };
@@ -175,6 +178,14 @@ impl PostgresBackend {
 
     pub fn management_token_write_repository(&self) -> Arc<dyn ManagementTokenWriteRepository> {
         Arc::new(SqlxManagementTokenRepository::new(self.pool_clone()))
+    }
+
+    pub fn niffler_core_read_repository(&self) -> Arc<dyn NifflerCoreReadRepository> {
+        Arc::new(SqlxNifflerCoreRepository::new(self.pool_clone()))
+    }
+
+    pub fn niffler_core_write_repository(&self) -> Arc<dyn NifflerCoreWriteRepository> {
+        Arc::new(SqlxNifflerCoreRepository::new(self.pool_clone()))
     }
 
     pub fn oauth_provider_read_repository(&self) -> Arc<dyn OAuthProviderReadRepository> {

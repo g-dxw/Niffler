@@ -7,11 +7,14 @@ use aether_data_contracts::repository::global_models::{
     StoredAdminProviderModel,
 };
 use aether_data_contracts::repository::niffler_core::{
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, NifflerAccountStatus,
     NifflerCoreMappingSummary, NifflerCoreReadinessReport, NifflerCoreReadinessSummary,
     NifflerDisabledProviderReference, NifflerGroupPolicyGap, NifflerKeyScopeResidue,
-    NifflerPriceGap, NifflerReadinessIssue, NifflerReadinessSeverity,
-    NifflerRouteSkipReasonSummary, NifflerRouteSkipSample, NifflerShadowTableItem,
-    NifflerShadowTableStatus, NifflerUsageAnomaly,
+    NifflerPriceGap, NifflerProtocolKind, NifflerReadinessIssue, NifflerReadinessSeverity,
+    NifflerRouteSkipReasonSummary, NifflerRouteSkipSample, NifflerServiceCapabilityKind,
+    NifflerShadowTableItem, NifflerShadowTableStatus, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceListQuery, NifflerUsageAnomaly,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -26,13 +29,17 @@ use axum::{
 
 use crate::clock::current_unix_secs;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext, AdminRouteRequest};
-use crate::handlers::admin::shared::query_param_value;
+use crate::handlers::admin::shared::{attach_admin_audit_response, query_param_value};
 use crate::handlers::shared::{
     parse_catalog_auth_config_json, provider_key_account_label_from_auth_config,
 };
 use crate::GatewayError;
+use serde::Deserialize;
+use serde_json::json;
+use uuid::Uuid;
 
 const READINESS_PATH: &str = "/api/admin/niffler-core/readiness";
+const UPSTREAM_SERVICES_PATH: &str = "/api/admin/niffler-core/upstream-services";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
 const MAX_USAGE_ITEMS: usize = 50;
@@ -66,24 +73,39 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
     let state = request.state();
     let request_context = request.request_context();
 
-    if request_context.route_family() != Some("niffler_core_manage")
-        || request_context.path() != READINESS_PATH
-    {
+    if request_context.route_family() != Some("niffler_core_manage") {
         return Ok(None);
     }
-    if request_context.method() != http::Method::GET {
+
+    if request_context.path() == READINESS_PATH {
+        if request_context.method() != http::Method::GET {
+            return Ok(Some(niffler_method_not_allowed("只支持只读检查")));
+        }
+        let recent_days = parse_recent_days(request_context.query_string());
+        let report = build_readiness_report(&state, recent_days).await?;
+        return Ok(Some(Json(report).into_response()));
+    }
+
+    if request_context.path().trim_end_matches('/') == UPSTREAM_SERVICES_PATH {
         return Ok(Some(
-            (
-                http::StatusCode::METHOD_NOT_ALLOWED,
-                Json(serde_json::json!({ "detail": "只支持只读检查" })),
-            )
-                .into_response(),
+            build_upstream_services_response(&state, &request_context, request.request_body())
+                .await?,
         ));
     }
 
-    let recent_days = parse_recent_days(request_context.query_string());
-    let report = build_readiness_report(&state, recent_days).await?;
-    Ok(Some(Json(report).into_response()))
+    if let Some(upstream_service_id) = upstream_service_accounts_path_id(request_context.path()) {
+        return Ok(Some(
+            build_upstream_accounts_response(
+                &state,
+                &request_context,
+                request.request_body(),
+                upstream_service_id,
+            )
+            .await?,
+        ));
+    }
+
+    Ok(None)
 }
 
 fn parse_recent_days(query_string: Option<&str>) -> u32 {
@@ -91,6 +113,423 @@ fn parse_recent_days(query_string: Option<&str>) -> u32 {
         .and_then(|value| value.parse::<u32>().ok())
         .filter(|value| (1..=90).contains(value))
         .unwrap_or(7)
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerCreateUpstreamServiceRequest {
+    display_name: String,
+    service_kind: String,
+    #[serde(default)]
+    protocol_kind: Option<NifflerProtocolKind>,
+    #[serde(default)]
+    default_api_format: Option<String>,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default = "default_multiplier")]
+    cost_multiplier: f64,
+    #[serde(default = "default_true")]
+    is_active: bool,
+    #[serde(default)]
+    capabilities: AdminNifflerServiceCapabilityRequest,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct AdminNifflerServiceCapabilityRequest {
+    #[serde(default = "default_true")]
+    text: bool,
+    #[serde(default = "default_true")]
+    streaming: bool,
+    #[serde(default)]
+    images_endpoint: bool,
+    #[serde(default)]
+    openai_responses_image_tool: bool,
+    #[serde(default = "default_true")]
+    model_list: bool,
+    #[serde(default = "default_true")]
+    model_test: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerCreateUpstreamAccountRequest {
+    display_name: String,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    phone: Option<String>,
+    auth_kind: String,
+    #[serde(default = "default_multiplier")]
+    cost_multiplier: f64,
+    #[serde(default)]
+    priority: i32,
+}
+
+fn default_multiplier() -> f64 {
+    1.0
+}
+
+fn default_true() -> bool {
+    true
+}
+
+async fn build_upstream_services_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            let query = NifflerUpstreamServiceListQuery {
+                include_inactive: parse_bool_query(
+                    request_context.query_string(),
+                    "include_inactive",
+                )
+                .unwrap_or(false),
+                search: query_param_value(request_context.query_string(), "search")
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+                limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
+            };
+            let page = state.list_niffler_upstream_services(&query).await?;
+            Ok(Json(page).into_response())
+        }
+        method if method == http::Method::POST => {
+            create_upstream_service_response(state, request_body).await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持列表和创建上游服务")),
+    }
+}
+
+async fn create_upstream_service_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    let payload =
+        match parse_required_body::<AdminNifflerCreateUpstreamServiceRequest>(request_body) {
+            Ok(payload) => payload,
+            Err(response) => return Ok(response),
+        };
+    let display_name = match normalize_required_text(&payload.display_name, "服务名称", 200) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let service_kind = match normalize_required_text(&payload.service_kind, "服务类型", 64) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let default_api_format = match normalize_optional_text(payload.default_api_format, 64) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let base_url = match normalize_optional_text(payload.base_url, 2_000) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    if !payload.cost_multiplier.is_finite() || payload.cost_multiplier < 0.0 {
+        return Ok(niffler_bad_request("成本倍率必须是非负数字"));
+    }
+
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let service_id = Uuid::new_v4().to_string();
+    let record = CreateNifflerUpstreamServiceRecord {
+        id: service_id.clone(),
+        display_name,
+        service_kind,
+        default_api_format,
+        base_url,
+        cost_multiplier: payload.cost_multiplier,
+        is_active: payload.is_active,
+        config: Some(json!({
+            "created_from": "niffler_core_admin",
+            "credential_storage": "not_collected_in_first_slice"
+        })),
+        created_at_unix_ms: now_unix_ms,
+        updated_at_unix_ms: now_unix_ms,
+    };
+    let protocol_kind = payload.protocol_kind.unwrap_or(NifflerProtocolKind::Openai);
+    let capability_records = match build_capability_records(
+        &service_id,
+        protocol_kind,
+        payload.capabilities,
+        now_unix_ms,
+    ) {
+        Ok(records) => records,
+        Err(response) => return Ok(response),
+    };
+
+    let Some(created) = state.create_niffler_upstream_service(record).await? else {
+        return Ok(niffler_data_unavailable_response());
+    };
+    for capability in capability_records {
+        state
+            .upsert_niffler_upstream_service_capability(capability)
+            .await?;
+    }
+
+    Ok(attach_admin_audit_response(
+        (http::StatusCode::CREATED, Json(created)).into_response(),
+        "niffler_upstream_service_created",
+        "create_niffler_upstream_service",
+        "niffler_upstream_service",
+        &service_id,
+    ))
+}
+
+async fn build_upstream_accounts_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    upstream_service_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            let status = match query_param_value(request_context.query_string(), "status")
+                .as_deref()
+                .map(NifflerAccountStatus::from_database)
+                .transpose()
+            {
+                Ok(value) => value,
+                Err(_) => return Ok(niffler_bad_request("账号状态不合法")),
+            };
+            let query = NifflerUpstreamAccountListQuery {
+                upstream_service_id: Some(upstream_service_id),
+                status,
+                search: query_param_value(request_context.query_string(), "search")
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+                limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
+            };
+            let page = state.list_niffler_upstream_accounts(&query).await?;
+            Ok(Json(page).into_response())
+        }
+        method if method == http::Method::POST => {
+            create_upstream_account_response(state, request_body, &upstream_service_id).await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持列表和创建上游账号")),
+    }
+}
+
+async fn create_upstream_account_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    upstream_service_id: &str,
+) -> Result<Response<Body>, GatewayError> {
+    if state
+        .find_niffler_upstream_service_by_id(upstream_service_id)
+        .await?
+        .is_none()
+    {
+        return Ok(niffler_not_found("上游服务不存在"));
+    }
+    let payload =
+        match parse_required_body::<AdminNifflerCreateUpstreamAccountRequest>(request_body) {
+            Ok(payload) => payload,
+            Err(response) => return Ok(response),
+        };
+    let display_name = match normalize_required_text(&payload.display_name, "账号名称", 200) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let auth_kind = match normalize_required_text(&payload.auth_kind, "认证方式", 64) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    if !matches!(auth_kind.as_str(), "api_key" | "oauth" | "custom_header") {
+        return Ok(niffler_bad_request(
+            "认证方式只能是 api_key、oauth 或 custom_header",
+        ));
+    }
+    if !payload.cost_multiplier.is_finite() || payload.cost_multiplier < 0.0 {
+        return Ok(niffler_bad_request("成本倍率必须是非负数字"));
+    }
+    let email = match normalize_optional_text(payload.email, 320) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let phone = match normalize_optional_text(payload.phone, 64) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let account_id = Uuid::new_v4().to_string();
+    let record = CreateNifflerUpstreamAccountRecord {
+        id: account_id.clone(),
+        upstream_service_id: upstream_service_id.to_string(),
+        display_name,
+        email,
+        phone,
+        auth_kind,
+        status: NifflerAccountStatus::Available,
+        cost_multiplier: payload.cost_multiplier,
+        priority: payload.priority,
+        cooldown_until_unix_ms: None,
+        last_tested_at_unix_ms: None,
+        last_test_error: None,
+        config: Some(json!({
+            "created_from": "niffler_core_admin",
+            "credential_storage": "not_collected_in_first_slice"
+        })),
+        created_at_unix_ms: now_unix_ms,
+        updated_at_unix_ms: now_unix_ms,
+    };
+    let Some(created) = state.create_niffler_upstream_account(record).await? else {
+        return Ok(niffler_data_unavailable_response());
+    };
+    Ok(attach_admin_audit_response(
+        (http::StatusCode::CREATED, Json(created)).into_response(),
+        "niffler_upstream_account_created",
+        "create_niffler_upstream_account",
+        "niffler_upstream_account",
+        &account_id,
+    ))
+}
+
+fn build_capability_records(
+    upstream_service_id: &str,
+    protocol_kind: NifflerProtocolKind,
+    payload: AdminNifflerServiceCapabilityRequest,
+    now_unix_ms: u64,
+) -> Result<Vec<UpsertNifflerUpstreamServiceCapabilityRecord>, Response<Body>> {
+    let capabilities = [
+        (NifflerServiceCapabilityKind::Text, payload.text),
+        (NifflerServiceCapabilityKind::Streaming, payload.streaming),
+        (
+            NifflerServiceCapabilityKind::ImagesEndpoint,
+            payload.images_endpoint,
+        ),
+        (
+            NifflerServiceCapabilityKind::OpenaiResponsesImageTool,
+            payload.openai_responses_image_tool,
+        ),
+        (NifflerServiceCapabilityKind::ModelList, payload.model_list),
+        (NifflerServiceCapabilityKind::ModelTest, payload.model_test),
+    ];
+    capabilities
+        .into_iter()
+        .map(|(capability_kind, is_enabled)| {
+            let record = UpsertNifflerUpstreamServiceCapabilityRecord {
+                id: Uuid::new_v4().to_string(),
+                upstream_service_id: upstream_service_id.to_string(),
+                protocol_kind,
+                capability_kind,
+                is_enabled,
+                config: None,
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+            };
+            record
+                .validate()
+                .map(|_| record)
+                .map_err(|_| niffler_bad_request("对话内图片工具只允许 OpenAI 或 Codex 协议启用"))
+        })
+        .collect()
+}
+
+fn upstream_service_accounts_path_id(path: &str) -> Option<String> {
+    let rest = path
+        .trim_end_matches('/')
+        .strip_prefix("/api/admin/niffler-core/upstream-services/")?;
+    let id = rest.strip_suffix("/accounts")?;
+    (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
+}
+
+fn parse_required_body<T: for<'de> Deserialize<'de>>(
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<T, Response<Body>> {
+    let Some(request_body) = request_body.filter(|body| !body.is_empty()) else {
+        return Err(niffler_bad_request("请求体不能为空"));
+    };
+    serde_json::from_slice(request_body)
+        .map_err(|err| niffler_bad_request(format!("请求体不是合法 JSON：{err}")))
+}
+
+fn normalize_required_text(
+    value: &str,
+    label: &str,
+    max_len: usize,
+) -> Result<String, Response<Body>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(niffler_bad_request(format!("{label}不能为空")));
+    }
+    if value.chars().count() > max_len {
+        return Err(niffler_bad_request(format!(
+            "{label}不能超过 {max_len} 个字符"
+        )));
+    }
+    Ok(value.to_string())
+}
+
+fn normalize_optional_text(
+    value: Option<String>,
+    max_len: usize,
+) -> Result<Option<String>, Response<Body>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.chars().count() > max_len {
+        return Err(niffler_bad_request(format!(
+            "字段不能超过 {max_len} 个字符"
+        )));
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn parse_usize_query(query: Option<&str>, key: &str) -> Option<usize> {
+    query_param_value(query, key).and_then(|value| value.parse::<usize>().ok())
+}
+
+fn parse_bool_query(query: Option<&str>, key: &str) -> Option<bool> {
+    query_param_value(query, key).and_then(|value| match value.as_str() {
+        "true" | "1" | "yes" => Some(true),
+        "false" | "0" | "no" => Some(false),
+        _ => None,
+    })
+}
+
+fn niffler_bad_request(detail: impl Into<String>) -> Response<Body> {
+    (
+        http::StatusCode::BAD_REQUEST,
+        Json(json!({ "detail": detail.into() })),
+    )
+        .into_response()
+}
+
+fn niffler_not_found(detail: impl Into<String>) -> Response<Body> {
+    (
+        http::StatusCode::NOT_FOUND,
+        Json(json!({ "detail": detail.into() })),
+    )
+        .into_response()
+}
+
+fn niffler_method_not_allowed(detail: impl Into<String>) -> Response<Body> {
+    (
+        http::StatusCode::METHOD_NOT_ALLOWED,
+        Json(json!({ "detail": detail.into() })),
+    )
+        .into_response()
+}
+
+fn niffler_data_unavailable_response() -> Response<Body> {
+    (
+        http::StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({ "detail": "Niffler 核心数据暂不可用" })),
+    )
+        .into_response()
 }
 
 async fn build_readiness_report(

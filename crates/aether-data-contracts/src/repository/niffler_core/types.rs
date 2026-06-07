@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use async_trait::async_trait;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NifflerAccountStatus {
@@ -11,6 +13,19 @@ pub enum NifflerAccountStatus {
 }
 
 impl NifflerAccountStatus {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "available" => Ok(Self::Available),
+            "disabled" => Ok(Self::Disabled),
+            "invalid" => Ok(Self::Invalid),
+            "quota_exhausted" => Ok(Self::QuotaExhausted),
+            "cooling_down" => Ok(Self::CoolingDown),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler account status: {value}"
+            ))),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Available => "available",
@@ -156,6 +171,19 @@ pub enum NifflerProtocolKind {
 }
 
 impl NifflerProtocolKind {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "openai" => Ok(Self::Openai),
+            "anthropic" => Ok(Self::Anthropic),
+            "gemini" => Ok(Self::Gemini),
+            "codex" => Ok(Self::Codex),
+            "custom" => Ok(Self::Custom),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler protocol kind: {value}"
+            ))),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Openai => "openai",
@@ -183,6 +211,20 @@ pub enum NifflerServiceCapabilityKind {
 }
 
 impl NifflerServiceCapabilityKind {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "text" => Ok(Self::Text),
+            "streaming" => Ok(Self::Streaming),
+            "images_endpoint" => Ok(Self::ImagesEndpoint),
+            "openai_responses_image_tool" => Ok(Self::OpenaiResponsesImageTool),
+            "model_list" => Ok(Self::ModelList),
+            "model_test" => Ok(Self::ModelTest),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler service capability kind: {value}"
+            ))),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Text => "text",
@@ -299,7 +341,8 @@ impl StoredNifflerUpstreamServiceCapability {
             "upstream_service_capabilities.upstream_service_id",
             &self.upstream_service_id,
         )?;
-        if self.capability_kind == NifflerServiceCapabilityKind::OpenaiResponsesImageTool
+        if self.is_enabled
+            && self.capability_kind == NifflerServiceCapabilityKind::OpenaiResponsesImageTool
             && !self.protocol_kind.supports_openai_responses_image_tool()
         {
             return Err(crate::DataLayerError::InvalidInput(
@@ -343,6 +386,160 @@ impl StoredNifflerUpstreamAccount {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerUpstreamServiceListQuery {
+    pub include_inactive: bool,
+    pub search: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerUpstreamServiceListPage {
+    pub items: Vec<StoredNifflerUpstreamService>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerUpstreamAccountListQuery {
+    pub upstream_service_id: Option<String>,
+    pub status: Option<NifflerAccountStatus>,
+    pub search: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerUpstreamAccountListPage {
+    pub items: Vec<StoredNifflerUpstreamAccount>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerUpstreamServiceRecord {
+    pub id: String,
+    pub display_name: String,
+    pub service_kind: String,
+    pub default_api_format: Option<String>,
+    pub base_url: Option<String>,
+    pub cost_multiplier: f64,
+    pub is_active: bool,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl CreateNifflerUpstreamServiceRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("upstream_services.id", &self.id)?;
+        validate_required("upstream_services.display_name", &self.display_name)?;
+        validate_required("upstream_services.service_kind", &self.service_kind)?;
+        validate_multiplier("upstream_services.cost_multiplier", self.cost_multiplier)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerUpstreamAccountRecord {
+    pub id: String,
+    pub upstream_service_id: String,
+    pub display_name: String,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub auth_kind: String,
+    pub status: NifflerAccountStatus,
+    pub cost_multiplier: f64,
+    pub priority: i32,
+    pub cooldown_until_unix_ms: Option<u64>,
+    pub last_tested_at_unix_ms: Option<u64>,
+    pub last_test_error: Option<String>,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl CreateNifflerUpstreamAccountRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("upstream_accounts.id", &self.id)?;
+        validate_required(
+            "upstream_accounts.upstream_service_id",
+            &self.upstream_service_id,
+        )?;
+        validate_required("upstream_accounts.display_name", &self.display_name)?;
+        validate_required("upstream_accounts.auth_kind", &self.auth_kind)?;
+        validate_multiplier("upstream_accounts.cost_multiplier", self.cost_multiplier)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpsertNifflerUpstreamServiceCapabilityRecord {
+    pub id: String,
+    pub upstream_service_id: String,
+    pub protocol_kind: NifflerProtocolKind,
+    pub capability_kind: NifflerServiceCapabilityKind,
+    pub is_enabled: bool,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl UpsertNifflerUpstreamServiceCapabilityRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerUpstreamServiceCapability {
+            id: self.id.clone(),
+            upstream_service_id: self.upstream_service_id.clone(),
+            protocol_kind: self.protocol_kind,
+            capability_kind: self.capability_kind,
+            is_enabled: self.is_enabled,
+            config: self.config.clone(),
+            created_at_unix_ms: self.created_at_unix_ms,
+            updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[async_trait]
+pub trait NifflerCoreReadRepository: Send + Sync {
+    async fn list_upstream_services(
+        &self,
+        query: &NifflerUpstreamServiceListQuery,
+    ) -> Result<StoredNifflerUpstreamServiceListPage, crate::DataLayerError>;
+
+    async fn find_upstream_service_by_id(
+        &self,
+        upstream_service_id: &str,
+    ) -> Result<Option<StoredNifflerUpstreamService>, crate::DataLayerError>;
+
+    async fn list_upstream_accounts(
+        &self,
+        query: &NifflerUpstreamAccountListQuery,
+    ) -> Result<StoredNifflerUpstreamAccountListPage, crate::DataLayerError>;
+}
+
+#[async_trait]
+pub trait NifflerCoreWriteRepository: Send + Sync {
+    async fn create_upstream_service(
+        &self,
+        record: CreateNifflerUpstreamServiceRecord,
+    ) -> Result<StoredNifflerUpstreamService, crate::DataLayerError>;
+
+    async fn create_upstream_account(
+        &self,
+        record: CreateNifflerUpstreamAccountRecord,
+    ) -> Result<StoredNifflerUpstreamAccount, crate::DataLayerError>;
+
+    async fn upsert_upstream_service_capability(
+        &self,
+        record: UpsertNifflerUpstreamServiceCapabilityRecord,
+    ) -> Result<StoredNifflerUpstreamServiceCapability, crate::DataLayerError>;
+}
+
+pub trait NifflerCoreRepository: NifflerCoreReadRepository + NifflerCoreWriteRepository {}
+
+impl<T> NifflerCoreRepository for T where T: NifflerCoreReadRepository + NifflerCoreWriteRepository {}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerProductPlan {
@@ -1319,7 +1516,7 @@ mod tests {
 
     #[test]
     fn openai_responses_image_tool_is_protocol_scoped() {
-        let capability = StoredNifflerUpstreamServiceCapability {
+        let enabled_capability = StoredNifflerUpstreamServiceCapability {
             id: "capability-1".to_string(),
             upstream_service_id: "service-1".to_string(),
             protocol_kind: NifflerProtocolKind::Gemini,
@@ -1329,7 +1526,13 @@ mod tests {
             created_at_unix_ms: 1,
             updated_at_unix_ms: 1,
         };
-        assert!(capability.validate().is_err());
+        assert!(enabled_capability.validate().is_err());
+
+        let disabled_capability = StoredNifflerUpstreamServiceCapability {
+            is_enabled: false,
+            ..enabled_capability
+        };
+        assert!(disabled_capability.validate().is_ok());
     }
 
     #[test]

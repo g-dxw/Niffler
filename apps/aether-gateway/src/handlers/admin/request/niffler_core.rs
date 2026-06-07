@@ -1,0 +1,78 @@
+use super::*;
+use crate::GatewayError;
+
+impl<'a> AdminAppState<'a> {
+    pub(crate) fn has_niffler_core_reader(&self) -> bool {
+        self.app.has_niffler_core_reader()
+    }
+
+    pub(crate) fn has_niffler_core_writer(&self) -> bool {
+        self.app.has_niffler_core_writer()
+    }
+
+    pub(crate) async fn list_niffler_upstream_services(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerUpstreamServiceListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerUpstreamServiceListPage,
+        GatewayError,
+    > {
+        self.app.list_niffler_upstream_services(query).await
+    }
+
+    pub(crate) async fn find_niffler_upstream_service_by_id(
+        &self,
+        upstream_service_id: &str,
+    ) -> Result<
+        Option<aether_data_contracts::repository::niffler_core::StoredNifflerUpstreamService>,
+        GatewayError,
+    > {
+        self.app
+            .find_niffler_upstream_service_by_id(upstream_service_id)
+            .await
+    }
+
+    pub(crate) async fn list_niffler_upstream_accounts(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerUpstreamAccountListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerUpstreamAccountListPage,
+        GatewayError,
+    > {
+        self.app.list_niffler_upstream_accounts(query).await
+    }
+
+    pub(crate) async fn create_niffler_upstream_service(
+        &self,
+        record: aether_data_contracts::repository::niffler_core::CreateNifflerUpstreamServiceRecord,
+    ) -> Result<
+        Option<aether_data_contracts::repository::niffler_core::StoredNifflerUpstreamService>,
+        GatewayError,
+    > {
+        self.app.create_niffler_upstream_service(record).await
+    }
+
+    pub(crate) async fn create_niffler_upstream_account(
+        &self,
+        record: aether_data_contracts::repository::niffler_core::CreateNifflerUpstreamAccountRecord,
+    ) -> Result<
+        Option<aether_data_contracts::repository::niffler_core::StoredNifflerUpstreamAccount>,
+        GatewayError,
+    > {
+        self.app.create_niffler_upstream_account(record).await
+    }
+
+    pub(crate) async fn upsert_niffler_upstream_service_capability(
+        &self,
+        record: aether_data_contracts::repository::niffler_core::UpsertNifflerUpstreamServiceCapabilityRecord,
+    ) -> Result<
+        Option<
+            aether_data_contracts::repository::niffler_core::StoredNifflerUpstreamServiceCapability,
+        >,
+        GatewayError,
+    > {
+        self.app
+            .upsert_niffler_upstream_service_capability(record)
+            .await
+    }
+}

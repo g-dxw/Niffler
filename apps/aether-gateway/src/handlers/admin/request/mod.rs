@@ -5,6 +5,7 @@ mod context;
 mod endpoint;
 mod features;
 mod models;
+mod niffler_core;
 mod observability;
 mod provider;
 mod provider_oauth;

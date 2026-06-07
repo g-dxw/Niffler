@@ -103,6 +103,56 @@ fn classifies_admin_niffler_core_readiness_as_admin_proxy_route() {
 }
 
 #[test]
+fn classifies_admin_niffler_core_upstream_service_writes_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/upstream-services"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::POST, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        decision.route_kind.as_deref(),
+        Some("create_upstream_service")
+    );
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:providers")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
+fn classifies_admin_niffler_core_upstream_account_writes_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/upstream-services/service-1/accounts"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::POST, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        decision.route_kind.as_deref(),
+        Some("create_upstream_account")
+    );
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:providers")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_admin_system_version_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/system/version"

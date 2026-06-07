@@ -110,6 +110,13 @@ use aether_data_contracts::repository::global_models::{
     StoredProviderModelStats, StoredPublicCatalogModel, StoredPublicGlobalModel,
     StoredPublicGlobalModelPage, UpdateAdminGlobalModelRecord, UpsertAdminProviderModelRecord,
 };
+use aether_data_contracts::repository::niffler_core::{
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
+};
 use aether_data_contracts::repository::pool_scores::{
     GetPoolMemberScoresByIdsQuery, ListPoolMemberProbeCandidatesQuery, ListPoolMemberScoresQuery,
     ListRankedPoolMembersQuery, PoolMemberHardState, PoolMemberIdentity, PoolMemberProbeAttempt,
@@ -344,6 +351,7 @@ mod catalog;
 mod core;
 mod integrations;
 mod models;
+mod niffler_core;
 mod pool_scores;
 mod referrals;
 mod routing_profiles;
