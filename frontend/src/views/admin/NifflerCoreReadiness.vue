@@ -206,6 +206,7 @@
               <TableHead>请求</TableHead>
               <TableHead>模型</TableHead>
               <TableHead>Provider</TableHead>
+              <TableHead>扣费快照</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>判断</TableHead>
             </TableRow>
@@ -226,8 +227,24 @@
               <TableCell class="text-sm">
                 {{ item.model }}
               </TableCell>
+              <TableCell class="max-w-[220px] text-sm">
+                <div class="truncate">
+                  {{ item.provider_display_name || item.provider_name || '未选定上游' }}
+                </div>
+                <div
+                  v-if="item.provider_account_label || item.provider_api_key_name"
+                  class="truncate text-xs text-muted-foreground"
+                >
+                  {{ item.provider_account_label || item.provider_api_key_name }}
+                </div>
+              </TableCell>
               <TableCell class="text-sm">
-                {{ item.provider_name || 'unknown' }}
+                <div class="tabular-nums">
+                  钱包 {{ formatUsd(item.wallet_debit_usd) }}
+                </div>
+                <div class="tabular-nums text-xs text-muted-foreground">
+                  套餐 {{ formatUsd(item.package_debit_usd) }}
+                </div>
               </TableCell>
               <TableCell>
                 <Badge variant="outline">
@@ -235,12 +252,18 @@
                 </Badge>
               </TableCell>
               <TableCell class="max-w-[360px] text-sm text-muted-foreground">
-                {{ item.diagnosis }}
+                <div class="font-medium text-foreground">
+                  {{ item.anomaly_label }}
+                </div>
+                <div>{{ item.diagnosis }}</div>
+                <div class="mt-1">
+                  建议：{{ item.recommended_action }}
+                </div>
               </TableCell>
             </TableRow>
             <TableRow v-if="report.recent_usage_anomalies.length === 0">
               <TableCell
-                colspan="5"
+                colspan="6"
                 class="py-8 text-center text-sm text-muted-foreground"
               >
                 没有发现请求记录异常
@@ -261,10 +284,22 @@
               </Badge>
             </div>
             <p class="text-sm">
-              {{ item.model }} · {{ item.provider_name || 'unknown' }}
+              {{ item.model }} · {{ item.provider_display_name || item.provider_name || '未选定上游' }}
+            </p>
+            <p
+              v-if="item.provider_account_label || item.provider_api_key_name"
+              class="text-xs text-muted-foreground"
+            >
+              账号：{{ item.provider_account_label || item.provider_api_key_name }}
+            </p>
+            <p class="text-xs text-muted-foreground">
+              钱包 {{ formatUsd(item.wallet_debit_usd) }} · 套餐 {{ formatUsd(item.package_debit_usd) }}
             </p>
             <p class="text-sm text-muted-foreground">
               {{ item.diagnosis }}
+            </p>
+            <p class="text-sm text-muted-foreground">
+              建议：{{ item.recommended_action }}
             </p>
           </div>
           <div
@@ -282,6 +317,90 @@
         :items="routeSkipItems"
         empty-text="没有路由跳过原因样本"
       />
+
+      <Card class="overflow-hidden">
+        <SectionHeader
+          title="路由跳过样本"
+          description="展示最近被跳过的具体服务和账号，便于定位为什么没有被调度"
+        />
+        <Table class="hidden lg:table">
+          <TableHeader>
+            <TableRow>
+              <TableHead>请求</TableHead>
+              <TableHead>Provider</TableHead>
+              <TableHead>账号</TableHead>
+              <TableHead>跳过原因</TableHead>
+              <TableHead>建议</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="item in routeSkipSamples"
+              :key="`${item.request_id}-${item.provider_id || 'provider'}-${item.key_id || 'key'}-${item.reason}`"
+            >
+              <TableCell class="max-w-[220px]">
+                <div class="truncate font-mono text-xs">
+                  {{ item.request_id }}
+                </div>
+                <div class="text-xs text-muted-foreground">
+                  {{ formatTime(item.created_at_unix_secs) }}
+                </div>
+              </TableCell>
+              <TableCell class="text-sm">
+                {{ item.provider_name || item.provider_id || '未选定上游' }}
+              </TableCell>
+              <TableCell class="text-sm">
+                {{ item.account_label || item.key_name || item.key_id || '未选定账号' }}
+              </TableCell>
+              <TableCell class="max-w-[240px] text-sm">
+                <div class="font-medium">
+                  {{ item.label }}
+                </div>
+                <div class="font-mono text-xs text-muted-foreground">
+                  {{ item.reason }}
+                </div>
+              </TableCell>
+              <TableCell class="max-w-[360px] text-sm text-muted-foreground">
+                {{ item.recommended_action }}
+              </TableCell>
+            </TableRow>
+            <TableRow v-if="routeSkipSamples.length === 0">
+              <TableCell
+                colspan="5"
+                class="py-8 text-center text-sm text-muted-foreground"
+              >
+                没有路由跳过样本
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+        <div class="divide-y divide-border/60 lg:hidden">
+          <div
+            v-for="item in routeSkipSamples"
+            :key="`${item.request_id}-${item.provider_id || 'provider'}-${item.key_id || 'key'}-${item.reason}`"
+            class="space-y-2 p-4"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="truncate font-mono text-xs">{{ item.request_id }}</span>
+              <Badge variant="secondary">
+                {{ item.label }}
+              </Badge>
+            </div>
+            <p class="text-sm">
+              {{ item.provider_name || item.provider_id || '未选定上游' }} · {{ item.account_label || item.key_name || item.key_id || '未选定账号' }}
+            </p>
+            <p class="text-sm text-muted-foreground">
+              建议：{{ item.recommended_action }}
+            </p>
+          </div>
+          <div
+            v-if="routeSkipSamples.length === 0"
+            class="p-6 text-center text-sm text-muted-foreground"
+          >
+            没有路由跳过样本
+          </div>
+        </div>
+      </Card>
     </template>
   </div>
 </template>
@@ -352,7 +471,7 @@ const shadowTableRows = computed(() => {
   return (report.value?.shadow_tables.tables ?? []).map((table) => ({
     title: table.table_name,
     value: table.exists ? '已创建' : '缺失',
-    tone: table.exists ? 'success' : 'danger'
+    tone: (table.exists ? 'success' : 'danger') as Tone
   }))
 })
 
@@ -360,44 +479,79 @@ const accountStatusRows = computed(() => {
   return Object.entries(report.value?.account_status_counts ?? {}).map(([status, count]) => ({
     title: statusLabel(status),
     value: String(count),
-    tone: status === 'available' ? 'success' : 'warning'
+    tone: (status === 'available' ? 'success' : 'warning') as Tone
   }))
 })
 
 const disabledProviderItems = computed(() => {
   return (report.value?.disabled_provider_references ?? []).map((item) => ({
     title: `${item.product_plan_name} 引用了 ${item.provider_name}`,
-    description: `来源字段：${item.source_field}`
+    description: joinParts([
+      `来源：${item.source_field_label || item.source_field}`,
+      item.reason,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
   }))
 })
 
 const keyResidueItems = computed(() => {
   return (report.value?.key_scope_residue ?? []).map((item) => ({
-    title: item.key_name || item.key_id,
-    description: `${item.residue_fields.join('、')}。${item.impact}`
+    title: item.display_name || item.account_label || item.key_name || item.key_id,
+    description: joinParts([
+      item.provider_name ? `Provider：${item.provider_name}` : '',
+      `限制：${(item.field_labels?.length ? item.field_labels : item.residue_fields).join('、')}`,
+      item.reason,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
   }))
 })
 
 const groupGapItems = computed(() => {
   return (report.value?.group_policy_gaps ?? []).map((item) => ({
-    title: item.product_plan_name,
-    description: item.message
+    title: `${item.product_plan_name} · ${item.gap_label || item.gap_kind}`,
+    description: joinParts([
+      item.message,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
   }))
 })
 
 const priceGapItems = computed(() => {
   return (report.value?.price_gaps ?? []).map((item) => ({
     title: item.provider_name ? `${item.provider_name} / ${item.model_name}` : item.model_name,
-    description: `缺少字段：${item.missing_fields.join('、')}`
+    description: joinParts([
+      `范围：${item.scope_label || item.scope}`,
+      `缺少字段：${item.missing_fields.join('、')}`,
+      item.reason,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
   }))
 })
 
 const routeSkipItems = computed(() => {
   return (report.value?.route_skip_reasons ?? []).map((item) => ({
-    title: item.reason,
-    description: `${item.count} 次`
+    title: `${item.label || item.reason} · ${item.count} 次`,
+    description: joinParts([
+      `分类：${item.category || '未归类'}`,
+      `原始代码：${item.reason}`,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
   }))
 })
+
+const routeSkipSamples = computed(() => report.value?.route_skip_samples ?? [])
+
+function joinParts(parts: Array<string | null | undefined>): string {
+  return parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join('。')
+}
 
 function issueIcon(severity: NifflerReadinessSeverity) {
   if (severity === 'error') return AlertCircle
@@ -432,6 +586,13 @@ function formatTime(unixSecs: number): string {
     return '-'
   }
   return new Date(unixSecs * 1000).toLocaleString()
+}
+
+function formatUsd(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '-'
+  }
+  return `$${value.toFixed(6)}`
 }
 
 watch(recentDays, () => {

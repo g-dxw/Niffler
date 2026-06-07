@@ -1001,6 +1001,10 @@ pub struct NifflerDisabledProviderReference {
     pub provider_id: String,
     pub provider_name: String,
     pub source_field: String,
+    pub source_field_label: String,
+    pub reason: String,
+    pub impact: String,
+    pub recommended_action: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1009,8 +1013,15 @@ pub struct NifflerKeyScopeResidue {
     pub key_id: String,
     pub key_name: Option<String>,
     pub owner_label: Option<String>,
+    pub display_name: String,
+    pub provider_id: Option<String>,
+    pub provider_name: Option<String>,
+    pub account_label: Option<String>,
     pub residue_fields: Vec<String>,
+    pub field_labels: Vec<String>,
+    pub reason: String,
     pub impact: String,
+    pub recommended_action: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1018,17 +1029,24 @@ pub struct NifflerGroupPolicyGap {
     pub product_plan_id: String,
     pub product_plan_name: String,
     pub gap_kind: String,
+    pub gap_label: String,
     pub message: String,
+    pub impact: String,
+    pub recommended_action: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NifflerPriceGap {
     pub scope: String,
+    pub scope_label: String,
     pub provider_id: Option<String>,
     pub provider_name: Option<String>,
     pub model_id: Option<String>,
     pub model_name: String,
     pub missing_fields: Vec<String>,
+    pub reason: String,
+    pub impact: String,
+    pub recommended_action: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1039,18 +1057,48 @@ pub struct NifflerUsageAnomaly {
     pub provider_name: String,
     pub provider_id: Option<String>,
     pub provider_api_key_id: Option<String>,
+    pub provider_display_name: String,
+    pub provider_api_key_name: Option<String>,
+    pub provider_account_label: Option<String>,
     pub model: String,
     pub status: String,
     pub billing_status: String,
     pub status_code: Option<u16>,
     pub error_category: Option<String>,
+    pub anomaly_kind: String,
+    pub anomaly_label: String,
     pub diagnosis: String,
+    pub impact: String,
+    pub recommended_action: String,
+    pub total_cost_usd: f64,
+    pub actual_total_cost_usd: f64,
+    pub package_debit_usd: Option<f64>,
+    pub wallet_debit_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NifflerRouteSkipReasonSummary {
     pub reason: String,
+    pub label: String,
+    pub category: String,
     pub count: u64,
+    pub impact: String,
+    pub recommended_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NifflerRouteSkipSample {
+    pub request_id: String,
+    pub created_at_unix_secs: u64,
+    pub provider_id: Option<String>,
+    pub provider_name: Option<String>,
+    pub key_id: Option<String>,
+    pub key_name: Option<String>,
+    pub account_label: Option<String>,
+    pub reason: String,
+    pub label: String,
+    pub impact: String,
+    pub recommended_action: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1079,6 +1127,7 @@ pub struct NifflerCoreReadinessReport {
     pub price_gaps: Vec<NifflerPriceGap>,
     pub recent_usage_anomalies: Vec<NifflerUsageAnomaly>,
     pub route_skip_reasons: Vec<NifflerRouteSkipReasonSummary>,
+    pub route_skip_samples: Vec<NifflerRouteSkipSample>,
     pub issues: Vec<NifflerReadinessIssue>,
 }
 

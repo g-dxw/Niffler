@@ -40,6 +40,10 @@ export interface NifflerDisabledProviderReference {
   provider_id: string
   provider_name: string
   source_field: string
+  source_field_label: string
+  reason: string
+  impact: string
+  recommended_action: string
 }
 
 export interface NifflerKeyScopeResidue {
@@ -47,24 +51,38 @@ export interface NifflerKeyScopeResidue {
   key_id: string
   key_name?: string | null
   owner_label?: string | null
+  display_name: string
+  provider_id?: string | null
+  provider_name?: string | null
+  account_label?: string | null
   residue_fields: string[]
+  field_labels: string[]
+  reason: string
   impact: string
+  recommended_action: string
 }
 
 export interface NifflerGroupPolicyGap {
   product_plan_id: string
   product_plan_name: string
   gap_kind: string
+  gap_label: string
   message: string
+  impact: string
+  recommended_action: string
 }
 
 export interface NifflerPriceGap {
   scope: string
+  scope_label: string
   provider_id?: string | null
   provider_name?: string | null
   model_id?: string | null
   model_name: string
   missing_fields: string[]
+  reason: string
+  impact: string
+  recommended_action: string
 }
 
 export interface NifflerUsageAnomaly {
@@ -74,17 +92,46 @@ export interface NifflerUsageAnomaly {
   provider_name: string
   provider_id?: string | null
   provider_api_key_id?: string | null
+  provider_display_name: string
+  provider_api_key_name?: string | null
+  provider_account_label?: string | null
   model: string
   status: string
   billing_status: string
   status_code?: number | null
   error_category?: string | null
+  anomaly_kind: string
+  anomaly_label: string
   diagnosis: string
+  impact: string
+  recommended_action: string
+  total_cost_usd: number
+  actual_total_cost_usd: number
+  package_debit_usd?: number | null
+  wallet_debit_usd?: number | null
 }
 
 export interface NifflerRouteSkipReasonSummary {
   reason: string
+  label: string
+  category: string
   count: number
+  impact: string
+  recommended_action: string
+}
+
+export interface NifflerRouteSkipSample {
+  request_id: string
+  created_at_unix_secs: number
+  provider_id?: string | null
+  provider_name?: string | null
+  key_id?: string | null
+  key_name?: string | null
+  account_label?: string | null
+  reason: string
+  label: string
+  impact: string
+  recommended_action: string
 }
 
 export interface NifflerReadinessIssue {
@@ -111,6 +158,7 @@ export interface NifflerCoreReadinessReport {
   price_gaps: NifflerPriceGap[]
   recent_usage_anomalies: NifflerUsageAnomaly[]
   route_skip_reasons: NifflerRouteSkipReasonSummary[]
+  route_skip_samples: NifflerRouteSkipSample[]
   issues: NifflerReadinessIssue[]
 }
 

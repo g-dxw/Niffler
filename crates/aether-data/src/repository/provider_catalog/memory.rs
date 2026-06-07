@@ -428,7 +428,15 @@ impl ProviderCatalogReadRepository for InMemoryProviderCatalogReadRepository {
         &self,
         provider_ids: &[String],
     ) -> Result<Vec<StoredProviderCatalogKey>, DataLayerError> {
-        Self::list_keys_by_provider_ids(self, provider_ids).await
+        Ok(Self::list_keys_by_provider_ids(self, provider_ids)
+            .await?
+            .into_iter()
+            .map(|mut key| {
+                key.encrypted_api_key = Some("summary".to_string());
+                key.encrypted_auth_config = None;
+                key
+            })
+            .collect())
     }
 
     async fn list_keys_page(
