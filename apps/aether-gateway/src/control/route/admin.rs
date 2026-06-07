@@ -124,6 +124,20 @@ pub(super) fn classify_admin_route(
             "admin:routing_profiles",
             false,
         ))
+    } else if matches!(method, &http::Method::GET | &http::Method::POST)
+        && normalized_path_no_trailing == "/api/admin/niffler-core/error-return-settings"
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            if method == http::Method::GET {
+                "list_error_return_settings"
+            } else {
+                "create_error_return_setting"
+            },
+            "admin:routing_profiles",
+            false,
+        ))
     } else if let Some(route) =
         classify_admin_basic_family_route(method, normalized_path, normalized_path_no_trailing)
     {

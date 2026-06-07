@@ -50,6 +50,17 @@ pub enum NifflerAccountProtectionAction {
 }
 
 impl NifflerAccountProtectionAction {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "record_only" => Ok(Self::RecordOnly),
+            "pause_scheduling" => Ok(Self::PauseScheduling),
+            "disable_account" => Ok(Self::DisableAccount),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler account protection action: {value}"
+            ))),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::RecordOnly => "record_only",
@@ -69,6 +80,18 @@ pub enum NifflerPauseDuration {
 }
 
 impl NifflerPauseDuration {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "ten_minutes" => Ok(Self::TenMinutes),
+            "one_hour" => Ok(Self::OneHour),
+            "twenty_four_hours" => Ok(Self::TwentyFourHours),
+            "manual_restore" => Ok(Self::ManualRestore),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler pause duration: {value}"
+            ))),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::TenMinutes => "ten_minutes",
@@ -96,6 +119,16 @@ pub enum NifflerErrorResponseScope {
 }
 
 impl NifflerErrorResponseScope {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "platform" => Ok(Self::Platform),
+            "upstream" => Ok(Self::Upstream),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler error response scope: {value}"
+            ))),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Platform => "platform",
@@ -116,6 +149,27 @@ pub enum NifflerUpstreamErrorHandlingStep {
 }
 
 impl NifflerUpstreamErrorHandlingStep {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "risk_keyword" => Ok(Self::RiskKeyword),
+            "contact_or_marketing_replacement" => Ok(Self::ContactOrMarketingReplacement),
+            "status_code_message" => Ok(Self::StatusCodeMessage),
+            "default_upstream_message" => Ok(Self::DefaultUpstreamMessage),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler upstream error handling step: {value}"
+            ))),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RiskKeyword => "risk_keyword",
+            Self::ContactOrMarketingReplacement => "contact_or_marketing_replacement",
+            Self::StatusCodeMessage => "status_code_message",
+            Self::DefaultUpstreamMessage => "default_upstream_message",
+        }
+    }
+
     pub const fn priority(self) -> u8 {
         match self {
             Self::RiskKeyword => 10,
@@ -135,6 +189,17 @@ pub enum NifflerUserResponseMode {
 }
 
 impl NifflerUserResponseMode {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "replace" => Ok(Self::Replace),
+            "append" => Ok(Self::Append),
+            "redact" => Ok(Self::Redact),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler user response mode: {value}"
+            ))),
+        }
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Replace => "replace",
@@ -532,6 +597,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         &self,
         query: &NifflerProductPlanModelListQuery,
     ) -> Result<StoredNifflerProductPlanModelListPage, crate::DataLayerError>;
+
+    async fn list_error_return_settings(
+        &self,
+        query: &NifflerErrorReturnSettingListQuery,
+    ) -> Result<StoredNifflerErrorReturnSettingListPage, crate::DataLayerError>;
 }
 
 #[async_trait]
@@ -560,6 +630,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: UpsertNifflerProductPlanModelRecord,
     ) -> Result<StoredNifflerProductPlanModel, crate::DataLayerError>;
+
+    async fn create_error_return_setting(
+        &self,
+        record: CreateNifflerErrorReturnSettingRecord,
+    ) -> Result<StoredNifflerErrorReturnSetting, crate::DataLayerError>;
 }
 
 pub trait NifflerCoreRepository: NifflerCoreReadRepository + NifflerCoreWriteRepository {}
@@ -641,6 +716,21 @@ pub struct StoredNifflerProductPlanModelListPage {
     pub total: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerErrorReturnSettingListQuery {
+    pub scope: Option<NifflerErrorResponseScope>,
+    pub upstream_service_id: Option<String>,
+    pub include_inactive: bool,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerErrorReturnSettingListPage {
+    pub items: Vec<StoredNifflerErrorReturnSetting>,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateNifflerProductPlanRecord {
     pub id: String,
@@ -688,6 +778,44 @@ impl UpsertNifflerProductPlanModelRecord {
             model_name: self.model_name.clone(),
             is_enabled: self.is_enabled,
             sales_multiplier_override: self.sales_multiplier_override,
+            created_at_unix_ms: self.created_at_unix_ms,
+            updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerErrorReturnSettingRecord {
+    pub id: String,
+    pub scope: NifflerErrorResponseScope,
+    pub upstream_service_id: Option<String>,
+    pub match_status_code: Option<u16>,
+    pub match_text: Option<String>,
+    pub handling_step: Option<NifflerUpstreamErrorHandlingStep>,
+    pub response_mode: NifflerUserResponseMode,
+    pub user_message: String,
+    pub account_protection_action: NifflerAccountProtectionAction,
+    pub pause_duration: Option<NifflerPauseDuration>,
+    pub is_active: bool,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl CreateNifflerErrorReturnSettingRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerErrorReturnSetting {
+            id: self.id.clone(),
+            scope: self.scope,
+            upstream_service_id: self.upstream_service_id.clone(),
+            match_status_code: self.match_status_code,
+            match_text: self.match_text.clone(),
+            handling_step: self.handling_step,
+            response_mode: self.response_mode,
+            user_message: self.user_message.clone(),
+            account_protection_action: self.account_protection_action,
+            pause_duration: self.pause_duration,
+            is_active: self.is_active,
             created_at_unix_ms: self.created_at_unix_ms,
             updated_at_unix_ms: self.updated_at_unix_ms,
         }

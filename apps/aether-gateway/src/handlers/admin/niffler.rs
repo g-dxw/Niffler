@@ -7,14 +7,17 @@ use aether_data_contracts::repository::global_models::{
     StoredAdminProviderModel,
 };
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerAccountStatus, NifflerCoreMappingSummary,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerCoreMappingSummary,
     NifflerCoreReadinessReport, NifflerCoreReadinessSummary, NifflerDisabledProviderReference,
-    NifflerGroupPolicyGap, NifflerKeyScopeResidue, NifflerPriceGap, NifflerProductPlanListQuery,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerGroupPolicyGap,
+    NifflerKeyScopeResidue, NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerReadinessIssue,
     NifflerReadinessSeverity, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
     NifflerServiceCapabilityKind, NifflerShadowTableItem, NifflerShadowTableStatus,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceListQuery, NifflerUsageAnomaly,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
+    NifflerUpstreamServiceListQuery, NifflerUsageAnomaly, NifflerUserResponseMode,
     UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::provider_catalog::{
@@ -42,6 +45,7 @@ use uuid::Uuid;
 const READINESS_PATH: &str = "/api/admin/niffler-core/readiness";
 const UPSTREAM_SERVICES_PATH: &str = "/api/admin/niffler-core/upstream-services";
 const PRODUCT_PLANS_PATH: &str = "/api/admin/niffler-core/product-plans";
+const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
 const MAX_USAGE_ITEMS: usize = 50;
@@ -125,6 +129,13 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
         ));
     }
 
+    if request_context.path().trim_end_matches('/') == ERROR_RETURN_SETTINGS_PATH {
+        return Ok(Some(
+            build_error_return_settings_response(&state, &request_context, request.request_body())
+                .await?,
+        ));
+    }
+
     Ok(None)
 }
 
@@ -205,12 +216,42 @@ struct AdminNifflerUpsertProductPlanModelRequest {
     sales_multiplier_override: Option<f64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AdminNifflerCreateErrorReturnSettingRequest {
+    scope: NifflerErrorResponseScope,
+    #[serde(default)]
+    upstream_service_id: Option<String>,
+    #[serde(default)]
+    match_status_code: Option<u16>,
+    #[serde(default)]
+    match_text: Option<String>,
+    #[serde(default)]
+    handling_step: Option<NifflerUpstreamErrorHandlingStep>,
+    #[serde(default = "default_response_mode")]
+    response_mode: NifflerUserResponseMode,
+    user_message: String,
+    #[serde(default = "default_account_protection_action")]
+    account_protection_action: NifflerAccountProtectionAction,
+    #[serde(default)]
+    pause_duration: Option<NifflerPauseDuration>,
+    #[serde(default = "default_true")]
+    is_active: bool,
+}
+
 fn default_multiplier() -> f64 {
     1.0
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_response_mode() -> NifflerUserResponseMode {
+    NifflerUserResponseMode::Replace
+}
+
+fn default_account_protection_action() -> NifflerAccountProtectionAction {
+    NifflerAccountProtectionAction::RecordOnly
 }
 
 async fn build_upstream_services_response(
@@ -598,6 +639,142 @@ async fn upsert_product_plan_model_response(
     ))
 }
 
+async fn build_error_return_settings_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            let query = NifflerErrorReturnSettingListQuery {
+                scope: parse_error_response_scope_query(request_context.query_string(), "scope"),
+                upstream_service_id: query_param_value(
+                    request_context.query_string(),
+                    "upstream_service_id",
+                )
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+                include_inactive: parse_bool_query(
+                    request_context.query_string(),
+                    "include_inactive",
+                )
+                .unwrap_or(false),
+                offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+                limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
+            };
+            let page = state.list_niffler_error_return_settings(&query).await?;
+            Ok(Json(page).into_response())
+        }
+        method if method == http::Method::POST => {
+            create_error_return_setting_response(state, request_body).await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持列表和创建错误文案规则")),
+    }
+}
+
+async fn create_error_return_setting_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    let payload =
+        match parse_required_body::<AdminNifflerCreateErrorReturnSettingRequest>(request_body) {
+            Ok(payload) => payload,
+            Err(response) => return Ok(response),
+        };
+    let user_message =
+        match normalize_required_text(&payload.user_message, "返回给用户的文案", 2_000) {
+            Ok(value) => value,
+            Err(response) => return Ok(response),
+        };
+    let match_text = match normalize_optional_text(payload.match_text, 2_000) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    if payload
+        .match_status_code
+        .is_some_and(|code| !(100..=599).contains(&code))
+    {
+        return Ok(niffler_bad_request("状态码必须在 100 到 599 之间"));
+    }
+    if payload.scope == NifflerErrorResponseScope::Upstream && payload.handling_step.is_none() {
+        return Ok(niffler_bad_request("上游级规则必须选择处理类型"));
+    }
+    if payload.scope == NifflerErrorResponseScope::Platform
+        && payload.account_protection_action != NifflerAccountProtectionAction::RecordOnly
+    {
+        return Ok(niffler_bad_request("平台级规则不能触发上游账号保护"));
+    }
+    if payload.account_protection_action == NifflerAccountProtectionAction::PauseScheduling
+        && payload.pause_duration.is_none()
+    {
+        return Ok(niffler_bad_request("暂停调度必须选择暂停时长"));
+    }
+
+    let upstream_service_id = if payload.scope == NifflerErrorResponseScope::Upstream {
+        match normalize_optional_text(payload.upstream_service_id, 36) {
+            Ok(value) => value,
+            Err(response) => return Ok(response),
+        }
+    } else {
+        None
+    };
+    if let Some(service_id) = upstream_service_id.as_deref() {
+        if state
+            .find_niffler_upstream_service_by_id(service_id)
+            .await?
+            .is_none()
+        {
+            return Ok(niffler_not_found("上游服务不存在"));
+        }
+    }
+
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let setting_id = Uuid::new_v4().to_string();
+    let record = CreateNifflerErrorReturnSettingRecord {
+        id: setting_id.clone(),
+        scope: payload.scope,
+        upstream_service_id,
+        match_status_code: payload.match_status_code,
+        match_text,
+        handling_step: if payload.scope == NifflerErrorResponseScope::Upstream {
+            payload.handling_step
+        } else {
+            None
+        },
+        response_mode: payload.response_mode,
+        user_message,
+        account_protection_action: if payload.scope == NifflerErrorResponseScope::Upstream {
+            payload.account_protection_action
+        } else {
+            NifflerAccountProtectionAction::RecordOnly
+        },
+        pause_duration: if payload.account_protection_action
+            == NifflerAccountProtectionAction::PauseScheduling
+        {
+            payload.pause_duration
+        } else {
+            None
+        },
+        is_active: payload.is_active,
+        created_at_unix_ms: now_unix_ms,
+        updated_at_unix_ms: now_unix_ms,
+    };
+    let Some(created) = state.create_niffler_error_return_setting(record).await? else {
+        return Ok(niffler_data_unavailable_response());
+    };
+    Ok(attach_admin_audit_response(
+        (http::StatusCode::CREATED, Json(created)).into_response(),
+        "niffler_error_return_setting_created",
+        "create_niffler_error_return_setting",
+        "niffler_error_return_setting",
+        &setting_id,
+    ))
+}
+
 fn build_capability_records(
     upstream_service_id: &str,
     protocol_kind: NifflerProtocolKind,
@@ -709,6 +886,17 @@ fn parse_bool_query(query: Option<&str>, key: &str) -> Option<bool> {
     query_param_value(query, key).and_then(|value| match value.as_str() {
         "true" | "1" | "yes" => Some(true),
         "false" | "0" | "no" => Some(false),
+        _ => None,
+    })
+}
+
+fn parse_error_response_scope_query(
+    query: Option<&str>,
+    key: &str,
+) -> Option<NifflerErrorResponseScope> {
+    query_param_value(query, key).and_then(|value| match value.as_str() {
+        "platform" => Some(NifflerErrorResponseScope::Platform),
+        "upstream" => Some(NifflerErrorResponseScope::Upstream),
         _ => None,
     })
 }

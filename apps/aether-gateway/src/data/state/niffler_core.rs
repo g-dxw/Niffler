@@ -1,13 +1,15 @@
 use super::{
-    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, DataLayerError, GatewayDataState,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
-    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
+    GatewayDataState, NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -123,6 +125,23 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_niffler_error_return_settings(
+        &self,
+        query: &NifflerErrorReturnSettingListQuery,
+    ) -> Result<StoredNifflerErrorReturnSettingListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_error_return_settings(query).await,
+            None => Ok(StoredNifflerErrorReturnSettingListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: CreateNifflerUpstreamServiceRecord,
@@ -192,6 +211,23 @@ impl GatewayDataState {
             .and_then(|backends| backends.write().niffler_core())
         {
             Some(repository) => repository.upsert_product_plan_model(record).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_error_return_setting(
+        &self,
+        record: CreateNifflerErrorReturnSettingRecord,
+    ) -> Result<Option<StoredNifflerErrorReturnSetting>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .create_error_return_setting(record)
+                .await
+                .map(Some),
             None => Ok(None),
         }
     }

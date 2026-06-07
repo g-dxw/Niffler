@@ -111,15 +111,17 @@ use aether_data_contracts::repository::global_models::{
     StoredPublicGlobalModelPage, UpdateAdminGlobalModelRecord, UpsertAdminProviderModelRecord,
 };
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerProductPlanListQuery,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
-    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    NifflerUpstreamServiceListQuery, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::pool_scores::{
     GetPoolMemberScoresByIdsQuery, ListPoolMemberProbeCandidatesQuery, ListPoolMemberScoresQuery,

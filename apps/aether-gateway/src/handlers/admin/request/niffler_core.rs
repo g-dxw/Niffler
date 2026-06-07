@@ -74,6 +74,16 @@ impl<'a> AdminAppState<'a> {
         self.app.list_niffler_product_plan_models(query).await
     }
 
+    pub(crate) async fn list_niffler_error_return_settings(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerErrorReturnSettingListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerErrorReturnSettingListPage,
+        GatewayError,
+    > {
+        self.app.list_niffler_error_return_settings(query).await
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: aether_data_contracts::repository::niffler_core::CreateNifflerUpstreamServiceRecord,
@@ -126,5 +136,15 @@ impl<'a> AdminAppState<'a> {
         GatewayError,
     > {
         self.app.upsert_niffler_product_plan_model(record).await
+    }
+
+    pub(crate) async fn create_niffler_error_return_setting(
+        &self,
+        record: aether_data_contracts::repository::niffler_core::CreateNifflerErrorReturnSettingRecord,
+    ) -> Result<
+        Option<aether_data_contracts::repository::niffler_core::StoredNifflerErrorReturnSetting>,
+        GatewayError,
+    > {
+        self.app.create_niffler_error_return_setting(record).await
     }
 }

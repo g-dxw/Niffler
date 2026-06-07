@@ -3,16 +3,19 @@ use sqlx::{sqlite::SqliteRow, QueryBuilder, Row, Sqlite};
 
 use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
-    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerAccountStatus, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerCoreReadRepository,
+    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
+    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
     NifflerProtocolKind, NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
-    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::sqlite::SqlitePool;
 use crate::error::SqlResultExt;
@@ -135,6 +138,35 @@ LIMIT 1
             .ok_or_else(|| {
                 DataLayerError::UnexpectedValue(
                     "niffler product plan model missing after write".into(),
+                )
+            })
+    }
+
+    async fn reload_error_return_setting(
+        &self,
+        setting_id: &str,
+    ) -> Result<StoredNifflerErrorReturnSetting, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, scope, upstream_service_id, match_status_code, match_text, handling_step,
+  response_mode, user_message, account_protection_action, pause_duration,
+  is_active, created_at_unix_ms, updated_at_unix_ms
+FROM niffler_error_return_settings
+WHERE id = ?
+LIMIT 1
+"#,
+        )
+        .bind(setting_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_error_return_setting_row)
+            .transpose()?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler error return setting missing after write".into(),
                 )
             })
     }
@@ -275,6 +307,30 @@ LIMIT 1
             .map(map_product_plan_model_row)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StoredNifflerProductPlanModelListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_error_return_settings(
+        &self,
+        query: &NifflerErrorReturnSettingListQuery,
+    ) -> Result<StoredNifflerErrorReturnSettingListPage, DataLayerError> {
+        let total = build_error_return_setting_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_error_return_setting_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_error_return_setting_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerErrorReturnSettingListPage {
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
@@ -487,6 +543,46 @@ ON CONFLICT(product_plan_id, model_name) DO UPDATE SET
         self.reload_product_plan_model(&record.product_plan_id, &record.model_name)
             .await
     }
+
+    async fn create_error_return_setting(
+        &self,
+        record: CreateNifflerErrorReturnSettingRecord,
+    ) -> Result<StoredNifflerErrorReturnSetting, DataLayerError> {
+        record.validate()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_error_return_settings (
+  id, scope, upstream_service_id, match_status_code, match_text, handling_step,
+  response_mode, user_message, account_protection_action, pause_duration,
+  is_active, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"#,
+        )
+        .bind(&record.id)
+        .bind(record.scope.as_str())
+        .bind(&record.upstream_service_id)
+        .bind(record.match_status_code.map(i32::from))
+        .bind(&record.match_text)
+        .bind(record.handling_step.map(|value| value.as_str()))
+        .bind(record.response_mode.as_str())
+        .bind(&record.user_message)
+        .bind(record.account_protection_action.as_str())
+        .bind(record.pause_duration.map(|value| value.as_str()))
+        .bind(record.is_active)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.updated_at_unix_ms,
+            "updated_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_error_return_setting(&record.id).await
+    }
 }
 
 fn build_service_count_query(query: &NifflerUpstreamServiceListQuery) -> QueryBuilder<'_, Sqlite> {
@@ -682,6 +778,56 @@ fn push_product_plan_model_filters(
     }
 }
 
+fn build_error_return_setting_count_query(
+    query: &NifflerErrorReturnSettingListQuery,
+) -> QueryBuilder<'_, Sqlite> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_error_return_settings");
+    push_error_return_setting_filters(&mut builder, query);
+    builder
+}
+
+fn build_error_return_setting_rows_query(
+    query: &NifflerErrorReturnSettingListQuery,
+) -> QueryBuilder<'_, Sqlite> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, scope, upstream_service_id, match_status_code, match_text, handling_step, \
+         response_mode, user_message, account_protection_action, pause_duration, is_active, \
+         created_at_unix_ms, updated_at_unix_ms FROM niffler_error_return_settings",
+    );
+    push_error_return_setting_filters(&mut builder, query);
+    builder.push(" ORDER BY scope ASC, is_active DESC, created_at_unix_ms DESC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_error_return_setting_filters(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    query: &NifflerErrorReturnSettingListQuery,
+) {
+    let mut has_where = false;
+    if let Some(scope) = query.scope {
+        builder.push(" WHERE scope = ");
+        builder.push_bind(scope.as_str());
+        has_where = true;
+    }
+    if let Some(upstream_service_id) = query
+        .upstream_service_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("upstream_service_id = ");
+        builder.push_bind(upstream_service_id.clone());
+        has_where = true;
+    }
+    if !query.include_inactive {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("is_active = 1");
+    }
+}
+
 fn map_service_row(row: &SqliteRow) -> Result<StoredNifflerUpstreamService, DataLayerError> {
     Ok(StoredNifflerUpstreamService {
         id: row.try_get("id").map_sql_err()?,
@@ -798,6 +944,57 @@ fn map_capability_row(
             row.try_get("config").map_sql_err()?,
             "niffler_upstream_service_capabilities.config",
         )?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_error_return_setting_row(
+    row: &SqliteRow,
+) -> Result<StoredNifflerErrorReturnSetting, DataLayerError> {
+    let scope: String = row.try_get("scope").map_sql_err()?;
+    let handling_step: Option<String> = row.try_get("handling_step").map_sql_err()?;
+    let response_mode: String = row.try_get("response_mode").map_sql_err()?;
+    let account_protection_action: String =
+        row.try_get("account_protection_action").map_sql_err()?;
+    let pause_duration: Option<String> = row.try_get("pause_duration").map_sql_err()?;
+    let match_status_code = row
+        .try_get::<Option<i32>, _>("match_status_code")
+        .map_sql_err()?
+        .map(|value| {
+            u16::try_from(value).map_err(|_| {
+                DataLayerError::UnexpectedValue(format!(
+                    "match_status_code is outside u16 range: {value}"
+                ))
+            })
+        })
+        .transpose()?;
+    Ok(StoredNifflerErrorReturnSetting {
+        id: row.try_get("id").map_sql_err()?,
+        scope: NifflerErrorResponseScope::from_database(&scope)?,
+        upstream_service_id: row.try_get("upstream_service_id").map_sql_err()?,
+        match_status_code,
+        match_text: row.try_get("match_text").map_sql_err()?,
+        handling_step: handling_step
+            .as_deref()
+            .map(NifflerUpstreamErrorHandlingStep::from_database)
+            .transpose()?,
+        response_mode: NifflerUserResponseMode::from_database(&response_mode)?,
+        user_message: row.try_get("user_message").map_sql_err()?,
+        account_protection_action: NifflerAccountProtectionAction::from_database(
+            &account_protection_action,
+        )?,
+        pause_duration: pause_duration
+            .as_deref()
+            .map(NifflerPauseDuration::from_database)
+            .transpose()?,
+        is_active: row.try_get("is_active").map_sql_err()?,
         created_at_unix_ms: super::u64_from_i64(
             row.try_get("created_at_unix_ms").map_sql_err()?,
             "created_at_unix_ms",

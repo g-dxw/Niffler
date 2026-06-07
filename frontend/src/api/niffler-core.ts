@@ -8,6 +8,19 @@ export type NifflerAccountStatus =
   | 'quota_exhausted'
   | 'cooling_down'
 export type NifflerProtocolKind = 'openai' | 'anthropic' | 'gemini' | 'codex' | 'custom'
+export type NifflerErrorResponseScope = 'platform' | 'upstream'
+export type NifflerUpstreamErrorHandlingStep =
+  | 'risk_keyword'
+  | 'contact_or_marketing_replacement'
+  | 'status_code_message'
+  | 'default_upstream_message'
+export type NifflerUserResponseMode = 'replace' | 'append' | 'redact'
+export type NifflerAccountProtectionAction = 'record_only' | 'pause_scheduling' | 'disable_account'
+export type NifflerPauseDuration =
+  | 'ten_minutes'
+  | 'one_hour'
+  | 'twenty_four_hours'
+  | 'manual_restore'
 
 export interface NifflerUpstreamService {
   id: string
@@ -61,6 +74,22 @@ export interface NifflerProductPlanModel {
   updated_at_unix_ms: number
 }
 
+export interface NifflerErrorReturnSetting {
+  id: string
+  scope: NifflerErrorResponseScope
+  upstream_service_id?: string | null
+  match_status_code?: number | null
+  match_text?: string | null
+  handling_step?: NifflerUpstreamErrorHandlingStep | null
+  response_mode: NifflerUserResponseMode
+  user_message: string
+  account_protection_action: NifflerAccountProtectionAction
+  pause_duration?: NifflerPauseDuration | null
+  is_active: boolean
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
 export interface NifflerListPage<T> {
   items: T[]
   total: number
@@ -105,6 +134,19 @@ export interface UpsertNifflerProductPlanModelPayload {
   model_name: string
   is_enabled?: boolean
   sales_multiplier_override?: number | null
+}
+
+export interface CreateNifflerErrorReturnSettingPayload {
+  scope: NifflerErrorResponseScope
+  upstream_service_id?: string | null
+  match_status_code?: number | null
+  match_text?: string | null
+  handling_step?: NifflerUpstreamErrorHandlingStep | null
+  response_mode?: NifflerUserResponseMode
+  user_message: string
+  account_protection_action?: NifflerAccountProtectionAction
+  pause_duration?: NifflerPauseDuration | null
+  is_active?: boolean
 }
 
 export interface NifflerShadowTableItem {
@@ -373,6 +415,30 @@ export async function upsertNifflerProductPlanModel(
 ): Promise<NifflerProductPlanModel> {
   const response = await apiClient.post<NifflerProductPlanModel>(
     `/api/admin/niffler-core/product-plans/${encodeURIComponent(productPlanId)}/models`,
+    payload
+  )
+  return response.data
+}
+
+export async function listNifflerErrorReturnSettings(params?: {
+  scope?: NifflerErrorResponseScope
+  upstream_service_id?: string
+  include_inactive?: boolean
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerErrorReturnSetting>> {
+  const response = await apiClient.get<NifflerListPage<NifflerErrorReturnSetting>>(
+    '/api/admin/niffler-core/error-return-settings',
+    { params }
+  )
+  return response.data
+}
+
+export async function createNifflerErrorReturnSetting(
+  payload: CreateNifflerErrorReturnSettingPayload
+): Promise<NifflerErrorReturnSetting> {
+  const response = await apiClient.post<NifflerErrorReturnSetting>(
+    '/api/admin/niffler-core/error-return-settings',
     payload
   )
   return response.data

@@ -1,14 +1,16 @@
 use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerProductPlanListQuery,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerProductPlan, StoredNifflerProductPlanListPage,
-    StoredNifflerProductPlanModel, StoredNifflerProductPlanModelListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    NifflerUpstreamServiceListQuery, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl AppState {
@@ -80,6 +82,16 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_niffler_error_return_settings(
+        &self,
+        query: &NifflerErrorReturnSettingListQuery,
+    ) -> Result<StoredNifflerErrorReturnSettingListPage, GatewayError> {
+        self.data
+            .list_niffler_error_return_settings(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: CreateNifflerUpstreamServiceRecord,
@@ -126,6 +138,16 @@ impl AppState {
     ) -> Result<Option<StoredNifflerProductPlanModel>, GatewayError> {
         self.data
             .upsert_niffler_product_plan_model(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn create_niffler_error_return_setting(
+        &self,
+        record: CreateNifflerErrorReturnSettingRecord,
+    ) -> Result<Option<StoredNifflerErrorReturnSetting>, GatewayError> {
+        self.data
+            .create_niffler_error_return_setting(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

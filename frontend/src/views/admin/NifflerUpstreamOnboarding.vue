@@ -8,12 +8,12 @@
       <template #actions>
         <Button
           variant="outline"
-          :disabled="serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading"
+          :disabled="serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading"
           @click="refreshAll"
         >
           <RefreshCw
             class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading }"
+            :class="{ 'animate-spin': serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading }"
           />
           刷新
         </Button>
@@ -29,7 +29,7 @@
               这是新模型入口，不会改动当前线上请求。
             </p>
             <p class="text-sm text-amber-800/80 dark:text-amber-100/75">
-              本页只写入新表：上游服务、上游账号、服务能力、产品策略、可售模型。账号不保存真实密钥内容，也不会进入旧 Provider、号池、用户模型、计费或结算链路。
+              本页只写入新表：上游服务、上游账号、服务能力、产品策略、可售模型、错误文案规则。账号不保存真实密钥内容，也不会进入旧 Provider、号池、用户模型、计费、结算或错误返回链路。
             </p>
           </div>
         </div>
@@ -444,6 +444,113 @@
           </Table>
         </Card>
       </div>
+
+      <Card class="overflow-hidden">
+        <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">
+              错误文案规则
+            </h2>
+            <p class="mt-1 text-sm text-muted-foreground">
+              保存平台和上游错误返回文案。当前只写新配置，不影响线上错误返回。
+            </p>
+          </div>
+          <Button
+            class="h-9"
+            @click="errorReturnSettingDialogOpen = true"
+          >
+            <Plus class="mr-2 h-4 w-4" />
+            新增规则
+          </Button>
+        </div>
+
+        <div
+          v-if="errorReturnSettingError"
+          class="border-b border-destructive/20 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+        >
+          {{ errorReturnSettingError }}
+        </div>
+
+        <div
+          v-if="errorReturnSettingLoading && errorReturnSettings.length === 0"
+          class="flex items-center justify-center py-16 text-sm text-muted-foreground"
+        >
+          <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+          正在读取错误文案规则...
+        </div>
+
+        <div
+          v-else-if="errorReturnSettings.length === 0"
+          class="py-16 text-center"
+        >
+          <AlertTriangle class="mx-auto h-10 w-10 text-muted-foreground/50" />
+          <p class="mt-3 font-medium">
+            还没有错误文案规则
+          </p>
+          <p class="mt-1 text-sm text-muted-foreground">
+            可以先登记常见平台错误和上游错误文案，后续灰度时再接入运行时。
+          </p>
+        </div>
+
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>范围</TableHead>
+              <TableHead>匹配条件</TableHead>
+              <TableHead>返回方式</TableHead>
+              <TableHead>用户文案</TableHead>
+              <TableHead>账号保护</TableHead>
+              <TableHead>状态</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="rule in errorReturnSettings"
+              :key="rule.id"
+            >
+              <TableCell>
+                <div class="font-medium">
+                  {{ errorScopeLabel(rule.scope) }}
+                </div>
+                <div class="mt-1 text-xs text-muted-foreground">
+                  {{ upstreamServiceLabel(rule.upstream_service_id) }}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div>{{ matchLabel(rule) }}</div>
+                <div
+                  v-if="rule.handling_step"
+                  class="mt-1 text-xs text-muted-foreground"
+                >
+                  {{ handlingStepLabel(rule.handling_step) }}
+                </div>
+              </TableCell>
+              <TableCell>
+                {{ responseModeLabel(rule.response_mode) }}
+              </TableCell>
+              <TableCell>
+                <div class="max-w-[420px] truncate">
+                  {{ rule.user_message }}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div>{{ protectionActionLabel(rule.account_protection_action) }}</div>
+                <div
+                  v-if="rule.pause_duration"
+                  class="mt-1 text-xs text-muted-foreground"
+                >
+                  {{ pauseDurationLabel(rule.pause_duration) }}
+                </div>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="rule.is_active ? 'outline' : 'secondary'">
+                  {{ rule.is_active ? '启用' : '停用' }}
+                </Badge>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Card>
     </div>
 
     <Dialog
@@ -799,6 +906,176 @@
         </Button>
       </template>
     </Dialog>
+
+    <Dialog
+      v-model="errorReturnSettingDialogOpen"
+      size="2xl"
+      title="新增错误文案规则"
+      description="只保存新模型里的错误文案配置，不改变当前线上返回内容。"
+      :icon="AlertTriangle"
+    >
+      <form
+        class="space-y-5"
+        @submit.prevent="submitErrorReturnSetting"
+      >
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="error-scope">规则范围</Label>
+            <Select v-model="errorReturnSettingForm.scope">
+              <SelectTrigger id="error-scope">
+                <SelectValue placeholder="选择规则范围" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="platform">平台本地错误</SelectItem>
+                <SelectItem value="upstream">上游返回错误</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div
+            v-if="errorReturnSettingForm.scope === 'upstream'"
+            class="space-y-2"
+          >
+            <Label for="error-upstream">上游服务</Label>
+            <Select v-model="errorReturnSettingForm.upstream_service_id">
+              <SelectTrigger id="error-upstream">
+                <SelectValue placeholder="选择上游服务" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">全部上游</SelectItem>
+                <SelectItem
+                  v-for="service in services"
+                  :key="service.id"
+                  :value="service.id"
+                >
+                  {{ service.display_name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div
+            v-if="errorReturnSettingForm.scope === 'upstream'"
+            class="space-y-2"
+          >
+            <Label for="error-step">处理类型</Label>
+            <Select v-model="errorReturnSettingForm.handling_step">
+              <SelectTrigger id="error-step">
+                <SelectValue placeholder="选择处理类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="risk_keyword">风控关键词</SelectItem>
+                <SelectItem value="contact_or_marketing_replacement">广告或客服内容替换</SelectItem>
+                <SelectItem value="status_code_message">状态码文案</SelectItem>
+                <SelectItem value="default_upstream_message">默认上游错误文案</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label for="error-status-code">状态码</Label>
+            <Input
+              id="error-status-code"
+              v-model="errorReturnSettingForm.match_status_code"
+              type="number"
+              min="100"
+              max="599"
+              step="1"
+              placeholder="可选，例如 403"
+            />
+          </div>
+          <div class="space-y-2 sm:col-span-2">
+            <Label for="error-match-text">
+              {{ errorReturnSettingForm.scope === 'platform' ? '平台错误代码' : '匹配关键词' }}
+            </Label>
+            <Input
+              id="error-match-text"
+              v-model="errorReturnSettingForm.match_text"
+              :placeholder="errorReturnSettingForm.scope === 'platform' ? '例如 insufficient_balance，可选' : '例如 abuse、support@example.com，可选'"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="error-response-mode">返回方式</Label>
+            <Select v-model="errorReturnSettingForm.response_mode">
+              <SelectTrigger id="error-response-mode">
+                <SelectValue placeholder="选择返回方式" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="replace">完全替换</SelectItem>
+                <SelectItem value="append">追加说明</SelectItem>
+                <SelectItem value="redact">部分脱敏</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div
+            v-if="errorReturnSettingForm.scope === 'upstream'"
+            class="space-y-2"
+          >
+            <Label for="error-protection">账号保护</Label>
+            <Select v-model="errorReturnSettingForm.account_protection_action">
+              <SelectTrigger id="error-protection">
+                <SelectValue placeholder="选择账号保护" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="record_only">只记录</SelectItem>
+                <SelectItem value="pause_scheduling">暂停调度</SelectItem>
+                <SelectItem value="disable_account">停用账号</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div
+            v-if="errorReturnSettingForm.scope === 'upstream' && errorReturnSettingForm.account_protection_action === 'pause_scheduling'"
+            class="space-y-2"
+          >
+            <Label for="error-pause-duration">暂停时长</Label>
+            <Select v-model="errorReturnSettingForm.pause_duration">
+              <SelectTrigger id="error-pause-duration">
+                <SelectValue placeholder="选择暂停时长" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ten_minutes">10 分钟</SelectItem>
+                <SelectItem value="one_hour">1 小时</SelectItem>
+                <SelectItem value="twenty_four_hours">24 小时</SelectItem>
+                <SelectItem value="manual_restore">手动恢复</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="flex items-center gap-3 pt-7">
+            <Switch
+              id="error-active"
+              v-model="errorReturnSettingForm.is_active"
+            />
+            <Label for="error-active">启用规则</Label>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <Label for="error-user-message">返回给用户的文案</Label>
+          <Textarea
+            id="error-user-message"
+            v-model="errorReturnSettingForm.user_message"
+            rows="4"
+            placeholder="例如：请求内容触发上游安全限制，请调整任务后重试。如需帮助，请联系平台客服。"
+            required
+          />
+        </div>
+      </form>
+
+      <template #footer>
+        <Button
+          type="submit"
+          :disabled="savingErrorReturnSetting"
+          @click="submitErrorReturnSetting"
+        >
+          {{ savingErrorReturnSetting ? '保存中...' : '保存规则' }}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          :disabled="savingErrorReturnSetting"
+          @click="errorReturnSettingDialogOpen = false"
+        >
+          取消
+        </Button>
+      </template>
+    </Dialog>
   </PageContainer>
 </template>
 
@@ -836,25 +1113,35 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
 } from '@/components/ui'
 import {
+  createNifflerErrorReturnSetting,
   createNifflerProductPlan,
   createNifflerUpstreamAccount,
   createNifflerUpstreamService,
+  listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
   listNifflerProductPlans,
   listNifflerUpstreamAccounts,
   listNifflerUpstreamServices,
   upsertNifflerProductPlanModel,
+  type CreateNifflerErrorReturnSettingPayload,
   type CreateNifflerProductPlanPayload,
   type CreateNifflerUpstreamAccountPayload,
   type CreateNifflerUpstreamServicePayload,
+  type NifflerAccountProtectionAction,
   type NifflerAccountStatus,
+  type NifflerErrorResponseScope,
+  type NifflerErrorReturnSetting,
+  type NifflerPauseDuration,
   type NifflerProductPlan,
   type NifflerProductPlanModel,
   type NifflerProtocolKind,
+  type NifflerUpstreamErrorHandlingStep,
   type NifflerUpstreamAccount,
   type NifflerUpstreamService,
+  type NifflerUserResponseMode,
   type UpsertNifflerProductPlanModelPayload,
 } from '@/api/niffler-core'
 import { useToast } from '@/composables/useToast'
@@ -868,6 +1155,18 @@ type ProductPlanForm = Required<Pick<CreateNifflerProductPlanPayload, 'display_n
 type ProductPlanModelForm = Omit<UpsertNifflerProductPlanModelPayload, 'sales_multiplier_override'> & {
   sales_multiplier_override: number | string | null
 }
+type ErrorReturnSettingForm = {
+  scope: NifflerErrorResponseScope
+  upstream_service_id: string
+  match_status_code: number | string | null
+  match_text: string
+  handling_step: NifflerUpstreamErrorHandlingStep | ''
+  response_mode: NifflerUserResponseMode
+  user_message: string
+  account_protection_action: NifflerAccountProtectionAction
+  pause_duration: NifflerPauseDuration | ''
+  is_active: boolean
+}
 
 const { success, error: showError } = useToast()
 
@@ -875,18 +1174,22 @@ const services = ref<NifflerUpstreamService[]>([])
 const accounts = ref<NifflerUpstreamAccount[]>([])
 const productPlans = ref<NifflerProductPlan[]>([])
 const productPlanModels = ref<NifflerProductPlanModel[]>([])
+const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const serviceLoading = ref(false)
 const accountLoading = ref(false)
 const productPlanLoading = ref(false)
 const productPlanModelLoading = ref(false)
+const errorReturnSettingLoading = ref(false)
 const savingService = ref(false)
 const savingAccount = ref(false)
 const savingProductPlan = ref(false)
 const savingProductPlanModel = ref(false)
+const savingErrorReturnSetting = ref(false)
 const serviceError = ref('')
 const accountError = ref('')
 const productPlanError = ref('')
 const productPlanModelError = ref('')
+const errorReturnSettingError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
 const selectedServiceId = ref<string | null>(null)
@@ -895,6 +1198,7 @@ const serviceDialogOpen = ref(false)
 const accountDialogOpen = ref(false)
 const productPlanDialogOpen = ref(false)
 const productPlanModelDialogOpen = ref(false)
+const errorReturnSettingDialogOpen = ref(false)
 
 const defaultServiceForm = (): CreateNifflerUpstreamServicePayload => ({
   display_name: '',
@@ -937,10 +1241,24 @@ const defaultProductPlanModelForm = (): ProductPlanModelForm => ({
   sales_multiplier_override: null,
 })
 
+const defaultErrorReturnSettingForm = (): ErrorReturnSettingForm => ({
+  scope: 'platform',
+  upstream_service_id: '__all__',
+  match_status_code: null,
+  match_text: '',
+  handling_step: '',
+  response_mode: 'replace',
+  user_message: '',
+  account_protection_action: 'record_only',
+  pause_duration: '',
+  is_active: true,
+})
+
 const serviceForm = ref<CreateNifflerUpstreamServicePayload>(defaultServiceForm())
 const accountForm = ref<CreateNifflerUpstreamAccountPayload>(defaultAccountForm())
 const productPlanForm = ref<ProductPlanForm>(defaultProductPlanForm())
 const productPlanModelForm = ref<ProductPlanModelForm>(defaultProductPlanModelForm())
+const errorReturnSettingForm = ref<ErrorReturnSettingForm>(defaultErrorReturnSettingForm())
 let accountLoadSeq = 0
 let productPlanModelLoadSeq = 0
 
@@ -989,8 +1307,14 @@ watch(productPlanModelDialogOpen, (open) => {
   }
 })
 
+watch(errorReturnSettingDialogOpen, (open) => {
+  if (!open) {
+    errorReturnSettingForm.value = defaultErrorReturnSettingForm()
+  }
+})
+
 async function refreshAll() {
-  await Promise.all([loadServices(), loadProductPlans()])
+  await Promise.all([loadServices(), loadProductPlans(), loadErrorReturnSettings()])
   if (selectedServiceId.value) {
     await loadAccounts(selectedServiceId.value)
   }
@@ -1098,6 +1422,23 @@ async function loadProductPlanModels(productPlanId: string) {
   }
 }
 
+async function loadErrorReturnSettings() {
+  errorReturnSettingLoading.value = true
+  errorReturnSettingError.value = ''
+  try {
+    const response = await listNifflerErrorReturnSettings({
+      include_inactive: true,
+      limit: 100,
+    })
+    errorReturnSettings.value = response.items
+  } catch (err) {
+    errorReturnSettingError.value = extractErrorMessage(err, '读取错误文案规则失败')
+    showError(errorReturnSettingError.value)
+  } finally {
+    errorReturnSettingLoading.value = false
+  }
+}
+
 async function selectProductPlan(productPlanId: string) {
   selectedProductPlanId.value = productPlanId
   await loadProductPlanModels(productPlanId)
@@ -1174,6 +1515,23 @@ async function submitProductPlanModel() {
     showError(extractErrorMessage(err, '保存可售模型失败'))
   } finally {
     savingProductPlanModel.value = false
+  }
+}
+
+async function submitErrorReturnSetting() {
+  const payload = normalizeErrorReturnSettingPayload(errorReturnSettingForm.value)
+  if (!payload) return
+
+  savingErrorReturnSetting.value = true
+  try {
+    await createNifflerErrorReturnSetting(payload)
+    success('错误文案规则已保存')
+    errorReturnSettingDialogOpen.value = false
+    await loadErrorReturnSettings()
+  } catch (err) {
+    showError(extractErrorMessage(err, '保存错误文案规则失败'))
+  } finally {
+    savingErrorReturnSetting.value = false
   }
 }
 
@@ -1292,6 +1650,64 @@ function normalizeProductPlanModelPayload(
   }
 }
 
+function normalizeErrorReturnSettingPayload(
+  form: ErrorReturnSettingForm
+): CreateNifflerErrorReturnSettingPayload | null {
+  const userMessage = form.user_message.trim()
+  if (!userMessage) {
+    showError('返回给用户的文案不能为空')
+    return null
+  }
+
+  const rawStatusCode = form.match_status_code
+  let matchStatusCode: number | null = null
+  if (rawStatusCode !== null && rawStatusCode !== '') {
+    const parsed = Number(rawStatusCode)
+    if (!Number.isInteger(parsed) || parsed < 100 || parsed > 599) {
+      showError('状态码必须是 100 到 599 之间的整数')
+      return null
+    }
+    matchStatusCode = parsed
+  }
+
+  if (form.scope === 'upstream' && !form.handling_step) {
+    showError('上游级规则必须选择处理类型')
+    return null
+  }
+
+  if (
+    form.scope === 'upstream'
+    && form.account_protection_action === 'pause_scheduling'
+    && !form.pause_duration
+  ) {
+    showError('暂停调度必须选择暂停时长')
+    return null
+  }
+
+  return {
+    scope: form.scope,
+    upstream_service_id:
+      form.scope === 'upstream' && form.upstream_service_id !== '__all__'
+        ? form.upstream_service_id
+        : null,
+    match_status_code: matchStatusCode,
+    match_text: emptyToNull(form.match_text),
+    handling_step:
+      form.scope === 'upstream'
+        ? (form.handling_step as NifflerUpstreamErrorHandlingStep)
+        : null,
+    response_mode: form.response_mode,
+    user_message: userMessage,
+    account_protection_action:
+      form.scope === 'upstream' ? form.account_protection_action : 'record_only',
+    pause_duration:
+      form.scope === 'upstream' && form.account_protection_action === 'pause_scheduling'
+        ? (form.pause_duration as NifflerPauseDuration)
+        : null,
+    is_active: form.is_active,
+  }
+}
+
 function emptyToNull(value?: string | null): string | null {
   const normalized = value?.trim() ?? ''
   return normalized ? normalized : null
@@ -1330,8 +1746,73 @@ function accountStatusLabel(status: NifflerAccountStatus): string {
   return labels[status] ?? status
 }
 
+function errorScopeLabel(scope: NifflerErrorResponseScope): string {
+  const labels: Record<NifflerErrorResponseScope, string> = {
+    platform: '平台本地错误',
+    upstream: '上游返回错误',
+  }
+  return labels[scope] ?? scope
+}
+
+function upstreamServiceLabel(serviceId?: string | null): string {
+  if (!serviceId) {
+    return '全部上游'
+  }
+  return services.value.find(service => service.id === serviceId)?.display_name ?? '未知上游服务'
+}
+
+function matchLabel(rule: NifflerErrorReturnSetting): string {
+  const parts: string[] = []
+  if (rule.match_status_code) {
+    parts.push(`状态码 ${rule.match_status_code}`)
+  }
+  if (rule.match_text) {
+    parts.push(rule.scope === 'platform' ? `错误代码：${rule.match_text}` : `关键词：${rule.match_text}`)
+  }
+  return parts.length > 0 ? parts.join(' / ') : '默认规则'
+}
+
+function handlingStepLabel(step: NifflerUpstreamErrorHandlingStep): string {
+  const labels: Record<NifflerUpstreamErrorHandlingStep, string> = {
+    risk_keyword: '风控关键词',
+    contact_or_marketing_replacement: '广告或客服内容替换',
+    status_code_message: '状态码文案',
+    default_upstream_message: '默认上游错误文案',
+  }
+  return labels[step] ?? step
+}
+
+function responseModeLabel(mode: NifflerUserResponseMode): string {
+  const labels: Record<NifflerUserResponseMode, string> = {
+    replace: '完全替换',
+    append: '追加说明',
+    redact: '部分脱敏',
+  }
+  return labels[mode] ?? mode
+}
+
+function protectionActionLabel(action: NifflerAccountProtectionAction): string {
+  const labels: Record<NifflerAccountProtectionAction, string> = {
+    record_only: '只记录',
+    pause_scheduling: '暂停调度',
+    disable_account: '停用账号',
+  }
+  return labels[action] ?? action
+}
+
+function pauseDurationLabel(duration: NifflerPauseDuration): string {
+  const labels: Record<NifflerPauseDuration, string> = {
+    ten_minutes: '10 分钟',
+    one_hour: '1 小时',
+    twenty_four_hours: '24 小时',
+    manual_restore: '手动恢复',
+  }
+  return labels[duration] ?? duration
+}
+
 onMounted(() => {
   void loadServices()
   void loadProductPlans()
+  void loadErrorReturnSettings()
 })
 </script>
