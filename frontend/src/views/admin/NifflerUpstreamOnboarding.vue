@@ -365,7 +365,7 @@
             <Button
               class="h-9"
               :disabled="!selectedProductPlan"
-              @click="productPlanModelDialogOpen = true"
+              @click="openProductPlanModelDialog"
             >
               <Plus class="mr-2 h-4 w-4" />
               新增模型
@@ -888,7 +888,7 @@
       v-model="productPlanModelDialogOpen"
       size="lg"
       title="新增可售模型"
-      description="只登记这个产品策略里的模型和销售倍率覆盖。"
+      description="从全局模型选择并预览钱包售价，保存时只登记模型名称和销售倍率。"
       :icon="PackageCheck"
     >
       <form
@@ -896,11 +896,45 @@
         @submit.prevent="submitProductPlanModel"
       >
         <div class="space-y-2">
-          <Label for="product-plan-model-name">模型名称</Label>
+          <Label for="product-plan-global-model">全局模型</Label>
+          <Select
+            :model-value="selectedProductPlanModelGlobalModelId"
+            :disabled="globalModelsLoading"
+            @update:model-value="selectProductPlanGlobalModel"
+          >
+            <SelectTrigger id="product-plan-global-model">
+              <SelectValue :placeholder="globalModelsLoading ? '正在读取模型...' : '选择全局模型'" />
+            </SelectTrigger>
+            <SelectContent search-placeholder="搜索模型名称...">
+              <SelectItem
+                v-for="model in globalModels"
+                :key="model.id"
+                :value="model.id"
+                :text-value="`${model.display_name} ${model.name}`"
+              >
+                {{ model.display_name }} ({{ model.name }})
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p
+            v-if="globalModelsError"
+            class="text-xs text-destructive"
+          >
+            {{ globalModelsError }}
+          </p>
+          <p
+            v-else-if="!globalModelsLoading && globalModels.length === 0"
+            class="text-xs text-muted-foreground"
+          >
+            暂无可选全局模型，也可以直接填写模型名称。
+          </p>
+        </div>
+        <div class="space-y-2">
+          <Label for="product-plan-model-name">模型名称（可手动修改）</Label>
           <Input
             id="product-plan-model-name"
             v-model="productPlanModelForm.model_name"
-            placeholder="例如 gpt-5.5"
+            placeholder="选择全局模型后自动填写，也可手动输入"
             required
           />
         </div>
@@ -923,6 +957,59 @@
             />
             <Label for="product-plan-model-enabled">启用模型</Label>
           </div>
+        </div>
+        <div
+          v-if="selectedProductPlanModelGlobalModel"
+          class="rounded-xl border border-border/70 bg-muted/25 p-4"
+        >
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p class="text-sm font-medium">
+                钱包售价预览
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                基础价格来自全局模型；钱包售价 = 基础价格 × 实际销售倍率。
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span class="rounded-md bg-background px-2 py-1">
+                策略默认：{{ formatMultiplier(selectedProductPlan?.sales_multiplier ?? 1) }}
+              </span>
+              <span class="rounded-md bg-background px-2 py-1">
+                实际倍率：{{ formatMultiplier(productPlanModelEffectiveMultiplier) }}
+              </span>
+            </div>
+          </div>
+          <div
+            v-if="productPlanModelPriceRows.length > 0"
+            class="mt-3 divide-y divide-border/60 rounded-lg border border-border/60 bg-background"
+          >
+            <div class="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-2 text-xs text-muted-foreground">
+              <span>计费项</span>
+              <span>基础价</span>
+              <span>钱包售价</span>
+            </div>
+            <div
+              v-for="row in productPlanModelPriceRows"
+              :key="row.key"
+              class="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-2 text-sm"
+            >
+              <span class="text-muted-foreground">{{ row.label }}</span>
+              <span>{{ formatProductPlanModelPrice(row.basePrice, row.unit) }}</span>
+              <span class="font-medium text-foreground">
+                {{ formatProductPlanModelPrice(row.salesPrice, row.unit) }}
+              </span>
+            </div>
+          </div>
+          <p
+            v-else
+            class="mt-3 text-xs text-muted-foreground"
+          >
+            这个全局模型还没有基础价格，保存时仍只登记模型名称和销售倍率。
+          </p>
+          <p class="mt-3 text-xs text-muted-foreground">
+            预览不会修改全局模型价格，也不会接入当前计费链路。
+          </p>
         </div>
       </form>
 
@@ -1182,6 +1269,10 @@ import {
   type NifflerUserResponseMode,
   type UpsertNifflerProductPlanModelPayload,
 } from '@/api/niffler-core'
+import {
+  listGlobalModels,
+  type GlobalModelResponse,
+} from '@/api/global-models'
 import { useToast } from '@/composables/useToast'
 import { extractErrorMessage } from '@/utils/error'
 import {
@@ -1195,6 +1286,11 @@ import {
   type NifflerServiceCapabilityKey,
   type NifflerServiceTemplateKey,
 } from './niffler-upstream-service-templates'
+import {
+  buildProductPlanModelPriceRows,
+  formatProductPlanModelPrice,
+  getProductPlanModelEffectiveMultiplier,
+} from './niffler-product-plan-pricing'
 
 type ProductPlanForm = Required<Pick<CreateNifflerProductPlanPayload, 'display_name' | 'is_public' | 'is_active'>> & {
   sales_multiplier: number | string
@@ -1222,11 +1318,13 @@ const services = ref<NifflerUpstreamService[]>([])
 const accounts = ref<NifflerUpstreamAccount[]>([])
 const productPlans = ref<NifflerProductPlan[]>([])
 const productPlanModels = ref<NifflerProductPlanModel[]>([])
+const globalModels = ref<GlobalModelResponse[]>([])
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const serviceLoading = ref(false)
 const accountLoading = ref(false)
 const productPlanLoading = ref(false)
 const productPlanModelLoading = ref(false)
+const globalModelsLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const savingService = ref(false)
 const savingAccount = ref(false)
@@ -1237,6 +1335,7 @@ const serviceError = ref('')
 const accountError = ref('')
 const productPlanError = ref('')
 const productPlanModelError = ref('')
+const globalModelsError = ref('')
 const errorReturnSettingError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
@@ -1248,6 +1347,7 @@ const productPlanDialogOpen = ref(false)
 const productPlanModelDialogOpen = ref(false)
 const errorReturnSettingDialogOpen = ref(false)
 const selectedServiceTemplateKey = ref<NifflerServiceTemplateKey>(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)
+const selectedProductPlanModelGlobalModelId = ref('')
 
 const defaultServiceForm = (): CreateNifflerUpstreamServicePayload =>
   buildNifflerServiceFormFromTemplate(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)
@@ -1317,6 +1417,24 @@ const selectedProductPlan = computed(() =>
   productPlans.value.find(plan => plan.id === selectedProductPlanId.value) ?? null
 )
 
+const selectedProductPlanModelGlobalModel = computed(() =>
+  globalModels.value.find(model => model.id === selectedProductPlanModelGlobalModelId.value) ?? null
+)
+
+const productPlanModelEffectiveMultiplier = computed(() =>
+  getProductPlanModelEffectiveMultiplier(
+    selectedProductPlan.value?.sales_multiplier,
+    productPlanModelForm.value.sales_multiplier_override
+  )
+)
+
+const productPlanModelPriceRows = computed(() =>
+  buildProductPlanModelPriceRows(
+    selectedProductPlanModelGlobalModel.value,
+    productPlanModelEffectiveMultiplier.value
+  )
+)
+
 const selectedServiceTemplate = computed(() =>
   getNifflerServiceTemplate(selectedServiceTemplateKey.value)
 )
@@ -1365,6 +1483,15 @@ function openServiceDialog() {
   serviceDialogOpen.value = true
 }
 
+function openProductPlanModelDialog() {
+  if (!selectedProductPlan.value) return
+  productPlanModelForm.value = defaultProductPlanModelForm()
+  selectedProductPlanModelGlobalModelId.value = ''
+  globalModelsError.value = ''
+  productPlanModelDialogOpen.value = true
+  void loadGlobalModels()
+}
+
 function clearHiddenCapabilities(protocolKind: NifflerProtocolKind) {
   const visibleKeys = new Set(
     filterCapabilityOptionsForProtocol(capabilityOptions, protocolKind).map(option => option.key)
@@ -1387,6 +1514,8 @@ watch(productPlanDialogOpen, (open) => {
 watch(productPlanModelDialogOpen, (open) => {
   if (!open) {
     productPlanModelForm.value = defaultProductPlanModelForm()
+    selectedProductPlanModelGlobalModelId.value = ''
+    globalModelsError.value = ''
   }
 })
 
@@ -1502,6 +1631,32 @@ async function loadProductPlanModels(productPlanId: string) {
     if (seq === productPlanModelLoadSeq) {
       productPlanModelLoading.value = false
     }
+  }
+}
+
+async function loadGlobalModels() {
+  if (globalModels.value.length > 0) return
+  globalModelsLoading.value = true
+  globalModelsError.value = ''
+  try {
+    const response = await listGlobalModels(
+      { skip: 0, limit: 1000, is_active: true },
+      { cacheTtlMs: 60_000 }
+    )
+    globalModels.value = response.models
+  } catch (err) {
+    globalModelsError.value = extractErrorMessage(err, '读取全局模型失败')
+    showError(globalModelsError.value)
+  } finally {
+    globalModelsLoading.value = false
+  }
+}
+
+function selectProductPlanGlobalModel(modelId: string) {
+  selectedProductPlanModelGlobalModelId.value = modelId
+  const model = globalModels.value.find(item => item.id === modelId)
+  if (model) {
+    productPlanModelForm.value.model_name = model.name
   }
 }
 
