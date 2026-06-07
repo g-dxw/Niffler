@@ -236,6 +236,19 @@
                 <span>成本倍率：{{ formatMultiplier(account.cost_multiplier) }}</span>
                 <span>优先级：{{ account.priority }}</span>
               </div>
+              <div class="mt-3 rounded-lg border border-border/60 bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
+                <div class="grid gap-2 sm:grid-cols-3">
+                  <span>最近测试：{{ accountTestStatusLabel(account) }}</span>
+                  <span>测试时间：{{ formatNifflerUnixMs(account.last_tested_at_unix_ms) }}</span>
+                  <span>冷却到：{{ formatNifflerUnixMs(account.cooldown_until_unix_ms) }}</span>
+                </div>
+                <p
+                  v-if="account.last_test_error"
+                  class="mt-2 line-clamp-2 text-destructive"
+                >
+                  {{ account.last_test_error }}
+                </p>
+              </div>
             </div>
           </div>
         </Card>
@@ -727,12 +740,27 @@
         class="space-y-4"
         @submit.prevent="submitAccount"
       >
+        <div class="rounded-xl border border-border/70 bg-muted/25 p-4">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p class="text-sm font-medium">
+                {{ accountAuthGuide.title }}
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                {{ accountAuthGuide.description }}
+              </p>
+            </div>
+            <Badge variant="outline">
+              {{ authKindLabel(accountForm.auth_kind) }}
+            </Badge>
+          </div>
+        </div>
         <div class="space-y-2">
           <Label for="account-name">账号名称</Label>
           <Input
             id="account-name"
             v-model="accountForm.display_name"
-            placeholder="例如 codex-plus 主账号"
+            :placeholder="accountAuthGuide.namePlaceholder"
             required
           />
         </div>
@@ -754,6 +782,9 @@
             />
           </div>
         </div>
+        <p class="text-xs text-muted-foreground">
+          {{ accountAuthGuide.contactHint }}
+        </p>
         <div class="grid gap-4 sm:grid-cols-3">
           <div class="space-y-2">
             <Label for="account-auth">认证方式</Label>
@@ -1291,6 +1322,11 @@ import {
   formatProductPlanModelPrice,
   getProductPlanModelEffectiveMultiplier,
 } from './niffler-product-plan-pricing'
+import {
+  formatNifflerAccountTestStatus,
+  formatNifflerUnixMs,
+  getNifflerAccountAuthGuide,
+} from './niffler-upstream-account-ui'
 
 type ProductPlanForm = Required<Pick<CreateNifflerProductPlanPayload, 'display_name' | 'is_public' | 'is_active'>> & {
   sales_multiplier: number | string
@@ -1415,6 +1451,10 @@ const selectedService = computed(() =>
 
 const selectedProductPlan = computed(() =>
   productPlans.value.find(plan => plan.id === selectedProductPlanId.value) ?? null
+)
+
+const accountAuthGuide = computed(() =>
+  getNifflerAccountAuthGuide(accountForm.value.auth_kind)
 )
 
 const selectedProductPlanModelGlobalModel = computed(() =>
@@ -1975,6 +2015,10 @@ function authKindLabel(value: string): string {
     custom_header: '自定义 Header',
   }
   return labels[value] ?? value
+}
+
+function accountTestStatusLabel(account: NifflerUpstreamAccount): string {
+  return formatNifflerAccountTestStatus(account)
 }
 
 function accountStatusLabel(status: NifflerAccountStatus): string {
