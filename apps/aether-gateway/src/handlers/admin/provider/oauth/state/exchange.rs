@@ -6,6 +6,7 @@ use aether_contracts::ProxySnapshot;
 use aether_oauth::provider::providers::GenericProviderOAuthAdapter;
 use aether_oauth::provider::{ProviderOAuthService, ProviderOAuthTransportContext};
 use axum::{body::Body, http, response::Response};
+use serde_json::Value;
 use std::sync::Arc;
 
 fn provider_oauth_transport_error_detail(prefix: &str, error: &str) -> String {
@@ -16,21 +17,26 @@ fn provider_oauth_transport_error_detail(prefix: &str, error: &str) -> String {
     format!("{prefix}: {error}")
 }
 
-fn provider_oauth_exchange_context(
+pub(crate) fn provider_oauth_transport_context(
+    provider_id: &str,
     provider_type: &str,
+    key_id: Option<&str>,
+    decrypted_auth_config: Option<String>,
+    provider_config: Option<Value>,
+    key_config: Option<Value>,
     proxy: Option<ProxySnapshot>,
 ) -> ProviderOAuthTransportContext {
     ProviderOAuthTransportContext {
-        provider_id: String::new(),
+        provider_id: provider_id.to_string(),
         provider_type: provider_type.to_string(),
         endpoint_id: None,
-        key_id: None,
+        key_id: key_id.map(ToOwned::to_owned),
         auth_type: Some("oauth".to_string()),
         decrypted_api_key: None,
-        decrypted_auth_config: None,
-        provider_config: None,
+        decrypted_auth_config,
+        provider_config,
         endpoint_config: None,
-        key_config: None,
+        key_config,
         network: aether_oauth::network::OAuthNetworkContext::provider_operation(proxy),
     }
 }
@@ -53,25 +59,36 @@ fn provider_oauth_service_for_template(
 fn token_payload_from_provider_oauth_result(
     result: aether_oauth::provider::ProviderOAuthTokenSet,
 ) -> Result<serde_json::Value, Response<Body>> {
-    result.token_set.raw_payload.ok_or_else(|| {
+    let mut payload = result.token_set.raw_payload.ok_or_else(|| {
         build_internal_control_error_response(
             http::StatusCode::BAD_REQUEST,
             "token exchange 返回缺少 access_token",
         )
-    })
+    })?;
+    if let (Some(payload), Some(auth_config)) =
+        (payload.as_object_mut(), result.auth_config.as_object())
+    {
+        for field in ["client_id", "client_secret"] {
+            if !payload.contains_key(field) {
+                if let Some(value) = auth_config.get(field).cloned() {
+                    payload.insert(field.to_string(), value);
+                }
+            }
+        }
+    }
+    Ok(payload)
 }
 
 pub(crate) async fn exchange_admin_provider_oauth_code(
     state: &AdminAppState<'_>,
     template: AdminProviderOAuthTemplate,
+    ctx: ProviderOAuthTransportContext,
     code: &str,
     state_nonce: &str,
     pkce_verifier: Option<&str>,
-    proxy: Option<ProxySnapshot>,
 ) -> Result<serde_json::Value, Response<Body>> {
     let token_url = state.provider_oauth_token_url(template.provider_type, template.token_url);
     let service = provider_oauth_service_for_template(template, token_url)?;
-    let ctx = provider_oauth_exchange_context(template.provider_type, proxy);
     let executor = crate::oauth::GatewayOAuthHttpExecutor::new(*state);
     let result = service
         .exchange_code(&executor, &ctx, code, state_nonce, pkce_verifier)
@@ -94,12 +111,11 @@ pub(crate) async fn exchange_admin_provider_oauth_code(
 pub(crate) async fn exchange_admin_provider_oauth_refresh_token(
     state: &AdminAppState<'_>,
     template: AdminProviderOAuthTemplate,
+    ctx: ProviderOAuthTransportContext,
     refresh_token: &str,
-    proxy: Option<ProxySnapshot>,
 ) -> Result<serde_json::Value, Response<Body>> {
     let token_url = state.provider_oauth_token_url(template.provider_type, template.token_url);
     let service = provider_oauth_service_for_template(template, token_url)?;
-    let ctx = provider_oauth_exchange_context(template.provider_type, proxy);
     let executor = crate::oauth::GatewayOAuthHttpExecutor::new(*state);
     let input = aether_oauth::provider::ProviderOAuthImportInput {
         provider_type: template.provider_type.to_string(),

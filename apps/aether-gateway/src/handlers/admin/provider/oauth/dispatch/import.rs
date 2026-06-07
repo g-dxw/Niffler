@@ -12,7 +12,7 @@ use super::super::runtime::{
 use super::super::state::{
     admin_provider_oauth_template, build_admin_provider_oauth_backend_unavailable_response,
     enrich_admin_provider_oauth_auth_config, exchange_admin_provider_oauth_refresh_token,
-    is_fixed_provider_type_for_provider_oauth, json_u64_value,
+    is_fixed_provider_type_for_provider_oauth, json_u64_value, provider_oauth_transport_context,
 };
 use super::helpers::admin_provider_oauth_key_name_from_auth_config;
 use super::token_import::{
@@ -211,7 +211,9 @@ fn apply_single_import_hints(
 async fn resolve_admin_provider_oauth_single_import_tokens(
     state: &AdminAppState<'_>,
     template: Option<AdminProviderOAuthTemplate>,
+    provider_id: &str,
     provider_type: &str,
+    provider_config: Option<serde_json::Value>,
     refresh_token: Option<&str>,
     access_token: Option<&str>,
     imported_expires_at: Option<u64>,
@@ -247,12 +249,17 @@ async fn resolve_admin_provider_oauth_single_import_tokens(
             ));
         };
 
+        let exchange_ctx = provider_oauth_transport_context(
+            provider_id,
+            provider_type,
+            None,
+            None,
+            provider_config,
+            None,
+            request_proxy.clone(),
+        );
         let token_payload = match state
-            .exchange_admin_provider_oauth_refresh_token(
-                template,
-                refresh_token,
-                request_proxy.clone(),
-            )
+            .exchange_admin_provider_oauth_refresh_token(template, exchange_ctx, refresh_token)
             .await
         {
             Ok(payload) => payload,
@@ -443,7 +450,9 @@ pub(super) async fn handle_admin_provider_oauth_import_refresh_token(
     let resolved_import = match resolve_admin_provider_oauth_single_import_tokens(
         state,
         template,
+        &provider_id,
         &provider_type,
+        provider.config.clone(),
         refresh_token_input.as_deref(),
         access_token_input.as_deref(),
         imported_expires_at,

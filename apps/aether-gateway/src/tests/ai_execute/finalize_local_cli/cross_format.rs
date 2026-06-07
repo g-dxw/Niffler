@@ -1090,7 +1090,7 @@ async fn gateway_executes_openai_responses_antigravity_cross_format_upstream_str
     fn sample_provider_catalog_key() -> StoredProviderCatalogKey {
         let encrypted_auth_config = encrypt_python_fernet_plaintext(
             DEVELOPMENT_ENCRYPTION_KEY,
-            r#"{"provider_type":"antigravity","project_id":"project-antigravity-local-1","client_version":"1.2.3","session_id":"sess-antigravity-local-123","refresh_token":"rt-antigravity-cli-local-123"}"#,
+            r#"{"provider_type":"antigravity","client_id":"test-antigravity-client-id","client_secret":"test-antigravity-client-secret","project_id":"project-antigravity-local-1","client_version":"1.2.3","session_id":"sess-antigravity-local-123","refresh_token":"rt-antigravity-cli-local-123"}"#,
         )
         .expect("auth config should encrypt");
         StoredProviderCatalogKey::new(
@@ -1456,12 +1456,12 @@ async fn gateway_executes_openai_responses_antigravity_cross_format_upstream_str
     assert!(seen_refresh_request
         .body
         .contains("grant_type=refresh_token"));
-    assert!(seen_refresh_request.body.contains(
-        "client_id=1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-    ));
     assert!(seen_refresh_request
         .body
-        .contains("client_secret=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"));
+        .contains("client_id=test-antigravity-client-id"));
+    assert!(seen_refresh_request
+        .body
+        .contains("client_secret=test-antigravity-client-secret"));
     assert!(seen_refresh_request
         .body
         .contains("refresh_token=rt-antigravity-cli-local-123"));

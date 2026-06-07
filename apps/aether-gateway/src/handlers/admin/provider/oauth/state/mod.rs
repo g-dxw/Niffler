@@ -6,6 +6,7 @@ mod template;
 pub(crate) use self::auth_config::enrich_admin_provider_oauth_auth_config;
 pub(crate) use self::exchange::{
     exchange_admin_provider_oauth_code, exchange_admin_provider_oauth_refresh_token,
+    provider_oauth_transport_context,
 };
 pub(crate) use self::storage::build_provider_oauth_start_response;
 pub(crate) use self::template::{

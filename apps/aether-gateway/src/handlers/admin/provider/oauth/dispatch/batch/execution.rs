@@ -24,6 +24,7 @@ use crate::handlers::admin::provider::oauth::runtime::{
 };
 use crate::handlers::admin::provider::oauth::state::{
     admin_provider_oauth_template, exchange_admin_provider_oauth_refresh_token,
+    provider_oauth_transport_context,
 };
 use crate::handlers::admin::request::{AdminAppState, AdminProviderOAuthTemplate};
 use crate::GatewayError;
@@ -83,7 +84,9 @@ pub(super) async fn execute_admin_provider_oauth_batch_import_for_provider_type(
 async fn resolve_admin_provider_oauth_batch_import_tokens(
     state: &AdminAppState<'_>,
     template: Option<AdminProviderOAuthTemplate>,
+    provider_id: &str,
     provider_type: &str,
+    provider_config: Option<Value>,
     entry: &AdminProviderOAuthBatchImportEntry,
     request_proxy: Option<ProxySnapshot>,
 ) -> Result<AdminProviderOAuthResolvedBatchImport, String> {
@@ -122,11 +125,20 @@ async fn resolve_admin_provider_oauth_batch_import_tokens(
             );
         };
 
+        let exchange_ctx = provider_oauth_transport_context(
+            provider_id,
+            provider_type,
+            None,
+            None,
+            provider_config,
+            None,
+            request_proxy.clone(),
+        );
         let token_payload = match exchange_admin_provider_oauth_refresh_token(
             state,
             template,
+            exchange_ctx,
             refresh_token,
-            request_proxy.clone(),
         )
         .await
         {
@@ -254,7 +266,9 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
         let resolved_import = match resolve_admin_provider_oauth_batch_import_tokens(
             state,
             template,
+            provider_id,
             provider_type,
+            provider.config.clone(),
             entry,
             request_proxy.clone(),
         )

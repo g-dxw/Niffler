@@ -11,7 +11,7 @@ use super::super::super::runtime::{
 };
 use super::super::super::state::{
     admin_provider_oauth_template, build_admin_provider_oauth_backend_unavailable_response,
-    is_fixed_provider_type_for_provider_oauth,
+    is_fixed_provider_type_for_provider_oauth, provider_oauth_transport_context,
 };
 use super::shared::{
     parse_admin_provider_oauth_complete_callback, parse_admin_provider_oauth_complete_request_body,
@@ -134,13 +134,22 @@ pub(super) async fn handle_admin_provider_oauth_complete_provider(
         .await;
     let key_proxy = provider_oauth_key_proxy_value(payload.proxy_node_id.as_deref());
 
+    let exchange_ctx = provider_oauth_transport_context(
+        &provider_id,
+        &provider_type,
+        None,
+        None,
+        provider.config.clone(),
+        None,
+        request_proxy.clone(),
+    );
     let token_payload = match state
         .exchange_admin_provider_oauth_code(
             template,
+            exchange_ctx,
             &callback.code,
             &callback.state_nonce,
             state_data.pkce_verifier.as_deref(),
-            request_proxy.clone(),
         )
         .await
     {

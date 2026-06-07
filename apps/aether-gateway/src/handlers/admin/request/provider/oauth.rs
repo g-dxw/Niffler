@@ -10,6 +10,7 @@ use aether_data::repository::provider_oauth::{
     StoredAdminProviderOAuthDeviceSession, StoredAdminProviderOAuthState,
     PROVIDER_OAUTH_BATCH_TASK_TTL_SECS, PROVIDER_OAUTH_STATE_TTL_SECS,
 };
+use aether_oauth::provider::ProviderOAuthTransportContext;
 use axum::http;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use flate2::read::{DeflateDecoder, GzDecoder};
@@ -107,18 +108,18 @@ impl<'a> AdminAppState<'a> {
     pub(crate) async fn exchange_admin_provider_oauth_code(
         &self,
         template: AdminProviderOAuthTemplate,
+        ctx: ProviderOAuthTransportContext,
         code: &str,
         state_nonce: &str,
         pkce_verifier: Option<&str>,
-        proxy: Option<ProxySnapshot>,
     ) -> Result<serde_json::Value, Response<Body>> {
         crate::handlers::admin::provider::oauth::state::exchange_admin_provider_oauth_code(
             self,
             template,
+            ctx,
             code,
             state_nonce,
             pkce_verifier,
-            proxy,
         )
         .await
     }
@@ -126,14 +127,14 @@ impl<'a> AdminAppState<'a> {
     pub(crate) async fn exchange_admin_provider_oauth_refresh_token(
         &self,
         template: AdminProviderOAuthTemplate,
+        ctx: ProviderOAuthTransportContext,
         refresh_token: &str,
-        proxy: Option<ProxySnapshot>,
     ) -> Result<serde_json::Value, Response<Body>> {
         crate::handlers::admin::provider::oauth::state::exchange_admin_provider_oauth_refresh_token(
             self,
             template,
+            ctx,
             refresh_token,
-            proxy,
         )
         .await
     }

@@ -1,10 +1,10 @@
 use super::super::super::errors::build_internal_control_error_response;
-use super::super::super::provisioning::provider_oauth_token_payload_expires_at_unix_secs;
+use super::super::super::provisioning::build_provider_oauth_auth_config_from_token_payload;
 use super::super::super::quota::codex::refresh_codex_provider_quota_locally;
 use super::super::super::runtime::resolve_provider_oauth_runtime_endpoints;
 use super::super::super::state::{
-    admin_provider_oauth_template, enrich_admin_provider_oauth_auth_config,
-    is_fixed_provider_type_for_provider_oauth, json_non_empty_string,
+    admin_provider_oauth_template, is_fixed_provider_type_for_provider_oauth,
+    provider_oauth_transport_context,
 };
 use super::shared::{
     parse_admin_provider_oauth_complete_callback, parse_admin_provider_oauth_complete_request_body,
@@ -20,7 +20,7 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use std::time::{SystemTime, UNIX_EPOCH};
+use serde_json::Value;
 
 pub(super) async fn handle_admin_provider_oauth_complete_key(
     state: &AdminAppState<'_>,
@@ -142,13 +142,26 @@ pub(super) async fn handle_admin_provider_oauth_complete_key(
         )
         .await;
 
+    let key_auth_config = state
+        .parse_catalog_auth_config_json(&key)
+        .map(Value::Object);
+    let exchange_ctx = provider_oauth_transport_context(
+        &provider_id,
+        &provider_type,
+        Some(&key_id),
+        key_auth_config.as_ref().map(Value::to_string),
+        provider.config.clone(),
+        None,
+        request_proxy.clone(),
+    );
+
     let token_payload = match state
         .exchange_admin_provider_oauth_code(
             template,
+            exchange_ctx,
             &callback.code,
             &callback.state_nonce,
             state_data.pkce_verifier.as_deref(),
-            request_proxy.clone(),
         )
         .await
     {
@@ -156,37 +169,14 @@ pub(super) async fn handle_admin_provider_oauth_complete_key(
         Err(response) => return Ok(response),
     };
 
-    let Some(access_token) = json_non_empty_string(token_payload.get("access_token")) else {
+    let (auth_config, access_token, refresh_token, expires_at) =
+        build_provider_oauth_auth_config_from_token_payload(&provider_type, &token_payload);
+    let Some(access_token) = access_token else {
         return Ok(build_internal_control_error_response(
             http::StatusCode::BAD_REQUEST,
             "token exchange 返回缺少 access_token",
         ));
     };
-    let refresh_token = json_non_empty_string(token_payload.get("refresh_token"));
-    let now_unix_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
-    let expires_at =
-        provider_oauth_token_payload_expires_at_unix_secs(&token_payload, now_unix_secs);
-
-    let mut auth_config = serde_json::Map::new();
-    auth_config.insert("provider_type".to_string(), json!(provider_type.clone()));
-    auth_config.insert("updated_at".to_string(), json!(now_unix_secs));
-    if let Some(token_type) = token_payload.get("token_type").cloned() {
-        auth_config.insert("token_type".to_string(), token_type);
-    }
-    if let Some(refresh_token) = refresh_token.as_ref() {
-        auth_config.insert("refresh_token".to_string(), json!(refresh_token));
-    }
-    if let Some(expires_at) = expires_at {
-        auth_config.insert("expires_at".to_string(), json!(expires_at));
-    }
-    if let Some(scope) = token_payload.get("scope").cloned() {
-        auth_config.insert("scope".to_string(), scope);
-    }
-    enrich_admin_provider_oauth_auth_config(&provider_type, &mut auth_config, &token_payload);
 
     let Some(encrypted_api_key) = state.encrypt_catalog_secret_with_fallbacks(&access_token) else {
         return Ok(build_internal_control_error_response(

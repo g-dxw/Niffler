@@ -26,6 +26,21 @@ pub struct GenericProviderOAuthTemplate {
     pub uses_json_payload: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedOAuthClient {
+    client_id: String,
+    client_secret: Option<String>,
+    store_in_auth_config: bool,
+}
+
+struct OAuthGrantExchange<'a> {
+    grant_type: &'a str,
+    code_or_refresh_token: &'a str,
+    state: Option<&'a str>,
+    pkce_verifier: Option<&'a str>,
+    account_auth_config: Option<&'a Value>,
+}
+
 pub const GENERIC_PROVIDER_OAUTH_TEMPLATES: &[GenericProviderOAuthTemplate] = &[
     GenericProviderOAuthTemplate {
         provider_type: "claude_code",
@@ -68,8 +83,8 @@ pub const GENERIC_PROVIDER_OAUTH_TEMPLATES: &[GenericProviderOAuthTemplate] = &[
         display_name: "GeminiCli",
         authorize_url: "https://accounts.google.com/o/oauth2/v2/auth",
         token_url: "https://oauth2.googleapis.com/token",
-        client_id: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com",
-        client_secret: "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",
+        client_id: "",
+        client_secret: "",
         scopes: &[
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -84,8 +99,8 @@ pub const GENERIC_PROVIDER_OAUTH_TEMPLATES: &[GenericProviderOAuthTemplate] = &[
         display_name: "Antigravity",
         authorize_url: "https://accounts.google.com/o/oauth2/v2/auth",
         token_url: "https://oauth2.googleapis.com/token",
-        client_id: "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
-        client_secret: "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",
+        client_id: "",
+        client_secret: "",
         scopes: &[
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -141,114 +156,25 @@ impl GenericProviderOAuthAdapter {
         state: Option<&str>,
         pkce_verifier: Option<&str>,
     ) -> Result<ProviderOAuthTokenSet, OAuthError> {
-        let scope = (!self.template.scopes.is_empty()).then(|| self.template.scopes.join(" "));
-        let request_id = match grant_type {
-            "authorization_code" => "provider-oauth:exchange-code".to_string(),
-            "refresh_token" => "provider-oauth:refresh-token".to_string(),
-            _ => format!(
-                "provider-oauth:{}:{grant_type}",
-                self.template.provider_type
-            ),
-        };
-        let response = if self.template.uses_json_payload {
-            let mut body = serde_json::Map::from_iter([
-                (
-                    "grant_type".to_string(),
-                    Value::String(grant_type.to_string()),
-                ),
-                (
-                    "client_id".to_string(),
-                    Value::String(self.template.client_id.to_string()),
-                ),
-            ]);
-            if grant_type == "authorization_code" {
-                body.insert(
-                    "code".to_string(),
-                    Value::String(code_or_refresh_token.to_string()),
-                );
-                body.insert(
-                    "redirect_uri".to_string(),
-                    Value::String(self.template.redirect_uri.to_string()),
-                );
-                if let Some(state) = state {
-                    body.insert("state".to_string(), Value::String(state.to_string()));
-                }
-                if let Some(verifier) = pkce_verifier {
-                    body.insert(
-                        "code_verifier".to_string(),
-                        Value::String(verifier.to_string()),
-                    );
-                }
-            } else {
-                body.insert(
-                    "refresh_token".to_string(),
-                    Value::String(code_or_refresh_token.to_string()),
-                );
-            }
-            if let Some(scope) = scope.as_ref() {
-                body.insert("scope".to_string(), Value::String(scope.clone()));
-            }
-            executor
-                .execute(OAuthHttpRequest {
-                    request_id: request_id.clone(),
-                    method: reqwest::Method::POST,
-                    url: self.token_url(),
-                    headers: json_headers(),
-                    content_type: Some("application/json".to_string()),
-                    json_body: Some(Value::Object(body)),
-                    body_bytes: None,
-                    network: ctx.network.clone(),
-                })
-                .await?
-        } else {
-            let form_body = {
-                let mut form = form_urlencoded::Serializer::new(String::new());
-                form.append_pair("grant_type", grant_type);
-                form.append_pair("client_id", self.template.client_id);
-                if grant_type == "authorization_code" {
-                    form.append_pair("redirect_uri", self.template.redirect_uri);
-                    form.append_pair("code", code_or_refresh_token);
-                    if let Some(verifier) = pkce_verifier {
-                        form.append_pair("code_verifier", verifier);
-                    }
-                } else {
-                    form.append_pair("refresh_token", code_or_refresh_token);
-                }
-                if let Some(scope) = scope.as_ref() {
-                    form.append_pair("scope", scope);
-                }
-                if !self.template.client_secret.trim().is_empty() {
-                    form.append_pair("client_secret", self.template.client_secret);
-                }
-                form.finish().into_bytes()
-            };
-            executor
-                .execute(OAuthHttpRequest {
-                    request_id,
-                    method: reqwest::Method::POST,
-                    url: self.token_url(),
-                    headers: form_headers(),
-                    content_type: Some("application/x-www-form-urlencoded".to_string()),
-                    json_body: None,
-                    body_bytes: Some(form_body),
-                    network: ctx.network.clone(),
-                })
-                .await?
-        };
-        if !(200..300).contains(&response.status_code) {
-            return Err(OAuthError::HttpStatus {
-                status_code: response.status_code,
-                body_excerpt: truncate_body(&response.body_text),
-            });
-        }
-        let payload = response
-            .json_body
-            .or_else(|| serde_json::from_str::<Value>(&response.body_text).ok())
-            .ok_or_else(|| OAuthError::invalid_response("token response is not json"))?;
-        self.token_set_from_payload(payload)
+        self.exchange_grant_with_account_config(
+            executor,
+            ctx,
+            OAuthGrantExchange {
+                grant_type,
+                code_or_refresh_token,
+                state,
+                pkce_verifier,
+                account_auth_config: None,
+            },
+        )
+        .await
     }
 
-    fn token_set_from_payload(&self, payload: Value) -> Result<ProviderOAuthTokenSet, OAuthError> {
+    fn token_set_from_payload(
+        &self,
+        payload: Value,
+        client: &ResolvedOAuthClient,
+    ) -> Result<ProviderOAuthTokenSet, OAuthError> {
         let token_set = OAuthTokenSet::from_token_payload(payload.clone())
             .ok_or_else(|| OAuthError::invalid_response("token response missing access_token"))?;
         let mut auth_config = serde_json::Map::new();
@@ -269,10 +195,67 @@ impl GenericProviderOAuthAdapter {
         if let Some(scope) = token_set.scope.as_ref() {
             auth_config.insert("scope".to_string(), json!(scope));
         }
+        if client.store_in_auth_config {
+            auth_config.insert("client_id".to_string(), json!(client.client_id));
+            if let Some(client_secret) = client.client_secret.as_deref() {
+                auth_config.insert("client_secret".to_string(), json!(client_secret));
+            }
+        }
         enrich_generic_identity(self.template.provider_type, &mut auth_config, &payload);
         Ok(ProviderOAuthTokenSet {
             token_set,
             auth_config: Value::Object(auth_config),
+        })
+    }
+
+    fn resolve_oauth_client(
+        &self,
+        ctx: &ProviderOAuthTransportContext,
+        account_auth_config: Option<&Value>,
+    ) -> Result<ResolvedOAuthClient, OAuthError> {
+        let decrypted_auth_config = ctx
+            .decrypted_auth_config
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|value| serde_json::from_str::<Value>(value).ok());
+        let sources = [
+            account_auth_config,
+            decrypted_auth_config.as_ref(),
+            ctx.key_config.as_ref(),
+            ctx.provider_config.as_ref(),
+            ctx.endpoint_config.as_ref(),
+        ];
+        let configured_client_id = oauth_client_string_from_sources(&sources, OAUTH_CLIENT_ID_KEYS);
+        let configured_client_secret =
+            oauth_client_string_from_sources(&sources, OAUTH_CLIENT_SECRET_KEYS);
+        let template_client_id = non_empty_str(self.template.client_id);
+        let template_client_secret = non_empty_str(self.template.client_secret);
+        let requires_configured_client =
+            provider_type_requires_configured_oauth_client(self.template.provider_type);
+
+        if requires_configured_client && configured_client_id.is_none() {
+            return Err(OAuthError::invalid_request(format!(
+                "{} OAuth Client ID 未配置，请在 Provider 配置中设置 oauth_client.client_id",
+                self.template.display_name
+            )));
+        }
+        if requires_configured_client && configured_client_secret.is_none() {
+            return Err(OAuthError::invalid_request(format!(
+                "{} OAuth Client Secret 未配置，请在 Provider 配置中设置 oauth_client.client_secret",
+                self.template.display_name
+            )));
+        }
+
+        let client_id = configured_client_id
+            .or(template_client_id)
+            .ok_or_else(|| OAuthError::invalid_request("oauth client_id is required"))?;
+        let client_secret = configured_client_secret.or(template_client_secret);
+
+        Ok(ResolvedOAuthClient {
+            client_id,
+            client_secret,
+            store_in_auth_config: requires_configured_client,
         })
     }
 }
@@ -289,16 +272,17 @@ impl ProviderOAuthAdapter for GenericProviderOAuthAdapter {
 
     fn build_authorize_url(
         &self,
-        _ctx: &ProviderOAuthTransportContext,
+        ctx: &ProviderOAuthTransportContext,
         state: &str,
         code_challenge: Option<&str>,
     ) -> Result<OAuthAuthorizeResponse, OAuthError> {
+        let client = self.resolve_oauth_client(ctx, None)?;
         let mut url = url::Url::parse(self.template.authorize_url)
             .map_err(|_| OAuthError::invalid_request("authorize_url must be absolute"))?;
         {
             let mut query = url.query_pairs_mut();
             query.append_pair("response_type", "code");
-            query.append_pair("client_id", self.template.client_id);
+            query.append_pair("client_id", &client.client_id);
             query.append_pair("redirect_uri", self.template.redirect_uri);
             query.append_pair("state", state);
             if !self.template.scopes.is_empty() {
@@ -365,7 +349,17 @@ impl ProviderOAuthAdapter for GenericProviderOAuthAdapter {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| OAuthError::invalid_request("auth_config missing refresh_token"))?;
         let mut refreshed = self
-            .exchange_grant(executor, ctx, "refresh_token", refresh_token, None, None)
+            .exchange_grant_with_account_config(
+                executor,
+                ctx,
+                OAuthGrantExchange {
+                    grant_type: "refresh_token",
+                    code_or_refresh_token: refresh_token,
+                    state: None,
+                    pkce_verifier: None,
+                    account_auth_config: Some(&account.auth_config),
+                },
+            )
             .await?;
 
         // Refresh responses often omit stable account metadata, and some providers
@@ -404,12 +398,192 @@ impl ProviderOAuthAdapter for GenericProviderOAuthAdapter {
     }
 }
 
+impl GenericProviderOAuthAdapter {
+    async fn exchange_grant_with_account_config(
+        &self,
+        executor: &dyn OAuthHttpExecutor,
+        ctx: &ProviderOAuthTransportContext,
+        exchange: OAuthGrantExchange<'_>,
+    ) -> Result<ProviderOAuthTokenSet, OAuthError> {
+        let scope = (!self.template.scopes.is_empty()).then(|| self.template.scopes.join(" "));
+        let client = self.resolve_oauth_client(ctx, exchange.account_auth_config)?;
+        let request_id = match exchange.grant_type {
+            "authorization_code" => "provider-oauth:exchange-code".to_string(),
+            "refresh_token" => "provider-oauth:refresh-token".to_string(),
+            _ => format!(
+                "provider-oauth:{}:{}",
+                self.template.provider_type, exchange.grant_type
+            ),
+        };
+        let response = if self.template.uses_json_payload {
+            let mut body = serde_json::Map::from_iter([
+                (
+                    "grant_type".to_string(),
+                    Value::String(exchange.grant_type.to_string()),
+                ),
+                (
+                    "client_id".to_string(),
+                    Value::String(client.client_id.clone()),
+                ),
+            ]);
+            if exchange.grant_type == "authorization_code" {
+                body.insert(
+                    "code".to_string(),
+                    Value::String(exchange.code_or_refresh_token.to_string()),
+                );
+                body.insert(
+                    "redirect_uri".to_string(),
+                    Value::String(self.template.redirect_uri.to_string()),
+                );
+                if let Some(state) = exchange.state {
+                    body.insert("state".to_string(), Value::String(state.to_string()));
+                }
+                if let Some(verifier) = exchange.pkce_verifier {
+                    body.insert(
+                        "code_verifier".to_string(),
+                        Value::String(verifier.to_string()),
+                    );
+                }
+            } else {
+                body.insert(
+                    "refresh_token".to_string(),
+                    Value::String(exchange.code_or_refresh_token.to_string()),
+                );
+            }
+            if let Some(scope) = scope.as_ref() {
+                body.insert("scope".to_string(), Value::String(scope.clone()));
+            }
+            executor
+                .execute(OAuthHttpRequest {
+                    request_id: request_id.clone(),
+                    method: reqwest::Method::POST,
+                    url: self.token_url(),
+                    headers: json_headers(),
+                    content_type: Some("application/json".to_string()),
+                    json_body: Some(Value::Object(body)),
+                    body_bytes: None,
+                    network: ctx.network.clone(),
+                })
+                .await?
+        } else {
+            let form_body = {
+                let mut form = form_urlencoded::Serializer::new(String::new());
+                form.append_pair("grant_type", exchange.grant_type);
+                form.append_pair("client_id", &client.client_id);
+                if exchange.grant_type == "authorization_code" {
+                    form.append_pair("redirect_uri", self.template.redirect_uri);
+                    form.append_pair("code", exchange.code_or_refresh_token);
+                    if let Some(verifier) = exchange.pkce_verifier {
+                        form.append_pair("code_verifier", verifier);
+                    }
+                } else {
+                    form.append_pair("refresh_token", exchange.code_or_refresh_token);
+                }
+                if let Some(scope) = scope.as_ref() {
+                    form.append_pair("scope", scope);
+                }
+                if let Some(client_secret) = client.client_secret.as_deref() {
+                    form.append_pair("client_secret", client_secret);
+                }
+                form.finish().into_bytes()
+            };
+            executor
+                .execute(OAuthHttpRequest {
+                    request_id,
+                    method: reqwest::Method::POST,
+                    url: self.token_url(),
+                    headers: form_headers(),
+                    content_type: Some("application/x-www-form-urlencoded".to_string()),
+                    json_body: None,
+                    body_bytes: Some(form_body),
+                    network: ctx.network.clone(),
+                })
+                .await?
+        };
+        if !(200..300).contains(&response.status_code) {
+            return Err(OAuthError::HttpStatus {
+                status_code: response.status_code,
+                body_excerpt: truncate_body(&response.body_text),
+            });
+        }
+        let payload = response
+            .json_body
+            .or_else(|| serde_json::from_str::<Value>(&response.body_text).ok())
+            .ok_or_else(|| OAuthError::invalid_response("token response is not json"))?;
+        self.token_set_from_payload(payload, &client)
+    }
+}
+
 pub fn template_for_provider_type(provider_type: &str) -> Option<GenericProviderOAuthTemplate> {
     let normalized = provider_type.trim();
     GENERIC_PROVIDER_OAUTH_TEMPLATES
         .iter()
         .find(|template| normalized.eq_ignore_ascii_case(template.provider_type))
         .copied()
+}
+
+const OAUTH_CLIENT_ID_KEYS: &[&str] = &[
+    "client_id",
+    "clientId",
+    "oauth_client_id",
+    "oauthClientId",
+    "google_client_id",
+    "googleClientId",
+];
+
+const OAUTH_CLIENT_SECRET_KEYS: &[&str] = &[
+    "client_secret",
+    "clientSecret",
+    "oauth_client_secret",
+    "oauthClientSecret",
+    "google_client_secret",
+    "googleClientSecret",
+];
+
+const OAUTH_CLIENT_OBJECT_KEYS: &[&str] = &[
+    "oauth_client",
+    "oauthClient",
+    "provider_oauth",
+    "providerOAuth",
+    "google_oauth",
+    "googleOAuth",
+    "oauth",
+];
+
+fn provider_type_requires_configured_oauth_client(provider_type: &str) -> bool {
+    matches!(
+        provider_type.trim().to_ascii_lowercase().as_str(),
+        "gemini_cli" | "antigravity"
+    )
+}
+
+fn oauth_client_string_from_sources(
+    sources: &[Option<&Value>],
+    field_keys: &[&str],
+) -> Option<String> {
+    sources
+        .iter()
+        .filter_map(|source| source.as_ref())
+        .find_map(|source| oauth_client_string_from_value(source, field_keys))
+}
+
+fn oauth_client_string_from_value(value: &Value, field_keys: &[&str]) -> Option<String> {
+    let object = value.as_object()?;
+    field_keys
+        .iter()
+        .find_map(|key| object.get(*key).and_then(value_to_string))
+        .or_else(|| {
+            OAUTH_CLIENT_OBJECT_KEYS.iter().find_map(|key| {
+                object
+                    .get(*key)
+                    .and_then(|nested| oauth_client_string_from_value(nested, field_keys))
+            })
+        })
+}
+
+fn non_empty_str(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 fn form_headers() -> BTreeMap<String, String> {
@@ -623,6 +797,66 @@ mod tests {
         assert!(adapter.capabilities().supports_refresh_token_import);
     }
 
+    #[test]
+    fn google_provider_authorize_requires_configured_client() {
+        let adapter = GenericProviderOAuthAdapter::for_provider_type("gemini_cli")
+            .expect("gemini_cli template should exist");
+        let ctx = ProviderOAuthTransportContext {
+            provider_id: "provider-1".to_string(),
+            provider_type: "gemini_cli".to_string(),
+            endpoint_id: None,
+            key_id: None,
+            auth_type: Some("oauth".to_string()),
+            decrypted_api_key: None,
+            decrypted_auth_config: None,
+            provider_config: None,
+            endpoint_config: None,
+            key_config: None,
+            network: crate::network::OAuthNetworkContext::provider_operation(None),
+        };
+
+        let error = adapter
+            .build_authorize_url(&ctx, "nonce", None)
+            .expect_err("missing client should fail");
+
+        assert!(
+            error.to_string().contains("OAuth Client ID 未配置"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn google_provider_authorize_uses_provider_configured_client() {
+        let adapter = GenericProviderOAuthAdapter::for_provider_type("gemini_cli")
+            .expect("gemini_cli template should exist");
+        let ctx = ProviderOAuthTransportContext {
+            provider_id: "provider-1".to_string(),
+            provider_type: "gemini_cli".to_string(),
+            endpoint_id: None,
+            key_id: None,
+            auth_type: Some("oauth".to_string()),
+            decrypted_api_key: None,
+            decrypted_auth_config: None,
+            provider_config: Some(json!({
+                "oauth_client": {
+                    "client_id": "test-gemini-client-id",
+                    "client_secret": "test-gemini-client-secret"
+                }
+            })),
+            endpoint_config: None,
+            key_config: None,
+            network: crate::network::OAuthNetworkContext::provider_operation(None),
+        };
+
+        let response = adapter
+            .build_authorize_url(&ctx, "nonce", None)
+            .expect("configured client should authorize");
+
+        assert!(response
+            .authorize_url
+            .contains("client_id=test-gemini-client-id"));
+    }
+
     #[derive(Debug, Clone)]
     struct StaticExecutor {
         seen_request: Arc<Mutex<Option<OAuthHttpRequest>>>,
@@ -706,5 +940,65 @@ mod tests {
             .expect("form body should be utf8");
         assert!(form.contains("grant_type=refresh_token"));
         assert!(form.contains("refresh_token=old-refresh-token"));
+    }
+
+    #[tokio::test]
+    async fn google_provider_refresh_uses_stored_client_config() {
+        let seen_request = Arc::new(Mutex::new(None));
+        let executor = StaticExecutor {
+            seen_request: Arc::clone(&seen_request),
+        };
+        let adapter = GenericProviderOAuthAdapter::for_provider_type("gemini_cli")
+            .expect("gemini_cli adapter should exist")
+            .with_token_url_override("https://oauth.example.test/token");
+        let ctx = ProviderOAuthTransportContext {
+            provider_id: "provider-1".to_string(),
+            provider_type: "gemini_cli".to_string(),
+            endpoint_id: None,
+            key_id: Some("key-1".to_string()),
+            auth_type: Some("oauth".to_string()),
+            decrypted_api_key: None,
+            decrypted_auth_config: None,
+            provider_config: None,
+            endpoint_config: None,
+            key_config: None,
+            network: crate::network::OAuthNetworkContext::provider_operation(None),
+        };
+        let account = ProviderOAuthAccount {
+            provider_type: "gemini_cli".to_string(),
+            access_token: "old-access-token".to_string(),
+            auth_config: json!({
+                "provider_type": "gemini_cli",
+                "refresh_token": "old-refresh-token",
+                "client_id": "stored-gemini-client-id",
+                "client_secret": "stored-gemini-client-secret",
+                "updated_at": 1
+            }),
+            expires_at_unix_secs: Some(1),
+            identity: BTreeMap::new(),
+        };
+
+        let refreshed = adapter
+            .refresh(&executor, &ctx, &account)
+            .await
+            .expect("refresh should succeed");
+
+        assert_eq!(
+            refreshed.auth_config["client_id"],
+            "stored-gemini-client-id"
+        );
+        assert_eq!(
+            refreshed.auth_config["client_secret"],
+            "stored-gemini-client-secret"
+        );
+        let seen = seen_request
+            .lock()
+            .expect("mutex should lock")
+            .clone()
+            .expect("request should be captured");
+        let form = String::from_utf8(seen.body_bytes.expect("form body should exist"))
+            .expect("form body should be utf8");
+        assert!(form.contains("client_id=stored-gemini-client-id"));
+        assert!(form.contains("client_secret=stored-gemini-client-secret"));
     }
 }

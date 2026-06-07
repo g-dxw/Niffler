@@ -92,8 +92,34 @@ pub(crate) fn build_provider_oauth_auth_config_from_token_payload(
     if let Some(scope) = token_payload.get("scope").cloned() {
         auth_config.insert("scope".to_string(), scope);
     }
+    preserve_provider_oauth_client_config(provider_type, &mut auth_config, token_payload);
     enrich_admin_provider_oauth_auth_config(provider_type, &mut auth_config, token_payload);
     (auth_config, access_token, refresh_token, expires_at)
+}
+
+fn provider_oauth_preserves_client_config(provider_type: &str) -> bool {
+    matches!(
+        provider_type.trim().to_ascii_lowercase().as_str(),
+        "gemini_cli" | "antigravity"
+    )
+}
+
+fn preserve_provider_oauth_client_config(
+    provider_type: &str,
+    auth_config: &mut Map<String, Value>,
+    token_payload: &Value,
+) {
+    if !provider_oauth_preserves_client_config(provider_type) {
+        return;
+    }
+    let Some(payload) = token_payload.as_object() else {
+        return;
+    };
+    for field in ["client_id", "client_secret"] {
+        if let Some(value) = payload.get(field).cloned() {
+            auth_config.insert(field.to_string(), value);
+        }
+    }
 }
 
 fn grok_oauth_catalog_key_fingerprint(
@@ -309,7 +335,8 @@ fn provider_oauth_catalog_key_api_formats(
 #[cfg(test)]
 mod tests {
     use super::{
-        grok_oauth_catalog_key_fingerprint, provider_oauth_token_payload_expires_at_unix_secs,
+        build_provider_oauth_auth_config_from_token_payload, grok_oauth_catalog_key_fingerprint,
+        provider_oauth_token_payload_expires_at_unix_secs,
     };
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use serde_json::json;
@@ -358,6 +385,30 @@ mod tests {
         assert_eq!(
             provider_oauth_token_payload_expires_at_unix_secs(&payload, 1_000),
             Some(2_000_000_000)
+        );
+    }
+
+    #[test]
+    fn google_provider_auth_config_preserves_oauth_client_fields() {
+        let payload = json!({
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "client_id": "test-gemini-cli-client-id",
+            "client_secret": "test-gemini-cli-client-secret"
+        });
+
+        let (auth_config, access_token, refresh_token, _) =
+            build_provider_oauth_auth_config_from_token_payload("gemini_cli", &payload);
+
+        assert_eq!(access_token.as_deref(), Some("access"));
+        assert_eq!(refresh_token.as_deref(), Some("refresh"));
+        assert_eq!(
+            auth_config.get("client_id"),
+            Some(&json!("test-gemini-cli-client-id"))
+        );
+        assert_eq!(
+            auth_config.get("client_secret"),
+            Some(&json!("test-gemini-cli-client-secret"))
         );
     }
 

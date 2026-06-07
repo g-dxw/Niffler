@@ -598,7 +598,7 @@ async fn gateway_executes_gemini_cli_stream_via_local_decision_gate_after_oauth_
     fn sample_provider_catalog_key() -> StoredProviderCatalogKey {
         let encrypted_auth_config = encrypt_python_fernet_plaintext(
             DEVELOPMENT_ENCRYPTION_KEY,
-            r#"{"provider_type":"gemini_cli","refresh_token":"rt-gemini-cli-stream-local-123"}"#,
+            r#"{"provider_type":"gemini_cli","client_id":"test-gemini-cli-client-id","client_secret":"test-gemini-cli-client-secret","refresh_token":"rt-gemini-cli-stream-local-123"}"#,
         )
         .expect("auth config should encrypt");
         StoredProviderCatalogKey::new(
@@ -891,12 +891,12 @@ async fn gateway_executes_gemini_cli_stream_via_local_decision_gate_after_oauth_
     assert!(seen_refresh_request
         .body
         .contains("grant_type=refresh_token"));
-    assert!(seen_refresh_request.body.contains(
-        "client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
-    ));
     assert!(seen_refresh_request
         .body
-        .contains("client_secret=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"));
+        .contains("client_id=test-gemini-cli-client-id"));
+    assert!(seen_refresh_request
+        .body
+        .contains("client_secret=test-gemini-cli-client-secret"));
     assert!(seen_refresh_request
         .body
         .contains("refresh_token=rt-gemini-cli-stream-local-123"));
@@ -1552,7 +1552,7 @@ async fn gateway_executes_antigravity_gemini_cli_stream_via_local_decision_gate_
     fn sample_provider_catalog_key() -> StoredProviderCatalogKey {
         let encrypted_auth_config = encrypt_python_fernet_plaintext(
             DEVELOPMENT_ENCRYPTION_KEY,
-            r#"{"provider_type":"antigravity","project_id":"project-antigravity-stream-local-1","client_version":"1.2.3","session_id":"sess-antigravity-stream-local-123","refresh_token":"rt-antigravity-cli-stream-local-123"}"#,
+            r#"{"provider_type":"antigravity","client_id":"test-antigravity-client-id","client_secret":"test-antigravity-client-secret","project_id":"project-antigravity-stream-local-1","client_version":"1.2.3","session_id":"sess-antigravity-stream-local-123","refresh_token":"rt-antigravity-cli-stream-local-123"}"#,
         )
         .expect("auth config should encrypt");
         StoredProviderCatalogKey::new(
@@ -1899,12 +1899,12 @@ async fn gateway_executes_antigravity_gemini_cli_stream_via_local_decision_gate_
     assert!(seen_refresh_request
         .body
         .contains("grant_type=refresh_token"));
-    assert!(seen_refresh_request.body.contains(
-        "client_id=1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-    ));
     assert!(seen_refresh_request
         .body
-        .contains("client_secret=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"));
+        .contains("client_id=test-antigravity-client-id"));
+    assert!(seen_refresh_request
+        .body
+        .contains("client_secret=test-antigravity-client-secret"));
     assert!(seen_refresh_request
         .body
         .contains("refresh_token=rt-antigravity-cli-stream-local-123"));

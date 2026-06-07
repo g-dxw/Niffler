@@ -2,7 +2,7 @@ use super::super::errors::build_internal_control_error_response;
 use super::super::state::{
     admin_provider_oauth_template, build_provider_oauth_start_response,
     generate_provider_oauth_pkce_verifier, is_fixed_provider_type_for_provider_oauth,
-    provider_oauth_pkce_s256,
+    provider_oauth_pkce_s256, provider_oauth_transport_context,
 };
 use crate::handlers::admin::provider::shared::paths::{
     admin_provider_oauth_start_key_id, admin_provider_oauth_start_provider_id,
@@ -16,6 +16,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use serde_json::Value;
 
 pub(super) async fn handle_admin_provider_oauth_start_key(
     state: &AdminAppState<'_>,
@@ -92,12 +93,26 @@ pub(super) async fn handle_admin_provider_oauth_start_key(
         }
     };
 
-    Ok(Json(build_provider_oauth_start_response(
-        template,
-        &nonce,
-        code_challenge.as_deref(),
-    ))
-    .into_response())
+    let key_auth_config = state
+        .parse_catalog_auth_config_json(&key)
+        .map(Value::Object);
+    let ctx = provider_oauth_transport_context(
+        &provider_id,
+        &provider_type,
+        Some(&key_id),
+        key_auth_config.as_ref().map(Value::to_string),
+        provider.config.clone(),
+        None,
+        None,
+    );
+    let response =
+        match build_provider_oauth_start_response(template, ctx, &nonce, code_challenge.as_deref())
+        {
+            Ok(response) => response,
+            Err(response) => return Ok(response),
+        };
+
+    Ok(Json(response).into_response())
 }
 
 pub(super) async fn handle_admin_provider_oauth_start_provider(
@@ -158,10 +173,21 @@ pub(super) async fn handle_admin_provider_oauth_start_provider(
         }
     };
 
-    Ok(Json(build_provider_oauth_start_response(
-        template,
-        &nonce,
-        code_challenge.as_deref(),
-    ))
-    .into_response())
+    let ctx = provider_oauth_transport_context(
+        &provider_id,
+        &provider_type,
+        None,
+        None,
+        provider.config.clone(),
+        None,
+        None,
+    );
+    let response =
+        match build_provider_oauth_start_response(template, ctx, &nonce, code_challenge.as_deref())
+        {
+            Ok(response) => response,
+            Err(response) => return Ok(response),
+        };
+
+    Ok(Json(response).into_response())
 }
