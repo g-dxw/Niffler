@@ -2491,9 +2491,11 @@ mod tests {
     #[test]
     fn provider_key_status_snapshot_payload_derives_codex_reset_at_from_countdown() {
         let mut key = sample_catalog_key();
+        let observed_at = provider_key_status_snapshot_now_unix_secs();
+        let reset_at = observed_at + 3_600;
         key.upstream_metadata = Some(json!({
             "codex": {
-                "updated_at": 1_775_553_285u64,
+                "updated_at": observed_at,
                 "primary_used_percent": 55.0,
                 "primary_reset_after_seconds": 3_600u64
             }
@@ -2511,9 +2513,9 @@ mod tests {
             .and_then(Value::as_object)
             .expect("quota window should exist");
 
-        assert_eq!(quota.get("reset_at"), Some(&json!(1_775_556_885u64)));
+        assert_eq!(quota.get("reset_at"), Some(&json!(reset_at)));
         assert_eq!(quota.get("reset_seconds"), Some(&json!(3_600u64)));
-        assert_eq!(window.get("reset_at"), Some(&json!(1_775_556_885u64)));
+        assert_eq!(window.get("reset_at"), Some(&json!(reset_at)));
         assert_eq!(window.get("reset_seconds"), Some(&json!(3_600u64)));
     }
 
