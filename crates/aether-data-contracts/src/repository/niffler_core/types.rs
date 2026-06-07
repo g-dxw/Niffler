@@ -145,6 +145,117 @@ impl NifflerPriceSourcePreference {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerProtocolKind {
+    Openai,
+    Anthropic,
+    Gemini,
+    Codex,
+    Custom,
+}
+
+impl NifflerProtocolKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Openai => "openai",
+            Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
+            Self::Codex => "codex",
+            Self::Custom => "custom",
+        }
+    }
+
+    pub const fn supports_openai_responses_image_tool(self) -> bool {
+        matches!(self, Self::Openai | Self::Codex)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerServiceCapabilityKind {
+    Text,
+    Streaming,
+    ImagesEndpoint,
+    OpenaiResponsesImageTool,
+    ModelList,
+    ModelTest,
+}
+
+impl NifflerServiceCapabilityKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Streaming => "streaming",
+            Self::ImagesEndpoint => "images_endpoint",
+            Self::OpenaiResponsesImageTool => "openai_responses_image_tool",
+            Self::ModelList => "model_list",
+            Self::ModelTest => "model_test",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerBillingReservationStatus {
+    Active,
+    Settled,
+    Released,
+    Expired,
+    ManualReview,
+}
+
+impl NifflerBillingReservationStatus {
+    pub const fn is_open(self) -> bool {
+        matches!(self, Self::Active | Self::ManualReview)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerBillingReservationEventKind {
+    Reserved,
+    Settled,
+    Released,
+    Expired,
+    ManualReview,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerReferralRewardRuleStatus {
+    Active,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerReferralRewardKind {
+    FixedAmount,
+    Percentage,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerReferralRewardLedgerStatus {
+    Pending,
+    Paid,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NifflerReferralRewardEventKind {
+    Created,
+    Paid,
+    Failed,
+    RetryScheduled,
+    ManualRetry,
+    ManualPaid,
+    Cancelled,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerUpstreamService {
     pub id: String,
@@ -165,6 +276,37 @@ impl StoredNifflerUpstreamService {
         validate_required("upstream_services.display_name", &self.display_name)?;
         validate_required("upstream_services.service_kind", &self.service_kind)?;
         validate_multiplier("upstream_services.cost_multiplier", self.cost_multiplier)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerUpstreamServiceCapability {
+    pub id: String,
+    pub upstream_service_id: String,
+    pub protocol_kind: NifflerProtocolKind,
+    pub capability_kind: NifflerServiceCapabilityKind,
+    pub is_enabled: bool,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl StoredNifflerUpstreamServiceCapability {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("upstream_service_capabilities.id", &self.id)?;
+        validate_required(
+            "upstream_service_capabilities.upstream_service_id",
+            &self.upstream_service_id,
+        )?;
+        if self.capability_kind == NifflerServiceCapabilityKind::OpenaiResponsesImageTool
+            && !self.protocol_kind.supports_openai_responses_image_tool()
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "openai_responses_image_tool can only be used by openai or codex protocol"
+                    .to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -385,6 +527,151 @@ impl StoredNifflerRouteAttempt {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerSettlementSnapshot {
+    pub id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub upstream_service_id: Option<String>,
+    pub upstream_account_id: Option<String>,
+    pub requested_model_name: String,
+    pub upstream_execution_model_name: Option<String>,
+    pub image_tool_model_name: Option<String>,
+    pub pricing_snapshot: serde_json::Value,
+    pub wallet_charge_usd: f64,
+    pub entitlement_charge_usd: f64,
+    pub upstream_cost_usd: f64,
+    pub gross_margin_usd: f64,
+    pub created_at_unix_ms: u64,
+    pub finalized_at_unix_ms: Option<u64>,
+}
+
+impl StoredNifflerSettlementSnapshot {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("settlement_snapshots.id", &self.id)?;
+        validate_required("settlement_snapshots.request_id", &self.request_id)?;
+        validate_required(
+            "settlement_snapshots.requested_model_name",
+            &self.requested_model_name,
+        )?;
+        validate_non_negative(
+            "settlement_snapshots.wallet_charge_usd",
+            self.wallet_charge_usd,
+        )?;
+        validate_non_negative(
+            "settlement_snapshots.entitlement_charge_usd",
+            self.entitlement_charge_usd,
+        )?;
+        validate_non_negative(
+            "settlement_snapshots.upstream_cost_usd",
+            self.upstream_cost_usd,
+        )?;
+        validate_finite(
+            "settlement_snapshots.gross_margin_usd",
+            self.gross_margin_usd,
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerBillingReservation {
+    pub id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub status: NifflerBillingReservationStatus,
+    pub reserved_total_usd: f64,
+    pub wallet_reserved_usd: f64,
+    pub entitlement_reserved_usd: f64,
+    pub reserved_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub finalized_at_unix_ms: Option<u64>,
+    pub settlement_snapshot_id: Option<String>,
+    pub release_reason: Option<String>,
+    pub idempotency_key: String,
+}
+
+impl StoredNifflerBillingReservation {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("billing_reservations.id", &self.id)?;
+        validate_required("billing_reservations.request_id", &self.request_id)?;
+        validate_required(
+            "billing_reservations.idempotency_key",
+            &self.idempotency_key,
+        )?;
+        validate_non_negative(
+            "billing_reservations.reserved_total_usd",
+            self.reserved_total_usd,
+        )?;
+        validate_non_negative(
+            "billing_reservations.wallet_reserved_usd",
+            self.wallet_reserved_usd,
+        )?;
+        validate_non_negative(
+            "billing_reservations.entitlement_reserved_usd",
+            self.entitlement_reserved_usd,
+        )?;
+        if self.expires_at_unix_ms <= self.reserved_at_unix_ms {
+            return Err(crate::DataLayerError::InvalidInput(
+                "billing reservation expires_at_unix_ms must be after reserved_at_unix_ms"
+                    .to_string(),
+            ));
+        }
+        if self.status == NifflerBillingReservationStatus::Settled
+            && self.settlement_snapshot_id.is_none()
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "settled billing reservation must include settlement_snapshot_id".to_string(),
+            ));
+        }
+        if matches!(
+            self.status,
+            NifflerBillingReservationStatus::Released
+                | NifflerBillingReservationStatus::Expired
+                | NifflerBillingReservationStatus::ManualReview
+        ) && self.release_reason.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "released, expired, or manual review billing reservation must include release_reason"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerBillingReservationEvent {
+    pub id: String,
+    pub reservation_id: String,
+    pub event_kind: NifflerBillingReservationEventKind,
+    pub amount_usd: f64,
+    pub reason: Option<String>,
+    pub idempotency_key: String,
+    pub actor_id: Option<String>,
+    pub created_at_unix_ms: u64,
+}
+
+impl StoredNifflerBillingReservationEvent {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("billing_reservation_events.id", &self.id)?;
+        validate_required(
+            "billing_reservation_events.reservation_id",
+            &self.reservation_id,
+        )?;
+        validate_required(
+            "billing_reservation_events.idempotency_key",
+            &self.idempotency_key,
+        )?;
+        validate_non_negative("billing_reservation_events.amount_usd", self.amount_usd)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerAccountRiskEvent {
     pub id: String,
     pub upstream_service_id: Option<String>,
@@ -406,6 +693,136 @@ impl StoredNifflerAccountRiskEvent {
         validate_required(
             "account_risk_events.upstream_account_id",
             &self.upstream_account_id,
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerReferralRewardRule {
+    pub id: String,
+    pub display_name: String,
+    pub status: NifflerReferralRewardRuleStatus,
+    pub reward_kind: NifflerReferralRewardKind,
+    pub reward_value: f64,
+    pub applies_to_order_kind: Option<String>,
+    pub max_reward_usd: Option<f64>,
+    pub effective_from_unix_ms: u64,
+    pub effective_until_unix_ms: Option<u64>,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl StoredNifflerReferralRewardRule {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("referral_reward_rules.id", &self.id)?;
+        validate_required("referral_reward_rules.display_name", &self.display_name)?;
+        validate_non_negative("referral_reward_rules.reward_value", self.reward_value)?;
+        validate_optional_non_negative(
+            "referral_reward_rules.max_reward_usd",
+            self.max_reward_usd,
+        )?;
+        if matches!(self.reward_kind, NifflerReferralRewardKind::Percentage)
+            && self.reward_value > 1.0
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "percentage referral reward_value must be between 0 and 1".to_string(),
+            ));
+        }
+        if self
+            .effective_until_unix_ms
+            .is_some_and(|until| until <= self.effective_from_unix_ms)
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "referral reward effective_until_unix_ms must be after effective_from_unix_ms"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerReferralRewardLedger {
+    pub id: String,
+    pub order_id: String,
+    pub idempotency_key: String,
+    pub inviter_user_id: String,
+    pub invitee_user_id: String,
+    pub rule_id: Option<String>,
+    pub reward_amount_usd: f64,
+    pub rule_snapshot: serde_json::Value,
+    pub status: NifflerReferralRewardLedgerStatus,
+    pub failure_reason: Option<String>,
+    pub retry_count: u32,
+    pub paid_at_unix_ms: Option<u64>,
+    pub cancelled_at_unix_ms: Option<u64>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl StoredNifflerReferralRewardLedger {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("referral_reward_ledger.id", &self.id)?;
+        validate_required("referral_reward_ledger.order_id", &self.order_id)?;
+        validate_required(
+            "referral_reward_ledger.idempotency_key",
+            &self.idempotency_key,
+        )?;
+        validate_required(
+            "referral_reward_ledger.inviter_user_id",
+            &self.inviter_user_id,
+        )?;
+        validate_required(
+            "referral_reward_ledger.invitee_user_id",
+            &self.invitee_user_id,
+        )?;
+        validate_non_negative(
+            "referral_reward_ledger.reward_amount_usd",
+            self.reward_amount_usd,
+        )?;
+        if self.status == NifflerReferralRewardLedgerStatus::Failed
+            && self.failure_reason.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "failed referral reward must include failure_reason".to_string(),
+            ));
+        }
+        if self.status == NifflerReferralRewardLedgerStatus::Paid && self.paid_at_unix_ms.is_none()
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "paid referral reward must include paid_at_unix_ms".to_string(),
+            ));
+        }
+        if self.status == NifflerReferralRewardLedgerStatus::Cancelled
+            && self.cancelled_at_unix_ms.is_none()
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "cancelled referral reward must include cancelled_at_unix_ms".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerReferralRewardEvent {
+    pub id: String,
+    pub reward_ledger_id: String,
+    pub event_kind: NifflerReferralRewardEventKind,
+    pub reason: Option<String>,
+    pub actor_id: Option<String>,
+    pub event_snapshot: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+}
+
+impl StoredNifflerReferralRewardEvent {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("referral_reward_events.id", &self.id)?;
+        validate_required(
+            "referral_reward_events.reward_ledger_id",
+            &self.reward_ledger_id,
         )?;
         Ok(())
     }
@@ -684,7 +1101,8 @@ fn validate_multiplier(field: &str, value: f64) -> Result<(), crate::DataLayerEr
 }
 
 fn validate_non_negative(field: &str, value: f64) -> Result<(), crate::DataLayerError> {
-    if !value.is_finite() || value < 0.0 {
+    validate_finite(field, value)?;
+    if value < 0.0 {
         return Err(crate::DataLayerError::InvalidInput(format!(
             "{field} must be a non-negative finite number"
         )));
@@ -702,13 +1120,27 @@ fn validate_optional_non_negative(
     Ok(())
 }
 
+fn validate_finite(field: &str, value: f64) -> Result<(), crate::DataLayerError> {
+    if !value.is_finite() {
+        return Err(crate::DataLayerError::InvalidInput(format!(
+            "{field} must be a finite number"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         default_platform_error_message, NifflerAccountProtectionAction, NifflerAccountStatus,
-        NifflerPauseDuration, NifflerPriceSourcePreference, NifflerUpstreamErrorHandlingStep,
-        StoredNifflerApiKeyPause, StoredNifflerErrorReturnSetting, StoredNifflerProductPlan,
-        StoredNifflerProductPlanModel, StoredNifflerUpstreamModelPrice,
+        NifflerBillingReservationStatus, NifflerPauseDuration, NifflerPriceSourcePreference,
+        NifflerProtocolKind, NifflerReferralRewardKind, NifflerReferralRewardLedgerStatus,
+        NifflerReferralRewardRuleStatus, NifflerServiceCapabilityKind,
+        NifflerUpstreamErrorHandlingStep, StoredNifflerApiKeyPause,
+        StoredNifflerBillingReservation, StoredNifflerBillingReservationEvent,
+        StoredNifflerErrorReturnSetting, StoredNifflerProductPlan, StoredNifflerProductPlanModel,
+        StoredNifflerReferralRewardLedger, StoredNifflerReferralRewardRule,
+        StoredNifflerUpstreamModelPrice, StoredNifflerUpstreamServiceCapability,
     };
 
     #[test]
@@ -834,5 +1266,98 @@ mod tests {
             restored_by: None,
         };
         assert!(pause.validate().is_err());
+    }
+
+    #[test]
+    fn openai_responses_image_tool_is_protocol_scoped() {
+        let capability = StoredNifflerUpstreamServiceCapability {
+            id: "capability-1".to_string(),
+            upstream_service_id: "service-1".to_string(),
+            protocol_kind: NifflerProtocolKind::Gemini,
+            capability_kind: NifflerServiceCapabilityKind::OpenaiResponsesImageTool,
+            is_enabled: true,
+            config: None,
+            created_at_unix_ms: 1,
+            updated_at_unix_ms: 1,
+        };
+        assert!(capability.validate().is_err());
+    }
+
+    #[test]
+    fn settled_reservation_requires_snapshot() {
+        let reservation = StoredNifflerBillingReservation {
+            id: "reservation-1".to_string(),
+            request_id: "request-1".to_string(),
+            user_id: Some("user-1".to_string()),
+            api_key_id: Some("key-1".to_string()),
+            product_plan_id: Some("plan-1".to_string()),
+            status: NifflerBillingReservationStatus::Settled,
+            reserved_total_usd: 1.0,
+            wallet_reserved_usd: 1.0,
+            entitlement_reserved_usd: 0.0,
+            reserved_at_unix_ms: 1,
+            expires_at_unix_ms: 2,
+            finalized_at_unix_ms: Some(2),
+            settlement_snapshot_id: None,
+            release_reason: None,
+            idempotency_key: "reservation-request-1".to_string(),
+        };
+        assert!(reservation.validate().is_err());
+    }
+
+    #[test]
+    fn reservation_event_requires_idempotency_key() {
+        let event = StoredNifflerBillingReservationEvent {
+            id: "reservation-event-1".to_string(),
+            reservation_id: "reservation-1".to_string(),
+            event_kind: super::NifflerBillingReservationEventKind::Released,
+            amount_usd: 1.0,
+            reason: Some("request_cancelled".to_string()),
+            idempotency_key: "   ".to_string(),
+            actor_id: None,
+            created_at_unix_ms: 1,
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn referral_percentage_is_fraction() {
+        let rule = StoredNifflerReferralRewardRule {
+            id: "rule-1".to_string(),
+            display_name: "邀请返利".to_string(),
+            status: NifflerReferralRewardRuleStatus::Active,
+            reward_kind: NifflerReferralRewardKind::Percentage,
+            reward_value: 30.0,
+            applies_to_order_kind: Some("wallet_recharge".to_string()),
+            max_reward_usd: None,
+            effective_from_unix_ms: 1,
+            effective_until_unix_ms: None,
+            config: None,
+            created_at_unix_ms: 1,
+            updated_at_unix_ms: 1,
+        };
+        assert!(rule.validate().is_err());
+    }
+
+    #[test]
+    fn failed_referral_reward_requires_reason() {
+        let ledger = StoredNifflerReferralRewardLedger {
+            id: "reward-1".to_string(),
+            order_id: "order-1".to_string(),
+            idempotency_key: "order-1".to_string(),
+            inviter_user_id: "user-a".to_string(),
+            invitee_user_id: "user-b".to_string(),
+            rule_id: None,
+            reward_amount_usd: 1.0,
+            rule_snapshot: serde_json::json!({ "reward_kind": "fixed_amount" }),
+            status: NifflerReferralRewardLedgerStatus::Failed,
+            failure_reason: None,
+            retry_count: 0,
+            paid_at_unix_ms: None,
+            cancelled_at_unix_ms: None,
+            created_at_unix_ms: 1,
+            updated_at_unix_ms: 1,
+        };
+        assert!(ledger.validate().is_err());
     }
 }

@@ -19,6 +19,9 @@
 - `deploy.sh` 不再使用 `Dockerfile.app.local`，也不再计算代码哈希。
 - `deploy.sh` 只执行镜像拉取和 `docker compose up -d --no-build`。
 - `scripts/deploy-ci-artifact.sh` 会从 CI 下载镜像文件，上传到服务器，执行 `docker load`，再重启指定服务。
+- 生产执行 `scripts/deploy-ci-artifact.sh` 必须显式传入 `--run-id` 或 `--commit`，不能默认部署“最新成功产物”。
+- 使用 `--commit` 时，脚本会按提交号查找对应的成功 `Build App Image` 工作流；如果没有找到成功产物，脚本必须停止，不能退回到默认分支的最新产物。
+- `--allow-latest-for-local` 只允许本地验证或临时排查使用，不能作为生产发布命令。
 
 ## 影响范围
 
@@ -34,14 +37,40 @@
 APP_SERVICES="frontdoor background" \
 APP_IMAGE=niffler-app:latest \
 GH_REPO=ryfineZ/Niffler \
-./scripts/deploy-ci-artifact.sh --host hd0526 --remote-dir /opt/niffler-app
+./scripts/deploy-ci-artifact.sh \
+  --host hd0526 \
+  --remote-dir /opt/niffler-app \
+  --commit <git-commit-sha>
 ```
 
-这个脚本会下载最近一次成功的 `Build App Image` 工作流产物，把镜像文件传到服务器，服务器加载成 `niffler-app:latest`，再重启 `frontdoor` 和 `background`。Postgres 和 Redis 不需要重启。
+这个脚本会下载指定提交对应的 `Build App Image` 工作流产物，把镜像文件传到服务器，服务器加载成 `niffler-app:latest`，再重启 `frontdoor` 和 `background`。Postgres 和 Redis 不需要重启。
+
+如果指定提交没有成功的 `Build App Image` 工作流，脚本会直接报错并停止。需要先触发并等待该提交的 CI 镜像构建成功，或者改用明确的 `--run-id`。
+
+如果已经知道 GitHub Actions run id，也可以使用：
+
+```bash
+APP_SERVICES="frontdoor background" \
+APP_IMAGE=niffler-app:latest \
+GH_REPO=ryfineZ/Niffler \
+./scripts/deploy-ci-artifact.sh \
+  --host hd0526 \
+  --remote-dir /opt/niffler-app \
+  --run-id <github-actions-run-id>
+```
+
+本地验证或临时排查时，才可以显式选择最新成功产物：
+
+```bash
+./scripts/deploy-ci-artifact.sh \
+  --host <test-host> \
+  --allow-latest-for-local
+```
 
 ## 验证方式
 
 - `bash -n deploy.sh`
 - `bash -n scripts/deploy-ci-artifact.sh`
+- 不传 `--run-id`、`--commit` 和 `--allow-latest-for-local` 时，`scripts/deploy-ci-artifact.sh` 必须拒绝执行。
 - GitHub Actions 的 `Build App Image` 工作流成功。
 - 服务器执行发布脚本后，`docker compose ps` 显示应用容器健康。

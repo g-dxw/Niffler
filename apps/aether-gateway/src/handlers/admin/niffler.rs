@@ -43,10 +43,17 @@ const SHADOW_TABLES: &[&str] = &[
     "niffler_model_base_prices",
     "niffler_upstream_model_prices",
     "niffler_account_model_capabilities",
+    "niffler_upstream_service_capabilities",
+    "niffler_settlement_snapshots",
+    "niffler_billing_reservations",
+    "niffler_billing_reservation_events",
     "niffler_route_attempts",
     "niffler_error_return_settings",
     "niffler_account_risk_events",
     "niffler_api_key_pauses",
+    "niffler_referral_reward_rules",
+    "niffler_referral_reward_ledger",
+    "niffler_referral_reward_events",
 ];
 
 pub(crate) async fn maybe_build_local_admin_niffler_response(

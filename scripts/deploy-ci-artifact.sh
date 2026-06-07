@@ -16,6 +16,8 @@ SSH_OPTS="${SSH_OPTS:-}"
 DEPLOY_HOST=""
 REMOTE_DIR="/opt/niffler-app"
 RUN_ID=""
+COMMIT_REF=""
+ALLOW_LATEST_FOR_LOCAL=false
 
 usage() {
     cat <<'EOF'
@@ -24,7 +26,9 @@ Usage: scripts/deploy-ci-artifact.sh --host <ssh-host> [options]
 Options:
   --host <ssh-host>        SSH host, for example hd0526
   --remote-dir <path>      Remote compose directory, default /opt/niffler-app
-  --run-id <id>            GitHub Actions run id; default latest successful run on main
+  --run-id <id>            GitHub Actions run id for the artifact to deploy
+  --commit <sha>           Git commit SHA; script resolves the successful workflow run for it
+  --allow-latest-for-local Allow latest successful run selection. Only for local verification or temporary diagnostics.
   -h, --help               Show help
 
 Environment:
@@ -38,19 +42,41 @@ Environment:
 EOF
 }
 
+require_option_value() {
+    local option_name="$1"
+    local option_value="${2:-}"
+    if [ -z "$option_value" ] || [[ "$option_value" == --* ]]; then
+        echo "Missing value for $option_name"
+        usage
+        exit 1
+    fi
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --host)
+            require_option_value "$1" "${2:-}"
             DEPLOY_HOST="${2:-}"
             shift 2
             ;;
         --remote-dir)
+            require_option_value "$1" "${2:-}"
             REMOTE_DIR="${2:-}"
             shift 2
             ;;
         --run-id)
+            require_option_value "$1" "${2:-}"
             RUN_ID="${2:-}"
             shift 2
+            ;;
+        --commit)
+            require_option_value "$1" "${2:-}"
+            COMMIT_REF="${2:-}"
+            shift 2
+            ;;
+        --allow-latest-for-local)
+            ALLOW_LATEST_FOR_LOCAL=true
+            shift
             ;;
         -h|--help)
             usage
@@ -77,7 +103,33 @@ for command_name in gh ssh scp; do
     fi
 done
 
+if [ -n "$RUN_ID" ] && [ -n "$COMMIT_REF" ]; then
+    echo "Use only one of --run-id or --commit"
+    exit 1
+fi
+
+if [ -n "$COMMIT_REF" ]; then
+    RUN_ID="$(gh run list \
+        --repo "$GH_REPO" \
+        --workflow "$WORKFLOW_NAME" \
+        --commit "$COMMIT_REF" \
+        --status success \
+        --limit 1 \
+        --json databaseId \
+        --jq '.[0].databaseId // ""')"
+    if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+        echo "No successful $WORKFLOW_NAME workflow run found for commit $COMMIT_REF"
+        echo "Confirm the CI image workflow has completed successfully, or deploy with --run-id."
+        exit 1
+    fi
+fi
+
 if [ -z "$RUN_ID" ]; then
+    if [ "$ALLOW_LATEST_FOR_LOCAL" != true ]; then
+        echo "Production deployment requires --run-id or --commit."
+        echo "Use --allow-latest-for-local only for local verification or temporary diagnostics."
+        exit 1
+    fi
     RUN_ID="$(gh run list \
         --repo "$GH_REPO" \
         --workflow "$WORKFLOW_NAME" \
