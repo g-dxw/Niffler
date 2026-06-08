@@ -4,7 +4,8 @@ use super::super::super::{
 };
 use super::super::helpers::{
     attach_audit_response, build_admin_user_api_key_detail_payload,
-    normalize_admin_optional_api_key_name, validate_admin_user_api_key_group_id,
+    normalize_admin_optional_api_key_name, project_admin_user_api_key_product_plan_binding,
+    validate_admin_user_api_key_group_id,
 };
 use super::super::paths::admin_user_api_key_parts;
 
@@ -161,6 +162,7 @@ pub(crate) async fn build_admin_update_user_api_key_response(
         .map(|snapshot| snapshot.api_key_is_locked)
         .unwrap_or(false);
     let mut payload = build_admin_user_api_key_detail_payload(state, &updated, is_locked);
+    project_admin_user_api_key_product_plan_binding(state, &api_key_id, &mut payload).await?;
     payload["message"] = json!("API Key更新成功");
     Ok(attach_audit_response(
         Json(payload).into_response(),

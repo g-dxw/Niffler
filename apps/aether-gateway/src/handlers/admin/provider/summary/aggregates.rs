@@ -1,5 +1,7 @@
 use super::value::build_admin_provider_summary_value;
+use crate::handlers::admin::niffler_legacy_projection::project_provider_summary_with_niffler_service;
 use crate::handlers::admin::request::AdminAppState;
+use aether_data_contracts::repository::niffler_core::NifflerUpstreamServiceListQuery;
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey,
 };
@@ -57,7 +59,7 @@ pub(crate) async fn build_admin_provider_summary_payload(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    Some(build_admin_provider_summary_value(
+    let mut payload = build_admin_provider_summary_value(
         &provider,
         &endpoints,
         &keys,
@@ -65,7 +67,11 @@ pub(crate) async fn build_admin_provider_summary_payload(
         model_stats.as_ref(),
         active_global_model_ids,
         now_unix_secs,
-    ))
+    );
+    if let Ok(Some(service)) = state.find_niffler_upstream_service_by_id(provider_id).await {
+        project_provider_summary_with_niffler_service(&mut payload, &service);
+    }
+    Some(payload)
 }
 
 pub(crate) async fn build_admin_providers_summary_payload(
@@ -233,6 +239,22 @@ pub(crate) async fn build_admin_providers_summary_payload(
             .or_default()
             .insert(row.global_model_id);
     }
+    let niffler_services_by_id = state
+        .list_niffler_upstream_services(&NifflerUpstreamServiceListQuery {
+            include_inactive: true,
+            search: None,
+            offset: 0,
+            limit: 1000,
+        })
+        .await
+        .ok()
+        .map(|page| {
+            page.items
+                .into_iter()
+                .map(|service| (service.id.clone(), service))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
     let now_unix_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -245,7 +267,7 @@ pub(crate) async fn build_admin_providers_summary_payload(
             .unwrap_or_default()
             .into_iter()
             .collect::<Vec<_>>();
-        items.push(build_admin_provider_summary_value(
+        let mut payload = build_admin_provider_summary_value(
             &provider,
             endpoints_by_provider
                 .get(&provider.id)
@@ -259,7 +281,11 @@ pub(crate) async fn build_admin_providers_summary_payload(
             model_stats_by_provider.get(&provider.id),
             active_global_model_ids,
             now_unix_secs,
-        ));
+        );
+        if let Some(service) = niffler_services_by_id.get(&provider.id) {
+            project_provider_summary_with_niffler_service(&mut payload, &service);
+        }
+        items.push(payload);
     }
 
     Some(json!({

@@ -1,5 +1,7 @@
 use super::super::super::build_admin_users_bad_request_response;
-use super::super::helpers::build_admin_user_api_key_detail_payload;
+use super::super::helpers::{
+    build_admin_user_api_key_detail_payload, project_admin_user_api_key_product_plan_binding,
+};
 use super::super::paths::admin_user_id_from_api_keys_path;
 
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
@@ -46,16 +48,17 @@ pub(crate) async fn build_admin_list_user_api_keys_response(
         .map(|snapshot| (snapshot.api_key_id.clone(), snapshot))
         .collect::<std::collections::BTreeMap<_, _>>();
 
-    let api_keys = export_records
-        .into_iter()
-        .map(|record| {
-            let is_locked = snapshot_by_id
-                .get(&record.api_key_id)
-                .map(|snapshot| snapshot.api_key_is_locked)
-                .unwrap_or(false);
-            build_admin_user_api_key_detail_payload(state, &record, is_locked)
-        })
-        .collect::<Vec<_>>();
+    let mut api_keys = Vec::with_capacity(export_records.len());
+    for record in export_records {
+        let is_locked = snapshot_by_id
+            .get(&record.api_key_id)
+            .map(|snapshot| snapshot.api_key_is_locked)
+            .unwrap_or(false);
+        let mut payload = build_admin_user_api_key_detail_payload(state, &record, is_locked);
+        project_admin_user_api_key_product_plan_binding(state, &record.api_key_id, &mut payload)
+            .await?;
+        api_keys.push(payload);
+    }
 
     Ok(Json(json!({
         "api_keys": api_keys,

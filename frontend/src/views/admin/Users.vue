@@ -1230,6 +1230,14 @@
                       分组：{{ apiKey.group_name || apiKeyGroupName(apiKey.group_id) }}
                     </Badge>
                     <Badge
+                      v-if="apiKey.legacy_group_binding_read_only"
+                      variant="outline"
+                      class="text-xs"
+                      :title="apiKey.legacy_group_binding_read_only_reason"
+                    >
+                      产品策略只读
+                    </Badge>
+                    <Badge
                       variant="secondary"
                       class="text-xs"
                     >
@@ -1386,7 +1394,7 @@
             id="admin-user-key-group"
             v-model="userApiKeyForm.group_id"
             class="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-            :disabled="apiKeyGroupOptions.length === 0"
+            :disabled="apiKeyGroupOptions.length === 0 || editingUserApiKeyGroupBindingReadOnly"
           >
             <option
               v-if="apiKeyGroupOptions.length === 0"
@@ -1402,6 +1410,12 @@
               {{ group.name }}{{ group.visibility === 'internal' ? '（内部分组）' : '' }}
             </option>
           </select>
+          <p
+            v-if="editingUserApiKeyGroupBindingReadOnly"
+            class="text-xs text-amber-700 dark:text-amber-300"
+          >
+            {{ editingUserApiKey?.legacy_group_binding_read_only_reason || '这把 Key 已绑定 Niffler Core 产品策略，旧分组绑定只读。' }}
+          </p>
           <p class="text-xs text-muted-foreground">
             分组决定这个 API Key 的按量可用范围、并发上限和钱包扣费倍率；套餐按套餐自己的模型范围使用。
           </p>
@@ -1639,7 +1653,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useUsersStore } from '@/stores/users'
 import { useAuthStore } from '@/stores/auth'
-import { usersApi, type User, type ApiKey, type UserSession, type UserBatchActionResponse, type UserBatchSelectionFilters, type UserGroup, type AdminUserPlanEntitlement } from '@/api/users'
+import { usersApi, type User, type ApiKey, type UserSession, type UserBatchActionResponse, type UserBatchSelectionFilters, type UserGroup, type AdminUserPlanEntitlement, type UpsertUserApiKeyRequest } from '@/api/users'
 import { formatSessionMeta } from '@/types/session'
 import { adminWalletApi, type AdminWallet } from '@/api/admin-wallets'
 import { adminBillingPlansApi, type BillingPlan, type DailyQuotaEntitlement } from '@/api/billing'
@@ -1724,7 +1738,7 @@ import {
   parseDatetimeLocal,
 } from '@/features/users/utils/grantPlanTime'
 
-const { success, error } = useToast()
+const { success, error, warning } = useToast()
 const { confirmDanger } = useConfirm()
 const { copyToClipboard } = useClipboard()
 const usersStore = useUsersStore()
@@ -1768,6 +1782,9 @@ const updatingUserPlanEntitlement = ref(false)
 const sessionDialogActionLoading = ref<string | null>(null)
 const apiKeyInput = ref<HTMLInputElement>()
 const editingUserApiKey = ref<ApiKey | null>(null)
+const editingUserApiKeyGroupBindingReadOnly = computed(
+  () => editingUserApiKey.value?.legacy_group_binding_read_only === true,
+)
 const userApiKeyForm = ref({
   name: '',
   group_id: '',
@@ -2579,16 +2596,21 @@ async function submitUserApiKeyForm() {
   creatingApiKey.value = true
   try {
     if (editingUserApiKey.value) {
-      await usersStore.updateApiKey(selectedUser.value.id, editingUserApiKey.value.id, {
+      const updatePayload: UpsertUserApiKeyRequest = {
         name: userApiKeyForm.value.name,
-        group_id: userApiKeyForm.value.group_id,
         rate_limit: userApiKeyForm.value.rate_limit ?? 0,
         concurrent_limit: userApiKeyForm.value.concurrent_limit,
         feature_settings: mergeChatPiiRedactionFeatureSettings(editingUserApiKey.value.feature_settings, {
           enabled: userApiKeyForm.value.chat_pii_redaction_enabled,
           inject_model_instruction: userApiKeyForm.value.chat_pii_redaction_placeholder_notice,
         }),
-      })
+      }
+      if (!editingUserApiKeyGroupBindingReadOnly.value) {
+        updatePayload.group_id = userApiKeyForm.value.group_id
+      } else {
+        warning(editingUserApiKey.value.legacy_group_binding_read_only_reason || '这把 Key 已绑定 Niffler Core 产品策略，本次只更新 Key 其他配置')
+      }
+      await usersStore.updateApiKey(selectedUser.value.id, editingUserApiKey.value.id, updatePayload)
       success('API Key已更新')
     } else {
       const response = await usersStore.createApiKey(selectedUser.value.id, {

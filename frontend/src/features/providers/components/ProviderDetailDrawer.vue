@@ -37,6 +37,14 @@
                   >
                     {{ provider.is_active ? '活跃' : '停用' }}
                   </Badge>
+                  <Badge
+                    v-if="providerReadOnly"
+                    variant="outline"
+                    class="text-xs shrink-0"
+                    :title="provider.legacy_read_only_reason"
+                  >
+                    Niffler Core 只读
+                  </Badge>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
                   <span :title="systemFormatConversionEnabled ? '系统级格式转换已启用' : (provider.enable_format_conversion ? '已启用格式转换（点击关闭）' : '启用格式转换')">
@@ -44,7 +52,7 @@
                       variant="ghost"
                       size="icon"
                       :class="(provider.enable_format_conversion || systemFormatConversionEnabled) ? 'text-primary' : ''"
-                      :disabled="systemFormatConversionEnabled"
+                      :disabled="systemFormatConversionEnabled || providerReadOnly"
                       @click="toggleFormatConversion"
                     >
                       <Shuffle class="w-4 h-4" />
@@ -55,7 +63,8 @@
                       variant="ghost"
                       size="icon"
                       :class="hasFailoverRules ? 'text-orange-500 dark:text-orange-400' : ''"
-                      @click="failoverRulesDialogOpen = true"
+                      :disabled="providerReadOnly"
+                      @click="openFailoverRulesDialog"
                     >
                       <GitBranch class="w-4 h-4" />
                     </Button>
@@ -69,7 +78,7 @@
                         variant="ghost"
                         size="icon"
                         :class="provider.proxy?.node_id ? 'text-blue-500' : ''"
-                        :disabled="savingProviderProxy"
+                        :disabled="savingProviderProxy || providerReadOnly"
                         :title="provider.proxy?.node_id ? `代理: ${getProviderProxyNodeName()}` : '设置代理节点'"
                       >
                         <Globe class="w-4 h-4" />
@@ -88,7 +97,7 @@
                             variant="ghost"
                             size="sm"
                             class="h-6 px-2 text-[10px] text-muted-foreground"
-                            :disabled="savingProviderProxy"
+                            :disabled="savingProviderProxy || providerReadOnly"
                             @click="clearProviderProxy"
                           >
                             清除
@@ -108,16 +117,18 @@
                   <Button
                     variant="ghost"
                     size="icon"
-                    title="编辑提供商"
-                    @click="$emit('edit', provider)"
+                    :disabled="providerReadOnly"
+                    :title="providerReadOnly ? '请到 Niffler Core 修改' : '编辑提供商'"
+                    @click="emitEditProvider"
                   >
                     <Edit class="w-4 h-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    :title="provider.is_active ? '点击停用' : '点击启用'"
-                    @click="$emit('toggleStatus', provider)"
+                    :disabled="providerReadOnly"
+                    :title="providerReadOnly ? '请到 Niffler Core 修改' : provider.is_active ? '点击停用' : '点击启用'"
+                    @click="emitToggleProviderStatus"
                   >
                     <Power class="w-4 h-4" />
                   </Button>
@@ -160,14 +171,14 @@
                     <span
                       class="text-xs px-2 py-0.5 rounded-md border border-border bg-background hover:bg-accent hover:border-accent-foreground/20 cursor-pointer transition-colors font-medium"
                       :class="{ 'opacity-40': !endpoint.is_active }"
-                      :title="`编辑 ${formatApiFormat(endpoint.api_format)} 端点`"
+                      :title="providerReadOnly ? '请到 Niffler Core 修改' : `编辑 ${formatApiFormat(endpoint.api_format)} 端点`"
                       @click="handleEditEndpoint(endpoint)"
                     >{{ formatApiFormat(endpoint.api_format) }}</span>
                   </template>
                   <span
                     v-if="endpoints.length > 0"
                     class="text-xs px-2 py-0.5 rounded-md border border-dashed border-border hover:bg-accent hover:border-accent-foreground/20 cursor-pointer transition-colors text-muted-foreground"
-                    title="编辑端点"
+                    :title="providerReadOnly ? '请到 Niffler Core 修改' : '编辑端点'"
                     @click="showAddEndpointDialog"
                   >编辑</span>
                   <Button
@@ -175,6 +186,7 @@
                     variant="outline"
                     size="sm"
                     class="h-7 text-xs"
+                    :disabled="providerReadOnly"
                     @click="showAddEndpointDialog"
                   >
                     <Plus class="w-3 h-3 mr-1" />
@@ -240,6 +252,7 @@
                         variant="outline"
                         size="sm"
                         class="h-8"
+                        :disabled="providerReadOnly"
                         @click="handleAddKeyToFirstEndpoint"
                       >
                         <Plus class="w-3.5 h-3.5 mr-1.5" />
@@ -456,7 +469,8 @@
                           variant="ghost"
                           size="icon"
                           class="h-7 w-7 text-green-600"
-                          :title="getRecoverKeyTitle(key)"
+                          :disabled="isKeyReadOnly(key)"
+                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : getRecoverKeyTitle(key)"
                           @click="handleRecoverKey(key)"
                         >
                           <RefreshCw class="w-3.5 h-3.5" />
@@ -465,7 +479,8 @@
                           variant="ghost"
                           size="icon"
                           class="h-7 w-7"
-                          title="模型权限"
+                          :disabled="isKeyReadOnly(key)"
+                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '模型权限'"
                           @click="handleKeyPermissions(key)"
                         >
                           <Shield class="w-3.5 h-3.5" />
@@ -481,8 +496,8 @@
                               size="icon"
                               class="h-7 w-7"
                               :class="key.proxy?.node_id ? 'text-blue-500' : ''"
-                              :disabled="savingProxyKeyId === key.id"
-                              :title="key.proxy?.node_id ? `代理: ${getKeyProxyNodeName(key)}` : '设置代理节点'"
+                              :disabled="savingProxyKeyId === key.id || isKeyReadOnly(key)"
+                              :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : key.proxy?.node_id ? `代理: ${getKeyProxyNodeName(key)}` : '设置代理节点'"
                               @click.stop
                             >
                               <Globe class="w-3.5 h-3.5" />
@@ -501,7 +516,7 @@
                                   variant="ghost"
                                   size="sm"
                                   class="h-6 px-2 text-[10px] text-muted-foreground"
-                                  :disabled="savingProxyKeyId === key.id"
+                                  :disabled="savingProxyKeyId === key.id || isKeyReadOnly(key)"
                                   @click="clearKeyProxy(key)"
                                 >
                                   清除
@@ -522,7 +537,8 @@
                           variant="ghost"
                           size="icon"
                           class="h-7 w-7"
-                          title="编辑密钥"
+                          :disabled="isKeyReadOnly(key)"
+                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '编辑密钥'"
                           @click="handleEditKey(endpoint, key)"
                         >
                           <Edit class="w-3.5 h-3.5" />
@@ -541,8 +557,8 @@
                           variant="ghost"
                           size="icon"
                           class="h-7 w-7"
-                          :disabled="togglingKeyId === key.id"
-                          :title="key.is_active ? '点击停用' : '点击启用'"
+                          :disabled="togglingKeyId === key.id || isKeyReadOnly(key)"
+                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : key.is_active ? '点击停用' : '点击启用'"
                           @click="toggleKeyActive(key)"
                         >
                           <Power class="w-3.5 h-3.5" />
@@ -551,7 +567,8 @@
                           variant="ghost"
                           size="icon"
                           class="h-7 w-7"
-                          title="删除密钥"
+                          :disabled="isKeyReadOnly(key)"
+                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '删除密钥'"
                           @click="handleDeleteKey(key)"
                         >
                           <Trash2 class="w-3.5 h-3.5" />
@@ -955,8 +972,9 @@
                       <!-- 优先级放最前面，支持点击编辑 -->
                       <span
                         v-if="editingPriorityKey !== key.id"
-                        title="点击编辑优先级"
-                        class="font-medium text-foreground/80 cursor-pointer hover:text-primary hover:underline"
+                        :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '点击编辑优先级'"
+                        class="font-medium text-foreground/80"
+                        :class="isKeyReadOnly(key) ? 'cursor-default' : 'cursor-pointer hover:text-primary hover:underline'"
                         @click="startEditPriority(key)"
                       >P{{ key.internal_priority }}</span>
                       <input
@@ -1445,6 +1463,45 @@ const hasFailoverRules = computed(() => {
   return (rules.success_failover_patterns?.length || 0) > 0
     || (rules.error_stop_patterns?.length || 0) > 0
 })
+const providerReadOnly = computed(() => provider.value?.legacy_read_only === true)
+
+function showProviderReadOnly() {
+  showWarning(provider.value?.legacy_read_only_reason || '这个提供商已迁移到 Niffler Core，旧入口只读')
+}
+
+function isKeyReadOnly(key: EndpointAPIKey): boolean {
+  return providerReadOnly.value || key.legacy_read_only === true
+}
+
+function isModelReadOnly(model: Model): boolean {
+  return providerReadOnly.value || model.legacy_read_only === true
+}
+
+function openFailoverRulesDialog() {
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
+  failoverRulesDialogOpen.value = true
+}
+
+function emitEditProvider() {
+  if (!provider.value) return
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
+  emit('edit', provider.value)
+}
+
+function emitToggleProviderStatus() {
+  if (!provider.value) return
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
+  emit('toggleStatus', provider.value)
+}
 
 // Provider 级别代理配置状态
 const proxyNodesStore = useProxyNodesStore()
@@ -1658,6 +1715,10 @@ function handleClose() {
 // 切换格式转换开关
 async function toggleFormatConversion() {
   if (!provider.value) return
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   const newValue = !provider.value.enable_format_conversion
   try {
     const updated = await updateProvider(provider.value.id, { enable_format_conversion: newValue })
@@ -1671,6 +1732,11 @@ async function toggleFormatConversion() {
 
 // Provider 级别代理配置
 function handleProviderProxyPopoverToggle(open: boolean) {
+  if (open && providerReadOnly.value) {
+    showProviderReadOnly()
+    providerProxyPopoverOpen.value = false
+    return
+  }
   providerProxyPopoverOpen.value = open
   if (open) {
     proxyNodesStore.ensureLoaded()
@@ -1686,6 +1752,10 @@ function getProviderProxyNodeName(): string {
 
 async function setProviderProxy(nodeId: string) {
   if (!provider.value) return
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   savingProviderProxy.value = true
   try {
     const updated = await updateProvider(provider.value.id, {
@@ -1704,6 +1774,10 @@ async function setProviderProxy(nodeId: string) {
 
 async function clearProviderProxy() {
   if (!provider.value) return
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   savingProviderProxy.value = true
   try {
     const updated = await updateProvider(provider.value.id, { proxy: null })
@@ -1720,11 +1794,19 @@ async function clearProviderProxy() {
 
 // 显示端点管理对话框
 function showAddEndpointDialog() {
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   endpointDialogOpen.value = true
 }
 
 // ===== 端点事件处理 =====
 function handleEditEndpoint(_endpoint: ProviderEndpoint) {
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   // 点击任何端点都打开管理对话框
   endpointDialogOpen.value = true
 }
@@ -1736,6 +1818,10 @@ async function handleEndpointChanged() {
 
 // ===== 密钥事件处理 =====
 function handleAddKey(endpoint: ProviderEndpoint) {
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   currentEndpoint.value = endpoint
   editingKey.value = null
   keyFormDialogOpen.value = true
@@ -1743,6 +1829,10 @@ function handleAddKey(endpoint: ProviderEndpoint) {
 
 // 添加密钥/账号（如果有多个端点则添加到第一个）
 function handleAddKeyToFirstEndpoint() {
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   if (endpoints.value.length === 0) return
 
   // OAuth 账号型提供商：打开 OAuth 账号对话框
@@ -1755,6 +1845,10 @@ function handleAddKeyToFirstEndpoint() {
 }
 
 function handleEditKey(endpoint: ProviderEndpoint | undefined, key: EndpointAPIKey) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   currentEndpoint.value = endpoint || null
   editingKey.value = key
   // OAuth 密钥使用专门的编辑对话框
@@ -1766,6 +1860,10 @@ function handleEditKey(endpoint: ProviderEndpoint | undefined, key: EndpointAPIK
 }
 
 function handleKeyPermissions(key: EndpointAPIKey) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   editingKey.value = key
   keyPermissionsDialogOpen.value = true
 }
@@ -1833,12 +1931,22 @@ async function downloadRefreshToken(key: EndpointAPIKey) {
 
 
 function handleDeleteKey(key: EndpointAPIKey) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   keyToDelete.value = key
   deleteKeyConfirmOpen.value = true
 }
 
 async function confirmDeleteKey() {
   if (!keyToDelete.value) return
+  if (isKeyReadOnly(keyToDelete.value)) {
+    showProviderReadOnly()
+    deleteKeyConfirmOpen.value = false
+    keyToDelete.value = null
+    return
+  }
 
   const keyId = keyToDelete.value.id
   deleteKeyConfirmOpen.value = false
@@ -1856,6 +1964,10 @@ async function confirmDeleteKey() {
 }
 
 async function handleRecoverKey(key: EndpointAPIKey) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   try {
     const result = await recoverKeyHealth(key.id)
     showSuccess(result.message || 'Key已完全恢复')
@@ -1868,6 +1980,10 @@ async function handleRecoverKey(key: EndpointAPIKey) {
 
 async function handleRefreshOAuth(key: EndpointAPIKey) {
   if (refreshingOAuthKeyId.value) return
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   refreshingOAuthKeyId.value = key.id
   try {
     const result = await refreshProviderOAuth(key.id)
@@ -1931,6 +2047,10 @@ function isAccountLevelBlock(key: EndpointAPIKey): boolean {
 // 清除 OAuth 失效标记
 async function handleClearOAuthInvalid(key: EndpointAPIKey) {
   if (clearingOAuthInvalidKeyId.value) return
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
 
   const confirmed = await confirm({
     title: '清除账号异常标记',
@@ -2654,6 +2774,7 @@ function applyQuotaResults(
 async function autoRefreshQuotaInBackground(options: { ignoreCooldown?: boolean } = {}) {
   const providerId = props.providerId
   if (!providerId) return
+  if (providerReadOnly.value) return
   if (refreshingQuota.value) return
 
   const providerType = provider.value?.provider_type
@@ -2711,6 +2832,7 @@ async function openAntigravityQuotaDialog(key: EndpointAPIKey) {
 
   // 没有配额数据时主动获取
   if (!hasAntigravityQuotaDisplayData(key)) {
+    if (isKeyReadOnly(key)) return
     if (refreshingQuota.value) return
     refreshingQuota.value = true
     try {
@@ -2739,6 +2861,10 @@ async function handleKeyChanged() {
 // 切换密钥启用状态
 async function toggleKeyActive(key: EndpointAPIKey) {
   if (togglingKeyId.value) return
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
 
   togglingKeyId.value = key.id
   try {
@@ -2765,6 +2891,12 @@ function getKeyProxyNodeName(key: EndpointAPIKey): string | null {
 
 /** 切换代理 Popover 的打开/关闭状态 */
 function handleProxyPopoverToggle(keyId: string, open: boolean) {
+  const key = providerKeys.value.find(item => item.id === keyId)
+  if (open && key && isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    proxyPopoverOpenKeyId.value = null
+    return
+  }
   proxyPopoverOpenKeyId.value = open ? keyId : null
   if (open) {
     proxyNodesStore.ensureLoaded()
@@ -2773,6 +2905,10 @@ function handleProxyPopoverToggle(keyId: string, open: boolean) {
 
 /** 设置 Key 的代理节点 */
 async function setKeyProxy(key: EndpointAPIKey, nodeId: string) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   savingProxyKeyId.value = key.id
   try {
     await updateProviderKey(key.id, {
@@ -2791,6 +2927,10 @@ async function setKeyProxy(key: EndpointAPIKey, nodeId: string) {
 
 /** 清除 Key 的代理节点（回退到 Provider 级别代理） */
 async function clearKeyProxy(key: EndpointAPIKey) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   savingProxyKeyId.value = key.id
   try {
     await updateProviderKey(key.id, { proxy: null })
@@ -2808,17 +2948,29 @@ async function clearKeyProxy(key: EndpointAPIKey) {
 // ===== 模型事件处理 =====
 // 处理编辑模型
 function handleEditModel(model: Model) {
+  if (isModelReadOnly(model)) {
+    showProviderReadOnly()
+    return
+  }
   editingModel.value = model
   modelFormDialogOpen.value = true
 }
 
 // 处理打开批量关联对话框
 function handleBatchAssign() {
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   batchAssignDialogOpen.value = true
 }
 
 // 处理打开上游模型导入对话框
 function handleImportUpstream() {
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    return
+  }
   upstreamModelsDialogOpen.value = true
 }
 
@@ -2850,6 +3002,10 @@ async function handleModelSaved() {
 
 // ===== 点击编辑优先级 =====
 function startEditPriority(key: EndpointAPIKey) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   editingPriorityKey.value = key.id
   editingPriorityValue.value = key.internal_priority ?? 0
   prioritySaving.value = false
@@ -2887,6 +3043,11 @@ function handlePriorityBlur(key: EndpointAPIKey) {
 }
 
 async function savePriority(key: EndpointAPIKey) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    cancelEditPriority()
+    return
+  }
   const keyId = editingPriorityKey.value
   const newPriority = parseInt(String(editingPriorityValue.value), 10) || 0
 
@@ -2921,6 +3082,10 @@ async function savePriority(key: EndpointAPIKey) {
 
 // ===== 点击编辑倍率 =====
 function startEditMultiplier(key: EndpointAPIKey, format: string) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    return
+  }
   editingMultiplierKey.value = key.id
   editingMultiplierFormat.value = format
   editingMultiplierValue.value = getKeyRateMultiplier(key, format)
@@ -2955,6 +3120,12 @@ function handleMultiplierBlur(key: EndpointAPIKey, format: string) {
 }
 
 async function saveMultiplier(key: EndpointAPIKey, format: string) {
+  if (isKeyReadOnly(key)) {
+    showProviderReadOnly()
+    cancelEditMultiplier()
+    multiplierSaving.value = false
+    return
+  }
   // 防止重复调用（Enter 触发后阻止 blur 再次进入）
   if (multiplierSaving.value) return
   multiplierSaving.value = true
@@ -3041,6 +3212,11 @@ function handleKeyDragLeave() {
 
 async function handleKeyDrop(event: DragEvent, targetIndex: number) {
   event.preventDefault()
+  if (providerReadOnly.value) {
+    showProviderReadOnly()
+    handleKeyDragEnd()
+    return
+  }
 
   const draggedIndex = keyDragState.value.draggedIndex
   if (draggedIndex === null || draggedIndex === targetIndex) {
@@ -3056,6 +3232,11 @@ async function handleKeyDrop(event: DragEvent, targetIndex: number) {
 
   const draggedKey = keys[draggedIndex]
   const targetKey = keys[targetIndex]
+  if (isKeyReadOnly(draggedKey) || isKeyReadOnly(targetKey)) {
+    showProviderReadOnly()
+    handleKeyDragEnd()
+    return
+  }
   const draggedPriority = draggedKey.internal_priority ?? 0
   const targetPriority = targetKey.internal_priority ?? 0
 

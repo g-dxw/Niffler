@@ -60,7 +60,7 @@ pub(crate) async fn maybe_build_local_admin_provider_reads_response(
             .unwrap_or(1);
         let page_size = query_param_value(request_context.query_string(), "page_size")
             .and_then(|value| value.parse::<usize>().ok())
-            .filter(|value| *value > 0 && *value <= 10_000)
+            .filter(|value| *value > 0 && *value <= 500)
             .unwrap_or(20);
         let search =
             query_param_value(request_context.query_string(), "search").unwrap_or_default();

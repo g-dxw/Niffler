@@ -1,9 +1,12 @@
+use crate::handlers::admin::niffler_legacy_projection::project_provider_key_with_niffler_account;
 use crate::handlers::admin::request::AdminAppState;
 use crate::provider_key_auth::provider_key_effective_api_formats;
+use aether_data_contracts::repository::niffler_core::NifflerUpstreamAccountListQuery;
 use aether_data_contracts::repository::provider_catalog::{
     ProviderCatalogKeyListOrder, ProviderCatalogKeyListQuery,
 };
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 async fn build_admin_provider_key_items_payload(
@@ -42,20 +45,39 @@ async fn build_admin_provider_key_items_payload(
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
     let keys = key_page.items;
-
-    let items = keys
-        .into_iter()
-        .map(|key| {
-            let api_formats =
-                provider_key_effective_api_formats(&key, &provider.provider_type, &endpoints);
-            state.build_admin_provider_key_response(
-                &key,
-                &provider.provider_type,
-                &api_formats,
-                now_unix_secs,
-            )
+    let niffler_accounts_by_id = state
+        .list_niffler_upstream_accounts(&NifflerUpstreamAccountListQuery {
+            upstream_service_id: Some(provider.id.clone()),
+            status: None,
+            search: None,
+            offset: 0,
+            limit: 1000,
         })
-        .collect();
+        .await
+        .ok()
+        .map(|page| {
+            page.items
+                .into_iter()
+                .map(|account| (account.id.clone(), account))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+
+    let mut items = Vec::with_capacity(keys.len());
+    for key in keys {
+        let api_formats =
+            provider_key_effective_api_formats(&key, &provider.provider_type, &endpoints);
+        let mut payload = state.build_admin_provider_key_response(
+            &key,
+            &provider.provider_type,
+            &api_formats,
+            now_unix_secs,
+        );
+        if let Some(account) = niffler_accounts_by_id.get(&key.id) {
+            project_provider_key_with_niffler_account(&mut payload, &account, now_unix_secs);
+        }
+        items.push(payload);
+    }
     Some((items, key_page.total))
 }
 

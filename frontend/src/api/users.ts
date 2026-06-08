@@ -181,6 +181,12 @@ export interface UserGroup {
   is_default?: boolean
   created_at?: string | null
   updated_at?: string | null
+  niffler_core_projected?: boolean
+  legacy_read_only?: boolean
+  niffler_core_page?: string
+  legacy_read_only_reason?: string
+  niffler_core_product_plan_id?: string
+  niffler_core_product_plan_name?: string
 }
 
 export interface UpsertUserGroupRequest {
@@ -235,6 +241,14 @@ export interface ApiKey {
   concurrent_limit?: number | null  // 普通Key: 0 = 不限制并发，历史 null 兼容
   total_requests?: number  // 总请求数
   total_cost_usd?: number  // 总费用
+  niffler_core_projected?: boolean
+  niffler_core_product_plan_projected?: boolean
+  legacy_group_binding_read_only?: boolean
+  legacy_group_binding_read_only_reason?: string
+  niffler_core_page?: string
+  niffler_core_binding_id?: string
+  niffler_core_product_plan_id?: string
+  niffler_core_product_plan_name?: string
 }
 
 export interface UpsertUserApiKeyRequest {

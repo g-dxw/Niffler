@@ -1,3 +1,4 @@
+use crate::handlers::admin::niffler_legacy_projection::niffler_account_model_capability_projection;
 use crate::handlers::admin::provider::shared::model_test_capabilities::{
     admin_provider_model_supports_image_generation, admin_provider_model_test_capabilities_payload,
 };
@@ -7,7 +8,11 @@ use aether_admin::provider::models as admin_provider_models_pure;
 use aether_data_contracts::repository::global_models::{
     AdminProviderModelListQuery, StoredAdminProviderModel,
 };
+use aether_data_contracts::repository::niffler_core::{
+    NifflerAccountModelCapabilityListQuery, StoredNifflerAccountModelCapability,
+};
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogProvider;
+use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn admin_provider_model_effective_input_price(
@@ -65,6 +70,50 @@ pub(super) async fn build_admin_provider_models_payload(
     limit: usize,
     is_active: Option<bool>,
 ) -> Option<serde_json::Value> {
+    if let Ok(Some(service)) = state.find_niffler_upstream_service_by_id(provider_id).await {
+        let capability_page = state
+            .list_niffler_account_model_capabilities(&NifflerAccountModelCapabilityListQuery {
+                upstream_service_id: Some(service.id.clone()),
+                upstream_account_id: None,
+                model_name: None,
+                enabled_only: false,
+                offset: 0,
+                limit: 1000,
+            })
+            .await
+            .ok();
+        let mut by_model = BTreeMap::<String, StoredNifflerAccountModelCapability>::new();
+        for capability in capability_page
+            .map(|page| page.items)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|capability| {
+                let effective_active = service.is_active && capability.is_enabled;
+                match is_active {
+                    Some(true) => effective_active,
+                    Some(false) => !effective_active,
+                    None => true,
+                }
+            })
+        {
+            by_model
+                .entry(capability.model_name.clone())
+                .and_modify(|current| {
+                    if !current.is_enabled && capability.is_enabled {
+                        *current = capability.clone();
+                    }
+                })
+                .or_insert(capability);
+        }
+        let items = by_model
+            .into_values()
+            .skip(skip)
+            .take(limit)
+            .map(|capability| niffler_account_model_capability_projection(&service, &capability))
+            .collect::<Vec<_>>();
+        return Some(serde_json::Value::Array(items));
+    }
+
     if !state.has_provider_catalog_data_reader() || !state.has_global_model_data_reader() {
         return None;
     }

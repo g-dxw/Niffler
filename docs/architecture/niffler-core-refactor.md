@@ -505,6 +505,30 @@
 - 编译验证覆盖 Postgres、MySQL、SQLite 的新增运行时读取方法；不得只实现生产当前使用的数据库。
 - 生产验证只做健康检查、readiness、旧依赖稽核和少量只读灰度预览；不在生产执行批量写入，不在生产服务器编译。
 
+第 5 批第四片旧接口只读兼容规则：
+
+- 本片是旧接口只读兼容期 T0。T0 以本片对应 Git 提交通过 CI、使用 CI artifact 完成生产发布，并通过生产只读健康检查的时间为准；T0 后开始第 5 批第五片 14 天稳定观察。
+- 旧 Provider 读接口返回新权威数据的旧结构投影：`GET /api/admin/providers`、`GET /api/admin/providers/summary`、`GET /api/admin/providers/{id}/summary`、`GET /api/admin/providers/{id}/models`、`GET /api/admin/endpoints/providers/{id}/keys`。
+- 旧用户分组读接口返回新产品策略的旧结构投影：`GET /api/admin/user-groups`。
+- 已迁移对象的判定沿用第二片：旧 Provider ID 对应 `niffler_upstream_services.id`；旧 Provider Key ID 对应 `niffler_upstream_accounts.id`；旧 User Group ID 对应 `niffler_product_plans.id`；旧用户 Key ID 对应 `niffler_api_key_product_plan_bindings.api_key_id`。
+- 已迁移 Provider 的旧读响应必须以 `niffler_upstream_services` 为业务主数据：名称、启停状态、默认协议、基础地址和成本倍率来自新表；旧 Provider catalog 只保留为旧前端需要的结构字段和历史传输字段来源。
+- 已迁移 Provider Key 的旧读响应必须叠加 `niffler_upstream_accounts` 的账号名称、邮箱、手机号、状态、成本倍率、优先级和冷却时间；旧 Key 密钥内容、历史健康统计和 OAuth 快照只作为旧页面展示兼容，不再作为账号状态权威来源。
+- 已迁移 Provider 模型价格旧读响应必须只读展示新账号模型能力或产品策略模型投影；本片不允许旧页面继续写 Provider 模型价格。旧模型价格表只作为未迁移 Provider 的读源。
+- 已迁移用户分组的旧读响应必须以 `niffler_product_plans` 和 `niffler_product_plan_models` 为业务主数据：分组名显示产品策略名，可用模型和销售倍率来自新表；旧分组的允许 Provider、允许 API 格式和旧模型价格不再作为权威展示。
+- 所有投影响应必须带只读标记：`niffler_core_projected: true`、`legacy_read_only: true`、`niffler_core_page: "/admin/niffler-core"`，并给出 `legacy_read_only_reason`，让旧前端能统一禁用写按钮并提示去 Niffler Core 修改。
+- 未迁移对象继续返回旧读数据，但也必须保留旧写入口冻结逻辑；本片不批量迁移数据、不修改旧字段、不删除旧接口、不改变运行时调度、不改变计费、不改变结算和返利。
+- 旧读投影不能做无界查询：列表分页沿用旧接口参数并限制上限；新表读取按当前页对象 ID 或固定分页读取，不能为了计算精确总数触发全表扫描。
+- 旧页面必须在 Provider 管理、Provider 详情、账号列表、模型价格列表、用户分组列表和用户 Key 分组绑定位置展示“已迁移到 Niffler Core，旧入口只读”的清楚提示；已迁移对象的新增、编辑、删除、批量操作按钮必须隐藏或禁用。
+
+第 5 批第四片验证方式：
+
+- 后端测试覆盖：已迁移 Provider 的旧 summary 接口返回新服务名称、启停状态、成本倍率和只读标记；未迁移 Provider 仍返回旧数据。
+- 后端测试覆盖：已迁移 Provider Key 的旧 keys 接口返回新账号显示名、邮箱、手机号、状态和只读标记；未迁移 Key 仍返回旧数据。
+- 后端测试覆盖：已迁移用户分组的旧 user-groups 接口返回新产品策略名称、模型、销售倍率和只读标记；未迁移分组仍返回旧数据。
+- 后端测试覆盖：已迁移对象旧写接口仍返回 `409 Conflict`，响应体指向 `/admin/niffler-core`。
+- 前端类型检查和构建通过，确认旧页面对 `legacy_read_only` 和 `niffler_core_projected` 有统一只读提示。
+- 生产验证只调用健康检查、readiness、旧依赖稽核和少量旧读接口；不在生产执行批量写入，不在生产服务器编译。
+
 ## 需要持续验证的问题
 
 - 旧 `api_keys.allowed_providers`、`allowed_models`、`allowed_api_formats` 是否还有真实业务依赖。

@@ -239,7 +239,7 @@ export interface EndpointAPIKey {
   api_formats: string[]  // 支持的 endpoint signature 列表（如 "openai:chat"）
   api_key_masked: string
   api_key_plain?: string | null
-  auth_type: 'api_key' | 'service_account' | 'oauth' | 'bearer'  // 认证类型（必返回）
+  auth_type: 'api_key' | 'service_account' | 'oauth' | 'bearer' | 'custom_header'  // 认证类型（必返回）
   auth_type_by_format?: Record<string, 'api_key' | 'bearer'> | null
   allow_auth_channel_mismatch_formats?: string[] | null
   credential_kind?: 'raw_secret' | 'oauth_session' | 'service_account' | string | null
@@ -327,6 +327,17 @@ export interface EndpointAPIKey {
   upstream_metadata?: UpstreamMetadata | null
   // Key 级别代理配置（覆盖 Provider 级别代理）
   proxy?: ProxyConfig | null
+  niffler_core_projected?: boolean
+  legacy_read_only?: boolean
+  niffler_core_page?: string
+  legacy_read_only_reason?: string
+  niffler_core_upstream_account_id?: string
+  niffler_core_upstream_account_name?: string
+  niffler_core_account_status?: string
+  niffler_core_cost_multiplier?: number
+  cooldown_until_unix_ms?: number | null
+  last_tested_at_unix_ms?: number | null
+  last_test_error?: string | null
 }
 
 // Codex 上游元数据类型
@@ -704,6 +715,13 @@ export interface ProviderWithEndpointsSummary {
   kiro_simulated_cache_enabled?: boolean
   created_at: string
   updated_at: string
+  niffler_core_projected?: boolean
+  legacy_read_only?: boolean
+  niffler_core_page?: string
+  legacy_read_only_reason?: string
+  niffler_core_upstream_service_id?: string
+  niffler_core_upstream_service_name?: string
+  default_api_format?: string | null
 }
 
 export interface HealthStatus {

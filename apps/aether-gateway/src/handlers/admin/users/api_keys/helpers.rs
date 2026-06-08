@@ -1,3 +1,4 @@
+use crate::handlers::admin::niffler_legacy_projection::project_user_api_key_with_product_plan;
 use crate::handlers::admin::request::AdminAppState;
 use crate::handlers::admin::shared::{
     attach_admin_audit_response, decrypt_catalog_secret_with_fallbacks,
@@ -54,6 +55,27 @@ pub(super) fn build_admin_user_api_key_detail_payload(
         "last_used_at": format_optional_unix_secs_iso8601(record.last_used_at_unix_secs),
         "created_at": format_optional_unix_secs_iso8601(record.created_at_unix_secs),
     })
+}
+
+pub(super) async fn project_admin_user_api_key_product_plan_binding(
+    state: &AdminAppState<'_>,
+    api_key_id: &str,
+    payload: &mut serde_json::Value,
+) -> Result<(), GatewayError> {
+    let Some(binding) = state
+        .find_niffler_api_key_product_plan_binding_by_api_key_id(api_key_id)
+        .await?
+    else {
+        return Ok(());
+    };
+    let Some(plan) = state
+        .find_niffler_product_plan_by_id(&binding.product_plan_id)
+        .await?
+    else {
+        return Ok(());
+    };
+    project_user_api_key_with_product_plan(payload, &binding.id, &plan);
+    Ok(())
 }
 
 pub(crate) fn normalize_admin_optional_api_key_name(

@@ -54,6 +54,18 @@ impl<'a> AdminAppState<'a> {
             .await
     }
 
+    pub(crate) async fn list_niffler_account_model_capabilities(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerAccountModelCapabilityListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerAccountModelCapabilityListPage,
+        GatewayError,
+    >{
+        self.app
+            .list_niffler_account_model_capabilities(query)
+            .await
+    }
+
     pub(crate) async fn list_niffler_upstream_service_capabilities(
         &self,
         query: &aether_data_contracts::repository::niffler_core::NifflerUpstreamServiceCapabilityListQuery,

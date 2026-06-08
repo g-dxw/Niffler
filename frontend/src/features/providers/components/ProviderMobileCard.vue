@@ -8,6 +8,14 @@
       <div class="flex-1 min-w-0 space-y-0.5">
         <div class="flex items-center gap-1.5">
           <span class="font-medium text-foreground truncate">{{ provider.name }}</span>
+          <Badge
+            v-if="provider.legacy_read_only"
+            variant="outline"
+            class="text-[10px] px-1.5 py-0 shrink-0"
+            :title="provider.legacy_read_only_reason"
+          >
+            Niffler Core 只读
+          </Badge>
           <a
             v-if="provider.website"
             :href="provider.website"
@@ -57,15 +65,18 @@
         </div>
         <span
           v-else-if="provider.description"
-          class="text-xs text-muted-foreground truncate block max-w-[120px] group/desc cursor-pointer hover:text-foreground/70 transition-colors"
+          class="text-xs text-muted-foreground truncate block max-w-[120px] group/desc transition-colors"
+          :class="provider.legacy_read_only ? 'cursor-default' : 'cursor-pointer hover:text-foreground/70'"
           :title="provider.description"
           @click="handleStartEdit"
         >{{ provider.description }} <Pencil class="w-3 h-3 inline-block opacity-0 group-hover/desc:opacity-50 transition-opacity" /></span>
         <span
           v-else
-          class="text-xs text-muted-foreground cursor-pointer hover:text-foreground/70 transition-colors"
+          class="text-xs text-muted-foreground transition-colors"
+          :class="provider.legacy_read_only ? 'cursor-default' : 'cursor-pointer hover:text-foreground/70'"
+          :title="provider.legacy_read_only_reason"
           @click="handleStartEdit"
-        >添加备注</span>
+        >{{ provider.legacy_read_only ? '已迁移到 Niffler Core' : '添加备注' }}</span>
       </div>
       <div
         class="flex items-center gap-0.5 shrink-0"
@@ -84,7 +95,8 @@
           variant="ghost"
           size="icon"
           class="h-7 w-7"
-          title="编辑"
+          :disabled="provider.legacy_read_only"
+          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : '编辑'"
           @click="$emit('editProvider', provider)"
         >
           <Edit class="h-3.5 w-3.5" />
@@ -93,7 +105,8 @@
           variant="ghost"
           size="icon"
           class="h-7 w-7"
-          title="扩展操作配置"
+          :disabled="provider.legacy_read_only"
+          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : '扩展操作配置'"
           @click="$emit('openOpsConfig', provider)"
         >
           <KeyRound class="h-3.5 w-3.5" />
@@ -102,6 +115,8 @@
           variant="ghost"
           size="icon"
           class="h-7 w-7"
+          :disabled="provider.legacy_read_only"
+          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : provider.is_active ? '停用提供商' : '启用提供商'"
           @click="$emit('toggleStatus', provider)"
         >
           <Power class="h-3.5 w-3.5" />
@@ -110,6 +125,8 @@
           variant="ghost"
           size="icon"
           class="h-7 w-7"
+          :disabled="provider.legacy_read_only"
+          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : '删除提供商'"
           @click="$emit('deleteProvider', provider)"
         >
           <Trash2 class="h-3.5 w-3.5" />
@@ -282,6 +299,7 @@ watch(
 
 function handleStartEdit(event: Event) {
   event.stopPropagation()
+  if (props.provider.legacy_read_only) return
   emit('startEditDescription', event, props.provider)
 }
 

@@ -72,6 +72,11 @@ export interface Model {
   // 有效配置（合并 Model 和 GlobalModel 的 config）
   effective_config?: Record<string, unknown> | null
   model_test_capabilities?: ModelTestCapabilities | null
+  niffler_core_projected?: boolean
+  legacy_read_only?: boolean
+  niffler_core_page?: string
+  legacy_read_only_reason?: string
+  niffler_core_account_model_capability_id?: string
 }
 
 export interface ModelCreate {

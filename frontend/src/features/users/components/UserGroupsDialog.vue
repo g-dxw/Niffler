@@ -56,6 +56,14 @@
                 >
                   默认
                 </Badge>
+                <Badge
+                  v-if="group.legacy_read_only"
+                  variant="outline"
+                  class="h-5 px-1.5 py-0 text-[10px]"
+                  :title="group.legacy_read_only_reason"
+                >
+                  Niffler Core
+                </Badge>
               </span>
             </span>
             <ChevronRight class="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -70,7 +78,7 @@
               {{ editingGroupId ? '编辑分组' : '新建分组' }}
             </h4>
             <p class="text-xs text-muted-foreground">
-              {{ selectedGroup?.is_default ? '当前为所有用户的默认组' : '通过额外分组配置访问限制' }}
+              {{ selectedGroupReadOnly ? '已迁移到 Niffler Core 产品策略，旧入口只读' : selectedGroup?.is_default ? '当前为所有用户的默认组' : '通过额外分组配置访问限制' }}
             </p>
           </div>
           <div
@@ -82,8 +90,8 @@
               size="icon"
               class="nav-action h-8 w-8"
               :class="selectedGroup?.is_default ? 'text-emerald-500 hover:text-emerald-500' : ''"
-              :disabled="saving || selectedGroup?.is_default"
-              :title="selectedGroup?.is_default ? '默认注册组' : '设为默认注册组'"
+              :disabled="saving || selectedGroup?.is_default || selectedGroupReadOnly"
+              :title="selectedGroupReadOnly ? '请到 Niffler Core 修改' : selectedGroup?.is_default ? '默认注册组' : '设为默认注册组'"
               @click="toggleDefault"
             >
               <BadgeCheck class="h-4 w-4" />
@@ -92,8 +100,8 @@
               variant="ghost"
               size="icon"
               class="nav-action h-8 w-8"
-              :disabled="saving || selectedGroup?.is_default"
-              title="删除分组"
+              :disabled="saving || selectedGroup?.is_default || selectedGroupReadOnly"
+              :title="selectedGroupReadOnly ? '请到 Niffler Core 修改' : '删除分组'"
               @click="deleteSelectedGroup"
             >
               <Trash2 class="h-4 w-4" />
@@ -101,7 +109,18 @@
           </div>
         </div>
 
-        <div class="space-y-5">
+        <div
+          v-if="selectedGroupReadOnly"
+          class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          {{ selectedGroup?.legacy_read_only_reason || '这个分组已迁移到 Niffler Core，旧入口只读。' }}
+        </div>
+
+        <fieldset
+          class="space-y-5"
+          :disabled="selectedGroupReadOnly"
+          :class="selectedGroupReadOnly ? 'opacity-75' : ''"
+        >
           <div class="space-y-4">
             <div class="space-y-2">
               <Label class="text-sm font-medium">名称</Label>
@@ -414,7 +433,7 @@
               </p>
             </div>
           </div>
-        </div>
+        </fieldset>
       </div>
     </div>
 
@@ -427,7 +446,8 @@
         关闭
       </Button>
       <Button
-        :disabled="saving || !form.name.trim()"
+        :disabled="saving || !form.name.trim() || selectedGroupReadOnly"
+        :title="selectedGroupReadOnly ? '请到 Niffler Core 修改' : '保存'"
         @click="saveGroup"
       >
         保存
@@ -474,7 +494,7 @@ const emit = defineEmits<{
 }>()
 
 const usersStore = useUsersStore()
-const { success, error } = useToast()
+const { success, error, warning } = useToast()
 const { confirmDanger, confirmInfo } = useConfirm()
 const {
   providers,
@@ -511,6 +531,11 @@ const form = ref({
 })
 
 const selectedGroup = computed(() => groups.value.find((group) => group.id === editingGroupId.value) ?? null)
+const selectedGroupReadOnly = computed(() => selectedGroup.value?.legacy_read_only === true)
+
+function showSelectedGroupReadOnly(): void {
+  warning(selectedGroup.value?.legacy_read_only_reason || '这个分组已迁移到 Niffler Core，旧入口只读')
+}
 const userOptions = computed(() => props.users.map((user) => ({
   label: `${user.username}${user.email ? ` (${user.email})` : ''}`,
   value: user.id,
@@ -730,6 +755,10 @@ function groupButtonClass(groupId: string): string {
 async function toggleDefault(): Promise<void> {
   const group = selectedGroup.value
   if (!group || group.is_default) return
+  if (selectedGroupReadOnly.value) {
+    showSelectedGroupReadOnly()
+    return
+  }
   const confirmed = await confirmInfo(
     `确定将「${group.name}」设为默认注册组吗？后续本地注册和 OAuth 自动创建的用户将加入该分组。`,
     '设为默认注册组',
@@ -878,6 +907,10 @@ function applyProviderSalesMultiplier(provider: ProviderModelMultiplierSource): 
 
 async function saveGroup(): Promise<void> {
   if (!form.value.name.trim()) return
+  if (selectedGroupReadOnly.value) {
+    showSelectedGroupReadOnly()
+    return
+  }
   saving.value = true
   try {
     const saved = editingGroupId.value
@@ -900,6 +933,10 @@ async function saveGroup(): Promise<void> {
 async function deleteSelectedGroup(): Promise<void> {
   if (!selectedGroup.value) return
   const group = selectedGroup.value
+  if (selectedGroupReadOnly.value) {
+    showSelectedGroupReadOnly()
+    return
+  }
   const confirmed = await confirmDanger(
     `确定要删除用户分组 ${group.name} 吗？成员关系会一并清理。`,
     '删除用户分组',

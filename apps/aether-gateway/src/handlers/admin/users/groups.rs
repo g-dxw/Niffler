@@ -5,9 +5,13 @@ use super::{
 };
 use crate::constants::DEFAULT_USER_GROUP_CONFIG_KEY;
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_user_group_write;
+use crate::handlers::admin::niffler_legacy_projection::product_plan_user_group_projection;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
+use aether_data_contracts::repository::niffler_core::{
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+};
 use axum::{
     body::Body,
     http,
@@ -67,12 +71,48 @@ pub(in super::super) async fn build_admin_list_user_groups_response(
     state: &AdminAppState<'_>,
 ) -> Result<Response<Body>, GatewayError> {
     let default_group_id = read_default_user_group_id(state).await?;
-    let items = state
-        .list_user_groups()
-        .await?
-        .into_iter()
-        .map(|group| user_group_payload(group, default_group_id.as_deref()))
-        .collect::<Vec<_>>();
+    let groups = state.list_user_groups().await?;
+    let product_plans = state
+        .list_niffler_product_plans(&NifflerProductPlanListQuery {
+            include_inactive: true,
+            public_only: false,
+            search: None,
+            offset: 0,
+            limit: 1000,
+        })
+        .await
+        .ok()
+        .map(|page| {
+            page.items
+                .into_iter()
+                .map(|plan| (plan.id.clone(), plan))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let mut items = Vec::with_capacity(groups.len());
+    for group in groups {
+        if let Some(plan) = product_plans.get(&group.id) {
+            let models = state
+                .list_niffler_product_plan_models(&NifflerProductPlanModelListQuery {
+                    product_plan_id: plan.id.clone(),
+                    enabled_only: false,
+                    search: None,
+                    offset: 0,
+                    limit: 1000,
+                })
+                .await
+                .ok()
+                .map(|page| page.items)
+                .unwrap_or_default();
+            items.push(product_plan_user_group_projection(
+                plan,
+                &models,
+                default_group_id.as_deref(),
+            ));
+        } else {
+            items.push(user_group_payload(group, default_group_id.as_deref()));
+        }
+    }
     Ok(Json(json!({
         "items": items,
         "default_group_id": default_group_id,

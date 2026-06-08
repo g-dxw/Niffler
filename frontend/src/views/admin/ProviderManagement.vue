@@ -536,7 +536,19 @@ function sortProvidersByActiveAndPriority(items: ProviderWithEndpointsSummary[])
 
 const displayedProviders = computed(() => sortProvidersByActiveAndPriority(providers.value))
 
+function isLegacyProviderReadOnly(provider: ProviderWithEndpointsSummary): boolean {
+  return provider.legacy_read_only === true
+}
+
+function showLegacyProviderReadOnly(provider: ProviderWithEndpointsSummary) {
+  showInfo(provider.legacy_read_only_reason || '这个提供商已迁移到 Niffler Core，旧入口只读')
+}
+
 function startEditDescription(_event: Event, provider: ProviderWithEndpointsSummary) {
+  if (isLegacyProviderReadOnly(provider)) {
+    showLegacyProviderReadOnly(provider)
+    return
+  }
   editingDescriptionId.value = provider.id
 }
 
@@ -545,6 +557,11 @@ function cancelEditDescription(_event?: Event) {
 }
 
 async function saveDescription(_event: Event, provider: ProviderWithEndpointsSummary, newValue: string) {
+  if (isLegacyProviderReadOnly(provider)) {
+    showLegacyProviderReadOnly(provider)
+    cancelEditDescription()
+    return
+  }
   const trimmed = newValue.trim()
   const oldValue = provider.description || ''
   if (trimmed === oldValue) {
@@ -701,13 +718,25 @@ async function refreshProviderSnapshot(
 
 // 打开编辑提供商对话框
 async function openEditProviderDialog(provider: ProviderWithEndpointsSummary) {
+  if (isLegacyProviderReadOnly(provider)) {
+    showLegacyProviderReadOnly(provider)
+    return
+  }
   const latest = await refreshProviderSnapshot(provider.id, '刷新提供商状态失败')
+  if (latest && isLegacyProviderReadOnly(latest)) {
+    showLegacyProviderReadOnly(latest)
+    return
+  }
   providerToEdit.value = latest ?? provider
   providerDialogOpen.value = true
 }
 
 // 打开扩展操作配置对话框
 function openOpsConfigDialog(provider: ProviderWithEndpointsSummary) {
+  if (isLegacyProviderReadOnly(provider)) {
+    showLegacyProviderReadOnly(provider)
+    return
+  }
   opsConfigProviderId.value = provider.id
   opsConfigProviderWebsite.value = provider.website || ''
   opsConfigDialogOpen.value = true
@@ -743,6 +772,10 @@ function handleProviderAdded() {
 
 // 删除提供商
 async function handleDeleteProvider(provider: ProviderWithEndpointsSummary) {
+  if (isLegacyProviderReadOnly(provider)) {
+    showLegacyProviderReadOnly(provider)
+    return
+  }
   const confirmed = await confirmDanger(
     '删除提供商',
     `确定要删除提供商 "${provider.name}" 吗？\n\n这将同时删除其所有端点、密钥和配置。此操作不可恢复！`,
@@ -783,6 +816,10 @@ async function handleDeleteProvider(provider: ProviderWithEndpointsSummary) {
 
 // 切换提供商状态
 async function toggleProviderStatus(provider: ProviderWithEndpointsSummary) {
+  if (isLegacyProviderReadOnly(provider)) {
+    showLegacyProviderReadOnly(provider)
+    return
+  }
   try {
     const newStatus = !provider.is_active
     await updateProvider(provider.id, { is_active: newStatus })

@@ -6,6 +6,7 @@ pub(super) mod features;
 mod model;
 mod niffler;
 mod niffler_legacy_freeze;
+mod niffler_legacy_projection;
 pub(super) mod observability;
 pub(super) mod provider;
 mod referrals;

@@ -1,5 +1,7 @@
+use crate::handlers::admin::niffler_legacy_projection::project_provider_summary_with_niffler_service;
 use crate::handlers::admin::request::AdminAppState;
 use crate::handlers::admin::shared::unix_secs_to_rfc3339;
+use aether_data_contracts::repository::niffler_core::NifflerUpstreamServiceListQuery;
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogEndpoint;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -76,25 +78,43 @@ pub(crate) async fn build_admin_providers_payload(
                 }
                 acc
             });
+    let niffler_services_by_id = state
+        .list_niffler_upstream_services(&NifflerUpstreamServiceListQuery {
+            include_inactive: true,
+            search: None,
+            offset: 0,
+            limit: 1000,
+        })
+        .await
+        .ok()
+        .map(|page| {
+            page.items
+                .into_iter()
+                .map(|service| (service.id.clone(), service))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
 
-    Some(serde_json::Value::Array(
-        providers
-            .into_iter()
-            .map(|provider| {
-                let provider_id = provider.id.clone();
-                let endpoint = first_endpoint_by_provider.get(&provider_id);
-                json!({
-                    "id": provider_id.clone(),
-                    "name": provider.name,
-                    "api_format": endpoint.map(|item| item.api_format.clone()),
-                    "base_url": endpoint.map(|item| item.base_url.clone()),
-                    "api_key": has_any_key_by_provider.contains(&provider_id).then_some("***"),
-                    "priority": provider.provider_priority,
-                    "is_active": provider.is_active,
-                    "created_at": provider.created_at_unix_ms.and_then(unix_secs_to_rfc3339),
-                    "updated_at": provider.updated_at_unix_secs.and_then(unix_secs_to_rfc3339),
-                })
-            })
-            .collect(),
-    ))
+    let mut items = Vec::with_capacity(providers.len());
+    for provider in providers {
+        let provider_id = provider.id.clone();
+        let endpoint = first_endpoint_by_provider.get(&provider_id);
+        let mut payload = json!({
+            "id": provider_id.clone(),
+            "name": provider.name,
+            "api_format": endpoint.map(|item| item.api_format.clone()),
+            "base_url": endpoint.map(|item| item.base_url.clone()),
+            "api_key": has_any_key_by_provider.contains(&provider_id).then_some("***"),
+            "priority": provider.provider_priority,
+            "is_active": provider.is_active,
+            "created_at": provider.created_at_unix_ms.and_then(unix_secs_to_rfc3339),
+            "updated_at": provider.updated_at_unix_secs.and_then(unix_secs_to_rfc3339),
+        });
+        if let Some(service) = niffler_services_by_id.get(&provider_id) {
+            project_provider_summary_with_niffler_service(&mut payload, &service);
+        }
+        items.push(payload);
+    }
+
+    Some(serde_json::Value::Array(items))
 }
