@@ -214,6 +214,26 @@ export interface NifflerReferralRewardLedger {
   updated_at_unix_ms: number
 }
 
+export interface NifflerRouteAttempt {
+  id: string
+  request_id: string
+  upstream_service_id?: string | null
+  upstream_service_name?: string | null
+  upstream_account_id?: string | null
+  upstream_account_display_name?: string | null
+  upstream_account_email?: string | null
+  upstream_account_phone?: string | null
+  product_plan_id?: string | null
+  product_plan_name?: string | null
+  model_name: string
+  attempt_index: number
+  status: string
+  skip_reason?: string | null
+  upstream_status_code?: number | null
+  latency_ms?: number | null
+  created_at_unix_ms: number
+}
+
 export interface NifflerListPage<T> {
   items: T[]
   total: number
@@ -690,6 +710,21 @@ export async function listNifflerReferralRewardLedger(params?: {
 }): Promise<NifflerListPage<NifflerReferralRewardLedger>> {
   const response = await apiClient.get<NifflerListPage<NifflerReferralRewardLedger>>(
     '/api/admin/niffler-core/referral-reward-ledger',
+    { params }
+  )
+  return response.data
+}
+
+export async function listNifflerRouteAttempts(params?: {
+  request_id?: string
+  upstream_service_id?: string
+  upstream_account_id?: string
+  status?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerRouteAttempt>> {
+  const response = await apiClient.get<NifflerListPage<NifflerRouteAttempt>>(
+    '/api/admin/niffler-core/route-attempts',
     { params }
   )
   return response.data

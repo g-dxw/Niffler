@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS niffler_route_attempts (
 );
 CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_request ON niffler_route_attempts (request_id, attempt_index);
 CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_account ON niffler_route_attempts (upstream_account_id, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_created_at ON niffler_route_attempts (created_at_unix_ms);
 
 CREATE TABLE IF NOT EXISTS niffler_error_return_settings (
     id TEXT PRIMARY KEY NOT NULL,

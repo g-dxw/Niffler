@@ -16,10 +16,10 @@ use aether_data_contracts::repository::niffler_core::{
     NifflerKeyScopeResidue, NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerReadinessIssue,
     NifflerReadinessSeverity, NifflerReferralRewardLedgerListQuery,
-    NifflerReferralRewardLedgerStatus, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
-    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
-    NifflerServiceCapabilityKind, NifflerShadowTableItem, NifflerShadowTableStatus,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
+    NifflerReferralRewardLedgerStatus, NifflerRouteAttemptListQuery, NifflerRouteSkipReasonSummary,
+    NifflerRouteSkipSample, NifflerRuntimeRolloutSettingListQuery,
+    NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind, NifflerShadowTableItem,
+    NifflerShadowTableStatus, NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
     NifflerUsageAnomaly, NifflerUserResponseMode, UpsertNifflerApiKeyProductPlanBindingRecord,
     UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
@@ -57,6 +57,7 @@ const RUNTIME_ROLLOUT_PREVIEW_PATH: &str = "/api/admin/niffler-core/runtime-roll
 const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
 const BILLING_RESERVATIONS_PATH: &str = "/api/admin/niffler-core/billing-reservations";
 const REFERRAL_REWARD_LEDGER_PATH: &str = "/api/admin/niffler-core/referral-reward-ledger";
+const ROUTE_ATTEMPTS_PATH: &str = "/api/admin/niffler-core/route-attempts";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
 const MAX_USAGE_ITEMS: usize = 50;
@@ -206,6 +207,12 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
     if request_context.path().trim_end_matches('/') == REFERRAL_REWARD_LEDGER_PATH {
         return Ok(Some(
             build_referral_reward_ledger_response(&state, &request_context).await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == ROUTE_ATTEMPTS_PATH {
+        return Ok(Some(
+            build_route_attempts_response(&state, &request_context).await?,
         ));
     }
 
@@ -1453,6 +1460,36 @@ async fn build_referral_reward_ledger_response(
         limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
     };
     let page = state.list_niffler_referral_reward_ledger(&query).await?;
+    Ok(Json(page).into_response())
+}
+
+async fn build_route_attempts_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if request_context.method() != http::Method::GET {
+        return Ok(niffler_method_not_allowed("只支持读取影子路由尝试"));
+    }
+    let query = NifflerRouteAttemptListQuery {
+        request_id: optional_query_text(request_context.query_string(), "request_id"),
+        upstream_service_id: optional_query_text(
+            request_context.query_string(),
+            "upstream_service_id",
+        ),
+        upstream_account_id: optional_query_text(
+            request_context.query_string(),
+            "upstream_account_id",
+        ),
+        status: optional_query_text(request_context.query_string(), "status"),
+        offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+        limit: parse_usize_query(request_context.query_string(), "limit")
+            .unwrap_or(50)
+            .clamp(1, 100),
+    };
+    let page = state.list_niffler_route_attempts(&query).await?;
     Ok(Json(page).into_response())
 }
 

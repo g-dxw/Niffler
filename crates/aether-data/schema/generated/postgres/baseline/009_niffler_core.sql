@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS public.niffler_route_attempts (
 ALTER TABLE ONLY public.niffler_route_attempts ADD CONSTRAINT niffler_route_attempts_pkey PRIMARY KEY (id);
 CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_request ON public.niffler_route_attempts USING btree (request_id, attempt_index);
 CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_account ON public.niffler_route_attempts USING btree (upstream_account_id, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_created_at ON public.niffler_route_attempts USING btree (created_at_unix_ms);
 
 CREATE TABLE IF NOT EXISTS public.niffler_error_return_settings (
     id character varying(36) NOT NULL,

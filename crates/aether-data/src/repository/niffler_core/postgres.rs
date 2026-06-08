@@ -10,16 +10,18 @@ use super::{
     NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
     NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
     NifflerProtocolKind, NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
-    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
-    NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
-    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerBillingReservation, StoredNifflerBillingReservationListPage,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
+    NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    NifflerUserResponseMode, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
+    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
     StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
+    StoredNifflerRouteAttemptListItem, StoredNifflerRouteAttemptListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
     StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
     StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
@@ -540,6 +542,30 @@ LIMIT 1
             .map(map_referral_reward_ledger_row)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StoredNifflerReferralRewardLedgerListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_route_attempts(
+        &self,
+        query: &NifflerRouteAttemptListQuery,
+    ) -> Result<StoredNifflerRouteAttemptListPage, DataLayerError> {
+        let total = build_route_attempt_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_route_attempt_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_route_attempt_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerRouteAttemptListPage {
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
@@ -1403,6 +1429,83 @@ fn push_referral_reward_ledger_filters(
     }
 }
 
+fn build_route_attempt_count_query(
+    query: &NifflerRouteAttemptListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_route_attempts ra");
+    push_route_attempt_filters(&mut builder, query);
+    builder
+}
+
+fn build_route_attempt_rows_query(
+    query: &NifflerRouteAttemptListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT ra.id, ra.request_id, ra.upstream_service_id, us.display_name AS upstream_service_name, \
+         ra.upstream_account_id, ua.display_name AS upstream_account_display_name, \
+         ua.email AS upstream_account_email, ua.phone AS upstream_account_phone, \
+         ra.product_plan_id, pp.display_name AS product_plan_name, ra.model_name, \
+         ra.attempt_index, ra.status, ra.skip_reason, ra.upstream_status_code, ra.latency_ms, \
+         ra.created_at_unix_ms FROM niffler_route_attempts ra \
+         LEFT JOIN niffler_upstream_services us ON us.id = ra.upstream_service_id \
+         LEFT JOIN niffler_upstream_accounts ua ON ua.id = ra.upstream_account_id \
+         LEFT JOIN niffler_product_plans pp ON pp.id = ra.product_plan_id",
+    );
+    push_route_attempt_filters(&mut builder, query);
+    builder.push(
+        " ORDER BY ra.created_at_unix_ms DESC, ra.request_id ASC, ra.attempt_index ASC LIMIT ",
+    );
+    builder.push_bind(bounded_limit(query.limit.min(100)));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_route_attempt_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerRouteAttemptListQuery,
+) {
+    let mut has_where = false;
+    if let Some(request_id) = query
+        .request_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(" WHERE ra.request_id = ");
+        builder.push_bind(request_id.clone());
+        has_where = true;
+    }
+    if let Some(upstream_service_id) = query
+        .upstream_service_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ra.upstream_service_id = ");
+        builder.push_bind(upstream_service_id.clone());
+        has_where = true;
+    }
+    if let Some(upstream_account_id) = query
+        .upstream_account_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ra.upstream_account_id = ");
+        builder.push_bind(upstream_account_id.clone());
+        has_where = true;
+    }
+    if let Some(status) = query
+        .status
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ra.status = ");
+        builder.push_bind(status.clone());
+    }
+}
+
 fn map_service_row(row: &PgRow) -> Result<StoredNifflerUpstreamService, DataLayerError> {
     Ok(StoredNifflerUpstreamService {
         id: row.try_get("id").map_sql_err()?,
@@ -1688,6 +1791,53 @@ fn map_referral_reward_ledger_row(
         updated_at_unix_ms: super::u64_from_i64(
             row.try_get("updated_at_unix_ms").map_sql_err()?,
             "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_route_attempt_row(row: &PgRow) -> Result<StoredNifflerRouteAttemptListItem, DataLayerError> {
+    let attempt_index: i32 = row.try_get("attempt_index").map_sql_err()?;
+    let upstream_status_code = row
+        .try_get::<Option<i32>, _>("upstream_status_code")
+        .map_sql_err()?
+        .map(|value| {
+            u16::try_from(value).map_err(|_| {
+                DataLayerError::UnexpectedValue(format!(
+                    "upstream_status_code is outside u16 range: {value}"
+                ))
+            })
+        })
+        .transpose()?;
+    Ok(StoredNifflerRouteAttemptListItem {
+        id: row.try_get("id").map_sql_err()?,
+        request_id: row.try_get("request_id").map_sql_err()?,
+        upstream_service_id: row.try_get("upstream_service_id").map_sql_err()?,
+        upstream_service_name: row.try_get("upstream_service_name").map_sql_err()?,
+        upstream_account_id: row.try_get("upstream_account_id").map_sql_err()?,
+        upstream_account_display_name: row
+            .try_get("upstream_account_display_name")
+            .map_sql_err()?,
+        upstream_account_email: row.try_get("upstream_account_email").map_sql_err()?,
+        upstream_account_phone: row.try_get("upstream_account_phone").map_sql_err()?,
+        product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        product_plan_name: row.try_get("product_plan_name").map_sql_err()?,
+        model_name: row.try_get("model_name").map_sql_err()?,
+        attempt_index: u32::try_from(attempt_index).map_err(|_| {
+            DataLayerError::UnexpectedValue(format!(
+                "route attempt_index is negative: {attempt_index}"
+            ))
+        })?,
+        status: row.try_get("status").map_sql_err()?,
+        skip_reason: row.try_get("skip_reason").map_sql_err()?,
+        upstream_status_code,
+        latency_ms: row
+            .try_get::<Option<i64>, _>("latency_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "latency_ms"))
+            .transpose()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
         )?,
     })
 }

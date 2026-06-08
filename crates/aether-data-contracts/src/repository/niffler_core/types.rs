@@ -721,6 +721,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         &self,
         query: &NifflerReferralRewardLedgerListQuery,
     ) -> Result<StoredNifflerReferralRewardLedgerListPage, crate::DataLayerError>;
+
+    async fn list_route_attempts(
+        &self,
+        query: &NifflerRouteAttemptListQuery,
+    ) -> Result<StoredNifflerRouteAttemptListPage, crate::DataLayerError>;
 }
 
 #[async_trait]
@@ -953,6 +958,43 @@ pub struct NifflerReferralRewardLedgerListQuery {
 pub struct StoredNifflerReferralRewardLedgerListPage {
     pub items: Vec<StoredNifflerReferralRewardLedger>,
     pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerRouteAttemptListQuery {
+    pub request_id: Option<String>,
+    pub upstream_service_id: Option<String>,
+    pub upstream_account_id: Option<String>,
+    pub status: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerRouteAttemptListPage {
+    pub items: Vec<StoredNifflerRouteAttemptListItem>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerRouteAttemptListItem {
+    pub id: String,
+    pub request_id: String,
+    pub upstream_service_id: Option<String>,
+    pub upstream_service_name: Option<String>,
+    pub upstream_account_id: Option<String>,
+    pub upstream_account_display_name: Option<String>,
+    pub upstream_account_email: Option<String>,
+    pub upstream_account_phone: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub product_plan_name: Option<String>,
+    pub model_name: String,
+    pub attempt_index: u32,
+    pub status: String,
+    pub skip_reason: Option<String>,
+    pub upstream_status_code: Option<u16>,
+    pub latency_ms: Option<u64>,
+    pub created_at_unix_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

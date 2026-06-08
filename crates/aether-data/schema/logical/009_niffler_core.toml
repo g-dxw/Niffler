@@ -576,6 +576,10 @@ columns = ["request_id", "attempt_index"]
 name = "idx_niffler_route_attempts_account"
 columns = ["upstream_account_id", "created_at_unix_ms"]
 
+[[table.niffler_route_attempts.indexes]]
+name = "idx_niffler_route_attempts_created_at"
+columns = ["created_at_unix_ms"]
+
 [table.niffler_error_return_settings]
 domain = "niffler_core"
 order = 980

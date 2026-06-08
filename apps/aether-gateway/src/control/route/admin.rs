@@ -226,6 +226,16 @@ pub(super) fn classify_admin_route(
             "admin:wallets",
             false,
         ))
+    } else if method == http::Method::GET
+        && normalized_path_no_trailing == "/api/admin/niffler-core/route-attempts"
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            "list_route_attempts",
+            "admin:routing_profiles",
+            false,
+        ))
     } else if let Some(route) =
         classify_admin_basic_family_route(method, normalized_path, normalized_path_no_trailing)
     {

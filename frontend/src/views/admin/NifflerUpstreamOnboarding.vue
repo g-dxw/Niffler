@@ -994,12 +994,12 @@
           <Button
             variant="outline"
             class="h-9"
-            :disabled="billingReservationLoading || referralRewardLedgerLoading"
+            :disabled="billingReservationLoading || referralRewardLedgerLoading || routeAttemptLoading"
             @click="loadReconciliationData"
           >
             <RefreshCw
               class="mr-2 h-4 w-4"
-              :class="{ 'animate-spin': billingReservationLoading || referralRewardLedgerLoading }"
+              :class="{ 'animate-spin': billingReservationLoading || referralRewardLedgerLoading || routeAttemptLoading }"
             />
             刷新对账
           </Button>
@@ -1255,6 +1255,149 @@
             </Table>
           </section>
         </div>
+
+        <section class="border-t border-border/70 p-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 class="font-medium">
+                影子路由尝试
+              </h3>
+              <p class="mt-1 text-xs text-muted-foreground">
+                只读查看命中灰度开关后写入的新表记录。这里展示的是旧运行时实际使用的服务、账号、模型和结果，不会改变线上调度。
+              </p>
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                v-model="routeAttemptRequestIdFilter"
+                class="h-9 sm:w-56"
+                placeholder="按请求 ID 筛选"
+                @keyup.enter="loadRouteAttempts"
+              />
+              <Select v-model="routeAttemptStatusFilter">
+                <SelectTrigger class="h-9 sm:w-36">
+                  <SelectValue placeholder="状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in routeAttemptStatusOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                class="h-9"
+                :disabled="routeAttemptLoading"
+                @click="loadRouteAttempts"
+              >
+                <RefreshCw
+                  class="mr-2 h-4 w-4"
+                  :class="{ 'animate-spin': routeAttemptLoading }"
+                />
+                刷新
+              </Button>
+            </div>
+          </div>
+
+          <p
+            v-if="routeAttemptError"
+            class="mt-4 rounded-md border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            {{ routeAttemptError }}
+          </p>
+
+          <div
+            v-if="routeAttemptLoading && routeAttempts.length === 0"
+            class="flex items-center justify-center py-12 text-sm text-muted-foreground"
+          >
+            <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+            正在读取影子路由尝试...
+          </div>
+
+          <div
+            v-else-if="routeAttempts.length === 0"
+            class="py-12 text-center"
+          >
+            <Tags class="mx-auto h-9 w-9 text-muted-foreground/50" />
+            <p class="mt-3 text-sm font-medium">
+              没有影子路由记录
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              只有启用新调度灰度写入后，这里才会出现记录。
+            </p>
+          </div>
+
+          <Table v-else class="mt-4">
+            <TableHeader>
+              <TableRow>
+                <TableHead>请求和模型</TableHead>
+                <TableHead>服务和账号</TableHead>
+                <TableHead>结果</TableHead>
+                <TableHead>上游</TableHead>
+                <TableHead>时间</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="attempt in routeAttempts"
+                :key="attempt.id"
+              >
+                <TableCell>
+                  <div class="font-mono text-xs">
+                    {{ attempt.request_id }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    模型 {{ attempt.model_name }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    第 {{ attempt.attempt_index + 1 }} 次尝试
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-sm">
+                    {{ routeAttemptServiceLabel(attempt) }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    {{ routeAttemptAccountLabel(attempt) }}
+                  </div>
+                  <div
+                    v-if="attempt.product_plan_id"
+                    class="text-xs text-muted-foreground"
+                  >
+                    策略 {{ routeAttemptProductPlanLabel(attempt) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="routeAttemptStatusVariant(attempt.status)">
+                    {{ routeAttemptStatusLabel(attempt.status) }}
+                  </Badge>
+                  <div
+                    v-if="attempt.skip_reason"
+                    class="mt-1 text-xs text-muted-foreground"
+                  >
+                    {{ attempt.skip_reason }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-xs">
+                    状态码 {{ attempt.upstream_status_code ?? '无' }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    耗时 {{ formatLatencyMs(attempt.latency_ms) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-xs">
+                    {{ formatNifflerUnixMs(attempt.created_at_unix_ms) }}
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </section>
       </Card>
 
       <Card class="overflow-hidden">
@@ -2082,6 +2225,7 @@ import {
   listNifflerProductPlanModels,
   listNifflerProductPlans,
   listNifflerReferralRewardLedger,
+  listNifflerRouteAttempts,
   listNifflerRuntimeRolloutSettings,
   listNifflerUpstreamServiceCapabilities,
   listNifflerUpstreamAccounts,
@@ -2107,6 +2251,7 @@ import {
   type NifflerProtocolKind,
   type NifflerReferralRewardLedger,
   type NifflerReferralRewardLedgerStatus,
+  type NifflerRouteAttempt,
   type NifflerRuntimeRolloutPreview,
   type NifflerRuntimeRolloutSetting,
   type NifflerRuntimeRolloutTargetScope,
@@ -2195,6 +2340,7 @@ type RuntimeRolloutForm = Required<
 >
 type BillingReservationStatusFilter = NifflerBillingReservationStatus | 'all'
 type ReferralRewardLedgerStatusFilter = NifflerReferralRewardLedgerStatus | 'all'
+type RouteAttemptStatusFilter = 'all' | 'success' | 'skipped' | 'cancelled' | 'failed'
 
 const { success, error: showError } = useToast()
 
@@ -2211,6 +2357,7 @@ const runtimeRolloutPreview = ref<NifflerRuntimeRolloutPreview | null>(null)
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const billingReservations = ref<NifflerBillingReservation[]>([])
 const referralRewardLedger = ref<NifflerReferralRewardLedger[]>([])
+const routeAttempts = ref<NifflerRouteAttempt[]>([])
 const serviceLoading = ref(false)
 const serviceCapabilityLoading = ref(false)
 const accountLoading = ref(false)
@@ -2224,6 +2371,7 @@ const runtimeRolloutPreviewLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const billingReservationLoading = ref(false)
 const referralRewardLedgerLoading = ref(false)
+const routeAttemptLoading = ref(false)
 const savingService = ref(false)
 const savingServiceCapabilities = ref(false)
 const savingAccount = ref(false)
@@ -2244,10 +2392,13 @@ const runtimeRolloutPreviewError = ref('')
 const errorReturnSettingError = ref('')
 const billingReservationError = ref('')
 const referralRewardLedgerError = ref('')
+const routeAttemptError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
 const billingReservationStatusFilter = ref<BillingReservationStatusFilter>('all')
 const referralRewardLedgerStatusFilter = ref<ReferralRewardLedgerStatusFilter>('all')
+const routeAttemptStatusFilter = ref<RouteAttemptStatusFilter>('all')
+const routeAttemptRequestIdFilter = ref('')
 const selectedServiceId = ref<string | null>(null)
 const selectedProductPlanId = ref<string | null>(null)
 const selectedRuntimeRolloutApiKeyId = ref('')
@@ -2369,6 +2520,17 @@ const referralRewardLedgerStatusOptions: Array<{
   { value: 'cancelled', label: '已取消' },
 ]
 
+const routeAttemptStatusOptions: Array<{
+  value: RouteAttemptStatusFilter
+  label: string
+}> = [
+  { value: 'all', label: '全部状态' },
+  { value: 'success', label: '成功' },
+  { value: 'skipped', label: '跳过' },
+  { value: 'cancelled', label: '取消' },
+  { value: 'failed', label: '失败' },
+]
+
 const usdFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -2389,6 +2551,7 @@ const pageLoading = computed(() =>
   || errorReturnSettingLoading.value
   || billingReservationLoading.value
   || referralRewardLedgerLoading.value
+  || routeAttemptLoading.value
 )
 
 const selectedService = computed(() =>
@@ -2401,6 +2564,14 @@ const selectedProductPlan = computed(() =>
 
 const productPlanNameById = computed(() =>
   new Map(productPlans.value.map(plan => [plan.id, plan.display_name]))
+)
+
+const serviceNameById = computed(() =>
+  new Map(services.value.map(service => [service.id, service.display_name]))
+)
+
+const accountNameById = computed(() =>
+  new Map(accounts.value.map(account => [account.id, account.display_name]))
 )
 
 const apiKeyBindingByApiKeyId = computed(() =>
@@ -2577,6 +2748,10 @@ watch(referralRewardLedgerStatusFilter, () => {
   void loadReferralRewardLedger()
 })
 
+watch(routeAttemptStatusFilter, () => {
+  void loadRouteAttempts()
+})
+
 async function refreshAll() {
   await Promise.all([
     loadServices(),
@@ -2586,6 +2761,7 @@ async function refreshAll() {
     loadErrorReturnSettings(),
     loadBillingReservations(),
     loadReferralRewardLedger(),
+    loadRouteAttempts(),
   ])
   if (selectedServiceId.value) {
     await Promise.all([
@@ -2886,10 +3062,32 @@ async function loadReferralRewardLedger() {
   }
 }
 
+async function loadRouteAttempts() {
+  routeAttemptLoading.value = true
+  routeAttemptError.value = ''
+  try {
+    const response = await listNifflerRouteAttempts({
+      request_id: routeAttemptRequestIdFilter.value.trim() || undefined,
+      status: routeAttemptStatusFilter.value === 'all'
+        ? undefined
+        : routeAttemptStatusFilter.value,
+      offset: 0,
+      limit: 50,
+    })
+    routeAttempts.value = response.items
+  } catch (err) {
+    routeAttemptError.value = extractErrorMessage(err, '读取影子路由尝试失败')
+    showError(routeAttemptError.value)
+  } finally {
+    routeAttemptLoading.value = false
+  }
+}
+
 async function loadReconciliationData() {
   await Promise.all([
     loadBillingReservations(),
     loadReferralRewardLedger(),
+    loadRouteAttempts(),
   ])
 }
 
@@ -3360,6 +3558,23 @@ function referralRewardLedgerStatusLabel(status: NifflerReferralRewardLedgerStat
   return labels[status] ?? status
 }
 
+function routeAttemptStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    success: '成功',
+    skipped: '跳过',
+    cancelled: '取消',
+    failed: '失败',
+  }
+  return labels[status] ?? status
+}
+
+function routeAttemptStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (status === 'failed') return 'destructive'
+  if (status === 'success') return 'default'
+  if (status === 'skipped') return 'outline'
+  return 'secondary'
+}
+
 function reconciliationStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'failed' || status === 'manual_review') return 'destructive'
   if (status === 'active' || status === 'pending') return 'outline'
@@ -3385,6 +3600,31 @@ function upstreamServiceLabel(serviceId?: string | null): string {
     return '全部上游'
   }
   return services.value.find(service => service.id === serviceId)?.display_name ?? '未知上游服务'
+}
+
+function routeAttemptServiceLabel(attempt: NifflerRouteAttempt): string {
+  if (attempt.upstream_service_name) return attempt.upstream_service_name
+  if (attempt.upstream_service_id) return serviceNameById.value.get(attempt.upstream_service_id) || '未知上游服务'
+  return '未记录服务'
+}
+
+function routeAttemptAccountLabel(attempt: NifflerRouteAttempt): string {
+  const contacts = [attempt.upstream_account_email, attempt.upstream_account_phone].filter(Boolean)
+  if (contacts.length > 0) return contacts.join(' / ')
+  if (attempt.upstream_account_display_name) return attempt.upstream_account_display_name
+  if (attempt.upstream_account_id) return accountNameById.value.get(attempt.upstream_account_id) || '未知账号'
+  return '未记录账号'
+}
+
+function routeAttemptProductPlanLabel(attempt: NifflerRouteAttempt): string {
+  if (attempt.product_plan_name) return attempt.product_plan_name
+  if (attempt.product_plan_id) return productPlanNameById.value.get(attempt.product_plan_id) || '未知产品策略'
+  return '未绑定策略'
+}
+
+function formatLatencyMs(value?: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '无'
+  return `${Math.round(value)} ms`
 }
 
 function matchLabel(rule: NifflerErrorReturnSetting): string {
@@ -3508,5 +3748,6 @@ onMounted(() => {
   void loadErrorReturnSettings()
   void loadBillingReservations()
   void loadReferralRewardLedger()
+  void loadRouteAttempts()
 })
 </script>

@@ -165,6 +165,16 @@ impl<'a> AdminAppState<'a> {
         self.app.list_niffler_referral_reward_ledger(query).await
     }
 
+    pub(crate) async fn list_niffler_route_attempts(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerRouteAttemptListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerRouteAttemptListPage,
+        GatewayError,
+    > {
+        self.app.list_niffler_route_attempts(query).await
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: aether_data_contracts::repository::niffler_core::CreateNifflerUpstreamServiceRecord,

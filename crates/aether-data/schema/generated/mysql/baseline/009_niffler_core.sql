@@ -144,7 +144,8 @@ CREATE TABLE IF NOT EXISTS niffler_route_attempts (
     `created_at_unix_ms` BIGINT NOT NULL,
     PRIMARY KEY (`id`),
     KEY idx_niffler_route_attempts_request (`request_id`, `attempt_index`),
-    KEY idx_niffler_route_attempts_account (`upstream_account_id`, `created_at_unix_ms`)
+    KEY idx_niffler_route_attempts_account (`upstream_account_id`, `created_at_unix_ms`),
+    KEY idx_niffler_route_attempts_created_at (`created_at_unix_ms`)
 );
 
 CREATE TABLE IF NOT EXISTS niffler_error_return_settings (

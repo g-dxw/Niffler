@@ -163,6 +163,9 @@ CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_request
 CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_account
     ON public.niffler_route_attempts (upstream_account_id, created_at_unix_ms DESC);
 
+CREATE INDEX IF NOT EXISTS idx_niffler_route_attempts_created_at
+    ON public.niffler_route_attempts (created_at_unix_ms DESC);
+
 CREATE TABLE IF NOT EXISTS public.niffler_error_return_settings (
     id character varying(36) PRIMARY KEY,
     scope character varying(32) NOT NULL,
