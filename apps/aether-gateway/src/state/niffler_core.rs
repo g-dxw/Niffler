@@ -3,16 +3,20 @@ use aether_data_contracts::repository::niffler_core::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
     NifflerApiKeyProductPlanBindingListQuery, NifflerErrorReturnSettingListQuery,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
-    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerRuntimeRolloutSetting,
+    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
     StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl AppState {
@@ -114,6 +118,27 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_niffler_runtime_rollout_settings(
+        &self,
+        query: &NifflerRuntimeRolloutSettingListQuery,
+    ) -> Result<StoredNifflerRuntimeRolloutSettingListPage, GatewayError> {
+        self.data
+            .list_niffler_runtime_rollout_settings(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn find_niffler_runtime_rollout_setting(
+        &self,
+        target_scope: NifflerRuntimeRolloutTargetScope,
+        target_id: &str,
+    ) -> Result<Option<StoredNifflerRuntimeRolloutSetting>, GatewayError> {
+        self.data
+            .find_niffler_runtime_rollout_setting(target_scope, target_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn list_niffler_error_return_settings(
         &self,
         query: &NifflerErrorReturnSettingListQuery,
@@ -180,6 +205,16 @@ impl AppState {
     ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, GatewayError> {
         self.data
             .upsert_niffler_api_key_product_plan_binding(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn upsert_niffler_runtime_rollout_setting(
+        &self,
+        record: UpsertNifflerRuntimeRolloutSettingRecord,
+    ) -> Result<Option<StoredNifflerRuntimeRolloutSetting>, GatewayError> {
+        self.data
+            .upsert_niffler_runtime_rollout_setting(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

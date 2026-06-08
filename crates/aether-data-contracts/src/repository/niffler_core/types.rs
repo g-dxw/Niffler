@@ -304,6 +304,32 @@ impl NifflerServiceCapabilityKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum NifflerRuntimeRolloutTargetScope {
+    ApiKey,
+    ProductPlan,
+}
+
+impl NifflerRuntimeRolloutTargetScope {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "api_key" => Ok(Self::ApiKey),
+            "product_plan" => Ok(Self::ProductPlan),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler runtime rollout target scope: {value}"
+            ))),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ApiKey => "api_key",
+            Self::ProductPlan => "product_plan",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NifflerBillingReservationStatus {
     Active,
     Settled,
@@ -624,6 +650,17 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         api_key_id: &str,
     ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, crate::DataLayerError>;
 
+    async fn list_runtime_rollout_settings(
+        &self,
+        query: &NifflerRuntimeRolloutSettingListQuery,
+    ) -> Result<StoredNifflerRuntimeRolloutSettingListPage, crate::DataLayerError>;
+
+    async fn find_runtime_rollout_setting(
+        &self,
+        target_scope: NifflerRuntimeRolloutTargetScope,
+        target_id: &str,
+    ) -> Result<Option<StoredNifflerRuntimeRolloutSetting>, crate::DataLayerError>;
+
     async fn list_error_return_settings(
         &self,
         query: &NifflerErrorReturnSettingListQuery,
@@ -661,6 +698,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: UpsertNifflerApiKeyProductPlanBindingRecord,
     ) -> Result<StoredNifflerApiKeyProductPlanBinding, crate::DataLayerError>;
+
+    async fn upsert_runtime_rollout_setting(
+        &self,
+        record: UpsertNifflerRuntimeRolloutSettingRecord,
+    ) -> Result<StoredNifflerRuntimeRolloutSetting, crate::DataLayerError>;
 
     async fn create_error_return_setting(
         &self,
@@ -739,6 +781,30 @@ impl StoredNifflerApiKeyProductPlanBinding {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerRuntimeRolloutSetting {
+    pub id: String,
+    pub target_scope: NifflerRuntimeRolloutTargetScope,
+    pub target_id: String,
+    pub enable_new_routing: bool,
+    pub enable_settlement_snapshot: bool,
+    pub enable_error_return_rules: bool,
+    pub enable_billing_reservation: bool,
+    pub enable_referral_ledger: bool,
+    pub is_active: bool,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl StoredNifflerRuntimeRolloutSetting {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("runtime_rollout_settings.id", &self.id)?;
+        validate_required("runtime_rollout_settings.target_id", &self.target_id)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NifflerProductPlanListQuery {
     pub include_inactive: bool,
@@ -779,6 +845,20 @@ pub struct NifflerApiKeyProductPlanBindingListQuery {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerApiKeyProductPlanBindingListPage {
     pub items: Vec<StoredNifflerApiKeyProductPlanBinding>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerRuntimeRolloutSettingListQuery {
+    pub target_scope: Option<NifflerRuntimeRolloutTargetScope>,
+    pub include_inactive: bool,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerRuntimeRolloutSettingListPage {
+    pub items: Vec<StoredNifflerRuntimeRolloutSetting>,
     pub total: usize,
 }
 
@@ -867,6 +947,42 @@ impl UpsertNifflerApiKeyProductPlanBindingRecord {
             id: self.id.clone(),
             api_key_id: self.api_key_id.clone(),
             product_plan_id: self.product_plan_id.clone(),
+            config: self.config.clone(),
+            created_at_unix_ms: self.created_at_unix_ms,
+            updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpsertNifflerRuntimeRolloutSettingRecord {
+    pub id: String,
+    pub target_scope: NifflerRuntimeRolloutTargetScope,
+    pub target_id: String,
+    pub enable_new_routing: bool,
+    pub enable_settlement_snapshot: bool,
+    pub enable_error_return_rules: bool,
+    pub enable_billing_reservation: bool,
+    pub enable_referral_ledger: bool,
+    pub is_active: bool,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl UpsertNifflerRuntimeRolloutSettingRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerRuntimeRolloutSetting {
+            id: self.id.clone(),
+            target_scope: self.target_scope,
+            target_id: self.target_id.clone(),
+            enable_new_routing: self.enable_new_routing,
+            enable_settlement_snapshot: self.enable_settlement_snapshot,
+            enable_error_return_rules: self.enable_error_return_rules,
+            enable_billing_reservation: self.enable_billing_reservation,
+            enable_referral_ledger: self.enable_referral_ledger,
+            is_active: self.is_active,
             config: self.config.clone(),
             created_at_unix_ms: self.created_at_unix_ms,
             updated_at_unix_ms: self.updated_at_unix_ms,

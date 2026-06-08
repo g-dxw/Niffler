@@ -8,17 +8,20 @@ use super::{
     NifflerApiKeyProductPlanBindingListQuery, NifflerCoreReadRepository,
     NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
     NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
+    NifflerProtocolKind, NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
     NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
-    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerProductPlanModelListPage, StoredNifflerRuntimeRolloutSetting,
+    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
     StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::postgres::PostgresPool;
 use crate::error::SqlResultExt;
@@ -154,6 +157,20 @@ LIMIT 1
             .ok_or_else(|| {
                 DataLayerError::UnexpectedValue(
                     "niffler api key product plan binding missing after write".into(),
+                )
+            })
+    }
+
+    async fn reload_runtime_rollout_setting(
+        &self,
+        target_scope: NifflerRuntimeRolloutTargetScope,
+        target_id: &str,
+    ) -> Result<StoredNifflerRuntimeRolloutSetting, DataLayerError> {
+        self.find_runtime_rollout_setting(target_scope, target_id)
+            .await?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler runtime rollout setting missing after write".into(),
                 )
             })
     }
@@ -399,6 +416,56 @@ LIMIT 1
         .map_sql_err()?;
         row.as_ref()
             .map(map_api_key_product_plan_binding_row)
+            .transpose()
+    }
+
+    async fn list_runtime_rollout_settings(
+        &self,
+        query: &NifflerRuntimeRolloutSettingListQuery,
+    ) -> Result<StoredNifflerRuntimeRolloutSettingListPage, DataLayerError> {
+        let total = build_runtime_rollout_setting_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_runtime_rollout_setting_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_runtime_rollout_setting_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerRuntimeRolloutSettingListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn find_runtime_rollout_setting(
+        &self,
+        target_scope: NifflerRuntimeRolloutTargetScope,
+        target_id: &str,
+    ) -> Result<Option<StoredNifflerRuntimeRolloutSetting>, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, target_scope, target_id, enable_new_routing, enable_settlement_snapshot,
+  enable_error_return_rules, enable_billing_reservation, enable_referral_ledger,
+  is_active, config, created_at_unix_ms, updated_at_unix_ms
+FROM niffler_runtime_rollout_settings
+WHERE target_scope = $1 AND target_id = $2
+LIMIT 1
+"#,
+        )
+        .bind(target_scope.as_str())
+        .bind(target_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_runtime_rollout_setting_row)
             .transpose()
     }
 
@@ -661,6 +728,55 @@ ON CONFLICT (api_key_id) DO UPDATE SET
         .await
         .map_sql_err()?;
         self.reload_api_key_product_plan_binding(&record.api_key_id)
+            .await
+    }
+
+    async fn upsert_runtime_rollout_setting(
+        &self,
+        record: UpsertNifflerRuntimeRolloutSettingRecord,
+    ) -> Result<StoredNifflerRuntimeRolloutSetting, DataLayerError> {
+        record.validate()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_runtime_rollout_settings (
+  id, target_scope, target_id, enable_new_routing, enable_settlement_snapshot,
+  enable_error_return_rules, enable_billing_reservation, enable_referral_ledger,
+  is_active, config, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (target_scope, target_id) DO UPDATE SET
+  enable_new_routing = EXCLUDED.enable_new_routing,
+  enable_settlement_snapshot = EXCLUDED.enable_settlement_snapshot,
+  enable_error_return_rules = EXCLUDED.enable_error_return_rules,
+  enable_billing_reservation = EXCLUDED.enable_billing_reservation,
+  enable_referral_ledger = EXCLUDED.enable_referral_ledger,
+  is_active = EXCLUDED.is_active,
+  config = EXCLUDED.config,
+  updated_at_unix_ms = EXCLUDED.updated_at_unix_ms
+"#,
+        )
+        .bind(&record.id)
+        .bind(record.target_scope.as_str())
+        .bind(&record.target_id)
+        .bind(record.enable_new_routing)
+        .bind(record.enable_settlement_snapshot)
+        .bind(record.enable_error_return_rules)
+        .bind(record.enable_billing_reservation)
+        .bind(record.enable_referral_ledger)
+        .bind(record.is_active)
+        .bind(&record.config)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.updated_at_unix_ms,
+            "updated_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_runtime_rollout_setting(record.target_scope, &record.target_id)
             .await
     }
 
@@ -943,6 +1059,47 @@ fn push_api_key_product_plan_binding_filters(
     }
 }
 
+fn build_runtime_rollout_setting_count_query(
+    query: &NifflerRuntimeRolloutSettingListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_runtime_rollout_settings");
+    push_runtime_rollout_setting_filters(&mut builder, query);
+    builder
+}
+
+fn build_runtime_rollout_setting_rows_query(
+    query: &NifflerRuntimeRolloutSettingListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, target_scope, target_id, enable_new_routing, enable_settlement_snapshot, \
+         enable_error_return_rules, enable_billing_reservation, enable_referral_ledger, \
+         is_active, config, created_at_unix_ms, updated_at_unix_ms \
+         FROM niffler_runtime_rollout_settings",
+    );
+    push_runtime_rollout_setting_filters(&mut builder, query);
+    builder.push(" ORDER BY is_active DESC, updated_at_unix_ms DESC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_runtime_rollout_setting_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerRuntimeRolloutSettingListQuery,
+) {
+    let mut has_where = false;
+    if let Some(target_scope) = query.target_scope {
+        builder.push(" WHERE target_scope = ");
+        builder.push_bind(target_scope.as_str());
+        has_where = true;
+    }
+    if !query.include_inactive {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("is_active = TRUE");
+    }
+}
+
 fn build_error_return_setting_count_query(
     query: &NifflerErrorReturnSettingListQuery,
 ) -> QueryBuilder<'_, Postgres> {
@@ -1095,6 +1252,32 @@ fn map_api_key_product_plan_binding_row(
         id: row.try_get("id").map_sql_err()?,
         api_key_id: row.try_get("api_key_id").map_sql_err()?,
         product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        config: row.try_get("config").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_runtime_rollout_setting_row(
+    row: &PgRow,
+) -> Result<StoredNifflerRuntimeRolloutSetting, DataLayerError> {
+    let target_scope: String = row.try_get("target_scope").map_sql_err()?;
+    Ok(StoredNifflerRuntimeRolloutSetting {
+        id: row.try_get("id").map_sql_err()?,
+        target_scope: NifflerRuntimeRolloutTargetScope::from_database(&target_scope)?,
+        target_id: row.try_get("target_id").map_sql_err()?,
+        enable_new_routing: row.try_get("enable_new_routing").map_sql_err()?,
+        enable_settlement_snapshot: row.try_get("enable_settlement_snapshot").map_sql_err()?,
+        enable_error_return_rules: row.try_get("enable_error_return_rules").map_sql_err()?,
+        enable_billing_reservation: row.try_get("enable_billing_reservation").map_sql_err()?,
+        enable_referral_ledger: row.try_get("enable_referral_ledger").map_sql_err()?,
+        is_active: row.try_get("is_active").map_sql_err()?,
         config: row.try_get("config").map_sql_err()?,
         created_at_unix_ms: super::u64_from_i64(
             row.try_get("created_at_unix_ms").map_sql_err()?,

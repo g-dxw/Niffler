@@ -65,6 +65,19 @@ CREATE TABLE IF NOT EXISTS niffler_product_plan_models (
     CONSTRAINT fk_niffler_product_plan_models_plan FOREIGN KEY (`product_plan_id`) REFERENCES niffler_product_plans (`id`)
 );
 
+CREATE TABLE IF NOT EXISTS niffler_api_key_product_plan_bindings (
+    `id` VARCHAR(36) NOT NULL,
+    `api_key_id` VARCHAR(36) NOT NULL,
+    `product_plan_id` VARCHAR(36) NOT NULL,
+    `config` JSON,
+    `created_at_unix_ms` BIGINT NOT NULL,
+    `updated_at_unix_ms` BIGINT NOT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY uq_niffler_api_key_product_plan_bindings_key (`api_key_id`),
+    KEY idx_niffler_api_key_product_plan_bindings_plan (`product_plan_id`),
+    CONSTRAINT fk_niffler_api_key_product_plan_bindings_plan FOREIGN KEY (`product_plan_id`) REFERENCES niffler_product_plans (`id`)
+);
+
 CREATE TABLE IF NOT EXISTS niffler_model_base_prices (
     `id` VARCHAR(36) NOT NULL,
     `model_name` VARCHAR(200) NOT NULL,
@@ -183,6 +196,24 @@ CREATE TABLE IF NOT EXISTS niffler_api_key_pauses (
     `restored_by` VARCHAR(36),
     PRIMARY KEY (`id`),
     KEY idx_niffler_api_key_pauses_key_active (`api_key_id`, `restored_at_unix_ms`, `paused_until_unix_ms`)
+);
+
+CREATE TABLE IF NOT EXISTS niffler_runtime_rollout_settings (
+    `id` VARCHAR(36) NOT NULL,
+    `target_scope` VARCHAR(32) NOT NULL,
+    `target_id` VARCHAR(64) NOT NULL,
+    `enable_new_routing` TINYINT(1) NOT NULL DEFAULT 0,
+    `enable_settlement_snapshot` TINYINT(1) NOT NULL DEFAULT 0,
+    `enable_error_return_rules` TINYINT(1) NOT NULL DEFAULT 0,
+    `enable_billing_reservation` TINYINT(1) NOT NULL DEFAULT 0,
+    `enable_referral_ledger` TINYINT(1) NOT NULL DEFAULT 0,
+    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+    `config` JSON,
+    `created_at_unix_ms` BIGINT NOT NULL,
+    `updated_at_unix_ms` BIGINT NOT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY uq_niffler_runtime_rollout_settings_target (`target_scope`, `target_id`),
+    KEY idx_niffler_runtime_rollout_settings_active (`is_active`)
 );
 
 CREATE TABLE IF NOT EXISTS niffler_upstream_service_capabilities (

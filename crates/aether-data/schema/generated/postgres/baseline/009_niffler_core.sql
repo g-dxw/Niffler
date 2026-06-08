@@ -69,6 +69,20 @@ ALTER TABLE ONLY public.niffler_product_plan_models ADD CONSTRAINT uq_niffler_pr
 CREATE INDEX IF NOT EXISTS idx_niffler_product_plan_models_model ON public.niffler_product_plan_models USING btree (model_name, is_enabled);
 ALTER TABLE ONLY public.niffler_product_plan_models ADD CONSTRAINT fk_niffler_product_plan_models_plan FOREIGN KEY (product_plan_id) REFERENCES public.niffler_product_plans(id);
 
+CREATE TABLE IF NOT EXISTS public.niffler_api_key_product_plan_bindings (
+    id character varying(36) NOT NULL,
+    api_key_id character varying(36) NOT NULL,
+    product_plan_id character varying(36) NOT NULL,
+    config jsonb,
+    created_at_unix_ms bigint NOT NULL,
+    updated_at_unix_ms bigint NOT NULL
+);
+
+ALTER TABLE ONLY public.niffler_api_key_product_plan_bindings ADD CONSTRAINT niffler_api_key_product_plan_bindings_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.niffler_api_key_product_plan_bindings ADD CONSTRAINT uq_niffler_api_key_product_plan_bindings_key UNIQUE (api_key_id);
+CREATE INDEX IF NOT EXISTS idx_niffler_api_key_product_plan_bindings_plan ON public.niffler_api_key_product_plan_bindings USING btree (product_plan_id);
+ALTER TABLE ONLY public.niffler_api_key_product_plan_bindings ADD CONSTRAINT fk_niffler_api_key_product_plan_bindings_plan FOREIGN KEY (product_plan_id) REFERENCES public.niffler_product_plans(id);
+
 CREATE TABLE IF NOT EXISTS public.niffler_model_base_prices (
     id character varying(36) NOT NULL,
     model_name character varying(200) NOT NULL,
@@ -195,6 +209,25 @@ CREATE TABLE IF NOT EXISTS public.niffler_api_key_pauses (
 
 ALTER TABLE ONLY public.niffler_api_key_pauses ADD CONSTRAINT niffler_api_key_pauses_pkey PRIMARY KEY (id);
 CREATE INDEX IF NOT EXISTS idx_niffler_api_key_pauses_key_active ON public.niffler_api_key_pauses USING btree (api_key_id, restored_at_unix_ms, paused_until_unix_ms);
+
+CREATE TABLE IF NOT EXISTS public.niffler_runtime_rollout_settings (
+    id character varying(36) NOT NULL,
+    target_scope character varying(32) NOT NULL,
+    target_id character varying(64) NOT NULL,
+    enable_new_routing boolean DEFAULT false NOT NULL,
+    enable_settlement_snapshot boolean DEFAULT false NOT NULL,
+    enable_error_return_rules boolean DEFAULT false NOT NULL,
+    enable_billing_reservation boolean DEFAULT false NOT NULL,
+    enable_referral_ledger boolean DEFAULT false NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    config jsonb,
+    created_at_unix_ms bigint NOT NULL,
+    updated_at_unix_ms bigint NOT NULL
+);
+
+ALTER TABLE ONLY public.niffler_runtime_rollout_settings ADD CONSTRAINT niffler_runtime_rollout_settings_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.niffler_runtime_rollout_settings ADD CONSTRAINT uq_niffler_runtime_rollout_settings_target UNIQUE (target_scope, target_id);
+CREATE INDEX IF NOT EXISTS idx_niffler_runtime_rollout_settings_active ON public.niffler_runtime_rollout_settings USING btree (is_active);
 
 CREATE TABLE IF NOT EXISTS public.niffler_upstream_service_capabilities (
     id character varying(36) NOT NULL,

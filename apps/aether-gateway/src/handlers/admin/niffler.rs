@@ -16,11 +16,13 @@ use aether_data_contracts::repository::niffler_core::{
     NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerReadinessIssue,
     NifflerReadinessSeverity, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
     NifflerServiceCapabilityKind, NifflerShadowTableItem, NifflerShadowTableStatus,
     NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
     NifflerUsageAnomaly, NifflerUserResponseMode, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -49,6 +51,7 @@ const UPSTREAM_SERVICES_PATH: &str = "/api/admin/niffler-core/upstream-services"
 const PRODUCT_PLANS_PATH: &str = "/api/admin/niffler-core/product-plans";
 const API_KEY_PRODUCT_PLAN_BINDINGS_PATH: &str =
     "/api/admin/niffler-core/api-key-product-plan-bindings";
+const RUNTIME_ROLLOUT_SETTINGS_PATH: &str = "/api/admin/niffler-core/runtime-rollout-settings";
 const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
@@ -73,6 +76,7 @@ const SHADOW_TABLES: &[&str] = &[
     "niffler_error_return_settings",
     "niffler_account_risk_events",
     "niffler_api_key_pauses",
+    "niffler_runtime_rollout_settings",
     "niffler_referral_reward_rules",
     "niffler_referral_reward_ledger",
     "niffler_referral_reward_events",
@@ -162,6 +166,17 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
     if request_context.path().trim_end_matches('/') == API_KEY_PRODUCT_PLAN_BINDINGS_PATH {
         return Ok(Some(
             build_all_api_key_product_plan_bindings_response(&state, &request_context).await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == RUNTIME_ROLLOUT_SETTINGS_PATH {
+        return Ok(Some(
+            build_runtime_rollout_settings_response(
+                &state,
+                &request_context,
+                request.request_body(),
+            )
+            .await?,
         ));
     }
 
@@ -262,6 +277,24 @@ struct AdminNifflerUpsertProductPlanModelRequest {
 #[derive(Debug, Deserialize)]
 struct AdminNifflerUpsertApiKeyProductPlanBindingRequest {
     api_key_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerUpsertRuntimeRolloutSettingRequest {
+    target_scope: NifflerRuntimeRolloutTargetScope,
+    target_id: String,
+    #[serde(default)]
+    enable_new_routing: bool,
+    #[serde(default)]
+    enable_settlement_snapshot: bool,
+    #[serde(default)]
+    enable_error_return_rules: bool,
+    #[serde(default)]
+    enable_billing_reservation: bool,
+    #[serde(default)]
+    enable_referral_ledger: bool,
+    #[serde(default = "default_true")]
+    is_active: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -894,6 +927,129 @@ async fn upsert_product_plan_api_key_binding_response(
     ))
 }
 
+async fn build_runtime_rollout_settings_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            let target_scope =
+                match parse_runtime_rollout_target_scope_query(request_context.query_string()) {
+                    Ok(value) => value,
+                    Err(response) => return Ok(response),
+                };
+            let query = NifflerRuntimeRolloutSettingListQuery {
+                target_scope,
+                include_inactive: parse_bool_query(
+                    request_context.query_string(),
+                    "include_inactive",
+                )
+                .unwrap_or(false),
+                offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+                limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
+            };
+            let page = state.list_niffler_runtime_rollout_settings(&query).await?;
+            Ok(Json(page).into_response())
+        }
+        method if method == http::Method::POST => {
+            upsert_runtime_rollout_setting_response(state, request_body).await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持列表和保存灰度开关")),
+    }
+}
+
+async fn upsert_runtime_rollout_setting_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    let payload =
+        match parse_required_body::<AdminNifflerUpsertRuntimeRolloutSettingRequest>(request_body) {
+            Ok(payload) => payload,
+            Err(response) => return Ok(response),
+        };
+    let target_id = match normalize_required_text(&payload.target_id, "灰度对象", 64) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    if let Err(response) =
+        validate_runtime_rollout_target(state, payload.target_scope, &target_id).await
+    {
+        return Ok(response);
+    }
+
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let record = UpsertNifflerRuntimeRolloutSettingRecord {
+        id: Uuid::new_v4().to_string(),
+        target_scope: payload.target_scope,
+        target_id: target_id.clone(),
+        enable_new_routing: payload.enable_new_routing,
+        enable_settlement_snapshot: payload.enable_settlement_snapshot,
+        enable_error_return_rules: payload.enable_error_return_rules,
+        enable_billing_reservation: payload.enable_billing_reservation,
+        enable_referral_ledger: payload.enable_referral_ledger,
+        is_active: payload.is_active,
+        config: Some(json!({
+            "created_from": "niffler_core_admin",
+            "runtime_effect": "shadow_only"
+        })),
+        created_at_unix_ms: now_unix_ms,
+        updated_at_unix_ms: now_unix_ms,
+    };
+    let Some(saved) = state.upsert_niffler_runtime_rollout_setting(record).await? else {
+        return Ok(niffler_data_unavailable_response());
+    };
+    let saved_id = saved.id.clone();
+    Ok(attach_admin_audit_response(
+        Json(saved).into_response(),
+        "niffler_runtime_rollout_setting_saved",
+        "upsert_niffler_runtime_rollout_setting",
+        "niffler_runtime_rollout_setting",
+        &saved_id,
+    ))
+}
+
+async fn validate_runtime_rollout_target(
+    state: &AdminAppState<'_>,
+    target_scope: NifflerRuntimeRolloutTargetScope,
+    target_id: &str,
+) -> Result<(), Response<Body>> {
+    match target_scope {
+        NifflerRuntimeRolloutTargetScope::ApiKey => {
+            let snapshots = state
+                .list_auth_api_key_snapshots_by_ids(&[target_id.to_string()])
+                .await
+                .map_err(|err| niffler_internal_error(format!("{err:?}")))?;
+            let Some(snapshot) = snapshots
+                .iter()
+                .find(|snapshot| snapshot.api_key_id == target_id)
+            else {
+                return Err(niffler_not_found("API Key 不存在"));
+            };
+            if !snapshot.api_key_is_active {
+                return Err(niffler_bad_request("只能给启用的 API Key 设置灰度开关"));
+            }
+        }
+        NifflerRuntimeRolloutTargetScope::ProductPlan => {
+            let Some(product_plan) = state
+                .find_niffler_product_plan_by_id(target_id)
+                .await
+                .map_err(|err| niffler_internal_error(format!("{err:?}")))?
+            else {
+                return Err(niffler_not_found("产品策略不存在"));
+            };
+            if !product_plan.is_active {
+                return Err(niffler_bad_request("只能给启用的产品策略设置灰度开关"));
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn build_error_return_settings_response(
     state: &AdminAppState<'_>,
     request_context: &AdminRequestContext<'_>,
@@ -1172,6 +1328,17 @@ fn parse_error_response_scope_query(
     })
 }
 
+fn parse_runtime_rollout_target_scope_query(
+    query: Option<&str>,
+) -> Result<Option<NifflerRuntimeRolloutTargetScope>, Response<Body>> {
+    query_param_value(query, "target_scope")
+        .map(|value| {
+            NifflerRuntimeRolloutTargetScope::from_database(value.as_str())
+                .map_err(|_| niffler_bad_request("灰度对象范围只能是 api_key 或 product_plan"))
+        })
+        .transpose()
+}
+
 fn niffler_bad_request(detail: impl Into<String>) -> Response<Body> {
     (
         http::StatusCode::BAD_REQUEST,
@@ -1183,6 +1350,14 @@ fn niffler_bad_request(detail: impl Into<String>) -> Response<Body> {
 fn niffler_not_found(detail: impl Into<String>) -> Response<Body> {
     (
         http::StatusCode::NOT_FOUND,
+        Json(json!({ "detail": detail.into() })),
+    )
+        .into_response()
+}
+
+fn niffler_internal_error(detail: impl Into<String>) -> Response<Body> {
+    (
+        http::StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({ "detail": detail.into() })),
     )
         .into_response()

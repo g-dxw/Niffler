@@ -8,12 +8,12 @@
       <template #actions>
         <Button
           variant="outline"
-          :disabled="serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading"
+          :disabled="serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || errorReturnSettingLoading"
           @click="refreshAll"
         >
           <RefreshCw
             class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading }"
+            :class="{ 'animate-spin': serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || errorReturnSettingLoading }"
           />
           刷新
         </Button>
@@ -686,6 +686,211 @@
                     class="mr-2 h-4 w-4 animate-spin"
                   />
                   {{ apiKeyIsBoundToSelectedPlan(apiKey.id) ? '已绑定当前策略' : '绑定到当前策略' }}
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Card>
+
+      <Card class="overflow-hidden">
+        <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">
+              运行时灰度开关
+            </h2>
+            <p class="mt-1 text-sm text-muted-foreground">
+              只保存影子配置，不影响当前线上请求。这里登记某个产品策略或 Key 以后准备启用哪些新链路。
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            class="h-9"
+            :disabled="runtimeRolloutLoading"
+            @click="loadRuntimeRolloutSettings"
+          >
+            <RefreshCw
+              class="mr-2 h-4 w-4"
+              :class="{ 'animate-spin': runtimeRolloutLoading }"
+            />
+            刷新灰度开关
+          </Button>
+        </div>
+
+        <div
+          v-if="runtimeRolloutError"
+          class="border-b border-destructive/20 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+        >
+          {{ runtimeRolloutError }}
+        </div>
+
+        <div class="grid gap-5 border-b border-border/70 p-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div>
+            <p class="text-sm font-medium">
+              要登记的新链路
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              当前版本只记录选择结果，旧调度、计费、结算、错误返回和返利逻辑都不会读取这些开关。
+            </p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <label
+                v-for="item in runtimeRolloutFlagOptions"
+                :key="item.key"
+                class="flex items-start gap-3 rounded-lg border border-border/50 p-3"
+              >
+                <Switch v-model="runtimeRolloutForm[item.key]" />
+                <span>
+                  <span class="block text-sm font-medium">{{ item.label }}</span>
+                  <span class="block text-xs text-muted-foreground">{{ item.description }}</span>
+                </span>
+              </label>
+              <label class="flex items-start gap-3 rounded-lg border border-border/50 p-3">
+                <Switch v-model="runtimeRolloutForm.is_active" />
+                <span>
+                  <span class="block text-sm font-medium">启用这条登记</span>
+                  <span class="block text-xs text-muted-foreground">关闭后仍保留记录，但灰度时不会使用。</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-4 rounded-xl border border-border/70 bg-muted/25 p-4">
+            <div>
+              <p class="text-sm font-medium">
+                登记目标
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                可以登记当前产品策略，也可以登记一把独立 Key。Key 级配置后续会优先于产品策略级配置。
+              </p>
+            </div>
+            <Button
+              class="w-full"
+              :disabled="!selectedProductPlan || !selectedProductPlan.is_active || savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey('product_plan', selectedProductPlanId || '')"
+              @click="saveSelectedProductPlanRuntimeRollout"
+            >
+              <Loader2
+                v-if="savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey('product_plan', selectedProductPlanId || '')"
+                class="mr-2 h-4 w-4 animate-spin"
+              />
+              {{ selectedProductPlan ? `登记当前策略：${selectedProductPlan.display_name}` : '先选择产品策略' }}
+            </Button>
+            <div class="space-y-2">
+              <Label for="runtime-rollout-api-key">独立 Key</Label>
+              <Select v-model="selectedRuntimeRolloutApiKeyId">
+                <SelectTrigger id="runtime-rollout-api-key">
+                  <SelectValue placeholder="选择独立 Key" />
+                </SelectTrigger>
+                <SelectContent search-placeholder="搜索 Key 名称...">
+                  <SelectItem
+                    v-for="apiKey in standaloneApiKeys"
+                    :key="apiKey.id"
+                    :value="apiKey.id"
+                    :text-value="`${formatApiKeyName(apiKey)} ${apiKey.key_display || ''} ${formatApiKeyOwner(apiKey)}`"
+                  >
+                    {{ formatApiKeyName(apiKey) }} · {{ formatApiKeyOwner(apiKey) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant="outline"
+              class="w-full"
+              :disabled="!selectedRuntimeRolloutApiKey || !selectedRuntimeRolloutApiKey.is_active || savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey('api_key', selectedRuntimeRolloutApiKeyId)"
+              @click="saveSelectedApiKeyRuntimeRollout"
+            >
+              <Loader2
+                v-if="savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey('api_key', selectedRuntimeRolloutApiKeyId)"
+                class="mr-2 h-4 w-4 animate-spin"
+              />
+              登记选中 Key
+            </Button>
+          </div>
+        </div>
+
+        <div
+          v-if="runtimeRolloutLoading && runtimeRolloutSettings.length === 0"
+          class="flex items-center justify-center py-16 text-sm text-muted-foreground"
+        >
+          <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+          正在读取灰度开关...
+        </div>
+
+        <div
+          v-else-if="runtimeRolloutSettings.length === 0"
+          class="py-16 text-center"
+        >
+          <Tags class="mx-auto h-10 w-10 text-muted-foreground/50" />
+          <p class="mt-3 font-medium">
+            还没有灰度开关
+          </p>
+          <p class="mt-1 text-sm text-muted-foreground">
+            先选择上面的目标并保存；保存后仍然不会影响线上请求。
+          </p>
+        </div>
+
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>目标</TableHead>
+              <TableHead>启用的新链路</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>更新时间</TableHead>
+              <TableHead class="text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="setting in runtimeRolloutSettings"
+              :key="setting.id"
+            >
+              <TableCell>
+                <div class="font-medium">
+                  {{ runtimeRolloutTargetLabel(setting) }}
+                </div>
+                <div class="mt-1 text-xs text-muted-foreground">
+                  {{ runtimeRolloutTargetScopeLabel(setting.target_scope) }}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div
+                  v-if="runtimeRolloutEnabledLabels(setting).length > 0"
+                  class="flex flex-wrap gap-2"
+                >
+                  <Badge
+                    v-for="label in runtimeRolloutEnabledLabels(setting)"
+                    :key="label"
+                    variant="outline"
+                  >
+                    {{ label }}
+                  </Badge>
+                </div>
+                <span
+                  v-else
+                  class="text-sm text-muted-foreground"
+                >
+                  未开启任何新链路
+                </span>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="setting.is_active ? 'outline' : 'secondary'">
+                  {{ setting.is_active ? '启用' : '停用' }}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                {{ formatNifflerUnixMs(setting.updated_at_unix_ms) }}
+              </TableCell>
+              <TableCell class="text-right">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey(setting.target_scope, setting.target_id)"
+                  @click="saveRuntimeRolloutSetting(setting.target_scope, setting.target_id)"
+                >
+                  <Loader2
+                    v-if="savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey(setting.target_scope, setting.target_id)"
+                    class="mr-2 h-4 w-4 animate-spin"
+                  />
+                  用当前开关覆盖
                 </Button>
               </TableCell>
             </TableRow>
@@ -1515,12 +1720,14 @@ import {
   listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
   listNifflerProductPlans,
+  listNifflerRuntimeRolloutSettings,
   listNifflerUpstreamServiceCapabilities,
   listNifflerUpstreamAccounts,
   listNifflerUpstreamServices,
   updateNifflerUpstreamServiceCapabilities,
   upsertNifflerApiKeyProductPlanBinding,
   upsertNifflerProductPlanModel,
+  upsertNifflerRuntimeRolloutSetting,
   type CreateNifflerErrorReturnSettingPayload,
   type CreateNifflerProductPlanPayload,
   type CreateNifflerUpstreamAccountPayload,
@@ -1534,6 +1741,8 @@ import {
   type NifflerProductPlan,
   type NifflerProductPlanModel,
   type NifflerProtocolKind,
+  type NifflerRuntimeRolloutSetting,
+  type NifflerRuntimeRolloutTargetScope,
   type NifflerUpstreamErrorHandlingStep,
   type NifflerUpstreamAccount,
   type NifflerUpstreamService,
@@ -1541,6 +1750,7 @@ import {
   type NifflerUserResponseMode,
   type UpdateNifflerUpstreamServiceCapabilitiesPayload,
   type UpsertNifflerProductPlanModelPayload,
+  type UpsertNifflerRuntimeRolloutSettingPayload,
 } from '@/api/niffler-core'
 import { adminApi, type AdminApiKey } from '@/api/admin'
 import {
@@ -1594,6 +1804,28 @@ type ErrorReturnSettingForm = {
   pause_duration: NifflerPauseDuration | ''
   is_active: boolean
 }
+type RuntimeRolloutFlagKey = Exclude<
+  keyof Pick<
+    UpsertNifflerRuntimeRolloutSettingPayload,
+    | 'enable_new_routing'
+    | 'enable_settlement_snapshot'
+    | 'enable_error_return_rules'
+    | 'enable_billing_reservation'
+    | 'enable_referral_ledger'
+  >,
+  undefined
+>
+type RuntimeRolloutForm = Required<
+  Pick<
+    UpsertNifflerRuntimeRolloutSettingPayload,
+    | 'enable_new_routing'
+    | 'enable_settlement_snapshot'
+    | 'enable_error_return_rules'
+    | 'enable_billing_reservation'
+    | 'enable_referral_ledger'
+    | 'is_active'
+  >
+>
 
 const { success, error: showError } = useToast()
 
@@ -1605,6 +1837,7 @@ const productPlanModels = ref<NifflerProductPlanModel[]>([])
 const apiKeys = ref<AdminApiKey[]>([])
 const apiKeyProductPlanBindings = ref<NifflerApiKeyProductPlanBinding[]>([])
 const globalModels = ref<GlobalModelResponse[]>([])
+const runtimeRolloutSettings = ref<NifflerRuntimeRolloutSetting[]>([])
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const serviceLoading = ref(false)
 const serviceCapabilityLoading = ref(false)
@@ -1614,6 +1847,7 @@ const productPlanModelLoading = ref(false)
 const apiKeyLoading = ref(false)
 const apiKeyBindingLoading = ref(false)
 const globalModelsLoading = ref(false)
+const runtimeRolloutLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const savingService = ref(false)
 const savingServiceCapabilities = ref(false)
@@ -1621,6 +1855,7 @@ const savingAccount = ref(false)
 const savingProductPlan = ref(false)
 const savingProductPlanModel = ref(false)
 const savingApiKeyBindingId = ref<string | null>(null)
+const savingRuntimeRolloutTargetKey = ref<string | null>(null)
 const savingErrorReturnSetting = ref(false)
 const serviceError = ref('')
 const serviceCapabilityError = ref('')
@@ -1629,11 +1864,13 @@ const productPlanError = ref('')
 const productPlanModelError = ref('')
 const apiKeyBindingError = ref('')
 const globalModelsError = ref('')
+const runtimeRolloutError = ref('')
 const errorReturnSettingError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
 const selectedServiceId = ref<string | null>(null)
 const selectedProductPlanId = ref<string | null>(null)
+const selectedRuntimeRolloutApiKeyId = ref('')
 const serviceDialogOpen = ref(false)
 const accountDialogOpen = ref(false)
 const productPlanDialogOpen = ref(false)
@@ -1681,6 +1918,15 @@ const defaultErrorReturnSettingForm = (): ErrorReturnSettingForm => ({
   is_active: true,
 })
 
+const defaultRuntimeRolloutForm = (): RuntimeRolloutForm => ({
+  enable_new_routing: true,
+  enable_settlement_snapshot: true,
+  enable_error_return_rules: true,
+  enable_billing_reservation: false,
+  enable_referral_ledger: false,
+  is_active: true,
+})
+
 const serviceForm = ref<CreateNifflerUpstreamServicePayload>(defaultServiceForm())
 const serviceCapabilityForm = ref<NifflerServiceCapabilityForm>(
   buildNifflerServiceCapabilityForm(null)
@@ -1689,6 +1935,7 @@ const accountForm = ref<CreateNifflerUpstreamAccountPayload>(defaultAccountForm(
 const productPlanForm = ref<ProductPlanForm>(defaultProductPlanForm())
 const productPlanModelForm = ref<ProductPlanModelForm>(defaultProductPlanModelForm())
 const errorReturnSettingForm = ref<ErrorReturnSettingForm>(defaultErrorReturnSettingForm())
+const runtimeRolloutForm = ref<RuntimeRolloutForm>(defaultRuntimeRolloutForm())
 let accountLoadSeq = 0
 let serviceCapabilityLoadSeq = 0
 let productPlanModelLoadSeq = 0
@@ -1705,6 +1952,18 @@ const capabilityOptions: Array<{
   { key: 'openai_responses_image_tool', label: 'Responses 生图工具', description: '支持对话内调用图片工具' },
   { key: 'model_list', label: '模型列表', description: '支持读取模型列表' },
   { key: 'model_test', label: '模型测试', description: '支持后台测试模型' },
+]
+
+const runtimeRolloutFlagOptions: Array<{
+  key: RuntimeRolloutFlagKey
+  label: string
+  description: string
+}> = [
+  { key: 'enable_new_routing', label: '新调度', description: '后续让请求按新模型路由选择上游。' },
+  { key: 'enable_settlement_snapshot', label: '结算快照', description: '后续记录本次请求的价格和扣费依据。' },
+  { key: 'enable_error_return_rules', label: '错误文案规则', description: '后续按新规则改写平台和上游错误。' },
+  { key: 'enable_billing_reservation', label: '钱包预扣', description: '后续支持请求开始前预留钱包余额。' },
+  { key: 'enable_referral_ledger', label: '返利账本', description: '后续把邀请返利写入独立账本。' },
 ]
 
 const selectedService = computed(() =>
@@ -1725,6 +1984,10 @@ const apiKeyBindingByApiKeyId = computed(() =>
 
 const standaloneApiKeys = computed(() =>
   apiKeys.value.filter(apiKey => apiKey.is_standalone)
+)
+
+const selectedRuntimeRolloutApiKey = computed(() =>
+  standaloneApiKeys.value.find(apiKey => apiKey.id === selectedRuntimeRolloutApiKeyId.value) ?? null
 )
 
 const canBindApiKeyToSelectedPlan = computed(() =>
@@ -1877,7 +2140,13 @@ watch(errorReturnSettingDialogOpen, (open) => {
 })
 
 async function refreshAll() {
-  await Promise.all([loadServices(), loadProductPlans(), loadErrorReturnSettings()])
+  await Promise.all([
+    loadServices(),
+    loadProductPlans(),
+    loadApiKeyBindingData(),
+    loadRuntimeRolloutSettings(),
+    loadErrorReturnSettings(),
+  ])
   if (selectedServiceId.value) {
     await Promise.all([
       loadAccounts(selectedServiceId.value),
@@ -2033,6 +2302,7 @@ async function loadApiKeyBindingData() {
     if (seq !== apiKeyBindingLoadSeq) return
     apiKeys.value = apiKeyResponse.api_keys
     apiKeyProductPlanBindings.value = bindingResponse.items
+    syncSelectedRuntimeRolloutApiKey()
   } catch (err) {
     if (seq !== apiKeyBindingLoadSeq) return
     apiKeyBindingError.value = extractErrorMessage(err, '读取 Key 绑定失败')
@@ -2043,6 +2313,16 @@ async function loadApiKeyBindingData() {
       apiKeyBindingLoading.value = false
     }
   }
+}
+
+function syncSelectedRuntimeRolloutApiKey() {
+  if (
+    selectedRuntimeRolloutApiKeyId.value
+    && standaloneApiKeys.value.some(apiKey => apiKey.id === selectedRuntimeRolloutApiKeyId.value)
+  ) {
+    return
+  }
+  selectedRuntimeRolloutApiKeyId.value = standaloneApiKeys.value[0]?.id ?? ''
 }
 
 async function loadGlobalModels() {
@@ -2085,6 +2365,23 @@ async function loadErrorReturnSettings() {
     showError(errorReturnSettingError.value)
   } finally {
     errorReturnSettingLoading.value = false
+  }
+}
+
+async function loadRuntimeRolloutSettings() {
+  runtimeRolloutLoading.value = true
+  runtimeRolloutError.value = ''
+  try {
+    const response = await listNifflerRuntimeRolloutSettings({
+      include_inactive: true,
+      limit: 100,
+    })
+    runtimeRolloutSettings.value = response.items
+  } catch (err) {
+    runtimeRolloutError.value = extractErrorMessage(err, '读取灰度开关失败')
+    showError(runtimeRolloutError.value)
+  } finally {
+    runtimeRolloutLoading.value = false
   }
 }
 
@@ -2221,6 +2518,61 @@ async function bindApiKeyToSelectedProductPlan(apiKeyId: string) {
     showError(extractErrorMessage(err, '保存 Key 绑定失败'))
   } finally {
     savingApiKeyBindingId.value = null
+  }
+}
+
+async function saveSelectedProductPlanRuntimeRollout() {
+  if (!selectedProductPlanId.value || !selectedProductPlan.value) {
+    showError('请先选择产品策略')
+    return
+  }
+  if (!selectedProductPlan.value.is_active) {
+    showError('只能登记启用的产品策略')
+    return
+  }
+  await saveRuntimeRolloutSetting('product_plan', selectedProductPlanId.value)
+}
+
+async function saveSelectedApiKeyRuntimeRollout() {
+  if (!selectedRuntimeRolloutApiKey.value) {
+    showError('请先选择独立 Key')
+    return
+  }
+  if (!selectedRuntimeRolloutApiKey.value.is_active) {
+    showError('只能登记启用的独立 Key')
+    return
+  }
+  await saveRuntimeRolloutSetting('api_key', selectedRuntimeRolloutApiKey.value.id)
+}
+
+async function saveRuntimeRolloutSetting(
+  targetScope: NifflerRuntimeRolloutTargetScope,
+  targetId: string
+) {
+  if (!targetId) {
+    showError('灰度目标不能为空')
+    return
+  }
+
+  const targetKey = runtimeRolloutTargetKey(targetScope, targetId)
+  savingRuntimeRolloutTargetKey.value = targetKey
+  try {
+    await upsertNifflerRuntimeRolloutSetting({
+      target_scope: targetScope,
+      target_id: targetId,
+      enable_new_routing: runtimeRolloutForm.value.enable_new_routing,
+      enable_settlement_snapshot: runtimeRolloutForm.value.enable_settlement_snapshot,
+      enable_error_return_rules: runtimeRolloutForm.value.enable_error_return_rules,
+      enable_billing_reservation: runtimeRolloutForm.value.enable_billing_reservation,
+      enable_referral_ledger: runtimeRolloutForm.value.enable_referral_ledger,
+      is_active: runtimeRolloutForm.value.is_active,
+    })
+    success('灰度开关已保存；当前只写影子配置，不影响线上请求。')
+    await loadRuntimeRolloutSettings()
+  } catch (err) {
+    showError(extractErrorMessage(err, '保存灰度开关失败'))
+  } finally {
+    savingRuntimeRolloutTargetKey.value = null
   }
 }
 
@@ -2556,10 +2908,56 @@ function apiKeyIsBoundToSelectedPlan(apiKeyId: string): boolean {
   return Boolean(binding && selectedProductPlanId.value === binding.product_plan_id)
 }
 
+function runtimeRolloutTargetKey(
+  targetScope: NifflerRuntimeRolloutTargetScope,
+  targetId: string
+): string {
+  return `${targetScope}:${targetId}`
+}
+
+function runtimeRolloutTargetScopeLabel(scope: NifflerRuntimeRolloutTargetScope): string {
+  const labels: Record<NifflerRuntimeRolloutTargetScope, string> = {
+    api_key: '独立 Key',
+    product_plan: '产品策略',
+  }
+  return labels[scope] ?? scope
+}
+
+function runtimeRolloutTargetLabel(setting: NifflerRuntimeRolloutSetting): string {
+  if (setting.target_scope === 'product_plan') {
+    return productPlanNameById.value.get(setting.target_id) || setting.target_id
+  }
+  const apiKey = apiKeys.value.find(item => item.id === setting.target_id)
+  if (!apiKey) {
+    return setting.target_id
+  }
+  return `${formatApiKeyName(apiKey)} · ${formatApiKeyOwner(apiKey)}`
+}
+
+function runtimeRolloutEnabledLabels(
+  flags: Pick<
+    NifflerRuntimeRolloutSetting,
+    | 'enable_new_routing'
+    | 'enable_settlement_snapshot'
+    | 'enable_error_return_rules'
+    | 'enable_billing_reservation'
+    | 'enable_referral_ledger'
+  >
+): string[] {
+  const labels: string[] = []
+  if (flags.enable_new_routing) labels.push('新调度')
+  if (flags.enable_settlement_snapshot) labels.push('结算快照')
+  if (flags.enable_error_return_rules) labels.push('错误文案规则')
+  if (flags.enable_billing_reservation) labels.push('钱包预扣')
+  if (flags.enable_referral_ledger) labels.push('返利账本')
+  return labels
+}
+
 onMounted(() => {
   void loadServices()
   void loadProductPlans()
   void loadApiKeyBindingData()
+  void loadRuntimeRolloutSettings()
   void loadErrorReturnSettings()
 })
 </script>

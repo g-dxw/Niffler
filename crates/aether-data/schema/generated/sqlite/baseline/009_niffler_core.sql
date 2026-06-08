@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS niffler_product_plan_models (
 );
 CREATE INDEX IF NOT EXISTS idx_niffler_product_plan_models_model ON niffler_product_plan_models (model_name, is_enabled);
 
+CREATE TABLE IF NOT EXISTS niffler_api_key_product_plan_bindings (
+    id TEXT PRIMARY KEY NOT NULL,
+    api_key_id TEXT NOT NULL,
+    product_plan_id TEXT NOT NULL,
+    config TEXT,
+    created_at_unix_ms INTEGER NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL,
+    UNIQUE (api_key_id),
+    CONSTRAINT fk_niffler_api_key_product_plan_bindings_plan FOREIGN KEY (product_plan_id) REFERENCES niffler_product_plans (id)
+);
+CREATE INDEX IF NOT EXISTS idx_niffler_api_key_product_plan_bindings_plan ON niffler_api_key_product_plan_bindings (product_plan_id);
+
 CREATE TABLE IF NOT EXISTS niffler_model_base_prices (
     id TEXT PRIMARY KEY NOT NULL,
     model_name TEXT NOT NULL,
@@ -173,6 +185,23 @@ CREATE TABLE IF NOT EXISTS niffler_api_key_pauses (
     restored_by TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_niffler_api_key_pauses_key_active ON niffler_api_key_pauses (api_key_id, restored_at_unix_ms, paused_until_unix_ms);
+
+CREATE TABLE IF NOT EXISTS niffler_runtime_rollout_settings (
+    id TEXT PRIMARY KEY NOT NULL,
+    target_scope TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    enable_new_routing INTEGER NOT NULL DEFAULT 0,
+    enable_settlement_snapshot INTEGER NOT NULL DEFAULT 0,
+    enable_error_return_rules INTEGER NOT NULL DEFAULT 0,
+    enable_billing_reservation INTEGER NOT NULL DEFAULT 0,
+    enable_referral_ledger INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    config TEXT,
+    created_at_unix_ms INTEGER NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL,
+    UNIQUE (target_scope, target_id)
+);
+CREATE INDEX IF NOT EXISTS idx_niffler_runtime_rollout_settings_active ON niffler_runtime_rollout_settings (is_active);
 
 CREATE TABLE IF NOT EXISTS niffler_upstream_service_capabilities (
     id TEXT PRIMARY KEY NOT NULL,

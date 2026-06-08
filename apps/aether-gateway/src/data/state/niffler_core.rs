@@ -2,16 +2,20 @@ use super::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
     GatewayDataState, NifflerApiKeyProductPlanBindingListQuery, NifflerErrorReturnSettingListQuery,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
-    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerRuntimeRolloutSetting,
+    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
     StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -179,6 +183,42 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_niffler_runtime_rollout_settings(
+        &self,
+        query: &NifflerRuntimeRolloutSettingListQuery,
+    ) -> Result<StoredNifflerRuntimeRolloutSettingListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_runtime_rollout_settings(query).await,
+            None => Ok(StoredNifflerRuntimeRolloutSettingListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
+    pub(crate) async fn find_niffler_runtime_rollout_setting(
+        &self,
+        target_scope: NifflerRuntimeRolloutTargetScope,
+        target_id: &str,
+    ) -> Result<Option<StoredNifflerRuntimeRolloutSetting>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => {
+                repository
+                    .find_runtime_rollout_setting(target_scope, target_id)
+                    .await
+            }
+            None => Ok(None),
+        }
+    }
+
     pub(crate) async fn list_niffler_error_return_settings(
         &self,
         query: &NifflerErrorReturnSettingListQuery,
@@ -280,6 +320,23 @@ impl GatewayDataState {
         {
             Some(repository) => repository
                 .upsert_api_key_product_plan_binding(record)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn upsert_niffler_runtime_rollout_setting(
+        &self,
+        record: UpsertNifflerRuntimeRolloutSettingRecord,
+    ) -> Result<Option<StoredNifflerRuntimeRolloutSetting>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .upsert_runtime_rollout_setting(record)
                 .await
                 .map(Some),
             None => Ok(None),

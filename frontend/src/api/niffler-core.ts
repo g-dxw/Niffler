@@ -28,6 +28,7 @@ export type NifflerPauseDuration =
   | 'one_hour'
   | 'twenty_four_hours'
   | 'manual_restore'
+export type NifflerRuntimeRolloutTargetScope = 'api_key' | 'product_plan'
 
 export interface NifflerUpstreamService {
   id: string
@@ -96,6 +97,21 @@ export interface NifflerApiKeyProductPlanBinding {
   id: string
   api_key_id: string
   product_plan_id: string
+  config?: Record<string, unknown> | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
+export interface NifflerRuntimeRolloutSetting {
+  id: string
+  target_scope: NifflerRuntimeRolloutTargetScope
+  target_id: string
+  enable_new_routing: boolean
+  enable_settlement_snapshot: boolean
+  enable_error_return_rules: boolean
+  enable_billing_reservation: boolean
+  enable_referral_ledger: boolean
+  is_active: boolean
   config?: Record<string, unknown> | null
   created_at_unix_ms: number
   updated_at_unix_ms: number
@@ -170,6 +186,17 @@ export interface UpsertNifflerProductPlanModelPayload {
 
 export interface UpsertNifflerApiKeyProductPlanBindingPayload {
   api_key_id: string
+}
+
+export interface UpsertNifflerRuntimeRolloutSettingPayload {
+  target_scope: NifflerRuntimeRolloutTargetScope
+  target_id: string
+  enable_new_routing?: boolean
+  enable_settlement_snapshot?: boolean
+  enable_error_return_rules?: boolean
+  enable_billing_reservation?: boolean
+  enable_referral_ledger?: boolean
+  is_active?: boolean
 }
 
 export interface CreateNifflerErrorReturnSettingPayload {
@@ -495,6 +522,29 @@ export async function upsertNifflerApiKeyProductPlanBinding(
 ): Promise<NifflerApiKeyProductPlanBinding> {
   const response = await apiClient.post<NifflerApiKeyProductPlanBinding>(
     `/api/admin/niffler-core/product-plans/${encodeURIComponent(productPlanId)}/api-key-bindings`,
+    payload
+  )
+  return response.data
+}
+
+export async function listNifflerRuntimeRolloutSettings(params?: {
+  target_scope?: NifflerRuntimeRolloutTargetScope
+  include_inactive?: boolean
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerRuntimeRolloutSetting>> {
+  const response = await apiClient.get<NifflerListPage<NifflerRuntimeRolloutSetting>>(
+    '/api/admin/niffler-core/runtime-rollout-settings',
+    { params }
+  )
+  return response.data
+}
+
+export async function upsertNifflerRuntimeRolloutSetting(
+  payload: UpsertNifflerRuntimeRolloutSettingPayload
+): Promise<NifflerRuntimeRolloutSetting> {
+  const response = await apiClient.post<NifflerRuntimeRolloutSetting>(
+    '/api/admin/niffler-core/runtime-rollout-settings',
     payload
   )
   return response.data

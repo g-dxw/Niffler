@@ -169,6 +169,20 @@ pub(super) fn classify_admin_route(
             false,
         ))
     } else if matches!(method, &http::Method::GET | &http::Method::POST)
+        && normalized_path_no_trailing == "/api/admin/niffler-core/runtime-rollout-settings"
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            if method == http::Method::GET {
+                "list_runtime_rollout_settings"
+            } else {
+                "upsert_runtime_rollout_setting"
+            },
+            "admin:routing_profiles",
+            false,
+        ))
+    } else if matches!(method, &http::Method::GET | &http::Method::POST)
         && normalized_path_no_trailing == "/api/admin/niffler-core/error-return-settings"
     {
         Some(classified(

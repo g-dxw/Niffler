@@ -250,6 +250,53 @@ columns = ["product_plan_id"]
 references_table = "niffler_product_plans"
 references_columns = ["id"]
 
+[table.niffler_api_key_product_plan_bindings]
+domain = "niffler_core"
+order = 935
+primary_key = ["id"]
+
+[[table.niffler_api_key_product_plan_bindings.columns]]
+name = "id"
+type = "text_id"
+length = 36
+
+[[table.niffler_api_key_product_plan_bindings.columns]]
+name = "api_key_id"
+type = "text_id"
+length = 36
+
+[[table.niffler_api_key_product_plan_bindings.columns]]
+name = "product_plan_id"
+type = "text_id"
+length = 36
+
+[[table.niffler_api_key_product_plan_bindings.columns]]
+name = "config"
+type = "json"
+nullable = true
+
+[[table.niffler_api_key_product_plan_bindings.columns]]
+name = "created_at_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_api_key_product_plan_bindings.columns]]
+name = "updated_at_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_api_key_product_plan_bindings.uniques]]
+name = "uq_niffler_api_key_product_plan_bindings_key"
+columns = ["api_key_id"]
+
+[[table.niffler_api_key_product_plan_bindings.indexes]]
+name = "idx_niffler_api_key_product_plan_bindings_plan"
+columns = ["product_plan_id"]
+
+[[table.niffler_api_key_product_plan_bindings.foreign_keys]]
+name = "fk_niffler_api_key_product_plan_bindings_plan"
+columns = ["product_plan_id"]
+references_table = "niffler_product_plans"
+references_columns = ["id"]
+
 [table.niffler_model_base_prices]
 domain = "niffler_core"
 order = 940
@@ -739,6 +786,77 @@ nullable = true
 [[table.niffler_api_key_pauses.indexes]]
 name = "idx_niffler_api_key_pauses_key_active"
 columns = ["api_key_id", "restored_at_unix_ms", "paused_until_unix_ms"]
+
+[table.niffler_runtime_rollout_settings]
+domain = "niffler_core"
+order = 1005
+primary_key = ["id"]
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "id"
+type = "text_id"
+length = 36
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "target_scope"
+type = "text"
+length = 32
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "target_id"
+type = "text"
+length = 64
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "enable_new_routing"
+type = "bool"
+default = false
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "enable_settlement_snapshot"
+type = "bool"
+default = false
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "enable_error_return_rules"
+type = "bool"
+default = false
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "enable_billing_reservation"
+type = "bool"
+default = false
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "enable_referral_ledger"
+type = "bool"
+default = false
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "is_active"
+type = "bool"
+default = true
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "config"
+type = "json"
+nullable = true
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "created_at_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_runtime_rollout_settings.columns]]
+name = "updated_at_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_runtime_rollout_settings.uniques]]
+name = "uq_niffler_runtime_rollout_settings_target"
+columns = ["target_scope", "target_id"]
+
+[[table.niffler_runtime_rollout_settings.indexes]]
+name = "idx_niffler_runtime_rollout_settings_active"
+columns = ["is_active"]
 
 [table.niffler_upstream_service_capabilities]
 domain = "niffler_core"

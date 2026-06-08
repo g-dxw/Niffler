@@ -9,17 +9,20 @@ pub use aether_data_contracts::repository::niffler_core::{
     NifflerCoreReadRepository, NifflerCoreRepository, NifflerCoreWriteRepository,
     NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
     NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
     NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
     NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
-    StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerProductPlanModelListPage, StoredNifflerRuntimeRolloutSetting,
+    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
     StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 pub use mysql::MysqlNifflerCoreRepository;
 pub use postgres::SqlxNifflerCoreRepository;

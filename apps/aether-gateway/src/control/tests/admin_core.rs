@@ -338,6 +338,56 @@ fn classifies_admin_niffler_core_api_key_product_plan_bindings_as_admin_proxy_ro
 }
 
 #[test]
+fn classifies_admin_niffler_core_runtime_rollout_setting_writes_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/runtime-rollout-settings"
+        .parse()
+        .expect("uri should parse");
+    let read_decision =
+        classify_control_route(&http::Method::GET, &uri, &headers).expect("route should classify");
+    let write_decision =
+        classify_control_route(&http::Method::POST, &uri, &headers).expect("route should classify");
+
+    assert_eq!(read_decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        read_decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        read_decision.route_kind.as_deref(),
+        Some("list_runtime_rollout_settings")
+    );
+    assert_eq!(
+        read_decision.auth_endpoint_signature.as_deref(),
+        Some("admin:routing_profiles")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::GET, &read_decision).as_deref(),
+        Some("admin:routing_profiles:read")
+    );
+    assert!(!read_decision.is_execution_runtime_candidate());
+
+    assert_eq!(write_decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        write_decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        write_decision.route_kind.as_deref(),
+        Some("upsert_runtime_rollout_setting")
+    );
+    assert_eq!(
+        write_decision.auth_endpoint_signature.as_deref(),
+        Some("admin:routing_profiles")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::POST, &write_decision).as_deref(),
+        Some("admin:routing_profiles:write")
+    );
+    assert!(!write_decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_admin_niffler_core_error_return_setting_writes_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/niffler-core/error-return-settings"
@@ -390,6 +440,10 @@ fn admin_niffler_core_write_routes_buffer_request_body() {
         (
             http::Method::POST,
             "/api/admin/niffler-core/product-plans/plan-1/api-key-bindings",
+        ),
+        (
+            http::Method::POST,
+            "/api/admin/niffler-core/runtime-rollout-settings",
         ),
         (
             http::Method::POST,

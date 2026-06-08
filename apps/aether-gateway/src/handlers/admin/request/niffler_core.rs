@@ -112,6 +112,29 @@ impl<'a> AdminAppState<'a> {
             .await
     }
 
+    pub(crate) async fn list_niffler_runtime_rollout_settings(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerRuntimeRolloutSettingListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerRuntimeRolloutSettingListPage,
+        GatewayError,
+    > {
+        self.app.list_niffler_runtime_rollout_settings(query).await
+    }
+
+    pub(crate) async fn find_niffler_runtime_rollout_setting(
+        &self,
+        target_scope: aether_data_contracts::repository::niffler_core::NifflerRuntimeRolloutTargetScope,
+        target_id: &str,
+    ) -> Result<
+        Option<aether_data_contracts::repository::niffler_core::StoredNifflerRuntimeRolloutSetting>,
+        GatewayError,
+    > {
+        self.app
+            .find_niffler_runtime_rollout_setting(target_scope, target_id)
+            .await
+    }
+
     pub(crate) async fn list_niffler_error_return_settings(
         &self,
         query: &aether_data_contracts::repository::niffler_core::NifflerErrorReturnSettingListQuery,
@@ -187,6 +210,18 @@ impl<'a> AdminAppState<'a> {
     > {
         self.app
             .upsert_niffler_api_key_product_plan_binding(record)
+            .await
+    }
+
+    pub(crate) async fn upsert_niffler_runtime_rollout_setting(
+        &self,
+        record: aether_data_contracts::repository::niffler_core::UpsertNifflerRuntimeRolloutSettingRecord,
+    ) -> Result<
+        Option<aether_data_contracts::repository::niffler_core::StoredNifflerRuntimeRolloutSetting>,
+        GatewayError,
+    > {
+        self.app
+            .upsert_niffler_runtime_rollout_setting(record)
             .await
     }
 
