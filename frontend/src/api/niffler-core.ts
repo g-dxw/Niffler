@@ -36,6 +36,8 @@ export type NifflerBillingReservationStatus =
   | 'expired'
   | 'manual_review'
 export type NifflerReferralRewardLedgerStatus = 'pending' | 'paid' | 'failed' | 'cancelled'
+export type NifflerStabilityObservationStatus = 'pass' | 'pending' | 'reset_required'
+export type NifflerRollbackDrillStatus = 'passed' | 'failed' | 'not_recorded'
 
 export interface NifflerUpstreamService {
   id: string
@@ -273,6 +275,24 @@ export interface NifflerRouteAttempt {
   upstream_status_code?: number | null
   latency_ms?: number | null
   created_at_unix_ms: number
+}
+
+export interface NifflerStabilityObservation {
+  id: string
+  window_start_unix_ms: number
+  window_end_unix_ms: number
+  status: NifflerStabilityObservationStatus | string
+  rollback_drill_status: NifflerRollbackDrillStatus | string
+  consistency_checked_count: number
+  consistency_issue_count: number
+  unknown_upstream_count: number
+  legacy_write_call_count: number
+  billing_reservation_exception_count: number
+  referral_exception_count: number
+  blocker_codes: string[]
+  summary?: Record<string, unknown> | unknown[] | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
 }
 
 export interface NifflerConsistencyCheck {
@@ -930,6 +950,18 @@ export async function listNifflerRouteAttempts(params?: {
 }): Promise<NifflerListPage<NifflerRouteAttempt>> {
   const response = await apiClient.get<NifflerListPage<NifflerRouteAttempt>>(
     '/api/admin/niffler-core/route-attempts',
+    { params }
+  )
+  return response.data
+}
+
+export async function listNifflerStabilityObservations(params?: {
+  status?: NifflerStabilityObservationStatus | string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerStabilityObservation>> {
+  const response = await apiClient.get<NifflerListPage<NifflerStabilityObservation>>(
+    '/api/admin/niffler-core/stability-observations',
     { params }
   )
   return response.data

@@ -33,8 +33,8 @@
             </SelectContent>
           </Select>
           <RefreshButton
-            :loading="loading"
-            @click="loadReport"
+            :loading="loading || stabilityLoading"
+            @click="loadReadinessPage"
           />
         </div>
       </div>
@@ -100,6 +100,143 @@
           :tone="report.summary.recent_problem_usage_sample_count ? 'warning' : 'success'"
         />
       </div>
+
+      <Card class="overflow-hidden">
+        <div class="flex flex-col gap-3 border-b border-border/60 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="font-semibold">
+                稳定观察
+              </h3>
+              <Badge variant="outline">
+                最近 5 条
+              </Badge>
+            </div>
+            <p class="mt-1 text-sm text-muted-foreground">
+              第 5 批第五片的上线观察结果。只有连续 14 天通过，才能继续删除旧逻辑。
+            </p>
+          </div>
+          <RefreshButton
+            :loading="stabilityLoading"
+            @click="loadStabilityObservations"
+          />
+        </div>
+        <div
+          v-if="stabilityLoading && !latestStabilityObservation"
+          class="p-6 text-center text-sm text-muted-foreground"
+        >
+          正在读取稳定观察...
+        </div>
+        <div
+          v-else-if="stabilityError"
+          class="flex items-start gap-3 p-5 text-sm text-destructive"
+        >
+          <AlertCircle class="mt-0.5 h-5 w-5 shrink-0" />
+          <span>{{ stabilityError }}</span>
+        </div>
+        <div
+          v-else-if="latestStabilityObservation"
+          class="space-y-5 p-5"
+        >
+          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              title="观察状态"
+              :value="stabilityStatusLabel(latestStabilityObservation.status)"
+              :description="formatWindow(latestStabilityObservation.window_start_unix_ms, latestStabilityObservation.window_end_unix_ms)"
+              :tone="stabilityStatusTone(latestStabilityObservation.status)"
+            />
+            <MetricCard
+              title="回滚演练"
+              :value="rollbackDrillLabel(latestStabilityObservation.rollback_drill_status)"
+              description="配置键 niffler_stability_rollback_drill_status"
+              :tone="rollbackDrillTone(latestStabilityObservation.rollback_drill_status)"
+            />
+            <MetricCard
+              title="未知上游"
+              :value="String(latestStabilityObservation.unknown_upstream_count)"
+              description="只统计已尝试上游但缺少服务或账号的记录"
+              :tone="latestStabilityObservation.unknown_upstream_count ? 'danger' : 'success'"
+            />
+            <MetricCard
+              title="对账异常"
+              :value="String(latestStabilityObservation.consistency_issue_count)"
+              :description="`${latestStabilityObservation.consistency_checked_count} 条检查样本`"
+              :tone="latestStabilityObservation.consistency_issue_count ? 'danger' : 'success'"
+            />
+          </div>
+
+          <div class="grid gap-4 xl:grid-cols-2">
+            <div class="rounded-lg border border-border/60">
+              <div class="border-b border-border/60 px-4 py-3">
+                <p class="font-medium">
+                  阻断原因
+                </p>
+              </div>
+              <div
+                v-if="stabilityBlockerItems.length"
+                class="divide-y divide-border/60"
+              >
+                <div
+                  v-for="item in stabilityBlockerItems"
+                  :key="item.code"
+                  class="space-y-1 px-4 py-3"
+                >
+                  <p class="text-sm font-medium">
+                    {{ item.title }}
+                  </p>
+                  <p class="text-sm text-muted-foreground">
+                    {{ item.description }}
+                  </p>
+                </div>
+              </div>
+              <div
+                v-else
+                class="p-4 text-sm text-muted-foreground"
+              >
+                当前观察没有阻断原因。
+              </div>
+            </div>
+
+            <div class="rounded-lg border border-border/60">
+              <div class="border-b border-border/60 px-4 py-3">
+                <p class="font-medium">
+                  最近观察
+                </p>
+              </div>
+              <div class="divide-y divide-border/60">
+                <div
+                  v-for="item in stabilityObservations"
+                  :key="item.id"
+                  class="flex items-start justify-between gap-4 px-4 py-3 text-sm"
+                >
+                  <div>
+                    <p class="font-medium">
+                      {{ stabilityStatusLabel(item.status) }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                      {{ formatWindow(item.window_start_unix_ms, item.window_end_unix_ms) }}
+                    </p>
+                  </div>
+                  <div class="text-right text-xs text-muted-foreground">
+                    <p>阻断 {{ item.blocker_codes.length }}</p>
+                    <p>未知上游 {{ item.unknown_upstream_count }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-xs text-muted-foreground">
+            回滚演练状态只能在确认可回滚镜像、近期数据库备份和演练记录都存在后记录为 passed；本页不提供写入操作。
+          </p>
+        </div>
+        <div
+          v-else
+          class="p-6 text-center text-sm text-muted-foreground"
+        >
+          还没有稳定观察记录。
+        </div>
+      </Card>
 
       <Card class="overflow-hidden">
         <SectionHeader
@@ -568,18 +705,30 @@ import {
 import {
   getNifflerCoreReadiness,
   getNifflerLegacyDependencyAudit,
+  listNifflerStabilityObservations,
   type NifflerCoreReadinessReport,
   type NifflerLegacyDependencyAuditReport,
-  type NifflerReadinessSeverity
+  type NifflerReadinessSeverity,
+  type NifflerStabilityObservation
 } from '@/api/niffler-core'
 
 const recentDays = ref('7')
 const loading = ref(false)
 const legacyAuditLoading = ref(false)
+const stabilityLoading = ref(false)
 const error = ref('')
 const legacyAuditError = ref('')
+const stabilityError = ref('')
 const report = ref<NifflerCoreReadinessReport | null>(null)
 const legacyAudit = ref<NifflerLegacyDependencyAuditReport | null>(null)
+const stabilityObservations = ref<NifflerStabilityObservation[]>([])
+
+async function loadReadinessPage() {
+  await Promise.all([
+    loadReport(),
+    loadStabilityObservations()
+  ])
+}
 
 async function loadReport() {
   loading.value = true
@@ -607,6 +756,22 @@ async function loadLegacyAudit() {
     legacyAuditError.value = errorMessage(err)
   } finally {
     legacyAuditLoading.value = false
+  }
+}
+
+async function loadStabilityObservations() {
+  stabilityLoading.value = true
+  stabilityError.value = ''
+  try {
+    const page = await listNifflerStabilityObservations({
+      offset: 0,
+      limit: 5
+    })
+    stabilityObservations.value = page.items
+  } catch (err) {
+    stabilityError.value = errorMessage(err)
+  } finally {
+    stabilityLoading.value = false
   }
 }
 
@@ -783,6 +948,16 @@ const legacyRuntimeReadItems = computed(() => {
 
 const routeSkipSamples = computed(() => report.value?.route_skip_samples ?? [])
 
+const latestStabilityObservation = computed(() => stabilityObservations.value[0] ?? null)
+
+const stabilityBlockerItems = computed(() => {
+  return (latestStabilityObservation.value?.blocker_codes ?? []).map((code) => ({
+    code,
+    title: stabilityBlockerLabel(code),
+    description: stabilityBlockerDescription(code)
+  }))
+})
+
 function joinParts(parts: Array<string | null | undefined>): string {
   return parts
     .map((part) => part?.trim())
@@ -819,6 +994,74 @@ function severityLabel(severity: NifflerReadinessSeverity): string {
   return '提示'
 }
 
+function stabilityStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    pass: '通过',
+    pending: '等待证据',
+    reset_required: '需要重算稳定期'
+  }
+  return labels[status] ?? status
+}
+
+function stabilityStatusTone(status: string): Tone {
+  if (status === 'pass') return 'success'
+  if (status === 'reset_required') return 'danger'
+  return 'warning'
+}
+
+function rollbackDrillLabel(status: string): string {
+  const labels: Record<string, string> = {
+    passed: '已记录',
+    failed: '失败',
+    not_recorded: '未记录'
+  }
+  return labels[status] ?? status
+}
+
+function rollbackDrillTone(status: string): Tone {
+  if (status === 'passed') return 'success'
+  if (status === 'failed') return 'danger'
+  return 'warning'
+}
+
+function stabilityBlockerLabel(code: string): string {
+  const labels: Record<string, string> = {
+    rollback_drill_not_recorded: '还没有回滚演练记录',
+    rollback_drill_failed: '回滚演练失败',
+    p0_incident_recorded: '记录过 P0 事故',
+    p1_incident_recorded: '记录过 P1 事故',
+    incident_status_unknown: '事故状态不明确',
+    legacy_write_audit_unavailable: '旧写入口审计不可读',
+    request_candidate_audit_unavailable: '路由尝试审计不可读',
+    consistency_sample_limit_reached: '对账样本达到读取上限',
+    consistency_issue: '发现对账不一致',
+    unknown_upstream: '发现未知上游记录',
+    legacy_write_call: '仍有旧写入口调用',
+    billing_reservation_exception: '预占计费有异常',
+    referral_exception: '邀请返利有异常'
+  }
+  return labels[code] ?? code
+}
+
+function stabilityBlockerDescription(code: string): string {
+  const descriptions: Record<string, string> = {
+    rollback_drill_not_recorded: '缺少可回滚镜像、近期数据库备份或演练记录的确认。',
+    rollback_drill_failed: '回滚演练失败会重置稳定期，修复演练问题后再重新观察。',
+    p0_incident_recorded: '稳定窗口内出现 P0 事故，不能计入 14 天稳定期。',
+    p1_incident_recorded: '稳定窗口内出现 P1 事故，不能计入 14 天稳定期。',
+    incident_status_unknown: '事故状态配置不是 none、p0 或 p1，需要先修正配置。',
+    legacy_write_audit_unavailable: '后台无法读取旧写入口审计，不能确认旧入口是否仍被调用。',
+    request_candidate_audit_unavailable: '后台无法读取路由尝试审计，不能确认 unknown 上游是否归零。',
+    consistency_sample_limit_reached: '对账样本太多，当前窗口可能没有完整读取完。',
+    consistency_issue: '稳定窗口内仍有计费、结算或路由对账不一致。',
+    unknown_upstream: '稳定窗口内仍有已尝试上游但服务或账号缺失的记录。',
+    legacy_write_call: '稳定窗口内仍有人调用被冻结的旧写入口。',
+    billing_reservation_exception: '稳定窗口内仍有预占计费异常，需要先处理。',
+    referral_exception: '稳定窗口内仍有邀请返利失败记录，需要先处理。'
+  }
+  return descriptions[code] ?? '未识别的阻断代码，需要查看稳定观察生成逻辑。'
+}
+
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     available: '可用',
@@ -827,6 +1070,17 @@ function statusLabel(status: string): string {
     active: '启用'
   }
   return labels[status] ?? status
+}
+
+function formatWindow(startUnixMs: number, endUnixMs: number): string {
+  return `${formatUnixMs(startUnixMs)} - ${formatUnixMs(endUnixMs)}`
+}
+
+function formatUnixMs(unixMs: number): string {
+  if (!Number.isFinite(unixMs) || unixMs <= 0) {
+    return '-'
+  }
+  return new Date(unixMs).toLocaleString()
 }
 
 function formatTime(unixSecs: number): string {
@@ -848,7 +1102,7 @@ watch(recentDays, () => {
 })
 
 onMounted(() => {
-  void loadReport()
+  void loadReadinessPage()
 })
 
 type Tone = 'success' | 'warning' | 'danger' | 'neutral'
