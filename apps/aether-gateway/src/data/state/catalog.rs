@@ -55,6 +55,24 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn count_attempted_request_candidates_with_unknown_upstream_in_window(
+        &self,
+        window_start_unix_ms: u64,
+        window_end_unix_ms: u64,
+    ) -> Result<u64, DataLayerError> {
+        match &self.request_candidate_reader {
+            Some(repository) => {
+                repository
+                    .count_attempted_with_unknown_upstream_in_window(
+                        window_start_unix_ms,
+                        window_end_unix_ms,
+                    )
+                    .await
+            }
+            None => Ok(0),
+        }
+    }
+
     pub(crate) async fn count_finalized_request_candidate_statuses_by_endpoint_ids_since(
         &self,
         endpoint_ids: &[String],

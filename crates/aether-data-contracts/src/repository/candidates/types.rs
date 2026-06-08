@@ -454,6 +454,12 @@ pub trait RequestCandidateReadRepository: Send + Sync {
         limit: usize,
     ) -> Result<Vec<StoredRequestCandidate>, crate::DataLayerError>;
 
+    async fn count_attempted_with_unknown_upstream_in_window(
+        &self,
+        window_start_unix_ms: u64,
+        window_end_unix_ms: u64,
+    ) -> Result<u64, crate::DataLayerError>;
+
     async fn count_finalized_statuses_by_endpoint_ids_since(
         &self,
         endpoint_ids: &[String],

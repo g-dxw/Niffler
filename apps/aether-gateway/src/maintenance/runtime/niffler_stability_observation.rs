@@ -5,7 +5,6 @@ use aether_data_contracts::repository::niffler_core::{
     NifflerConsistencyCheckListQuery, NifflerReferralRewardLedgerListQuery,
     NifflerReferralRewardLedgerStatus, UpsertNifflerStabilityObservationRecord,
 };
-use aether_data_contracts::repository::usage::UsageAuditListQuery;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -36,7 +35,7 @@ pub(crate) struct NifflerStabilityObservationInput<'a> {
     pub rollback_drill_status: &'a str,
     pub incident_status: &'a str,
     pub audit_reader_available: bool,
-    pub usage_reader_available: bool,
+    pub request_candidate_reader_available: bool,
     pub consistency_sample_limit_reached: bool,
     pub consistency_issue_count: u64,
     pub unknown_upstream_count: u64,
@@ -65,8 +64,8 @@ pub(crate) fn classify_niffler_stability_observation(
     if !input.audit_reader_available {
         pending_blockers.push("legacy_write_audit_unavailable".to_string());
     }
-    if !input.usage_reader_available {
-        pending_blockers.push("usage_audit_unavailable".to_string());
+    if !input.request_candidate_reader_available {
+        pending_blockers.push("request_candidate_audit_unavailable".to_string());
     }
     if input.consistency_sample_limit_reached {
         pending_blockers.push("consistency_sample_limit_reached".to_string());
@@ -145,22 +144,13 @@ pub(crate) async fn perform_niffler_stability_observation_once(
             .last()
             .is_some_and(|item| item.created_at_unix_ms >= window_start_unix_ms);
 
-    let usage_reader_available = data.has_usage_audit_reader();
-    let unknown_upstream_count = if usage_reader_available {
-        count_reserved_provider_usage(
-            data,
-            window_start_unix_secs,
-            window_end_unix_secs,
-            "unknown",
+    let request_candidate_reader_available = data.has_request_candidate_reader();
+    let unknown_upstream_count = if request_candidate_reader_available {
+        data.count_attempted_request_candidates_with_unknown_upstream_in_window(
+            window_start_unix_ms,
+            window_end_unix_ms,
         )
         .await?
-            + count_reserved_provider_usage(
-                data,
-                window_start_unix_secs,
-                window_end_unix_secs,
-                "pending",
-            )
-            .await?
     } else {
         0
     };
@@ -197,7 +187,7 @@ pub(crate) async fn perform_niffler_stability_observation_once(
             rollback_drill_status: rollback_drill_status.as_str(),
             incident_status: incident_status.as_str(),
             audit_reader_available,
-            usage_reader_available,
+            request_candidate_reader_available,
             consistency_sample_limit_reached,
             consistency_issue_count,
             unknown_upstream_count,
@@ -238,7 +228,7 @@ pub(crate) async fn perform_niffler_stability_observation_once(
             "window_end_unix_ms": window_end_unix_ms,
             "incident_status": incident_status,
             "audit_reader_available": audit_reader_available,
-            "usage_reader_available": usage_reader_available,
+            "request_candidate_reader_available": request_candidate_reader_available,
             "consistency_sample_limit_reached": consistency_sample_limit_reached
         })),
         created_at_unix_ms: observed_at_unix_ms,
@@ -271,23 +261,6 @@ async fn normalized_status_config(
     } else {
         Ok("unknown".to_string())
     }
-}
-
-async fn count_reserved_provider_usage(
-    data: &GatewayDataState,
-    created_from_unix_secs: u64,
-    created_until_unix_secs: u64,
-    provider_name: &str,
-) -> Result<u64, DataLayerError> {
-    data.count_usage_audits(&UsageAuditListQuery {
-        created_from_unix_secs: Some(created_from_unix_secs),
-        created_until_unix_secs: Some(created_until_unix_secs),
-        provider_name: Some(provider_name.to_string()),
-        limit: Some(1),
-        newest_first: true,
-        ..Default::default()
-    })
-    .await
 }
 
 async fn count_billing_reservation_exceptions(
@@ -334,7 +307,7 @@ mod tests {
                 rollback_drill_status: "passed",
                 incident_status: "none",
                 audit_reader_available: true,
-                usage_reader_available: true,
+                request_candidate_reader_available: true,
                 consistency_sample_limit_reached: false,
                 consistency_issue_count: 0,
                 unknown_upstream_count: 0,
@@ -353,7 +326,7 @@ mod tests {
                 rollback_drill_status: "failed",
                 incident_status: "p1",
                 audit_reader_available: true,
-                usage_reader_available: true,
+                request_candidate_reader_available: true,
                 consistency_sample_limit_reached: false,
                 consistency_issue_count: 1,
                 unknown_upstream_count: 1,
@@ -378,7 +351,7 @@ mod tests {
                 rollback_drill_status: "not_recorded",
                 incident_status: "none",
                 audit_reader_available: false,
-                usage_reader_available: false,
+                request_candidate_reader_available: false,
                 consistency_sample_limit_reached: true,
                 consistency_issue_count: 0,
                 unknown_upstream_count: 0,
@@ -389,7 +362,7 @@ mod tests {
         assert_eq!(status, "pending");
         assert!(blockers.contains(&"rollback_drill_not_recorded".to_string()));
         assert!(blockers.contains(&"legacy_write_audit_unavailable".to_string()));
-        assert!(blockers.contains(&"usage_audit_unavailable".to_string()));
+        assert!(blockers.contains(&"request_candidate_audit_unavailable".to_string()));
         assert!(blockers.contains(&"consistency_sample_limit_reached".to_string()));
     }
 }

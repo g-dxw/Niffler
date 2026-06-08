@@ -533,7 +533,8 @@
 
 - 本片新增 `niffler_stability_observations`，每天自动记录一次稳定观察快照，不修改旧 Provider、旧 Key、旧分组、旧价格、旧调度、旧计费或旧返利。
 - 观察窗口按 `window_start_unix_ms` 和 `window_end_unix_ms` 表示，固定为 UTC 自然日 24 小时窗口；同一天内后台重试或服务重启只更新同一条快照，不新增重复记录。
-- 快照必须记录一致性看板问题数量、实际请求到上游但服务或账号仍为 `unknown/pending` 的数量、旧写入口真实调用数量、异常预占数量、异常返利流水数量、回滚演练状态和阻断原因。
+- 快照必须记录一致性看板问题数量、实际请求到上游但服务或账号仍无法确定的数量、旧写入口真实调用数量、异常预占数量、异常返利流水数量、回滚演练状态和阻断原因。
+- `unknown_upstream_count` 只统计 `request_candidates` 中已经开始尝试上游调用的记录，并且服务 ID 或账号 ID 为空、`unknown`、`unknow` 或 `pending`。平台内失败，例如用户 Key 并发上限、产品策略拒绝、没有可用上游账号，不能计入该指标。
 - 稳定观察状态只允许三类：`pass` 表示本窗口没有阻断项；`reset_required` 表示本窗口出现会让 T0 清零的阻断项；`pending` 表示数据不足或回滚演练状态未记录，不能计入稳定天数。
 - 旧写入口真实调用先读取管理员审计日志里的冻结事件和旧写入口事件；如果某环境没有审计仓储，快照必须写明 `legacy_write_audit_unavailable`，状态为 `pending`，不能假装通过。
 - 回滚演练状态先从系统配置读取，允许值为 `passed`、`failed`、`not_recorded`；没有记录时状态为 `pending`。

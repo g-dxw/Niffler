@@ -123,6 +123,51 @@ impl RequestCandidateReadRepository for SqliteRequestCandidateRepository {
         rows.iter().map(map_candidate_row).collect()
     }
 
+    async fn count_attempted_with_unknown_upstream_in_window(
+        &self,
+        window_start_unix_ms: u64,
+        window_end_unix_ms: u64,
+    ) -> Result<u64, DataLayerError> {
+        if window_end_unix_ms <= window_start_unix_ms {
+            return Ok(0);
+        }
+
+        let row = sqlx::query(
+            r#"
+SELECT COUNT(*) AS count
+FROM request_candidates
+WHERE created_at >= ?
+  AND created_at < ?
+  AND (
+    status IN ('streaming', 'success', 'failed', 'cancelled')
+    OR (status = 'pending' AND started_at IS NOT NULL)
+  )
+  AND (
+    TRIM(COALESCE(provider_id, '')) = ''
+    OR LOWER(TRIM(COALESCE(provider_id, ''))) IN ('unknown', 'unknow', 'pending')
+    OR TRIM(COALESCE(key_id, '')) = ''
+    OR LOWER(TRIM(COALESCE(key_id, ''))) IN ('unknown', 'unknow', 'pending')
+  )
+"#,
+        )
+        .bind(u64_to_i64(
+            window_start_unix_ms,
+            "request candidate window start",
+        )?)
+        .bind(u64_to_i64(
+            window_end_unix_ms,
+            "request candidate window end",
+        )?)
+        .fetch_one(&self.pool)
+        .await
+        .map_sql_err()?;
+        Ok(
+            u64::try_from(row.try_get::<i64, _>("count").map_sql_err()?).map_err(|_| {
+                DataLayerError::UnexpectedValue("request candidate count out of range".to_string())
+            })?,
+        )
+    }
+
     async fn list_finalized_by_endpoint_ids_since(
         &self,
         endpoint_ids: &[String],

@@ -334,16 +334,33 @@ fn admin_usage_provider_route(
         route.push(name);
     }
 
-    if route.is_empty()
-        && !matches!(
-            item.provider_name.trim().to_ascii_lowercase().as_str(),
-            "" | "pending" | "unknown" | "unknow"
-        )
-    {
+    if route.is_empty() && !admin_usage_provider_label_is_reserved(&item.provider_name) {
         route.push(item.provider_name.clone());
     }
 
     route
+}
+
+pub fn admin_usage_provider_label_is_reserved(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "" | "pending" | "unknown" | "unknow"
+    )
+}
+
+pub fn admin_usage_apply_provider_route_display(record: &mut Value, provider_route: &[String]) {
+    if provider_route.is_empty() {
+        return;
+    }
+    let Some(provider) = record.get("provider").and_then(Value::as_str) else {
+        return;
+    };
+    if !admin_usage_provider_label_is_reserved(provider) {
+        return;
+    }
+    if let Some(display_name) = provider_route.last() {
+        record["provider"] = json!(display_name);
+    }
 }
 
 pub fn admin_usage_attempt_info_from_candidates(
@@ -2515,6 +2532,7 @@ pub fn build_admin_usage_active_requests_response(
             }
             if let Some(provider_route) = provider_routes_by_usage_id.get(&item.id) {
                 value["provider_route"] = json!(provider_route);
+                admin_usage_apply_provider_route_display(&mut value, provider_route);
             }
             value
         })

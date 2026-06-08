@@ -1424,7 +1424,7 @@ async fn gateway_usage_record_attempt_flags_follow_request_candidate_timeline() 
         Some("user-1"),
         Some("key-1"),
         Some("primary"),
-        "OpenAI",
+        "unknown",
         "gpt-5",
         "completed",
         12,
@@ -1558,8 +1558,26 @@ async fn gateway_usage_record_attempt_flags_follow_request_candidate_timeline() 
         record_by_id("usage-real-fallback")["provider_route"],
         json!(["OpenAI", "Claude"])
     );
+    assert_eq!(record_by_id("usage-real-fallback")["provider"], "Claude");
     assert_eq!(record_by_id("usage-real-retry")["has_fallback"], false);
     assert_eq!(record_by_id("usage-real-retry")["has_retry"], true);
+
+    let detail_response = admin_request(reqwest::Client::new().get(format!(
+        "{gateway_url}/api/admin/usage/usage-real-fallback?include_bodies=false"
+    )))
+    .send()
+    .await
+    .expect("detail request should succeed");
+    assert_eq!(detail_response.status(), StatusCode::OK);
+    let detail_payload: serde_json::Value = detail_response
+        .json()
+        .await
+        .expect("detail json body should parse");
+    assert_eq!(detail_payload["provider"], "Claude");
+    assert_eq!(
+        detail_payload["provider_route"],
+        json!(["OpenAI", "Claude"])
+    );
 
     let fallback_response = admin_request(reqwest::Client::new().get(format!(
         "{gateway_url}/api/admin/usage/records?start_date=2024-03-21&end_date=2024-03-22&tz_offset_minutes=0&status=has_fallback&limit=10&offset=0"

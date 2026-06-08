@@ -5,9 +5,9 @@ use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::query_param_value;
 use crate::GatewayError;
 use aether_admin::observability::usage::{
-    admin_usage_attempt_info_for_item, admin_usage_attempt_info_from_candidates,
-    admin_usage_attempt_status_filter, admin_usage_bad_request_response,
-    admin_usage_data_unavailable_response, admin_usage_is_failed,
+    admin_usage_apply_provider_route_display, admin_usage_attempt_info_for_item,
+    admin_usage_attempt_info_from_candidates, admin_usage_attempt_status_filter,
+    admin_usage_bad_request_response, admin_usage_data_unavailable_response, admin_usage_is_failed,
     admin_usage_matches_attempt_status, admin_usage_matches_client_family,
     admin_usage_matches_search, admin_usage_matches_username, admin_usage_parse_ids,
     admin_usage_parse_limit, admin_usage_parse_offset, admin_usage_provider_key_account_label,
@@ -230,6 +230,7 @@ fn build_admin_usage_records_response_with_attempt_info(
             record["has_fallback"] = json!(info.has_fallback);
             record["has_retry"] = json!(info.has_retry);
             if !info.provider_route.is_empty() {
+                admin_usage_apply_provider_route_display(&mut record, &info.provider_route);
                 record["provider_route"] = json!(info.provider_route);
             }
             record

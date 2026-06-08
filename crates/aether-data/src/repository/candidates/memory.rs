@@ -112,6 +112,30 @@ impl RequestCandidateReadRepository for InMemoryRequestCandidateRepository {
         Ok(rows)
     }
 
+    async fn count_attempted_with_unknown_upstream_in_window(
+        &self,
+        window_start_unix_ms: u64,
+        window_end_unix_ms: u64,
+    ) -> Result<u64, DataLayerError> {
+        if window_end_unix_ms <= window_start_unix_ms {
+            return Ok(0);
+        }
+
+        Ok(self
+            .by_id
+            .read()
+            .expect("request candidate repository lock")
+            .values()
+            .filter(|row| {
+                row.created_at_unix_ms >= window_start_unix_ms
+                    && row.created_at_unix_ms < window_end_unix_ms
+                    && row.status.is_attempted(row.started_at_unix_ms)
+                    && (reserved_upstream_id(row.provider_id.as_deref())
+                        || reserved_upstream_id(row.key_id.as_deref()))
+            })
+            .count() as u64)
+    }
+
     async fn list_finalized_by_endpoint_ids_since(
         &self,
         endpoint_ids: &[String],
@@ -288,6 +312,16 @@ impl RequestCandidateReadRepository for InMemoryRequestCandidateRepository {
 
         Ok(buckets.into_values().collect())
     }
+}
+
+fn reserved_upstream_id(value: Option<&str>) -> bool {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "unknown" | "unknow" | "pending"
+    )
 }
 
 #[async_trait]
@@ -498,6 +532,34 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, "cand-2");
         assert_eq!(rows[1].id, "cand-1");
+    }
+
+    #[tokio::test]
+    async fn counts_only_attempted_candidates_with_unknown_upstream_identity() {
+        let valid = sample_candidate("cand-valid", "req-valid", 100);
+        let mut platform_failure = sample_candidate("cand-platform", "req-platform", 110);
+        platform_failure.status = RequestCandidateStatus::Skipped;
+        platform_failure.started_at_unix_ms = None;
+        platform_failure.provider_id = None;
+        platform_failure.key_id = None;
+        let mut missing_account = sample_candidate("cand-missing-account", "req-upstream", 120);
+        missing_account.key_id = None;
+        let mut outside_window = sample_candidate("cand-outside", "req-outside", 250);
+        outside_window.key_id = Some("pending".to_string());
+
+        let repository = InMemoryRequestCandidateRepository::seed(vec![
+            valid,
+            platform_failure,
+            missing_account,
+            outside_window,
+        ]);
+
+        let count = repository
+            .count_attempted_with_unknown_upstream_in_window(100, 200)
+            .await
+            .expect("count should succeed");
+
+        assert_eq!(count, 1);
     }
 
     #[tokio::test]

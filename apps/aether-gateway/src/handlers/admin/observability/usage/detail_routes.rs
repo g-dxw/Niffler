@@ -11,10 +11,12 @@ use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::{attach_admin_audit_response, query_param_bool};
 use crate::GatewayError;
 use aether_admin::observability::usage::{
+    admin_usage_apply_provider_route_display, admin_usage_attempt_info_from_candidates,
     admin_usage_bad_request_response, admin_usage_data_unavailable_response,
     admin_usage_provider_key_account_label, admin_usage_provider_key_name,
     ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL,
 };
+use aether_data_contracts::repository::candidates::StoredRequestCandidate;
 use aether_data_contracts::repository::usage::UsageBodyField;
 use axum::{
     body::Body,
@@ -23,7 +25,7 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use tokio::try_join;
 
 pub(super) async fn maybe_build_local_admin_usage_detail_response(
@@ -212,7 +214,14 @@ pub(super) async fn maybe_build_local_admin_usage_detail_response(
                 // request_body 已通过 request capture 解析；其余 detached body 在上方并行加载。
             }
             let default_headers = admin_usage_curl_headers();
-            let payload = build_admin_usage_detail_payload(
+            let (request_candidates, provider_names_by_id) =
+                load_admin_usage_detail_attempt_context(state, &item.request_id).await?;
+            let attempt_info = admin_usage_attempt_info_from_candidates(
+                &item,
+                &request_candidates,
+                &provider_names_by_id,
+            );
+            let mut payload = build_admin_usage_detail_payload(
                 &detail_item,
                 &users_by_id,
                 &api_key_names,
@@ -224,6 +233,15 @@ pub(super) async fn maybe_build_local_admin_usage_detail_response(
                 request_body,
                 &default_headers,
             );
+            if !attempt_info.provider_route.is_empty() {
+                admin_usage_apply_provider_route_display(
+                    &mut payload,
+                    &attempt_info.provider_route,
+                );
+                payload["provider_route"] = json!(attempt_info.provider_route);
+            }
+            payload["has_fallback"] = json!(attempt_info.has_fallback);
+            payload["has_retry"] = json!(attempt_info.has_retry);
 
             return Ok(Some(attach_admin_audit_response(
                 Json(payload).into_response(),
@@ -237,4 +255,46 @@ pub(super) async fn maybe_build_local_admin_usage_detail_response(
     }
 
     Ok(None)
+}
+
+async fn load_admin_usage_detail_attempt_context(
+    state: &AdminAppState<'_>,
+    request_id: &str,
+) -> Result<(Vec<StoredRequestCandidate>, BTreeMap<String, String>), GatewayError> {
+    if !state.has_request_candidate_data_reader() {
+        return Ok((Vec::new(), BTreeMap::new()));
+    }
+
+    let candidates = state
+        .app()
+        .read_request_candidates_by_request_id(request_id)
+        .await?;
+    let provider_names_by_id = if state.has_provider_catalog_data_reader() {
+        provider_names_by_id_for_candidates(state, &candidates).await?
+    } else {
+        BTreeMap::new()
+    };
+    Ok((candidates, provider_names_by_id))
+}
+
+async fn provider_names_by_id_for_candidates(
+    state: &AdminAppState<'_>,
+    candidates: &[StoredRequestCandidate],
+) -> Result<BTreeMap<String, String>, GatewayError> {
+    let provider_ids = candidates
+        .iter()
+        .filter_map(|candidate| candidate.provider_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if provider_ids.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    Ok(state
+        .read_provider_catalog_providers_by_ids(&provider_ids)
+        .await?
+        .into_iter()
+        .map(|provider| (provider.id, provider.name))
+        .collect())
 }

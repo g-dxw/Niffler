@@ -307,6 +307,47 @@ impl SqlxRequestCandidateReadRepository {
         collect_query_rows(builder.build().fetch(&self.pool), map_request_candidate_row).await
     }
 
+    pub async fn count_attempted_with_unknown_upstream_in_window(
+        &self,
+        window_start_unix_ms: u64,
+        window_end_unix_ms: u64,
+    ) -> Result<u64, DataLayerError> {
+        if window_end_unix_ms <= window_start_unix_ms {
+            return Ok(0);
+        }
+
+        let row = sqlx::query(
+            r#"
+SELECT COUNT(*)::BIGINT AS count
+FROM request_candidates
+WHERE created_at >= TO_TIMESTAMP($1::double precision / 1000.0)
+  AND created_at < TO_TIMESTAMP($2::double precision / 1000.0)
+  AND (
+    status IN ('streaming', 'success', 'failed', 'cancelled')
+    OR (status = 'pending' AND started_at IS NOT NULL)
+  )
+  AND (
+    BTRIM(COALESCE(provider_id, '')) = ''
+    OR lower(BTRIM(COALESCE(provider_id, ''))) IN ('unknown', 'unknow', 'pending')
+    OR BTRIM(COALESCE(key_id, '')) = ''
+    OR lower(BTRIM(COALESCE(key_id, ''))) IN ('unknown', 'unknow', 'pending')
+  )
+"#,
+        )
+        .bind(unix_ms_to_i64(
+            window_start_unix_ms,
+            "request candidate window start",
+        )?)
+        .bind(unix_ms_to_i64(
+            window_end_unix_ms,
+            "request candidate window end",
+        )?)
+        .fetch_one(&self.pool)
+        .await
+        .map_postgres_err()?;
+        Ok(row_get::<i64>(&row, "count")?.max(0) as u64)
+    }
+
     pub async fn count_finalized_statuses_by_endpoint_ids_since(
         &self,
         endpoint_ids: &[String],
@@ -537,6 +578,19 @@ impl RequestCandidateReadRepository for SqlxRequestCandidateReadRepository {
         Self::list_by_provider_id(self, provider_id, limit).await
     }
 
+    async fn count_attempted_with_unknown_upstream_in_window(
+        &self,
+        window_start_unix_ms: u64,
+        window_end_unix_ms: u64,
+    ) -> Result<u64, DataLayerError> {
+        Self::count_attempted_with_unknown_upstream_in_window(
+            self,
+            window_start_unix_ms,
+            window_end_unix_ms,
+        )
+        .await
+    }
+
     async fn count_finalized_statuses_by_endpoint_ids_since(
         &self,
         endpoint_ids: &[String],
@@ -663,6 +717,11 @@ fn to_i32_u64(value: u64) -> Result<i32, DataLayerError> {
     i32::try_from(value).map_err(|_| {
         DataLayerError::UnexpectedValue(format!("request candidate value out of range: {value}"))
     })
+}
+
+fn unix_ms_to_i64(value: u64, name: &str) -> Result<i64, DataLayerError> {
+    i64::try_from(value)
+        .map_err(|_| DataLayerError::UnexpectedValue(format!("{name} exceeds i64: {value}")))
 }
 
 #[cfg(test)]
