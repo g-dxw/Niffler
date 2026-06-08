@@ -688,6 +688,16 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         upstream_account_id: &str,
     ) -> Result<Option<StoredNifflerUpstreamAccount>, crate::DataLayerError>;
 
+    async fn list_account_model_capabilities(
+        &self,
+        query: &NifflerAccountModelCapabilityListQuery,
+    ) -> Result<StoredNifflerAccountModelCapabilityListPage, crate::DataLayerError>;
+
+    async fn list_runtime_account_model_access(
+        &self,
+        query: &NifflerRuntimeAccountModelAccessListQuery,
+    ) -> Result<StoredNifflerRuntimeAccountModelAccessListPage, crate::DataLayerError>;
+
     async fn list_product_plans(
         &self,
         query: &NifflerProductPlanListQuery,
@@ -1518,6 +1528,42 @@ impl StoredNifflerAccountModelCapability {
         validate_required("account_model_capabilities.model_name", &self.model_name)?;
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerAccountModelCapabilityListQuery {
+    pub upstream_service_id: Option<String>,
+    pub upstream_account_id: Option<String>,
+    pub model_name: Option<String>,
+    pub enabled_only: bool,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerAccountModelCapabilityListPage {
+    pub items: Vec<StoredNifflerAccountModelCapability>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerRuntimeAccountModelAccessListQuery {
+    pub model_name: String,
+    pub now_unix_ms: u64,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerRuntimeAccountModelAccess {
+    pub upstream_service_id: String,
+    pub upstream_account_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerRuntimeAccountModelAccessListPage {
+    pub items: Vec<StoredNifflerRuntimeAccountModelAccess>,
+    pub total: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

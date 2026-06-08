@@ -5,30 +5,31 @@ use super::{
     CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
     FinalizeNifflerBillingReservationRecord, GatewayDataState,
-    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
-    NifflerBillingReservationListQuery, NifflerConsistencyCheckListQuery,
-    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
-    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
-    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
+    NifflerAccountModelCapabilityListQuery, NifflerApiKeyProductPlanBindingListQuery,
+    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
+    NifflerConsistencyCheckListQuery, NifflerErrorReturnSettingListQuery,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
+    NifflerRuntimeAccountModelAccessListQuery, NifflerRuntimeRolloutSettingListQuery,
     NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
     NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerAccountRiskEvent,
-    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
-    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
-    StoredNifflerConsistencyCheckListPage, StoredNifflerErrorReturnSetting,
-    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
-    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerUpstreamServiceListQuery, StoredNifflerAccountModelCapabilityListPage,
+    StoredNifflerAccountRiskEvent, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
+    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
+    StoredNifflerBillingReservationListPage, StoredNifflerConsistencyCheckListPage,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
     StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
-    StoredNifflerRouteAttemptListPage, StoredNifflerRuntimeRolloutSetting,
-    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerSettlementSnapshot,
-    StoredNifflerSettlementSnapshotListPage, StoredNifflerUpstreamAccount,
-    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerRouteAttemptListPage, StoredNifflerRuntimeAccountModelAccessListPage,
+    StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
+    StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListPage,
+    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
+    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
+    StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -128,6 +129,40 @@ impl GatewayDataState {
                     .await
             }
             None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn list_niffler_account_model_capabilities(
+        &self,
+        query: &NifflerAccountModelCapabilityListQuery,
+    ) -> Result<StoredNifflerAccountModelCapabilityListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_account_model_capabilities(query).await,
+            None => Ok(StoredNifflerAccountModelCapabilityListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
+    pub(crate) async fn list_niffler_runtime_account_model_access(
+        &self,
+        query: &NifflerRuntimeAccountModelAccessListQuery,
+    ) -> Result<StoredNifflerRuntimeAccountModelAccessListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_runtime_account_model_access(query).await,
+            None => Ok(StoredNifflerRuntimeAccountModelAccessListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
         }
     }
 

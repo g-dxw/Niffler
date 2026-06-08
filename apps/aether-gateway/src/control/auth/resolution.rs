@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, info};
 
+use crate::niffler_runtime::resolve_niffler_runtime_policy_snapshot;
 use crate::wallet_runtime::{local_rejection_from_wallet_access, resolve_wallet_auth_gate};
 use crate::{AppState, GatewayError};
 
@@ -530,7 +531,7 @@ pub(crate) async fn refresh_execution_runtime_auth_context(
         auth_context.balance_remaining,
         wallet_access,
     )
-    .await)
+    .await?)
 }
 
 fn put_cached_auth_context(
@@ -612,7 +613,7 @@ pub(super) async fn resolve_data_backed_auth_context(
                     None,
                     wallet_access,
                 )
-                .await,
+                .await?,
             ))
         }
         Some(
@@ -669,7 +670,7 @@ async fn resolve_trusted_auth_context(
             trusted_headers.balance_remaining,
             wallet_access,
         )
-        .await,
+        .await?,
     ))
 }
 
@@ -680,10 +681,34 @@ async fn build_data_backed_auth_context(
     header_access_allowed: Option<bool>,
     balance_remaining: Option<f64>,
     wallet_access: Option<aether_wallet::WalletAccessDecision>,
-) -> GatewayControlAuthContext {
-    let allowed_models = snapshot
-        .effective_allowed_models()
-        .map(|items| items.to_vec());
+) -> Result<GatewayControlAuthContext, GatewayError> {
+    let runtime_policy =
+        resolve_niffler_runtime_policy_snapshot(state, &snapshot.api_key_id).await?;
+    let new_routing_enabled = runtime_policy.is_some();
+    let allowed_models = runtime_policy
+        .as_ref()
+        .map(|policy| policy.allowed_models.clone())
+        .or_else(|| {
+            snapshot
+                .effective_allowed_models()
+                .map(|items| items.to_vec())
+        });
+    let api_key_group_id = runtime_policy
+        .as_ref()
+        .and_then(|policy| policy.product_plan_id.clone())
+        .or_else(|| snapshot.api_key_group_id.clone());
+    let api_key_group_name = runtime_policy
+        .as_ref()
+        .and_then(|policy| policy.product_plan_name.clone())
+        .or_else(|| snapshot.api_key_group_name.clone());
+    let sales_multiplier = runtime_policy
+        .as_ref()
+        .map(|policy| policy.sales_multiplier)
+        .unwrap_or(snapshot.api_key_group_sales_multiplier);
+    let model_sales_multipliers = runtime_policy
+        .as_ref()
+        .and_then(|policy| policy.model_sales_multipliers.clone())
+        .or_else(|| snapshot.api_key_group_model_sales_multipliers.clone());
     let invalid_api_key = !snapshot.user_is_active
         || snapshot.user_is_deleted
         || !snapshot.api_key_is_active
@@ -703,7 +728,8 @@ async fn build_data_backed_auth_context(
         .map(|(provider, _)| provider)
         .unwrap_or(auth_endpoint_signature)
         .trim();
-    let requested_provider_allowed = skip_provider_and_format_gate
+    let requested_provider_allowed = new_routing_enabled
+        || skip_provider_and_format_gate
         || auth_snapshot_allows_requested_provider(state, &snapshot, auth_endpoint_signature).await;
     let local_rejection = if invalid_api_key {
         Some(GatewayLocalAuthRejection::InvalidApiKey)
@@ -722,7 +748,8 @@ async fn build_data_backed_auth_context(
         Some(GatewayLocalAuthRejection::ProviderNotAllowed {
             provider: requested_provider.to_string(),
         })
-    } else if !skip_provider_and_format_gate
+    } else if !new_routing_enabled
+        && !skip_provider_and_format_gate
         && snapshot
             .effective_allowed_api_formats()
             .is_some_and(|allowed| !contains_api_format_or_alias(allowed, auth_endpoint_signature))
@@ -734,13 +761,13 @@ async fn build_data_backed_auth_context(
         None
     };
 
-    GatewayControlAuthContext {
+    Ok(GatewayControlAuthContext {
         username: Some(snapshot.username.clone()),
         api_key_name: snapshot.api_key_name.clone(),
-        api_key_group_id: snapshot.api_key_group_id,
-        api_key_group_name: snapshot.api_key_group_name,
-        sales_multiplier: snapshot.api_key_group_sales_multiplier,
-        model_sales_multipliers: snapshot.api_key_group_model_sales_multipliers,
+        api_key_group_id,
+        api_key_group_name,
+        sales_multiplier,
+        model_sales_multipliers,
         user_id: snapshot.user_id,
         api_key_id: snapshot.api_key_id,
         balance_remaining: wallet_remaining.or(balance_remaining),
@@ -752,7 +779,7 @@ async fn build_data_backed_auth_context(
             && !snapshot.api_key_is_standalone,
         local_rejection,
         allowed_models,
-    }
+    })
 }
 
 fn should_touch_data_backed_auth_context(auth_endpoint_signature: &str) -> bool {

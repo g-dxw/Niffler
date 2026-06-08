@@ -10,7 +10,8 @@ use aether_runtime_state::{RuntimeSemaphore, RuntimeState};
 use super::super::async_task::{VideoTaskPollerConfig, VideoTaskService};
 use super::super::cache::{
     AuthApiKeyLastUsedCache, AuthContextCache, DashboardResponseCache, DirectPlanBypassCache,
-    NifflerRuntimeRolloutDecisionCache, SchedulerAffinityCache, SystemConfigCache,
+    NifflerRuntimeRolloutDecisionCache, NifflerRuntimeSnapshotCache, SchedulerAffinityCache,
+    SystemConfigCache,
 };
 use super::super::data::GatewayDataState;
 use super::super::fallback_metrics;
@@ -62,6 +63,7 @@ pub struct AppState {
     pub(crate) auth_context_cache: Arc<AuthContextCache>,
     pub(crate) auth_api_key_last_used_cache: Arc<AuthApiKeyLastUsedCache>,
     pub(crate) niffler_runtime_rollout_decision_cache: Arc<NifflerRuntimeRolloutDecisionCache>,
+    pub(crate) niffler_runtime_snapshot_cache: Arc<NifflerRuntimeSnapshotCache>,
     pub(crate) oauth_refresh: Arc<provider_transport::LocalOAuthRefreshCoordinator>,
     pub(crate) direct_plan_bypass_cache: Arc<DirectPlanBypassCache>,
     pub(crate) scheduler_affinity_cache: Arc<SchedulerAffinityCache>,

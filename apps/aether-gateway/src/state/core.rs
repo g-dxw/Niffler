@@ -28,8 +28,8 @@ use super::super::async_task::{
 };
 use super::super::cache::{
     AuthApiKeyLastUsedCache, AuthContextCache, DashboardResponseCache, DirectPlanBypassCache,
-    NifflerRuntimeRolloutDecisionCache, SchedulerAffinityCache, SchedulerAffinitySnapshotEntry,
-    SchedulerAffinityTarget, SystemConfigCache,
+    NifflerRuntimeRolloutDecisionCache, NifflerRuntimeSnapshotCache, SchedulerAffinityCache,
+    SchedulerAffinitySnapshotEntry, SchedulerAffinityTarget, SystemConfigCache,
 };
 use super::super::data::{GatewayDataConfig, GatewayDataState};
 use super::super::fallback_metrics;
@@ -244,6 +244,7 @@ impl AppState {
             niffler_runtime_rollout_decision_cache: Arc::new(
                 NifflerRuntimeRolloutDecisionCache::default(),
             ),
+            niffler_runtime_snapshot_cache: Arc::new(NifflerRuntimeSnapshotCache::default()),
             oauth_refresh: Arc::new(provider_transport::LocalOAuthRefreshCoordinator::new()),
             direct_plan_bypass_cache: Arc::new(DirectPlanBypassCache::default()),
             scheduler_affinity_cache: Arc::new(SchedulerAffinityCache::default()),
@@ -586,6 +587,12 @@ impl AppState {
 
     pub(crate) fn invalidate_auth_context_cache(&self) {
         self.auth_context_cache.clear();
+    }
+
+    pub(crate) fn invalidate_niffler_runtime_caches(&self) {
+        self.niffler_runtime_rollout_decision_cache.clear();
+        self.niffler_runtime_snapshot_cache.clear();
+        self.invalidate_auth_context_cache();
     }
 
     fn remember_system_config_write(&self, key: &str, value: Option<serde_json::Value>) {

@@ -8,17 +8,20 @@ use super::{
     CreateNifflerReferralRewardLedgerRecord, CreateNifflerRouteAttemptRecord,
     CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
     CreateNifflerUpstreamServiceRecord, FinalizeNifflerBillingReservationRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
-    NifflerBillingReservationStatus, NifflerConsistencyCheckListQuery, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
-    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
-    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
-    NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind,
-    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, NifflerUserResponseMode, StoredNifflerAccountRiskEvent,
+    NifflerAccountModelCapabilityListQuery, NifflerAccountProtectionAction, NifflerAccountStatus,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
+    NifflerBillingReservationListQuery, NifflerBillingReservationStatus,
+    NifflerConsistencyCheckListQuery, NifflerCoreReadRepository, NifflerCoreWriteRepository,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
+    NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
+    NifflerRouteAttemptListQuery, NifflerRuntimeAccountModelAccessListQuery,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerServiceCapabilityKind, NifflerSettlementSnapshotListQuery,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    NifflerUserResponseMode, StoredNifflerAccountModelCapability,
+    StoredNifflerAccountModelCapabilityListPage, StoredNifflerAccountRiskEvent,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
     StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
@@ -28,6 +31,7 @@ use super::{
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
     StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
     StoredNifflerRouteAttemptListItem, StoredNifflerRouteAttemptListPage,
+    StoredNifflerRuntimeAccountModelAccess, StoredNifflerRuntimeAccountModelAccessListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
     StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListItem,
     StoredNifflerSettlementSnapshotListPage, StoredNifflerUpstreamAccount,
@@ -491,6 +495,54 @@ LIMIT 1
         .await
         .map_sql_err()?;
         row.as_ref().map(map_account_row).transpose()
+    }
+
+    async fn list_account_model_capabilities(
+        &self,
+        query: &NifflerAccountModelCapabilityListQuery,
+    ) -> Result<StoredNifflerAccountModelCapabilityListPage, DataLayerError> {
+        let total = build_account_model_capability_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_account_model_capability_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_account_model_capability_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerAccountModelCapabilityListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_runtime_account_model_access(
+        &self,
+        query: &NifflerRuntimeAccountModelAccessListQuery,
+    ) -> Result<StoredNifflerRuntimeAccountModelAccessListPage, DataLayerError> {
+        let total = build_runtime_account_model_access_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_runtime_account_model_access_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_runtime_account_model_access_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerRuntimeAccountModelAccessListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
     }
 
     async fn list_product_plans(
@@ -1684,6 +1736,117 @@ fn push_account_filters(
     }
 }
 
+fn build_account_model_capability_count_query(
+    query: &NifflerAccountModelCapabilityListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_account_model_capabilities");
+    push_account_model_capability_filters(&mut builder, query);
+    builder
+}
+
+fn build_account_model_capability_rows_query(
+    query: &NifflerAccountModelCapabilityListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, upstream_service_id, upstream_account_id, model_name, is_enabled, \
+         source, last_checked_at_unix_ms, last_error, created_at_unix_ms, updated_at_unix_ms \
+         FROM niffler_account_model_capabilities",
+    );
+    push_account_model_capability_filters(&mut builder, query);
+    builder.push(" ORDER BY model_name ASC, upstream_account_id ASC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_account_model_capability_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerAccountModelCapabilityListQuery,
+) {
+    let mut has_where = false;
+    if let Some(service_id) = query
+        .upstream_service_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(" WHERE upstream_service_id = ");
+        builder.push_bind(service_id.clone());
+        has_where = true;
+    }
+    if let Some(account_id) = query
+        .upstream_account_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("upstream_account_id = ");
+        builder.push_bind(account_id.clone());
+        has_where = true;
+    }
+    if let Some(model_name) = query
+        .model_name
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("model_name = ");
+        builder.push_bind(model_name.clone());
+        has_where = true;
+    }
+    if query.enabled_only {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("is_enabled = TRUE");
+    }
+}
+
+fn build_runtime_account_model_access_count_query(
+    query: &NifflerRuntimeAccountModelAccessListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT COUNT(*) \
+         FROM niffler_account_model_capabilities c \
+         INNER JOIN niffler_upstream_accounts a ON a.id = c.upstream_account_id \
+         INNER JOIN niffler_upstream_services s ON s.id = c.upstream_service_id",
+    );
+    push_runtime_account_model_access_filters(&mut builder, query);
+    builder
+}
+
+fn build_runtime_account_model_access_rows_query(
+    query: &NifflerRuntimeAccountModelAccessListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT c.upstream_service_id, c.upstream_account_id \
+         FROM niffler_account_model_capabilities c \
+         INNER JOIN niffler_upstream_accounts a ON a.id = c.upstream_account_id \
+         INNER JOIN niffler_upstream_services s ON s.id = c.upstream_service_id",
+    );
+    push_runtime_account_model_access_filters(&mut builder, query);
+    builder.push(" ORDER BY a.priority ASC, c.upstream_account_id ASC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_runtime_account_model_access_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerRuntimeAccountModelAccessListQuery,
+) {
+    let now_unix_ms = i64::try_from(query.now_unix_ms).unwrap_or(i64::MAX);
+    builder.push(" WHERE c.model_name = ");
+    builder.push_bind(query.model_name.clone());
+    builder.push(" AND c.is_enabled = TRUE");
+    builder.push(" AND s.is_active = TRUE");
+    builder.push(" AND a.upstream_service_id = c.upstream_service_id");
+    builder.push(" AND a.status = ");
+    builder.push_bind(NifflerAccountStatus::Available.as_str());
+    builder.push(" AND (a.cooldown_until_unix_ms IS NULL OR a.cooldown_until_unix_ms <= ");
+    builder.push_bind(now_unix_ms);
+    builder.push(")");
+}
+
 fn build_product_plan_count_query(
     query: &NifflerProductPlanListQuery,
 ) -> QueryBuilder<'_, Postgres> {
@@ -2425,6 +2588,42 @@ fn map_account_row(row: &PgRow) -> Result<StoredNifflerUpstreamAccount, DataLaye
             row.try_get("updated_at_unix_ms").map_sql_err()?,
             "updated_at_unix_ms",
         )?,
+    })
+}
+
+fn map_account_model_capability_row(
+    row: &PgRow,
+) -> Result<StoredNifflerAccountModelCapability, DataLayerError> {
+    Ok(StoredNifflerAccountModelCapability {
+        id: row.try_get("id").map_sql_err()?,
+        upstream_service_id: row.try_get("upstream_service_id").map_sql_err()?,
+        upstream_account_id: row.try_get("upstream_account_id").map_sql_err()?,
+        model_name: row.try_get("model_name").map_sql_err()?,
+        is_enabled: row.try_get("is_enabled").map_sql_err()?,
+        source: row.try_get("source").map_sql_err()?,
+        last_checked_at_unix_ms: row
+            .try_get::<Option<i64>, _>("last_checked_at_unix_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "last_checked_at_unix_ms"))
+            .transpose()?,
+        last_error: row.try_get("last_error").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_runtime_account_model_access_row(
+    row: &PgRow,
+) -> Result<StoredNifflerRuntimeAccountModelAccess, DataLayerError> {
+    Ok(StoredNifflerRuntimeAccountModelAccess {
+        upstream_service_id: row.try_get("upstream_service_id").map_sql_err()?,
+        upstream_account_id: row.try_get("upstream_account_id").map_sql_err()?,
     })
 }
 

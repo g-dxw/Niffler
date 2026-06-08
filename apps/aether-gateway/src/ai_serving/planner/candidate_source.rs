@@ -20,6 +20,9 @@ use crate::data::candidate_selection::{
     MinimalCandidateSelectionRowSource, REQUESTED_MODEL_CANDIDATE_PAGE_SIZE,
     REQUESTED_MODEL_MAX_SCANNED_ROWS,
 };
+use crate::niffler_runtime::{
+    resolve_niffler_runtime_model_access_snapshot, NifflerRuntimeModelAccessSnapshot,
+};
 use crate::scheduler::candidate::SchedulerSkippedCandidate;
 use crate::GatewayError;
 
@@ -38,6 +41,7 @@ struct GatewayLocalCandidatePreselectionPort<'a> {
     auth_snapshot: &'a GatewayAuthApiKeySnapshot,
     routing_policy: Option<&'a ResolvedRoutingPolicy>,
     client_session_affinity: Option<&'a ClientSessionAffinity>,
+    niffler_model_access_snapshot: Option<NifflerRuntimeModelAccessSnapshot>,
     use_api_format_alias_match: bool,
     key_mode: LocalCandidatePreselectionKeyMode,
     candidate_api_formats: Vec<String>,
@@ -70,7 +74,11 @@ impl AiCandidatePreselectionPort for GatewayLocalCandidatePreselectionPort<'_> {
         candidate_api_format: &str,
         matches_client_format: bool,
     ) -> Result<(Vec<Self::Candidate>, Vec<Self::Skipped>), Self::Error> {
-        let auth_snapshot = matches_client_format.then_some(self.auth_snapshot);
+        let auth_snapshot = if self.niffler_model_access_snapshot.is_some() {
+            None
+        } else {
+            matches_client_format.then_some(self.auth_snapshot)
+        };
         let (candidates, skipped_candidates) = self
             .state
             .list_selectable_candidates_with_skip_reasons(
@@ -103,7 +111,12 @@ impl AiCandidatePreselectionPort for GatewayLocalCandidatePreselectionPort<'_> {
             &crate::ai_serving::normalize_api_format_alias(candidate_api_format),
         );
         routing_policy_allows_provider(self.routing_policy, candidate)
-            && (matches_client_format
+            && niffler_runtime_model_access_allows_candidate(
+                self.niffler_model_access_snapshot.as_ref(),
+                candidate,
+            )
+            && (self.niffler_model_access_snapshot.is_some()
+                || matches_client_format
                 || auth_snapshot_allows_cross_format_candidate(
                     self.auth_snapshot,
                     self.requested_model,
@@ -122,7 +135,12 @@ impl AiCandidatePreselectionPort for GatewayLocalCandidatePreselectionPort<'_> {
             &crate::ai_serving::normalize_api_format_alias(candidate_api_format),
         );
         routing_policy_allows_provider(self.routing_policy, &skipped_candidate.candidate)
-            && (matches_client_format
+            && niffler_runtime_model_access_allows_candidate(
+                self.niffler_model_access_snapshot.as_ref(),
+                &skipped_candidate.candidate,
+            )
+            && (self.niffler_model_access_snapshot.is_some()
+                || matches_client_format
                 || auth_snapshot_allows_cross_format_candidate(
                     self.auth_snapshot,
                     self.requested_model,
@@ -213,6 +231,12 @@ pub(crate) async fn preselect_local_execution_candidates_for_api_formats_with_se
                 .insert(crate::ai_serving::normalize_api_format_alias(api_format));
         }
     }
+    let niffler_model_access_snapshot = resolve_niffler_runtime_model_access_snapshot(
+        state.app(),
+        &auth_snapshot.api_key_id,
+        requested_model,
+    )
+    .await?;
     let port = GatewayLocalCandidatePreselectionPort {
         state,
         client_api_format,
@@ -222,6 +246,7 @@ pub(crate) async fn preselect_local_execution_candidates_for_api_formats_with_se
         auth_snapshot,
         routing_policy,
         client_session_affinity,
+        niffler_model_access_snapshot,
         use_api_format_alias_match,
         key_mode,
         candidate_api_formats,
@@ -240,6 +265,8 @@ pub(crate) struct LocalCandidatePreselectionPageCursor<'a> {
     auth_snapshot: GatewayAuthApiKeySnapshot,
     routing_policy: Option<ResolvedRoutingPolicy>,
     client_session_affinity: Option<ClientSessionAffinity>,
+    niffler_model_access_snapshot: Option<NifflerRuntimeModelAccessSnapshot>,
+    niffler_model_access_error: Option<String>,
     use_api_format_alias_match: bool,
     key_mode: LocalCandidatePreselectionKeyMode,
     candidate_api_formats: Vec<String>,
@@ -286,6 +313,18 @@ impl<'a> LocalCandidatePreselectionPageCursor<'a> {
             }
         }
 
+        let (niffler_model_access_snapshot, niffler_model_access_error) =
+            match resolve_niffler_runtime_model_access_snapshot(
+                state.app(),
+                &auth_snapshot.api_key_id,
+                requested_model,
+            )
+            .await
+            {
+                Ok(snapshot) => (snapshot, None),
+                Err(err) => (None, Some(format!("{err:?}"))),
+            };
+
         Self {
             state,
             client_api_format: client_api_format.to_string(),
@@ -295,6 +334,8 @@ impl<'a> LocalCandidatePreselectionPageCursor<'a> {
             auth_snapshot: auth_snapshot.clone(),
             routing_policy: routing_policy.cloned(),
             client_session_affinity: client_session_affinity.cloned(),
+            niffler_model_access_snapshot,
+            niffler_model_access_error,
             use_api_format_alias_match,
             key_mode,
             candidate_api_formats,
@@ -320,6 +361,9 @@ impl<'a> LocalCandidatePreselectionPageCursor<'a> {
         >,
         GatewayError,
     > {
+        if let Some(error) = self.niffler_model_access_error.take() {
+            return Err(GatewayError::Internal(error));
+        }
         while self.format_index < self.candidate_api_formats.len() {
             let candidate_api_format = self.candidate_api_formats[self.format_index].clone();
             let Some(outcome) = self.next_page_for_api_format(&candidate_api_format).await? else {
@@ -551,13 +595,17 @@ impl<'a> LocalCandidatePreselectionPageCursor<'a> {
             return Ok(None);
         }
 
-        let auth_constraints = matches_client_api_format(
-            self.use_api_format_alias_match,
-            candidate_api_format,
-            &self.client_api_format,
-        )
-        .then_some(&self.auth_snapshot)
-        .map(crate::data::candidate_selection::auth_snapshot_constraints);
+        let auth_constraints = if self.niffler_model_access_snapshot.is_some() {
+            None
+        } else {
+            matches_client_api_format(
+                self.use_api_format_alias_match,
+                candidate_api_format,
+                &self.client_api_format,
+            )
+            .then_some(&self.auth_snapshot)
+            .map(crate::data::candidate_selection::auth_snapshot_constraints)
+        };
         let enumerated_candidates = enumerate_minimal_candidate_selection_with_model_directives(
             EnumerateMinimalCandidateSelectionInput {
                 rows,
@@ -594,7 +642,11 @@ impl<'a> LocalCandidatePreselectionPageCursor<'a> {
             candidate_api_format,
             &self.client_api_format,
         );
-        let auth_snapshot = matches_client_format.then_some(&self.auth_snapshot);
+        let auth_snapshot = if self.niffler_model_access_snapshot.is_some() {
+            None
+        } else {
+            matches_client_format.then_some(&self.auth_snapshot)
+        };
         let (candidates, skipped_candidates) = self
             .state
             .list_selectable_enumerated_candidates_with_skip_reasons(
@@ -632,16 +684,22 @@ impl<'a> LocalCandidatePreselectionPageCursor<'a> {
         enable_model_directives: bool,
     ) -> bool {
         routing_policy_allows_provider(self.routing_policy.as_ref(), candidate)
-            && (matches_client_api_format(
-                self.use_api_format_alias_match,
-                candidate_api_format,
-                &self.client_api_format,
-            ) || auth_snapshot_allows_cross_format_candidate(
-                &self.auth_snapshot,
-                &self.requested_model,
+            && niffler_runtime_model_access_allows_candidate(
+                self.niffler_model_access_snapshot.as_ref(),
                 candidate,
-                enable_model_directives,
-            ))
+            )
+            && (self.niffler_model_access_snapshot.is_some()
+                || matches_client_api_format(
+                    self.use_api_format_alias_match,
+                    candidate_api_format,
+                    &self.client_api_format,
+                )
+                || auth_snapshot_allows_cross_format_candidate(
+                    &self.auth_snapshot,
+                    &self.requested_model,
+                    candidate,
+                    enable_model_directives,
+                ))
     }
 
     fn skipped_candidate_allowed_for_page(
@@ -651,16 +709,22 @@ impl<'a> LocalCandidatePreselectionPageCursor<'a> {
         enable_model_directives: bool,
     ) -> bool {
         routing_policy_allows_provider(self.routing_policy.as_ref(), &skipped_candidate.candidate)
-            && (matches_client_api_format(
-                self.use_api_format_alias_match,
-                candidate_api_format,
-                &self.client_api_format,
-            ) || auth_snapshot_allows_cross_format_candidate(
-                &self.auth_snapshot,
-                &self.requested_model,
+            && niffler_runtime_model_access_allows_candidate(
+                self.niffler_model_access_snapshot.as_ref(),
                 &skipped_candidate.candidate,
-                enable_model_directives,
-            ))
+            )
+            && (self.niffler_model_access_snapshot.is_some()
+                || matches_client_api_format(
+                    self.use_api_format_alias_match,
+                    candidate_api_format,
+                    &self.client_api_format,
+                )
+                || auth_snapshot_allows_cross_format_candidate(
+                    &self.auth_snapshot,
+                    &self.requested_model,
+                    &skipped_candidate.candidate,
+                    enable_model_directives,
+                ))
     }
 }
 
@@ -764,16 +828,77 @@ fn routing_policy_allows_provider(
     }
 }
 
+fn niffler_runtime_model_access_allows_candidate(
+    snapshot: Option<&NifflerRuntimeModelAccessSnapshot>,
+    candidate: &SchedulerMinimalCandidateSelectionCandidate,
+) -> bool {
+    snapshot
+        .map(|snapshot| snapshot.allows(&candidate.provider_id, &candidate.key_id))
+        .unwrap_or(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::data::GatewayDataState;
+    use crate::niffler_runtime::NifflerRuntimeAllowedAccount;
     use crate::AppState;
     use aether_data::repository::candidate_selection::InMemoryMinimalCandidateSelectionReadRepository;
     use aether_data_contracts::repository::candidate_selection::{
         MinimalCandidateSelectionReadRepository, StoredProviderModelMapping,
     };
     use std::sync::Arc;
+
+    fn scheduler_candidate(
+        provider_id: &str,
+        key_id: &str,
+    ) -> SchedulerMinimalCandidateSelectionCandidate {
+        SchedulerMinimalCandidateSelectionCandidate {
+            provider_id: provider_id.to_string(),
+            provider_name: provider_id.to_string(),
+            provider_type: "custom".to_string(),
+            provider_priority: 0,
+            endpoint_id: format!("{provider_id}-endpoint"),
+            endpoint_api_format: "openai:chat".to_string(),
+            key_id: key_id.to_string(),
+            key_name: key_id.to_string(),
+            key_auth_type: "api_key".to_string(),
+            key_internal_priority: 0,
+            key_global_priority_for_format: None,
+            key_capabilities: None,
+            model_id: "model-1".to_string(),
+            global_model_id: "global-model-1".to_string(),
+            global_model_name: "gpt-5".to_string(),
+            selected_provider_model_name: "gpt-5".to_string(),
+            mapping_matched_model: None,
+        }
+    }
+
+    #[test]
+    fn niffler_runtime_model_access_allows_only_configured_account() {
+        let snapshot = NifflerRuntimeModelAccessSnapshot {
+            api_key_id: "api-key-1".to_string(),
+            requested_model: "gpt-5".to_string(),
+            lookup_model: "gpt-5".to_string(),
+            allowed_accounts: BTreeSet::from([NifflerRuntimeAllowedAccount {
+                upstream_service_id: "service-allowed".to_string(),
+                upstream_account_id: "account-allowed".to_string(),
+            }]),
+        };
+
+        assert!(niffler_runtime_model_access_allows_candidate(
+            Some(&snapshot),
+            &scheduler_candidate("service-allowed", "account-allowed")
+        ));
+        assert!(!niffler_runtime_model_access_allows_candidate(
+            Some(&snapshot),
+            &scheduler_candidate("service-allowed", "account-other")
+        ));
+        assert!(!niffler_runtime_model_access_allows_candidate(
+            Some(&snapshot),
+            &scheduler_candidate("service-other", "account-allowed")
+        ));
+    }
 
     fn unrestricted_auth_snapshot() -> GatewayAuthApiKeySnapshot {
         GatewayAuthApiKeySnapshot {

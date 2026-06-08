@@ -128,6 +128,11 @@ pub(crate) async fn request_model_local_rejection(
             .await?;
         if !group_allows_model {
             pay_as_you_go_allowed = false;
+            if niffler_runtime_product_policy_is_enforced(state, auth_context).await? {
+                return Ok(Some(GatewayLocalAuthRejection::ModelNotAllowed {
+                    model: requested_model.to_string(),
+                }));
+            }
             requested_global_model_id =
                 resolve_requested_global_model_id_for_request(state, decision, requested_model)
                     .await?;
@@ -185,6 +190,23 @@ pub(crate) async fn request_model_local_rejection(
         body,
     )
     .await
+}
+
+async fn niffler_runtime_product_policy_is_enforced(
+    state: &AppState,
+    auth_context: &GatewayControlAuthContext,
+) -> Result<bool, GatewayError> {
+    if auth_context.api_key_id.trim().is_empty() {
+        return Ok(false);
+    }
+    Ok(
+        crate::niffler_runtime::resolve_niffler_runtime_policy_snapshot(
+            state,
+            &auth_context.api_key_id,
+        )
+        .await?
+        .is_some(),
+    )
 }
 
 fn quota_allows_plan_bypass(
