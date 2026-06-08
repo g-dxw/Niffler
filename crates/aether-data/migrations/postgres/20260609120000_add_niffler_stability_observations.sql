@@ -16,7 +16,20 @@ CREATE TABLE IF NOT EXISTS public.niffler_stability_observations (
     updated_at_unix_ms bigint NOT NULL
 );
 
-ALTER TABLE ONLY public.niffler_stability_observations ADD CONSTRAINT niffler_stability_observations_pkey PRIMARY KEY (id);
-ALTER TABLE ONLY public.niffler_stability_observations ADD CONSTRAINT uq_niffler_stability_observations_window UNIQUE (window_start_unix_ms, window_end_unix_ms);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'niffler_stability_observations_pkey'
+    ) THEN
+        ALTER TABLE ONLY public.niffler_stability_observations
+            ADD CONSTRAINT niffler_stability_observations_pkey PRIMARY KEY (id);
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_niffler_stability_observations_window'
+    ) THEN
+        ALTER TABLE ONLY public.niffler_stability_observations
+            ADD CONSTRAINT uq_niffler_stability_observations_window UNIQUE (window_start_unix_ms, window_end_unix_ms);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_niffler_stability_observations_status_time ON public.niffler_stability_observations USING btree (status, window_end_unix_ms);
 CREATE INDEX IF NOT EXISTS idx_niffler_stability_observations_window ON public.niffler_stability_observations USING btree (window_end_unix_ms);

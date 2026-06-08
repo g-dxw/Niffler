@@ -1204,6 +1204,7 @@ fn pending_migrations_from_applied_skips_versions_already_applied() {
             20260608140000,
             20260608150000,
             20260608160000,
+            20260609120000,
         ]
     );
 }
@@ -1235,6 +1236,7 @@ fn pending_migrations_from_applied_after_empty_database_snapshot_stamp_returns_p
             20260608140000,
             20260608150000,
             20260608160000,
+            20260609120000,
         ],
         "empty database snapshot-stamped databases should run only post-snapshot incrementals on first startup"
     );
