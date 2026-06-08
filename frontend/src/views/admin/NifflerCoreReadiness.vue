@@ -1177,11 +1177,15 @@ const sortedStabilityObservations = computed(() => {
   )
 })
 
+const completedStabilityObservations = computed(() =>
+  sortedStabilityObservations.value.filter((item) => isCompletedStabilityObservation(item))
+)
+
 const stabilityConsecutivePassDays = computed(() => {
   let count = 0
-  let expectedWindowStart: number | null = null
-  for (const item of sortedStabilityObservations.value) {
-    if (expectedWindowStart !== null && item.window_start_unix_ms !== expectedWindowStart) {
+  let expectedWindowStart = currentUtcDayStartUnixMs() - STABILITY_WINDOW_MS
+  for (const item of completedStabilityObservations.value) {
+    if (item.window_start_unix_ms !== expectedWindowStart) {
       break
     }
     if (!isPassingStabilityObservation(item)) {
@@ -1194,7 +1198,10 @@ const stabilityConsecutivePassDays = computed(() => {
 })
 
 const stabilityReadyForLegacyRemoval = computed(() =>
-  stabilityConsecutivePassDays.value >= STABILITY_REQUIRED_PASS_DAYS
+  Boolean(latestStabilityObservation.value)
+    && isFreshStabilityObservation(latestStabilityObservation.value)
+    && latestStabilityObservationAllowsGate(latestStabilityObservation.value)
+    && stabilityConsecutivePassDays.value >= STABILITY_REQUIRED_PASS_DAYS
 )
 
 const stabilityGateDescription = computed(() => {
@@ -1208,11 +1215,21 @@ const stabilityGateBlockReason = computed(() => {
   if (!latestStabilityObservation.value) {
     return '还没有稳定观察记录'
   }
-  let expectedWindowStart: number | null = null
-  const items = sortedStabilityObservations.value
+  if (latestStabilityObservation.value.window_start_unix_ms > currentUtcDayStartUnixMs()) {
+    return '观察窗口时间异常，不能开始第六片'
+  }
+  if (!isFreshStabilityObservation(latestStabilityObservation.value)) {
+    return '稳定观察任务超过 1 天没有更新，不能开始第六片'
+  }
+  if (!isCompletedStabilityObservation(latestStabilityObservation.value)
+    && !isPassingStabilityObservation(latestStabilityObservation.value)) {
+    return '当前观察窗口已经有阻断项，不能开始第六片'
+  }
+  let expectedWindowStart = currentUtcDayStartUnixMs() - STABILITY_WINDOW_MS
+  const items = completedStabilityObservations.value
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index]
-    if (expectedWindowStart !== null && item.window_start_unix_ms !== expectedWindowStart) {
+    if (item.window_start_unix_ms !== expectedWindowStart) {
       return '最近观察窗口不连续，不能开始第六片'
     }
     if (!isPassingStabilityObservation(item)) {
@@ -1222,8 +1239,8 @@ const stabilityGateBlockReason = computed(() => {
     }
     expectedWindowStart = item.window_start_unix_ms - STABILITY_WINDOW_MS
   }
-  if (stabilityObservations.value.length < STABILITY_REQUIRED_PASS_DAYS) {
-    return `还缺 ${STABILITY_REQUIRED_PASS_DAYS - stabilityObservations.value.length} 个观察窗口`
+  if (completedStabilityObservations.value.length < STABILITY_REQUIRED_PASS_DAYS) {
+    return `还缺 ${STABILITY_REQUIRED_PASS_DAYS - completedStabilityObservations.value.length} 个已结束观察窗口`
   }
   return '还需要连续 14 天通过'
 })
@@ -1308,6 +1325,24 @@ function stabilityStatusTone(status: string): Tone {
 
 function isPassingStabilityObservation(item: NifflerStabilityObservation): boolean {
   return item.status === 'pass' && item.blocker_codes.length === 0
+}
+
+function isCompletedStabilityObservation(item: NifflerStabilityObservation): boolean {
+  return item.window_end_unix_ms <= Date.now()
+}
+
+function currentUtcDayStartUnixMs(): number {
+  return Math.floor(Date.now() / STABILITY_WINDOW_MS) * STABILITY_WINDOW_MS
+}
+
+function isFreshStabilityObservation(item: NifflerStabilityObservation): boolean {
+  const currentDayStart = currentUtcDayStartUnixMs()
+  return item.window_start_unix_ms <= currentDayStart
+    && item.window_end_unix_ms >= currentDayStart
+}
+
+function latestStabilityObservationAllowsGate(item: NifflerStabilityObservation): boolean {
+  return isCompletedStabilityObservation(item) || isPassingStabilityObservation(item)
 }
 
 function rollbackDrillLabel(status: string): string {
