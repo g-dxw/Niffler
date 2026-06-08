@@ -2777,16 +2777,16 @@ fn map_consistency_check_row(
     let total_difference_usd = legacy_wallet_charge_usd.map(|legacy_wallet| {
         niffler_total_charge_usd - legacy_wallet - legacy_entitlement_charge_usd
     });
-    let issue_codes = consistency_issue_codes(
-        usage_status.as_deref(),
-        usage_billing_status.as_deref(),
+    let issue_codes = consistency_issue_codes(ConsistencyIssueInput {
+        usage_status: usage_status.as_deref(),
+        usage_billing_status: usage_billing_status.as_deref(),
         legacy_wallet_charge_usd,
         wallet_difference_usd,
         entitlement_difference_usd,
         total_difference_usd,
         reservation_status,
         route_attempt_count,
-    );
+    });
     let consistency_status = if issue_codes.is_empty() {
         "ok".to_string()
     } else {
@@ -2837,38 +2837,46 @@ fn map_consistency_check_row(
 
 const CONSISTENCY_TOLERANCE_USD: f64 = 0.000_001;
 
-fn consistency_issue_codes(
-    usage_status: Option<&str>,
-    usage_billing_status: Option<&str>,
+struct ConsistencyIssueInput<'a> {
+    usage_status: Option<&'a str>,
+    usage_billing_status: Option<&'a str>,
     legacy_wallet_charge_usd: Option<f64>,
     wallet_difference_usd: Option<f64>,
     entitlement_difference_usd: f64,
     total_difference_usd: Option<f64>,
     reservation_status: Option<NifflerBillingReservationStatus>,
     route_attempt_count: u64,
-) -> Vec<String> {
+}
+
+fn consistency_issue_codes(input: ConsistencyIssueInput<'_>) -> Vec<String> {
     let mut issues = Vec::new();
-    if usage_status.is_none() {
+    if input.usage_status.is_none() {
         issues.push("missing_legacy_usage".to_string());
     }
-    if usage_billing_status.is_none() {
+    if input.usage_billing_status.is_none() {
         issues.push("missing_legacy_settlement".to_string());
-    } else if usage_billing_status != Some("settled") {
+    } else if input.usage_billing_status != Some("settled") {
         issues.push("legacy_not_settled".to_string());
     }
-    if legacy_wallet_charge_usd.is_none() {
+    if input.legacy_wallet_charge_usd.is_none() {
         issues.push("missing_legacy_wallet_charge".to_string());
     }
-    if wallet_difference_usd.is_some_and(|value| value.abs() > CONSISTENCY_TOLERANCE_USD) {
+    if input
+        .wallet_difference_usd
+        .is_some_and(|value| value.abs() > CONSISTENCY_TOLERANCE_USD)
+    {
         issues.push("wallet_charge_mismatch".to_string());
     }
-    if entitlement_difference_usd.abs() > CONSISTENCY_TOLERANCE_USD {
+    if input.entitlement_difference_usd.abs() > CONSISTENCY_TOLERANCE_USD {
         issues.push("entitlement_charge_mismatch".to_string());
     }
-    if total_difference_usd.is_some_and(|value| value.abs() > CONSISTENCY_TOLERANCE_USD) {
+    if input
+        .total_difference_usd
+        .is_some_and(|value| value.abs() > CONSISTENCY_TOLERANCE_USD)
+    {
         issues.push("total_charge_mismatch".to_string());
     }
-    match reservation_status {
+    match input.reservation_status {
         None => issues.push("missing_billing_reservation".to_string()),
         Some(NifflerBillingReservationStatus::Active) => {
             issues.push("reservation_not_finalized".to_string())
@@ -2880,7 +2888,7 @@ fn consistency_issue_codes(
         | Some(NifflerBillingReservationStatus::Released)
         | Some(NifflerBillingReservationStatus::Expired) => {}
     }
-    if route_attempt_count == 0 {
+    if input.route_attempt_count == 0 {
         issues.push("missing_route_attempt".to_string());
     }
     issues
