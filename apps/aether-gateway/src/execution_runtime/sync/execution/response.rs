@@ -157,7 +157,11 @@ pub(crate) fn maybe_build_local_video_error_response(
     }
 
     let empty_body = json!({});
-    let response_body = payload.body_json.as_ref().unwrap_or(&empty_body);
+    let response_body = payload
+        .client_body_json
+        .as_ref()
+        .or(payload.body_json.as_ref())
+        .unwrap_or(&empty_body);
     let body_bytes =
         serde_json::to_vec(response_body).map_err(|err| GatewayError::Internal(err.to_string()))?;
     let body_len = body_bytes.len().to_string();

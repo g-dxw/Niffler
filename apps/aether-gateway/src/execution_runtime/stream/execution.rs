@@ -90,6 +90,9 @@ use crate::execution_runtime::{
 };
 use crate::execution_runtime::{MAX_STREAM_PREFETCH_BYTES, MAX_STREAM_PREFETCH_FRAMES};
 use crate::log_ids::short_request_id;
+use crate::niffler_error_return::{
+    build_niffler_upstream_error_context, rewrite_niffler_upstream_error_response,
+};
 use crate::orchestration::{
     apply_local_execution_effect, build_local_error_flow_metadata, trace_upstream_response_body,
     with_error_flow_report_context, with_upstream_response_report_context,
@@ -1579,7 +1582,7 @@ async fn execute_stream_from_frame_stream(
             &headers,
             &provider_error_body,
         )?;
-        let (client_body_json, client_error_body) =
+        let (mut client_body_json, mut client_error_body) =
             if let Some(body_json) = synthetic_body_json.or(wrapped_binary_body_json) {
                 let body_bytes = serde_json::to_vec(&body_json)
                     .map_err(|err| GatewayError::Internal(err.to_string()))?;
@@ -1779,6 +1782,22 @@ async fn execute_stream_from_frame_stream(
             client_body_json.as_ref(),
         )
         .await?;
+        let context = build_niffler_upstream_error_context(&plan, report_context.as_ref());
+        if let Some(rewrite) = rewrite_niffler_upstream_error_response(
+            state,
+            context,
+            status_code,
+            provider_body_json.as_ref(),
+            &provider_error_body,
+        )
+        .await
+        {
+            client_headers.remove("content-encoding");
+            client_headers.remove("content-length");
+            client_headers.insert("content-type".to_string(), "application/json".to_string());
+            client_body_json = Some(rewrite.body_json);
+            client_error_body = rewrite.body_bytes;
+        }
 
         let client_response_headers = client_headers.clone();
         let error_trace_report_context = with_stream_error_trace_context(

@@ -3,21 +3,22 @@ use sqlx::{mysql::MySqlRow, MySql, QueryBuilder, Row};
 
 use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
-    CreateNifflerBillingReservationDryRunRecord, CreateNifflerBillingReservationRecord,
-    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    FinalizeNifflerBillingReservationRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
-    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
-    NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
-    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
+    CreateNifflerAccountRiskEventRecord, CreateNifflerBillingReservationDryRunRecord,
+    CreateNifflerBillingReservationRecord, CreateNifflerErrorReturnSettingRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, FinalizeNifflerBillingReservationRecord,
+    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
+    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
+    NifflerBillingReservationStatus, NifflerCoreReadRepository, NifflerCoreWriteRepository,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
+    NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
     NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
     NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind,
     NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
     NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
+    NifflerUpstreamServiceListQuery, NifflerUserResponseMode, StoredNifflerAccountRiskEvent,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
     StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
@@ -212,6 +213,34 @@ LIMIT 1
             .ok_or_else(|| {
                 DataLayerError::UnexpectedValue(
                     "niffler error return setting missing after write".into(),
+                )
+            })
+    }
+
+    async fn reload_account_risk_event(
+        &self,
+        event_id: &str,
+    ) -> Result<StoredNifflerAccountRiskEvent, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, upstream_service_id, upstream_account_id, request_id, user_id, api_key_id,
+  model_name, rule_id, matched_text, upstream_status_code, action, created_at_unix_ms
+FROM niffler_account_risk_events
+WHERE id = ?
+LIMIT 1
+"#,
+        )
+        .bind(event_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_account_risk_event_row)
+            .transpose()?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler account risk event missing after write".into(),
                 )
             })
     }
@@ -1112,6 +1141,41 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         .await
         .map_sql_err()?;
         self.reload_error_return_setting(&record.id).await
+    }
+
+    async fn create_account_risk_event(
+        &self,
+        record: CreateNifflerAccountRiskEventRecord,
+    ) -> Result<StoredNifflerAccountRiskEvent, DataLayerError> {
+        record.validate()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_account_risk_events (
+  id, upstream_service_id, upstream_account_id, request_id, user_id, api_key_id,
+  model_name, rule_id, matched_text, upstream_status_code, action, created_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.upstream_service_id)
+        .bind(&record.upstream_account_id)
+        .bind(&record.request_id)
+        .bind(&record.user_id)
+        .bind(&record.api_key_id)
+        .bind(&record.model_name)
+        .bind(&record.rule_id)
+        .bind(&record.matched_text)
+        .bind(record.upstream_status_code.map(i32::from))
+        .bind(record.action.as_str())
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_account_risk_event(&record.id).await
     }
 
     async fn create_settlement_snapshot(
@@ -2359,6 +2423,40 @@ fn map_error_return_setting_row(
         updated_at_unix_ms: super::u64_from_i64(
             row.try_get("updated_at_unix_ms").map_sql_err()?,
             "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_account_risk_event_row(
+    row: &MySqlRow,
+) -> Result<StoredNifflerAccountRiskEvent, DataLayerError> {
+    let action: String = row.try_get("action").map_sql_err()?;
+    let upstream_status_code = row
+        .try_get::<Option<i32>, _>("upstream_status_code")
+        .map_sql_err()?
+        .map(|value| {
+            u16::try_from(value).map_err(|_| {
+                DataLayerError::UnexpectedValue(format!(
+                    "upstream_status_code is outside u16 range: {value}"
+                ))
+            })
+        })
+        .transpose()?;
+    Ok(StoredNifflerAccountRiskEvent {
+        id: row.try_get("id").map_sql_err()?,
+        upstream_service_id: row.try_get("upstream_service_id").map_sql_err()?,
+        upstream_account_id: row.try_get("upstream_account_id").map_sql_err()?,
+        request_id: row.try_get("request_id").map_sql_err()?,
+        user_id: row.try_get("user_id").map_sql_err()?,
+        api_key_id: row.try_get("api_key_id").map_sql_err()?,
+        model_name: row.try_get("model_name").map_sql_err()?,
+        rule_id: row.try_get("rule_id").map_sql_err()?,
+        matched_text: row.try_get("matched_text").map_sql_err()?,
+        upstream_status_code,
+        action: NifflerAccountProtectionAction::from_database(&action)?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
         )?,
     })
 }

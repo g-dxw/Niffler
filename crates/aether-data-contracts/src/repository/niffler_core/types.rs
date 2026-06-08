@@ -799,6 +799,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         record: CreateNifflerErrorReturnSettingRecord,
     ) -> Result<StoredNifflerErrorReturnSetting, crate::DataLayerError>;
 
+    async fn create_account_risk_event(
+        &self,
+        record: CreateNifflerAccountRiskEventRecord,
+    ) -> Result<StoredNifflerAccountRiskEvent, crate::DataLayerError>;
+
     async fn create_settlement_snapshot(
         &self,
         record: CreateNifflerSettlementSnapshotRecord,
@@ -1268,6 +1273,42 @@ impl CreateNifflerErrorReturnSettingRecord {
             is_active: self.is_active,
             created_at_unix_ms: self.created_at_unix_ms,
             updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerAccountRiskEventRecord {
+    pub id: String,
+    pub upstream_service_id: Option<String>,
+    pub upstream_account_id: String,
+    pub request_id: Option<String>,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub model_name: Option<String>,
+    pub rule_id: Option<String>,
+    pub matched_text: Option<String>,
+    pub upstream_status_code: Option<u16>,
+    pub action: NifflerAccountProtectionAction,
+    pub created_at_unix_ms: u64,
+}
+
+impl CreateNifflerAccountRiskEventRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerAccountRiskEvent {
+            id: self.id.clone(),
+            upstream_service_id: self.upstream_service_id.clone(),
+            upstream_account_id: self.upstream_account_id.clone(),
+            request_id: self.request_id.clone(),
+            user_id: self.user_id.clone(),
+            api_key_id: self.api_key_id.clone(),
+            model_name: self.model_name.clone(),
+            rule_id: self.rule_id.clone(),
+            matched_text: self.matched_text.clone(),
+            upstream_status_code: self.upstream_status_code,
+            action: self.action,
+            created_at_unix_ms: self.created_at_unix_ms,
         }
         .validate()
     }

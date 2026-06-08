@@ -51,6 +51,7 @@ mod maintenance;
 pub(crate) mod middleware;
 mod model_fetch;
 mod niffler_billing_reservation;
+mod niffler_error_return;
 mod niffler_runtime;
 mod oauth;
 mod orchestration;

@@ -56,6 +56,9 @@ use crate::execution_runtime::{
     should_finalize_sync_response, LocalFailoverDecision,
 };
 use crate::log_ids::short_request_id;
+use crate::niffler_error_return::{
+    build_niffler_upstream_error_context, rewrite_niffler_upstream_error_response,
+};
 use crate::orchestration::{
     apply_local_execution_effect, build_local_error_flow_metadata, trace_upstream_response_body,
     with_error_flow_report_context, with_upstream_response_report_context,
@@ -331,6 +334,7 @@ fn build_sync_report_payload(
     status_code: u16,
     headers: BTreeMap<String, String>,
     body_json: Option<serde_json::Value>,
+    client_body_json: Option<serde_json::Value>,
     body_base64: Option<String>,
     telemetry: Option<ExecutionTelemetry>,
 ) -> GatewaySyncReportRequest {
@@ -341,7 +345,7 @@ fn build_sync_report_payload(
         status_code,
         headers,
         body_json,
-        client_body_json: None,
+        client_body_json,
         body_base64,
         telemetry,
     }
@@ -1679,7 +1683,7 @@ async fn execute_execution_runtime_sync_impl(
         result_error_message,
         result_latency_ms,
         headers,
-        body_bytes,
+        mut body_bytes,
         body_json,
         body_base64,
         local_failover_response_text,
@@ -2010,6 +2014,25 @@ async fn execute_execution_runtime_sync_impl(
     let report_context = report_context;
     let body_json = body_json;
     let telemetry = result.telemetry;
+    let mut client_body_json = None;
+    if status_code >= 400 {
+        let context = build_niffler_upstream_error_context(&plan, report_context.as_ref());
+        if let Some(rewrite) = rewrite_niffler_upstream_error_response(
+            state,
+            context,
+            status_code,
+            body_json.as_ref(),
+            &body_bytes,
+        )
+        .await
+        {
+            client_headers.remove(CONTENT_ENCODING.as_str());
+            client_headers.remove(CONTENT_LENGTH.as_str());
+            client_headers.insert(CONTENT_TYPE.as_str().to_string(), "application/json".to_string());
+            body_bytes = rewrite.body_bytes.clone();
+            client_body_json = Some(rewrite.body_json);
+        }
+    }
 
     if let Some(implicit_finalize) = implicit_finalize {
         let usage_payload = implicit_finalize
@@ -2063,6 +2086,7 @@ async fn execute_execution_runtime_sync_impl(
             status_code,
             client_headers,
             body_json,
+            client_body_json.clone(),
             body_base64,
             telemetry,
         );
@@ -2252,6 +2276,7 @@ async fn execute_execution_runtime_sync_impl(
         status_code,
         client_headers,
         body_json,
+        client_body_json.clone(),
         body_base64,
         telemetry,
     );

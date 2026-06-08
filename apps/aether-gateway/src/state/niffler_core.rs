@@ -1,17 +1,18 @@
 use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerBillingReservationDryRunRecord, CreateNifflerBillingReservationRecord,
-    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    FinalizeNifflerBillingReservationRecord, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
-    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
-    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
-    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
-    NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
+    CreateNifflerAccountRiskEventRecord, CreateNifflerBillingReservationDryRunRecord,
+    CreateNifflerBillingReservationRecord, CreateNifflerErrorReturnSettingRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, FinalizeNifflerBillingReservationRecord,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
+    NifflerBillingReservationListQuery, NifflerErrorReturnSettingListQuery,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    StoredNifflerAccountRiskEvent, StoredNifflerApiKeyProductPlanBinding,
     StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
     StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
     StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
@@ -302,6 +303,16 @@ impl AppState {
     ) -> Result<Option<StoredNifflerErrorReturnSetting>, GatewayError> {
         self.data
             .create_niffler_error_return_setting(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn create_niffler_account_risk_event(
+        &self,
+        record: CreateNifflerAccountRiskEventRecord,
+    ) -> Result<Option<StoredNifflerAccountRiskEvent>, GatewayError> {
+        self.data
+            .create_niffler_account_risk_event(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

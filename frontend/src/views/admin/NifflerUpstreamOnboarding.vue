@@ -26,10 +26,10 @@
           <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-warning" />
           <div class="space-y-1">
             <p class="font-medium text-foreground">
-              这是新模型入口，不会改动当前线上请求。
+              这是新模型入口。默认不影响线上请求，只有命中灰度开关的 Key 才会进入已接入的新链路。
             </p>
             <p class="text-sm text-muted-foreground">
-              本页只写入新表：上游服务、上游账号、服务能力、产品策略、可售模型、错误文案规则。账号不保存真实密钥内容，也不会进入旧 Provider、号池、用户模型、计费、结算或错误返回链路。
+              本页写入新表：上游服务、上游账号、服务能力、产品策略、可售模型、错误文案规则。账号不保存真实密钥内容；运行时链路只对命中灰度开关的 Key 生效。
             </p>
           </div>
         </div>
@@ -730,7 +730,7 @@
               要登记的新链路
             </p>
             <p class="mt-1 text-xs text-muted-foreground">
-              当前版本只记录选择结果，旧调度、计费、结算、错误返回和返利逻辑都不会读取这些开关。
+              保存后作为运行时灰度判断来源。只有已经接入运行时的开关，才会影响命中的 Key。
             </p>
             <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <label
@@ -907,7 +907,7 @@
             还没有灰度开关
           </p>
           <p class="mt-1 text-sm text-muted-foreground">
-            先选择上面的目标并保存；保存后仍然不会影响线上请求。
+            先选择上面的目标并保存；只有已经接入运行时的开关，才会影响命中的 Key。
           </p>
         </div>
 
@@ -1682,7 +1682,7 @@
               错误文案规则
             </h2>
             <p class="mt-1 text-sm text-muted-foreground">
-              保存平台和上游错误返回文案。当前只写新配置，不影响线上错误返回。
+              保存平台和上游错误返回文案。只有启用“错误文案规则”灰度开关的 Key 会按这里返回。
             </p>
           </div>
           <Button
@@ -1718,7 +1718,7 @@
             还没有错误文案规则
           </p>
           <p class="mt-1 text-sm text-muted-foreground">
-            可以先登记常见平台错误和上游错误文案，后续灰度时再接入运行时。
+            可以先登记常见平台错误和上游错误文案，再通过运行时灰度开关控制哪些 Key 生效。
           </p>
         </div>
 
@@ -2284,7 +2284,7 @@
       v-model="errorReturnSettingDialogOpen"
       size="2xl"
       title="新增错误文案规则"
-      description="只保存新模型里的错误文案配置，不改变当前线上返回内容。"
+      description="保存后只对启用“错误文案规则”灰度开关的 Key 生效。"
       :icon="AlertTriangle"
     >
       <form
@@ -2389,7 +2389,7 @@
               <SelectContent>
                 <SelectItem value="record_only">只记录</SelectItem>
                 <SelectItem value="pause_scheduling">暂停调度</SelectItem>
-                <SelectItem value="disable_account">停用账号</SelectItem>
+                <SelectItem value="disable_account">标记人工处理</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -2781,7 +2781,7 @@ const runtimeRolloutFlagOptions: Array<{
 }> = [
   { key: 'enable_new_routing', label: '新调度', description: '后续让请求按新模型路由选择上游。' },
   { key: 'enable_settlement_snapshot', label: '结算快照', description: '后续记录本次请求的价格和扣费依据。' },
-  { key: 'enable_error_return_rules', label: '错误文案规则', description: '后续按新规则改写平台和上游错误。' },
+  { key: 'enable_error_return_rules', label: '错误文案规则', description: '启用后按新规则改写平台和上游错误。' },
   { key: 'enable_billing_reservation', label: '钱包预扣', description: '后续支持请求开始前预留钱包余额。' },
   { key: 'enable_referral_ledger', label: '返利账本', description: '后续把邀请返利写入独立账本。' },
 ]
@@ -4039,7 +4039,7 @@ function protectionActionLabel(action: NifflerAccountProtectionAction): string {
   const labels: Record<NifflerAccountProtectionAction, string> = {
     record_only: '只记录',
     pause_scheduling: '暂停调度',
-    disable_account: '停用账号',
+    disable_account: '标记人工处理',
   }
   return labels[action] ?? action
 }

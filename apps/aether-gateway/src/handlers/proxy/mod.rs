@@ -11,9 +11,8 @@ use crate::ai_serving::api::{
     maybe_bridge_standard_sync_json_to_stream,
 };
 use crate::api::response::{
-    build_client_response, build_client_response_from_parts, build_local_auth_rejection_response,
-    build_local_http_error_response, build_local_overloaded_response,
-    build_local_user_rpm_limited_response,
+    build_client_response, build_client_response_from_parts, build_local_http_error_response,
+    build_local_overloaded_response,
 };
 use crate::constants::{
     CONTROL_CANDIDATE_ID_HEADER, DEPENDENCY_REASON_HEADER, EXECUTION_PATH_CONTROL_EXECUTE_STREAM,
@@ -55,6 +54,10 @@ use crate::headers::{
     should_skip_request_header, RequestBodyNormalizationError,
 };
 use crate::niffler_billing_reservation::prepare_niffler_billing_reservation_for_request;
+use crate::niffler_error_return::{
+    build_niffler_platform_auth_rejection_response, build_niffler_platform_http_error_response,
+    build_niffler_platform_rate_limited_response,
+};
 use crate::router::RequestAdmissionError;
 use crate::scheduler::config::{read_scheduler_ordering_config, SchedulerSchedulingMode};
 use crate::{
@@ -108,7 +111,8 @@ fn client_ip_for_security_logs(
         .unwrap_or_else(|| remote_addr.ip().to_string())
 }
 
-fn build_request_body_normalization_error_response(
+async fn build_request_body_normalization_error_response(
+    state: &AppState,
     trace_id: &str,
     request_context: &GatewayPublicRequestContext,
     error: &RequestBodyNormalizationError,
@@ -122,12 +126,15 @@ fn build_request_body_normalization_error_response(
         error = %error,
         "gateway rejected request with invalid encoded body"
     );
-    build_local_http_error_response(
+    build_niffler_platform_http_error_response(
+        state,
         trace_id,
         request_context.control_decision.as_ref(),
         error.http_status(),
+        "request_body_normalization_failed",
         error.client_message().as_str(),
     )
+    .await
 }
 
 async fn buffer_and_normalize_request_body(
@@ -149,7 +156,7 @@ async fn buffer_and_normalize_request_body(
     ))
 }
 
-fn finalize_request_body_normalization_rejection(
+async fn finalize_request_body_normalization_rejection(
     state: &AppState,
     request_context: &GatewayPublicRequestContext,
     remote_addr: &std::net::SocketAddr,
@@ -159,7 +166,8 @@ fn finalize_request_body_normalization_rejection(
     error: &RequestBodyNormalizationError,
 ) -> Result<Response<Body>, GatewayError> {
     let response =
-        build_request_body_normalization_error_response(trace_id, request_context, error)?;
+        build_request_body_normalization_error_response(state, trace_id, request_context, error)
+            .await?;
     Ok(finalize_gateway_response_with_context(
         state,
         response,
@@ -1035,11 +1043,16 @@ pub(crate) async fn proxy_request(
             retry_after = rejection.retry_after,
             "gateway rate limited unauthenticated AI request"
         );
-        let response = build_local_user_rpm_limited_response(
+        let response = build_niffler_platform_rate_limited_response(
+            &state,
             &trace_id,
             request_context.control_decision.as_ref(),
-            &rejection,
-        )?;
+            "请求过于频繁，请稍后重试",
+            u64::from(rejection.retry_after),
+            u64::from(rejection.limit),
+            rejection.scope,
+        )
+        .await?;
         return Ok(finalize_gateway_response_with_context(
             &state,
             response,
@@ -1093,7 +1106,8 @@ pub(crate) async fn proxy_request(
                     &trace_id,
                     request_permit.take(),
                     &err,
-                );
+                )
+                .await;
             }
         }
     } else {
@@ -1273,7 +1287,8 @@ pub(crate) async fn proxy_request(
                     &trace_id,
                     request_permit.take(),
                     &err,
-                );
+                )
+                .await;
             }
         }
     } else {
@@ -1301,8 +1316,13 @@ pub(crate) async fn proxy_request(
     }
 
     if let Some(rejection) = trusted_auth_local_rejection(control_decision, &parts.headers) {
-        let response =
-            build_local_auth_rejection_response(&trace_id, control_decision, &rejection)?;
+        let response = build_niffler_platform_auth_rejection_response(
+            &state,
+            &trace_id,
+            control_decision,
+            &rejection,
+        )
+        .await?;
         return Ok(finalize_gateway_response_with_context(
             &state,
             response,
@@ -1324,8 +1344,13 @@ pub(crate) async fn proxy_request(
         )
         .await?
         {
-            let response =
-                build_local_auth_rejection_response(&trace_id, control_decision, &rejection)?;
+            let response = build_niffler_platform_auth_rejection_response(
+                &state,
+                &trace_id,
+                control_decision,
+                &rejection,
+            )
+            .await?;
             return Ok(finalize_gateway_response_with_context(
                 &state,
                 response,
@@ -1364,8 +1389,16 @@ pub(crate) async fn proxy_request(
             retry_after = rejection.retry_after,
             "gateway rejected request at frontdoor user rpm limit"
         );
-        let response =
-            build_local_user_rpm_limited_response(&trace_id, control_decision, rejection)?;
+        let response = build_niffler_platform_rate_limited_response(
+            &state,
+            &trace_id,
+            control_decision,
+            "请求过于频繁，请稍后重试",
+            u64::from(rejection.retry_after),
+            u64::from(rejection.limit),
+            rejection.scope,
+        )
+        .await?;
         return Ok(finalize_gateway_response_with_context(
             &state,
             response,
@@ -1428,8 +1461,13 @@ pub(crate) async fn proxy_request(
         )
         .await?
         {
-            let response =
-                build_local_auth_rejection_response(&trace_id, control_decision, &rejection)?;
+            let response = build_niffler_platform_auth_rejection_response(
+                &state,
+                &trace_id,
+                control_decision,
+                &rejection,
+            )
+            .await?;
             return Ok(finalize_gateway_response_with_context(
                 &state,
                 response,
@@ -1726,15 +1764,18 @@ pub(crate) async fn proxy_request(
             )
             .await;
         }
-        let mut response = build_local_http_error_response(
+        let mut response = build_niffler_platform_http_error_response(
+            &state,
             &trace_id,
             control_decision,
             http::StatusCode::SERVICE_UNAVAILABLE,
+            "local_execution_runtime_unavailable",
             local_execution_runtime_miss_client_message(
                 local_execution_runtime_miss_detail.as_str(),
             )
             .as_str(),
-        )?;
+        )
+        .await?;
         let local_execution_runtime_miss_reason = local_execution_runtime_miss_diagnostic
             .as_ref()
             .map(|diagnostic| diagnostic.reason.trim())
@@ -1762,12 +1803,15 @@ pub(crate) async fn proxy_request(
         ));
     }
 
-    let response = build_local_http_error_response(
+    let response = build_niffler_platform_http_error_response(
+        &state,
         &trace_id,
         control_decision,
         http::StatusCode::NOT_IMPLEMENTED,
+        "local_proxy_passthrough_removed",
         LOCAL_PROXY_PASSTHROUGH_REMOVED_DETAIL,
-    )?;
+    )
+    .await?;
     Ok(finalize_gateway_response_with_context(
         &state,
         response,

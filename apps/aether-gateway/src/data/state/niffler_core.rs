@@ -1,16 +1,17 @@
 use super::{
-    CreateNifflerBillingReservationDryRunRecord, CreateNifflerBillingReservationRecord,
-    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
-    FinalizeNifflerBillingReservationRecord, GatewayDataState,
-    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
-    NifflerBillingReservationListQuery, NifflerErrorReturnSettingListQuery,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
-    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
-    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    CreateNifflerAccountRiskEventRecord, CreateNifflerBillingReservationDryRunRecord,
+    CreateNifflerBillingReservationRecord, CreateNifflerErrorReturnSettingRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, DataLayerError, FinalizeNifflerBillingReservationRecord,
+    GatewayDataState, NifflerApiKeyProductPlanBindingListQuery,
+    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
+    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
+    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
+    NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerAccountRiskEvent,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
     StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
@@ -470,6 +471,20 @@ impl GatewayDataState {
                 .create_error_return_setting(record)
                 .await
                 .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_account_risk_event(
+        &self,
+        record: CreateNifflerAccountRiskEventRecord,
+    ) -> Result<Option<StoredNifflerAccountRiskEvent>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository.create_account_risk_event(record).await.map(Some),
             None => Ok(None),
         }
     }
