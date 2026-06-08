@@ -117,6 +117,44 @@ export interface NifflerRuntimeRolloutSetting {
   updated_at_unix_ms: number
 }
 
+export interface NifflerRuntimeRolloutDecision {
+  runtime_effect: 'preview_only'
+  source_scope?: NifflerRuntimeRolloutTargetScope | null
+  source_label?: string | null
+  reason: string
+  is_active: boolean
+  enable_new_routing: boolean
+  enable_settlement_snapshot: boolean
+  enable_error_return_rules: boolean
+  enable_billing_reservation: boolean
+  enable_referral_ledger: boolean
+}
+
+export interface NifflerRuntimeRolloutPreview {
+  api_key: {
+    id: string
+    name?: string | null
+    owner_label: string
+    user_id: string
+    user_is_active: boolean
+    user_is_deleted: boolean
+    is_active: boolean
+    is_locked: boolean
+    is_standalone: boolean
+  }
+  product_plan?: {
+    id: string
+    display_name?: string | null
+    is_active: boolean
+    binding_id?: string | null
+    binding_updated_at_unix_ms?: number | null
+  } | null
+  key_setting?: NifflerRuntimeRolloutSetting | null
+  product_plan_setting?: NifflerRuntimeRolloutSetting | null
+  decision: NifflerRuntimeRolloutDecision
+  warnings: string[]
+}
+
 export interface NifflerErrorReturnSetting {
   id: string
   scope: NifflerErrorResponseScope
@@ -546,6 +584,16 @@ export async function upsertNifflerRuntimeRolloutSetting(
   const response = await apiClient.post<NifflerRuntimeRolloutSetting>(
     '/api/admin/niffler-core/runtime-rollout-settings',
     payload
+  )
+  return response.data
+}
+
+export async function getNifflerRuntimeRolloutPreview(
+  apiKeyId: string
+): Promise<NifflerRuntimeRolloutPreview> {
+  const response = await apiClient.get<NifflerRuntimeRolloutPreview>(
+    '/api/admin/niffler-core/runtime-rollout-preview',
+    { params: { api_key_id: apiKeyId } }
   )
   return response.data
 }

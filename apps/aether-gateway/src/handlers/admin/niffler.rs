@@ -52,6 +52,7 @@ const PRODUCT_PLANS_PATH: &str = "/api/admin/niffler-core/product-plans";
 const API_KEY_PRODUCT_PLAN_BINDINGS_PATH: &str =
     "/api/admin/niffler-core/api-key-product-plan-bindings";
 const RUNTIME_ROLLOUT_SETTINGS_PATH: &str = "/api/admin/niffler-core/runtime-rollout-settings";
+const RUNTIME_ROLLOUT_PREVIEW_PATH: &str = "/api/admin/niffler-core/runtime-rollout-preview";
 const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
@@ -177,6 +178,12 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
                 request.request_body(),
             )
             .await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == RUNTIME_ROLLOUT_PREVIEW_PATH {
+        return Ok(Some(
+            build_runtime_rollout_preview_response(&state, &request_context).await?,
         ));
     }
 
@@ -961,6 +968,202 @@ async fn build_runtime_rollout_settings_response(
         }
         _ => Ok(niffler_method_not_allowed("只支持列表和保存灰度开关")),
     }
+}
+
+async fn build_runtime_rollout_preview_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if request_context.method() != http::Method::GET {
+        return Ok(niffler_method_not_allowed("只支持只读预览"));
+    }
+
+    let api_key_id = match query_param_value(request_context.query_string(), "api_key_id") {
+        Some(value) => match normalize_required_text(&value, "API Key", 64) {
+            Ok(value) => value,
+            Err(response) => return Ok(response),
+        },
+        None => return Ok(niffler_bad_request("API Key 不能为空")),
+    };
+    let snapshots = state
+        .list_auth_api_key_snapshots_by_ids(std::slice::from_ref(&api_key_id))
+        .await?;
+    let Some(snapshot) = snapshots
+        .iter()
+        .find(|snapshot| snapshot.api_key_id == api_key_id)
+    else {
+        return Ok(niffler_not_found("API Key 不存在"));
+    };
+
+    let key_setting = state
+        .find_niffler_runtime_rollout_setting(NifflerRuntimeRolloutTargetScope::ApiKey, &api_key_id)
+        .await?;
+    let binding = state
+        .find_niffler_api_key_product_plan_binding_by_api_key_id(&api_key_id)
+        .await?;
+
+    let mut warnings = Vec::new();
+    let mut product_plan_payload = serde_json::Value::Null;
+    let mut product_plan_label = None;
+    let mut product_plan_can_apply = false;
+    let mut product_plan_setting = None;
+
+    if let Some(binding) = binding.as_ref() {
+        match state
+            .find_niffler_product_plan_by_id(&binding.product_plan_id)
+            .await?
+        {
+            Some(product_plan) => {
+                product_plan_label = Some(product_plan.display_name.clone());
+                product_plan_can_apply = product_plan.is_active;
+                if !product_plan.is_active {
+                    warnings.push("影子产品策略已停用，策略级灰度开关不会生效。".to_string());
+                }
+                product_plan_payload = json!({
+                    "id": product_plan.id,
+                    "display_name": product_plan.display_name,
+                    "is_active": product_plan.is_active,
+                    "binding_id": binding.id,
+                    "binding_updated_at_unix_ms": binding.updated_at_unix_ms,
+                });
+                product_plan_setting = state
+                    .find_niffler_runtime_rollout_setting(
+                        NifflerRuntimeRolloutTargetScope::ProductPlan,
+                        &binding.product_plan_id,
+                    )
+                    .await?;
+            }
+            None => {
+                warnings.push("影子绑定引用的产品策略不存在，策略级灰度开关不会生效。".to_string());
+                product_plan_payload = json!({
+                    "id": binding.product_plan_id,
+                    "display_name": null,
+                    "is_active": false,
+                    "binding_id": binding.id,
+                    "binding_updated_at_unix_ms": binding.updated_at_unix_ms,
+                });
+            }
+        }
+    } else {
+        warnings.push("这把 Key 还没有绑定影子产品策略。".to_string());
+    }
+
+    if key_setting
+        .as_ref()
+        .is_some_and(|setting| !setting.is_active)
+    {
+        warnings.push("Key 级灰度开关已停用，预览会继续检查产品策略级开关。".to_string());
+    }
+    if product_plan_setting
+        .as_ref()
+        .is_some_and(|setting| !setting.is_active)
+    {
+        warnings.push("产品策略级灰度开关已停用。".to_string());
+    }
+
+    let key_can_enter_runtime = snapshot.api_key_is_active
+        && !snapshot.api_key_is_locked
+        && snapshot.user_is_active
+        && !snapshot.user_is_deleted;
+    if !snapshot.user_is_active {
+        warnings.push("用户已停用，这把 Key 不会进入灰度运行时。".to_string());
+    }
+    if snapshot.user_is_deleted {
+        warnings.push("用户已删除，这把 Key 不会进入灰度运行时。".to_string());
+    }
+    if !snapshot.api_key_is_active {
+        warnings.push("API Key 已停用，不会进入灰度运行时。".to_string());
+    }
+    if snapshot.api_key_is_locked {
+        warnings.push("API Key 已锁定，不会进入灰度运行时。".to_string());
+    }
+
+    let active_key_setting = key_setting
+        .as_ref()
+        .filter(|setting| setting.is_active && key_can_enter_runtime);
+    let active_product_plan_setting = product_plan_setting
+        .as_ref()
+        .filter(|setting| setting.is_active && product_plan_can_apply && key_can_enter_runtime);
+
+    let (source_scope, source_label, effective_setting, reason) =
+        if let Some(setting) = active_key_setting {
+            (
+                Some("api_key"),
+                Some("Key 级灰度开关".to_string()),
+                Some(setting),
+                "命中 Key 级灰度开关；后续接入运行时时会优先使用这条配置。".to_string(),
+            )
+        } else if let Some(setting) = active_product_plan_setting {
+            (
+                Some("product_plan"),
+                Some(format!(
+                    "产品策略：{}",
+                    product_plan_label.as_deref().unwrap_or(&setting.target_id)
+                )),
+                Some(setting),
+                "Key 没有启用的 Key 级开关，命中产品策略级灰度开关。".to_string(),
+            )
+        } else if !key_can_enter_runtime {
+            (
+                None,
+                None,
+                None,
+                "Key 或用户当前不可用，后续运行时不会启用任何新链路。".to_string(),
+            )
+        } else if binding.is_none() {
+            (
+                None,
+                None,
+                None,
+                "Key 未绑定影子产品策略，也没有启用的 Key 级开关。".to_string(),
+            )
+        } else {
+            (
+                None,
+                None,
+                None,
+                "没有启用的 Key 级或产品策略级灰度开关。".to_string(),
+            )
+        };
+
+    let payload = json!({
+        "api_key": {
+            "id": snapshot.api_key_id,
+            "name": snapshot.api_key_name,
+            "owner_label": snapshot.email.as_deref().unwrap_or(&snapshot.username),
+            "user_id": snapshot.user_id,
+            "user_is_active": snapshot.user_is_active,
+            "user_is_deleted": snapshot.user_is_deleted,
+            "is_active": snapshot.api_key_is_active,
+            "is_locked": snapshot.api_key_is_locked,
+            "is_standalone": snapshot.api_key_is_standalone,
+        },
+        "product_plan": product_plan_payload,
+        "key_setting": key_setting.clone(),
+        "product_plan_setting": product_plan_setting.clone(),
+        "decision": {
+            "runtime_effect": "preview_only",
+            "source_scope": source_scope,
+            "source_label": source_label,
+            "reason": reason,
+            "is_active": effective_setting.is_some(),
+            "enable_new_routing": effective_setting
+                .is_some_and(|setting| setting.enable_new_routing),
+            "enable_settlement_snapshot": effective_setting
+                .is_some_and(|setting| setting.enable_settlement_snapshot),
+            "enable_error_return_rules": effective_setting
+                .is_some_and(|setting| setting.enable_error_return_rules),
+            "enable_billing_reservation": effective_setting
+                .is_some_and(|setting| setting.enable_billing_reservation),
+            "enable_referral_ledger": effective_setting
+                .is_some_and(|setting| setting.enable_referral_ledger),
+        },
+        "warnings": warnings,
+    });
+    Ok(Json(payload).into_response())
 }
 
 async fn upsert_runtime_rollout_setting_response(

@@ -8,12 +8,12 @@
       <template #actions>
         <Button
           variant="outline"
-          :disabled="serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || errorReturnSettingLoading"
+          :disabled="serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || runtimeRolloutPreviewLoading || errorReturnSettingLoading"
           @click="refreshAll"
         >
           <RefreshCw
             class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || errorReturnSettingLoading }"
+            :class="{ 'animate-spin': serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || runtimeRolloutPreviewLoading || errorReturnSettingLoading }"
           />
           刷新
         </Button>
@@ -804,6 +804,89 @@
               />
               登记选中 Key
             </Button>
+
+            <div class="space-y-3 border-t border-border/70 pt-4">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-medium">
+                    最终预览
+                  </p>
+                  <p class="mt-1 text-xs text-muted-foreground">
+                    只读计算，不影响线上请求。
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="!selectedRuntimeRolloutApiKeyId || runtimeRolloutPreviewLoading"
+                  @click="loadRuntimeRolloutPreview"
+                >
+                  <Loader2
+                    v-if="runtimeRolloutPreviewLoading"
+                    class="mr-2 h-4 w-4 animate-spin"
+                  />
+                  预览选中 Key
+                </Button>
+              </div>
+
+              <p
+                v-if="runtimeRolloutPreviewError"
+                class="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+              >
+                {{ runtimeRolloutPreviewError }}
+              </p>
+
+              <div
+                v-if="runtimeRolloutPreview"
+                class="space-y-3 rounded-lg border border-border/70 bg-background p-3"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge :variant="runtimeRolloutPreview.decision.is_active ? 'outline' : 'secondary'">
+                    {{ runtimeRolloutPreview.decision.is_active ? '会启用新链路' : '不会启用新链路' }}
+                  </Badge>
+                  <Badge
+                    v-if="runtimeRolloutPreview.decision.source_label"
+                    variant="secondary"
+                  >
+                    {{ runtimeRolloutPreview.decision.source_label }}
+                  </Badge>
+                </div>
+                <p class="text-xs text-muted-foreground">
+                  {{ runtimeRolloutPreview.decision.reason }}
+                </p>
+                <div
+                  v-if="runtimeRolloutEnabledLabels(runtimeRolloutPreview.decision).length > 0"
+                  class="flex flex-wrap gap-2"
+                >
+                  <Badge
+                    v-for="label in runtimeRolloutEnabledLabels(runtimeRolloutPreview.decision)"
+                    :key="label"
+                    variant="outline"
+                  >
+                    {{ label }}
+                  </Badge>
+                </div>
+                <div class="space-y-1 text-xs text-muted-foreground">
+                  <p>
+                    Key：{{ runtimeRolloutPreview.api_key.name || runtimeRolloutPreview.api_key.id }} · {{ runtimeRolloutPreview.api_key.owner_label }}
+                  </p>
+                  <p>
+                    产品策略：{{ runtimeRolloutPreview.product_plan?.display_name || runtimeRolloutPreview.product_plan?.id || '未绑定' }}
+                  </p>
+                </div>
+                <div
+                  v-if="runtimeRolloutPreview.warnings.length > 0"
+                  class="space-y-1 rounded-md bg-warning/10 px-3 py-2 text-xs text-foreground"
+                >
+                  <p
+                    v-for="warning in runtimeRolloutPreview.warnings"
+                    :key="warning"
+                  >
+                    {{ warning }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1716,6 +1799,7 @@ import {
   createNifflerProductPlan,
   createNifflerUpstreamAccount,
   createNifflerUpstreamService,
+  getNifflerRuntimeRolloutPreview,
   listNifflerApiKeyProductPlanBindings,
   listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
@@ -1741,6 +1825,7 @@ import {
   type NifflerProductPlan,
   type NifflerProductPlanModel,
   type NifflerProtocolKind,
+  type NifflerRuntimeRolloutPreview,
   type NifflerRuntimeRolloutSetting,
   type NifflerRuntimeRolloutTargetScope,
   type NifflerUpstreamErrorHandlingStep,
@@ -1838,6 +1923,7 @@ const apiKeys = ref<AdminApiKey[]>([])
 const apiKeyProductPlanBindings = ref<NifflerApiKeyProductPlanBinding[]>([])
 const globalModels = ref<GlobalModelResponse[]>([])
 const runtimeRolloutSettings = ref<NifflerRuntimeRolloutSetting[]>([])
+const runtimeRolloutPreview = ref<NifflerRuntimeRolloutPreview | null>(null)
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const serviceLoading = ref(false)
 const serviceCapabilityLoading = ref(false)
@@ -1848,6 +1934,7 @@ const apiKeyLoading = ref(false)
 const apiKeyBindingLoading = ref(false)
 const globalModelsLoading = ref(false)
 const runtimeRolloutLoading = ref(false)
+const runtimeRolloutPreviewLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const savingService = ref(false)
 const savingServiceCapabilities = ref(false)
@@ -1865,6 +1952,7 @@ const productPlanModelError = ref('')
 const apiKeyBindingError = ref('')
 const globalModelsError = ref('')
 const runtimeRolloutError = ref('')
+const runtimeRolloutPreviewError = ref('')
 const errorReturnSettingError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
@@ -2139,6 +2227,11 @@ watch(errorReturnSettingDialogOpen, (open) => {
   }
 })
 
+watch(selectedRuntimeRolloutApiKeyId, () => {
+  runtimeRolloutPreview.value = null
+  runtimeRolloutPreviewError.value = ''
+})
+
 async function refreshAll() {
   await Promise.all([
     loadServices(),
@@ -2155,6 +2248,9 @@ async function refreshAll() {
   }
   if (selectedProductPlanId.value) {
     await loadProductPlanModels(selectedProductPlanId.value)
+  }
+  if (selectedRuntimeRolloutApiKeyId.value) {
+    await loadRuntimeRolloutPreview()
   }
 }
 
@@ -2385,6 +2481,24 @@ async function loadRuntimeRolloutSettings() {
   }
 }
 
+async function loadRuntimeRolloutPreview() {
+  if (!selectedRuntimeRolloutApiKeyId.value) {
+    showError('请先选择独立 Key')
+    return
+  }
+  runtimeRolloutPreviewLoading.value = true
+  runtimeRolloutPreviewError.value = ''
+  try {
+    runtimeRolloutPreview.value = await getNifflerRuntimeRolloutPreview(selectedRuntimeRolloutApiKeyId.value)
+  } catch (err) {
+    runtimeRolloutPreview.value = null
+    runtimeRolloutPreviewError.value = extractErrorMessage(err, '读取灰度预览失败')
+    showError(runtimeRolloutPreviewError.value)
+  } finally {
+    runtimeRolloutPreviewLoading.value = false
+  }
+}
+
 async function selectProductPlan(productPlanId: string) {
   selectedProductPlanId.value = productPlanId
   await loadProductPlanModels(productPlanId)
@@ -2514,6 +2628,9 @@ async function bindApiKeyToSelectedProductPlan(apiKeyId: string) {
     await upsertNifflerApiKeyProductPlanBinding(selectedProductPlanId.value, { api_key_id: apiKeyId })
     success('Key 绑定已保存')
     await loadApiKeyBindingData()
+    if (selectedRuntimeRolloutApiKeyId.value === apiKeyId) {
+      await loadRuntimeRolloutPreview()
+    }
   } catch (err) {
     showError(extractErrorMessage(err, '保存 Key 绑定失败'))
   } finally {
@@ -2569,6 +2686,9 @@ async function saveRuntimeRolloutSetting(
     })
     success('灰度开关已保存；当前只写影子配置，不影响线上请求。')
     await loadRuntimeRolloutSettings()
+    if (selectedRuntimeRolloutApiKeyId.value) {
+      await loadRuntimeRolloutPreview()
+    }
   } catch (err) {
     showError(extractErrorMessage(err, '保存灰度开关失败'))
   } finally {

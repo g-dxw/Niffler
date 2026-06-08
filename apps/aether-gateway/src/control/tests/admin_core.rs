@@ -388,6 +388,35 @@ fn classifies_admin_niffler_core_runtime_rollout_setting_writes_as_admin_proxy_r
 }
 
 #[test]
+fn classifies_admin_niffler_core_runtime_rollout_preview_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/runtime-rollout-preview?api_key_id=key-1"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::GET, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        decision.route_kind.as_deref(),
+        Some("preview_runtime_rollout")
+    );
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:routing_profiles")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::GET, &decision).as_deref(),
+        Some("admin:routing_profiles:read")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_admin_niffler_core_error_return_setting_writes_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/niffler-core/error-return-settings"
