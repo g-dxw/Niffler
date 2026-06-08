@@ -251,7 +251,7 @@ async fn gateway_executes_gemini_video_cancel_via_data_backed_local_follow_up_wi
             Arc::clone(&request_candidate_repository),
         ),
     );
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -290,10 +290,25 @@ async fn gateway_executes_gemini_video_cancel_via_data_backed_local_follow_up_wi
         "sk-upstream-gemini-video"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("request-gemini-video-cancel-local-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            crate::request_candidate_runtime::flush_request_candidate_status_writes(&gateway_state)
+                .await;
+            let stored_candidates = request_candidate_repository
+                .list_by_request_id("request-gemini-video-cancel-local-123")
+                .await
+                .expect("request candidate trace should read");
+            if stored_candidates
+                .iter()
+                .any(|candidate| candidate.status == RequestCandidateStatus::Success)
+            {
+                break stored_candidates;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("request candidate status should settle");
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
