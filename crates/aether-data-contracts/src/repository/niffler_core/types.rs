@@ -722,6 +722,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         query: &NifflerBillingReservationListQuery,
     ) -> Result<StoredNifflerBillingReservationListPage, crate::DataLayerError>;
 
+    async fn list_billing_reservation_dry_runs(
+        &self,
+        query: &NifflerBillingReservationDryRunListQuery,
+    ) -> Result<StoredNifflerBillingReservationDryRunListPage, crate::DataLayerError>;
+
     async fn list_referral_reward_ledger(
         &self,
         query: &NifflerReferralRewardLedgerListQuery,
@@ -779,6 +784,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: CreateNifflerSettlementSnapshotRecord,
     ) -> Result<StoredNifflerSettlementSnapshot, crate::DataLayerError>;
+
+    async fn create_billing_reservation_dry_run(
+        &self,
+        record: CreateNifflerBillingReservationDryRunRecord,
+    ) -> Result<StoredNifflerBillingReservationDryRun, crate::DataLayerError>;
 
     async fn create_route_attempt(
         &self,
@@ -993,6 +1003,23 @@ pub struct NifflerBillingReservationListQuery {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerBillingReservationListPage {
     pub items: Vec<StoredNifflerBillingReservation>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerBillingReservationDryRunListQuery {
+    pub status: Option<String>,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub request_id: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerBillingReservationDryRunListPage {
+    pub items: Vec<StoredNifflerBillingReservationDryRun>,
     pub total: usize,
 }
 
@@ -1484,6 +1511,44 @@ impl CreateNifflerSettlementSnapshotRecord {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerBillingReservationDryRunRecord {
+    pub id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub requested_model_name: String,
+    pub estimated_reservation_usd: f64,
+    pub legacy_final_charge_usd: f64,
+    pub difference_usd: f64,
+    pub estimation_source: String,
+    pub status: String,
+    pub created_at_unix_ms: u64,
+    pub finalized_at_unix_ms: Option<u64>,
+}
+
+impl CreateNifflerBillingReservationDryRunRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerBillingReservationDryRun {
+            id: self.id.clone(),
+            request_id: self.request_id.clone(),
+            user_id: self.user_id.clone(),
+            api_key_id: self.api_key_id.clone(),
+            product_plan_id: self.product_plan_id.clone(),
+            requested_model_name: self.requested_model_name.clone(),
+            estimated_reservation_usd: self.estimated_reservation_usd,
+            legacy_final_charge_usd: self.legacy_final_charge_usd,
+            difference_usd: self.difference_usd,
+            estimation_source: self.estimation_source.clone(),
+            status: self.status.clone(),
+            created_at_unix_ms: self.created_at_unix_ms,
+            finalized_at_unix_ms: self.finalized_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerBillingReservation {
     pub id: String,
@@ -1548,6 +1613,52 @@ impl StoredNifflerBillingReservation {
                     .to_string(),
             ));
         }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerBillingReservationDryRun {
+    pub id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub requested_model_name: String,
+    pub estimated_reservation_usd: f64,
+    pub legacy_final_charge_usd: f64,
+    pub difference_usd: f64,
+    pub estimation_source: String,
+    pub status: String,
+    pub created_at_unix_ms: u64,
+    pub finalized_at_unix_ms: Option<u64>,
+}
+
+impl StoredNifflerBillingReservationDryRun {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("billing_reservation_dry_runs.id", &self.id)?;
+        validate_required("billing_reservation_dry_runs.request_id", &self.request_id)?;
+        validate_required(
+            "billing_reservation_dry_runs.requested_model_name",
+            &self.requested_model_name,
+        )?;
+        validate_required(
+            "billing_reservation_dry_runs.estimation_source",
+            &self.estimation_source,
+        )?;
+        validate_required("billing_reservation_dry_runs.status", &self.status)?;
+        validate_non_negative(
+            "billing_reservation_dry_runs.estimated_reservation_usd",
+            self.estimated_reservation_usd,
+        )?;
+        validate_non_negative(
+            "billing_reservation_dry_runs.legacy_final_charge_usd",
+            self.legacy_final_charge_usd,
+        )?;
+        validate_finite(
+            "billing_reservation_dry_runs.difference_usd",
+            self.difference_usd,
+        )?;
         Ok(())
     }
 }

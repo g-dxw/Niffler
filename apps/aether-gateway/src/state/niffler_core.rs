@@ -1,16 +1,18 @@
 use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerApiKeyProductPlanBindingListQuery,
+    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
     NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
     NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
     NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
     NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
-    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservationListPage,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservationDryRun,
+    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
@@ -164,6 +166,16 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_niffler_billing_reservation_dry_runs(
+        &self,
+        query: &NifflerBillingReservationDryRunListQuery,
+    ) -> Result<StoredNifflerBillingReservationDryRunListPage, GatewayError> {
+        self.data
+            .list_niffler_billing_reservation_dry_runs(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn list_niffler_settlement_snapshots(
         &self,
         query: &NifflerSettlementSnapshotListQuery,
@@ -286,6 +298,16 @@ impl AppState {
     ) -> Result<Option<StoredNifflerSettlementSnapshot>, GatewayError> {
         self.data
             .create_niffler_settlement_snapshot(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn create_niffler_billing_reservation_dry_run(
+        &self,
+        record: CreateNifflerBillingReservationDryRunRecord,
+    ) -> Result<Option<StoredNifflerBillingReservationDryRun>, GatewayError> {
+        self.data
+            .create_niffler_billing_reservation_dry_run(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

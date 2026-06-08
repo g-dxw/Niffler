@@ -1,17 +1,20 @@
 use super::{
-    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
-    GatewayDataState, NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
-    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
-    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
-    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
-    NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
-    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservationListPage,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, DataLayerError, GatewayDataState,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
+    NifflerBillingReservationListQuery, NifflerErrorReturnSettingListQuery,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
+    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
+    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
     StoredNifflerRouteAttempt, StoredNifflerRouteAttemptListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
@@ -275,6 +278,23 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_niffler_billing_reservation_dry_runs(
+        &self,
+        query: &NifflerBillingReservationDryRunListQuery,
+    ) -> Result<StoredNifflerBillingReservationDryRunListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_billing_reservation_dry_runs(query).await,
+            None => Ok(StoredNifflerBillingReservationDryRunListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
     pub(crate) async fn list_niffler_referral_reward_ledger(
         &self,
         query: &NifflerReferralRewardLedgerListQuery,
@@ -444,6 +464,23 @@ impl GatewayDataState {
         {
             Some(repository) => repository
                 .create_settlement_snapshot(record)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_billing_reservation_dry_run(
+        &self,
+        record: CreateNifflerBillingReservationDryRunRecord,
+    ) -> Result<Option<StoredNifflerBillingReservationDryRun>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .create_billing_reservation_dry_run(record)
                 .await
                 .map(Some),
             None => Ok(None),

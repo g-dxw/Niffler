@@ -1126,6 +1126,94 @@ columns = ["settlement_snapshot_id"]
 references_table = "niffler_settlement_snapshots"
 references_columns = ["id"]
 
+[table.niffler_billing_reservation_dry_runs]
+domain = "niffler_core"
+order = 1035
+primary_key = ["id"]
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "id"
+type = "text_id"
+length = 36
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "request_id"
+type = "text"
+length = 100
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "user_id"
+type = "text_id"
+length = 36
+nullable = true
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "api_key_id"
+type = "text_id"
+length = 36
+nullable = true
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "product_plan_id"
+type = "text_id"
+length = 36
+nullable = true
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "requested_model_name"
+type = "text"
+length = 200
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "estimated_reservation_usd"
+type = "decimal_money"
+default = 0
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "legacy_final_charge_usd"
+type = "decimal_money"
+default = 0
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "difference_usd"
+type = "decimal_money"
+default = 0
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "estimation_source"
+type = "text"
+length = 64
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "status"
+type = "text"
+length = 32
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "created_at_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_billing_reservation_dry_runs.columns]]
+name = "finalized_at_unix_ms"
+type = "unix_millis"
+nullable = true
+
+[[table.niffler_billing_reservation_dry_runs.uniques]]
+name = "uq_niffler_billing_reservation_dry_runs_request"
+columns = ["request_id"]
+
+[[table.niffler_billing_reservation_dry_runs.indexes]]
+name = "idx_niffler_billing_reservation_dry_runs_status_time"
+columns = ["status", "created_at_unix_ms"]
+
+[[table.niffler_billing_reservation_dry_runs.indexes]]
+name = "idx_niffler_billing_reservation_dry_runs_user_time"
+columns = ["user_id", "created_at_unix_ms"]
+
+[[table.niffler_billing_reservation_dry_runs.indexes]]
+name = "idx_niffler_billing_reservation_dry_runs_key_time"
+columns = ["api_key_id", "created_at_unix_ms"]
+
 [table.niffler_billing_reservation_events]
 domain = "niffler_core"
 order = 1040

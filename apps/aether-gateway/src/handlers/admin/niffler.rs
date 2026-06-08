@@ -10,10 +10,11 @@ use aether_data_contracts::repository::niffler_core::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
     NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreMappingSummary,
-    NifflerCoreReadinessReport, NifflerCoreReadinessSummary, NifflerDisabledProviderReference,
-    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerGroupPolicyGap,
-    NifflerKeyScopeResidue, NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
+    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
+    NifflerBillingReservationStatus, NifflerCoreMappingSummary, NifflerCoreReadinessReport,
+    NifflerCoreReadinessSummary, NifflerDisabledProviderReference, NifflerErrorResponseScope,
+    NifflerErrorReturnSettingListQuery, NifflerGroupPolicyGap, NifflerKeyScopeResidue,
+    NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerReadinessIssue,
     NifflerReadinessSeverity, NifflerReferralRewardLedgerListQuery,
     NifflerReferralRewardLedgerStatus, NifflerRouteAttemptListQuery, NifflerRouteSkipReasonSummary,
@@ -57,6 +58,8 @@ const RUNTIME_ROLLOUT_SETTINGS_PATH: &str = "/api/admin/niffler-core/runtime-rol
 const RUNTIME_ROLLOUT_PREVIEW_PATH: &str = "/api/admin/niffler-core/runtime-rollout-preview";
 const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
 const BILLING_RESERVATIONS_PATH: &str = "/api/admin/niffler-core/billing-reservations";
+const BILLING_RESERVATION_DRY_RUNS_PATH: &str =
+    "/api/admin/niffler-core/billing-reservation-dry-runs";
 const SETTLEMENT_SNAPSHOTS_PATH: &str = "/api/admin/niffler-core/settlement-snapshots";
 const REFERRAL_REWARD_LEDGER_PATH: &str = "/api/admin/niffler-core/referral-reward-ledger";
 const ROUTE_ATTEMPTS_PATH: &str = "/api/admin/niffler-core/route-attempts";
@@ -78,6 +81,7 @@ const SHADOW_TABLES: &[&str] = &[
     "niffler_upstream_service_capabilities",
     "niffler_settlement_snapshots",
     "niffler_billing_reservations",
+    "niffler_billing_reservation_dry_runs",
     "niffler_billing_reservation_events",
     "niffler_route_attempts",
     "niffler_error_return_settings",
@@ -203,6 +207,12 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
     if request_context.path().trim_end_matches('/') == BILLING_RESERVATIONS_PATH {
         return Ok(Some(
             build_billing_reservations_response(&state, &request_context).await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == BILLING_RESERVATION_DRY_RUNS_PATH {
+        return Ok(Some(
+            build_billing_reservation_dry_runs_response(&state, &request_context).await?,
         ));
     }
 
@@ -1442,6 +1452,33 @@ async fn build_billing_reservations_response(
         limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
     };
     let page = state.list_niffler_billing_reservations(&query).await?;
+    Ok(Json(page).into_response())
+}
+
+async fn build_billing_reservation_dry_runs_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if request_context.method() != http::Method::GET {
+        return Ok(niffler_method_not_allowed("只支持读取预占干跑"));
+    }
+    let query = NifflerBillingReservationDryRunListQuery {
+        status: optional_query_text(request_context.query_string(), "status"),
+        user_id: optional_query_text(request_context.query_string(), "user_id"),
+        api_key_id: optional_query_text(request_context.query_string(), "api_key_id"),
+        product_plan_id: optional_query_text(request_context.query_string(), "product_plan_id"),
+        request_id: optional_query_text(request_context.query_string(), "request_id"),
+        offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+        limit: parse_usize_query(request_context.query_string(), "limit")
+            .unwrap_or(50)
+            .clamp(1, 100),
+    };
+    let page = state
+        .list_niffler_billing_reservation_dry_runs(&query)
+        .await?;
     Ok(Json(page).into_response())
 }
 

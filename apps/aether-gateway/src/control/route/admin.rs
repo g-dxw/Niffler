@@ -217,6 +217,16 @@ pub(super) fn classify_admin_route(
             false,
         ))
     } else if method == http::Method::GET
+        && normalized_path_no_trailing == "/api/admin/niffler-core/billing-reservation-dry-runs"
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            "list_billing_reservation_dry_runs",
+            "admin:wallets",
+            false,
+        ))
+    } else if method == http::Method::GET
         && normalized_path_no_trailing == "/api/admin/niffler-core/settlement-snapshots"
     {
         Some(classified(

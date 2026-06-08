@@ -988,18 +988,18 @@
               预占和返利流水对账
             </h2>
             <p class="mt-1 text-sm text-muted-foreground">
-              只读查看新表里的钱包预占和邀请返利流水。刷新和筛选不会扣费、不会释放预占，也不会发放返利。
+              只读查看新表里的钱包预占、预占干跑、结算快照和邀请返利流水。刷新和筛选不会扣费、不会释放预占，也不会发放返利。
             </p>
           </div>
           <Button
             variant="outline"
             class="h-9"
-            :disabled="billingReservationLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading"
+            :disabled="billingReservationLoading || billingReservationDryRunLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading"
             @click="loadReconciliationData"
           >
             <RefreshCw
               class="mr-2 h-4 w-4"
-              :class="{ 'animate-spin': billingReservationLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading }"
+              :class="{ 'animate-spin': billingReservationLoading || billingReservationDryRunLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading }"
             />
             刷新对账
           </Button>
@@ -1255,6 +1255,143 @@
             </Table>
           </section>
         </div>
+
+        <section class="border-t border-border/70 p-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 class="font-medium">
+                预占干跑
+              </h3>
+              <p class="mt-1 text-xs text-muted-foreground">
+                用旧结算结果复盘“如果请求开始前预占，应收金额和最终扣费是否一致”。这里只写影子表，不冻结余额，也不改变旧扣费。
+              </p>
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                v-model="billingReservationDryRunRequestIdFilter"
+                class="h-9 sm:w-56"
+                placeholder="按请求 ID 筛选"
+                @keyup.enter="loadBillingReservationDryRuns"
+              />
+              <Select v-model="billingReservationDryRunStatusFilter">
+                <SelectTrigger class="h-9 sm:w-36">
+                  <SelectValue placeholder="状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in billingReservationDryRunStatusOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                class="h-9"
+                :disabled="billingReservationDryRunLoading"
+                @click="loadBillingReservationDryRuns"
+              >
+                <RefreshCw
+                  class="mr-2 h-4 w-4"
+                  :class="{ 'animate-spin': billingReservationDryRunLoading }"
+                />
+                刷新
+              </Button>
+            </div>
+          </div>
+
+          <p
+            v-if="billingReservationDryRunError"
+            class="mt-4 rounded-md border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            {{ billingReservationDryRunError }}
+          </p>
+
+          <div
+            v-if="billingReservationDryRunLoading && billingReservationDryRuns.length === 0"
+            class="flex items-center justify-center py-12 text-sm text-muted-foreground"
+          >
+            <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+            正在读取预占干跑...
+          </div>
+
+          <div
+            v-else-if="billingReservationDryRuns.length === 0"
+            class="py-12 text-center"
+          >
+            <PackageCheck class="mx-auto h-9 w-9 text-muted-foreground/50" />
+            <p class="mt-3 text-sm font-medium">
+              没有预占干跑记录
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              只有启用钱包预扣灰度里的干跑写入后，这里才会出现记录。
+            </p>
+          </div>
+
+          <Table v-else class="mt-4">
+            <TableHeader>
+              <TableRow>
+                <TableHead>请求和模型</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>金额对账</TableHead>
+                <TableHead>时间</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="dryRun in billingReservationDryRuns"
+                :key="dryRun.id"
+              >
+                <TableCell>
+                  <div class="font-mono text-xs">
+                    {{ dryRun.request_id }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    用户 {{ dryRun.user_id || '未知' }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    Key {{ dryRun.api_key_id || '未知' }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    模型 {{ dryRun.requested_model_name }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="billingReservationDryRunStatusVariant(dryRun.status)">
+                    {{ billingReservationDryRunStatusLabel(dryRun.status) }}
+                  </Badge>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    {{ dryRun.estimation_source }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-sm font-medium">
+                    估算预占 {{ formatUsdAmount(dryRun.estimated_reservation_usd) }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    旧链路扣费 {{ formatUsdAmount(dryRun.legacy_final_charge_usd) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    差额 {{ formatUsdAmount(dryRun.difference_usd) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-xs">
+                    创建 {{ formatNifflerUnixMs(dryRun.created_at_unix_ms) }}
+                  </div>
+                  <div
+                    v-if="dryRun.finalized_at_unix_ms"
+                    class="mt-1 text-xs text-muted-foreground"
+                  >
+                    完成 {{ formatNifflerUnixMs(dryRun.finalized_at_unix_ms) }}
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </section>
 
         <section class="border-t border-border/70 p-5">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -2358,6 +2495,7 @@ import {
   createNifflerUpstreamService,
   getNifflerRuntimeRolloutPreview,
   listNifflerApiKeyProductPlanBindings,
+  listNifflerBillingReservationDryRuns,
   listNifflerBillingReservations,
   listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
@@ -2381,6 +2519,7 @@ import {
   type NifflerAccountStatus,
   type NifflerApiKeyProductPlanBinding,
   type NifflerBillingReservation,
+  type NifflerBillingReservationDryRun,
   type NifflerBillingReservationStatus,
   type NifflerErrorResponseScope,
   type NifflerErrorReturnSetting,
@@ -2479,6 +2618,7 @@ type RuntimeRolloutForm = Required<
   >
 >
 type BillingReservationStatusFilter = NifflerBillingReservationStatus | 'all'
+type BillingReservationDryRunStatusFilter = 'all' | 'matched' | 'over_reserved' | 'under_reserved'
 type ReferralRewardLedgerStatusFilter = NifflerReferralRewardLedgerStatus | 'all'
 type RouteAttemptStatusFilter = 'all' | 'success' | 'skipped' | 'cancelled' | 'failed'
 
@@ -2496,6 +2636,7 @@ const runtimeRolloutSettings = ref<NifflerRuntimeRolloutSetting[]>([])
 const runtimeRolloutPreview = ref<NifflerRuntimeRolloutPreview | null>(null)
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const billingReservations = ref<NifflerBillingReservation[]>([])
+const billingReservationDryRuns = ref<NifflerBillingReservationDryRun[]>([])
 const settlementSnapshots = ref<NifflerSettlementSnapshot[]>([])
 const referralRewardLedger = ref<NifflerReferralRewardLedger[]>([])
 const routeAttempts = ref<NifflerRouteAttempt[]>([])
@@ -2511,6 +2652,7 @@ const runtimeRolloutLoading = ref(false)
 const runtimeRolloutPreviewLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const billingReservationLoading = ref(false)
+const billingReservationDryRunLoading = ref(false)
 const settlementSnapshotLoading = ref(false)
 const referralRewardLedgerLoading = ref(false)
 const routeAttemptLoading = ref(false)
@@ -2533,16 +2675,19 @@ const runtimeRolloutError = ref('')
 const runtimeRolloutPreviewError = ref('')
 const errorReturnSettingError = ref('')
 const billingReservationError = ref('')
+const billingReservationDryRunError = ref('')
 const settlementSnapshotError = ref('')
 const referralRewardLedgerError = ref('')
 const routeAttemptError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
 const billingReservationStatusFilter = ref<BillingReservationStatusFilter>('all')
+const billingReservationDryRunStatusFilter = ref<BillingReservationDryRunStatusFilter>('all')
 const referralRewardLedgerStatusFilter = ref<ReferralRewardLedgerStatusFilter>('all')
 const routeAttemptStatusFilter = ref<RouteAttemptStatusFilter>('all')
 const routeAttemptRequestIdFilter = ref('')
 const settlementSnapshotRequestIdFilter = ref('')
+const billingReservationDryRunRequestIdFilter = ref('')
 const selectedServiceId = ref<string | null>(null)
 const selectedProductPlanId = ref<string | null>(null)
 const selectedRuntimeRolloutApiKeyId = ref('')
@@ -2653,6 +2798,16 @@ const billingReservationStatusOptions: Array<{
   { value: 'manual_review', label: '人工处理' },
 ]
 
+const billingReservationDryRunStatusOptions: Array<{
+  value: BillingReservationDryRunStatusFilter
+  label: string
+}> = [
+  { value: 'all', label: '全部状态' },
+  { value: 'matched', label: '金额一致' },
+  { value: 'over_reserved', label: '估算偏高' },
+  { value: 'under_reserved', label: '估算偏低' },
+]
+
 const referralRewardLedgerStatusOptions: Array<{
   value: ReferralRewardLedgerStatusFilter
   label: string
@@ -2694,6 +2849,7 @@ const pageLoading = computed(() =>
   || runtimeRolloutPreviewLoading.value
   || errorReturnSettingLoading.value
   || billingReservationLoading.value
+  || billingReservationDryRunLoading.value
   || settlementSnapshotLoading.value
   || referralRewardLedgerLoading.value
   || routeAttemptLoading.value
@@ -3188,6 +3344,27 @@ async function loadBillingReservations() {
   }
 }
 
+async function loadBillingReservationDryRuns() {
+  billingReservationDryRunLoading.value = true
+  billingReservationDryRunError.value = ''
+  try {
+    const response = await listNifflerBillingReservationDryRuns({
+      request_id: billingReservationDryRunRequestIdFilter.value.trim() || undefined,
+      status: billingReservationDryRunStatusFilter.value === 'all'
+        ? undefined
+        : billingReservationDryRunStatusFilter.value,
+      offset: 0,
+      limit: 50,
+    })
+    billingReservationDryRuns.value = response.items
+  } catch (err) {
+    billingReservationDryRunError.value = extractErrorMessage(err, '读取预占干跑失败')
+    showError(billingReservationDryRunError.value)
+  } finally {
+    billingReservationDryRunLoading.value = false
+  }
+}
+
 async function loadSettlementSnapshots() {
   settlementSnapshotLoading.value = true
   settlementSnapshotError.value = ''
@@ -3250,6 +3427,7 @@ async function loadRouteAttempts() {
 async function loadReconciliationData() {
   await Promise.all([
     loadBillingReservations(),
+    loadBillingReservationDryRuns(),
     loadSettlementSnapshots(),
     loadReferralRewardLedger(),
     loadRouteAttempts(),
@@ -3711,6 +3889,21 @@ function billingReservationStatusLabel(status: NifflerBillingReservationStatus):
     manual_review: '人工处理',
   }
   return labels[status] ?? status
+}
+
+function billingReservationDryRunStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    matched: '金额一致',
+    over_reserved: '估算偏高',
+    under_reserved: '估算偏低',
+  }
+  return labels[status] ?? status
+}
+
+function billingReservationDryRunStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (status === 'matched') return 'default'
+  if (status === 'over_reserved' || status === 'under_reserved') return 'outline'
+  return 'secondary'
 }
 
 function referralRewardLedgerStatusLabel(status: NifflerReferralRewardLedgerStatus): string {

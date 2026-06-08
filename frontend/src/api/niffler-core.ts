@@ -196,6 +196,22 @@ export interface NifflerBillingReservation {
   idempotency_key: string
 }
 
+export interface NifflerBillingReservationDryRun {
+  id: string
+  request_id: string
+  user_id?: string | null
+  api_key_id?: string | null
+  product_plan_id?: string | null
+  requested_model_name: string
+  estimated_reservation_usd: number
+  legacy_final_charge_usd: number
+  difference_usd: number
+  estimation_source: string
+  status: string
+  created_at_unix_ms: number
+  finalized_at_unix_ms?: number | null
+}
+
 export interface NifflerSettlementSnapshot {
   id: string
   request_id: string
@@ -720,6 +736,22 @@ export async function listNifflerBillingReservations(params?: {
 }): Promise<NifflerListPage<NifflerBillingReservation>> {
   const response = await apiClient.get<NifflerListPage<NifflerBillingReservation>>(
     '/api/admin/niffler-core/billing-reservations',
+    { params }
+  )
+  return response.data
+}
+
+export async function listNifflerBillingReservationDryRuns(params?: {
+  status?: string
+  user_id?: string
+  api_key_id?: string
+  product_plan_id?: string
+  request_id?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerBillingReservationDryRun>> {
+  const response = await apiClient.get<NifflerListPage<NifflerBillingReservationDryRun>>(
+    '/api/admin/niffler-core/billing-reservation-dry-runs',
     { params }
   )
   return response.data

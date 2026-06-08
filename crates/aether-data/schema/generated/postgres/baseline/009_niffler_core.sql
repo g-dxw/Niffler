@@ -295,6 +295,28 @@ CREATE INDEX IF NOT EXISTS idx_niffler_billing_reservations_status_expires ON pu
 CREATE INDEX IF NOT EXISTS idx_niffler_billing_reservations_user_time ON public.niffler_billing_reservations USING btree (user_id, reserved_at_unix_ms);
 ALTER TABLE ONLY public.niffler_billing_reservations ADD CONSTRAINT fk_niffler_billing_reservations_snapshot FOREIGN KEY (settlement_snapshot_id) REFERENCES public.niffler_settlement_snapshots(id);
 
+CREATE TABLE IF NOT EXISTS public.niffler_billing_reservation_dry_runs (
+    id character varying(36) NOT NULL,
+    request_id character varying(100) NOT NULL,
+    user_id character varying(36),
+    api_key_id character varying(36),
+    product_plan_id character varying(36),
+    requested_model_name character varying(200) NOT NULL,
+    estimated_reservation_usd numeric DEFAULT 0 NOT NULL,
+    legacy_final_charge_usd numeric DEFAULT 0 NOT NULL,
+    difference_usd numeric DEFAULT 0 NOT NULL,
+    estimation_source character varying(64) NOT NULL,
+    status character varying(32) NOT NULL,
+    created_at_unix_ms bigint NOT NULL,
+    finalized_at_unix_ms bigint
+);
+
+ALTER TABLE ONLY public.niffler_billing_reservation_dry_runs ADD CONSTRAINT niffler_billing_reservation_dry_runs_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.niffler_billing_reservation_dry_runs ADD CONSTRAINT uq_niffler_billing_reservation_dry_runs_request UNIQUE (request_id);
+CREATE INDEX IF NOT EXISTS idx_niffler_billing_reservation_dry_runs_status_time ON public.niffler_billing_reservation_dry_runs USING btree (status, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_billing_reservation_dry_runs_user_time ON public.niffler_billing_reservation_dry_runs USING btree (user_id, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_billing_reservation_dry_runs_key_time ON public.niffler_billing_reservation_dry_runs USING btree (api_key_id, created_at_unix_ms);
+
 CREATE TABLE IF NOT EXISTS public.niffler_billing_reservation_events (
     id character varying(36) NOT NULL,
     reservation_id character varying(36) NOT NULL,

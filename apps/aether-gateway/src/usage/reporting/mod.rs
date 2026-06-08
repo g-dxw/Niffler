@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use aether_contracts::ExecutionError;
 use aether_data_contracts::repository::candidates::RequestCandidateStatus;
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord,
 };
 use aether_scheduler_core::{
     execution_error_details, parse_request_candidate_report_context,
@@ -33,6 +34,7 @@ use aether_usage_runtime::{
 pub(crate) use aether_usage_runtime::{GatewayStreamReportRequest, GatewaySyncReportRequest};
 
 const TASK_KEY_NIFFLER_SHADOW_REPORT: &str = "usage.niffler.shadow";
+const NIFFLER_BILLING_RESERVATION_DRY_RUN_MATCH_TOLERANCE_USD: f64 = 0.000001;
 
 fn log_local_report_handled(
     trace_id: &str,
@@ -388,6 +390,35 @@ fn spawn_niffler_shadow_reports(
                 );
             }
         }
+
+        if decision.enable_billing_reservation {
+            if let Some(record) = build_niffler_billing_reservation_dry_run_shadow_record(
+                Some(&context),
+                &decision,
+                created_at_unix_ms,
+            ) {
+                if let Err(error) = state
+                    .create_niffler_billing_reservation_dry_run(record)
+                    .await
+                {
+                    warn!(
+                        event_name = "niffler_billing_reservation_dry_run_shadow_write_failed",
+                        log_type = "ops",
+                        api_key_id = %api_key_id,
+                        error = ?error,
+                        "gateway failed to write niffler billing reservation dry run shadow record"
+                    );
+                }
+            } else {
+                warn!(
+                    event_name = "niffler_billing_reservation_dry_run_shadow_record_skipped",
+                    log_type = "ops",
+                    api_key_id = %api_key_id,
+                    report_request_id = %short_request_id(aether_usage_runtime::report_request_id(Some(&context))),
+                    "gateway skipped niffler billing reservation dry run write because settlement or charge data is incomplete"
+                );
+            }
+        }
     });
 }
 
@@ -500,6 +531,74 @@ fn build_niffler_settlement_snapshot_shadow_id(request_id: &str) -> String {
         format!("niffler-settlement-snapshot:{request_id}").as_bytes(),
     )
     .to_string()
+}
+
+fn build_niffler_billing_reservation_dry_run_shadow_record(
+    report_context: Option<&serde_json::Value>,
+    decision: &NifflerRuntimeRolloutDecision,
+    created_at_unix_ms: u64,
+) -> Option<CreateNifflerBillingReservationDryRunRecord> {
+    let context = report_context?;
+    let metadata = parse_request_candidate_report_context(Some(context))?;
+    let request_id = metadata.request_id?;
+    let settlement_snapshot = context.get("settlement_snapshot")?.as_object()?;
+    let charge_breakdown = context.get("charge_breakdown_snapshot")?.as_object()?;
+    let requested_model_name = resolve_niffler_settlement_requested_model_name(
+        context,
+        settlement_snapshot,
+        metadata.mapped_model,
+    )?;
+    let estimated_reservation_usd =
+        settlement_snapshot_number(settlement_snapshot, "user_total_cost_usd")
+            .or_else(|| settlement_snapshot_number(settlement_snapshot, "total_cost"))?;
+    let wallet_charge = snapshot_number(charge_breakdown, "wallet_debit_usd");
+    let entitlement_charge = snapshot_number(charge_breakdown, "package_debit_usd");
+    if wallet_charge.is_none() && entitlement_charge.is_none() {
+        return None;
+    }
+    let legacy_final_charge_usd =
+        wallet_charge.unwrap_or_default() + entitlement_charge.unwrap_or_default();
+    if !legacy_final_charge_usd.is_finite() {
+        return None;
+    }
+    let difference_usd = estimated_reservation_usd - legacy_final_charge_usd;
+    if !difference_usd.is_finite() {
+        return None;
+    }
+
+    Some(CreateNifflerBillingReservationDryRunRecord {
+        id: build_niffler_billing_reservation_dry_run_shadow_id(&request_id),
+        request_id,
+        user_id: metadata.user_id,
+        api_key_id: metadata.api_key_id,
+        product_plan_id: decision.product_plan_id.clone(),
+        requested_model_name,
+        estimated_reservation_usd,
+        legacy_final_charge_usd,
+        difference_usd,
+        estimation_source: "settlement_snapshot_total_cost".to_string(),
+        status: niffler_billing_reservation_dry_run_status(difference_usd).to_string(),
+        created_at_unix_ms,
+        finalized_at_unix_ms: Some(created_at_unix_ms),
+    })
+}
+
+fn build_niffler_billing_reservation_dry_run_shadow_id(request_id: &str) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("niffler-billing-reservation-dry-run:{request_id}").as_bytes(),
+    )
+    .to_string()
+}
+
+fn niffler_billing_reservation_dry_run_status(difference_usd: f64) -> &'static str {
+    if difference_usd.abs() <= NIFFLER_BILLING_RESERVATION_DRY_RUN_MATCH_TOLERANCE_USD {
+        "matched"
+    } else if difference_usd > 0.0 {
+        "over_reserved"
+    } else {
+        "under_reserved"
+    }
 }
 
 fn resolve_niffler_settlement_requested_model_name(
@@ -628,6 +727,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
+        build_niffler_billing_reservation_dry_run_shadow_record,
         build_niffler_route_attempt_shadow_record, build_niffler_settlement_snapshot_shadow_record,
         resolve_locally_actionable_report_context, submit_stream_report, submit_sync_report,
         GatewayStreamReportRequest, GatewaySyncReportRequest,
@@ -2001,6 +2101,146 @@ mod tests {
         });
 
         let record = build_niffler_settlement_snapshot_shadow_record(
+            Some(&context),
+            &decision,
+            1_700_000_000_000,
+        );
+
+        assert!(record.is_none());
+    }
+
+    #[test]
+    fn builds_niffler_billing_reservation_dry_run_matched_record() {
+        let mut decision = enabled_rollout_decision("api-key-reservation-dry-run-123");
+        decision.enable_billing_reservation = true;
+        let context = json!({
+            "request_id": "req-reservation-dry-run-123",
+            "user_id": "user-reservation-dry-run-123",
+            "api_key_id": "api-key-reservation-dry-run-123",
+            "model": "gpt-5.5",
+            "mapped_model": "gpt-5.5-upstream",
+            "settlement_snapshot": {
+                "pricing_snapshot": {
+                    "global_model_name": "gpt-5.5",
+                    "provider_model_name": "gpt-5.5-upstream"
+                },
+                "user_total_cost_usd": 0.24,
+                "total_cost": 0.24
+            },
+            "charge_breakdown_snapshot": {
+                "wallet_debit_usd": 0.14,
+                "package_debit_usd": 0.1
+            }
+        });
+
+        let record = build_niffler_billing_reservation_dry_run_shadow_record(
+            Some(&context),
+            &decision,
+            1_700_000_000_000,
+        )
+        .expect("billing reservation dry run should build");
+
+        assert_eq!(record.request_id, "req-reservation-dry-run-123");
+        assert_eq!(
+            record.user_id.as_deref(),
+            Some("user-reservation-dry-run-123")
+        );
+        assert_eq!(
+            record.api_key_id.as_deref(),
+            Some("api-key-reservation-dry-run-123")
+        );
+        assert_eq!(
+            record.product_plan_id.as_deref(),
+            Some("product-plan-reporting-tests-123")
+        );
+        assert_eq!(record.requested_model_name, "gpt-5.5");
+        assert_eq!(record.estimated_reservation_usd, 0.24);
+        assert!((record.legacy_final_charge_usd - 0.24).abs() < f64::EPSILON);
+        assert_eq!(record.status, "matched");
+        assert_eq!(record.estimation_source, "settlement_snapshot_total_cost");
+        assert_eq!(record.finalized_at_unix_ms, Some(1_700_000_000_000));
+    }
+
+    #[test]
+    fn builds_niffler_billing_reservation_dry_run_over_reserved_record() {
+        let mut decision = enabled_rollout_decision("api-key-reservation-over-123");
+        decision.enable_billing_reservation = true;
+        let context = json!({
+            "request_id": "req-reservation-over-123",
+            "api_key_id": "api-key-reservation-over-123",
+            "model": "gpt-5.5",
+            "settlement_snapshot": {
+                "pricing_snapshot": {
+                    "global_model_name": "gpt-5.5"
+                },
+                "total_cost": 0.3
+            },
+            "charge_breakdown_snapshot": {
+                "wallet_debit_usd": 0.2,
+                "package_debit_usd": 0.05
+            }
+        });
+
+        let record = build_niffler_billing_reservation_dry_run_shadow_record(
+            Some(&context),
+            &decision,
+            1_700_000_000_000,
+        )
+        .expect("billing reservation dry run should build");
+
+        assert_eq!(record.status, "over_reserved");
+        assert!((record.difference_usd - 0.05).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn builds_niffler_billing_reservation_dry_run_under_reserved_record() {
+        let mut decision = enabled_rollout_decision("api-key-reservation-under-123");
+        decision.enable_billing_reservation = true;
+        let context = json!({
+            "request_id": "req-reservation-under-123",
+            "api_key_id": "api-key-reservation-under-123",
+            "model": "gpt-5.5",
+            "settlement_snapshot": {
+                "pricing_snapshot": {
+                    "global_model_name": "gpt-5.5"
+                },
+                "total_cost": 0.2
+            },
+            "charge_breakdown_snapshot": {
+                "wallet_debit_usd": 0.22,
+                "package_debit_usd": 0.05
+            }
+        });
+
+        let record = build_niffler_billing_reservation_dry_run_shadow_record(
+            Some(&context),
+            &decision,
+            1_700_000_000_000,
+        )
+        .expect("billing reservation dry run should build");
+
+        assert_eq!(record.status, "under_reserved");
+        assert!((record.difference_usd + 0.07).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn skips_niffler_billing_reservation_dry_run_without_legacy_charge() {
+        let mut decision = enabled_rollout_decision("api-key-reservation-no-charge-123");
+        decision.enable_billing_reservation = true;
+        let context = json!({
+            "request_id": "req-reservation-no-charge-123",
+            "api_key_id": "api-key-reservation-no-charge-123",
+            "model": "gpt-5.5",
+            "settlement_snapshot": {
+                "pricing_snapshot": {
+                    "global_model_name": "gpt-5.5"
+                },
+                "total_cost": 0.24
+            },
+            "charge_breakdown_snapshot": {}
+        });
+
+        let record = build_niffler_billing_reservation_dry_run_shadow_record(
             Some(&context),
             &decision,
             1_700_000_000_000,

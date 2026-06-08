@@ -3,10 +3,11 @@ use sqlx::{sqlite::SqliteRow, QueryBuilder, Row, Sqlite};
 
 use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
-    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
     NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
     NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
     NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
@@ -17,7 +18,8 @@ use super::{
     NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerBillingReservation, StoredNifflerBillingReservationListPage,
+    StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
+    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
@@ -240,6 +242,35 @@ LIMIT 1
             .ok_or_else(|| {
                 DataLayerError::UnexpectedValue(
                     "niffler settlement snapshot missing after write".into(),
+                )
+            })
+    }
+
+    async fn reload_billing_reservation_dry_run_by_request_id(
+        &self,
+        request_id: &str,
+    ) -> Result<StoredNifflerBillingReservationDryRun, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, request_id, user_id, api_key_id, product_plan_id, requested_model_name,
+  estimated_reservation_usd, legacy_final_charge_usd, difference_usd,
+  estimation_source, status, created_at_unix_ms, finalized_at_unix_ms
+FROM niffler_billing_reservation_dry_runs
+WHERE request_id = ?
+LIMIT 1
+"#,
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_billing_reservation_dry_run_row)
+            .transpose()?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler billing reservation dry run missing after write".into(),
                 )
             })
     }
@@ -576,6 +607,30 @@ LIMIT 1
             .map(map_billing_reservation_row)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StoredNifflerBillingReservationListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_billing_reservation_dry_runs(
+        &self,
+        query: &NifflerBillingReservationDryRunListQuery,
+    ) -> Result<StoredNifflerBillingReservationDryRunListPage, DataLayerError> {
+        let total = build_billing_reservation_dry_run_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_billing_reservation_dry_run_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_billing_reservation_dry_run_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerBillingReservationDryRunListPage {
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
@@ -1040,6 +1095,60 @@ ON CONFLICT (request_id) DO UPDATE SET
         .await
         .map_sql_err()?;
         self.reload_settlement_snapshot_by_request_id(&record.request_id)
+            .await
+    }
+
+    async fn create_billing_reservation_dry_run(
+        &self,
+        record: CreateNifflerBillingReservationDryRunRecord,
+    ) -> Result<StoredNifflerBillingReservationDryRun, DataLayerError> {
+        record.validate()?;
+        let finalized_at_unix_ms = record
+            .finalized_at_unix_ms
+            .map(|value| i64_from_u64(value, "finalized_at_unix_ms"))
+            .transpose()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_billing_reservation_dry_runs (
+  id, request_id, user_id, api_key_id, product_plan_id, requested_model_name,
+  estimated_reservation_usd, legacy_final_charge_usd, difference_usd,
+  estimation_source, status, created_at_unix_ms, finalized_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (request_id) DO UPDATE SET
+  user_id = excluded.user_id,
+  api_key_id = excluded.api_key_id,
+  product_plan_id = excluded.product_plan_id,
+  requested_model_name = excluded.requested_model_name,
+  estimated_reservation_usd = excluded.estimated_reservation_usd,
+  legacy_final_charge_usd = excluded.legacy_final_charge_usd,
+  difference_usd = excluded.difference_usd,
+  estimation_source = excluded.estimation_source,
+  status = excluded.status,
+  created_at_unix_ms = excluded.created_at_unix_ms,
+  finalized_at_unix_ms = excluded.finalized_at_unix_ms
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.request_id)
+        .bind(&record.user_id)
+        .bind(&record.api_key_id)
+        .bind(&record.product_plan_id)
+        .bind(&record.requested_model_name)
+        .bind(record.estimated_reservation_usd)
+        .bind(record.legacy_final_charge_usd)
+        .bind(record.difference_usd)
+        .bind(&record.estimation_source)
+        .bind(&record.status)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(finalized_at_unix_ms)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_billing_reservation_dry_run_by_request_id(&record.request_id)
             .await
     }
 
@@ -1579,6 +1688,87 @@ fn push_billing_reservation_filters(
     }
 }
 
+fn build_billing_reservation_dry_run_count_query(
+    query: &NifflerBillingReservationDryRunListQuery,
+) -> QueryBuilder<'_, Sqlite> {
+    let mut builder =
+        QueryBuilder::new("SELECT COUNT(*) FROM niffler_billing_reservation_dry_runs");
+    push_billing_reservation_dry_run_filters(&mut builder, query);
+    builder
+}
+
+fn build_billing_reservation_dry_run_rows_query(
+    query: &NifflerBillingReservationDryRunListQuery,
+) -> QueryBuilder<'_, Sqlite> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, request_id, user_id, api_key_id, product_plan_id, requested_model_name, \
+         estimated_reservation_usd, legacy_final_charge_usd, difference_usd, \
+         estimation_source, status, created_at_unix_ms, finalized_at_unix_ms \
+         FROM niffler_billing_reservation_dry_runs",
+    );
+    push_billing_reservation_dry_run_filters(&mut builder, query);
+    builder.push(" ORDER BY created_at_unix_ms DESC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_billing_reservation_dry_run_filters(
+    builder: &mut QueryBuilder<'_, Sqlite>,
+    query: &NifflerBillingReservationDryRunListQuery,
+) {
+    let mut has_where = false;
+    if let Some(status) = query
+        .status
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(" WHERE status = ");
+        builder.push_bind(status.clone());
+        has_where = true;
+    }
+    if let Some(user_id) = query
+        .user_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("user_id = ");
+        builder.push_bind(user_id.clone());
+        has_where = true;
+    }
+    if let Some(api_key_id) = query
+        .api_key_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("api_key_id = ");
+        builder.push_bind(api_key_id.clone());
+        has_where = true;
+    }
+    if let Some(product_plan_id) = query
+        .product_plan_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("product_plan_id = ");
+        builder.push_bind(product_plan_id.clone());
+        has_where = true;
+    }
+    if let Some(request_id) = query
+        .request_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("request_id = ");
+        builder.push_bind(request_id.clone());
+    }
+}
+
 fn build_referral_reward_ledger_count_query(
     query: &NifflerReferralRewardLedgerListQuery,
 ) -> QueryBuilder<'_, Sqlite> {
@@ -2070,6 +2260,33 @@ fn map_billing_reservation_row(
         settlement_snapshot_id: row.try_get("settlement_snapshot_id").map_sql_err()?,
         release_reason: row.try_get("release_reason").map_sql_err()?,
         idempotency_key: row.try_get("idempotency_key").map_sql_err()?,
+    })
+}
+
+fn map_billing_reservation_dry_run_row(
+    row: &SqliteRow,
+) -> Result<StoredNifflerBillingReservationDryRun, DataLayerError> {
+    Ok(StoredNifflerBillingReservationDryRun {
+        id: row.try_get("id").map_sql_err()?,
+        request_id: row.try_get("request_id").map_sql_err()?,
+        user_id: row.try_get("user_id").map_sql_err()?,
+        api_key_id: row.try_get("api_key_id").map_sql_err()?,
+        product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        requested_model_name: row.try_get("requested_model_name").map_sql_err()?,
+        estimated_reservation_usd: row.try_get("estimated_reservation_usd").map_sql_err()?,
+        legacy_final_charge_usd: row.try_get("legacy_final_charge_usd").map_sql_err()?,
+        difference_usd: row.try_get("difference_usd").map_sql_err()?,
+        estimation_source: row.try_get("estimation_source").map_sql_err()?,
+        status: row.try_get("status").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        finalized_at_unix_ms: row
+            .try_get::<Option<i64>, _>("finalized_at_unix_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "finalized_at_unix_ms"))
+            .transpose()?,
     })
 }
 

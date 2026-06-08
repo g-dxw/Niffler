@@ -155,6 +155,18 @@ impl<'a> AdminAppState<'a> {
         self.app.list_niffler_billing_reservations(query).await
     }
 
+    pub(crate) async fn list_niffler_billing_reservation_dry_runs(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerBillingReservationDryRunListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerBillingReservationDryRunListPage,
+        GatewayError,
+    >{
+        self.app
+            .list_niffler_billing_reservation_dry_runs(query)
+            .await
+    }
+
     pub(crate) async fn list_niffler_settlement_snapshots(
         &self,
         query: &aether_data_contracts::repository::niffler_core::NifflerSettlementSnapshotListQuery,

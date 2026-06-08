@@ -3,10 +3,11 @@ mod postgres;
 mod sqlite;
 
 pub use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
     NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
     NifflerCoreRepository, NifflerCoreWriteRepository, NifflerErrorResponseScope,
     NifflerErrorReturnSettingListQuery, NifflerPauseDuration, NifflerProductPlanListQuery,
@@ -18,6 +19,7 @@ pub use aether_data_contracts::repository::niffler_core::{
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
     NifflerUserResponseMode, StoredNifflerApiKeyProductPlanBinding,
     StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
+    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
     StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
     StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
     StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
