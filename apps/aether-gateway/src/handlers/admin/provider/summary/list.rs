@@ -111,7 +111,7 @@ pub(crate) async fn build_admin_providers_payload(
             "updated_at": provider.updated_at_unix_secs.and_then(unix_secs_to_rfc3339),
         });
         if let Some(service) = niffler_services_by_id.get(&provider_id) {
-            project_provider_summary_with_niffler_service(&mut payload, &service);
+            project_provider_summary_with_niffler_service(&mut payload, service);
         }
         items.push(payload);
     }

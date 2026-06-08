@@ -283,7 +283,7 @@ pub(crate) async fn build_admin_providers_summary_payload(
             now_unix_secs,
         );
         if let Some(service) = niffler_services_by_id.get(&provider.id) {
-            project_provider_summary_with_niffler_service(&mut payload, &service);
+            project_provider_summary_with_niffler_service(&mut payload, service);
         }
         items.push(payload);
     }

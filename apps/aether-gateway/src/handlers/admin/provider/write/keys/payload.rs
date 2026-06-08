@@ -74,7 +74,7 @@ async fn build_admin_provider_key_items_payload(
             now_unix_secs,
         );
         if let Some(account) = niffler_accounts_by_id.get(&key.id) {
-            project_provider_key_with_niffler_account(&mut payload, &account, now_unix_secs);
+            project_provider_key_with_niffler_account(&mut payload, account, now_unix_secs);
         }
         items.push(payload);
     }
