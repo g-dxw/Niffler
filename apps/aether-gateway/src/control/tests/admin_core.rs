@@ -104,6 +104,35 @@ fn classifies_admin_niffler_core_readiness_as_admin_proxy_route() {
 }
 
 #[test]
+fn classifies_admin_niffler_core_legacy_dependency_audit_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/legacy-dependency-audit?offset=0&limit=50"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::GET, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        decision.route_kind.as_deref(),
+        Some("legacy_dependency_audit")
+    );
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:system")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::GET, &decision).as_deref(),
+        Some("admin:system:read")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_admin_niffler_core_upstream_service_writes_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/niffler-core/upstream-services"

@@ -447,6 +447,15 @@
 - 最近一次 CI 全绿，最新发布来自 CI artifact，生产健康检查和核心只读接口验证通过。
 - 已完成数据库备份、回滚演练和锁表影响评估。
 
+第 5 批第一片接口：
+
+- `GET /api/admin/niffler-core/legacy-dependency-audit?offset=0&limit=50`
+- `offset` 默认 0；`limit` 限制在 1 到 100，接口用 `limit + 1` 判断是否还有下一页，不做精确总数统计。
+- 只读返回独立用户 Key 的旧限制字段、旧用户分组策略字段、Provider Key 旧限制字段、旧 Provider 模型价格依赖、旧写入口清单和旧运行时读路径清单。
+- 独立用户 Key 使用现有分页导出能力读取；普通用户 Key 目前没有跨用户分页仓储，本片不能为了稽核新增无界扫描，只在报告里明确“仍需访问审计确认”。
+- 旧写入口和旧运行时读路径先按代码中仍存在的入口返回静态清单；第二片冻结旧写入口前，再接入真实访问审计。
+- 接口不写 `niffler_*`，不修改旧 Provider、Key、分组、价格、请求记录或灰度开关。
+
 ## 需要持续验证的问题
 
 - 旧 `api_keys.allowed_providers`、`allowed_models`、`allowed_api_formats` 是否还有真实业务依赖。

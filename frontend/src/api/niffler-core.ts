@@ -541,11 +541,95 @@ export interface NifflerCoreReadinessReport {
   issues: NifflerReadinessIssue[]
 }
 
+export interface NifflerLegacyDependencyAuditSummary {
+  user_key_restrictions_in_page: number
+  user_group_policy_items: number
+  provider_key_restriction_items: number
+  provider_model_price_dependency_items: number
+  legacy_write_entrypoints: number
+  runtime_read_dependencies: number
+}
+
+export interface NifflerLegacyUserKeyRestriction {
+  key_id: string
+  key_name?: string | null
+  owner_label: string
+  is_standalone: boolean
+  group_id?: string | null
+  group_name?: string | null
+  field_names: string[]
+  field_labels: string[]
+  reason: string
+  impact: string
+  recommended_action: string
+}
+
+export interface NifflerLegacyGroupPolicy {
+  group_id: string
+  group_name: string
+  field_name: string
+  field_label: string
+  mode: string
+  item_count: number
+  reason: string
+  impact: string
+  recommended_action: string
+}
+
+export interface NifflerLegacyProviderModelPriceDependency {
+  provider_id: string
+  provider_name?: string | null
+  model_id: string
+  model_name: string
+  dependency_kind: string
+  dependency_label: string
+  reason: string
+  impact: string
+  recommended_action: string
+}
+
+export interface NifflerLegacyCodeDependency {
+  area: string
+  label: string
+  method?: string | null
+  path: string
+  current_status: string
+  reason: string
+  next_action: string
+}
+
+export interface NifflerLegacyDependencyAuditReport {
+  schema_version: number
+  generated_at_unix_secs: number
+  offset: number
+  limit: number
+  has_more_user_keys: boolean
+  summary: NifflerLegacyDependencyAuditSummary
+  user_key_legacy_restrictions: NifflerLegacyUserKeyRestriction[]
+  user_group_legacy_policies: NifflerLegacyGroupPolicy[]
+  provider_key_legacy_restrictions: NifflerKeyScopeResidue[]
+  provider_model_price_dependencies: NifflerLegacyProviderModelPriceDependency[]
+  legacy_write_entrypoints: NifflerLegacyCodeDependency[]
+  runtime_read_dependencies: NifflerLegacyCodeDependency[]
+  notes: string[]
+}
+
 export async function getNifflerCoreReadiness(params?: {
   recent_days?: number
 }): Promise<NifflerCoreReadinessReport> {
   const response = await apiClient.get<NifflerCoreReadinessReport>(
     '/api/admin/niffler-core/readiness',
+    { params }
+  )
+  return response.data
+}
+
+export async function getNifflerLegacyDependencyAudit(params?: {
+  offset?: number
+  limit?: number
+}): Promise<NifflerLegacyDependencyAuditReport> {
+  const response = await apiClient.get<NifflerLegacyDependencyAuditReport>(
+    '/api/admin/niffler-core/legacy-dependency-audit',
     { params }
   )
   return response.data

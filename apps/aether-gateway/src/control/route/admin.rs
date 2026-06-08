@@ -62,6 +62,16 @@ pub(super) fn classify_admin_route(
             "admin:system",
             false,
         ))
+    } else if method == http::Method::GET
+        && normalized_path_no_trailing == "/api/admin/niffler-core/legacy-dependency-audit"
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            "legacy_dependency_audit",
+            "admin:system",
+            false,
+        ))
     } else if matches!(method, &http::Method::GET | &http::Method::POST)
         && normalized_path_no_trailing == "/api/admin/niffler-core/upstream-services"
     {

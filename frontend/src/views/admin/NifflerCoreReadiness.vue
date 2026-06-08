@@ -144,6 +144,140 @@
         </div>
       </Card>
 
+      <Card
+        v-if="!legacyAudit"
+        class="p-5 border-border/70"
+      >
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="font-semibold">
+                旧依赖下线稽核
+              </h3>
+              <Badge variant="outline">
+                手动只读
+              </Badge>
+            </div>
+            <p class="max-w-3xl text-sm text-muted-foreground">
+              第 5 批第一片只读检查旧 Key 限制、旧分组规则、Provider Key 限制、旧价格、旧写入口和旧运行时读路径。为避免后台默认打开页面时重复读取旧表，这块需要手动读取。
+            </p>
+            <p
+              v-if="legacyAuditError"
+              class="text-sm text-destructive"
+            >
+              {{ legacyAuditError }}
+            </p>
+          </div>
+          <RefreshButton
+            :loading="legacyAuditLoading"
+            @click="loadLegacyAudit"
+          />
+        </div>
+      </Card>
+
+      <Card
+        v-else
+        class="overflow-hidden"
+      >
+        <div class="flex flex-col gap-3 border-b border-border/60 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 class="font-semibold">
+              旧依赖下线稽核
+            </h3>
+            <p class="mt-1 text-sm text-muted-foreground">
+              第 5 批第一片只读检查。这里不冻结旧入口，也不修改任何旧数据。
+            </p>
+          </div>
+          <RefreshButton
+            :loading="legacyAuditLoading"
+            @click="loadLegacyAudit"
+          />
+        </div>
+        <div class="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+          <MetricCard
+            title="独立 Key 旧限制"
+            :value="String(legacyAudit.summary.user_key_restrictions_in_page)"
+            :description="legacyAudit.has_more_user_keys ? '当前页有样本，后面还有独立 Key' : '当前页已读完'"
+            :tone="legacyAudit.summary.user_key_restrictions_in_page ? 'warning' : 'success'"
+          />
+          <MetricCard
+            title="分组旧规则"
+            :value="String(legacyAudit.summary.user_group_policy_items)"
+            description="旧分组仍表达模型、Provider、格式或倍率"
+            :tone="legacyAudit.summary.user_group_policy_items ? 'warning' : 'success'"
+          />
+          <MetricCard
+            title="Provider Key 旧限制"
+            :value="String(legacyAudit.summary.provider_key_restriction_items)"
+            description="旧上游账号仍保存模型、格式或优先级限制"
+            :tone="legacyAudit.summary.provider_key_restriction_items ? 'warning' : 'success'"
+          />
+          <MetricCard
+            title="旧价格依赖"
+            :value="String(legacyAudit.summary.provider_model_price_dependency_items)"
+            description="旧 Provider 模型价格仍可能参与成本展示"
+            :tone="legacyAudit.summary.provider_model_price_dependency_items ? 'warning' : 'success'"
+          />
+          <MetricCard
+            title="旧写入口"
+            :value="String(legacyAudit.summary.legacy_write_entrypoints)"
+            description="下一片需要冻结或跳转的旧入口"
+            tone="warning"
+          />
+          <MetricCard
+            title="旧读路径"
+            :value="String(legacyAudit.summary.runtime_read_dependencies)"
+            description="第三片需要切换的运行时读源"
+            tone="warning"
+          />
+        </div>
+
+        <div class="grid gap-4 border-t border-border/60 p-5 xl:grid-cols-2">
+          <ListCard
+            title="稽核说明"
+            :description="`当前页 offset=${legacyAudit.offset}，limit=${legacyAudit.limit}`"
+            :items="legacyAuditNoteItems"
+            empty-text="没有额外说明"
+          />
+          <ListCard
+            title="独立 Key 旧限制"
+            description="只展示当前分页样本，不扫描普通用户 Key"
+            :items="legacyUserKeyRestrictionItems"
+            empty-text="当前页没有发现独立 Key 旧限制"
+          />
+          <ListCard
+            title="用户分组旧规则"
+            description="这些字段后续应迁到产品策略"
+            :items="legacyGroupPolicyItems"
+            empty-text="没有发现用户分组旧规则"
+          />
+          <ListCard
+            title="Provider Key 旧限制"
+            description="这些字段后续应迁到账号能力或调度策略"
+            :items="legacyProviderKeyRestrictionItems"
+            empty-text="没有发现 Provider Key 旧限制"
+          />
+          <ListCard
+            title="Provider 模型价格依赖"
+            description="这些价格后续应迁到基础价、成本倍率或账号成本倍率"
+            :items="legacyProviderModelPriceItems"
+            empty-text="没有发现旧价格依赖样本"
+          />
+          <ListCard
+            title="旧写入口"
+            description="第二片要冻结或跳转的旧管理入口"
+            :items="legacyWriteEntrypointItems"
+            empty-text="没有旧写入口"
+          />
+          <ListCard
+            title="旧运行时读路径"
+            description="第三片要切换到新模型的读源"
+            :items="legacyRuntimeReadItems"
+            empty-text="没有旧读路径"
+          />
+        </div>
+      </Card>
+
       <div class="grid gap-4 xl:grid-cols-2">
         <Card class="overflow-hidden">
           <SectionHeader
@@ -433,14 +567,19 @@ import {
 } from '@/components/ui'
 import {
   getNifflerCoreReadiness,
+  getNifflerLegacyDependencyAudit,
   type NifflerCoreReadinessReport,
+  type NifflerLegacyDependencyAuditReport,
   type NifflerReadinessSeverity
 } from '@/api/niffler-core'
 
 const recentDays = ref('7')
 const loading = ref(false)
+const legacyAuditLoading = ref(false)
 const error = ref('')
+const legacyAuditError = ref('')
 const report = ref<NifflerCoreReadinessReport | null>(null)
+const legacyAudit = ref<NifflerLegacyDependencyAuditReport | null>(null)
 
 async function loadReport() {
   loading.value = true
@@ -453,6 +592,21 @@ async function loadReport() {
     error.value = errorMessage(err)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadLegacyAudit() {
+  legacyAuditLoading.value = true
+  legacyAuditError.value = ''
+  try {
+    legacyAudit.value = await getNifflerLegacyDependencyAudit({
+      offset: 0,
+      limit: 50
+    })
+  } catch (err) {
+    legacyAuditError.value = errorMessage(err)
+  } finally {
+    legacyAuditLoading.value = false
   }
 }
 
@@ -544,6 +698,89 @@ const routeSkipItems = computed(() => {
   }))
 })
 
+const legacyAuditNoteItems = computed(() => {
+  return (legacyAudit.value?.notes ?? []).map((note, index) => ({
+    title: `说明 ${index + 1}`,
+    description: note
+  }))
+})
+
+const legacyUserKeyRestrictionItems = computed(() => {
+  return (legacyAudit.value?.user_key_legacy_restrictions ?? []).map((item) => ({
+    title: item.key_name || item.key_id,
+    description: joinParts([
+      item.owner_label,
+      item.group_name ? `分组：${item.group_name}` : '',
+      `字段：${(item.field_labels.length ? item.field_labels : item.field_names).join('、')}`,
+      item.reason,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
+  }))
+})
+
+const legacyGroupPolicyItems = computed(() => {
+  return (legacyAudit.value?.user_group_legacy_policies ?? []).map((item) => ({
+    title: `${item.group_name} · ${item.field_label}`,
+    description: joinParts([
+      `模式：${legacyPolicyModeLabel(item.mode)}`,
+      `数量：${item.item_count}`,
+      item.reason,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
+  }))
+})
+
+const legacyProviderKeyRestrictionItems = computed(() => {
+  return (legacyAudit.value?.provider_key_legacy_restrictions ?? []).map((item) => ({
+    title: item.display_name || item.account_label || item.key_name || item.key_id,
+    description: joinParts([
+      item.provider_name ? `Provider：${item.provider_name}` : '',
+      `字段：${(item.field_labels.length ? item.field_labels : item.residue_fields).join('、')}`,
+      item.reason,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
+  }))
+})
+
+const legacyProviderModelPriceItems = computed(() => {
+  return (legacyAudit.value?.provider_model_price_dependencies ?? []).map((item) => ({
+    title: item.provider_name ? `${item.provider_name} / ${item.model_name}` : item.model_name,
+    description: joinParts([
+      item.dependency_label || item.dependency_kind,
+      item.reason,
+      `影响：${item.impact}`,
+      `建议：${item.recommended_action}`
+    ])
+  }))
+})
+
+const legacyWriteEntrypointItems = computed(() => {
+  return (legacyAudit.value?.legacy_write_entrypoints ?? []).map((item) => ({
+    title: `${item.area} · ${item.current_status}`,
+    description: joinParts([
+      item.method ? `方法：${item.method}` : '',
+      `位置：${item.path}`,
+      item.reason,
+      `下一步：${item.next_action}`
+    ])
+  }))
+})
+
+const legacyRuntimeReadItems = computed(() => {
+  return (legacyAudit.value?.runtime_read_dependencies ?? []).map((item) => ({
+    title: `${item.area} · ${item.current_status}`,
+    description: joinParts([
+      item.label,
+      `位置：${item.path}`,
+      item.reason,
+      `下一步：${item.next_action}`
+    ])
+  }))
+})
+
 const routeSkipSamples = computed(() => report.value?.route_skip_samples ?? [])
 
 function joinParts(parts: Array<string | null | undefined>): string {
@@ -551,6 +788,17 @@ function joinParts(parts: Array<string | null | undefined>): string {
     .map((part) => part?.trim())
     .filter((part): part is string => Boolean(part))
     .join('。')
+}
+
+function legacyPolicyModeLabel(mode: string): string {
+  const labels: Record<string, string> = {
+    inherit: '继承',
+    unrestricted: '不限制',
+    specific: '指定列表',
+    deny_all: '全部拒绝',
+    configured: '已配置'
+  }
+  return labels[mode] ?? mode
 }
 
 function issueIcon(severity: NifflerReadinessSeverity) {

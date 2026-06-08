@@ -1,5 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use aether_data::repository::auth::{
+    StandaloneApiKeyExportListQuery, StoredAuthApiKeyExportRecord,
+};
 use aether_data::repository::users::StoredUserGroup;
 use aether_data_contracts::repository::candidates::StoredRequestCandidate;
 use aether_data_contracts::repository::global_models::{
@@ -45,11 +48,12 @@ use crate::handlers::shared::{
     parse_catalog_auth_config_json, provider_key_account_label_from_auth_config,
 };
 use crate::GatewayError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
 const READINESS_PATH: &str = "/api/admin/niffler-core/readiness";
+const LEGACY_DEPENDENCY_AUDIT_PATH: &str = "/api/admin/niffler-core/legacy-dependency-audit";
 const UPSTREAM_SERVICES_PATH: &str = "/api/admin/niffler-core/upstream-services";
 const PRODUCT_PLANS_PATH: &str = "/api/admin/niffler-core/product-plans";
 const API_KEY_PRODUCT_PLAN_BINDINGS_PATH: &str =
@@ -70,6 +74,7 @@ const MAX_USAGE_ITEMS: usize = 50;
 const MAX_PROVIDER_MODELS_PER_PROVIDER: usize = 2_000;
 const MAX_GLOBAL_MODELS: usize = 10_000;
 const MAX_ROUTE_SKIP_SAMPLE: usize = 500;
+const MAX_LEGACY_AUDIT_LIMIT: usize = 100;
 const SHADOW_TABLES: &[&str] = &[
     "niffler_upstream_services",
     "niffler_upstream_accounts",
@@ -111,6 +116,15 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
         let recent_days = parse_recent_days(request_context.query_string());
         let report = build_readiness_report(&state, recent_days).await?;
         return Ok(Some(Json(report).into_response()));
+    }
+
+    if request_context.path().trim_end_matches('/') == LEGACY_DEPENDENCY_AUDIT_PATH {
+        if request_context.method() != http::Method::GET {
+            return Ok(Some(niffler_method_not_allowed("只支持只读稽核")));
+        }
+        return Ok(Some(
+            build_legacy_dependency_audit_response(&state, &request_context).await?,
+        ));
     }
 
     if request_context.path().trim_end_matches('/') == UPSTREAM_SERVICES_PATH {
@@ -403,6 +417,85 @@ struct AdminNifflerCreateErrorReturnSettingRequest {
 struct AdminNifflerReferralLedgerMutationRequest {
     #[serde(default)]
     note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct NifflerLegacyDependencyAuditReport {
+    schema_version: u32,
+    generated_at_unix_secs: u64,
+    offset: usize,
+    limit: usize,
+    has_more_user_keys: bool,
+    summary: NifflerLegacyDependencyAuditSummary,
+    user_key_legacy_restrictions: Vec<NifflerLegacyUserKeyRestriction>,
+    user_group_legacy_policies: Vec<NifflerLegacyGroupPolicy>,
+    provider_key_legacy_restrictions: Vec<NifflerKeyScopeResidue>,
+    provider_model_price_dependencies: Vec<NifflerLegacyProviderModelPriceDependency>,
+    legacy_write_entrypoints: Vec<NifflerLegacyCodeDependency>,
+    runtime_read_dependencies: Vec<NifflerLegacyCodeDependency>,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct NifflerLegacyDependencyAuditSummary {
+    user_key_restrictions_in_page: u64,
+    user_group_policy_items: u64,
+    provider_key_restriction_items: u64,
+    provider_model_price_dependency_items: u64,
+    legacy_write_entrypoints: u64,
+    runtime_read_dependencies: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct NifflerLegacyUserKeyRestriction {
+    key_id: String,
+    key_name: Option<String>,
+    owner_label: String,
+    is_standalone: bool,
+    group_id: Option<String>,
+    group_name: Option<String>,
+    field_names: Vec<String>,
+    field_labels: Vec<String>,
+    reason: String,
+    impact: String,
+    recommended_action: String,
+}
+
+#[derive(Debug, Serialize)]
+struct NifflerLegacyGroupPolicy {
+    group_id: String,
+    group_name: String,
+    field_name: String,
+    field_label: String,
+    mode: String,
+    item_count: u64,
+    reason: String,
+    impact: String,
+    recommended_action: String,
+}
+
+#[derive(Debug, Serialize)]
+struct NifflerLegacyProviderModelPriceDependency {
+    provider_id: String,
+    provider_name: Option<String>,
+    model_id: String,
+    model_name: String,
+    dependency_kind: String,
+    dependency_label: String,
+    reason: String,
+    impact: String,
+    recommended_action: String,
+}
+
+#[derive(Debug, Serialize)]
+struct NifflerLegacyCodeDependency {
+    area: String,
+    label: String,
+    method: Option<String>,
+    path: String,
+    current_status: String,
+    reason: String,
+    next_action: String,
 }
 
 fn default_multiplier() -> f64 {
@@ -1958,6 +2051,420 @@ fn niffler_data_unavailable_response() -> Response<Body> {
         Json(json!({ "detail": "Niffler 核心数据暂不可用" })),
     )
         .into_response()
+}
+
+async fn build_legacy_dependency_audit_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    let generated_at_unix_secs = current_unix_secs();
+    let offset = parse_usize_query(request_context.query_string(), "offset").unwrap_or(0);
+    let limit = parse_legacy_audit_limit(request_context.query_string());
+    let mut notes = vec![
+        "这个接口只读稽核旧依赖，不冻结、不删除、不修改线上请求链路。".to_string(),
+        "普通用户 Key 目前没有跨用户分页仓储，本片不会新增无界扫描；后续先接入访问审计再判断是否还能下线旧字段。".to_string(),
+    ];
+
+    let mut user_key_page = if state.has_auth_api_key_data_reader() {
+        state
+            .app()
+            .data
+            .list_auth_api_key_export_standalone_records_page(&StandaloneApiKeyExportListQuery {
+                skip: offset,
+                limit: limit.saturating_add(1),
+                is_active: None,
+            })
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))?
+    } else {
+        notes.push("Auth API Key 只读仓储未启用，不能读取独立 Key 旧限制样本。".to_string());
+        Vec::new()
+    };
+    let has_more_user_keys = user_key_page.len() > limit;
+    user_key_page.truncate(limit);
+    let user_key_legacy_restrictions = collect_user_key_legacy_restrictions(&user_key_page);
+
+    let user_groups = state.list_user_groups().await?;
+    let user_group_legacy_policies = collect_user_group_legacy_policies(&user_groups);
+
+    let providers = if state.has_provider_catalog_data_reader() {
+        state.list_provider_catalog_providers(false).await?
+    } else {
+        notes.push(
+            "Provider 只读仓储未启用，不能读取旧 Provider 和 Provider Key 样本。".to_string(),
+        );
+        Vec::new()
+    };
+    let provider_ids = providers
+        .iter()
+        .map(|provider| provider.id.clone())
+        .collect::<Vec<_>>();
+    let provider_map = providers
+        .iter()
+        .map(|provider| (provider.id.as_str(), provider))
+        .collect::<BTreeMap<_, _>>();
+    let keys = if state.has_provider_catalog_data_reader() && !provider_ids.is_empty() {
+        state
+            .list_provider_catalog_key_summaries_by_provider_ids(&provider_ids)
+            .await?
+    } else {
+        Vec::new()
+    };
+    let mut provider_key_legacy_restrictions = collect_key_scope_residue(&keys, &provider_map);
+    let account_labels =
+        load_account_labels_for_readiness(state, &provider_key_legacy_restrictions, &[], &[])
+            .await?;
+    apply_account_labels_to_key_residue(&mut provider_key_legacy_restrictions, &account_labels);
+
+    let provider_models = read_provider_models(state, &providers).await?;
+    let provider_model_price_dependencies =
+        collect_provider_model_price_dependencies(&provider_models, &provider_map);
+    let legacy_write_entrypoints = legacy_write_entrypoints();
+    let runtime_read_dependencies = runtime_read_dependencies();
+
+    let report = NifflerLegacyDependencyAuditReport {
+        schema_version: 1,
+        generated_at_unix_secs,
+        offset,
+        limit,
+        has_more_user_keys,
+        summary: NifflerLegacyDependencyAuditSummary {
+            user_key_restrictions_in_page: user_key_legacy_restrictions.len() as u64,
+            user_group_policy_items: user_group_legacy_policies.len() as u64,
+            provider_key_restriction_items: provider_key_legacy_restrictions.len() as u64,
+            provider_model_price_dependency_items: provider_model_price_dependencies.len() as u64,
+            legacy_write_entrypoints: legacy_write_entrypoints.len() as u64,
+            runtime_read_dependencies: runtime_read_dependencies.len() as u64,
+        },
+        user_key_legacy_restrictions,
+        user_group_legacy_policies,
+        provider_key_legacy_restrictions,
+        provider_model_price_dependencies,
+        legacy_write_entrypoints,
+        runtime_read_dependencies,
+        notes,
+    };
+    Ok(Json(report).into_response())
+}
+
+fn parse_legacy_audit_limit(query_string: Option<&str>) -> usize {
+    parse_usize_query(query_string, "limit")
+        .unwrap_or(50)
+        .clamp(1, MAX_LEGACY_AUDIT_LIMIT)
+}
+
+fn collect_user_key_legacy_restrictions(
+    records: &[StoredAuthApiKeyExportRecord],
+) -> Vec<NifflerLegacyUserKeyRestriction> {
+    let mut items = Vec::new();
+    for record in records {
+        let mut fields = Vec::new();
+        push_string_list_field_if_present(
+            &mut fields,
+            "allowed_providers",
+            &record.allowed_providers,
+        );
+        push_string_list_field_if_present(
+            &mut fields,
+            "allowed_api_formats",
+            &record.allowed_api_formats,
+        );
+        push_string_list_field_if_present(&mut fields, "allowed_models", &record.allowed_models);
+        if fields.is_empty() {
+            continue;
+        }
+        let field_labels = fields
+            .iter()
+            .map(|field| user_key_legacy_field_label(field).to_string())
+            .collect::<Vec<_>>();
+        items.push(NifflerLegacyUserKeyRestriction {
+            key_id: record.api_key_id.clone(),
+            key_name: record.name.clone(),
+            owner_label: format!("用户 {}", record.user_id),
+            is_standalone: record.is_standalone,
+            group_id: record.group_id.clone(),
+            group_name: record.group_name.clone(),
+            field_names: fields,
+            field_labels,
+            reason: "这把用户 Key 自身仍保存可用 Provider、API 格式或模型限制。".to_string(),
+            impact: "新模型里用户 Key 只绑定一个产品策略；如果 Key 自身继续保存限制，页面看到的策略和实际可用范围可能不一致。".to_string(),
+            recommended_action: "迁移前把这些限制并入产品策略；确认无用后再清空旧 Key 字段。".to_string(),
+        });
+        if items.len() >= MAX_ISSUE_ITEMS {
+            break;
+        }
+    }
+    items
+}
+
+fn push_string_list_field_if_present(
+    fields: &mut Vec<String>,
+    field_name: &str,
+    value: &Option<Vec<String>>,
+) {
+    if value
+        .as_ref()
+        .is_some_and(|values| values.iter().any(|item| !item.trim().is_empty()))
+    {
+        fields.push(field_name.to_string());
+    }
+}
+
+fn user_key_legacy_field_label(field: &str) -> &'static str {
+    match field {
+        "allowed_providers" => "Key 自身可用 Provider",
+        "allowed_api_formats" => "Key 自身 API 格式",
+        "allowed_models" => "Key 自身允许模型",
+        _ => "未归类 Key 字段",
+    }
+}
+
+fn collect_user_group_legacy_policies(groups: &[StoredUserGroup]) -> Vec<NifflerLegacyGroupPolicy> {
+    let mut items = Vec::new();
+    for group in groups {
+        push_group_policy_item(
+            &mut items,
+            group,
+            "allowed_providers",
+            "分组可用 Provider",
+            &group.allowed_providers_mode,
+            group.allowed_providers.as_ref().map_or(0, Vec::len) as u64,
+        );
+        push_group_policy_item(
+            &mut items,
+            group,
+            "allowed_api_formats",
+            "分组 API 格式",
+            &group.allowed_api_formats_mode,
+            group.allowed_api_formats.as_ref().map_or(0, Vec::len) as u64,
+        );
+        push_group_policy_item(
+            &mut items,
+            group,
+            "allowed_models",
+            "分组允许模型",
+            &group.allowed_models_mode,
+            group.allowed_models.as_ref().map_or(0, Vec::len) as u64,
+        );
+        if (group.sales_multiplier - 1.0).abs() > f64::EPSILON {
+            push_group_policy_item(
+                &mut items,
+                group,
+                "sales_multiplier",
+                "分组销售倍率",
+                "configured",
+                1,
+            );
+        }
+        if group
+            .model_sales_multipliers
+            .as_ref()
+            .is_some_and(value_has_content)
+        {
+            push_group_policy_item(
+                &mut items,
+                group,
+                "model_sales_multipliers",
+                "分组模型销售倍率",
+                "configured",
+                1,
+            );
+        }
+        if items.len() >= MAX_ISSUE_ITEMS {
+            break;
+        }
+    }
+    items.truncate(MAX_ISSUE_ITEMS);
+    items
+}
+
+fn push_group_policy_item(
+    items: &mut Vec<NifflerLegacyGroupPolicy>,
+    group: &StoredUserGroup,
+    field_name: &str,
+    field_label: &str,
+    mode: &str,
+    item_count: u64,
+) {
+    let mode = mode.trim();
+    if mode.eq_ignore_ascii_case("inherit") && item_count == 0 {
+        return;
+    }
+    items.push(NifflerLegacyGroupPolicy {
+        group_id: group.id.clone(),
+        group_name: group.name.clone(),
+        field_name: field_name.to_string(),
+        field_label: field_label.to_string(),
+        mode: mode.to_string(),
+        item_count,
+        reason: "旧用户分组仍在表达模型、Provider、API 格式或销售价格规则。".to_string(),
+        impact: "第 5 批切换后，这些规则应该由产品策略表达；如果旧分组继续可写，管理员会同时维护两套规则。".to_string(),
+        recommended_action: "迁移成产品策略字段，并在第二片冻结已迁移分组的旧写入口。".to_string(),
+    });
+}
+
+fn collect_provider_model_price_dependencies(
+    provider_models: &[StoredAdminProviderModel],
+    provider_map: &BTreeMap<&str, &StoredProviderCatalogProvider>,
+) -> Vec<NifflerLegacyProviderModelPriceDependency> {
+    let mut items = Vec::new();
+    for model in provider_models {
+        if !model.is_active {
+            continue;
+        }
+        let has_provider_price =
+            has_model_price(model.price_per_request, model.tiered_pricing.as_ref());
+        let has_inherited_price = has_model_price(
+            model.global_model_default_price_per_request,
+            model.global_model_default_tiered_pricing.as_ref(),
+        );
+        let (dependency_kind, dependency_label) = if has_provider_price {
+            ("provider_model_price", "Provider 模型自身价格")
+        } else if has_inherited_price {
+            ("global_model_price", "继承全局模型基础价格")
+        } else {
+            continue;
+        };
+        let provider = provider_map.get(model.provider_id.as_str()).copied();
+        items.push(NifflerLegacyProviderModelPriceDependency {
+            provider_id: model.provider_id.clone(),
+            provider_name: provider.map(|item| item.name.clone()),
+            model_id: model.id.clone(),
+            model_name: model
+                .global_model_name
+                .clone()
+                .unwrap_or_else(|| model.provider_model_name.clone()),
+            dependency_kind: dependency_kind.to_string(),
+            dependency_label: dependency_label.to_string(),
+            reason: "旧 Provider 模型价格仍可能参与上游成本和展示。".to_string(),
+            impact: "新价格模型切换前，如果旧 Provider 模型价格继续可写，会造成成本价、销售价和历史结算快照口径不一致。".to_string(),
+            recommended_action: "迁移为模型基础价格、上游成本倍率或账号成本倍率；迁移完成后冻结旧 Provider 模型价格写入口。".to_string(),
+        });
+        if items.len() >= MAX_ISSUE_ITEMS {
+            break;
+        }
+    }
+    items
+}
+
+fn legacy_write_entrypoints() -> Vec<NifflerLegacyCodeDependency> {
+    vec![
+        legacy_code_dependency(
+            "旧 Provider 写入口",
+            "新增、更新、删除旧 Provider",
+            Some("POST/PUT/DELETE"),
+            "/api/admin/providers",
+            "仍存在",
+            "Provider 旧页面仍能维护供给侧配置。",
+            "第二片对已迁移对象改为只读或跳转到新上游服务页面。",
+        ),
+        legacy_code_dependency(
+            "旧 Provider Key 写入口",
+            "新增、更新、恢复、测试旧账号",
+            Some("POST/PUT/PATCH"),
+            "/api/admin/endpoints/keys",
+            "仍存在",
+            "旧账号配置仍在 Provider Key 上维护。",
+            "第二片对已迁移账号冻结旧写入口，提示去上游账号页面处理。",
+        ),
+        legacy_code_dependency(
+            "旧 Provider 模型价格写入口",
+            "维护 Provider 模型和价格",
+            Some("POST/PUT/DELETE"),
+            "/api/admin/providers/{providerId}/models",
+            "仍存在",
+            "旧模型价格入口仍能影响上游成本和页面展示。",
+            "第二片对已迁移 Provider 的模型价格改为只读。",
+        ),
+        legacy_code_dependency(
+            "旧用户分组写入口",
+            "维护分组可用 Provider、API 格式、模型和倍率",
+            Some("POST/PUT/DELETE"),
+            "/api/admin/users/groups",
+            "仍存在",
+            "产品策略已经接管这些业务语义，但旧分组仍可写。",
+            "第二片对已迁移分组冻结旧写入口，提示去产品策略页面处理。",
+        ),
+        legacy_code_dependency(
+            "旧用户 Key 限制写入口",
+            "维护 Key 自身可用 Provider、API 格式和模型",
+            Some("POST/PUT/PATCH"),
+            "/api/admin/users/{userId}/api-keys",
+            "仍存在",
+            "用户 Key 仍可能绕过产品策略保存自身限制。",
+            "第二片对已迁移 Key 冻结旧限制字段，只允许绑定产品策略。",
+        ),
+    ]
+}
+
+fn runtime_read_dependencies() -> Vec<NifflerLegacyCodeDependency> {
+    vec![
+        legacy_code_dependency(
+            "运行时鉴权",
+            "读取用户和 Key 的 allowed_providers、allowed_api_formats、allowed_models",
+            None,
+            "apps/aether-gateway/src/control/auth/resolution.rs",
+            "仍读取",
+            "运行时仍从旧用户和旧 Key 字段生成有效权限。",
+            "第三片对已迁移产品策略切到新产品策略读源。",
+        ),
+        legacy_code_dependency(
+            "模型权限判断",
+            "检查请求模型是否在旧 allowed_models 内",
+            None,
+            "apps/aether-gateway/src/control/auth/gate.rs",
+            "仍读取",
+            "模型权限仍可能由旧字段决定。",
+            "第三片对已迁移 Key 只按产品策略模型判断。",
+        ),
+        legacy_code_dependency(
+            "调度服务选择",
+            "读取旧 Provider、Provider Key、Key 模型限制和 API 格式",
+            None,
+            "apps/aether-gateway/src/ai_serving/planner/candidate_source.rs",
+            "仍读取",
+            "调度仍从旧 Provider/Key 结构选择实际服务和账号。",
+            "第三片把已迁移策略切到新上游服务和上游账号。",
+        ),
+        legacy_code_dependency(
+            "上游执行快照",
+            "读取 provider_api_keys.allowed_models、api_formats 和认证配置",
+            None,
+            "crates/aether-provider-transport/src/snapshot_mapping.rs",
+            "仍读取",
+            "上游执行仍依赖旧账号字段构造请求。",
+            "第三片把已迁移账号切到新账号能力和凭证快照。",
+        ),
+        legacy_code_dependency(
+            "旧价格读源",
+            "读取全局模型和 Provider 模型价格",
+            None,
+            "apps/aether-gateway/src/handlers/admin/model/payloads.rs",
+            "仍读取",
+            "旧价格仍用于成本展示和部分对账。",
+            "第三片切到基础价、成本倍率和结算快照读源。",
+        ),
+    ]
+}
+
+fn legacy_code_dependency(
+    area: &str,
+    label: &str,
+    method: Option<&str>,
+    path: &str,
+    current_status: &str,
+    reason: &str,
+    next_action: &str,
+) -> NifflerLegacyCodeDependency {
+    NifflerLegacyCodeDependency {
+        area: area.to_string(),
+        label: label.to_string(),
+        method: method.map(ToOwned::to_owned),
+        path: path.to_string(),
+        current_status: current_status.to_string(),
+        reason: reason.to_string(),
+        next_action: next_action.to_string(),
+    }
 }
 
 async fn build_readiness_report(
