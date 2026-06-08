@@ -4,6 +4,7 @@ use super::payloads::{
     normalize_endpoint_api_format, AdminProviderEndpointUpdatePatch,
 };
 use super::support::build_admin_endpoints_data_unavailable_response;
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_endpoint_write;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::GatewayError;
 use axum::{
@@ -101,6 +102,12 @@ pub(super) async fn maybe_handle(
                 .into_response(),
         ));
     };
+    if let Some(response) =
+        maybe_freeze_migrated_legacy_provider_endpoint_write(state, &existing_endpoint.provider_id)
+            .await?
+    {
+        return Ok(Some(response));
+    }
     let Some(provider) = state
         .read_provider_catalog_providers_by_ids(std::slice::from_ref(
             &existing_endpoint.provider_id,

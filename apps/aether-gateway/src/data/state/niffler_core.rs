@@ -113,6 +113,24 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn find_niffler_upstream_account_by_id(
+        &self,
+        upstream_account_id: &str,
+    ) -> Result<Option<StoredNifflerUpstreamAccount>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => {
+                repository
+                    .find_upstream_account_by_id(upstream_account_id)
+                    .await
+            }
+            None => Ok(None),
+        }
+    }
+
     pub(crate) async fn list_niffler_product_plans(
         &self,
         query: &NifflerProductPlanListQuery,

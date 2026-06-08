@@ -1,3 +1,4 @@
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
 use crate::handlers::admin::provider::shared::paths::{
     admin_provider_clear_pool_cooldown_parts, admin_provider_reset_pool_cost_parts,
 };
@@ -66,6 +67,11 @@ pub(crate) async fn maybe_build_local_admin_provider_pool_response(
         else {
             return Ok(Some(build_admin_provider_not_found_response("Key 不存在")));
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_key_write(state, &key_id).await?
+        {
+            return Ok(Some(response));
+        }
         match lookup_admin_provider_pool_key_name(state, &provider_id, &key_id).await? {
             AdminProviderPoolKeyLookup::ProviderMissing => {
                 return Ok(Some(build_admin_provider_not_found_response(format!(
@@ -101,6 +107,11 @@ pub(crate) async fn maybe_build_local_admin_provider_pool_response(
         else {
             return Ok(Some(build_admin_provider_not_found_response("Key 不存在")));
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_key_write(state, &key_id).await?
+        {
+            return Ok(Some(response));
+        }
         match lookup_admin_provider_pool_key_name(state, &provider_id, &key_id).await? {
             AdminProviderPoolKeyLookup::ProviderMissing => {
                 return Ok(Some(build_admin_provider_not_found_response(format!(

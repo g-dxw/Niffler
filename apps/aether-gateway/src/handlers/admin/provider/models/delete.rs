@@ -1,3 +1,4 @@
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_model_write;
 use crate::handlers::admin::provider::shared::paths::admin_provider_model_route_parts;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::GatewayError;
@@ -30,6 +31,11 @@ pub(super) async fn maybe_handle(
                     .into_response(),
             ));
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_model_write(state, &provider_id).await?
+        {
+            return Ok(Some(response));
+        }
         let Some(existing) = state
             .get_admin_provider_model(&provider_id, &model_id)
             .await?

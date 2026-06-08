@@ -1,6 +1,7 @@
 use super::extractors::admin_provider_id_for_endpoints;
 use super::payloads::{build_admin_provider_endpoint_response, AdminProviderEndpointCreateRequest};
 use super::support::build_admin_endpoints_data_unavailable_response;
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_endpoint_write;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::GatewayError;
 use axum::{
@@ -45,6 +46,11 @@ pub(super) async fn maybe_handle(
                 .into_response(),
         ));
     };
+    if let Some(response) =
+        maybe_freeze_migrated_legacy_provider_endpoint_write(state, &provider_id).await?
+    {
+        return Ok(Some(response));
+    }
     let Some(request_body) = request_body else {
         return Ok(Some(
             (

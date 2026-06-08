@@ -456,6 +456,26 @@
 - 旧写入口和旧运行时读路径先按代码中仍存在的入口返回静态清单；第二片冻结旧写入口前，再接入真实访问审计。
 - 接口不写 `niffler_*`，不修改旧 Provider、Key、分组、价格、请求记录或灰度开关。
 
+第 5 批第二片冻结规则：
+
+- 本片只上线冻结机制，不批量修改旧数据，不删除旧字段，不切换运行时读源。
+- 只有同 ID 的新对象存在时，才判定旧对象已经迁移：旧 Provider ID 对应 `niffler_upstream_services.id`；旧 Provider Key ID 对应 `niffler_upstream_accounts.id`；旧 User Group ID 对应 `niffler_product_plans.id`；旧用户 Key ID 对应 `niffler_api_key_product_plan_bindings.api_key_id`。
+- 生产新 Niffler core 表为空时，本片默认不冻结任何现有旧配置，旧入口仍按旧逻辑处理。
+- 已迁移旧 Provider 的更新、删除、端点维护和模型价格维护入口返回 `409 Conflict`，提示到 Niffler core 上游服务页面修改。
+- 已迁移旧 Provider Key 的更新、删除、清除失效标记、重置周期统计、池内冷却清除、成本窗口重置、号池批量导入、号池批量操作和清理异常账号入口返回 `409 Conflict`，提示到 Niffler core 上游账号页面修改。
+- 已迁移旧 User Group 的更新、删除入口返回 `409 Conflict`，提示到 Niffler core 产品策略页面修改；创建新旧分组和成员维护本片暂不冻结。
+- 已绑定新产品策略的用户 Key，旧页面提交 `group_id` 时返回 `409 Conflict`，提示到 Niffler core 用户 Key 产品策略绑定页面修改；只改 Key 名称、限速、并发和功能开关仍允许。
+- 系统导入、后台 OAuth 刷新、配额同步、自动探测和固定 Provider 模板维护本片不冻结；这些路径在第三片运行时读源切换前仍承担维护和回滚职责，必须等新读源接管后再改为只读投影或新表写入。
+- 冻结响应必须通过 `attach_admin_audit_response` 写审计，事件名为 `niffler_legacy_write_frozen`，动作名为 `freeze_legacy_write`。
+- 稽核看板继续只读、分页和限量；旧写入口清单改为说明已经接入冻结机制，不做无界统计。
+
+第 5 批第二片验证方式：
+
+- 单元或路由测试覆盖冻结响应为 `409 Conflict`，响应体包含清楚的下一步页面提示，并带管理员审计事件。
+- 编译验证覆盖 Niffler core 新增按账号 ID 查询方法的 Postgres、MySQL 和 SQLite 实现。
+- 前端类型检查和构建通过，确认对账页文案不再写“第一片只读、不冻结”。
+- 生产验证只调用健康检查、readiness 和旧依赖稽核接口；不在生产执行批量写入测试，不在生产服务器编译。
+
 ## 需要持续验证的问题
 
 - 旧 `api_keys.allowed_providers`、`allowed_models`、`allowed_api_formats` 是否还有真实业务依赖。

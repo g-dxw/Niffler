@@ -80,6 +80,16 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn find_niffler_upstream_account_by_id(
+        &self,
+        upstream_account_id: &str,
+    ) -> Result<Option<StoredNifflerUpstreamAccount>, GatewayError> {
+        self.data
+            .find_niffler_upstream_account_by_id(upstream_account_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn list_niffler_product_plans(
         &self,
         query: &NifflerProductPlanListQuery,

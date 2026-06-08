@@ -1,3 +1,4 @@
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
 use crate::handlers::admin::provider::shared::paths::admin_update_key_id;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::GatewayError;
@@ -30,6 +31,9 @@ pub(super) async fn maybe_handle(
     let Some(key_id) = admin_update_key_id(request_context.path()) else {
         return Ok(Some(not_found_response("Key 不存在")));
     };
+    if let Some(response) = maybe_freeze_migrated_legacy_provider_key_write(state, &key_id).await? {
+        return Ok(Some(response));
+    }
     let Some(_existing_key) = state
         .read_provider_catalog_keys_by_ids(std::slice::from_ref(&key_id))
         .await?

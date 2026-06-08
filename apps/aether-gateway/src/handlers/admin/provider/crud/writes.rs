@@ -1,4 +1,5 @@
 use super::responses::build_admin_providers_data_unavailable_response;
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_write;
 use crate::handlers::admin::provider::shared::paths::{
     admin_provider_id_for_manage_path, is_admin_providers_root,
 };
@@ -105,6 +106,11 @@ pub(crate) async fn maybe_build_local_admin_provider_writes_response(
                 "Provider 不存在",
             )));
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_write(state, &provider_id).await?
+        {
+            return Ok(Some(response));
+        }
         let Some(request_body) = request_body else {
             return Ok(Some(build_admin_provider_bad_request_response(
                 "请求体不能为空",

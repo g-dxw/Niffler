@@ -1,4 +1,5 @@
 use super::payloads::{admin_provider_model_name_exists, build_admin_provider_model_response};
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_model_write;
 use crate::handlers::admin::provider::shared::paths::admin_provider_models_batch_path;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderModelCreateRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
@@ -32,6 +33,11 @@ pub(super) async fn maybe_handle(
                     .into_response(),
             ));
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_model_write(state, &provider_id).await?
+        {
+            return Ok(Some(response));
+        }
         let Some(provider) = state
             .read_provider_catalog_providers_by_ids(std::slice::from_ref(&provider_id))
             .await?

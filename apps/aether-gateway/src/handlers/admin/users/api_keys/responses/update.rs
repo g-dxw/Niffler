@@ -8,6 +8,7 @@ use super::super::helpers::{
 };
 use super::super::paths::admin_user_api_key_parts;
 
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_api_key_product_plan_write;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::shared::normalize_optional_api_key_concurrent_limit;
 use crate::GatewayError;
@@ -52,6 +53,17 @@ pub(crate) async fn build_admin_update_user_api_key_response(
                 .into_response());
         }
     };
+    let updates_product_plan_binding = serde_json::from_slice::<serde_json::Value>(request_body)
+        .ok()
+        .and_then(|value| value.as_object().cloned())
+        .is_some_and(|object| object.contains_key("group_id"));
+    if updates_product_plan_binding {
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_api_key_product_plan_write(state, &api_key_id).await?
+        {
+            return Ok(response);
+        }
+    }
     let feature_settings = if let Some(feature_settings) = payload.feature_settings {
         match normalize_admin_feature_settings(feature_settings) {
             Ok(value) => Some(value),

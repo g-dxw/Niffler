@@ -1,3 +1,4 @@
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderKeyBatchDeleteRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::GatewayError;
@@ -54,6 +55,13 @@ pub(super) async fn maybe_handle(
         .iter()
         .map(|key| key.id.clone())
         .collect::<BTreeSet<_>>();
+    for key_id in &found_ids {
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_key_write(state, key_id).await?
+        {
+            return Ok(Some(response));
+        }
+    }
     let mut failed = payload
         .ids
         .iter()

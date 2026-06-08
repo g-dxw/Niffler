@@ -4,6 +4,7 @@ use super::{
     normalize_admin_user_string_list,
 };
 use crate::constants::DEFAULT_USER_GROUP_CONFIG_KEY;
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_user_group_write;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
@@ -127,6 +128,9 @@ pub(in super::super) async fn build_admin_update_user_group_response(
     let Some(group_id) = user_group_id_from_path(request_context.path()) else {
         return Ok(build_admin_users_bad_request_response("缺少 group_id"));
     };
+    if let Some(response) = maybe_freeze_migrated_legacy_user_group_write(state, &group_id).await? {
+        return Ok(response);
+    }
     let record = match parse_group_record(request_body) {
         Ok(value) => value,
         Err(detail) => return Ok(bad_request_owned(detail)),
@@ -161,6 +165,9 @@ pub(in super::super) async fn build_admin_delete_user_group_response(
     let Some(group_id) = user_group_id_from_path(request_context.path()) else {
         return Ok(build_admin_users_bad_request_response("缺少 group_id"));
     };
+    if let Some(response) = maybe_freeze_migrated_legacy_user_group_write(state, &group_id).await? {
+        return Ok(response);
+    }
     if read_default_user_group_id(state).await?.as_deref() == Some(group_id.as_str()) {
         return Ok(bad_request_owned("默认用户组不能删除".to_string()));
     }

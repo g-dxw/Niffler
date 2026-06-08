@@ -472,6 +472,28 @@ ORDER BY protocol_kind ASC, capability_kind ASC
         })
     }
 
+    async fn find_upstream_account_by_id(
+        &self,
+        upstream_account_id: &str,
+    ) -> Result<Option<StoredNifflerUpstreamAccount>, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, upstream_service_id, display_name, email, phone, auth_kind, status,
+  cost_multiplier, priority, cooldown_until_unix_ms, last_tested_at_unix_ms,
+  last_test_error, config, created_at_unix_ms, updated_at_unix_ms
+FROM niffler_upstream_accounts
+WHERE id = ?
+LIMIT 1
+"#,
+        )
+        .bind(upstream_account_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref().map(map_account_row).transpose()
+    }
+
     async fn list_product_plans(
         &self,
         query: &NifflerProductPlanListQuery,

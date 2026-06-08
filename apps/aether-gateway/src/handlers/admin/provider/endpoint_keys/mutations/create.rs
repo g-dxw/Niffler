@@ -1,4 +1,5 @@
 use crate::handlers::admin::admin_provider_pool_config;
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_collection_write;
 use crate::handlers::admin::provider::shared::paths::admin_provider_id_for_keys;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderKeyCreateRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
@@ -36,6 +37,11 @@ pub(super) async fn maybe_handle(
     let Some(provider_id) = admin_provider_id_for_keys(request_context.path()) else {
         return Ok(Some(not_found_response("Provider 不存在")));
     };
+    if let Some(response) =
+        maybe_freeze_migrated_legacy_provider_key_collection_write(state, &provider_id).await?
+    {
+        return Ok(Some(response));
+    }
     let Some(request_body) = request_body else {
         return Ok(Some(bad_request_response("请求体不能为空")));
     };

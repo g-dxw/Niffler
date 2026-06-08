@@ -1,3 +1,4 @@
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_write;
 use crate::handlers::admin::provider::shared::paths::{
     admin_provider_delete_task_parts, admin_provider_id_for_manage_path,
 };
@@ -57,6 +58,11 @@ pub(crate) async fn maybe_build_local_admin_provider_delete_task_response(
                 "Provider 不存在",
             )));
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_write(state, &provider_id).await?
+        {
+            return Ok(Some(response));
+        }
         let Some(task_id) =
             crate::task_runtime::submit_provider_delete_task(state, &provider_id, Some("admin"))
                 .await?

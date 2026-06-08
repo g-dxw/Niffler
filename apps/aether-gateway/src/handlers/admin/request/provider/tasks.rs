@@ -1,4 +1,5 @@
 use super::*;
+use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_collection_write;
 use axum::{
     body::Body,
     http,
@@ -91,6 +92,11 @@ impl<'a> AdminAppState<'a> {
             )
                 .into_response());
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_key_collection_write(self, &provider.id).await?
+        {
+            return Ok(response);
+        }
 
         let endpoints = self
             .list_provider_catalog_endpoints_by_provider_ids(std::slice::from_ref(&provider.id))
@@ -207,6 +213,11 @@ impl<'a> AdminAppState<'a> {
             )
                 .into_response());
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_key_collection_write(self, &provider.id).await?
+        {
+            return Ok(response);
+        }
 
         let banned_keys = self
             .list_provider_catalog_keys_by_provider_ids(std::slice::from_ref(&provider.id))
@@ -270,6 +281,11 @@ impl<'a> AdminAppState<'a> {
             )
                 .into_response());
         };
+        if let Some(response) =
+            maybe_freeze_migrated_legacy_provider_key_collection_write(self, &provider.id).await?
+        {
+            return Ok(response);
+        }
 
         let plan = match admin_provider_pool_pure::build_admin_pool_batch_action_plan(payload) {
             Ok(plan) => plan,

@@ -683,6 +683,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         query: &NifflerUpstreamAccountListQuery,
     ) -> Result<StoredNifflerUpstreamAccountListPage, crate::DataLayerError>;
 
+    async fn find_upstream_account_by_id(
+        &self,
+        upstream_account_id: &str,
+    ) -> Result<Option<StoredNifflerUpstreamAccount>, crate::DataLayerError>;
+
     async fn list_product_plans(
         &self,
         query: &NifflerProductPlanListQuery,

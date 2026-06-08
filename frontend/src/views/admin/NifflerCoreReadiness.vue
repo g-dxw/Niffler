@@ -159,7 +159,7 @@
               </Badge>
             </div>
             <p class="max-w-3xl text-sm text-muted-foreground">
-              第 5 批第一片只读检查旧 Key 限制、旧分组规则、Provider Key 限制、旧价格、旧写入口和旧运行时读路径。为避免后台默认打开页面时重复读取旧表，这块需要手动读取。
+              第 5 批第二片检查旧 Key 限制、旧分组规则、Provider Key 限制、旧价格、旧写入口冻结和旧运行时读路径。为避免后台默认打开页面时重复读取旧表，这块需要手动读取。
             </p>
             <p
               v-if="legacyAuditError"
@@ -185,7 +185,7 @@
               旧依赖下线稽核
             </h3>
             <p class="mt-1 text-sm text-muted-foreground">
-              第 5 批第一片只读检查。这里不冻结旧入口，也不修改任何旧数据。
+              第 5 批第二片已接入旧写入口冻结机制。已迁移对象的旧入口返回 409 并提示去 Niffler Core 修改；未迁移对象继续旧逻辑。
             </p>
           </div>
           <RefreshButton
