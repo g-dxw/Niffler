@@ -286,18 +286,17 @@ async fn gateway_executes_openai_video_delete_via_reconstructed_data_backed_loca
     ));
     let request_candidate_repository = Arc::new(InMemoryRequestCandidateRepository::default());
 
-    let gateway = build_router_with_state(
-        build_state_with_execution_runtime_override(execution_runtime_url)
-            .with_video_task_truth_source_mode(VideoTaskTruthSourceMode::RustAuthoritative)
-            .with_data_state_for_tests(
-                crate::data::GatewayDataState::with_video_task_provider_transport_and_request_candidate_repository_for_tests(
-                    repository,
-                    provider_catalog_repository,
-                    Arc::clone(&request_candidate_repository),
-                    DEVELOPMENT_ENCRYPTION_KEY,
-                ),
+    let gateway_state = build_state_with_execution_runtime_override(execution_runtime_url)
+        .with_video_task_truth_source_mode(VideoTaskTruthSourceMode::RustAuthoritative)
+        .with_data_state_for_tests(
+            crate::data::GatewayDataState::with_video_task_provider_transport_and_request_candidate_repository_for_tests(
+                repository,
+                provider_catalog_repository,
+                Arc::clone(&request_candidate_repository),
+                DEVELOPMENT_ENCRYPTION_KEY,
             ),
-    );
+        );
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -341,10 +340,25 @@ async fn gateway_executes_openai_video_delete_via_reconstructed_data_backed_loca
         "Bearer sk-upstream-openai-video"
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("request-openai-video-delete-local-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            crate::request_candidate_runtime::flush_request_candidate_status_writes(&gateway_state)
+                .await;
+            let stored_candidates = request_candidate_repository
+                .list_by_request_id("request-openai-video-delete-local-123")
+                .await
+                .expect("request candidate trace should read");
+            if stored_candidates
+                .iter()
+                .any(|candidate| candidate.status == RequestCandidateStatus::Success)
+            {
+                break stored_candidates;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("request candidate status should settle");
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
