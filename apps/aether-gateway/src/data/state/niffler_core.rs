@@ -1,8 +1,9 @@
 use super::{
-    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
-    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, DataLayerError, GatewayDataState,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerBillingReservationRecord,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
+    FinalizeNifflerBillingReservationRecord, GatewayDataState,
     NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
     NifflerBillingReservationListQuery, NifflerErrorReturnSettingListQuery,
     NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
@@ -11,10 +12,10 @@ use super::{
     NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
-    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
-    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
-    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
+    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
     StoredNifflerRouteAttempt, StoredNifflerRouteAttemptListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
@@ -278,6 +279,26 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn sum_active_niffler_billing_reservation_wallet_usd(
+        &self,
+        user_id: Option<&str>,
+        api_key_id: Option<&str>,
+        now_unix_ms: u64,
+    ) -> Result<f64, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => {
+                repository
+                    .sum_active_billing_reservation_wallet_usd(user_id, api_key_id, now_unix_ms)
+                    .await
+            }
+            None => Ok(0.0),
+        }
+    }
+
     pub(crate) async fn list_niffler_billing_reservation_dry_runs(
         &self,
         query: &NifflerBillingReservationDryRunListQuery,
@@ -466,6 +487,41 @@ impl GatewayDataState {
                 .create_settlement_snapshot(record)
                 .await
                 .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_billing_reservation(
+        &self,
+        record: CreateNifflerBillingReservationRecord,
+    ) -> Result<Option<StoredNifflerBillingReservation>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .create_billing_reservation(record)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn finalize_niffler_billing_reservation_by_request_id(
+        &self,
+        record: FinalizeNifflerBillingReservationRecord,
+    ) -> Result<Option<StoredNifflerBillingReservation>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => {
+                repository
+                    .finalize_billing_reservation_by_request_id(record)
+                    .await
+            }
             None => Ok(None),
         }
     }

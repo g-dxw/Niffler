@@ -54,6 +54,7 @@ use crate::headers::{
     extract_or_generate_trace_id, request_origin_from_headers_and_remote_addr,
     should_skip_request_header, RequestBodyNormalizationError,
 };
+use crate::niffler_billing_reservation::prepare_niffler_billing_reservation_for_request;
 use crate::router::RequestAdmissionError;
 use crate::scheduler::config::{read_scheduler_ordering_config, SchedulerSchedulingMode};
 use crate::{
@@ -1417,6 +1418,28 @@ pub(crate) async fn proxy_request(
             .as_ref()
             .expect("execution runtime/control auth gate should have buffered request body");
         let stream_request = request_wants_stream(&request_context, &parts.headers, buffered_body);
+        if let Some(rejection) = prepare_niffler_billing_reservation_for_request(
+            &state,
+            control_decision,
+            &trace_id,
+            &parts.uri,
+            &parts.headers,
+            buffered_body,
+        )
+        .await?
+        {
+            let response =
+                build_local_auth_rejection_response(&trace_id, control_decision, &rejection)?;
+            return Ok(finalize_gateway_response_with_context(
+                &state,
+                response,
+                &remote_addr,
+                &request_context,
+                EXECUTION_PATH_LOCAL_AUTH_DENIED,
+                &started_at,
+                request_permit.take(),
+            ));
+        }
         let mut local_execution_exhaustion = None;
         if stream_request {
             let stream_outcome = maybe_execute_stream_request(

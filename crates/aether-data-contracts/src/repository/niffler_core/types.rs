@@ -377,6 +377,18 @@ pub enum NifflerBillingReservationEventKind {
     ManualReview,
 }
 
+impl NifflerBillingReservationEventKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Reserved => "reserved",
+            Self::Settled => "settled",
+            Self::Released => "released",
+            Self::Expired => "expired",
+            Self::ManualReview => "manual_review",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NifflerReferralRewardRuleStatus {
@@ -722,6 +734,13 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         query: &NifflerBillingReservationListQuery,
     ) -> Result<StoredNifflerBillingReservationListPage, crate::DataLayerError>;
 
+    async fn sum_active_billing_reservation_wallet_usd(
+        &self,
+        user_id: Option<&str>,
+        api_key_id: Option<&str>,
+        now_unix_ms: u64,
+    ) -> Result<f64, crate::DataLayerError>;
+
     async fn list_billing_reservation_dry_runs(
         &self,
         query: &NifflerBillingReservationDryRunListQuery,
@@ -784,6 +803,16 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: CreateNifflerSettlementSnapshotRecord,
     ) -> Result<StoredNifflerSettlementSnapshot, crate::DataLayerError>;
+
+    async fn create_billing_reservation(
+        &self,
+        record: CreateNifflerBillingReservationRecord,
+    ) -> Result<StoredNifflerBillingReservation, crate::DataLayerError>;
+
+    async fn finalize_billing_reservation_by_request_id(
+        &self,
+        record: FinalizeNifflerBillingReservationRecord,
+    ) -> Result<Option<StoredNifflerBillingReservation>, crate::DataLayerError>;
 
     async fn create_billing_reservation_dry_run(
         &self,
@@ -996,6 +1025,7 @@ pub struct NifflerBillingReservationListQuery {
     pub user_id: Option<String>,
     pub api_key_id: Option<String>,
     pub request_id: Option<String>,
+    pub expires_at_lte_unix_ms: Option<u64>,
     pub offset: usize,
     pub limit: usize,
 }
@@ -1508,6 +1538,123 @@ impl CreateNifflerSettlementSnapshotRecord {
             finalized_at_unix_ms: self.finalized_at_unix_ms,
         }
         .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerBillingReservationRecord {
+    pub id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub reserved_total_usd: f64,
+    pub wallet_reserved_usd: f64,
+    pub entitlement_reserved_usd: f64,
+    pub reserved_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub idempotency_key: String,
+    pub event_id: String,
+    pub event_idempotency_key: String,
+    pub actor_id: Option<String>,
+}
+
+impl CreateNifflerBillingReservationRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerBillingReservation {
+            id: self.id.clone(),
+            request_id: self.request_id.clone(),
+            user_id: self.user_id.clone(),
+            api_key_id: self.api_key_id.clone(),
+            product_plan_id: self.product_plan_id.clone(),
+            status: NifflerBillingReservationStatus::Active,
+            reserved_total_usd: self.reserved_total_usd,
+            wallet_reserved_usd: self.wallet_reserved_usd,
+            entitlement_reserved_usd: self.entitlement_reserved_usd,
+            reserved_at_unix_ms: self.reserved_at_unix_ms,
+            expires_at_unix_ms: self.expires_at_unix_ms,
+            finalized_at_unix_ms: None,
+            settlement_snapshot_id: None,
+            release_reason: None,
+            idempotency_key: self.idempotency_key.clone(),
+        }
+        .validate()?;
+        StoredNifflerBillingReservationEvent {
+            id: self.event_id.clone(),
+            reservation_id: self.id.clone(),
+            event_kind: NifflerBillingReservationEventKind::Reserved,
+            amount_usd: self.reserved_total_usd,
+            reason: None,
+            idempotency_key: self.event_idempotency_key.clone(),
+            actor_id: self.actor_id.clone(),
+            created_at_unix_ms: self.reserved_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FinalizeNifflerBillingReservationRecord {
+    pub request_id: String,
+    pub status: NifflerBillingReservationStatus,
+    pub finalized_at_unix_ms: u64,
+    pub settlement_snapshot_id: Option<String>,
+    pub release_reason: Option<String>,
+    pub event_id: String,
+    pub event_idempotency_key: String,
+    pub actor_id: Option<String>,
+}
+
+impl FinalizeNifflerBillingReservationRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("billing_reservations.request_id", &self.request_id)?;
+        validate_required("billing_reservation_events.id", &self.event_id)?;
+        validate_required(
+            "billing_reservation_events.idempotency_key",
+            &self.event_idempotency_key,
+        )?;
+        if self.status == NifflerBillingReservationStatus::Active {
+            return Err(crate::DataLayerError::InvalidInput(
+                "billing reservation final status cannot be active".to_string(),
+            ));
+        }
+        if self.status == NifflerBillingReservationStatus::Settled
+            && self
+                .settlement_snapshot_id
+                .as_deref()
+                .is_none_or(str::is_empty)
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "settled billing reservation must include settlement_snapshot_id".to_string(),
+            ));
+        }
+        if matches!(
+            self.status,
+            NifflerBillingReservationStatus::Released
+                | NifflerBillingReservationStatus::Expired
+                | NifflerBillingReservationStatus::ManualReview
+        ) && self.release_reason.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(crate::DataLayerError::InvalidInput(
+                "released, expired, or manual review billing reservation must include release_reason"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn event_kind(&self) -> NifflerBillingReservationEventKind {
+        match self.status {
+            NifflerBillingReservationStatus::Active => NifflerBillingReservationEventKind::Reserved,
+            NifflerBillingReservationStatus::Settled => NifflerBillingReservationEventKind::Settled,
+            NifflerBillingReservationStatus::Released => {
+                NifflerBillingReservationEventKind::Released
+            }
+            NifflerBillingReservationStatus::Expired => NifflerBillingReservationEventKind::Expired,
+            NifflerBillingReservationStatus::ManualReview => {
+                NifflerBillingReservationEventKind::ManualReview
+            }
+        }
     }
 }
 

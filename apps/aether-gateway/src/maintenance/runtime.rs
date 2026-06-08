@@ -16,6 +16,8 @@ mod cleanup_runs;
 mod config;
 #[path = "runtime/db_maintenance.rs"]
 mod db_maintenance;
+#[path = "runtime/niffler_billing_reservation_expiry.rs"]
+mod niffler_billing_reservation_expiry;
 #[path = "runtime/oauth_token_refresh.rs"]
 mod oauth_token_refresh;
 #[path = "runtime/pending_cleanup.rs"]
@@ -69,6 +71,9 @@ pub(crate) use cleanup_runs::{
 };
 use config::*;
 use db_maintenance::*;
+pub(crate) use niffler_billing_reservation_expiry::{
+    perform_niffler_billing_reservation_expiry_once, NifflerBillingReservationExpirySummary,
+};
 pub(crate) use oauth_token_refresh::{
     perform_oauth_token_refresh_once, OAuthTokenRefreshRunSummary,
 };
@@ -123,6 +128,7 @@ pub(super) fn postgres_error(
 const AUDIT_LOG_CLEANUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const GEMINI_FILE_MAPPING_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const PENDING_CLEANUP_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const NIFFLER_BILLING_RESERVATION_EXPIRY_INTERVAL: Duration = Duration::from_secs(60);
 const PROXY_NODE_STALE_SWEEP_INTERVAL: Duration = Duration::from_secs(5);
 const PROXY_NODE_METRICS_CLEANUP_HOUR: u32 = 2;
 const PROXY_NODE_METRICS_CLEANUP_MINUTE: u32 = 10;
@@ -154,6 +160,8 @@ const DB_MAINTENANCE_MINUTE: u32 = 0;
 const MAINTENANCE_DEFAULT_TIMEZONE: &str = "Asia/Shanghai";
 const DB_MAINTENANCE_TABLES: &[&str] = &["usage", "request_candidates", "audit_logs"];
 const MAX_ADMIN_STATS_REBUILD_BUCKETS: usize = 100_000;
+const NIFFLER_BILLING_RESERVATION_EXPIRY_BATCH_SIZE: usize = 100;
+const NIFFLER_BILLING_RESERVATION_EXPIRY_MAX_BATCHES: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct UsageCleanupSettings {

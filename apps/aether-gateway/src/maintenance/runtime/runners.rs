@@ -12,7 +12,8 @@ use super::{
     cleanup_expired_gemini_file_mappings_once, cleanup_proxy_node_metrics_once,
     cleanup_request_candidates_once, cleanup_stale_pending_requests_once,
     cleanup_stale_proxy_nodes_once, collect_proxy_upgrade_rollout_probes, now_unix_secs,
-    perform_db_maintenance_once, perform_manual_usage_cleanup_once, perform_provider_checkin_once,
+    perform_db_maintenance_once, perform_manual_usage_cleanup_once,
+    perform_niffler_billing_reservation_expiry_once, perform_provider_checkin_once,
     perform_stats_aggregation_once, perform_stats_hourly_aggregation_once,
     perform_usage_cleanup_once, perform_wallet_daily_usage_aggregation_once,
     record_admin_cleanup_run, record_completed_cleanup_run, record_failed_cleanup_run,
@@ -71,6 +72,24 @@ pub(super) async fn run_gemini_file_mapping_cleanup_once(
             worker = "gemini_file_mapping_cleanup",
             deleted,
             "gateway deleted expired gemini file mappings"
+        );
+    }
+    Ok(())
+}
+
+pub(super) async fn run_niffler_billing_reservation_expiry_once(
+    data: &GatewayDataState,
+) -> Result<(), DataLayerError> {
+    let summary = perform_niffler_billing_reservation_expiry_once(data).await?;
+    if summary.expired > 0 || summary.capped {
+        info!(
+            event_name = "niffler_billing_reservation_expiry_completed",
+            log_type = "ops",
+            worker = "niffler_billing_reservation_expiry",
+            scanned = summary.scanned,
+            expired = summary.expired,
+            capped = summary.capped,
+            "gateway expired stale niffler billing reservations"
         );
     }
     Ok(())

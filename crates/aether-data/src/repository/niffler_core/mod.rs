@@ -3,10 +3,11 @@ mod postgres;
 mod sqlite;
 
 pub use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
-    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerBillingReservationRecord,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    FinalizeNifflerBillingReservationRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
     NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
     NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
     NifflerCoreRepository, NifflerCoreWriteRepository, NifflerErrorResponseScope,

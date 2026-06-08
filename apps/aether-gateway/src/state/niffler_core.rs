@@ -1,9 +1,10 @@
 use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
-    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
-    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerApiKeyProductPlanBindingListQuery,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerBillingReservationRecord,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    FinalizeNifflerBillingReservationRecord, NifflerApiKeyProductPlanBindingListQuery,
     NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
     NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
@@ -11,10 +12,11 @@ use aether_data_contracts::repository::niffler_core::{
     NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
     NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
-    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservationDryRun,
-    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
+    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
+    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
     StoredNifflerRouteAttempt, StoredNifflerRouteAttemptListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
@@ -166,6 +168,18 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn sum_active_niffler_billing_reservation_wallet_usd(
+        &self,
+        user_id: Option<&str>,
+        api_key_id: Option<&str>,
+        now_unix_ms: u64,
+    ) -> Result<f64, GatewayError> {
+        self.data
+            .sum_active_niffler_billing_reservation_wallet_usd(user_id, api_key_id, now_unix_ms)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn list_niffler_billing_reservation_dry_runs(
         &self,
         query: &NifflerBillingReservationDryRunListQuery,
@@ -298,6 +312,26 @@ impl AppState {
     ) -> Result<Option<StoredNifflerSettlementSnapshot>, GatewayError> {
         self.data
             .create_niffler_settlement_snapshot(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn create_niffler_billing_reservation(
+        &self,
+        record: CreateNifflerBillingReservationRecord,
+    ) -> Result<Option<StoredNifflerBillingReservation>, GatewayError> {
+        self.data
+            .create_niffler_billing_reservation(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn finalize_niffler_billing_reservation_by_request_id(
+        &self,
+        record: FinalizeNifflerBillingReservationRecord,
+    ) -> Result<Option<StoredNifflerBillingReservation>, GatewayError> {
+        self.data
+            .finalize_niffler_billing_reservation_by_request_id(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

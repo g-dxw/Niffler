@@ -1876,6 +1876,17 @@ impl GatewayDataState {
     }
 
     #[cfg(test)]
+    pub(crate) fn with_minimal_candidate_selection_and_billing_overrides_for_tests(
+        mut self,
+        candidate_selection_repository: Arc<dyn MinimalCandidateSelectionReadRepository>,
+        billing_repository: Arc<dyn BillingReadRepository>,
+    ) -> Self {
+        self.minimal_candidate_selection_reader = Some(candidate_selection_repository);
+        self.billing_reader = Some(billing_repository);
+        self
+    }
+
+    #[cfg(test)]
     pub(crate) fn with_minimal_candidate_selection_and_auth_for_tests(
         candidate_selection_repository: Arc<dyn MinimalCandidateSelectionReadRepository>,
         auth_api_key_repository: Arc<dyn AuthApiKeyReadRepository>,

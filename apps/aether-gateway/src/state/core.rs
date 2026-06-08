@@ -45,6 +45,7 @@ use crate::maintenance::spawn_account_self_check_worker;
 use crate::maintenance::spawn_audit_cleanup_worker;
 use crate::maintenance::spawn_db_maintenance_worker;
 use crate::maintenance::spawn_gemini_file_mapping_cleanup_worker;
+use crate::maintenance::spawn_niffler_billing_reservation_expiry_worker;
 use crate::maintenance::spawn_oauth_token_refresh_worker;
 use crate::maintenance::spawn_pending_cleanup_worker;
 use crate::maintenance::spawn_pool_monitor_worker;
@@ -1198,6 +1199,10 @@ impl AppState {
         supervise_worker(
             crate::task_runtime::TASK_KEY_PENDING_CLEANUP,
             spawn_pending_cleanup_worker(self.data.clone()),
+        );
+        supervise_worker(
+            crate::task_runtime::TASK_KEY_NIFFLER_BILLING_RESERVATION_EXPIRY,
+            spawn_niffler_billing_reservation_expiry_worker(self.data.clone()),
         );
         supervise_worker(
             crate::task_runtime::TASK_KEY_PROXY_NODE_STALE_CLEANUP,

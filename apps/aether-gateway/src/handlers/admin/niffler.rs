@@ -1448,6 +1448,7 @@ async fn build_billing_reservations_response(
         user_id: optional_query_text(request_context.query_string(), "user_id"),
         api_key_id: optional_query_text(request_context.query_string(), "api_key_id"),
         request_id: optional_query_text(request_context.query_string(), "request_id"),
+        expires_at_lte_unix_ms: None,
         offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
         limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
     };

@@ -3,10 +3,11 @@ use sqlx::{sqlite::SqliteRow, QueryBuilder, Row, Sqlite};
 
 use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
-    CreateNifflerBillingReservationDryRunRecord, CreateNifflerErrorReturnSettingRecord,
-    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
+    CreateNifflerBillingReservationDryRunRecord, CreateNifflerBillingReservationRecord,
+    CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    FinalizeNifflerBillingReservationRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
     NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
     NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
     NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
@@ -273,6 +274,42 @@ LIMIT 1
                     "niffler billing reservation dry run missing after write".into(),
                 )
             })
+    }
+
+    async fn reload_billing_reservation_by_request_id(
+        &self,
+        request_id: &str,
+    ) -> Result<StoredNifflerBillingReservation, DataLayerError> {
+        self.find_billing_reservation_by_request_id(request_id)
+            .await?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler billing reservation missing after write".into(),
+                )
+            })
+    }
+
+    async fn find_billing_reservation_by_request_id(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<StoredNifflerBillingReservation>, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, request_id, user_id, api_key_id, product_plan_id, status,
+  reserved_total_usd, wallet_reserved_usd, entitlement_reserved_usd,
+  reserved_at_unix_ms, expires_at_unix_ms, finalized_at_unix_ms,
+  settlement_snapshot_id, release_reason, idempotency_key
+FROM niffler_billing_reservations
+WHERE request_id = ?
+LIMIT 1
+"#,
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref().map(map_billing_reservation_row).transpose()
     }
 }
 
@@ -610,6 +647,58 @@ LIMIT 1
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
+    }
+
+    async fn sum_active_billing_reservation_wallet_usd(
+        &self,
+        user_id: Option<&str>,
+        api_key_id: Option<&str>,
+        now_unix_ms: u64,
+    ) -> Result<f64, DataLayerError> {
+        let now_unix_ms = i64_from_u64(now_unix_ms, "now_unix_ms")?;
+        let user_id = user_id.map(str::trim).filter(|value| !value.is_empty());
+        let api_key_id = api_key_id.map(str::trim).filter(|value| !value.is_empty());
+        let amount = match (user_id, api_key_id) {
+            (Some(user_id), None) => sqlx::query_scalar::<_, Option<f64>>(
+                r#"
+SELECT COALESCE(SUM(wallet_reserved_usd), 0.0)
+FROM niffler_billing_reservations
+WHERE status = 'active' AND expires_at_unix_ms > ? AND user_id = ?
+"#,
+            )
+            .bind(now_unix_ms)
+            .bind(user_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?,
+            (None, Some(api_key_id)) => sqlx::query_scalar::<_, Option<f64>>(
+                r#"
+SELECT COALESCE(SUM(wallet_reserved_usd), 0.0)
+FROM niffler_billing_reservations
+WHERE status = 'active' AND expires_at_unix_ms > ? AND api_key_id = ?
+"#,
+            )
+            .bind(now_unix_ms)
+            .bind(api_key_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?,
+            (Some(user_id), Some(api_key_id)) => sqlx::query_scalar::<_, Option<f64>>(
+                r#"
+SELECT COALESCE(SUM(wallet_reserved_usd), 0.0)
+FROM niffler_billing_reservations
+WHERE status = 'active' AND expires_at_unix_ms > ? AND user_id = ? AND api_key_id = ?
+"#,
+            )
+            .bind(now_unix_ms)
+            .bind(user_id)
+            .bind(api_key_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?,
+            (None, None) => Some(0.0),
+        };
+        Ok(amount.unwrap_or_default().max(0.0))
     }
 
     async fn list_billing_reservation_dry_runs(
@@ -1095,6 +1184,134 @@ ON CONFLICT (request_id) DO UPDATE SET
         .await
         .map_sql_err()?;
         self.reload_settlement_snapshot_by_request_id(&record.request_id)
+            .await
+    }
+
+    async fn create_billing_reservation(
+        &self,
+        record: CreateNifflerBillingReservationRecord,
+    ) -> Result<StoredNifflerBillingReservation, DataLayerError> {
+        record.validate()?;
+        let reserved_at_unix_ms = i64_from_u64(record.reserved_at_unix_ms, "reserved_at_unix_ms")?;
+        let expires_at_unix_ms = i64_from_u64(record.expires_at_unix_ms, "expires_at_unix_ms")?;
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let insert_result = sqlx::query(
+            r#"
+INSERT OR IGNORE INTO niffler_billing_reservations (
+  id, request_id, user_id, api_key_id, product_plan_id, status,
+  reserved_total_usd, wallet_reserved_usd, entitlement_reserved_usd,
+  reserved_at_unix_ms, expires_at_unix_ms, finalized_at_unix_ms,
+  settlement_snapshot_id, release_reason, idempotency_key
+)
+VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.request_id)
+        .bind(&record.user_id)
+        .bind(&record.api_key_id)
+        .bind(&record.product_plan_id)
+        .bind(record.reserved_total_usd)
+        .bind(record.wallet_reserved_usd)
+        .bind(record.entitlement_reserved_usd)
+        .bind(reserved_at_unix_ms)
+        .bind(expires_at_unix_ms)
+        .bind(&record.idempotency_key)
+        .execute(&mut *tx)
+        .await
+        .map_sql_err()?;
+        if insert_result.rows_affected() > 0 {
+            sqlx::query(
+                r#"
+INSERT OR IGNORE INTO niffler_billing_reservation_events (
+  id, reservation_id, event_kind, amount_usd, reason, idempotency_key, actor_id,
+  created_at_unix_ms
+)
+VALUES (?, ?, 'reserved', ?, NULL, ?, ?, ?)
+"#,
+            )
+            .bind(&record.event_id)
+            .bind(&record.id)
+            .bind(record.reserved_total_usd)
+            .bind(&record.event_idempotency_key)
+            .bind(&record.actor_id)
+            .bind(reserved_at_unix_ms)
+            .execute(&mut *tx)
+            .await
+            .map_sql_err()?;
+        }
+        tx.commit().await.map_sql_err()?;
+        self.reload_billing_reservation_by_request_id(&record.request_id)
+            .await
+    }
+
+    async fn finalize_billing_reservation_by_request_id(
+        &self,
+        record: FinalizeNifflerBillingReservationRecord,
+    ) -> Result<Option<StoredNifflerBillingReservation>, DataLayerError> {
+        record.validate()?;
+        let finalized_at_unix_ms =
+            i64_from_u64(record.finalized_at_unix_ms, "finalized_at_unix_ms")?;
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let row = sqlx::query(
+            r#"
+SELECT id, status, reserved_total_usd
+FROM niffler_billing_reservations
+WHERE request_id = ?
+LIMIT 1
+"#,
+        )
+        .bind(&record.request_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_sql_err()?;
+        if let Some(row) = row.as_ref() {
+            let reservation_id: String = row.try_get("id").map_sql_err()?;
+            let status: String = row.try_get("status").map_sql_err()?;
+            if status == "active" {
+                let amount_usd: f64 = row.try_get("reserved_total_usd").map_sql_err()?;
+                sqlx::query(
+                    r#"
+UPDATE niffler_billing_reservations
+SET status = ?,
+    finalized_at_unix_ms = ?,
+    settlement_snapshot_id = ?,
+    release_reason = ?
+WHERE request_id = ? AND status = 'active'
+"#,
+                )
+                .bind(record.status.as_str())
+                .bind(finalized_at_unix_ms)
+                .bind(&record.settlement_snapshot_id)
+                .bind(&record.release_reason)
+                .bind(&record.request_id)
+                .execute(&mut *tx)
+                .await
+                .map_sql_err()?;
+                sqlx::query(
+                    r#"
+INSERT OR IGNORE INTO niffler_billing_reservation_events (
+  id, reservation_id, event_kind, amount_usd, reason, idempotency_key, actor_id,
+  created_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+"#,
+                )
+                .bind(&record.event_id)
+                .bind(&reservation_id)
+                .bind(record.event_kind().as_str())
+                .bind(amount_usd)
+                .bind(&record.release_reason)
+                .bind(&record.event_idempotency_key)
+                .bind(&record.actor_id)
+                .bind(finalized_at_unix_ms)
+                .execute(&mut *tx)
+                .await
+                .map_sql_err()?;
+            }
+        }
+        tx.commit().await.map_sql_err()?;
+        self.find_billing_reservation_by_request_id(&record.request_id)
             .await
     }
 
@@ -1685,6 +1902,12 @@ fn push_billing_reservation_filters(
         builder.push(if has_where { " AND " } else { " WHERE " });
         builder.push("request_id = ");
         builder.push_bind(request_id.clone());
+        has_where = true;
+    }
+    if let Some(expires_at_lte_unix_ms) = query.expires_at_lte_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("expires_at_unix_ms <= ");
+        builder.push_bind(i64::try_from(expires_at_lte_unix_ms).unwrap_or(i64::MAX));
     }
 }
 
@@ -2387,4 +2610,132 @@ fn map_route_attempt_row(
             "created_at_unix_ms",
         )?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lifecycle::migrate::run_sqlite_migrations;
+    use sqlx::Row;
+
+    async fn test_repository() -> SqliteNifflerCoreRepository {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        SqliteNifflerCoreRepository::new(pool)
+    }
+
+    fn reservation_record(
+        request_id: &str,
+        wallet_reserved_usd: f64,
+        expires_at_unix_ms: u64,
+    ) -> CreateNifflerBillingReservationRecord {
+        CreateNifflerBillingReservationRecord {
+            id: format!("reservation-{request_id}"),
+            request_id: request_id.to_string(),
+            user_id: Some("user-1".to_string()),
+            api_key_id: Some("key-1".to_string()),
+            product_plan_id: Some("plan-1".to_string()),
+            reserved_total_usd: wallet_reserved_usd,
+            wallet_reserved_usd,
+            entitlement_reserved_usd: 0.0,
+            reserved_at_unix_ms: 1_000,
+            expires_at_unix_ms,
+            idempotency_key: format!("reservation-idempotency-{request_id}"),
+            event_id: format!("reserved-event-{request_id}"),
+            event_idempotency_key: format!("reserved-event-idempotency-{request_id}"),
+            actor_id: Some("test".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn sqlite_billing_reservation_create_sum_filter_and_finalize() {
+        let repository = test_repository().await;
+        repository
+            .create_billing_reservation(reservation_record("request-expired", 1.25, 2_000))
+            .await
+            .expect("expired reservation should create");
+        repository
+            .create_billing_reservation(reservation_record("request-open", 2.5, 4_000))
+            .await
+            .expect("open reservation should create");
+
+        let active_before_expiry = repository
+            .sum_active_billing_reservation_wallet_usd(Some("user-1"), Some("key-1"), 1_500)
+            .await
+            .expect("active sum should read");
+        assert!((active_before_expiry - 3.75).abs() < f64::EPSILON);
+
+        let expired_page = repository
+            .list_billing_reservations(&NifflerBillingReservationListQuery {
+                status: Some(NifflerBillingReservationStatus::Active),
+                user_id: None,
+                api_key_id: None,
+                request_id: None,
+                expires_at_lte_unix_ms: Some(2_500),
+                offset: 0,
+                limit: 10,
+            })
+            .await
+            .expect("expired reservations should list");
+        assert_eq!(expired_page.items.len(), 1);
+        assert_eq!(expired_page.items[0].request_id, "request-expired");
+
+        let finalized = repository
+            .finalize_billing_reservation_by_request_id(FinalizeNifflerBillingReservationRecord {
+                request_id: "request-expired".to_string(),
+                status: NifflerBillingReservationStatus::Expired,
+                finalized_at_unix_ms: 2_500,
+                settlement_snapshot_id: None,
+                release_reason: Some("reservation_expired".to_string()),
+                event_id: "expired-event-request-expired".to_string(),
+                event_idempotency_key: "expired-event-idempotency-request-expired".to_string(),
+                actor_id: Some("system".to_string()),
+            })
+            .await
+            .expect("reservation should finalize")
+            .expect("reservation should exist");
+        assert_eq!(finalized.status, NifflerBillingReservationStatus::Expired);
+
+        let active_after_finalize = repository
+            .sum_active_billing_reservation_wallet_usd(Some("user-1"), Some("key-1"), 1_500)
+            .await
+            .expect("active sum should read after finalize");
+        assert!((active_after_finalize - 2.5).abs() < f64::EPSILON);
+
+        let repeated = repository
+            .finalize_billing_reservation_by_request_id(FinalizeNifflerBillingReservationRecord {
+                request_id: "request-expired".to_string(),
+                status: NifflerBillingReservationStatus::Released,
+                finalized_at_unix_ms: 3_000,
+                settlement_snapshot_id: None,
+                release_reason: Some("late_release_should_not_overwrite".to_string()),
+                event_id: "released-event-request-expired".to_string(),
+                event_idempotency_key: "released-event-idempotency-request-expired".to_string(),
+                actor_id: Some("system".to_string()),
+            })
+            .await
+            .expect("repeat finalize should be idempotent")
+            .expect("reservation should still exist");
+        assert_eq!(repeated.status, NifflerBillingReservationStatus::Expired);
+        assert_eq!(
+            repeated.release_reason.as_deref(),
+            Some("reservation_expired")
+        );
+
+        let expired_events: i64 = sqlx::query(
+            "SELECT COUNT(*) AS count FROM niffler_billing_reservation_events WHERE event_kind = 'expired'",
+        )
+        .fetch_one(&repository.pool)
+        .await
+        .expect("expired event count should read")
+        .try_get("count")
+        .expect("count should decode");
+        assert_eq!(expired_events, 1);
+    }
 }

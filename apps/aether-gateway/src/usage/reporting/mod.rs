@@ -4,7 +4,8 @@ use aether_contracts::ExecutionError;
 use aether_data_contracts::repository::candidates::RequestCandidateStatus;
 use aether_data_contracts::repository::niffler_core::{
     CreateNifflerBillingReservationDryRunRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerSettlementSnapshotRecord, FinalizeNifflerBillingReservationRecord,
+    NifflerBillingReservationStatus,
 };
 use aether_scheduler_core::{
     execution_error_details, parse_request_candidate_report_context,
@@ -17,6 +18,7 @@ use crate::clock::current_unix_ms;
 use crate::log_ids::short_request_id;
 use crate::niffler_runtime::{
     resolve_niffler_runtime_rollout_decision, NifflerRuntimeRolloutDecision,
+    NifflerRuntimeRolloutDecisionSource,
 };
 use crate::orchestration::{apply_local_report_effect, LocalReportEffect};
 use crate::request_candidate_runtime::record_report_request_candidate_status;
@@ -418,8 +420,136 @@ fn spawn_niffler_shadow_reports(
                     "gateway skipped niffler billing reservation dry run write because settlement or charge data is incomplete"
                 );
             }
+            if decision.source == Some(NifflerRuntimeRolloutDecisionSource::ApiKey) {
+                finalize_niffler_billing_reservation(
+                    &state,
+                    &context,
+                    &decision,
+                    status,
+                    upstream_status_code,
+                    created_at_unix_ms,
+                )
+                .await;
+            }
         }
     });
+}
+
+async fn finalize_niffler_billing_reservation(
+    state: &AppState,
+    context: &serde_json::Value,
+    decision: &NifflerRuntimeRolloutDecision,
+    status: RequestCandidateStatus,
+    upstream_status_code: Option<u16>,
+    finalized_at_unix_ms: u64,
+) {
+    let Some(metadata) = parse_request_candidate_report_context(Some(context)) else {
+        return;
+    };
+    let Some(request_id) = metadata.request_id else {
+        return;
+    };
+    let (final_status, settlement_snapshot_id, release_reason) = match status {
+        RequestCandidateStatus::Success => {
+            match build_niffler_settlement_snapshot_shadow_record(
+                Some(context),
+                decision,
+                finalized_at_unix_ms,
+            ) {
+                Some(record) => {
+                    let snapshot_id = record.id.clone();
+                    if let Err(error) = state.create_niffler_settlement_snapshot(record).await {
+                        warn!(
+                            event_name = "niffler_billing_reservation_settlement_snapshot_write_failed",
+                            log_type = "ops",
+                            report_request_id = %short_request_id(request_id.as_str()),
+                            error = ?error,
+                            "gateway failed to write settlement snapshot before finalizing niffler billing reservation"
+                        );
+                        (
+                            NifflerBillingReservationStatus::ManualReview,
+                            None,
+                            Some("settlement_snapshot_write_failed".to_string()),
+                        )
+                    } else {
+                        (
+                            NifflerBillingReservationStatus::Settled,
+                            Some(snapshot_id),
+                            None,
+                        )
+                    }
+                }
+                None => (
+                    NifflerBillingReservationStatus::ManualReview,
+                    None,
+                    Some("missing_settlement_snapshot".to_string()),
+                ),
+            }
+        }
+        RequestCandidateStatus::Failed => (
+            NifflerBillingReservationStatus::Released,
+            None,
+            Some(release_reason("failed", upstream_status_code)),
+        ),
+        RequestCandidateStatus::Cancelled => (
+            NifflerBillingReservationStatus::Released,
+            None,
+            Some(release_reason("cancelled", upstream_status_code)),
+        ),
+        _ => (
+            NifflerBillingReservationStatus::Released,
+            None,
+            Some(release_reason("not_success", upstream_status_code)),
+        ),
+    };
+    let record = FinalizeNifflerBillingReservationRecord {
+        request_id: request_id.clone(),
+        status: final_status,
+        finalized_at_unix_ms,
+        settlement_snapshot_id,
+        release_reason,
+        event_id: stable_niffler_billing_reservation_event_id(&request_id, final_status),
+        event_idempotency_key: format!(
+            "reservation-event-finalize:{}:{}",
+            final_status.as_str(),
+            request_id
+        ),
+        actor_id: metadata.user_id,
+    };
+    if let Err(error) = state
+        .finalize_niffler_billing_reservation_by_request_id(record)
+        .await
+    {
+        warn!(
+            event_name = "niffler_billing_reservation_finalize_failed",
+            log_type = "ops",
+            report_request_id = %short_request_id(request_id.as_str()),
+            error = ?error,
+            "gateway failed to finalize niffler billing reservation"
+        );
+    }
+}
+
+fn release_reason(label: &str, upstream_status_code: Option<u16>) -> String {
+    match upstream_status_code {
+        Some(status_code) => format!("{label}:upstream_status_{status_code}"),
+        None => label.to_string(),
+    }
+}
+
+fn stable_niffler_billing_reservation_event_id(
+    request_id: &str,
+    status: NifflerBillingReservationStatus,
+) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!(
+            "niffler-billing-reservation-event-finalize:{}:{request_id}",
+            status.as_str()
+        )
+        .as_bytes(),
+    )
+    .to_string()
 }
 
 fn build_niffler_route_attempt_shadow_record(
@@ -715,8 +845,13 @@ mod tests {
     use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
     use aether_data::repository::usage::InMemoryUsageReadRepository;
     use aether_data::repository::video_tasks::InMemoryVideoTaskRepository;
+    use aether_data::{DatabaseDriver, SqlDatabaseConfig, SqlPoolConfig};
     use aether_data_contracts::repository::candidates::{
         RequestCandidateReadRepository, RequestCandidateStatus, StoredRequestCandidate,
+    };
+    use aether_data_contracts::repository::niffler_core::{
+        CreateNifflerBillingReservationRecord, NifflerBillingReservationListQuery,
+        NifflerBillingReservationStatus, NifflerSettlementSnapshotListQuery,
     };
     use aether_data_contracts::repository::provider_catalog::{
         ProviderCatalogReadRepository, StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -729,10 +864,11 @@ mod tests {
     use super::{
         build_niffler_billing_reservation_dry_run_shadow_record,
         build_niffler_route_attempt_shadow_record, build_niffler_settlement_snapshot_shadow_record,
-        resolve_locally_actionable_report_context, submit_stream_report, submit_sync_report,
-        GatewayStreamReportRequest, GatewaySyncReportRequest,
+        finalize_niffler_billing_reservation, resolve_locally_actionable_report_context,
+        submit_stream_report, submit_sync_report, GatewayStreamReportRequest,
+        GatewaySyncReportRequest,
     };
-    use crate::data::GatewayDataState;
+    use crate::data::{GatewayDataConfig, GatewayDataState};
     use crate::niffler_runtime::{
         NifflerRuntimeRolloutDecision, NifflerRuntimeRolloutDecisionSource,
     };
@@ -932,6 +1068,42 @@ mod tests {
             enable_error_return_rules: false,
             enable_billing_reservation: false,
             enable_referral_ledger: false,
+        }
+    }
+
+    async fn sqlite_niffler_state() -> AppState {
+        let mut pool = SqlPoolConfig::default();
+        pool.min_connections = 0;
+        pool.max_connections = 1;
+        let database = SqlDatabaseConfig::new(DatabaseDriver::Sqlite, "sqlite::memory:", pool)
+            .expect("sqlite database config should build");
+        let state = AppState::new()
+            .expect("app state should build")
+            .with_data_config(GatewayDataConfig::from_database_config(database))
+            .expect("sqlite data config should wire");
+        assert!(state
+            .run_database_migrations()
+            .await
+            .expect("sqlite migrations should run"));
+        state
+    }
+
+    fn billing_reservation_record(request_id: &str) -> CreateNifflerBillingReservationRecord {
+        CreateNifflerBillingReservationRecord {
+            id: format!("reservation-{request_id}"),
+            request_id: request_id.to_string(),
+            user_id: Some("user-finalize-tests-123".to_string()),
+            api_key_id: Some("api-key-finalize-tests-123".to_string()),
+            product_plan_id: Some("product-plan-reporting-tests-123".to_string()),
+            reserved_total_usd: 0.24,
+            wallet_reserved_usd: 0.24,
+            entitlement_reserved_usd: 0.0,
+            reserved_at_unix_ms: 1_700_000_000_000,
+            expires_at_unix_ms: 1_700_000_060_000,
+            idempotency_key: format!("reservation-idempotency-{request_id}"),
+            event_id: format!("reserved-event-{request_id}"),
+            event_idempotency_key: format!("reserved-event-idempotency-{request_id}"),
+            actor_id: Some("user-finalize-tests-123".to_string()),
         }
     }
 
@@ -2247,5 +2419,161 @@ mod tests {
         );
 
         assert!(record.is_none());
+    }
+
+    #[tokio::test]
+    async fn finalizes_niffler_billing_reservations_by_request_outcome() {
+        let state = sqlite_niffler_state().await;
+        for request_id in [
+            "req-reservation-finalize-success-123",
+            "req-reservation-finalize-failed-123",
+            "req-reservation-finalize-manual-review-123",
+        ] {
+            state
+                .create_niffler_billing_reservation(billing_reservation_record(request_id))
+                .await
+                .expect("billing reservation should create");
+        }
+
+        let mut decision = enabled_rollout_decision("api-key-finalize-tests-123");
+        decision.source = Some(NifflerRuntimeRolloutDecisionSource::ApiKey);
+        decision.enable_billing_reservation = true;
+
+        let success_context = json!({
+            "request_id": "req-reservation-finalize-success-123",
+            "user_id": "user-finalize-tests-123",
+            "api_key_id": "api-key-finalize-tests-123",
+            "provider_id": "provider-finalize-tests-123",
+            "key_id": "provider-key-finalize-tests-123",
+            "model": "gpt-5.5",
+            "mapped_model": "gpt-5.5-upstream",
+            "settlement_snapshot": {
+                "pricing_snapshot": {
+                    "provider_id": "provider-finalize-tests-123",
+                    "provider_api_key_id": "provider-key-finalize-tests-123",
+                    "global_model_name": "gpt-5.5",
+                    "provider_model_name": "gpt-5.5-upstream"
+                },
+                "user_total_cost_usd": 0.24,
+                "total_cost": 0.24,
+                "actual_total_cost": 0.08
+            },
+            "charge_breakdown_snapshot": {
+                "wallet_debit_usd": 0.14,
+                "package_debit_usd": 0.1
+            }
+        });
+        finalize_niffler_billing_reservation(
+            &state,
+            &success_context,
+            &decision,
+            RequestCandidateStatus::Success,
+            Some(200),
+            1_700_000_001_000,
+        )
+        .await;
+
+        let failed_context = json!({
+            "request_id": "req-reservation-finalize-failed-123",
+            "user_id": "user-finalize-tests-123",
+            "api_key_id": "api-key-finalize-tests-123"
+        });
+        finalize_niffler_billing_reservation(
+            &state,
+            &failed_context,
+            &decision,
+            RequestCandidateStatus::Failed,
+            Some(429),
+            1_700_000_002_000,
+        )
+        .await;
+
+        let missing_snapshot_context = json!({
+            "request_id": "req-reservation-finalize-manual-review-123",
+            "user_id": "user-finalize-tests-123",
+            "api_key_id": "api-key-finalize-tests-123"
+        });
+        finalize_niffler_billing_reservation(
+            &state,
+            &missing_snapshot_context,
+            &decision,
+            RequestCandidateStatus::Success,
+            Some(200),
+            1_700_000_003_000,
+        )
+        .await;
+
+        let success = state
+            .list_niffler_billing_reservations(&NifflerBillingReservationListQuery {
+                status: None,
+                user_id: None,
+                api_key_id: None,
+                request_id: Some("req-reservation-finalize-success-123".to_string()),
+                expires_at_lte_unix_ms: None,
+                offset: 0,
+                limit: 1,
+            })
+            .await
+            .expect("success reservation should read");
+        assert_eq!(
+            success.items[0].status,
+            NifflerBillingReservationStatus::Settled
+        );
+        assert!(success.items[0].settlement_snapshot_id.is_some());
+
+        let snapshots = state
+            .list_niffler_settlement_snapshots(&NifflerSettlementSnapshotListQuery {
+                request_id: Some("req-reservation-finalize-success-123".to_string()),
+                user_id: None,
+                api_key_id: None,
+                product_plan_id: None,
+                offset: 0,
+                limit: 1,
+            })
+            .await
+            .expect("settlement snapshot should read");
+        assert_eq!(snapshots.items.len(), 1);
+
+        let failed = state
+            .list_niffler_billing_reservations(&NifflerBillingReservationListQuery {
+                status: None,
+                user_id: None,
+                api_key_id: None,
+                request_id: Some("req-reservation-finalize-failed-123".to_string()),
+                expires_at_lte_unix_ms: None,
+                offset: 0,
+                limit: 1,
+            })
+            .await
+            .expect("failed reservation should read");
+        assert_eq!(
+            failed.items[0].status,
+            NifflerBillingReservationStatus::Released
+        );
+        assert_eq!(
+            failed.items[0].release_reason.as_deref(),
+            Some("failed:upstream_status_429")
+        );
+
+        let manual_review = state
+            .list_niffler_billing_reservations(&NifflerBillingReservationListQuery {
+                status: None,
+                user_id: None,
+                api_key_id: None,
+                request_id: Some("req-reservation-finalize-manual-review-123".to_string()),
+                expires_at_lte_unix_ms: None,
+                offset: 0,
+                limit: 1,
+            })
+            .await
+            .expect("manual review reservation should read");
+        assert_eq!(
+            manual_review.items[0].status,
+            NifflerBillingReservationStatus::ManualReview
+        );
+        assert_eq!(
+            manual_review.items[0].release_reason.as_deref(),
+            Some("missing_settlement_snapshot")
+        );
     }
 }

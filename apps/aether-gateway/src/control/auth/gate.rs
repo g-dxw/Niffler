@@ -12,6 +12,15 @@ const QUOTA_AVAILABILITY_CACHE_TTL_SECS: u64 = 3;
 const UNRESOLVED_REQUESTED_MODEL_QUOTA_SCOPE: &str = "__niffler_unresolved_requested_model__";
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RequestWalletReservationEstimate {
+    pub(crate) requested_model: String,
+    pub(crate) estimated_cost_usd: f64,
+    pub(crate) needed_usd: f64,
+    pub(crate) available_usd: Option<f64>,
+    pub(crate) wallet_reservation_usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum GatewayLocalAuthRejection {
     InvalidApiKey,
     LockedApiKey,
@@ -304,6 +313,50 @@ async fn balance_capacity_rejection(
     headers: &http::HeaderMap,
     body: &Bytes,
 ) -> Result<Option<GatewayLocalAuthRejection>, GatewayError> {
+    let Some(estimate) = estimate_request_wallet_reservation(
+        state,
+        decision,
+        auth_context,
+        requested_model,
+        &mut requested_global_model_id,
+        preloaded_quota,
+        pay_as_you_go_allowed,
+        headers,
+        body,
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    let Some(available_usd) = estimate.available_usd else {
+        return Ok(None);
+    };
+    if available_usd <= DAILY_QUOTA_EPSILON_USD {
+        return Ok(Some(GatewayLocalAuthRejection::BalanceDenied {
+            remaining: Some(0.0),
+        }));
+    }
+    if estimate.needed_usd > available_usd + DAILY_QUOTA_EPSILON_USD {
+        return Ok(Some(GatewayLocalAuthRejection::BalanceDenied {
+            remaining: Some(available_usd),
+        }));
+    }
+    Ok(None)
+}
+
+pub(crate) async fn estimate_request_wallet_reservation(
+    state: &AppState,
+    decision: &GatewayControlDecision,
+    auth_context: &GatewayControlAuthContext,
+    requested_model: Option<&str>,
+    requested_global_model_id: &mut Option<String>,
+    preloaded_quota: Option<
+        aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord,
+    >,
+    pay_as_you_go_allowed: bool,
+    headers: &http::HeaderMap,
+    body: &Bytes,
+) -> Result<Option<RequestWalletReservationEstimate>, GatewayError> {
     if auth_context.api_key_is_standalone {
         return Ok(None);
     }
@@ -327,7 +380,7 @@ async fn balance_capacity_rejection(
         decision,
         auth_context,
         Some(requested_model),
-        &mut requested_global_model_id,
+        requested_global_model_id,
         preloaded_quota,
     )
     .await?;
@@ -344,12 +397,12 @@ async fn balance_capacity_rejection(
         .is_some_and(|wallet| wallet.limit_mode.eq_ignore_ascii_case("unlimited"));
     let sales_multiplier =
         sales_multiplier_for_auth_context(auth_context, requested_global_model_id.as_deref());
-    let (needed_usd, available_usd) = match quota.as_ref() {
+    let (needed_usd, available_usd, wallet_reservation_usd) = match quota.as_ref() {
         Some(quota) if !quota.allow_wallet_overage => {
-            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)))
+            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)), 0.0)
         }
         Some(quota) if !pay_as_you_go_allowed => {
-            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)))
+            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)), 0.0)
         }
         Some(quota) if wallet_is_unlimited => {
             let base_overage = (estimated_cost_usd - quota.remaining_usd.max(0.0)).max(0.0);
@@ -358,27 +411,24 @@ async fn balance_capacity_rejection(
             }
             return Ok(None);
         }
-        Some(quota) => (
-            (estimated_cost_usd - quota.remaining_usd.max(0.0)).max(0.0) * sales_multiplier,
-            wallet_available_usd,
-        ),
+        Some(quota) => {
+            let wallet_needed =
+                (estimated_cost_usd - quota.remaining_usd.max(0.0)).max(0.0) * sales_multiplier;
+            (wallet_needed, wallet_available_usd, wallet_needed)
+        }
         None if wallet_is_unlimited => return Ok(None),
-        None => (estimated_cost_usd * sales_multiplier, wallet_available_usd),
+        None => {
+            let wallet_needed = estimated_cost_usd * sales_multiplier;
+            (wallet_needed, wallet_available_usd, wallet_needed)
+        }
     };
-    let Some(available_usd) = available_usd else {
-        return Ok(None);
-    };
-    if available_usd <= DAILY_QUOTA_EPSILON_USD {
-        return Ok(Some(GatewayLocalAuthRejection::BalanceDenied {
-            remaining: Some(0.0),
-        }));
-    }
-    if needed_usd > available_usd + DAILY_QUOTA_EPSILON_USD {
-        return Ok(Some(GatewayLocalAuthRejection::BalanceDenied {
-            remaining: Some(available_usd),
-        }));
-    }
-    Ok(None)
+    Ok(Some(RequestWalletReservationEstimate {
+        requested_model: requested_model.to_string(),
+        estimated_cost_usd,
+        needed_usd,
+        available_usd,
+        wallet_reservation_usd: wallet_reservation_usd.max(0.0),
+    }))
 }
 
 fn wallet_finite_available_usd(
