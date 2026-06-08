@@ -15,15 +15,20 @@
 - 后台 Niffler 核心对账页展示最近稳定观察快照。
 - 页面显示状态、阻断原因、未知上游数量、旧写入口调用数量、预占异常数量、返利异常数量和回滚演练状态。
 - 页面明确提示回滚演练状态来自系统配置 `niffler_stability_rollback_drill_status`，允许值为 `passed`、`failed`、`not_recorded`。
+- 回滚演练状态必须通过 `/api/admin/niffler-core/rollback-drill-evidence` 记录。记录 `passed` 时必须同时提交备份引用、可回滚镜像标签和演练说明。
+- 如果有人只通过通用系统配置把 `niffler_stability_rollback_drill_status` 改成 `passed`，但没有提交演练证据，稳定观察仍显示 `pending`。
 - 管理员只有在确认可回滚镜像、近期数据库备份和演练记录都存在后，才能把回滚演练状态记录为 `passed`。
 
 ## 影响范围
 
-- 只影响管理后台展示和运维说明。
-- 不改变请求调度、计费、结算、返利、旧接口兼容或稳定观察生成逻辑。
+- 影响管理后台展示、回滚演练证据记录和稳定观察判定。
+- 不改变请求调度、计费、结算、返利或旧接口兼容。
+- 稳定观察会更严格：状态为 `passed` 但缺少证据时仍按 `pending` 处理。
+- 专用证据接口只写系统配置，不执行回滚、不执行数据库备份、不重启服务。
 
 ## 验证方式
 
 - 前端类型检查和构建通过。
 - 管理后台 `/admin/niffler-core` 能看到稳定观察卡片。
 - 生产只读接口 `/api/admin/niffler-core/stability-observations?limit=5` 返回的阻断项能在页面上看懂。
+- 后端测试覆盖缺少回滚演练证据时不能计入通过。

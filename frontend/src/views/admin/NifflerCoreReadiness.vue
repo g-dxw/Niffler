@@ -226,9 +226,157 @@
             </div>
           </div>
 
-          <p class="text-xs text-muted-foreground">
-            回滚演练状态只能在确认可回滚镜像、近期数据库备份和演练记录都存在后记录为 passed；本页不提供写入操作。
-          </p>
+          <div class="rounded-lg border border-border/60">
+            <div class="flex flex-col gap-3 border-b border-border/60 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="font-medium">
+                    回滚演练证据
+                  </p>
+                  <Badge :variant="rollbackEvidence?.evidence_complete ? 'outline' : 'secondary'">
+                    {{ rollbackEvidenceStatusText }}
+                  </Badge>
+                </div>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  只有状态为“已通过”且备份引用、可回滚镜像标签、演练说明都存在，稳定观察才会计入通过。
+                </p>
+              </div>
+              <RefreshButton
+                :loading="rollbackEvidenceLoading"
+                @click="loadRollbackDrillEvidence"
+              />
+            </div>
+
+            <div
+              v-if="rollbackEvidenceLoading && !rollbackEvidence"
+              class="p-5 text-sm text-muted-foreground"
+            >
+              正在读取回滚演练证据...
+            </div>
+            <div
+              v-else
+              class="space-y-4 p-4"
+            >
+              <div
+                v-if="rollbackEvidenceError"
+                class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+              >
+                <AlertCircle class="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{{ rollbackEvidenceError }}</span>
+              </div>
+
+              <div class="grid gap-3 text-sm md:grid-cols-3">
+                <div>
+                  <p class="text-xs text-muted-foreground">
+                    状态配置
+                  </p>
+                  <p class="mt-1 break-all font-mono text-xs">
+                    {{ rollbackEvidence?.status_config_key || '-' }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted-foreground">
+                    证据配置
+                  </p>
+                  <p class="mt-1 break-all font-mono text-xs">
+                    {{ rollbackEvidence?.evidence_config_key || '-' }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted-foreground">
+                    最近记录
+                  </p>
+                  <p class="mt-1">
+                    {{ formatUnixMs(rollbackEvidence?.evidence.recorded_at_unix_ms || 0) }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid gap-4 lg:grid-cols-2">
+                <div class="space-y-2">
+                  <Label for="rollback-drill-status">
+                    演练状态
+                  </Label>
+                  <Select
+                    id="rollback-drill-status"
+                    v-model="rollbackEvidenceForm.status"
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择演练状态" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="not_recorded">
+                        未记录
+                      </SelectItem>
+                      <SelectItem value="failed">
+                        演练失败
+                      </SelectItem>
+                      <SelectItem value="passed">
+                        已通过
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div class="space-y-2">
+                  <Label for="rollback-backup-reference">
+                    备份引用
+                  </Label>
+                  <Input
+                    id="rollback-backup-reference"
+                    v-model="rollbackEvidenceForm.backup_reference"
+                    placeholder="例如备份文件名、备份任务号或对象存储路径"
+                  />
+                </div>
+                <div class="space-y-2">
+                  <Label for="rollback-image-tag">
+                    可回滚镜像标签
+                  </Label>
+                  <Input
+                    id="rollback-image-tag"
+                    v-model="rollbackEvidenceForm.rollback_image_tag"
+                    placeholder="例如 niffler-app:20260609-xxxx"
+                  />
+                </div>
+                <div class="space-y-2">
+                  <Label>
+                    记录人
+                  </Label>
+                  <Input
+                    :model-value="rollbackEvidence?.evidence.recorded_by || '-'"
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <Label for="rollback-drill-summary">
+                  演练说明
+                </Label>
+                <Textarea
+                  id="rollback-drill-summary"
+                  v-model="rollbackEvidenceForm.drill_summary"
+                  rows="4"
+                  placeholder="写清演练时间、验证步骤、结果和未完成事项。"
+                />
+              </div>
+
+              <div class="flex flex-col gap-3 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-xs text-muted-foreground">
+                  确认后再保存。“已通过”需要备份引用、镜像标签和演练说明。
+                </p>
+                <Button
+                  :disabled="rollbackEvidenceSubmitDisabled"
+                  @click="saveRollbackDrillEvidence"
+                >
+                  <Loader2
+                    v-if="rollbackEvidenceSaving"
+                    class="mr-2 h-4 w-4 animate-spin"
+                  />
+                  保存证据
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
         <div
           v-else
@@ -247,7 +395,7 @@
           v-if="report.issues.length === 0"
           class="flex items-center gap-3 p-5 text-sm text-muted-foreground"
         >
-          <CheckCircle2 class="h-5 w-5 text-emerald-600" />
+          <CheckCircle2 class="h-5 w-5 text-primary" />
           当前只读检查没有发现需要处理的问题。
         </div>
         <div
@@ -688,7 +836,10 @@ import {
 } from 'lucide-vue-next'
 import {
   Badge,
+  Button,
   Card,
+  Input,
+  Label,
   RefreshButton,
   Select,
   SelectContent,
@@ -700,33 +851,51 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
+  Textarea
 } from '@/components/ui'
+import { useToast } from '@/composables/useToast'
 import {
+  getNifflerRollbackDrillEvidence,
   getNifflerCoreReadiness,
   getNifflerLegacyDependencyAudit,
   listNifflerStabilityObservations,
+  updateNifflerRollbackDrillEvidence,
   type NifflerCoreReadinessReport,
   type NifflerLegacyDependencyAuditReport,
+  type NifflerRollbackDrillEvidencePayload,
+  type NifflerRollbackDrillStatus,
   type NifflerReadinessSeverity,
   type NifflerStabilityObservation
 } from '@/api/niffler-core'
 
+const { success: showSuccess, error: showError } = useToast()
 const recentDays = ref('7')
 const loading = ref(false)
 const legacyAuditLoading = ref(false)
 const stabilityLoading = ref(false)
+const rollbackEvidenceLoading = ref(false)
+const rollbackEvidenceSaving = ref(false)
 const error = ref('')
 const legacyAuditError = ref('')
 const stabilityError = ref('')
+const rollbackEvidenceError = ref('')
 const report = ref<NifflerCoreReadinessReport | null>(null)
 const legacyAudit = ref<NifflerLegacyDependencyAuditReport | null>(null)
 const stabilityObservations = ref<NifflerStabilityObservation[]>([])
+const rollbackEvidence = ref<NifflerRollbackDrillEvidencePayload | null>(null)
+const rollbackEvidenceForm = ref({
+  status: 'not_recorded' as NifflerRollbackDrillStatus,
+  backup_reference: '',
+  rollback_image_tag: '',
+  drill_summary: ''
+})
 
 async function loadReadinessPage() {
   await Promise.all([
     loadReport(),
-    loadStabilityObservations()
+    loadStabilityObservations(),
+    loadRollbackDrillEvidence()
   ])
 }
 
@@ -772,6 +941,50 @@ async function loadStabilityObservations() {
     stabilityError.value = errorMessage(err)
   } finally {
     stabilityLoading.value = false
+  }
+}
+
+async function loadRollbackDrillEvidence() {
+  rollbackEvidenceLoading.value = true
+  rollbackEvidenceError.value = ''
+  try {
+    const payload = await getNifflerRollbackDrillEvidence()
+    rollbackEvidence.value = payload
+    rollbackEvidenceForm.value = {
+      status: normalizeRollbackDrillStatus(payload.evidence?.status || payload.status),
+      backup_reference: payload.evidence?.backup_reference || '',
+      rollback_image_tag: payload.evidence?.rollback_image_tag || '',
+      drill_summary: payload.evidence?.drill_summary || ''
+    }
+  } catch (err) {
+    rollbackEvidenceError.value = errorMessage(err)
+  } finally {
+    rollbackEvidenceLoading.value = false
+  }
+}
+
+async function saveRollbackDrillEvidence() {
+  if (rollbackEvidenceSubmitDisabled.value) return
+  rollbackEvidenceSaving.value = true
+  rollbackEvidenceError.value = ''
+  try {
+    await updateNifflerRollbackDrillEvidence({
+      status: rollbackEvidenceForm.value.status,
+      backup_reference: rollbackEvidenceForm.value.backup_reference,
+      rollback_image_tag: rollbackEvidenceForm.value.rollback_image_tag,
+      drill_summary: rollbackEvidenceForm.value.drill_summary
+    })
+    showSuccess('已记录回滚演练证据')
+    await Promise.all([
+      loadRollbackDrillEvidence(),
+      loadStabilityObservations()
+    ])
+  } catch (err) {
+    const detail = errorMessage(err)
+    rollbackEvidenceError.value = detail
+    showError(detail)
+  } finally {
+    rollbackEvidenceSaving.value = false
   }
 }
 
@@ -958,6 +1171,25 @@ const stabilityBlockerItems = computed(() => {
   }))
 })
 
+const rollbackEvidenceSubmitDisabled = computed(() => {
+  if (rollbackEvidenceSaving.value) return true
+  const form = rollbackEvidenceForm.value
+  if (form.status === 'passed') {
+    return !form.backup_reference.trim()
+      || !form.rollback_image_tag.trim()
+      || !form.drill_summary.trim()
+  }
+  if (form.status === 'failed') {
+    return !form.drill_summary.trim()
+  }
+  return false
+})
+
+const rollbackEvidenceStatusText = computed(() => {
+  if (!rollbackEvidence.value) return '未读取'
+  return rollbackEvidence.value.evidence_complete ? '证据完整' : '证据不完整'
+})
+
 function joinParts(parts: Array<string | null | undefined>): string {
   return parts
     .map((part) => part?.trim())
@@ -984,7 +1216,7 @@ function issueIcon(severity: NifflerReadinessSeverity) {
 
 function issueIconClass(severity: NifflerReadinessSeverity): string {
   if (severity === 'error') return 'text-destructive'
-  if (severity === 'warning') return 'text-amber-600'
+  if (severity === 'warning') return 'text-warning'
   return 'text-muted-foreground'
 }
 
@@ -1016,6 +1248,13 @@ function rollbackDrillLabel(status: string): string {
     not_recorded: '未记录'
   }
   return labels[status] ?? status
+}
+
+function normalizeRollbackDrillStatus(status?: string): NifflerRollbackDrillStatus {
+  if (status === 'passed' || status === 'failed' || status === 'not_recorded') {
+    return status
+  }
+  return 'not_recorded'
 }
 
 function rollbackDrillTone(status: string): Tone {
@@ -1108,8 +1347,8 @@ onMounted(() => {
 type Tone = 'success' | 'warning' | 'danger' | 'neutral'
 
 function toneClass(tone?: Tone): string {
-  if (tone === 'success') return 'text-emerald-600'
-  if (tone === 'warning') return 'text-amber-600'
+  if (tone === 'success') return 'text-primary'
+  if (tone === 'warning') return 'text-warning'
   if (tone === 'danger') return 'text-destructive'
   return 'text-foreground'
 }

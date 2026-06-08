@@ -13,6 +13,7 @@ use crate::data::GatewayDataState;
 const WINDOW_SECONDS: u64 = 24 * 60 * 60;
 const MAX_CONSISTENCY_SAMPLE: usize = 100;
 const ROLLBACK_DRILL_STATUS_KEY: &str = "niffler_stability_rollback_drill_status";
+const ROLLBACK_DRILL_EVIDENCE_KEY: &str = "niffler_stability_rollback_drill_evidence";
 const INCIDENT_STATUS_KEY: &str = "niffler_stability_incident_status";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +23,7 @@ pub(crate) struct NifflerStabilityObservationSummary {
     pub window_start_unix_ms: u64,
     pub window_end_unix_ms: u64,
     pub rollback_drill_status: String,
+    pub rollback_drill_evidence_complete: bool,
     pub consistency_checked_count: u64,
     pub consistency_issue_count: u64,
     pub unknown_upstream_count: u64,
@@ -33,6 +35,7 @@ pub(crate) struct NifflerStabilityObservationSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NifflerStabilityObservationInput<'a> {
     pub rollback_drill_status: &'a str,
+    pub rollback_drill_evidence_complete: bool,
     pub incident_status: &'a str,
     pub audit_reader_available: bool,
     pub request_candidate_reader_available: bool,
@@ -51,7 +54,11 @@ pub(crate) fn classify_niffler_stability_observation(
     let mut pending_blockers = Vec::new();
 
     match input.rollback_drill_status {
-        "passed" => {}
+        "passed" => {
+            if !input.rollback_drill_evidence_complete {
+                pending_blockers.push("rollback_drill_evidence_missing".to_string());
+            }
+        }
         "failed" => reset_blockers.push("rollback_drill_failed".to_string()),
         _ => pending_blockers.push("rollback_drill_not_recorded".to_string()),
     }
@@ -115,6 +122,7 @@ pub(crate) async fn perform_niffler_stability_observation_once(
         &["passed", "failed", "not_recorded"],
     )
     .await?;
+    let rollback_drill_evidence_complete = read_rollback_drill_evidence_complete(data).await?;
     let incident_status =
         normalized_status_config(data, INCIDENT_STATUS_KEY, "none", &["none", "p0", "p1"]).await?;
 
@@ -185,6 +193,7 @@ pub(crate) async fn perform_niffler_stability_observation_once(
     let (status, blocker_codes) =
         classify_niffler_stability_observation(NifflerStabilityObservationInput {
             rollback_drill_status: rollback_drill_status.as_str(),
+            rollback_drill_evidence_complete,
             incident_status: incident_status.as_str(),
             audit_reader_available,
             request_candidate_reader_available,
@@ -201,6 +210,7 @@ pub(crate) async fn perform_niffler_stability_observation_once(
         window_start_unix_ms,
         window_end_unix_ms,
         rollback_drill_status,
+        rollback_drill_evidence_complete,
         consistency_checked_count,
         consistency_issue_count,
         unknown_upstream_count,
@@ -226,6 +236,7 @@ pub(crate) async fn perform_niffler_stability_observation_once(
             "schema_version": 1,
             "window_start_unix_ms": window_start_unix_ms,
             "window_end_unix_ms": window_end_unix_ms,
+            "rollback_drill_evidence_complete": rollback_drill_evidence_complete,
             "incident_status": incident_status,
             "audit_reader_available": audit_reader_available,
             "request_candidate_reader_available": request_candidate_reader_available,
@@ -261,6 +272,38 @@ async fn normalized_status_config(
     } else {
         Ok("unknown".to_string())
     }
+}
+
+async fn read_rollback_drill_evidence_complete(
+    data: &GatewayDataState,
+) -> Result<bool, DataLayerError> {
+    let evidence = data
+        .find_system_config_value(ROLLBACK_DRILL_EVIDENCE_KEY)
+        .await?;
+    Ok(rollback_drill_evidence_is_complete(evidence.as_ref()))
+}
+
+fn rollback_drill_evidence_is_complete(evidence: Option<&serde_json::Value>) -> bool {
+    let Some(evidence) = evidence.and_then(|value| value.as_object()) else {
+        return false;
+    };
+    matches!(
+        evidence.get("status").and_then(|value| value.as_str()),
+        Some("passed")
+    ) && evidence_text_present(evidence, "backup_reference")
+        && evidence_text_present(evidence, "rollback_image_tag")
+        && evidence_text_present(evidence, "drill_summary")
+        && evidence
+            .get("recorded_at_unix_ms")
+            .and_then(|value| value.as_u64())
+            .is_some()
+}
+
+fn evidence_text_present(evidence: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
+    evidence
+        .get(key)
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty())
 }
 
 async fn count_billing_reservation_exceptions(
@@ -305,6 +348,7 @@ mod tests {
         let (status, blockers) =
             classify_niffler_stability_observation(NifflerStabilityObservationInput {
                 rollback_drill_status: "passed",
+                rollback_drill_evidence_complete: true,
                 incident_status: "none",
                 audit_reader_available: true,
                 request_candidate_reader_available: true,
@@ -324,6 +368,7 @@ mod tests {
         let (status, blockers) =
             classify_niffler_stability_observation(NifflerStabilityObservationInput {
                 rollback_drill_status: "failed",
+                rollback_drill_evidence_complete: true,
                 incident_status: "p1",
                 audit_reader_available: true,
                 request_candidate_reader_available: true,
@@ -349,6 +394,7 @@ mod tests {
         let (status, blockers) =
             classify_niffler_stability_observation(NifflerStabilityObservationInput {
                 rollback_drill_status: "not_recorded",
+                rollback_drill_evidence_complete: false,
                 incident_status: "none",
                 audit_reader_available: false,
                 request_candidate_reader_available: false,
@@ -364,5 +410,25 @@ mod tests {
         assert!(blockers.contains(&"legacy_write_audit_unavailable".to_string()));
         assert!(blockers.contains(&"request_candidate_audit_unavailable".to_string()));
         assert!(blockers.contains(&"consistency_sample_limit_reached".to_string()));
+    }
+
+    #[test]
+    fn stability_observation_is_pending_when_passed_without_evidence() {
+        let (status, blockers) =
+            classify_niffler_stability_observation(NifflerStabilityObservationInput {
+                rollback_drill_status: "passed",
+                rollback_drill_evidence_complete: false,
+                incident_status: "none",
+                audit_reader_available: true,
+                request_candidate_reader_available: true,
+                consistency_sample_limit_reached: false,
+                consistency_issue_count: 0,
+                unknown_upstream_count: 0,
+                legacy_write_call_count: 0,
+                billing_reservation_exception_count: 0,
+                referral_exception_count: 0,
+            });
+        assert_eq!(status, "pending");
+        assert_eq!(blockers, vec!["rollback_drill_evidence_missing"]);
     }
 }

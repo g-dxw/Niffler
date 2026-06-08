@@ -307,6 +307,16 @@ pub(super) fn classify_admin_route(
             "admin:system",
             false,
         ))
+    } else if (method == http::Method::GET || method == http::Method::PUT)
+        && normalized_path_no_trailing == "/api/admin/niffler-core/rollback-drill-evidence"
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            "rollback_drill_evidence",
+            "admin:system",
+            false,
+        ))
     } else if let Some(route) =
         classify_admin_basic_family_route(method, normalized_path, normalized_path_no_trailing)
     {

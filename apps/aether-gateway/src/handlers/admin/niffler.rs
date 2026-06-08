@@ -35,7 +35,7 @@ use aether_data_contracts::repository::provider_catalog::{
 };
 use aether_data_contracts::repository::usage::{StoredRequestUsageAudit, UsageAuditListQuery};
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     http,
     response::{IntoResponse, Response},
     Json,
@@ -69,6 +69,9 @@ const REFERRAL_REWARD_LEDGER_PATH: &str = "/api/admin/niffler-core/referral-rewa
 const ROUTE_ATTEMPTS_PATH: &str = "/api/admin/niffler-core/route-attempts";
 const CONSISTENCY_CHECKS_PATH: &str = "/api/admin/niffler-core/consistency-checks";
 const STABILITY_OBSERVATIONS_PATH: &str = "/api/admin/niffler-core/stability-observations";
+const ROLLBACK_DRILL_EVIDENCE_PATH: &str = "/api/admin/niffler-core/rollback-drill-evidence";
+const ROLLBACK_DRILL_STATUS_CONFIG_KEY: &str = "niffler_stability_rollback_drill_status";
+const ROLLBACK_DRILL_EVIDENCE_CONFIG_KEY: &str = "niffler_stability_rollback_drill_evidence";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
 const MAX_USAGE_ITEMS: usize = 50;
@@ -289,6 +292,17 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
         ));
     }
 
+    if request_context.path().trim_end_matches('/') == ROLLBACK_DRILL_EVIDENCE_PATH {
+        return Ok(Some(
+            build_rollback_drill_evidence_response(
+                &state,
+                &request_context,
+                request.request_body(),
+            )
+            .await?,
+        ));
+    }
+
     Ok(None)
 }
 
@@ -338,6 +352,17 @@ struct AdminNifflerServiceCapabilityRequest {
     model_list: bool,
     #[serde(default = "default_true")]
     model_test: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerRollbackDrillEvidenceRequest {
+    status: String,
+    #[serde(default)]
+    backup_reference: Option<String>,
+    #[serde(default)]
+    rollback_image_tag: Option<String>,
+    #[serde(default)]
+    drill_summary: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1828,6 +1853,153 @@ async fn build_stability_observations_response(
     };
     let page = state.list_niffler_stability_observations(&query).await?;
     Ok(Json(page).into_response())
+}
+
+async fn build_rollback_drill_evidence_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.app().data.has_system_config_store() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    match *request_context.method() {
+        http::Method::GET => {
+            Ok(Json(read_rollback_drill_evidence_payload(state).await?).into_response())
+        }
+        http::Method::PUT => {
+            let Some(request_body) = request_body else {
+                return Ok(niffler_bad_request("请求体不能为空"));
+            };
+            let payload = match serde_json::from_slice::<AdminNifflerRollbackDrillEvidenceRequest>(
+                request_body,
+            ) {
+                Ok(payload) => payload,
+                Err(err) => {
+                    return Ok(niffler_bad_request(format!("请求体不是合法 JSON：{err}")));
+                }
+            };
+            let evidence = match normalize_rollback_drill_evidence_request(
+                payload,
+                niffler_admin_operator_id(request_context),
+            ) {
+                Ok(evidence) => evidence,
+                Err(response) => return Ok(response),
+            };
+            let status = evidence
+                .get("status")
+                .and_then(|value| value.as_str())
+                .unwrap_or("not_recorded");
+            state
+                .upsert_system_config_json_value(
+                    ROLLBACK_DRILL_EVIDENCE_CONFIG_KEY,
+                    &evidence,
+                    Some("Niffler Core 稳定观察回滚演练证据"),
+                )
+                .await?;
+            state
+                .upsert_system_config_json_value(
+                    ROLLBACK_DRILL_STATUS_CONFIG_KEY,
+                    &json!(status),
+                    Some("Niffler Core 稳定观察回滚演练状态"),
+                )
+                .await?;
+            Ok(attach_admin_audit_response(
+                Json(evidence).into_response(),
+                "niffler_rollback_drill_evidence_updated",
+                "update_rollback_drill_evidence",
+                "niffler_core",
+                "rollback_drill_evidence",
+            ))
+        }
+        _ => Ok(niffler_method_not_allowed("只支持读取或记录回滚演练证据")),
+    }
+}
+
+async fn read_rollback_drill_evidence_payload(
+    state: &AdminAppState<'_>,
+) -> Result<serde_json::Value, GatewayError> {
+    let status = state
+        .read_system_config_json_value(ROLLBACK_DRILL_STATUS_CONFIG_KEY)
+        .await?
+        .and_then(|value| value.as_str().map(str::to_ascii_lowercase))
+        .filter(|value| matches!(value.as_str(), "passed" | "failed" | "not_recorded"))
+        .unwrap_or_else(|| "not_recorded".to_string());
+    let evidence = state
+        .read_system_config_json_value(ROLLBACK_DRILL_EVIDENCE_CONFIG_KEY)
+        .await?
+        .filter(|value| value.is_object())
+        .unwrap_or_else(|| json!({ "schema_version": 1 }));
+    Ok(json!({
+        "status": status,
+        "evidence": evidence,
+        "evidence_complete": rollback_drill_evidence_is_complete(evidence.as_object()),
+        "status_config_key": ROLLBACK_DRILL_STATUS_CONFIG_KEY,
+        "evidence_config_key": ROLLBACK_DRILL_EVIDENCE_CONFIG_KEY
+    }))
+}
+
+fn normalize_rollback_drill_evidence_request(
+    payload: AdminNifflerRollbackDrillEvidenceRequest,
+    operator_id: Option<String>,
+) -> Result<serde_json::Value, Response<Body>> {
+    let status = payload.status.trim().to_ascii_lowercase();
+    if !matches!(status.as_str(), "passed" | "failed" | "not_recorded") {
+        return Err(niffler_bad_request(
+            "回滚演练状态只能是 passed、failed 或 not_recorded",
+        ));
+    }
+    let backup_reference = normalize_optional_text(payload.backup_reference, 500)?;
+    let rollback_image_tag = normalize_optional_text(payload.rollback_image_tag, 200)?;
+    let drill_summary = normalize_optional_text(payload.drill_summary, 2_000)?;
+    if status == "passed" {
+        if backup_reference.is_none() {
+            return Err(niffler_bad_request("记录通过时必须填写备份引用"));
+        }
+        if rollback_image_tag.is_none() {
+            return Err(niffler_bad_request("记录通过时必须填写可回滚镜像标签"));
+        }
+        if drill_summary.is_none() {
+            return Err(niffler_bad_request("记录通过时必须填写演练说明"));
+        }
+    }
+    if status == "failed" && drill_summary.is_none() {
+        return Err(niffler_bad_request("记录失败时必须填写演练说明"));
+    }
+    Ok(json!({
+        "schema_version": 1,
+        "status": status,
+        "backup_reference": backup_reference,
+        "rollback_image_tag": rollback_image_tag,
+        "drill_summary": drill_summary,
+        "recorded_at_unix_ms": current_unix_secs().saturating_mul(1000),
+        "recorded_by": operator_id
+    }))
+}
+
+fn rollback_drill_evidence_is_complete(
+    evidence: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> bool {
+    let Some(evidence) = evidence else {
+        return false;
+    };
+    matches!(
+        evidence.get("status").and_then(|value| value.as_str()),
+        Some("passed")
+    ) && evidence_text_present(evidence, "backup_reference")
+        && evidence_text_present(evidence, "rollback_image_tag")
+        && evidence_text_present(evidence, "drill_summary")
+        && evidence
+            .get("recorded_at_unix_ms")
+            .and_then(|value| value.as_u64())
+            .is_some()
+}
+
+fn evidence_text_present(evidence: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
+    evidence
+        .get(key)
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty())
 }
 
 fn build_capability_records(

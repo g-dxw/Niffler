@@ -295,6 +295,31 @@ export interface NifflerStabilityObservation {
   updated_at_unix_ms: number
 }
 
+export interface NifflerRollbackDrillEvidence {
+  schema_version?: number
+  status?: NifflerRollbackDrillStatus | string
+  backup_reference?: string | null
+  rollback_image_tag?: string | null
+  drill_summary?: string | null
+  recorded_at_unix_ms?: number | null
+  recorded_by?: string | null
+}
+
+export interface NifflerRollbackDrillEvidencePayload {
+  status: NifflerRollbackDrillStatus | string
+  evidence: NifflerRollbackDrillEvidence
+  evidence_complete: boolean
+  status_config_key: string
+  evidence_config_key: string
+}
+
+export interface UpdateNifflerRollbackDrillEvidencePayload {
+  status: NifflerRollbackDrillStatus
+  backup_reference?: string | null
+  rollback_image_tag?: string | null
+  drill_summary?: string | null
+}
+
 export interface NifflerConsistencyCheck {
   request_id: string
   user_id?: string | null
@@ -963,6 +988,23 @@ export async function listNifflerStabilityObservations(params?: {
   const response = await apiClient.get<NifflerListPage<NifflerStabilityObservation>>(
     '/api/admin/niffler-core/stability-observations',
     { params }
+  )
+  return response.data
+}
+
+export async function getNifflerRollbackDrillEvidence(): Promise<NifflerRollbackDrillEvidencePayload> {
+  const response = await apiClient.get<NifflerRollbackDrillEvidencePayload>(
+    '/api/admin/niffler-core/rollback-drill-evidence'
+  )
+  return response.data
+}
+
+export async function updateNifflerRollbackDrillEvidence(
+  payload: UpdateNifflerRollbackDrillEvidencePayload
+): Promise<NifflerRollbackDrillEvidence> {
+  const response = await apiClient.put<NifflerRollbackDrillEvidence>(
+    '/api/admin/niffler-core/rollback-drill-evidence',
+    payload
   )
   return response.data
 }
