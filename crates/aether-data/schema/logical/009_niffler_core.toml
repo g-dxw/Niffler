@@ -1500,3 +1500,91 @@ name = "fk_niffler_referral_reward_events_ledger"
 columns = ["reward_ledger_id"]
 references_table = "niffler_referral_reward_ledger"
 references_columns = ["id"]
+
+[table.niffler_stability_observations]
+domain = "niffler_core"
+order = 1080
+primary_key = ["id"]
+
+[[table.niffler_stability_observations.columns]]
+name = "id"
+type = "text_id"
+length = 36
+
+[[table.niffler_stability_observations.columns]]
+name = "window_start_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_stability_observations.columns]]
+name = "window_end_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_stability_observations.columns]]
+name = "status"
+type = "text"
+length = 32
+
+[[table.niffler_stability_observations.columns]]
+name = "rollback_drill_status"
+type = "text"
+length = 32
+default = "not_recorded"
+
+[[table.niffler_stability_observations.columns]]
+name = "consistency_checked_count"
+type = "int64"
+default = 0
+
+[[table.niffler_stability_observations.columns]]
+name = "consistency_issue_count"
+type = "int64"
+default = 0
+
+[[table.niffler_stability_observations.columns]]
+name = "unknown_upstream_count"
+type = "int64"
+default = 0
+
+[[table.niffler_stability_observations.columns]]
+name = "legacy_write_call_count"
+type = "int64"
+default = 0
+
+[[table.niffler_stability_observations.columns]]
+name = "billing_reservation_exception_count"
+type = "int64"
+default = 0
+
+[[table.niffler_stability_observations.columns]]
+name = "referral_exception_count"
+type = "int64"
+default = 0
+
+[[table.niffler_stability_observations.columns]]
+name = "blocker_codes"
+type = "json"
+
+[[table.niffler_stability_observations.columns]]
+name = "summary"
+type = "json"
+nullable = true
+
+[[table.niffler_stability_observations.columns]]
+name = "created_at_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_stability_observations.columns]]
+name = "updated_at_unix_ms"
+type = "unix_millis"
+
+[[table.niffler_stability_observations.uniques]]
+name = "uq_niffler_stability_observations_window"
+columns = ["window_start_unix_ms", "window_end_unix_ms"]
+
+[[table.niffler_stability_observations.indexes]]
+name = "idx_niffler_stability_observations_status_time"
+columns = ["status", "window_end_unix_ms"]
+
+[[table.niffler_stability_observations.indexes]]
+name = "idx_niffler_stability_observations_window"
+columns = ["window_end_unix_ms"]

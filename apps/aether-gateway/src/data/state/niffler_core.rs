@@ -12,24 +12,27 @@ use super::{
     NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
     NifflerRuntimeAccountModelAccessListQuery, NifflerRuntimeRolloutSettingListQuery,
     NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerAccountModelCapabilityListPage,
-    StoredNifflerAccountRiskEvent, StoredNifflerApiKeyProductPlanBinding,
-    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
-    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
-    StoredNifflerBillingReservationListPage, StoredNifflerConsistencyCheckListPage,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerStabilityObservationListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    StoredNifflerAccountModelCapabilityListPage, StoredNifflerAccountRiskEvent,
+    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
+    StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
+    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
+    StoredNifflerConsistencyCheckListPage, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
     StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
     StoredNifflerRouteAttemptListPage, StoredNifflerRuntimeAccountModelAccessListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
     StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListPage,
+    StoredNifflerStabilityObservation, StoredNifflerStabilityObservationListPage,
     StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
     StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
     StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
     UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerStabilityObservationRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -424,6 +427,23 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_niffler_stability_observations(
+        &self,
+        query: &NifflerStabilityObservationListQuery,
+    ) -> Result<StoredNifflerStabilityObservationListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_stability_observations(query).await,
+            None => Ok(StoredNifflerStabilityObservationListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: CreateNifflerUpstreamServiceRecord,
@@ -658,6 +678,23 @@ impl GatewayDataState {
             .and_then(|backends| backends.write().niffler_core())
         {
             Some(repository) => repository.create_route_attempt(record).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn upsert_niffler_stability_observation(
+        &self,
+        record: UpsertNifflerStabilityObservationRecord,
+    ) -> Result<Option<StoredNifflerStabilityObservation>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .upsert_stability_observation(record)
+                .await
+                .map(Some),
             None => Ok(None),
         }
     }

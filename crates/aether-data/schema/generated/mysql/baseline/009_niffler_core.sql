@@ -371,3 +371,25 @@ CREATE TABLE IF NOT EXISTS niffler_referral_reward_events (
     KEY idx_niffler_referral_reward_events_ledger (`reward_ledger_id`, `created_at_unix_ms`),
     CONSTRAINT fk_niffler_referral_reward_events_ledger FOREIGN KEY (`reward_ledger_id`) REFERENCES niffler_referral_reward_ledger (`id`)
 );
+
+CREATE TABLE IF NOT EXISTS niffler_stability_observations (
+    `id` VARCHAR(36) NOT NULL,
+    `window_start_unix_ms` BIGINT NOT NULL,
+    `window_end_unix_ms` BIGINT NOT NULL,
+    `status` VARCHAR(32) NOT NULL,
+    `rollback_drill_status` VARCHAR(32) NOT NULL DEFAULT 'not_recorded',
+    `consistency_checked_count` BIGINT NOT NULL DEFAULT 0,
+    `consistency_issue_count` BIGINT NOT NULL DEFAULT 0,
+    `unknown_upstream_count` BIGINT NOT NULL DEFAULT 0,
+    `legacy_write_call_count` BIGINT NOT NULL DEFAULT 0,
+    `billing_reservation_exception_count` BIGINT NOT NULL DEFAULT 0,
+    `referral_exception_count` BIGINT NOT NULL DEFAULT 0,
+    `blocker_codes` JSON NOT NULL,
+    `summary` JSON,
+    `created_at_unix_ms` BIGINT NOT NULL,
+    `updated_at_unix_ms` BIGINT NOT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY uq_niffler_stability_observations_window (`window_start_unix_ms`, `window_end_unix_ms`),
+    KEY idx_niffler_stability_observations_status_time (`status`, `window_end_unix_ms`),
+    KEY idx_niffler_stability_observations_window (`window_end_unix_ms`)
+);

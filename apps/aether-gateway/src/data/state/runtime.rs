@@ -179,6 +179,12 @@ impl GatewayDataState {
         repository.list_admin_audit_logs(query).await
     }
 
+    pub(crate) fn has_admin_audit_log_reader(&self) -> bool {
+        self.backends
+            .as_ref()
+            .is_some_and(|backends| backends.read().audit_logs().is_some())
+    }
+
     pub(crate) async fn list_admin_suspicious_activities(
         &self,
         cutoff_unix_secs: u64,
@@ -1102,6 +1108,10 @@ impl GatewayDataState {
             Some(repository) => repository.list_usage_audits(query).await,
             None => Ok(Vec::new()),
         }
+    }
+
+    pub(crate) fn has_usage_audit_reader(&self) -> bool {
+        self.usage_reader.is_some()
     }
 
     pub(crate) async fn count_usage_audits(

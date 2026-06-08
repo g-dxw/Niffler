@@ -775,6 +775,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         &self,
         query: &NifflerConsistencyCheckListQuery,
     ) -> Result<StoredNifflerConsistencyCheckListPage, crate::DataLayerError>;
+
+    async fn list_stability_observations(
+        &self,
+        query: &NifflerStabilityObservationListQuery,
+    ) -> Result<StoredNifflerStabilityObservationListPage, crate::DataLayerError>;
 }
 
 #[async_trait]
@@ -853,6 +858,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: CreateNifflerRouteAttemptRecord,
     ) -> Result<StoredNifflerRouteAttempt, crate::DataLayerError>;
+
+    async fn upsert_stability_observation(
+        &self,
+        record: UpsertNifflerStabilityObservationRecord,
+    ) -> Result<StoredNifflerStabilityObservation, crate::DataLayerError>;
 }
 
 pub trait NifflerCoreRepository: NifflerCoreReadRepository + NifflerCoreWriteRepository {}
@@ -1178,6 +1188,87 @@ pub struct StoredNifflerConsistencyCheckItem {
     pub issue_codes: Vec<String>,
     pub consistency_status: String,
     pub created_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerStabilityObservationListQuery {
+    pub status: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerStabilityObservationListPage {
+    pub items: Vec<StoredNifflerStabilityObservation>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerStabilityObservation {
+    pub id: String,
+    pub window_start_unix_ms: u64,
+    pub window_end_unix_ms: u64,
+    pub status: String,
+    pub rollback_drill_status: String,
+    pub consistency_checked_count: u64,
+    pub consistency_issue_count: u64,
+    pub unknown_upstream_count: u64,
+    pub legacy_write_call_count: u64,
+    pub billing_reservation_exception_count: u64,
+    pub referral_exception_count: u64,
+    pub blocker_codes: Vec<String>,
+    pub summary: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl StoredNifflerStabilityObservation {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("stability_observations.id", &self.id)?;
+        validate_stability_status(&self.status)?;
+        validate_rollback_drill_status(&self.rollback_drill_status)?;
+        if self.window_end_unix_ms <= self.window_start_unix_ms {
+            return Err(crate::DataLayerError::InvalidInput(
+                "stability_observations.window_end_unix_ms must be greater than window_start_unix_ms"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpsertNifflerStabilityObservationRecord {
+    pub id: String,
+    pub window_start_unix_ms: u64,
+    pub window_end_unix_ms: u64,
+    pub status: String,
+    pub rollback_drill_status: String,
+    pub consistency_checked_count: u64,
+    pub consistency_issue_count: u64,
+    pub unknown_upstream_count: u64,
+    pub legacy_write_call_count: u64,
+    pub billing_reservation_exception_count: u64,
+    pub referral_exception_count: u64,
+    pub blocker_codes: Vec<String>,
+    pub summary: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl UpsertNifflerStabilityObservationRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("stability_observations.id", &self.id)?;
+        validate_stability_status(&self.status)?;
+        validate_rollback_drill_status(&self.rollback_drill_status)?;
+        if self.window_end_unix_ms <= self.window_start_unix_ms {
+            return Err(crate::DataLayerError::InvalidInput(
+                "stability_observations.window_end_unix_ms must be greater than window_start_unix_ms"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -2527,6 +2618,24 @@ fn validate_finite(field: &str, value: f64) -> Result<(), crate::DataLayerError>
         )));
     }
     Ok(())
+}
+
+fn validate_stability_status(value: &str) -> Result<(), crate::DataLayerError> {
+    match value {
+        "pass" | "pending" | "reset_required" => Ok(()),
+        _ => Err(crate::DataLayerError::InvalidInput(format!(
+            "stability_observations.status is invalid: {value}"
+        ))),
+    }
+}
+
+fn validate_rollback_drill_status(value: &str) -> Result<(), crate::DataLayerError> {
+    match value {
+        "passed" | "failed" | "not_recorded" => Ok(()),
+        _ => Err(crate::DataLayerError::InvalidInput(format!(
+            "stability_observations.rollback_drill_status is invalid: {value}"
+        ))),
+    }
 }
 
 #[cfg(test)]

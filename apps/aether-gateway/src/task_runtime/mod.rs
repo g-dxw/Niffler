@@ -30,6 +30,8 @@ pub(crate) const TASK_KEY_DB_MAINTENANCE: &str = "maintenance.database";
 pub(crate) const TASK_KEY_PENDING_CLEANUP: &str = "maintenance.pending.cleanup";
 pub(crate) const TASK_KEY_NIFFLER_BILLING_RESERVATION_EXPIRY: &str =
     "maintenance.niffler.billing_reservation.expiry";
+pub(crate) const TASK_KEY_NIFFLER_STABILITY_OBSERVATION: &str =
+    "maintenance.niffler.stability.observation";
 pub(crate) const TASK_KEY_REQUEST_CANDIDATE_CLEANUP: &str = "maintenance.request.candidate.cleanup";
 pub(crate) const TASK_KEY_GEMINI_FILES_CLEANUP: &str = "maintenance.gemini.files.cleanup";
 pub(crate) const TASK_KEY_OAUTH_TOKEN_REFRESH: &str = "maintenance.oauth.token.refresh";
@@ -155,6 +157,14 @@ const TASK_DEFINITIONS: &[TaskDefinition] = &[
     ),
     TaskDefinition::new(
         TASK_KEY_NIFFLER_BILLING_RESERVATION_EXPIRY,
+        TaskKind::Scheduled,
+        "interval",
+        true,
+        true,
+        RETRY_ONCE,
+    ),
+    TaskDefinition::new(
+        TASK_KEY_NIFFLER_STABILITY_OBSERVATION,
         TaskKind::Scheduled,
         "interval",
         true,

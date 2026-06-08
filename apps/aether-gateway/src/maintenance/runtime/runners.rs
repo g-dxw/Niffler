@@ -13,12 +13,12 @@ use super::{
     cleanup_request_candidates_once, cleanup_stale_pending_requests_once,
     cleanup_stale_proxy_nodes_once, collect_proxy_upgrade_rollout_probes, now_unix_secs,
     perform_db_maintenance_once, perform_manual_usage_cleanup_once,
-    perform_niffler_billing_reservation_expiry_once, perform_provider_checkin_once,
-    perform_stats_aggregation_once, perform_stats_hourly_aggregation_once,
-    perform_usage_cleanup_once, perform_wallet_daily_usage_aggregation_once,
-    record_admin_cleanup_run, record_completed_cleanup_run, record_failed_cleanup_run,
-    record_proxy_upgrade_traffic_success, summarize_database_pool, AdminCleanupRunRecord,
-    ManualUsageCleanupOptions,
+    perform_niffler_billing_reservation_expiry_once, perform_niffler_stability_observation_once,
+    perform_provider_checkin_once, perform_stats_aggregation_once,
+    perform_stats_hourly_aggregation_once, perform_usage_cleanup_once,
+    perform_wallet_daily_usage_aggregation_once, record_admin_cleanup_run,
+    record_completed_cleanup_run, record_failed_cleanup_run, record_proxy_upgrade_traffic_success,
+    summarize_database_pool, AdminCleanupRunRecord, ManualUsageCleanupOptions,
 };
 
 pub(super) async fn run_audit_cleanup_once(data: &GatewayDataState) -> Result<(), DataLayerError> {
@@ -92,6 +92,29 @@ pub(super) async fn run_niffler_billing_reservation_expiry_once(
             "gateway expired stale niffler billing reservations"
         );
     }
+    Ok(())
+}
+
+pub(super) async fn run_niffler_stability_observation_once(
+    data: &GatewayDataState,
+) -> Result<(), DataLayerError> {
+    let Some(summary) = perform_niffler_stability_observation_once(data).await? else {
+        return Ok(());
+    };
+    info!(
+        event_name = "niffler_stability_observation_completed",
+        log_type = "ops",
+        worker = "niffler_stability_observation",
+        status = %summary.status,
+        blockers = summary.blocker_codes.len(),
+        consistency_checked_count = summary.consistency_checked_count,
+        consistency_issue_count = summary.consistency_issue_count,
+        unknown_upstream_count = summary.unknown_upstream_count,
+        legacy_write_call_count = summary.legacy_write_call_count,
+        billing_reservation_exception_count = summary.billing_reservation_exception_count,
+        referral_exception_count = summary.referral_exception_count,
+        "gateway recorded niffler stability observation"
+    );
     Ok(())
 }
 

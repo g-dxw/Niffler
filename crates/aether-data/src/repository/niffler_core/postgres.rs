@@ -18,9 +18,9 @@ use super::{
     NifflerRouteAttemptListQuery, NifflerRuntimeAccountModelAccessListQuery,
     NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
     NifflerServiceCapabilityKind, NifflerSettlementSnapshotListQuery,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    NifflerUserResponseMode, StoredNifflerAccountModelCapability,
+    NifflerStabilityObservationListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, NifflerUserResponseMode, StoredNifflerAccountModelCapability,
     StoredNifflerAccountModelCapabilityListPage, StoredNifflerAccountRiskEvent,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
@@ -34,12 +34,13 @@ use super::{
     StoredNifflerRuntimeAccountModelAccess, StoredNifflerRuntimeAccountModelAccessListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
     StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListItem,
-    StoredNifflerSettlementSnapshotListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerSettlementSnapshotListPage, StoredNifflerStabilityObservation,
+    StoredNifflerStabilityObservationListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
     StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
     UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    UpsertNifflerStabilityObservationRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::postgres::PostgresPool;
 use crate::error::SqlResultExt;
@@ -924,6 +925,30 @@ WHERE status = 'active' AND expires_at_unix_ms > $1 AND user_id = $2 AND api_key
             items,
         })
     }
+
+    async fn list_stability_observations(
+        &self,
+        query: &NifflerStabilityObservationListQuery,
+    ) -> Result<StoredNifflerStabilityObservationListPage, DataLayerError> {
+        let total = build_stability_observation_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_stability_observation_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_stability_observation_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerStabilityObservationListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
 }
 
 #[async_trait]
@@ -1629,6 +1654,123 @@ ON CONFLICT (id) DO UPDATE SET
             created_at_unix_ms: record.created_at_unix_ms,
         })
     }
+
+    async fn upsert_stability_observation(
+        &self,
+        record: UpsertNifflerStabilityObservationRecord,
+    ) -> Result<StoredNifflerStabilityObservation, DataLayerError> {
+        record.validate()?;
+        let blocker_codes = serde_json::json!(record.blocker_codes);
+        sqlx::query(
+            r#"
+INSERT INTO niffler_stability_observations (
+  id, window_start_unix_ms, window_end_unix_ms, status, rollback_drill_status,
+  consistency_checked_count, consistency_issue_count, unknown_upstream_count,
+  legacy_write_call_count, billing_reservation_exception_count, referral_exception_count,
+  blocker_codes, summary, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+ON CONFLICT (window_start_unix_ms, window_end_unix_ms) DO UPDATE SET
+  status = EXCLUDED.status,
+  rollback_drill_status = EXCLUDED.rollback_drill_status,
+  consistency_checked_count = EXCLUDED.consistency_checked_count,
+  consistency_issue_count = EXCLUDED.consistency_issue_count,
+  unknown_upstream_count = EXCLUDED.unknown_upstream_count,
+  legacy_write_call_count = EXCLUDED.legacy_write_call_count,
+  billing_reservation_exception_count = EXCLUDED.billing_reservation_exception_count,
+  referral_exception_count = EXCLUDED.referral_exception_count,
+  blocker_codes = EXCLUDED.blocker_codes,
+  summary = EXCLUDED.summary,
+  updated_at_unix_ms = EXCLUDED.updated_at_unix_ms
+"#,
+        )
+        .bind(&record.id)
+        .bind(i64_from_u64(
+            record.window_start_unix_ms,
+            "window_start_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.window_end_unix_ms,
+            "window_end_unix_ms",
+        )?)
+        .bind(&record.status)
+        .bind(&record.rollback_drill_status)
+        .bind(i64_from_u64(
+            record.consistency_checked_count,
+            "consistency_checked_count",
+        )?)
+        .bind(i64_from_u64(
+            record.consistency_issue_count,
+            "consistency_issue_count",
+        )?)
+        .bind(i64_from_u64(
+            record.unknown_upstream_count,
+            "unknown_upstream_count",
+        )?)
+        .bind(i64_from_u64(
+            record.legacy_write_call_count,
+            "legacy_write_call_count",
+        )?)
+        .bind(i64_from_u64(
+            record.billing_reservation_exception_count,
+            "billing_reservation_exception_count",
+        )?)
+        .bind(i64_from_u64(
+            record.referral_exception_count,
+            "referral_exception_count",
+        )?)
+        .bind(&blocker_codes)
+        .bind(&record.summary)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.updated_at_unix_ms,
+            "updated_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        reload_stability_observation_by_window(
+            &self.pool,
+            record.window_start_unix_ms,
+            record.window_end_unix_ms,
+        )
+        .await
+    }
+}
+
+async fn reload_stability_observation_by_window(
+    pool: &PostgresPool,
+    window_start_unix_ms: u64,
+    window_end_unix_ms: u64,
+) -> Result<StoredNifflerStabilityObservation, DataLayerError> {
+    let row = sqlx::query(
+        r#"
+SELECT
+  id, window_start_unix_ms, window_end_unix_ms, status, rollback_drill_status,
+  consistency_checked_count, consistency_issue_count, unknown_upstream_count,
+  legacy_write_call_count, billing_reservation_exception_count, referral_exception_count,
+  blocker_codes, summary, created_at_unix_ms, updated_at_unix_ms
+FROM niffler_stability_observations
+WHERE window_start_unix_ms = $1 AND window_end_unix_ms = $2
+LIMIT 1
+"#,
+    )
+    .bind(i64_from_u64(window_start_unix_ms, "window_start_unix_ms")?)
+    .bind(i64_from_u64(window_end_unix_ms, "window_end_unix_ms")?)
+    .fetch_optional(pool)
+    .await
+    .map_sql_err()?;
+    row.as_ref()
+        .map(map_stability_observation_row)
+        .transpose()?
+        .ok_or_else(|| {
+            DataLayerError::UnexpectedValue(
+                "niffler stability observation missing after write".into(),
+            )
+        })
 }
 
 fn build_service_count_query(
@@ -2235,6 +2377,47 @@ fn push_consistency_check_filters(
         builder.push(if has_where { " AND " } else { " WHERE " });
         builder.push("ss.product_plan_id = ");
         builder.push_bind(product_plan_id.clone());
+    }
+}
+
+fn build_stability_observation_count_query(
+    query: &NifflerStabilityObservationListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_stability_observations");
+    push_stability_observation_filters(&mut builder, query);
+    builder
+}
+
+fn build_stability_observation_rows_query(
+    query: &NifflerStabilityObservationListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, window_start_unix_ms, window_end_unix_ms, status, rollback_drill_status, \
+         consistency_checked_count, consistency_issue_count, unknown_upstream_count, \
+         legacy_write_call_count, billing_reservation_exception_count, referral_exception_count, \
+         blocker_codes, summary, created_at_unix_ms, updated_at_unix_ms \
+         FROM niffler_stability_observations",
+    );
+    push_stability_observation_filters(&mut builder, query);
+    builder.push(" ORDER BY window_end_unix_ms DESC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit.min(100)));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_stability_observation_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerStabilityObservationListQuery,
+) {
+    if let Some(status) = query
+        .status
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        builder.push(" WHERE status = ");
+        builder.push_bind(status.to_string());
     }
 }
 
@@ -3052,6 +3235,86 @@ fn consistency_issue_codes(input: ConsistencyIssueInput<'_>) -> Vec<String> {
         issues.push("missing_route_attempt".to_string());
     }
     issues
+}
+
+fn map_stability_observation_row(
+    row: &PgRow,
+) -> Result<StoredNifflerStabilityObservation, DataLayerError> {
+    let blocker_codes_value = row
+        .try_get::<serde_json::Value, _>("blocker_codes")
+        .map_sql_err()?;
+    let observation = StoredNifflerStabilityObservation {
+        id: row.try_get::<String, _>("id").map_sql_err()?,
+        window_start_unix_ms: super::u64_from_i64(
+            row.try_get::<i64, _>("window_start_unix_ms")
+                .map_sql_err()?,
+            "window_start_unix_ms",
+        )?,
+        window_end_unix_ms: super::u64_from_i64(
+            row.try_get::<i64, _>("window_end_unix_ms").map_sql_err()?,
+            "window_end_unix_ms",
+        )?,
+        status: row.try_get::<String, _>("status").map_sql_err()?,
+        rollback_drill_status: row
+            .try_get::<String, _>("rollback_drill_status")
+            .map_sql_err()?,
+        consistency_checked_count: super::u64_from_i64(
+            row.try_get::<i64, _>("consistency_checked_count")
+                .map_sql_err()?,
+            "consistency_checked_count",
+        )?,
+        consistency_issue_count: super::u64_from_i64(
+            row.try_get::<i64, _>("consistency_issue_count")
+                .map_sql_err()?,
+            "consistency_issue_count",
+        )?,
+        unknown_upstream_count: super::u64_from_i64(
+            row.try_get::<i64, _>("unknown_upstream_count")
+                .map_sql_err()?,
+            "unknown_upstream_count",
+        )?,
+        legacy_write_call_count: super::u64_from_i64(
+            row.try_get::<i64, _>("legacy_write_call_count")
+                .map_sql_err()?,
+            "legacy_write_call_count",
+        )?,
+        billing_reservation_exception_count: super::u64_from_i64(
+            row.try_get::<i64, _>("billing_reservation_exception_count")
+                .map_sql_err()?,
+            "billing_reservation_exception_count",
+        )?,
+        referral_exception_count: super::u64_from_i64(
+            row.try_get::<i64, _>("referral_exception_count")
+                .map_sql_err()?,
+            "referral_exception_count",
+        )?,
+        blocker_codes: parse_stability_blocker_codes(blocker_codes_value)?,
+        summary: row
+            .try_get::<Option<serde_json::Value>, _>("summary")
+            .map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get::<i64, _>("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get::<i64, _>("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    };
+    observation.validate()?;
+    Ok(observation)
+}
+
+fn parse_stability_blocker_codes(value: serde_json::Value) -> Result<Vec<String>, DataLayerError> {
+    let Some(items) = value.as_array() else {
+        return Err(DataLayerError::UnexpectedValue(
+            "niffler stability blocker_codes must be an array".to_string(),
+        ));
+    };
+    Ok(items
+        .iter()
+        .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+        .collect())
 }
 
 fn i64_to_u64(value: i64, field: &str) -> Result<u64, DataLayerError> {

@@ -231,6 +231,16 @@ impl<'a> AdminAppState<'a> {
         self.app.list_niffler_consistency_checks(query).await
     }
 
+    pub(crate) async fn list_niffler_stability_observations(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerStabilityObservationListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerStabilityObservationListPage,
+        GatewayError,
+    > {
+        self.app.list_niffler_stability_observations(query).await
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: aether_data_contracts::repository::niffler_core::CreateNifflerUpstreamServiceRecord,

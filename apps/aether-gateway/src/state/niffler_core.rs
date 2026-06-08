@@ -12,25 +12,26 @@ use aether_data_contracts::repository::niffler_core::{
     NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
     NifflerRouteAttemptListQuery, NifflerRuntimeAccountModelAccessListQuery,
     NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
-    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    StoredNifflerAccountModelCapabilityListPage, StoredNifflerAccountRiskEvent,
-    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
-    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
-    StoredNifflerConsistencyCheckListPage, StoredNifflerErrorReturnSetting,
-    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
-    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerSettlementSnapshotListQuery, NifflerStabilityObservationListQuery,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerAccountModelCapabilityListPage,
+    StoredNifflerAccountRiskEvent, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
+    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
+    StoredNifflerBillingReservationListPage, StoredNifflerConsistencyCheckListPage,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
     StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
     StoredNifflerRouteAttemptListPage, StoredNifflerRuntimeAccountModelAccessListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
     StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerStabilityObservationListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl AppState {
@@ -261,6 +262,16 @@ impl AppState {
     ) -> Result<StoredNifflerConsistencyCheckListPage, GatewayError> {
         self.data
             .list_niffler_consistency_checks(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn list_niffler_stability_observations(
+        &self,
+        query: &NifflerStabilityObservationListQuery,
+    ) -> Result<StoredNifflerStabilityObservationListPage, GatewayError> {
+        self.data
+            .list_niffler_stability_observations(query)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

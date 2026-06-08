@@ -18,6 +18,8 @@ mod config;
 mod db_maintenance;
 #[path = "runtime/niffler_billing_reservation_expiry.rs"]
 mod niffler_billing_reservation_expiry;
+#[path = "runtime/niffler_stability_observation.rs"]
+mod niffler_stability_observation;
 #[path = "runtime/oauth_token_refresh.rs"]
 mod oauth_token_refresh;
 #[path = "runtime/pending_cleanup.rs"]
@@ -74,6 +76,10 @@ use db_maintenance::*;
 pub(crate) use niffler_billing_reservation_expiry::{
     perform_niffler_billing_reservation_expiry_once, NifflerBillingReservationExpirySummary,
 };
+pub(crate) use niffler_stability_observation::{
+    classify_niffler_stability_observation, perform_niffler_stability_observation_once,
+    NifflerStabilityObservationInput, NifflerStabilityObservationSummary,
+};
 pub(crate) use oauth_token_refresh::{
     perform_oauth_token_refresh_once, OAuthTokenRefreshRunSummary,
 };
@@ -129,6 +135,7 @@ const AUDIT_LOG_CLEANUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const GEMINI_FILE_MAPPING_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const PENDING_CLEANUP_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const NIFFLER_BILLING_RESERVATION_EXPIRY_INTERVAL: Duration = Duration::from_secs(60);
+const NIFFLER_STABILITY_OBSERVATION_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const PROXY_NODE_STALE_SWEEP_INTERVAL: Duration = Duration::from_secs(5);
 const PROXY_NODE_METRICS_CLEANUP_HOUR: u32 = 2;
 const PROXY_NODE_METRICS_CLEANUP_MINUTE: u32 = 10;
