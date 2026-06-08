@@ -1,7 +1,8 @@
 use super::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
-    GatewayDataState, NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    CreateNifflerRouteAttemptRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, DataLayerError, GatewayDataState,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
     NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
     NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
@@ -11,12 +12,13 @@ use super::{
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
-    StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerRouteAttempt, StoredNifflerRuntimeRolloutSetting,
+    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -391,6 +393,20 @@ impl GatewayDataState {
                 .create_error_return_setting(record)
                 .await
                 .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_route_attempt(
+        &self,
+        record: CreateNifflerRouteAttemptRecord,
+    ) -> Result<Option<StoredNifflerRouteAttempt>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository.create_route_attempt(record).await.map(Some),
             None => Ok(None),
         }
     }

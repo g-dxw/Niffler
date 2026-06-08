@@ -764,6 +764,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: CreateNifflerErrorReturnSettingRecord,
     ) -> Result<StoredNifflerErrorReturnSetting, crate::DataLayerError>;
+
+    async fn create_route_attempt(
+        &self,
+        record: CreateNifflerRouteAttemptRecord,
+    ) -> Result<StoredNifflerRouteAttempt, crate::DataLayerError>;
 }
 
 pub trait NifflerCoreRepository: NifflerCoreReadRepository + NifflerCoreWriteRepository {}
@@ -1112,6 +1117,42 @@ impl CreateNifflerErrorReturnSettingRecord {
             is_active: self.is_active,
             created_at_unix_ms: self.created_at_unix_ms,
             updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerRouteAttemptRecord {
+    pub id: String,
+    pub request_id: String,
+    pub upstream_service_id: Option<String>,
+    pub upstream_account_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub model_name: String,
+    pub attempt_index: u32,
+    pub status: String,
+    pub skip_reason: Option<String>,
+    pub upstream_status_code: Option<u16>,
+    pub latency_ms: Option<u64>,
+    pub created_at_unix_ms: u64,
+}
+
+impl CreateNifflerRouteAttemptRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerRouteAttempt {
+            id: self.id.clone(),
+            request_id: self.request_id.clone(),
+            upstream_service_id: self.upstream_service_id.clone(),
+            upstream_account_id: self.upstream_account_id.clone(),
+            product_plan_id: self.product_plan_id.clone(),
+            model_name: self.model_name.clone(),
+            attempt_index: self.attempt_index,
+            status: self.status.clone(),
+            skip_reason: self.skip_reason.clone(),
+            upstream_status_code: self.upstream_status_code,
+            latency_ms: self.latency_ms,
+            created_at_unix_ms: self.created_at_unix_ms,
         }
         .validate()
     }

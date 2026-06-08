@@ -4,12 +4,13 @@ use sqlx::{sqlite::SqliteRow, QueryBuilder, Row, Sqlite};
 use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
-    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
+    CreateNifflerRouteAttemptRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    NifflerBillingReservationStatus, NifflerCoreReadRepository, NifflerCoreWriteRepository,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
+    NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
     NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
     NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
     NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
@@ -19,13 +20,13 @@ use super::{
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
-    StoredNifflerReferralRewardLedgerListPage, StoredNifflerRuntimeRolloutSetting,
-    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
-    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
+    StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
+    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
+    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
+    StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::sqlite::SqlitePool;
 use crate::error::SqlResultExt;
@@ -884,6 +885,74 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         .await
         .map_sql_err()?;
         self.reload_error_return_setting(&record.id).await
+    }
+
+    async fn create_route_attempt(
+        &self,
+        record: CreateNifflerRouteAttemptRecord,
+    ) -> Result<StoredNifflerRouteAttempt, DataLayerError> {
+        record.validate()?;
+        let attempt_index = i32::try_from(record.attempt_index).map_err(|_| {
+            DataLayerError::InvalidInput("route_attempts.attempt_index is too large".to_string())
+        })?;
+        let latency_ms = record
+            .latency_ms
+            .map(|value| i64_from_u64(value, "latency_ms"))
+            .transpose()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_route_attempts (
+  id, request_id, upstream_service_id, upstream_account_id, product_plan_id,
+  model_name, attempt_index, status, skip_reason, upstream_status_code,
+  latency_ms, created_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  request_id = excluded.request_id,
+  upstream_service_id = excluded.upstream_service_id,
+  upstream_account_id = excluded.upstream_account_id,
+  product_plan_id = excluded.product_plan_id,
+  model_name = excluded.model_name,
+  attempt_index = excluded.attempt_index,
+  status = excluded.status,
+  skip_reason = excluded.skip_reason,
+  upstream_status_code = excluded.upstream_status_code,
+  latency_ms = excluded.latency_ms,
+  created_at_unix_ms = excluded.created_at_unix_ms
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.request_id)
+        .bind(&record.upstream_service_id)
+        .bind(&record.upstream_account_id)
+        .bind(&record.product_plan_id)
+        .bind(&record.model_name)
+        .bind(attempt_index)
+        .bind(&record.status)
+        .bind(&record.skip_reason)
+        .bind(record.upstream_status_code.map(i32::from))
+        .bind(latency_ms)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        Ok(StoredNifflerRouteAttempt {
+            id: record.id,
+            request_id: record.request_id,
+            upstream_service_id: record.upstream_service_id,
+            upstream_account_id: record.upstream_account_id,
+            product_plan_id: record.product_plan_id,
+            model_name: record.model_name,
+            attempt_index: record.attempt_index,
+            status: record.status,
+            skip_reason: record.skip_reason,
+            upstream_status_code: record.upstream_status_code,
+            latency_ms: record.latency_ms,
+            created_at_unix_ms: record.created_at_unix_ms,
+        })
     }
 }
 

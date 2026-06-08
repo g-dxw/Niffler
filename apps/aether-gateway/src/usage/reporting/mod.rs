@@ -2,11 +2,19 @@ use std::collections::BTreeMap;
 
 use aether_contracts::ExecutionError;
 use aether_data_contracts::repository::candidates::RequestCandidateStatus;
-use aether_scheduler_core::{execution_error_details, SchedulerRequestCandidateStatusUpdate};
+use aether_data_contracts::repository::niffler_core::CreateNifflerRouteAttemptRecord;
+use aether_scheduler_core::{
+    execution_error_details, parse_request_candidate_report_context,
+    SchedulerRequestCandidateStatusUpdate,
+};
 use tracing::{debug, warn};
+use uuid::Uuid;
 
 use crate::clock::current_unix_ms;
 use crate::log_ids::short_request_id;
+use crate::niffler_runtime::{
+    resolve_niffler_runtime_rollout_decision, NifflerRuntimeRolloutDecision,
+};
 use crate::orchestration::{apply_local_report_effect, LocalReportEffect};
 use crate::request_candidate_runtime::record_report_request_candidate_status;
 use crate::task_runtime::{spawn_fire_and_forget, TASK_KEY_USAGE_SYNC_REPORT};
@@ -21,6 +29,8 @@ use aether_usage_runtime::{
     sync_report_represents_failure,
 };
 pub(crate) use aether_usage_runtime::{GatewayStreamReportRequest, GatewaySyncReportRequest};
+
+const TASK_KEY_NIFFLER_ROUTE_ATTEMPT_SHADOW_REPORT: &str = "usage.niffler.route_attempt.shadow";
 
 fn log_local_report_handled(
     trace_id: &str,
@@ -248,6 +258,14 @@ async fn handle_local_sync_report(state: &AppState, payload: &GatewaySyncReportR
     )
     .await;
     apply_local_report_effect(state, LocalReportEffect::Sync { payload }).await;
+    spawn_niffler_route_attempt_shadow_report(
+        state,
+        payload.report_context.as_ref(),
+        status,
+        Some(payload.status_code),
+        latency_ms,
+        terminal_unix_ms,
+    );
 }
 
 async fn handle_local_stream_report(state: &AppState, payload: &GatewayStreamReportRequest) {
@@ -271,6 +289,156 @@ async fn handle_local_stream_report(state: &AppState, payload: &GatewayStreamRep
     )
     .await;
     apply_local_report_effect(state, LocalReportEffect::Stream { payload }).await;
+    spawn_niffler_route_attempt_shadow_report(
+        state,
+        payload.report_context.as_ref(),
+        RequestCandidateStatus::Success,
+        Some(payload.status_code),
+        latency_ms,
+        terminal_unix_ms,
+    );
+}
+
+fn spawn_niffler_route_attempt_shadow_report(
+    state: &AppState,
+    report_context: Option<&serde_json::Value>,
+    status: RequestCandidateStatus,
+    upstream_status_code: Option<u16>,
+    latency_ms: Option<u64>,
+    created_at_unix_ms: u64,
+) {
+    let Some(context) = report_context.cloned() else {
+        return;
+    };
+    let Some(api_key_id) = parse_request_candidate_report_context(Some(&context))
+        .and_then(|metadata| metadata.api_key_id)
+    else {
+        return;
+    };
+
+    let state = state.clone();
+    spawn_fire_and_forget(TASK_KEY_NIFFLER_ROUTE_ATTEMPT_SHADOW_REPORT, async move {
+        let decision = match resolve_niffler_runtime_rollout_decision(&state, &api_key_id).await {
+            Ok(decision) => decision,
+            Err(error) => {
+                warn!(
+                    event_name = "niffler_route_attempt_shadow_rollout_failed",
+                    log_type = "ops",
+                    api_key_id = %api_key_id,
+                    error = ?error,
+                    "gateway skipped niffler route attempt shadow write because rollout lookup failed"
+                );
+                return;
+            }
+        };
+
+        if !decision.enable_new_routing {
+            return;
+        }
+
+        let Some(record) = build_niffler_route_attempt_shadow_record(
+            Some(&context),
+            &decision,
+            status,
+            upstream_status_code,
+            latency_ms,
+            created_at_unix_ms,
+        ) else {
+            warn!(
+                event_name = "niffler_route_attempt_shadow_record_skipped",
+                log_type = "ops",
+                api_key_id = %api_key_id,
+                report_request_id = %short_request_id(aether_usage_runtime::report_request_id(Some(&context))),
+                "gateway skipped niffler route attempt shadow write because report context is incomplete"
+            );
+            return;
+        };
+
+        if let Err(error) = state.create_niffler_route_attempt(record).await {
+            warn!(
+                event_name = "niffler_route_attempt_shadow_write_failed",
+                log_type = "ops",
+                api_key_id = %api_key_id,
+                error = ?error,
+                "gateway failed to write niffler route attempt shadow record"
+            );
+        }
+    });
+}
+
+fn build_niffler_route_attempt_shadow_record(
+    report_context: Option<&serde_json::Value>,
+    decision: &NifflerRuntimeRolloutDecision,
+    status: RequestCandidateStatus,
+    upstream_status_code: Option<u16>,
+    latency_ms: Option<u64>,
+    created_at_unix_ms: u64,
+) -> Option<CreateNifflerRouteAttemptRecord> {
+    let context = report_context?;
+    let metadata = parse_request_candidate_report_context(Some(context))?;
+    let request_id = metadata.request_id?;
+    let model_name = resolve_niffler_route_attempt_model_name(context, metadata.mapped_model)?;
+    let attempt_index = metadata.candidate_index.unwrap_or_default();
+    let id = build_niffler_route_attempt_shadow_id(&request_id, attempt_index);
+
+    Some(CreateNifflerRouteAttemptRecord {
+        id,
+        request_id,
+        upstream_service_id: metadata.provider_id,
+        upstream_account_id: metadata.key_id,
+        product_plan_id: decision.product_plan_id.clone(),
+        model_name,
+        attempt_index,
+        status: niffler_route_attempt_status(status).to_string(),
+        skip_reason: None,
+        upstream_status_code,
+        latency_ms,
+        created_at_unix_ms,
+    })
+}
+
+fn build_niffler_route_attempt_shadow_id(request_id: &str, attempt_index: u32) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("niffler-route-attempt:{request_id}:{attempt_index}").as_bytes(),
+    )
+    .to_string()
+}
+
+fn resolve_niffler_route_attempt_model_name(
+    context: &serde_json::Value,
+    mapped_model: Option<String>,
+) -> Option<String> {
+    mapped_model
+        .and_then(non_empty_string)
+        .or_else(|| string_field(context, "model"))
+        .or_else(|| string_field(context, "global_model_name"))
+        .or_else(|| string_field(context, "requested_model"))
+}
+
+fn niffler_route_attempt_status(status: RequestCandidateStatus) -> &'static str {
+    match status {
+        RequestCandidateStatus::Success => "success",
+        RequestCandidateStatus::Skipped => "skipped",
+        RequestCandidateStatus::Cancelled => "cancelled",
+        RequestCandidateStatus::Failed => "failed",
+        RequestCandidateStatus::Available
+        | RequestCandidateStatus::Unused
+        | RequestCandidateStatus::Pending
+        | RequestCandidateStatus::Streaming => "failed",
+    }
+}
+
+fn string_field(context: &serde_json::Value, key: &str) -> Option<String> {
+    context
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty_string(value.to_string()))
+}
+
+fn non_empty_string(value: String) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 #[cfg(test)]
@@ -297,10 +465,14 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        resolve_locally_actionable_report_context, submit_stream_report, submit_sync_report,
-        GatewayStreamReportRequest, GatewaySyncReportRequest,
+        build_niffler_route_attempt_shadow_record, resolve_locally_actionable_report_context,
+        submit_stream_report, submit_sync_report, GatewayStreamReportRequest,
+        GatewaySyncReportRequest,
     };
     use crate::data::GatewayDataState;
+    use crate::niffler_runtime::{
+        NifflerRuntimeRolloutDecision, NifflerRuntimeRolloutDecisionSource,
+    };
     use crate::AppState;
 
     fn sample_request_candidate(id: &str, request_id: &str) -> StoredRequestCandidate {
@@ -485,6 +657,19 @@ mod tests {
                 "524059".to_string(),
             ),
         ])
+    }
+
+    fn enabled_rollout_decision(api_key_id: &str) -> NifflerRuntimeRolloutDecision {
+        NifflerRuntimeRolloutDecision {
+            api_key_id: api_key_id.to_string(),
+            product_plan_id: Some("product-plan-reporting-tests-123".to_string()),
+            source: Some(NifflerRuntimeRolloutDecisionSource::ProductPlan),
+            enable_new_routing: true,
+            enable_settlement_snapshot: false,
+            enable_error_return_rules: false,
+            enable_billing_reservation: false,
+            enable_referral_ledger: false,
+        }
     }
 
     async fn seed_video_task(
@@ -1460,5 +1645,106 @@ mod tests {
             stored[0].key_id.as_deref(),
             Some("key-gemini-video-external-id-123")
         );
+    }
+
+    #[test]
+    fn builds_niffler_route_attempt_shadow_record_from_mapped_model() {
+        let decision = enabled_rollout_decision("api-key-shadow-123");
+        let context = json!({
+            "request_id": "req-shadow-123",
+            "api_key_id": "api-key-shadow-123",
+            "provider_id": "provider-shadow-123",
+            "key_id": "provider-key-shadow-123",
+            "candidate_index": 2,
+            "mapped_model": "gpt-5.5-upstream",
+            "model": "gpt-5.5"
+        });
+
+        let record = build_niffler_route_attempt_shadow_record(
+            Some(&context),
+            &decision,
+            RequestCandidateStatus::Success,
+            Some(200),
+            Some(1234),
+            1_700_000_000_000,
+        )
+        .expect("shadow record should build");
+
+        assert_eq!(record.request_id, "req-shadow-123");
+        assert_eq!(
+            record.upstream_service_id.as_deref(),
+            Some("provider-shadow-123")
+        );
+        assert_eq!(
+            record.upstream_account_id.as_deref(),
+            Some("provider-key-shadow-123")
+        );
+        assert_eq!(
+            record.product_plan_id.as_deref(),
+            Some("product-plan-reporting-tests-123")
+        );
+        assert_eq!(record.model_name, "gpt-5.5-upstream");
+        assert_eq!(record.attempt_index, 2);
+        assert_eq!(record.status, "success");
+        assert_eq!(record.upstream_status_code, Some(200));
+        assert_eq!(record.latency_ms, Some(1234));
+    }
+
+    #[test]
+    fn niffler_route_attempt_shadow_record_uses_stable_id() {
+        let decision = enabled_rollout_decision("api-key-shadow-stable-123");
+        let context = json!({
+            "request_id": "req-shadow-stable-123",
+            "api_key_id": "api-key-shadow-stable-123",
+            "provider_id": "provider-shadow-stable-123",
+            "key_id": "provider-key-shadow-stable-123",
+            "candidate_index": 1,
+            "model": "gpt-5.4-mini"
+        });
+
+        let first = build_niffler_route_attempt_shadow_record(
+            Some(&context),
+            &decision,
+            RequestCandidateStatus::Failed,
+            Some(503),
+            None,
+            1_700_000_000_000,
+        )
+        .expect("first shadow record should build");
+        let second = build_niffler_route_attempt_shadow_record(
+            Some(&context),
+            &decision,
+            RequestCandidateStatus::Failed,
+            Some(503),
+            None,
+            1_700_000_000_999,
+        )
+        .expect("second shadow record should build");
+
+        assert_eq!(first.id, second.id);
+        assert_eq!(first.status, "failed");
+    }
+
+    #[test]
+    fn skips_niffler_route_attempt_shadow_record_without_model_name() {
+        let decision = enabled_rollout_decision("api-key-shadow-no-model-123");
+        let context = json!({
+            "request_id": "req-shadow-no-model-123",
+            "api_key_id": "api-key-shadow-no-model-123",
+            "provider_id": "provider-shadow-no-model-123",
+            "key_id": "provider-key-shadow-no-model-123",
+            "candidate_index": 0
+        });
+
+        let record = build_niffler_route_attempt_shadow_record(
+            Some(&context),
+            &decision,
+            RequestCandidateStatus::Success,
+            Some(200),
+            None,
+            1_700_000_000_000,
+        );
+
+        assert!(record.is_none());
     }
 }

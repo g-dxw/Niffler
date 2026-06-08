@@ -50,6 +50,7 @@ mod log_ids;
 mod maintenance;
 pub(crate) mod middleware;
 mod model_fetch;
+mod niffler_runtime;
 mod oauth;
 mod orchestration;
 mod privacy;
