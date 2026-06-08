@@ -824,6 +824,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         record: CreateNifflerBillingReservationDryRunRecord,
     ) -> Result<StoredNifflerBillingReservationDryRun, crate::DataLayerError>;
 
+    async fn create_referral_reward_ledger(
+        &self,
+        record: CreateNifflerReferralRewardLedgerRecord,
+    ) -> Result<StoredNifflerReferralRewardLedger, crate::DataLayerError>;
+
     async fn create_route_attempt(
         &self,
         record: CreateNifflerRouteAttemptRecord,
@@ -2014,6 +2019,44 @@ impl StoredNifflerReferralRewardLedger {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerReferralRewardLedgerRecord {
+    pub id: String,
+    pub order_id: String,
+    pub idempotency_key: String,
+    pub inviter_user_id: String,
+    pub invitee_user_id: String,
+    pub rule_id: Option<String>,
+    pub reward_amount_usd: f64,
+    pub rule_snapshot: serde_json::Value,
+    pub status: NifflerReferralRewardLedgerStatus,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl CreateNifflerReferralRewardLedgerRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerReferralRewardLedger {
+            id: self.id.clone(),
+            order_id: self.order_id.clone(),
+            idempotency_key: self.idempotency_key.clone(),
+            inviter_user_id: self.inviter_user_id.clone(),
+            invitee_user_id: self.invitee_user_id.clone(),
+            rule_id: self.rule_id.clone(),
+            reward_amount_usd: self.reward_amount_usd,
+            rule_snapshot: self.rule_snapshot.clone(),
+            status: self.status,
+            failure_reason: None,
+            retry_count: 0,
+            paid_at_unix_ms: None,
+            cancelled_at_unix_ms: None,
+            created_at_unix_ms: self.created_at_unix_ms,
+            updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerReferralRewardEvent {
     pub id: String,
@@ -2389,9 +2432,10 @@ fn validate_finite(field: &str, value: f64) -> Result<(), crate::DataLayerError>
 #[cfg(test)]
 mod tests {
     use super::{
-        default_platform_error_message, NifflerAccountProtectionAction, NifflerAccountStatus,
-        NifflerBillingReservationStatus, NifflerPauseDuration, NifflerPriceSourcePreference,
-        NifflerProtocolKind, NifflerReferralRewardKind, NifflerReferralRewardLedgerStatus,
+        default_platform_error_message, CreateNifflerReferralRewardLedgerRecord,
+        NifflerAccountProtectionAction, NifflerAccountStatus, NifflerBillingReservationStatus,
+        NifflerPauseDuration, NifflerPriceSourcePreference, NifflerProtocolKind,
+        NifflerReferralRewardKind, NifflerReferralRewardLedgerStatus,
         NifflerReferralRewardRuleStatus, NifflerServiceCapabilityKind,
         NifflerUpstreamErrorHandlingStep, StoredNifflerApiKeyPause,
         StoredNifflerBillingReservation, StoredNifflerBillingReservationEvent,
@@ -2622,5 +2666,29 @@ mod tests {
             updated_at_unix_ms: 1,
         };
         assert!(ledger.validate().is_err());
+    }
+
+    #[test]
+    fn pending_referral_reward_create_record_is_valid() {
+        let record = CreateNifflerReferralRewardLedgerRecord {
+            id: "reward-1".to_string(),
+            order_id: "order-1".to_string(),
+            idempotency_key: "niffler-referral-ledger:order:order-1".to_string(),
+            inviter_user_id: "user-a".to_string(),
+            invitee_user_id: "user-b".to_string(),
+            rule_id: None,
+            reward_amount_usd: 1.0,
+            rule_snapshot: serde_json::json!({ "source": "legacy_referral_rewards" }),
+            status: NifflerReferralRewardLedgerStatus::Pending,
+            created_at_unix_ms: 1,
+            updated_at_unix_ms: 1,
+        };
+        assert!(record.validate().is_ok());
+
+        let paid_without_paid_time = CreateNifflerReferralRewardLedgerRecord {
+            status: NifflerReferralRewardLedgerStatus::Paid,
+            ..record
+        };
+        assert!(paid_without_paid_time.validate().is_err());
     }
 }

@@ -1,31 +1,33 @@
 use super::{
     CreateNifflerAccountRiskEventRecord, CreateNifflerBillingReservationDryRunRecord,
     CreateNifflerBillingReservationRecord, CreateNifflerErrorReturnSettingRecord,
-    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, DataLayerError, FinalizeNifflerBillingReservationRecord,
-    GatewayDataState, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
-    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
-    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
-    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
-    NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerAccountRiskEvent,
-    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
-    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
-    StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
-    StoredNifflerRouteAttempt, StoredNifflerRouteAttemptListPage,
-    StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
-    StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    CreateNifflerProductPlanRecord, CreateNifflerReferralRewardLedgerRecord,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
+    FinalizeNifflerBillingReservationRecord, GatewayDataState,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
+    NifflerBillingReservationListQuery, NifflerErrorReturnSettingListQuery,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    StoredNifflerAccountRiskEvent, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
+    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
+    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
+    StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
+    StoredNifflerRouteAttemptListPage, StoredNifflerRuntimeRolloutSetting,
+    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerSettlementSnapshot,
+    StoredNifflerSettlementSnapshotListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -552,6 +554,23 @@ impl GatewayDataState {
         {
             Some(repository) => repository
                 .create_billing_reservation_dry_run(record)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_referral_reward_ledger(
+        &self,
+        record: CreateNifflerReferralRewardLedgerRecord,
+    ) -> Result<Option<StoredNifflerReferralRewardLedger>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .create_referral_reward_ledger(record)
                 .await
                 .map(Some),
             None => Ok(None),

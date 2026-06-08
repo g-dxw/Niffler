@@ -5,15 +5,15 @@ use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
     CreateNifflerAccountRiskEventRecord, CreateNifflerBillingReservationDryRunRecord,
     CreateNifflerBillingReservationRecord, CreateNifflerErrorReturnSettingRecord,
-    CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, FinalizeNifflerBillingReservationRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationDryRunListQuery, NifflerBillingReservationListQuery,
-    NifflerBillingReservationStatus, NifflerCoreReadRepository, NifflerCoreWriteRepository,
-    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
-    NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
+    CreateNifflerProductPlanRecord, CreateNifflerReferralRewardLedgerRecord,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    FinalizeNifflerBillingReservationRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
+    NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
+    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
+    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerProtocolKind, NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
     NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
     NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind,
     NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
@@ -241,6 +241,35 @@ LIMIT 1
             .ok_or_else(|| {
                 DataLayerError::UnexpectedValue(
                     "niffler account risk event missing after write".into(),
+                )
+            })
+    }
+
+    async fn reload_referral_reward_ledger_by_order_id(
+        &self,
+        order_id: &str,
+    ) -> Result<StoredNifflerReferralRewardLedger, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, order_id, idempotency_key, inviter_user_id, invitee_user_id, rule_id,
+  reward_amount_usd, rule_snapshot, status, failure_reason, retry_count,
+  paid_at_unix_ms, cancelled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+FROM niffler_referral_reward_ledger
+WHERE order_id = ?
+LIMIT 1
+"#,
+        )
+        .bind(order_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_referral_reward_ledger_row)
+            .transpose()?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler referral reward ledger missing after write".into(),
                 )
             })
     }
@@ -1430,6 +1459,49 @@ ON CONFLICT (request_id) DO UPDATE SET
         .await
         .map_sql_err()?;
         self.reload_billing_reservation_dry_run_by_request_id(&record.request_id)
+            .await
+    }
+
+    async fn create_referral_reward_ledger(
+        &self,
+        record: CreateNifflerReferralRewardLedgerRecord,
+    ) -> Result<StoredNifflerReferralRewardLedger, DataLayerError> {
+        record.validate()?;
+        let rule_snapshot = json_to_string(
+            Some(&record.rule_snapshot),
+            "niffler_referral_reward_ledger.rule_snapshot",
+        )?;
+        sqlx::query(
+            r#"
+INSERT OR IGNORE INTO niffler_referral_reward_ledger (
+  id, order_id, idempotency_key, inviter_user_id, invitee_user_id, rule_id,
+  reward_amount_usd, rule_snapshot, status, failure_reason, retry_count,
+  paid_at_unix_ms, cancelled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, ?, ?)
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.order_id)
+        .bind(&record.idempotency_key)
+        .bind(&record.inviter_user_id)
+        .bind(&record.invitee_user_id)
+        .bind(&record.rule_id)
+        .bind(record.reward_amount_usd)
+        .bind(rule_snapshot)
+        .bind(record.status.as_str())
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.updated_at_unix_ms,
+            "updated_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_referral_reward_ledger_by_order_id(&record.order_id)
             .await
     }
 
