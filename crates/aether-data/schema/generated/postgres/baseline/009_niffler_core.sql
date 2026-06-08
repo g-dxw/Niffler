@@ -269,6 +269,9 @@ CREATE TABLE IF NOT EXISTS public.niffler_settlement_snapshots (
 ALTER TABLE ONLY public.niffler_settlement_snapshots ADD CONSTRAINT niffler_settlement_snapshots_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.niffler_settlement_snapshots ADD CONSTRAINT uq_niffler_settlement_snapshots_request UNIQUE (request_id);
 CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_user_time ON public.niffler_settlement_snapshots USING btree (user_id, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_created_at ON public.niffler_settlement_snapshots USING btree (created_at_unix_ms, request_id);
+CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_key_time ON public.niffler_settlement_snapshots USING btree (api_key_id, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_plan_time ON public.niffler_settlement_snapshots USING btree (product_plan_id, created_at_unix_ms);
 
 CREATE TABLE IF NOT EXISTS public.niffler_billing_reservations (
     id character varying(36) NOT NULL,

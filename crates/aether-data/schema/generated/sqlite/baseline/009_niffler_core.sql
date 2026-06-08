@@ -239,6 +239,9 @@ CREATE TABLE IF NOT EXISTS niffler_settlement_snapshots (
     UNIQUE (request_id)
 );
 CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_user_time ON niffler_settlement_snapshots (user_id, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_created_at ON niffler_settlement_snapshots (created_at_unix_ms, request_id);
+CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_key_time ON niffler_settlement_snapshots (api_key_id, created_at_unix_ms);
+CREATE INDEX IF NOT EXISTS idx_niffler_settlement_snapshots_plan_time ON niffler_settlement_snapshots (product_plan_id, created_at_unix_ms);
 
 CREATE TABLE IF NOT EXISTS niffler_billing_reservations (
     id TEXT PRIMARY KEY NOT NULL,

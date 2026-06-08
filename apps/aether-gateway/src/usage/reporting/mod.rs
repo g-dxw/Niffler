@@ -18,7 +18,6 @@ use crate::clock::current_unix_ms;
 use crate::log_ids::short_request_id;
 use crate::niffler_runtime::{
     resolve_niffler_runtime_rollout_decision, NifflerRuntimeRolloutDecision,
-    NifflerRuntimeRolloutDecisionSource,
 };
 use crate::orchestration::{apply_local_report_effect, LocalReportEffect};
 use crate::request_candidate_runtime::record_report_request_candidate_status;
@@ -420,17 +419,15 @@ fn spawn_niffler_shadow_reports(
                     "gateway skipped niffler billing reservation dry run write because settlement or charge data is incomplete"
                 );
             }
-            if decision.source == Some(NifflerRuntimeRolloutDecisionSource::ApiKey) {
-                finalize_niffler_billing_reservation(
-                    &state,
-                    &context,
-                    &decision,
-                    status,
-                    upstream_status_code,
-                    created_at_unix_ms,
-                )
-                .await;
-            }
+            finalize_niffler_billing_reservation(
+                &state,
+                &context,
+                &decision,
+                status,
+                upstream_status_code,
+                created_at_unix_ms,
+            )
+            .await;
         }
     });
 }

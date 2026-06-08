@@ -13,9 +13,7 @@ use crate::control::{
     estimate_request_wallet_reservation, extract_requested_model, GatewayControlDecision,
     GatewayLocalAuthRejection,
 };
-use crate::niffler_runtime::{
-    resolve_niffler_runtime_rollout_decision, NifflerRuntimeRolloutDecisionSource,
-};
+use crate::niffler_runtime::resolve_niffler_runtime_rollout_decision;
 use crate::{AppState, GatewayError};
 
 const ACTIVE_RESERVATION_EPSILON_USD: f64 = 0.000_000_01;
@@ -49,9 +47,7 @@ pub(crate) async fn prepare_niffler_billing_reservation_for_request(
         return Ok(None);
     }
     let rollout = resolve_niffler_runtime_rollout_decision(state, &auth_context.api_key_id).await?;
-    if !rollout.enable_billing_reservation
-        || rollout.source != Some(NifflerRuntimeRolloutDecisionSource::ApiKey)
-    {
+    if !rollout.enable_billing_reservation {
         return Ok(None);
     }
 
@@ -444,7 +440,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn product_plan_rollout_does_not_create_real_billing_reservation() {
+    async fn product_plan_rollout_creates_real_billing_reservation() {
         let state = sqlite_state_with_billing_overrides().await;
         enable_product_plan_reservation(&state).await;
         let uri: Uri = "/v1/chat/completions".parse().expect("uri should parse");
@@ -461,7 +457,7 @@ mod tests {
         .expect("reservation preparation should run");
 
         assert_eq!(rejection, None);
-        assert_eq!(reservation_count(&state).await, 0);
+        assert_eq!(reservation_count(&state).await, 1);
     }
 
     #[tokio::test]

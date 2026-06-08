@@ -533,6 +533,35 @@ fn classifies_admin_niffler_core_settlement_snapshots_as_admin_proxy_route() {
 }
 
 #[test]
+fn classifies_admin_niffler_core_consistency_checks_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/consistency-checks?request_id=req-1"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::GET, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        decision.route_kind.as_deref(),
+        Some("list_consistency_checks")
+    );
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:wallets")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::GET, &decision).as_deref(),
+        Some("admin:wallets:read")
+    );
+    assert!(!decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_admin_niffler_core_referral_reward_ledger_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/niffler-core/referral-reward-ledger?status=pending"

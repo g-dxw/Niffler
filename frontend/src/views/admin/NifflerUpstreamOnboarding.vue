@@ -994,12 +994,12 @@
           <Button
             variant="outline"
             class="h-9"
-            :disabled="billingReservationLoading || billingReservationDryRunLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading"
+            :disabled="billingReservationLoading || billingReservationDryRunLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading || consistencyCheckLoading"
             @click="loadReconciliationData"
           >
             <RefreshCw
               class="mr-2 h-4 w-4"
-              :class="{ 'animate-spin': billingReservationLoading || billingReservationDryRunLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading }"
+              :class="{ 'animate-spin': billingReservationLoading || billingReservationDryRunLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading || consistencyCheckLoading }"
             />
             刷新对账
           </Button>
@@ -1703,6 +1703,173 @@
                 <TableCell>
                   <div class="text-xs">
                     {{ formatNifflerUnixMs(attempt.created_at_unix_ms) }}
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </section>
+
+        <section class="border-t border-border/70 p-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 class="font-medium">
+                一致性看板
+              </h3>
+              <p class="mt-1 text-xs text-muted-foreground">
+                按请求 ID 汇总旧使用记录、新结算快照、预占、套餐消耗和路由尝试。只读检查，不会修账。
+              </p>
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                v-model="consistencyCheckRequestIdFilter"
+                class="h-9 sm:w-56"
+                placeholder="按请求 ID 筛选"
+                @keyup.enter="loadConsistencyChecks"
+              />
+              <Select v-model="consistencyCheckProductPlanIdFilter">
+                <SelectTrigger class="h-9 sm:w-44">
+                  <SelectValue placeholder="产品策略" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">
+                    全部策略
+                  </SelectItem>
+                  <SelectItem
+                    v-for="plan in productPlans"
+                    :key="plan.id"
+                    :value="plan.id"
+                  >
+                    {{ plan.display_name }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                class="h-9"
+                :disabled="consistencyCheckLoading"
+                @click="loadConsistencyChecks"
+              >
+                <RefreshCw
+                  class="mr-2 h-4 w-4"
+                  :class="{ 'animate-spin': consistencyCheckLoading }"
+                />
+                刷新
+              </Button>
+            </div>
+          </div>
+
+          <p
+            v-if="consistencyCheckError"
+            class="mt-4 rounded-md border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            {{ consistencyCheckError }}
+          </p>
+
+          <div
+            v-if="consistencyCheckLoading && consistencyChecks.length === 0"
+            class="flex items-center justify-center py-12 text-sm text-muted-foreground"
+          >
+            <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+            正在读取一致性看板...
+          </div>
+
+          <div
+            v-else-if="consistencyChecks.length === 0"
+            class="py-12 text-center"
+          >
+            <ShieldCheck class="mx-auto h-9 w-9 text-muted-foreground/50" />
+            <p class="mt-3 text-sm font-medium">
+              没有一致性记录
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              只有启用结算快照写入后，这里才会出现请求级对账结果。
+            </p>
+          </div>
+
+          <Table v-else class="mt-4">
+            <TableHeader>
+              <TableRow>
+                <TableHead>请求</TableHead>
+                <TableHead>旧链路</TableHead>
+                <TableHead>新快照</TableHead>
+                <TableHead>误差</TableHead>
+                <TableHead>预占和路由</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="item in consistencyChecks"
+                :key="item.request_id"
+              >
+                <TableCell>
+                  <div class="font-mono text-xs">
+                    {{ item.request_id }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    用户 {{ item.user_id || '未知' }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    Key {{ item.api_key_id || '未知' }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    策略 {{ consistencyProductPlanLabel(item) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="consistencyStatusVariant(item.consistency_status)">
+                    {{ consistencyStatusLabel(item.consistency_status) }}
+                  </Badge>
+                  <div class="mt-2 text-xs text-muted-foreground">
+                    使用 {{ item.usage_status || '缺失' }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    结算 {{ item.usage_billing_status || '缺失' }}
+                  </div>
+                  <div
+                    v-if="item.issue_codes.length > 0"
+                    class="mt-2 flex flex-wrap gap-1"
+                  >
+                    <Badge
+                      v-for="issue in item.issue_codes"
+                      :key="issue"
+                      variant="secondary"
+                    >
+                      {{ consistencyIssueLabel(issue) }}
+                    </Badge>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-sm font-medium">
+                    合计 {{ formatUsdAmount(item.niffler_total_charge_usd) }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    钱包 {{ formatUsdAmount(item.niffler_wallet_charge_usd) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    套餐 {{ formatUsdAmount(item.niffler_entitlement_charge_usd) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-xs">
+                    钱包 {{ formatOptionalUsd(item.wallet_difference_usd) }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    套餐 {{ formatUsdAmount(item.entitlement_difference_usd) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    合计 {{ formatOptionalUsd(item.total_difference_usd) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-xs">
+                    预占 {{ consistencyReservationLabel(item) }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    路由 {{ item.successful_route_attempt_count }}/{{ item.route_attempt_count }} 成功
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {{ formatNifflerUnixMs(item.created_at_unix_ms) }}
                   </div>
                 </TableCell>
               </TableRow>
@@ -2499,6 +2666,7 @@ import {
   RefreshCw,
   Search,
   Server,
+  ShieldCheck,
   Tags,
 } from 'lucide-vue-next'
 import { PageContainer, PageHeader } from '@/components/layout'
@@ -2534,6 +2702,7 @@ import {
   listNifflerApiKeyProductPlanBindings,
   listNifflerBillingReservationDryRuns,
   listNifflerBillingReservations,
+  listNifflerConsistencyChecks,
   listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
   listNifflerProductPlans,
@@ -2559,6 +2728,7 @@ import {
   type NifflerBillingReservation,
   type NifflerBillingReservationDryRun,
   type NifflerBillingReservationStatus,
+  type NifflerConsistencyCheck,
   type NifflerErrorResponseScope,
   type NifflerErrorReturnSetting,
   type NifflerPauseDuration,
@@ -2678,6 +2848,7 @@ const billingReservationDryRuns = ref<NifflerBillingReservationDryRun[]>([])
 const settlementSnapshots = ref<NifflerSettlementSnapshot[]>([])
 const referralRewardLedger = ref<NifflerReferralRewardLedger[]>([])
 const routeAttempts = ref<NifflerRouteAttempt[]>([])
+const consistencyChecks = ref<NifflerConsistencyCheck[]>([])
 const serviceLoading = ref(false)
 const serviceCapabilityLoading = ref(false)
 const accountLoading = ref(false)
@@ -2694,6 +2865,7 @@ const billingReservationDryRunLoading = ref(false)
 const settlementSnapshotLoading = ref(false)
 const referralRewardLedgerLoading = ref(false)
 const routeAttemptLoading = ref(false)
+const consistencyCheckLoading = ref(false)
 const savingService = ref(false)
 const savingServiceCapabilities = ref(false)
 const savingAccount = ref(false)
@@ -2718,6 +2890,7 @@ const billingReservationDryRunError = ref('')
 const settlementSnapshotError = ref('')
 const referralRewardLedgerError = ref('')
 const routeAttemptError = ref('')
+const consistencyCheckError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
 const billingReservationStatusFilter = ref<BillingReservationStatusFilter>('all')
@@ -2727,6 +2900,8 @@ const routeAttemptStatusFilter = ref<RouteAttemptStatusFilter>('all')
 const routeAttemptRequestIdFilter = ref('')
 const settlementSnapshotRequestIdFilter = ref('')
 const billingReservationDryRunRequestIdFilter = ref('')
+const consistencyCheckRequestIdFilter = ref('')
+const consistencyCheckProductPlanIdFilter = ref('__all__')
 const selectedServiceId = ref<string | null>(null)
 const selectedProductPlanId = ref<string | null>(null)
 const selectedRuntimeRolloutApiKeyId = ref('')
@@ -2892,6 +3067,7 @@ const pageLoading = computed(() =>
   || settlementSnapshotLoading.value
   || referralRewardLedgerLoading.value
   || routeAttemptLoading.value
+  || consistencyCheckLoading.value
 )
 
 const selectedService = computed(() =>
@@ -3495,6 +3671,27 @@ async function loadRouteAttempts() {
   }
 }
 
+async function loadConsistencyChecks() {
+  consistencyCheckLoading.value = true
+  consistencyCheckError.value = ''
+  try {
+    const response = await listNifflerConsistencyChecks({
+      request_id: consistencyCheckRequestIdFilter.value.trim() || undefined,
+      product_plan_id: consistencyCheckProductPlanIdFilter.value === '__all__'
+        ? undefined
+        : consistencyCheckProductPlanIdFilter.value,
+      offset: 0,
+      limit: 50,
+    })
+    consistencyChecks.value = response.items
+  } catch (err) {
+    consistencyCheckError.value = extractErrorMessage(err, '读取一致性看板失败')
+    showError(consistencyCheckError.value)
+  } finally {
+    consistencyCheckLoading.value = false
+  }
+}
+
 async function loadReconciliationData() {
   await Promise.all([
     loadBillingReservations(),
@@ -3502,6 +3699,7 @@ async function loadReconciliationData() {
     loadSettlementSnapshots(),
     loadReferralRewardLedger(),
     loadRouteAttempts(),
+    loadConsistencyChecks(),
   ])
 }
 
@@ -4011,9 +4209,48 @@ function reconciliationStatusVariant(status: string): 'default' | 'secondary' | 
   return 'secondary'
 }
 
+function consistencyStatusLabel(status: string): string {
+  return status === 'ok' ? '一致' : '需检查'
+}
+
+function consistencyStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  return status === 'ok' ? 'default' : 'destructive'
+}
+
+function consistencyIssueLabel(issue: string): string {
+  const labels: Record<string, string> = {
+    missing_legacy_usage: '缺旧使用记录',
+    missing_legacy_settlement: '缺旧结算',
+    legacy_not_settled: '旧结算未完成',
+    missing_legacy_wallet_charge: '缺钱包扣费',
+    wallet_charge_mismatch: '钱包金额不一致',
+    entitlement_charge_mismatch: '套餐金额不一致',
+    total_charge_mismatch: '合计金额不一致',
+    missing_billing_reservation: '缺预占',
+    reservation_not_finalized: '预占未完成',
+    reservation_manual_review: '预占需人工处理',
+    missing_route_attempt: '缺路由记录',
+  }
+  return labels[issue] ?? issue
+}
+
+function consistencyProductPlanLabel(item: NifflerConsistencyCheck): string {
+  return item.product_plan_name || item.product_plan_id || '未绑定'
+}
+
+function consistencyReservationLabel(item: NifflerConsistencyCheck): string {
+  if (!item.reservation_status) return '缺失'
+  const reason = item.reservation_release_reason ? ` / ${item.reservation_release_reason}` : ''
+  return `${billingReservationStatusLabel(item.reservation_status)}${reason}`
+}
+
 function formatUsdAmount(value: number): string {
   if (!Number.isFinite(value)) return '$0.0000'
   return usdFormatter.format(value)
+}
+
+function formatOptionalUsd(value?: number | null): string {
+  return value === null || value === undefined ? '缺失' : formatUsdAmount(value)
 }
 
 function errorScopeLabel(scope: NifflerErrorResponseScope): string {

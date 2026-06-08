@@ -197,6 +197,16 @@ impl<'a> AdminAppState<'a> {
         self.app.list_niffler_route_attempts(query).await
     }
 
+    pub(crate) async fn list_niffler_consistency_checks(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerConsistencyCheckListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerConsistencyCheckListPage,
+        GatewayError,
+    > {
+        self.app.list_niffler_consistency_checks(query).await
+    }
+
     pub(crate) async fn create_niffler_upstream_service(
         &self,
         record: aether_data_contracts::repository::niffler_core::CreateNifflerUpstreamServiceRecord,

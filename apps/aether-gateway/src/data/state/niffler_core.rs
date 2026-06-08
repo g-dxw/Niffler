@@ -6,16 +6,17 @@ use super::{
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
     FinalizeNifflerBillingReservationRecord, GatewayDataState,
     NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
-    NifflerBillingReservationListQuery, NifflerErrorReturnSettingListQuery,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
-    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
-    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    StoredNifflerAccountRiskEvent, StoredNifflerApiKeyProductPlanBinding,
-    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
-    StoredNifflerBillingReservationDryRun, StoredNifflerBillingReservationDryRunListPage,
-    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
+    NifflerBillingReservationListQuery, NifflerConsistencyCheckListQuery,
+    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
+    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
+    NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerAccountRiskEvent,
+    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
+    StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
+    StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
+    StoredNifflerConsistencyCheckListPage, StoredNifflerErrorReturnSetting,
     StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
     StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
@@ -347,6 +348,23 @@ impl GatewayDataState {
         {
             Some(repository) => repository.list_route_attempts(query).await,
             None => Ok(StoredNifflerRouteAttemptListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
+    pub(crate) async fn list_niffler_consistency_checks(
+        &self,
+        query: &NifflerConsistencyCheckListQuery,
+    ) -> Result<StoredNifflerConsistencyCheckListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_consistency_checks(query).await,
+            None => Ok(StoredNifflerConsistencyCheckListPage {
                 items: Vec::new(),
                 total: 0,
             }),

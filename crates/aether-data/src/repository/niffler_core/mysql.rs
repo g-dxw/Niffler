@@ -10,10 +10,11 @@ use super::{
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
     FinalizeNifflerBillingReservationRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
     NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationDryRunListQuery,
-    NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
-    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
+    NifflerBillingReservationListQuery, NifflerBillingReservationStatus,
+    NifflerConsistencyCheckListQuery, NifflerCoreReadRepository, NifflerCoreWriteRepository,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
+    NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
     NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
     NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind,
     NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
@@ -22,6 +23,7 @@ use super::{
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerBillingReservation, StoredNifflerBillingReservationDryRun,
     StoredNifflerBillingReservationDryRunListPage, StoredNifflerBillingReservationListPage,
+    StoredNifflerConsistencyCheckItem, StoredNifflerConsistencyCheckListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
@@ -828,6 +830,25 @@ WHERE status = 'active' AND expires_at_unix_ms > ? AND user_id = ? AND api_key_i
         Ok(StoredNifflerRouteAttemptListPage {
             items,
             total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_consistency_checks(
+        &self,
+        query: &NifflerConsistencyCheckListQuery,
+    ) -> Result<StoredNifflerConsistencyCheckListPage, DataLayerError> {
+        let rows = build_consistency_check_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_consistency_check_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerConsistencyCheckListPage {
+            total: query.offset.saturating_add(items.len()),
+            items,
         })
     }
 }
@@ -1975,6 +1996,95 @@ fn push_settlement_snapshot_filters(
     }
 }
 
+fn build_consistency_check_rows_query(
+    query: &NifflerConsistencyCheckListQuery,
+) -> QueryBuilder<'_, MySql> {
+    let mut builder = QueryBuilder::new(
+        "SELECT ss.request_id, ss.user_id, ss.api_key_id, ss.product_plan_id, \
+         pp.display_name AS product_plan_name, u.status AS usage_status, \
+         COALESCE(uss.billing_status, u.billing_status) AS usage_billing_status, \
+         CAST(u.total_cost_usd AS DOUBLE) AS usage_total_cost_usd, \
+         CASE WHEN COALESCE(uss.wallet_recharge_balance_before, u.wallet_recharge_balance_before) IS NULL \
+              AND COALESCE(uss.wallet_recharge_balance_after, u.wallet_recharge_balance_after) IS NULL \
+              AND COALESCE(uss.wallet_gift_balance_before, u.wallet_gift_balance_before) IS NULL \
+              AND COALESCE(uss.wallet_gift_balance_after, u.wallet_gift_balance_after) IS NULL \
+              THEN NULL \
+              ELSE GREATEST(0.0, COALESCE(COALESCE(uss.wallet_recharge_balance_before, u.wallet_recharge_balance_before), 0.0) \
+                   - COALESCE(COALESCE(uss.wallet_recharge_balance_after, u.wallet_recharge_balance_after), 0.0)) \
+                 + GREATEST(0.0, COALESCE(COALESCE(uss.wallet_gift_balance_before, u.wallet_gift_balance_before), 0.0) \
+                   - COALESCE(COALESCE(uss.wallet_gift_balance_after, u.wallet_gift_balance_after), 0.0)) \
+         END AS legacy_wallet_charge_usd, \
+         COALESCE((SELECT SUM(eul.amount_usd) FROM entitlement_usage_ledgers eul WHERE eul.request_id = ss.request_id), 0.0) \
+           AS legacy_entitlement_charge_usd, \
+         ss.wallet_charge_usd AS niffler_wallet_charge_usd, \
+         ss.entitlement_charge_usd AS niffler_entitlement_charge_usd, \
+         ss.wallet_charge_usd + ss.entitlement_charge_usd AS niffler_total_charge_usd, \
+         br.id AS reservation_id, br.status AS reservation_status, \
+         br.release_reason AS reservation_release_reason, \
+         COALESCE((SELECT COUNT(*) FROM niffler_route_attempts ra WHERE ra.request_id = ss.request_id), 0) \
+           AS route_attempt_count, \
+         COALESCE((SELECT COUNT(*) FROM niffler_route_attempts ra WHERE ra.request_id = ss.request_id AND ra.status = 'success'), 0) \
+           AS successful_route_attempt_count, \
+         ss.created_at_unix_ms \
+         FROM niffler_settlement_snapshots ss \
+         LEFT JOIN niffler_product_plans pp ON pp.id = ss.product_plan_id \
+         LEFT JOIN `usage` u ON u.request_id = ss.request_id \
+         LEFT JOIN usage_settlement_snapshots uss ON uss.request_id = ss.request_id \
+         LEFT JOIN niffler_billing_reservations br ON br.request_id = ss.request_id",
+    );
+    push_consistency_check_filters(&mut builder, query);
+    builder.push(" ORDER BY ss.created_at_unix_ms DESC, ss.request_id ASC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit.min(100)));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_consistency_check_filters(
+    builder: &mut QueryBuilder<'_, MySql>,
+    query: &NifflerConsistencyCheckListQuery,
+) {
+    let mut has_where = false;
+    if let Some(request_id) = query
+        .request_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(" WHERE ss.request_id = ");
+        builder.push_bind(request_id.clone());
+        has_where = true;
+    }
+    if let Some(user_id) = query
+        .user_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ss.user_id = ");
+        builder.push_bind(user_id.clone());
+        has_where = true;
+    }
+    if let Some(api_key_id) = query
+        .api_key_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ss.api_key_id = ");
+        builder.push_bind(api_key_id.clone());
+        has_where = true;
+    }
+    if let Some(product_plan_id) = query
+        .product_plan_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ss.product_plan_id = ");
+        builder.push_bind(product_plan_id.clone());
+    }
+}
+
 fn build_billing_reservation_count_query(
     query: &NifflerBillingReservationListQuery,
 ) -> QueryBuilder<'_, MySql> {
@@ -2620,6 +2730,165 @@ fn map_settlement_snapshot_list_row(
             .map(|value| super::u64_from_i64(value, "finalized_at_unix_ms"))
             .transpose()?,
     })
+}
+
+fn map_consistency_check_row(
+    row: &MySqlRow,
+) -> Result<StoredNifflerConsistencyCheckItem, DataLayerError> {
+    let reservation_status = row
+        .try_get::<Option<String>, _>("reservation_status")
+        .map_sql_err()?
+        .as_deref()
+        .map(NifflerBillingReservationStatus::from_database)
+        .transpose()?;
+    let usage_status: Option<String> = row
+        .try_get::<Option<String>, _>("usage_status")
+        .map_sql_err()?;
+    let usage_billing_status: Option<String> = row
+        .try_get::<Option<String>, _>("usage_billing_status")
+        .map_sql_err()?;
+    let legacy_wallet_charge_usd: Option<f64> = row
+        .try_get::<Option<f64>, _>("legacy_wallet_charge_usd")
+        .map_sql_err()?;
+    let legacy_entitlement_charge_usd: f64 = row
+        .try_get::<f64, _>("legacy_entitlement_charge_usd")
+        .map_sql_err()?;
+    let niffler_wallet_charge_usd: f64 = row
+        .try_get::<f64, _>("niffler_wallet_charge_usd")
+        .map_sql_err()?;
+    let niffler_entitlement_charge_usd: f64 = row
+        .try_get::<f64, _>("niffler_entitlement_charge_usd")
+        .map_sql_err()?;
+    let niffler_total_charge_usd: f64 = row
+        .try_get::<f64, _>("niffler_total_charge_usd")
+        .map_sql_err()?;
+    let route_attempt_count = i64_to_u64(
+        row.try_get::<i64, _>("route_attempt_count").map_sql_err()?,
+        "route_attempt_count",
+    )?;
+    let successful_route_attempt_count = i64_to_u64(
+        row.try_get::<i64, _>("successful_route_attempt_count")
+            .map_sql_err()?,
+        "successful_route_attempt_count",
+    )?;
+    let wallet_difference_usd =
+        legacy_wallet_charge_usd.map(|legacy| niffler_wallet_charge_usd - legacy);
+    let entitlement_difference_usd = niffler_entitlement_charge_usd - legacy_entitlement_charge_usd;
+    let total_difference_usd = legacy_wallet_charge_usd.map(|legacy_wallet| {
+        niffler_total_charge_usd - legacy_wallet - legacy_entitlement_charge_usd
+    });
+    let issue_codes = consistency_issue_codes(
+        usage_status.as_deref(),
+        usage_billing_status.as_deref(),
+        legacy_wallet_charge_usd,
+        wallet_difference_usd,
+        entitlement_difference_usd,
+        total_difference_usd,
+        reservation_status,
+        route_attempt_count,
+    );
+    let consistency_status = if issue_codes.is_empty() {
+        "ok".to_string()
+    } else {
+        "needs_review".to_string()
+    };
+    Ok(StoredNifflerConsistencyCheckItem {
+        request_id: row.try_get::<String, _>("request_id").map_sql_err()?,
+        user_id: row.try_get::<Option<String>, _>("user_id").map_sql_err()?,
+        api_key_id: row
+            .try_get::<Option<String>, _>("api_key_id")
+            .map_sql_err()?,
+        product_plan_id: row
+            .try_get::<Option<String>, _>("product_plan_id")
+            .map_sql_err()?,
+        product_plan_name: row
+            .try_get::<Option<String>, _>("product_plan_name")
+            .map_sql_err()?,
+        usage_status,
+        usage_billing_status,
+        usage_total_cost_usd: row
+            .try_get::<Option<f64>, _>("usage_total_cost_usd")
+            .map_sql_err()?,
+        legacy_wallet_charge_usd,
+        legacy_entitlement_charge_usd,
+        niffler_wallet_charge_usd,
+        niffler_entitlement_charge_usd,
+        niffler_total_charge_usd,
+        wallet_difference_usd,
+        entitlement_difference_usd,
+        total_difference_usd,
+        reservation_id: row
+            .try_get::<Option<String>, _>("reservation_id")
+            .map_sql_err()?,
+        reservation_status,
+        reservation_release_reason: row
+            .try_get::<Option<String>, _>("reservation_release_reason")
+            .map_sql_err()?,
+        route_attempt_count,
+        successful_route_attempt_count,
+        issue_codes,
+        consistency_status,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get::<i64, _>("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+    })
+}
+
+const CONSISTENCY_TOLERANCE_USD: f64 = 0.000_001;
+
+fn consistency_issue_codes(
+    usage_status: Option<&str>,
+    usage_billing_status: Option<&str>,
+    legacy_wallet_charge_usd: Option<f64>,
+    wallet_difference_usd: Option<f64>,
+    entitlement_difference_usd: f64,
+    total_difference_usd: Option<f64>,
+    reservation_status: Option<NifflerBillingReservationStatus>,
+    route_attempt_count: u64,
+) -> Vec<String> {
+    let mut issues = Vec::new();
+    if usage_status.is_none() {
+        issues.push("missing_legacy_usage".to_string());
+    }
+    if usage_billing_status.is_none() {
+        issues.push("missing_legacy_settlement".to_string());
+    } else if usage_billing_status != Some("settled") {
+        issues.push("legacy_not_settled".to_string());
+    }
+    if legacy_wallet_charge_usd.is_none() {
+        issues.push("missing_legacy_wallet_charge".to_string());
+    }
+    if wallet_difference_usd.is_some_and(|value| value.abs() > CONSISTENCY_TOLERANCE_USD) {
+        issues.push("wallet_charge_mismatch".to_string());
+    }
+    if entitlement_difference_usd.abs() > CONSISTENCY_TOLERANCE_USD {
+        issues.push("entitlement_charge_mismatch".to_string());
+    }
+    if total_difference_usd.is_some_and(|value| value.abs() > CONSISTENCY_TOLERANCE_USD) {
+        issues.push("total_charge_mismatch".to_string());
+    }
+    match reservation_status {
+        None => issues.push("missing_billing_reservation".to_string()),
+        Some(NifflerBillingReservationStatus::Active) => {
+            issues.push("reservation_not_finalized".to_string())
+        }
+        Some(NifflerBillingReservationStatus::ManualReview) => {
+            issues.push("reservation_manual_review".to_string())
+        }
+        Some(NifflerBillingReservationStatus::Settled)
+        | Some(NifflerBillingReservationStatus::Released)
+        | Some(NifflerBillingReservationStatus::Expired) => {}
+    }
+    if route_attempt_count == 0 {
+        issues.push("missing_route_attempt".to_string());
+    }
+    issues
+}
+
+fn i64_to_u64(value: i64, field: &str) -> Result<u64, DataLayerError> {
+    u64::try_from(value)
+        .map_err(|_| DataLayerError::UnexpectedValue(format!("{field} is negative: {value}")))
 }
 
 fn map_billing_reservation_row(

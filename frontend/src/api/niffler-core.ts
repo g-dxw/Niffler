@@ -275,6 +275,33 @@ export interface NifflerRouteAttempt {
   created_at_unix_ms: number
 }
 
+export interface NifflerConsistencyCheck {
+  request_id: string
+  user_id?: string | null
+  api_key_id?: string | null
+  product_plan_id?: string | null
+  product_plan_name?: string | null
+  usage_status?: string | null
+  usage_billing_status?: string | null
+  usage_total_cost_usd?: number | null
+  legacy_wallet_charge_usd?: number | null
+  legacy_entitlement_charge_usd: number
+  niffler_wallet_charge_usd: number
+  niffler_entitlement_charge_usd: number
+  niffler_total_charge_usd: number
+  wallet_difference_usd?: number | null
+  entitlement_difference_usd: number
+  total_difference_usd?: number | null
+  reservation_id?: string | null
+  reservation_status?: NifflerBillingReservationStatus | null
+  reservation_release_reason?: string | null
+  route_attempt_count: number
+  successful_route_attempt_count: number
+  issue_codes: string[]
+  consistency_status: string
+  created_at_unix_ms: number
+}
+
 export interface NifflerListPage<T> {
   items: T[]
   total: number
@@ -819,6 +846,21 @@ export async function listNifflerRouteAttempts(params?: {
 }): Promise<NifflerListPage<NifflerRouteAttempt>> {
   const response = await apiClient.get<NifflerListPage<NifflerRouteAttempt>>(
     '/api/admin/niffler-core/route-attempts',
+    { params }
+  )
+  return response.data
+}
+
+export async function listNifflerConsistencyChecks(params?: {
+  request_id?: string
+  user_id?: string
+  api_key_id?: string
+  product_plan_id?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerConsistencyCheck>> {
+  const response = await apiClient.get<NifflerListPage<NifflerConsistencyCheck>>(
+    '/api/admin/niffler-core/consistency-checks',
     { params }
   )
   return response.data

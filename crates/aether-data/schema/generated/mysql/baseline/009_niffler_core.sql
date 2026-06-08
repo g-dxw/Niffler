@@ -252,7 +252,10 @@ CREATE TABLE IF NOT EXISTS niffler_settlement_snapshots (
     `finalized_at_unix_ms` BIGINT,
     PRIMARY KEY (`id`),
     UNIQUE KEY uq_niffler_settlement_snapshots_request (`request_id`),
-    KEY idx_niffler_settlement_snapshots_user_time (`user_id`, `created_at_unix_ms`)
+    KEY idx_niffler_settlement_snapshots_user_time (`user_id`, `created_at_unix_ms`),
+    KEY idx_niffler_settlement_snapshots_created_at (`created_at_unix_ms`, `request_id`),
+    KEY idx_niffler_settlement_snapshots_key_time (`api_key_id`, `created_at_unix_ms`),
+    KEY idx_niffler_settlement_snapshots_plan_time (`product_plan_id`, `created_at_unix_ms`)
 );
 
 CREATE TABLE IF NOT EXISTS niffler_billing_reservations (

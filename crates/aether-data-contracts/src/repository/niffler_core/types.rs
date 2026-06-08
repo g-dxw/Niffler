@@ -755,6 +755,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         &self,
         query: &NifflerRouteAttemptListQuery,
     ) -> Result<StoredNifflerRouteAttemptListPage, crate::DataLayerError>;
+
+    async fn list_consistency_checks(
+        &self,
+        query: &NifflerConsistencyCheckListQuery,
+    ) -> Result<StoredNifflerConsistencyCheckListPage, crate::DataLayerError>;
 }
 
 #[async_trait]
@@ -1113,6 +1118,50 @@ pub struct StoredNifflerRouteAttemptListItem {
     pub skip_reason: Option<String>,
     pub upstream_status_code: Option<u16>,
     pub latency_ms: Option<u64>,
+    pub created_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerConsistencyCheckListQuery {
+    pub request_id: Option<String>,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerConsistencyCheckListPage {
+    pub items: Vec<StoredNifflerConsistencyCheckItem>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerConsistencyCheckItem {
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub product_plan_name: Option<String>,
+    pub usage_status: Option<String>,
+    pub usage_billing_status: Option<String>,
+    pub usage_total_cost_usd: Option<f64>,
+    pub legacy_wallet_charge_usd: Option<f64>,
+    pub legacy_entitlement_charge_usd: f64,
+    pub niffler_wallet_charge_usd: f64,
+    pub niffler_entitlement_charge_usd: f64,
+    pub niffler_total_charge_usd: f64,
+    pub wallet_difference_usd: Option<f64>,
+    pub entitlement_difference_usd: f64,
+    pub total_difference_usd: Option<f64>,
+    pub reservation_id: Option<String>,
+    pub reservation_status: Option<NifflerBillingReservationStatus>,
+    pub reservation_release_reason: Option<String>,
+    pub route_attempt_count: u64,
+    pub successful_route_attempt_count: u64,
+    pub issue_codes: Vec<String>,
+    pub consistency_status: String,
     pub created_at_unix_ms: u64,
 }
 

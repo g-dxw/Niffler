@@ -1022,6 +1022,18 @@ columns = ["request_id"]
 name = "idx_niffler_settlement_snapshots_user_time"
 columns = ["user_id", "created_at_unix_ms"]
 
+[[table.niffler_settlement_snapshots.indexes]]
+name = "idx_niffler_settlement_snapshots_created_at"
+columns = ["created_at_unix_ms", "request_id"]
+
+[[table.niffler_settlement_snapshots.indexes]]
+name = "idx_niffler_settlement_snapshots_key_time"
+columns = ["api_key_id", "created_at_unix_ms"]
+
+[[table.niffler_settlement_snapshots.indexes]]
+name = "idx_niffler_settlement_snapshots_plan_time"
+columns = ["product_plan_id", "created_at_unix_ms"]
+
 [table.niffler_billing_reservations]
 domain = "niffler_core"
 order = 1030
