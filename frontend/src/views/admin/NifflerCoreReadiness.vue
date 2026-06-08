@@ -109,7 +109,7 @@
                 稳定观察
               </h3>
               <Badge variant="outline">
-                最近 5 条
+                最近 14 条
               </Badge>
             </div>
             <p class="mt-1 text-sm text-muted-foreground">
@@ -138,12 +138,18 @@
           v-else-if="latestStabilityObservation"
           class="space-y-5 p-5"
         >
-          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <MetricCard
               title="观察状态"
               :value="stabilityStatusLabel(latestStabilityObservation.status)"
               :description="formatWindow(latestStabilityObservation.window_start_unix_ms, latestStabilityObservation.window_end_unix_ms)"
               :tone="stabilityStatusTone(latestStabilityObservation.status)"
+            />
+            <MetricCard
+              title="稳定期进度"
+              :value="`${stabilityConsecutivePassDays}/${STABILITY_REQUIRED_PASS_DAYS} 天`"
+              :description="stabilityGateDescription"
+              :tone="stabilityReadyForLegacyRemoval ? 'success' : 'warning'"
             />
             <MetricCard
               title="回滚演练"
@@ -200,7 +206,7 @@
             <div class="rounded-lg border border-border/60">
               <div class="border-b border-border/60 px-4 py-3">
                 <p class="font-medium">
-                  最近观察
+                  最近 14 天观察
                 </p>
               </div>
               <div class="divide-y divide-border/60">
@@ -870,6 +876,8 @@ import {
 } from '@/api/niffler-core'
 
 const { success: showSuccess, error: showError } = useToast()
+const STABILITY_REQUIRED_PASS_DAYS = 14
+const STABILITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const recentDays = ref('7')
 const loading = ref(false)
 const legacyAuditLoading = ref(false)
@@ -934,7 +942,7 @@ async function loadStabilityObservations() {
   try {
     const page = await listNifflerStabilityObservations({
       offset: 0,
-      limit: 5
+      limit: STABILITY_REQUIRED_PASS_DAYS
     })
     stabilityObservations.value = page.items
   } catch (err) {
@@ -1163,6 +1171,63 @@ const routeSkipSamples = computed(() => report.value?.route_skip_samples ?? [])
 
 const latestStabilityObservation = computed(() => stabilityObservations.value[0] ?? null)
 
+const sortedStabilityObservations = computed(() => {
+  return [...stabilityObservations.value].sort(
+    (left, right) => right.window_start_unix_ms - left.window_start_unix_ms
+  )
+})
+
+const stabilityConsecutivePassDays = computed(() => {
+  let count = 0
+  let expectedWindowStart: number | null = null
+  for (const item of sortedStabilityObservations.value) {
+    if (expectedWindowStart !== null && item.window_start_unix_ms !== expectedWindowStart) {
+      break
+    }
+    if (!isPassingStabilityObservation(item)) {
+      break
+    }
+    count += 1
+    expectedWindowStart = item.window_start_unix_ms - STABILITY_WINDOW_MS
+  }
+  return count
+})
+
+const stabilityReadyForLegacyRemoval = computed(() =>
+  stabilityConsecutivePassDays.value >= STABILITY_REQUIRED_PASS_DAYS
+)
+
+const stabilityGateDescription = computed(() => {
+  if (stabilityReadyForLegacyRemoval.value) {
+    return '第 5 批第六片可以开始'
+  }
+  return stabilityGateBlockReason.value
+})
+
+const stabilityGateBlockReason = computed(() => {
+  if (!latestStabilityObservation.value) {
+    return '还没有稳定观察记录'
+  }
+  let expectedWindowStart: number | null = null
+  const items = sortedStabilityObservations.value
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]
+    if (expectedWindowStart !== null && item.window_start_unix_ms !== expectedWindowStart) {
+      return '最近观察窗口不连续，不能开始第六片'
+    }
+    if (!isPassingStabilityObservation(item)) {
+      return index === 0
+        ? '最新窗口未通过，不能开始第六片'
+        : '最近 14 个窗口中有未通过记录'
+    }
+    expectedWindowStart = item.window_start_unix_ms - STABILITY_WINDOW_MS
+  }
+  if (stabilityObservations.value.length < STABILITY_REQUIRED_PASS_DAYS) {
+    return `还缺 ${STABILITY_REQUIRED_PASS_DAYS - stabilityObservations.value.length} 个观察窗口`
+  }
+  return '还需要连续 14 天通过'
+})
+
 const stabilityBlockerItems = computed(() => {
   return (latestStabilityObservation.value?.blocker_codes ?? []).map((code) => ({
     code,
@@ -1239,6 +1304,10 @@ function stabilityStatusTone(status: string): Tone {
   if (status === 'pass') return 'success'
   if (status === 'reset_required') return 'danger'
   return 'warning'
+}
+
+function isPassingStabilityObservation(item: NifflerStabilityObservation): boolean {
+  return item.status === 'pass' && item.blocker_codes.length === 0
 }
 
 function rollbackDrillLabel(status: string): string {
