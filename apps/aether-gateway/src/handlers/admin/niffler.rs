@@ -9,17 +9,18 @@ use aether_data_contracts::repository::global_models::{
 use aether_data_contracts::repository::niffler_core::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerCoreMappingSummary,
-    NifflerCoreReadinessReport, NifflerCoreReadinessSummary, NifflerDisabledProviderReference,
-    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerGroupPolicyGap,
-    NifflerKeyScopeResidue, NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
+    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
+    NifflerCoreMappingSummary, NifflerCoreReadinessReport, NifflerCoreReadinessSummary,
+    NifflerDisabledProviderReference, NifflerErrorResponseScope,
+    NifflerErrorReturnSettingListQuery, NifflerGroupPolicyGap, NifflerKeyScopeResidue,
+    NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerReadinessIssue,
     NifflerReadinessSeverity, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
     NifflerServiceCapabilityKind, NifflerShadowTableItem, NifflerShadowTableStatus,
     NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    NifflerUsageAnomaly, NifflerUserResponseMode, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    NifflerUsageAnomaly, NifflerUserResponseMode, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -46,6 +47,8 @@ use uuid::Uuid;
 const READINESS_PATH: &str = "/api/admin/niffler-core/readiness";
 const UPSTREAM_SERVICES_PATH: &str = "/api/admin/niffler-core/upstream-services";
 const PRODUCT_PLANS_PATH: &str = "/api/admin/niffler-core/product-plans";
+const API_KEY_PRODUCT_PLAN_BINDINGS_PATH: &str =
+    "/api/admin/niffler-core/api-key-product-plan-bindings";
 const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
@@ -58,6 +61,7 @@ const SHADOW_TABLES: &[&str] = &[
     "niffler_upstream_accounts",
     "niffler_product_plans",
     "niffler_product_plan_models",
+    "niffler_api_key_product_plan_bindings",
     "niffler_model_base_prices",
     "niffler_upstream_model_prices",
     "niffler_account_model_capabilities",
@@ -140,6 +144,24 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
                 product_plan_id,
             )
             .await?,
+        ));
+    }
+
+    if let Some(product_plan_id) = product_plan_api_key_bindings_path_id(request_context.path()) {
+        return Ok(Some(
+            build_product_plan_api_key_bindings_response(
+                &state,
+                &request_context,
+                request.request_body(),
+                product_plan_id,
+            )
+            .await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == API_KEY_PRODUCT_PLAN_BINDINGS_PATH {
+        return Ok(Some(
+            build_all_api_key_product_plan_bindings_response(&state, &request_context).await?,
         ));
     }
 
@@ -235,6 +257,11 @@ struct AdminNifflerUpsertProductPlanModelRequest {
     is_enabled: bool,
     #[serde(default)]
     sales_multiplier_override: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerUpsertApiKeyProductPlanBindingRequest {
+    api_key_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -749,6 +776,124 @@ async fn upsert_product_plan_model_response(
     ))
 }
 
+async fn build_product_plan_api_key_bindings_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    product_plan_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    let Some(product_plan) = state
+        .find_niffler_product_plan_by_id(&product_plan_id)
+        .await?
+    else {
+        return Ok(niffler_not_found("产品策略不存在"));
+    };
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            let query = NifflerApiKeyProductPlanBindingListQuery {
+                product_plan_id: Some(product_plan_id),
+                offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+                limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(100),
+            };
+            let page = state
+                .list_niffler_api_key_product_plan_bindings(&query)
+                .await?;
+            Ok(Json(page).into_response())
+        }
+        method if method == http::Method::POST => {
+            if !product_plan.is_active {
+                return Ok(niffler_bad_request("只能绑定启用的产品策略"));
+            }
+            upsert_product_plan_api_key_binding_response(state, request_body, &product_plan_id)
+                .await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持列表和绑定 Key")),
+    }
+}
+
+async fn build_all_api_key_product_plan_bindings_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if request_context.method() != http::Method::GET {
+        return Ok(niffler_method_not_allowed("只支持读取 Key 绑定"));
+    }
+    let query = NifflerApiKeyProductPlanBindingListQuery {
+        product_plan_id: None,
+        offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+        limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(200),
+    };
+    let page = state
+        .list_niffler_api_key_product_plan_bindings(&query)
+        .await?;
+    Ok(Json(page).into_response())
+}
+
+async fn upsert_product_plan_api_key_binding_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    product_plan_id: &str,
+) -> Result<Response<Body>, GatewayError> {
+    let payload = match parse_required_body::<AdminNifflerUpsertApiKeyProductPlanBindingRequest>(
+        request_body,
+    ) {
+        Ok(payload) => payload,
+        Err(response) => return Ok(response),
+    };
+    let api_key_id = match normalize_required_text(&payload.api_key_id, "API Key", 64) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let snapshots = state
+        .list_auth_api_key_snapshots_by_ids(std::slice::from_ref(&api_key_id))
+        .await?;
+    let Some(snapshot) = snapshots
+        .iter()
+        .find(|snapshot| snapshot.api_key_id == api_key_id)
+    else {
+        return Ok(niffler_not_found("API Key 不存在"));
+    };
+    if !snapshot.api_key_is_standalone {
+        return Ok(niffler_bad_request(
+            "只能绑定独立 API Key，旧分组 Key 暂不接入影子产品策略",
+        ));
+    }
+
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let record = UpsertNifflerApiKeyProductPlanBindingRecord {
+        id: Uuid::new_v4().to_string(),
+        api_key_id: api_key_id.clone(),
+        product_plan_id: product_plan_id.to_string(),
+        config: Some(json!({
+            "created_from": "niffler_core_admin",
+            "runtime_effect": "shadow_only"
+        })),
+        created_at_unix_ms: now_unix_ms,
+        updated_at_unix_ms: now_unix_ms,
+    };
+    let Some(saved) = state
+        .upsert_niffler_api_key_product_plan_binding(record)
+        .await?
+    else {
+        return Ok(niffler_data_unavailable_response());
+    };
+    let saved_id = saved.id.clone();
+    Ok(attach_admin_audit_response(
+        Json(saved).into_response(),
+        "niffler_api_key_product_plan_binding_saved",
+        "upsert_niffler_api_key_product_plan_binding",
+        "niffler_api_key_product_plan_binding",
+        &saved_id,
+    ))
+}
+
 async fn build_error_return_settings_response(
     state: &AdminAppState<'_>,
     request_context: &AdminRequestContext<'_>,
@@ -947,6 +1092,14 @@ fn product_plan_models_path_id(path: &str) -> Option<String> {
         .trim_end_matches('/')
         .strip_prefix("/api/admin/niffler-core/product-plans/")?;
     let id = rest.strip_suffix("/models")?;
+    (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
+}
+
+fn product_plan_api_key_bindings_path_id(path: &str) -> Option<String> {
+    let rest = path
+        .trim_end_matches('/')
+        .strip_prefix("/api/admin/niffler-core/product-plans/")?;
+    let id = rest.strip_suffix("/api-key-bindings")?;
     (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
 }
 

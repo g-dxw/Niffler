@@ -1,16 +1,17 @@
 use super::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
-    GatewayDataState, NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
-    NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
+    GatewayDataState, NifflerApiKeyProductPlanBindingListQuery, NifflerErrorReturnSettingListQuery,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl GatewayDataState {
@@ -143,6 +144,41 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_niffler_api_key_product_plan_bindings(
+        &self,
+        query: &NifflerApiKeyProductPlanBindingListQuery,
+    ) -> Result<StoredNifflerApiKeyProductPlanBindingListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_api_key_product_plan_bindings(query).await,
+            None => Ok(StoredNifflerApiKeyProductPlanBindingListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
+    pub(crate) async fn find_niffler_api_key_product_plan_binding_by_api_key_id(
+        &self,
+        api_key_id: &str,
+    ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => {
+                repository
+                    .find_api_key_product_plan_binding_by_api_key_id(api_key_id)
+                    .await
+            }
+            None => Ok(None),
+        }
+    }
+
     pub(crate) async fn list_niffler_error_return_settings(
         &self,
         query: &NifflerErrorReturnSettingListQuery,
@@ -229,6 +265,23 @@ impl GatewayDataState {
             .and_then(|backends| backends.write().niffler_core())
         {
             Some(repository) => repository.upsert_product_plan_model(record).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn upsert_niffler_api_key_product_plan_binding(
+        &self,
+        record: UpsertNifflerApiKeyProductPlanBindingRecord,
+    ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .upsert_api_key_product_plan_binding(record)
+                .await
+                .map(Some),
             None => Ok(None),
         }
     }

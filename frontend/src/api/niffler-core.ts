@@ -92,6 +92,15 @@ export interface NifflerProductPlanModel {
   updated_at_unix_ms: number
 }
 
+export interface NifflerApiKeyProductPlanBinding {
+  id: string
+  api_key_id: string
+  product_plan_id: string
+  config?: Record<string, unknown> | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
 export interface NifflerErrorReturnSetting {
   id: string
   scope: NifflerErrorResponseScope
@@ -157,6 +166,10 @@ export interface UpsertNifflerProductPlanModelPayload {
   model_name: string
   is_enabled?: boolean
   sales_multiplier_override?: number | null
+}
+
+export interface UpsertNifflerApiKeyProductPlanBindingPayload {
+  api_key_id: string
 }
 
 export interface CreateNifflerErrorReturnSettingPayload {
@@ -458,6 +471,30 @@ export async function upsertNifflerProductPlanModel(
 ): Promise<NifflerProductPlanModel> {
   const response = await apiClient.post<NifflerProductPlanModel>(
     `/api/admin/niffler-core/product-plans/${encodeURIComponent(productPlanId)}/models`,
+    payload
+  )
+  return response.data
+}
+
+export async function listNifflerApiKeyProductPlanBindings(
+  params?: {
+    offset?: number
+    limit?: number
+  }
+): Promise<NifflerListPage<NifflerApiKeyProductPlanBinding>> {
+  const response = await apiClient.get<NifflerListPage<NifflerApiKeyProductPlanBinding>>(
+    '/api/admin/niffler-core/api-key-product-plan-bindings',
+    { params }
+  )
+  return response.data
+}
+
+export async function upsertNifflerApiKeyProductPlanBinding(
+  productPlanId: string,
+  payload: UpsertNifflerApiKeyProductPlanBindingPayload
+): Promise<NifflerApiKeyProductPlanBinding> {
+  const response = await apiClient.post<NifflerApiKeyProductPlanBinding>(
+    `/api/admin/niffler-core/product-plans/${encodeURIComponent(productPlanId)}/api-key-bindings`,
     payload
   )
   return response.data

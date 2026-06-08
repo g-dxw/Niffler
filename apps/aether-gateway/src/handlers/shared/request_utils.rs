@@ -321,6 +321,7 @@ pub(crate) fn admin_proxy_local_requires_buffered_body(
                         | "create_upstream_account"
                         | "create_product_plan"
                         | "upsert_product_plan_model"
+                        | "upsert_product_plan_api_key_binding"
                         | "create_error_return_setting",
                     ),
                 )

@@ -5,19 +5,21 @@ use super::{
     bounded_limit, bounded_offset, i64_from_u64, json_from_string, json_to_string,
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
-    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
-    NifflerUpstreamServiceListQuery, NifflerUserResponseMode, StoredNifflerErrorReturnSetting,
+    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
+    NifflerCoreReadRepository, NifflerCoreWriteRepository, NifflerErrorResponseScope,
+    NifflerErrorReturnSettingListQuery, NifflerPauseDuration, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerServiceCapabilityKind,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    NifflerUserResponseMode, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerErrorReturnSetting,
     StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
     StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::mysql::MysqlPool;
 use crate::error::SqlResultExt;
@@ -140,6 +142,19 @@ LIMIT 1
             .ok_or_else(|| {
                 DataLayerError::UnexpectedValue(
                     "niffler product plan model missing after write".into(),
+                )
+            })
+    }
+
+    async fn reload_api_key_product_plan_binding(
+        &self,
+        api_key_id: &str,
+    ) -> Result<StoredNifflerApiKeyProductPlanBinding, DataLayerError> {
+        self.find_api_key_product_plan_binding_by_api_key_id(api_key_id)
+            .await?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler api key product plan binding missing after write".into(),
                 )
             })
     }
@@ -340,6 +355,52 @@ LIMIT 1
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
+    }
+
+    async fn list_api_key_product_plan_bindings(
+        &self,
+        query: &NifflerApiKeyProductPlanBindingListQuery,
+    ) -> Result<StoredNifflerApiKeyProductPlanBindingListPage, DataLayerError> {
+        let total = build_api_key_product_plan_binding_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_api_key_product_plan_binding_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_api_key_product_plan_binding_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerApiKeyProductPlanBindingListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn find_api_key_product_plan_binding_by_api_key_id(
+        &self,
+        api_key_id: &str,
+    ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, api_key_id, product_plan_id, config, created_at_unix_ms, updated_at_unix_ms
+FROM niffler_api_key_product_plan_bindings
+WHERE api_key_id = ?
+LIMIT 1
+"#,
+        )
+        .bind(api_key_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_api_key_product_plan_binding_row)
+            .transpose()
     }
 
     async fn list_error_return_settings(
@@ -571,6 +632,46 @@ ON DUPLICATE KEY UPDATE
         .await
         .map_sql_err()?;
         self.reload_product_plan_model(&record.product_plan_id, &record.model_name)
+            .await
+    }
+
+    async fn upsert_api_key_product_plan_binding(
+        &self,
+        record: UpsertNifflerApiKeyProductPlanBindingRecord,
+    ) -> Result<StoredNifflerApiKeyProductPlanBinding, DataLayerError> {
+        record.validate()?;
+        let config = json_to_string(
+            record.config.as_ref(),
+            "niffler_api_key_product_plan_bindings.config",
+        )?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_api_key_product_plan_bindings (
+  id, api_key_id, product_plan_id, config, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  product_plan_id = VALUES(product_plan_id),
+  config = VALUES(config),
+  updated_at_unix_ms = VALUES(updated_at_unix_ms)
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.api_key_id)
+        .bind(&record.product_plan_id)
+        .bind(config)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(i64_from_u64(
+            record.updated_at_unix_ms,
+            "updated_at_unix_ms",
+        )?)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_api_key_product_plan_binding(&record.api_key_id)
             .await
     }
 
@@ -808,6 +909,44 @@ fn push_product_plan_model_filters(
     }
 }
 
+fn build_api_key_product_plan_binding_count_query(
+    query: &NifflerApiKeyProductPlanBindingListQuery,
+) -> QueryBuilder<'_, MySql> {
+    let mut builder =
+        QueryBuilder::new("SELECT COUNT(*) FROM niffler_api_key_product_plan_bindings");
+    push_api_key_product_plan_binding_filters(&mut builder, query);
+    builder
+}
+
+fn build_api_key_product_plan_binding_rows_query(
+    query: &NifflerApiKeyProductPlanBindingListQuery,
+) -> QueryBuilder<'_, MySql> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, api_key_id, product_plan_id, config, created_at_unix_ms, updated_at_unix_ms \
+         FROM niffler_api_key_product_plan_bindings",
+    );
+    push_api_key_product_plan_binding_filters(&mut builder, query);
+    builder.push(" ORDER BY updated_at_unix_ms DESC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_api_key_product_plan_binding_filters(
+    builder: &mut QueryBuilder<'_, MySql>,
+    query: &NifflerApiKeyProductPlanBindingListQuery,
+) {
+    if let Some(product_plan_id) = query
+        .product_plan_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(" WHERE product_plan_id = ");
+        builder.push_bind(product_plan_id.clone());
+    }
+}
+
 fn build_error_return_setting_count_query(
     query: &NifflerErrorReturnSettingListQuery,
 ) -> QueryBuilder<'_, MySql> {
@@ -948,6 +1087,28 @@ fn map_product_plan_model_row(
         model_name: row.try_get("model_name").map_sql_err()?,
         is_enabled: row.try_get("is_enabled").map_sql_err()?,
         sales_multiplier_override: row.try_get("sales_multiplier_override").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_api_key_product_plan_binding_row(
+    row: &MySqlRow,
+) -> Result<StoredNifflerApiKeyProductPlanBinding, DataLayerError> {
+    Ok(StoredNifflerApiKeyProductPlanBinding {
+        id: row.try_get("id").map_sql_err()?,
+        api_key_id: row.try_get("api_key_id").map_sql_err()?,
+        product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        config: json_from_string(
+            row.try_get("config").map_sql_err()?,
+            "niffler_api_key_product_plan_bindings.config",
+        )?,
         created_at_unix_ms: super::u64_from_i64(
             row.try_get("created_at_unix_ms").map_sql_err()?,
             "created_at_unix_ms",

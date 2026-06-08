@@ -86,6 +86,32 @@ impl<'a> AdminAppState<'a> {
         self.app.list_niffler_product_plan_models(query).await
     }
 
+    pub(crate) async fn list_niffler_api_key_product_plan_bindings(
+        &self,
+        query: &aether_data_contracts::repository::niffler_core::NifflerApiKeyProductPlanBindingListQuery,
+    ) -> Result<
+        aether_data_contracts::repository::niffler_core::StoredNifflerApiKeyProductPlanBindingListPage,
+        GatewayError,
+    >{
+        self.app
+            .list_niffler_api_key_product_plan_bindings(query)
+            .await
+    }
+
+    pub(crate) async fn find_niffler_api_key_product_plan_binding_by_api_key_id(
+        &self,
+        api_key_id: &str,
+    ) -> Result<
+        Option<
+            aether_data_contracts::repository::niffler_core::StoredNifflerApiKeyProductPlanBinding,
+        >,
+        GatewayError,
+    > {
+        self.app
+            .find_niffler_api_key_product_plan_binding_by_api_key_id(api_key_id)
+            .await
+    }
+
     pub(crate) async fn list_niffler_error_return_settings(
         &self,
         query: &aether_data_contracts::repository::niffler_core::NifflerErrorReturnSettingListQuery,
@@ -148,6 +174,20 @@ impl<'a> AdminAppState<'a> {
         GatewayError,
     > {
         self.app.upsert_niffler_product_plan_model(record).await
+    }
+
+    pub(crate) async fn upsert_niffler_api_key_product_plan_binding(
+        &self,
+        record: aether_data_contracts::repository::niffler_core::UpsertNifflerApiKeyProductPlanBindingRecord,
+    ) -> Result<
+        Option<
+            aether_data_contracts::repository::niffler_core::StoredNifflerApiKeyProductPlanBinding,
+        >,
+        GatewayError,
+    > {
+        self.app
+            .upsert_niffler_api_key_product_plan_binding(record)
+            .await
     }
 
     pub(crate) async fn create_niffler_error_return_setting(

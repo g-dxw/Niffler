@@ -584,6 +584,119 @@
         <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 class="text-lg font-semibold">
+              Key 绑定
+            </h2>
+            <p class="mt-1 text-sm text-muted-foreground">
+              只记录独立 Key 和新产品策略的关系，不影响当前用户 Key、旧分组、调度和计费。
+            </p>
+            <p
+              v-if="selectedProductPlan && !selectedProductPlan.is_active"
+              class="mt-2 text-xs text-destructive"
+            >
+              当前产品策略已停用，不能绑定 Key。
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            class="h-9"
+            :disabled="apiKeyLoading || apiKeyBindingLoading"
+            @click="loadApiKeyBindingData"
+          >
+            <RefreshCw
+              class="mr-2 h-4 w-4"
+              :class="{ 'animate-spin': apiKeyLoading || apiKeyBindingLoading }"
+            />
+            刷新绑定
+          </Button>
+        </div>
+
+        <div
+          v-if="apiKeyBindingError"
+          class="border-b border-destructive/20 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+        >
+          {{ apiKeyBindingError }}
+        </div>
+
+        <div
+          v-if="(apiKeyLoading || apiKeyBindingLoading) && standaloneApiKeys.length === 0"
+          class="flex items-center justify-center py-16 text-sm text-muted-foreground"
+        >
+          <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+          正在读取 Key 绑定...
+        </div>
+
+        <div
+          v-else-if="standaloneApiKeys.length === 0"
+          class="py-16 text-center"
+        >
+          <KeyRound class="mx-auto h-10 w-10 text-muted-foreground/50" />
+          <p class="mt-3 font-medium">
+            还没有独立 Key
+          </p>
+          <p class="mt-1 text-sm text-muted-foreground">
+            先在 Key 管理里创建独立 Key，再绑定到新的产品策略。
+          </p>
+        </div>
+
+        <Table v-else>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Key</TableHead>
+              <TableHead>用户</TableHead>
+              <TableHead>当前影子策略</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead class="text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="apiKey in standaloneApiKeys"
+              :key="apiKey.id"
+            >
+              <TableCell>
+                <div class="font-medium">
+                  {{ formatApiKeyName(apiKey) }}
+                </div>
+                <div class="mt-1 text-xs text-muted-foreground">
+                  {{ apiKey.key_display || apiKey.id }}
+                </div>
+              </TableCell>
+              <TableCell>
+                {{ formatApiKeyOwner(apiKey) }}
+              </TableCell>
+              <TableCell>
+                <Badge :variant="apiKeyBindingByApiKeyId.get(apiKey.id) ? 'outline' : 'secondary'">
+                  {{ apiKeyBindingPlanLabel(apiKey.id) }}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="apiKey.is_active ? 'outline' : 'secondary'">
+                  {{ apiKey.is_active ? '启用' : '停用' }}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-right">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="!selectedProductPlan || !canBindApiKeyToSelectedPlan || !apiKey.is_active || apiKeyIsBoundToSelectedPlan(apiKey.id) || savingApiKeyBindingId === apiKey.id"
+                  @click="bindApiKeyToSelectedProductPlan(apiKey.id)"
+                >
+                  <Loader2
+                    v-if="savingApiKeyBindingId === apiKey.id"
+                    class="mr-2 h-4 w-4 animate-spin"
+                  />
+                  {{ apiKeyIsBoundToSelectedPlan(apiKey.id) ? '已绑定当前策略' : '绑定到当前策略' }}
+                </Button>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Card>
+
+      <Card class="overflow-hidden">
+        <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">
               错误文案规则
             </h2>
             <p class="mt-1 text-sm text-muted-foreground">
@@ -1398,6 +1511,7 @@ import {
   createNifflerProductPlan,
   createNifflerUpstreamAccount,
   createNifflerUpstreamService,
+  listNifflerApiKeyProductPlanBindings,
   listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
   listNifflerProductPlans,
@@ -1405,6 +1519,7 @@ import {
   listNifflerUpstreamAccounts,
   listNifflerUpstreamServices,
   updateNifflerUpstreamServiceCapabilities,
+  upsertNifflerApiKeyProductPlanBinding,
   upsertNifflerProductPlanModel,
   type CreateNifflerErrorReturnSettingPayload,
   type CreateNifflerProductPlanPayload,
@@ -1412,6 +1527,7 @@ import {
   type CreateNifflerUpstreamServicePayload,
   type NifflerAccountProtectionAction,
   type NifflerAccountStatus,
+  type NifflerApiKeyProductPlanBinding,
   type NifflerErrorResponseScope,
   type NifflerErrorReturnSetting,
   type NifflerPauseDuration,
@@ -1426,6 +1542,7 @@ import {
   type UpdateNifflerUpstreamServiceCapabilitiesPayload,
   type UpsertNifflerProductPlanModelPayload,
 } from '@/api/niffler-core'
+import { adminApi, type AdminApiKey } from '@/api/admin'
 import {
   listGlobalModels,
   type GlobalModelResponse,
@@ -1485,6 +1602,8 @@ const serviceCapabilities = ref<NifflerUpstreamServiceCapability[]>([])
 const accounts = ref<NifflerUpstreamAccount[]>([])
 const productPlans = ref<NifflerProductPlan[]>([])
 const productPlanModels = ref<NifflerProductPlanModel[]>([])
+const apiKeys = ref<AdminApiKey[]>([])
+const apiKeyProductPlanBindings = ref<NifflerApiKeyProductPlanBinding[]>([])
 const globalModels = ref<GlobalModelResponse[]>([])
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const serviceLoading = ref(false)
@@ -1492,6 +1611,8 @@ const serviceCapabilityLoading = ref(false)
 const accountLoading = ref(false)
 const productPlanLoading = ref(false)
 const productPlanModelLoading = ref(false)
+const apiKeyLoading = ref(false)
+const apiKeyBindingLoading = ref(false)
 const globalModelsLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const savingService = ref(false)
@@ -1499,12 +1620,14 @@ const savingServiceCapabilities = ref(false)
 const savingAccount = ref(false)
 const savingProductPlan = ref(false)
 const savingProductPlanModel = ref(false)
+const savingApiKeyBindingId = ref<string | null>(null)
 const savingErrorReturnSetting = ref(false)
 const serviceError = ref('')
 const serviceCapabilityError = ref('')
 const accountError = ref('')
 const productPlanError = ref('')
 const productPlanModelError = ref('')
+const apiKeyBindingError = ref('')
 const globalModelsError = ref('')
 const errorReturnSettingError = ref('')
 const serviceSearch = ref('')
@@ -1569,6 +1692,7 @@ const errorReturnSettingForm = ref<ErrorReturnSettingForm>(defaultErrorReturnSet
 let accountLoadSeq = 0
 let serviceCapabilityLoadSeq = 0
 let productPlanModelLoadSeq = 0
+let apiKeyBindingLoadSeq = 0
 
 const capabilityOptions: Array<{
   key: NifflerServiceCapabilityKey
@@ -1589,6 +1713,22 @@ const selectedService = computed(() =>
 
 const selectedProductPlan = computed(() =>
   productPlans.value.find(plan => plan.id === selectedProductPlanId.value) ?? null
+)
+
+const productPlanNameById = computed(() =>
+  new Map(productPlans.value.map(plan => [plan.id, plan.display_name]))
+)
+
+const apiKeyBindingByApiKeyId = computed(() =>
+  new Map(apiKeyProductPlanBindings.value.map(binding => [binding.api_key_id, binding]))
+)
+
+const standaloneApiKeys = computed(() =>
+  apiKeys.value.filter(apiKey => apiKey.is_standalone)
+)
+
+const canBindApiKeyToSelectedPlan = computed(() =>
+  Boolean(selectedProductPlan.value?.is_active)
 )
 
 const accountAuthGuide = computed(() =>
@@ -1880,6 +2020,31 @@ async function loadProductPlanModels(productPlanId: string) {
   }
 }
 
+async function loadApiKeyBindingData() {
+  const seq = ++apiKeyBindingLoadSeq
+  apiKeyLoading.value = true
+  apiKeyBindingLoading.value = true
+  apiKeyBindingError.value = ''
+  try {
+    const [apiKeyResponse, bindingResponse] = await Promise.all([
+      adminApi.getAllApiKeys({ skip: 0, limit: 200, include_usage_summary: false }),
+      listNifflerApiKeyProductPlanBindings({ offset: 0, limit: 200 }),
+    ])
+    if (seq !== apiKeyBindingLoadSeq) return
+    apiKeys.value = apiKeyResponse.api_keys
+    apiKeyProductPlanBindings.value = bindingResponse.items
+  } catch (err) {
+    if (seq !== apiKeyBindingLoadSeq) return
+    apiKeyBindingError.value = extractErrorMessage(err, '读取 Key 绑定失败')
+    showError(apiKeyBindingError.value)
+  } finally {
+    if (seq === apiKeyBindingLoadSeq) {
+      apiKeyLoading.value = false
+      apiKeyBindingLoading.value = false
+    }
+  }
+}
+
 async function loadGlobalModels() {
   if (globalModels.value.length > 0) return
   globalModelsLoading.value = true
@@ -2035,6 +2200,27 @@ async function submitProductPlanModel() {
     showError(extractErrorMessage(err, '保存可售模型失败'))
   } finally {
     savingProductPlanModel.value = false
+  }
+}
+
+async function bindApiKeyToSelectedProductPlan(apiKeyId: string) {
+  if (!selectedProductPlanId.value || !selectedProductPlan.value) {
+    showError('请先选择产品策略')
+    return
+  }
+  if (!selectedProductPlan.value.is_active) {
+    showError('只能绑定启用的产品策略')
+    return
+  }
+  savingApiKeyBindingId.value = apiKeyId
+  try {
+    await upsertNifflerApiKeyProductPlanBinding(selectedProductPlanId.value, { api_key_id: apiKeyId })
+    success('Key 绑定已保存')
+    await loadApiKeyBindingData()
+  } catch (err) {
+    showError(extractErrorMessage(err, '保存 Key 绑定失败'))
+  } finally {
+    savingApiKeyBindingId.value = null
   }
 }
 
@@ -2351,9 +2537,29 @@ function pauseDurationLabel(duration: NifflerPauseDuration): string {
   return labels[duration] ?? duration
 }
 
+function formatApiKeyName(apiKey: AdminApiKey): string {
+  return apiKey.name?.trim() || apiKey.key_display || apiKey.id
+}
+
+function formatApiKeyOwner(apiKey: AdminApiKey): string {
+  return apiKey.user_email || apiKey.username || apiKey.user_id
+}
+
+function apiKeyBindingPlanLabel(apiKeyId: string): string {
+  const binding = apiKeyBindingByApiKeyId.value.get(apiKeyId)
+  if (!binding) return '未绑定'
+  return productPlanNameById.value.get(binding.product_plan_id) || '未知产品策略'
+}
+
+function apiKeyIsBoundToSelectedPlan(apiKeyId: string): boolean {
+  const binding = apiKeyBindingByApiKeyId.value.get(apiKeyId)
+  return Boolean(binding && selectedProductPlanId.value === binding.product_plan_id)
+}
+
 onMounted(() => {
   void loadServices()
   void loadProductPlans()
+  void loadApiKeyBindingData()
   void loadErrorReturnSettings()
 })
 </script>

@@ -142,6 +142,33 @@ pub(super) fn classify_admin_route(
             false,
         ))
     } else if matches!(method, &http::Method::GET | &http::Method::POST)
+        && normalized_path_no_trailing
+            .strip_prefix("/api/admin/niffler-core/product-plans/")
+            .and_then(|rest| rest.strip_suffix("/api-key-bindings"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            if method == http::Method::GET {
+                "list_product_plan_api_key_bindings"
+            } else {
+                "upsert_product_plan_api_key_binding"
+            },
+            "admin:routing_profiles",
+            false,
+        ))
+    } else if method == http::Method::GET
+        && normalized_path_no_trailing == "/api/admin/niffler-core/api-key-product-plan-bindings"
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            "list_api_key_product_plan_bindings",
+            "admin:routing_profiles",
+            false,
+        ))
+    } else if matches!(method, &http::Method::GET | &http::Method::POST)
         && normalized_path_no_trailing == "/api/admin/niffler-core/error-return-settings"
     {
         Some(classified(

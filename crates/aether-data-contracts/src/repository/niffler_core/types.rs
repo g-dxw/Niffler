@@ -614,6 +614,16 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         query: &NifflerProductPlanModelListQuery,
     ) -> Result<StoredNifflerProductPlanModelListPage, crate::DataLayerError>;
 
+    async fn list_api_key_product_plan_bindings(
+        &self,
+        query: &NifflerApiKeyProductPlanBindingListQuery,
+    ) -> Result<StoredNifflerApiKeyProductPlanBindingListPage, crate::DataLayerError>;
+
+    async fn find_api_key_product_plan_binding_by_api_key_id(
+        &self,
+        api_key_id: &str,
+    ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, crate::DataLayerError>;
+
     async fn list_error_return_settings(
         &self,
         query: &NifflerErrorReturnSettingListQuery,
@@ -646,6 +656,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: UpsertNifflerProductPlanModelRecord,
     ) -> Result<StoredNifflerProductPlanModel, crate::DataLayerError>;
+
+    async fn upsert_api_key_product_plan_binding(
+        &self,
+        record: UpsertNifflerApiKeyProductPlanBindingRecord,
+    ) -> Result<StoredNifflerApiKeyProductPlanBinding, crate::DataLayerError>;
 
     async fn create_error_return_setting(
         &self,
@@ -702,6 +717,28 @@ impl StoredNifflerProductPlanModel {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerApiKeyProductPlanBinding {
+    pub id: String,
+    pub api_key_id: String,
+    pub product_plan_id: String,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl StoredNifflerApiKeyProductPlanBinding {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        validate_required("api_key_product_plan_bindings.id", &self.id)?;
+        validate_required("api_key_product_plan_bindings.api_key_id", &self.api_key_id)?;
+        validate_required(
+            "api_key_product_plan_bindings.product_plan_id",
+            &self.product_plan_id,
+        )?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NifflerProductPlanListQuery {
     pub include_inactive: bool,
@@ -729,6 +766,19 @@ pub struct NifflerProductPlanModelListQuery {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerProductPlanModelListPage {
     pub items: Vec<StoredNifflerProductPlanModel>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerApiKeyProductPlanBindingListQuery {
+    pub product_plan_id: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerApiKeyProductPlanBindingListPage {
+    pub items: Vec<StoredNifflerApiKeyProductPlanBinding>,
     pub total: usize,
 }
 
@@ -794,6 +844,30 @@ impl UpsertNifflerProductPlanModelRecord {
             model_name: self.model_name.clone(),
             is_enabled: self.is_enabled,
             sales_multiplier_override: self.sales_multiplier_override,
+            created_at_unix_ms: self.created_at_unix_ms,
+            updated_at_unix_ms: self.updated_at_unix_ms,
+        }
+        .validate()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpsertNifflerApiKeyProductPlanBindingRecord {
+    pub id: String,
+    pub api_key_id: String,
+    pub product_plan_id: String,
+    pub config: Option<serde_json::Value>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+}
+
+impl UpsertNifflerApiKeyProductPlanBindingRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerApiKeyProductPlanBinding {
+            id: self.id.clone(),
+            api_key_id: self.api_key_id.clone(),
+            product_plan_id: self.product_plan_id.clone(),
+            config: self.config.clone(),
             created_at_unix_ms: self.created_at_unix_ms,
             updated_at_unix_ms: self.updated_at_unix_ms,
         }

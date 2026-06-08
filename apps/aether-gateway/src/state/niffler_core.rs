@@ -2,16 +2,17 @@ use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
-    NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerErrorReturnSettingListQuery,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl AppState {
@@ -93,6 +94,26 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_niffler_api_key_product_plan_bindings(
+        &self,
+        query: &NifflerApiKeyProductPlanBindingListQuery,
+    ) -> Result<StoredNifflerApiKeyProductPlanBindingListPage, GatewayError> {
+        self.data
+            .list_niffler_api_key_product_plan_bindings(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn find_niffler_api_key_product_plan_binding_by_api_key_id(
+        &self,
+        api_key_id: &str,
+    ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, GatewayError> {
+        self.data
+            .find_niffler_api_key_product_plan_binding_by_api_key_id(api_key_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn list_niffler_error_return_settings(
         &self,
         query: &NifflerErrorReturnSettingListQuery,
@@ -149,6 +170,16 @@ impl AppState {
     ) -> Result<Option<StoredNifflerProductPlanModel>, GatewayError> {
         self.data
             .upsert_niffler_product_plan_model(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn upsert_niffler_api_key_product_plan_binding(
+        &self,
+        record: UpsertNifflerApiKeyProductPlanBindingRecord,
+    ) -> Result<Option<StoredNifflerApiKeyProductPlanBinding>, GatewayError> {
+        self.data
+            .upsert_niffler_api_key_product_plan_binding(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
