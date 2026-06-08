@@ -9,13 +9,15 @@ use super::{
     NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
     NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
     NifflerProtocolKind, NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
-    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
-    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, NifflerUserResponseMode, StoredNifflerErrorReturnSetting,
+    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
+    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::mysql::MysqlPool;
 use crate::error::SqlResultExt;
@@ -217,6 +219,34 @@ LIMIT 1
         .await
         .map_sql_err()?;
         row.as_ref().map(map_service_row).transpose()
+    }
+
+    async fn list_upstream_service_capabilities(
+        &self,
+        query: &NifflerUpstreamServiceCapabilityListQuery,
+    ) -> Result<StoredNifflerUpstreamServiceCapabilityListPage, DataLayerError> {
+        let rows = sqlx::query(
+            r#"
+SELECT
+  id, upstream_service_id, protocol_kind, capability_kind, is_enabled,
+  config, created_at_unix_ms, updated_at_unix_ms
+FROM niffler_upstream_service_capabilities
+WHERE upstream_service_id = ?
+ORDER BY protocol_kind ASC, capability_kind ASC
+"#,
+        )
+        .bind(query.upstream_service_id.clone())
+        .fetch_all(&self.pool)
+        .await
+        .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_capability_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerUpstreamServiceCapabilityListPage {
+            total: items.len(),
+            items,
+        })
     }
 
     async fn list_upstream_accounts(

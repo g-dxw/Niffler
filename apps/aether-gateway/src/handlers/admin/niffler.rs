@@ -17,8 +17,9 @@ use aether_data_contracts::repository::niffler_core::{
     NifflerReadinessSeverity, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
     NifflerServiceCapabilityKind, NifflerShadowTableItem, NifflerShadowTableStatus,
     NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
-    NifflerUpstreamServiceListQuery, NifflerUsageAnomaly, NifflerUserResponseMode,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    NifflerUsageAnomaly, NifflerUserResponseMode, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogKey, StoredProviderCatalogProvider,
@@ -99,6 +100,19 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
         ));
     }
 
+    if let Some(upstream_service_id) = upstream_service_capabilities_path_id(request_context.path())
+    {
+        return Ok(Some(
+            build_upstream_service_capabilities_response(
+                &state,
+                &request_context,
+                request.request_body(),
+                upstream_service_id,
+            )
+            .await?,
+        ));
+    }
+
     if let Some(upstream_service_id) = upstream_service_accounts_path_id(request_context.path()) {
         return Ok(Some(
             build_upstream_accounts_response(
@@ -160,6 +174,13 @@ struct AdminNifflerCreateUpstreamServiceRequest {
     cost_multiplier: f64,
     #[serde(default = "default_true")]
     is_active: bool,
+    #[serde(default)]
+    capabilities: AdminNifflerServiceCapabilityRequest,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerUpdateUpstreamServiceCapabilitiesRequest {
+    protocol_kind: NifflerProtocolKind,
     #[serde(default)]
     capabilities: AdminNifflerServiceCapabilityRequest,
 }
@@ -318,6 +339,7 @@ async fn create_upstream_service_response(
 
     let now_unix_ms = current_unix_secs().saturating_mul(1_000);
     let service_id = Uuid::new_v4().to_string();
+    let protocol_kind = payload.protocol_kind.unwrap_or(NifflerProtocolKind::Openai);
     let record = CreateNifflerUpstreamServiceRecord {
         id: service_id.clone(),
         display_name,
@@ -328,12 +350,12 @@ async fn create_upstream_service_response(
         is_active: payload.is_active,
         config: Some(json!({
             "created_from": "niffler_core_admin",
-            "credential_storage": "not_collected_in_first_slice"
+            "credential_storage": "not_collected_in_first_slice",
+            "protocol_kind": protocol_kind.as_str()
         })),
         created_at_unix_ms: now_unix_ms,
         updated_at_unix_ms: now_unix_ms,
     };
-    let protocol_kind = payload.protocol_kind.unwrap_or(NifflerProtocolKind::Openai);
     let capability_records = match build_capability_records(
         &service_id,
         protocol_kind,
@@ -359,6 +381,94 @@ async fn create_upstream_service_response(
         "create_niffler_upstream_service",
         "niffler_upstream_service",
         &service_id,
+    ))
+}
+
+async fn build_upstream_service_capabilities_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    upstream_service_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() || !state.has_niffler_core_writer() {
+        return Ok(niffler_data_unavailable_response());
+    }
+
+    match request_context.method() {
+        method if method == http::Method::GET => {
+            if state
+                .find_niffler_upstream_service_by_id(&upstream_service_id)
+                .await?
+                .is_none()
+            {
+                return Ok(niffler_not_found("上游服务不存在"));
+            }
+            list_upstream_service_capabilities_response(state, upstream_service_id).await
+        }
+        method if method == http::Method::PUT => {
+            update_upstream_service_capabilities_response(state, request_body, upstream_service_id)
+                .await
+        }
+        _ => Ok(niffler_method_not_allowed("只支持读取和保存服务能力")),
+    }
+}
+
+async fn list_upstream_service_capabilities_response(
+    state: &AdminAppState<'_>,
+    upstream_service_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    let query = NifflerUpstreamServiceCapabilityListQuery {
+        upstream_service_id,
+    };
+    let page = state
+        .list_niffler_upstream_service_capabilities(&query)
+        .await?;
+    Ok(Json(page).into_response())
+}
+
+async fn update_upstream_service_capabilities_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    upstream_service_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    if state
+        .find_niffler_upstream_service_by_id(&upstream_service_id)
+        .await?
+        .is_none()
+    {
+        return Ok(niffler_not_found("上游服务不存在"));
+    }
+    let payload = match parse_required_body::<AdminNifflerUpdateUpstreamServiceCapabilitiesRequest>(
+        request_body,
+    ) {
+        Ok(payload) => payload,
+        Err(response) => return Ok(response),
+    };
+    let now_unix_ms = current_unix_secs().saturating_mul(1_000);
+    let capability_records = match build_capability_records(
+        &upstream_service_id,
+        payload.protocol_kind,
+        payload.capabilities,
+        now_unix_ms,
+    ) {
+        Ok(records) => records,
+        Err(response) => return Ok(response),
+    };
+
+    for capability in capability_records {
+        state
+            .upsert_niffler_upstream_service_capability(capability)
+            .await?;
+    }
+
+    let response =
+        list_upstream_service_capabilities_response(state, upstream_service_id.clone()).await?;
+    Ok(attach_admin_audit_response(
+        response,
+        "niffler_upstream_service_capabilities_updated",
+        "update_niffler_upstream_service_capabilities",
+        "niffler_upstream_service",
+        &upstream_service_id,
     ))
 }
 
@@ -821,6 +931,14 @@ fn upstream_service_accounts_path_id(path: &str) -> Option<String> {
         .trim_end_matches('/')
         .strip_prefix("/api/admin/niffler-core/upstream-services/")?;
     let id = rest.strip_suffix("/accounts")?;
+    (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
+}
+
+fn upstream_service_capabilities_path_id(path: &str) -> Option<String> {
+    let rest = path
+        .trim_end_matches('/')
+        .strip_prefix("/api/admin/niffler-core/upstream-services/")?;
+    let id = rest.strip_suffix("/capabilities")?;
     (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
 }
 

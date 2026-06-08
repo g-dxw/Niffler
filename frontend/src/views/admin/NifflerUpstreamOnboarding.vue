@@ -8,12 +8,12 @@
       <template #actions>
         <Button
           variant="outline"
-          :disabled="serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading"
+          :disabled="serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading"
           @click="refreshAll"
         >
           <RefreshCw
             class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': serviceLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading }"
+            :class="{ 'animate-spin': serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || errorReturnSettingLoading }"
           />
           刷新
         </Button>
@@ -253,6 +253,128 @@
           </div>
         </Card>
       </div>
+
+      <Card
+        v-if="selectedService"
+        class="overflow-hidden"
+      >
+        <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">
+              服务能力
+            </h2>
+            <p class="mt-1 text-sm text-muted-foreground">
+              当前服务：{{ selectedService.display_name }}。这里只保存新模型能力，不会影响线上调度。
+            </p>
+          </div>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              variant="outline"
+              class="h-9"
+              :disabled="serviceCapabilityLoading"
+              @click="checkServiceCapabilities"
+            >
+              检查配置
+            </Button>
+            <Button
+              class="h-9"
+              :disabled="savingServiceCapabilities || serviceCapabilityLoading"
+              @click="submitServiceCapabilities"
+            >
+              {{ savingServiceCapabilities ? '保存中...' : '保存能力' }}
+            </Button>
+          </div>
+        </div>
+
+        <div
+          v-if="serviceCapabilityError"
+          class="border-b border-destructive/20 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+        >
+          {{ serviceCapabilityError }}
+        </div>
+
+        <div
+          v-if="serviceCapabilityLoading"
+          class="flex items-center justify-center py-12 text-sm text-muted-foreground"
+        >
+          <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+          正在读取服务能力...
+        </div>
+
+        <div
+          v-else
+          class="grid gap-5 p-5 lg:grid-cols-[280px_minmax(0,1fr)]"
+        >
+          <div class="space-y-4">
+            <div class="space-y-2">
+              <Label for="service-capability-protocol">协议</Label>
+              <Select v-model="serviceCapabilityForm.protocol_kind">
+                <SelectTrigger id="service-capability-protocol">
+                  <SelectValue placeholder="选择协议" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="anthropic">Anthropic</SelectItem>
+                  <SelectItem value="gemini">Gemini</SelectItem>
+                  <SelectItem value="codex">Codex</SelectItem>
+                  <SelectItem value="custom">自定义</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="rounded-xl border border-border/70 bg-muted/25 p-4">
+              <p class="text-sm font-medium">
+                已开启能力
+              </p>
+              <div
+                v-if="selectedServiceCapabilityLabels.length > 0"
+                class="mt-3 flex flex-wrap gap-2"
+              >
+                <Badge
+                  v-for="label in selectedServiceCapabilityLabels"
+                  :key="label"
+                  variant="outline"
+                >
+                  {{ label }}
+                </Badge>
+              </div>
+              <p
+                v-else
+                class="mt-3 text-sm text-muted-foreground"
+              >
+                暂未开启任何能力。
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-sm font-medium">
+              能力开关
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              只显示当前协议可用的能力。检查配置只检查协议和能力是否混用，不请求真实上游。
+            </p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <label
+                v-for="item in selectedServiceCapabilityOptions"
+                :key="item.key"
+                class="flex items-start gap-3 rounded-lg border border-border/50 p-3"
+              >
+                <Checkbox v-model:checked="serviceCapabilityForm.capabilities[item.key]" />
+                <span>
+                  <span class="block text-sm font-medium">{{ item.label }}</span>
+                  <span class="block text-xs text-muted-foreground">{{ item.description }}</span>
+                </span>
+              </label>
+            </div>
+            <p
+              v-if="serviceCapabilityIssues.length > 0"
+              class="mt-3 text-xs text-destructive"
+            >
+              {{ serviceCapabilityIssues.join(' ') }}
+            </p>
+          </div>
+        </div>
+      </Card>
 
       <div class="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
         <Card class="overflow-hidden">
@@ -1279,8 +1401,10 @@ import {
   listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
   listNifflerProductPlans,
+  listNifflerUpstreamServiceCapabilities,
   listNifflerUpstreamAccounts,
   listNifflerUpstreamServices,
+  updateNifflerUpstreamServiceCapabilities,
   upsertNifflerProductPlanModel,
   type CreateNifflerErrorReturnSettingPayload,
   type CreateNifflerProductPlanPayload,
@@ -1297,7 +1421,9 @@ import {
   type NifflerUpstreamErrorHandlingStep,
   type NifflerUpstreamAccount,
   type NifflerUpstreamService,
+  type NifflerUpstreamServiceCapability,
   type NifflerUserResponseMode,
+  type UpdateNifflerUpstreamServiceCapabilitiesPayload,
   type UpsertNifflerProductPlanModelPayload,
 } from '@/api/niffler-core'
 import {
@@ -1308,13 +1434,17 @@ import { useToast } from '@/composables/useToast'
 import { extractErrorMessage } from '@/utils/error'
 import {
   DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY,
+  buildNifflerServiceCapabilityForm,
   buildNifflerServiceFormFromTemplate,
+  enabledCapabilityLabels,
   filterCapabilityOptionsForProtocol,
   getDefaultAuthKindForService,
   getServiceKindLabel,
   getNifflerServiceTemplate,
   nifflerServiceTemplates,
+  validateNifflerServiceCapabilities,
   type NifflerServiceCapabilityKey,
+  type NifflerServiceCapabilityForm,
   type NifflerServiceTemplateKey,
 } from './niffler-upstream-service-templates'
 import {
@@ -1351,23 +1481,27 @@ type ErrorReturnSettingForm = {
 const { success, error: showError } = useToast()
 
 const services = ref<NifflerUpstreamService[]>([])
+const serviceCapabilities = ref<NifflerUpstreamServiceCapability[]>([])
 const accounts = ref<NifflerUpstreamAccount[]>([])
 const productPlans = ref<NifflerProductPlan[]>([])
 const productPlanModels = ref<NifflerProductPlanModel[]>([])
 const globalModels = ref<GlobalModelResponse[]>([])
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const serviceLoading = ref(false)
+const serviceCapabilityLoading = ref(false)
 const accountLoading = ref(false)
 const productPlanLoading = ref(false)
 const productPlanModelLoading = ref(false)
 const globalModelsLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const savingService = ref(false)
+const savingServiceCapabilities = ref(false)
 const savingAccount = ref(false)
 const savingProductPlan = ref(false)
 const savingProductPlanModel = ref(false)
 const savingErrorReturnSetting = ref(false)
 const serviceError = ref('')
+const serviceCapabilityError = ref('')
 const accountError = ref('')
 const productPlanError = ref('')
 const productPlanModelError = ref('')
@@ -1425,11 +1559,15 @@ const defaultErrorReturnSettingForm = (): ErrorReturnSettingForm => ({
 })
 
 const serviceForm = ref<CreateNifflerUpstreamServicePayload>(defaultServiceForm())
+const serviceCapabilityForm = ref<NifflerServiceCapabilityForm>(
+  buildNifflerServiceCapabilityForm(null)
+)
 const accountForm = ref<CreateNifflerUpstreamAccountPayload>(defaultAccountForm())
 const productPlanForm = ref<ProductPlanForm>(defaultProductPlanForm())
 const productPlanModelForm = ref<ProductPlanModelForm>(defaultProductPlanModelForm())
 const errorReturnSettingForm = ref<ErrorReturnSettingForm>(defaultErrorReturnSettingForm())
 let accountLoadSeq = 0
+let serviceCapabilityLoadSeq = 0
 let productPlanModelLoadSeq = 0
 
 const capabilityOptions: Array<{
@@ -1486,6 +1624,21 @@ const visibleCapabilityOptions = computed(() =>
   )
 )
 
+const selectedServiceCapabilityOptions = computed(() =>
+  filterCapabilityOptionsForProtocol(
+    capabilityOptions,
+    serviceCapabilityForm.value.protocol_kind
+  )
+)
+
+const selectedServiceCapabilityLabels = computed(() =>
+  enabledCapabilityLabels(capabilityOptions, serviceCapabilityForm.value.capabilities)
+)
+
+const serviceCapabilityIssues = computed(() =>
+  validateNifflerServiceCapabilities(serviceCapabilityForm.value)
+)
+
 watch(serviceDialogOpen, (open) => {
   if (!open) {
     selectedServiceTemplateKey.value = DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY
@@ -1501,6 +1654,13 @@ watch(
   () => serviceForm.value.protocol_kind,
   (protocolKind) => {
     clearHiddenCapabilities((protocolKind || selectedServiceTemplate.value.protocolKind) as NifflerProtocolKind)
+  }
+)
+
+watch(
+  () => serviceCapabilityForm.value.protocol_kind,
+  (protocolKind) => {
+    clearHiddenServiceCapabilities(protocolKind)
   }
 )
 
@@ -1533,16 +1693,27 @@ function openProductPlanModelDialog() {
 }
 
 function clearHiddenCapabilities(protocolKind: NifflerProtocolKind) {
+  const capabilities = serviceForm.value.capabilities ?? {}
+  clearHiddenCapabilityValues(capabilities, protocolKind)
+  serviceForm.value.capabilities = capabilities
+}
+
+function clearHiddenServiceCapabilities(protocolKind: NifflerProtocolKind) {
+  clearHiddenCapabilityValues(serviceCapabilityForm.value.capabilities, protocolKind)
+}
+
+function clearHiddenCapabilityValues(
+  capabilities: Partial<Record<NifflerServiceCapabilityKey, boolean>>,
+  protocolKind: NifflerProtocolKind
+) {
   const visibleKeys = new Set(
     filterCapabilityOptionsForProtocol(capabilityOptions, protocolKind).map(option => option.key)
   )
-  const capabilities = serviceForm.value.capabilities ?? {}
   for (const option of capabilityOptions) {
     if (!visibleKeys.has(option.key)) {
       capabilities[option.key] = false
     }
   }
-  serviceForm.value.capabilities = capabilities
 }
 
 watch(productPlanDialogOpen, (open) => {
@@ -1568,7 +1739,10 @@ watch(errorReturnSettingDialogOpen, (open) => {
 async function refreshAll() {
   await Promise.all([loadServices(), loadProductPlans(), loadErrorReturnSettings()])
   if (selectedServiceId.value) {
-    await loadAccounts(selectedServiceId.value)
+    await Promise.all([
+      loadAccounts(selectedServiceId.value),
+      loadServiceCapabilities(selectedServiceId.value),
+    ])
   }
   if (selectedProductPlanId.value) {
     await loadProductPlanModels(selectedProductPlanId.value)
@@ -1587,12 +1761,19 @@ async function loadServices() {
     services.value = response.items
     if (!selectedServiceId.value && services.value.length > 0) {
       selectedServiceId.value = services.value[0].id
-      await loadAccounts(services.value[0].id)
+      await Promise.all([
+        loadAccounts(services.value[0].id),
+        loadServiceCapabilities(services.value[0].id),
+      ])
     } else if (selectedServiceId.value && !services.value.some(item => item.id === selectedServiceId.value)) {
       selectedServiceId.value = services.value[0]?.id ?? null
       accounts.value = []
+      serviceCapabilities.value = []
       if (selectedServiceId.value) {
-        await loadAccounts(selectedServiceId.value)
+        await Promise.all([
+          loadAccounts(selectedServiceId.value),
+          loadServiceCapabilities(selectedServiceId.value),
+        ])
       }
     }
   } catch (err) {
@@ -1622,9 +1803,34 @@ async function loadAccounts(serviceId: string) {
   }
 }
 
+async function loadServiceCapabilities(serviceId: string) {
+  const seq = ++serviceCapabilityLoadSeq
+  serviceCapabilityLoading.value = true
+  serviceCapabilityError.value = ''
+  const service = services.value.find(item => item.id === serviceId) ?? selectedService.value
+  serviceCapabilityForm.value = buildNifflerServiceCapabilityForm(service, [])
+  try {
+    const response = await listNifflerUpstreamServiceCapabilities(serviceId)
+    if (seq !== serviceCapabilityLoadSeq) return
+    serviceCapabilities.value = response.items
+    serviceCapabilityForm.value = buildNifflerServiceCapabilityForm(service, response.items)
+  } catch (err) {
+    if (seq !== serviceCapabilityLoadSeq) return
+    serviceCapabilityError.value = extractErrorMessage(err, '读取服务能力失败')
+    showError(serviceCapabilityError.value)
+  } finally {
+    if (seq === serviceCapabilityLoadSeq) {
+      serviceCapabilityLoading.value = false
+    }
+  }
+}
+
 async function selectService(serviceId: string) {
   selectedServiceId.value = serviceId
-  await loadAccounts(serviceId)
+  await Promise.all([
+    loadAccounts(serviceId),
+    loadServiceCapabilities(serviceId),
+  ])
 }
 
 async function loadProductPlans() {
@@ -1733,12 +1939,48 @@ async function submitService() {
     serviceDialogOpen.value = false
     await loadServices()
     selectedServiceId.value = created.id
-    await loadAccounts(created.id)
+    await Promise.all([
+      loadAccounts(created.id),
+      loadServiceCapabilities(created.id),
+    ])
   } catch (err) {
     showError(extractErrorMessage(err, '新增上游服务失败'))
   } finally {
     savingService.value = false
   }
+}
+
+async function submitServiceCapabilities() {
+  if (!selectedServiceId.value) return
+  if (serviceCapabilityIssues.value.length > 0) {
+    showError(serviceCapabilityIssues.value.join(' '))
+    return
+  }
+
+  const payload: UpdateNifflerUpstreamServiceCapabilitiesPayload = {
+    protocol_kind: serviceCapabilityForm.value.protocol_kind,
+    capabilities: normalizeCapabilityPayload(serviceCapabilityForm.value.capabilities),
+  }
+
+  savingServiceCapabilities.value = true
+  try {
+    const response = await updateNifflerUpstreamServiceCapabilities(selectedServiceId.value, payload)
+    serviceCapabilities.value = response.items
+    serviceCapabilityForm.value = buildNifflerServiceCapabilityForm(selectedService.value, response.items)
+    success('服务能力已保存')
+  } catch (err) {
+    showError(extractErrorMessage(err, '保存服务能力失败'))
+  } finally {
+    savingServiceCapabilities.value = false
+  }
+}
+
+function checkServiceCapabilities() {
+  if (serviceCapabilityIssues.value.length > 0) {
+    showError(serviceCapabilityIssues.value.join(' '))
+    return
+  }
+  success('配置检查通过；这一步没有请求真实上游。')
 }
 
 async function submitAccount() {
@@ -1845,6 +2087,19 @@ function normalizeServicePayload(
       model_list: Boolean(form.capabilities?.model_list),
       model_test: Boolean(form.capabilities?.model_test),
     },
+  }
+}
+
+function normalizeCapabilityPayload(
+  capabilities: Partial<Record<NifflerServiceCapabilityKey, boolean>>
+): UpdateNifflerUpstreamServiceCapabilitiesPayload['capabilities'] {
+  return {
+    text: Boolean(capabilities.text),
+    streaming: Boolean(capabilities.streaming),
+    images_endpoint: Boolean(capabilities.images_endpoint),
+    openai_responses_image_tool: Boolean(capabilities.openai_responses_image_tool),
+    model_list: Boolean(capabilities.model_list),
+    model_test: Boolean(capabilities.model_test),
   }
 }
 

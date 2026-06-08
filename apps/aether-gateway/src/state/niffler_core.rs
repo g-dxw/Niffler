@@ -4,13 +4,14 @@ use aether_data_contracts::repository::niffler_core::{
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
     NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceListQuery, StoredNifflerErrorReturnSetting,
-    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
-    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl AppState {
@@ -38,6 +39,16 @@ impl AppState {
     ) -> Result<Option<StoredNifflerUpstreamService>, GatewayError> {
         self.data
             .find_niffler_upstream_service_by_id(upstream_service_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn list_niffler_upstream_service_capabilities(
+        &self,
+        query: &NifflerUpstreamServiceCapabilityListQuery,
+    ) -> Result<StoredNifflerUpstreamServiceCapabilityListPage, GatewayError> {
+        self.data
+            .list_niffler_upstream_service_capabilities(query)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

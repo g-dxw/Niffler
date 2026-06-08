@@ -2,6 +2,8 @@ import type {
   CreateNifflerUpstreamAccountPayload,
   CreateNifflerUpstreamServicePayload,
   NifflerProtocolKind,
+  NifflerUpstreamService,
+  NifflerUpstreamServiceCapability,
 } from '@/api/niffler-core'
 
 export type NifflerServiceTemplateKey =
@@ -47,6 +49,11 @@ export interface NifflerServiceCapabilityOption {
 export interface NifflerServiceAuthSource {
   service_kind?: string | null
   base_url?: string | null
+}
+
+export interface NifflerServiceCapabilityForm {
+  protocol_kind: NifflerProtocolKind
+  capabilities: CapabilityDefaults
 }
 
 export const DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY: NifflerServiceTemplateKey = 'openai_compatible'
@@ -237,4 +244,95 @@ export function filterCapabilityOptionsForProtocol(
     }
     return true
   })
+}
+
+export function inferNifflerServiceProtocolKind(
+  service?: Pick<NifflerUpstreamService, 'service_kind' | 'default_api_format' | 'config'> | null,
+  capabilities: NifflerUpstreamServiceCapability[] = []
+): NifflerProtocolKind {
+  const storedProtocol = capabilities[0]?.protocol_kind
+  if (storedProtocol) return storedProtocol
+
+  const configProtocol = readProtocolKindFromConfig(service?.config)
+  if (configProtocol) return configProtocol
+
+  const format = service?.default_api_format?.trim().toLowerCase()
+  if (format === 'codex') return 'codex'
+  if (format === 'anthropic') return 'anthropic'
+  if (format === 'gemini') return 'gemini'
+  if (format === 'openai' || format === 'openai:image') return 'openai'
+
+  const serviceKind = service?.service_kind?.trim().toLowerCase()
+  if (serviceKind === 'codex') return 'codex'
+  if (serviceKind === 'claude' || serviceKind === 'anthropic_compatible') return 'anthropic'
+  if (serviceKind === 'gemini') return 'gemini'
+  if (serviceKind === 'openai' || serviceKind === 'openai_compatible') return 'openai'
+  return 'custom'
+}
+
+export function buildNifflerServiceCapabilityForm(
+  service?: Pick<NifflerUpstreamService, 'service_kind' | 'default_api_format' | 'config'> | null,
+  capabilities: NifflerUpstreamServiceCapability[] = []
+): NifflerServiceCapabilityForm {
+  const protocolKind = inferNifflerServiceProtocolKind(service, capabilities)
+  const form = { ...textModelCapabilities }
+  for (const capability of capabilities) {
+    form[capability.capability_kind] = capability.is_enabled
+  }
+  clearUnsupportedNifflerCapabilities(form, protocolKind)
+  return {
+    protocol_kind: protocolKind,
+    capabilities: form,
+  }
+}
+
+export function validateNifflerServiceCapabilities(
+  form: NifflerServiceCapabilityForm
+): string[] {
+  const issues: string[] = []
+  if (
+    form.capabilities.openai_responses_image_tool
+    && form.protocol_kind !== 'openai'
+    && form.protocol_kind !== 'codex'
+  ) {
+    issues.push('OpenAI Responses 生图工具只能用于 OpenAI 或 Codex 协议。')
+  }
+  if (
+    form.capabilities.images_endpoint
+    && form.protocol_kind !== 'openai'
+    && form.protocol_kind !== 'codex'
+    && form.protocol_kind !== 'custom'
+  ) {
+    issues.push('图片接口只适用于 OpenAI、Codex 或自定义协议。')
+  }
+  return issues
+}
+
+export function enabledCapabilityLabels(
+  options: NifflerServiceCapabilityOption[],
+  capabilities: Partial<Record<NifflerServiceCapabilityKey, boolean>>
+): string[] {
+  return options
+    .filter(option => capabilities[option.key])
+    .map(option => option.label)
+}
+
+function clearUnsupportedNifflerCapabilities(
+  capabilities: CapabilityDefaults,
+  protocolKind: NifflerProtocolKind
+) {
+  if (protocolKind !== 'openai' && protocolKind !== 'codex') {
+    capabilities.openai_responses_image_tool = false
+  }
+  if (protocolKind !== 'openai' && protocolKind !== 'codex' && protocolKind !== 'custom') {
+    capabilities.images_endpoint = false
+  }
+}
+
+function readProtocolKindFromConfig(config?: Record<string, unknown> | null): NifflerProtocolKind | null {
+  const value = typeof config?.protocol_kind === 'string' ? config.protocol_kind : ''
+  if (value === 'openai' || value === 'anthropic' || value === 'gemini' || value === 'codex' || value === 'custom') {
+    return value
+  }
+  return null
 }

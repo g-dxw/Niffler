@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildNifflerServiceCapabilityForm,
   buildNifflerServiceFormFromTemplate,
+  enabledCapabilityLabels,
   filterCapabilityOptionsForProtocol,
   getDefaultAuthKindForService,
   getServiceKindLabel,
+  inferNifflerServiceProtocolKind,
+  validateNifflerServiceCapabilities,
   type NifflerServiceCapabilityOption,
 } from '../niffler-upstream-service-templates'
 
@@ -71,5 +75,93 @@ describe('niffler upstream service templates', () => {
     expect(getServiceKindLabel('openai_compatible')).toBe('OpenAI 兼容接口')
     expect(getServiceKindLabel('claude')).toBe('Claude')
     expect(getServiceKindLabel('unknown-provider')).toBe('unknown-provider')
+  })
+
+  it('builds capability form from stored service capabilities', () => {
+    const form = buildNifflerServiceCapabilityForm(
+      { service_kind: 'openai_compatible', default_api_format: 'openai', config: null },
+      [
+        {
+          id: 'cap-1',
+          upstream_service_id: 'svc-1',
+          protocol_kind: 'openai',
+          capability_kind: 'images_endpoint',
+          is_enabled: true,
+          config: null,
+          created_at_unix_ms: 1,
+          updated_at_unix_ms: 1,
+        },
+        {
+          id: 'cap-2',
+          upstream_service_id: 'svc-1',
+          protocol_kind: 'openai',
+          capability_kind: 'openai_responses_image_tool',
+          is_enabled: true,
+          config: null,
+          created_at_unix_ms: 1,
+          updated_at_unix_ms: 1,
+        },
+      ]
+    )
+
+    expect(form.protocol_kind).toBe('openai')
+    expect(form.capabilities.images_endpoint).toBe(true)
+    expect(form.capabilities.openai_responses_image_tool).toBe(true)
+  })
+
+  it('clears OpenAI image tool when stored capabilities are used with unsupported protocol', () => {
+    const form = buildNifflerServiceCapabilityForm(
+      { service_kind: 'anthropic_compatible', default_api_format: 'anthropic', config: null },
+      [
+        {
+          id: 'cap-1',
+          upstream_service_id: 'svc-1',
+          protocol_kind: 'anthropic',
+          capability_kind: 'openai_responses_image_tool',
+          is_enabled: true,
+          config: null,
+          created_at_unix_ms: 1,
+          updated_at_unix_ms: 1,
+        },
+      ]
+    )
+
+    expect(form.protocol_kind).toBe('anthropic')
+    expect(form.capabilities.openai_responses_image_tool).toBe(false)
+  })
+
+  it('infers protocol from service config before falling back to api format', () => {
+    expect(inferNifflerServiceProtocolKind({
+      service_kind: 'custom',
+      default_api_format: 'custom',
+      config: { protocol_kind: 'codex' },
+    })).toBe('codex')
+    expect(inferNifflerServiceProtocolKind({
+      service_kind: 'custom',
+      default_api_format: 'gemini',
+      config: null,
+    })).toBe('gemini')
+  })
+
+  it('validates image capability and protocol combinations', () => {
+    expect(validateNifflerServiceCapabilities({
+      protocol_kind: 'anthropic',
+      capabilities: {
+        text: true,
+        streaming: true,
+        images_endpoint: false,
+        openai_responses_image_tool: true,
+        model_list: true,
+        model_test: true,
+      },
+    })).toContain('OpenAI Responses 生图工具只能用于 OpenAI 或 Codex 协议。')
+  })
+
+  it('formats enabled capability labels for selected service summaries', () => {
+    expect(enabledCapabilityLabels(capabilityOptions, {
+      text: true,
+      images_endpoint: true,
+      openai_responses_image_tool: false,
+    })).toEqual(['文本对话', '图片接口'])
   })
 })

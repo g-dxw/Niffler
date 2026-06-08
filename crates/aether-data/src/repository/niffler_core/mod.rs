@@ -10,13 +10,15 @@ pub use aether_data_contracts::repository::niffler_core::{
     NifflerErrorReturnSettingListQuery, NifflerPauseDuration, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerServiceCapabilityKind,
     NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
-    NifflerUpstreamServiceListQuery, NifflerUserResponseMode, StoredNifflerErrorReturnSetting,
+    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
+    NifflerUserResponseMode, StoredNifflerErrorReturnSetting,
     StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
     StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 pub use mysql::MysqlNifflerCoreRepository;
 pub use postgres::SqlxNifflerCoreRepository;

@@ -419,6 +419,17 @@ impl StoredNifflerUpstreamServiceCapability {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NifflerUpstreamServiceCapabilityListQuery {
+    pub upstream_service_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerUpstreamServiceCapabilityListPage {
+    pub items: Vec<StoredNifflerUpstreamServiceCapability>,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerUpstreamAccount {
     pub id: String,
@@ -577,6 +588,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         &self,
         upstream_service_id: &str,
     ) -> Result<Option<StoredNifflerUpstreamService>, crate::DataLayerError>;
+
+    async fn list_upstream_service_capabilities(
+        &self,
+        query: &NifflerUpstreamServiceCapabilityListQuery,
+    ) -> Result<StoredNifflerUpstreamServiceCapabilityListPage, crate::DataLayerError>;
 
     async fn list_upstream_accounts(
         &self,

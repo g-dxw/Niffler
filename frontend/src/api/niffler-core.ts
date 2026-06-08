@@ -8,6 +8,13 @@ export type NifflerAccountStatus =
   | 'quota_exhausted'
   | 'cooling_down'
 export type NifflerProtocolKind = 'openai' | 'anthropic' | 'gemini' | 'codex' | 'custom'
+export type NifflerServiceCapabilityKind =
+  | 'text'
+  | 'streaming'
+  | 'images_endpoint'
+  | 'openai_responses_image_tool'
+  | 'model_list'
+  | 'model_test'
 export type NifflerErrorResponseScope = 'platform' | 'upstream'
 export type NifflerUpstreamErrorHandlingStep =
   | 'risk_keyword'
@@ -30,6 +37,17 @@ export interface NifflerUpstreamService {
   base_url?: string | null
   cost_multiplier: number
   is_active: boolean
+  config?: Record<string, unknown> | null
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
+export interface NifflerUpstreamServiceCapability {
+  id: string
+  upstream_service_id: string
+  protocol_kind: NifflerProtocolKind
+  capability_kind: NifflerServiceCapabilityKind
+  is_enabled: boolean
   config?: Record<string, unknown> | null
   created_at_unix_ms: number
   updated_at_unix_ms: number
@@ -111,6 +129,11 @@ export interface CreateNifflerUpstreamServicePayload {
     model_list?: boolean
     model_test?: boolean
   }
+}
+
+export interface UpdateNifflerUpstreamServiceCapabilitiesPayload {
+  protocol_kind: NifflerProtocolKind
+  capabilities: NonNullable<CreateNifflerUpstreamServicePayload['capabilities']>
 }
 
 export interface CreateNifflerUpstreamAccountPayload {
@@ -337,6 +360,26 @@ export async function createNifflerUpstreamService(
 ): Promise<NifflerUpstreamService> {
   const response = await apiClient.post<NifflerUpstreamService>(
     '/api/admin/niffler-core/upstream-services',
+    payload
+  )
+  return response.data
+}
+
+export async function listNifflerUpstreamServiceCapabilities(
+  upstreamServiceId: string
+): Promise<NifflerListPage<NifflerUpstreamServiceCapability>> {
+  const response = await apiClient.get<NifflerListPage<NifflerUpstreamServiceCapability>>(
+    `/api/admin/niffler-core/upstream-services/${encodeURIComponent(upstreamServiceId)}/capabilities`
+  )
+  return response.data
+}
+
+export async function updateNifflerUpstreamServiceCapabilities(
+  upstreamServiceId: string,
+  payload: UpdateNifflerUpstreamServiceCapabilitiesPayload
+): Promise<NifflerListPage<NifflerUpstreamServiceCapability>> {
+  const response = await apiClient.put<NifflerListPage<NifflerUpstreamServiceCapability>>(
+    `/api/admin/niffler-core/upstream-services/${encodeURIComponent(upstreamServiceId)}/capabilities`,
     payload
   )
   return response.data
