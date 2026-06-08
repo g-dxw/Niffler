@@ -1187,6 +1187,9 @@
                   <TableHead>状态</TableHead>
                   <TableHead>返利</TableHead>
                   <TableHead>时间</TableHead>
+                  <TableHead class="text-right">
+                    操作
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1249,6 +1252,39 @@
                     >
                       取消 {{ formatNifflerUnixMs(ledger.cancelled_at_unix_ms) }}
                     </div>
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <div
+                      v-if="canMutateReferralLedger(ledger)"
+                      class="flex justify-end gap-2"
+                    >
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        :disabled="referralRewardLedgerMutationId === ledger.id"
+                        @click="retryReferralRewardLedger(ledger)"
+                      >
+                        <Loader2
+                          v-if="referralRewardLedgerMutationId === ledger.id"
+                          class="mr-2 h-3.5 w-3.5 animate-spin"
+                        />
+                        重试发放
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        :disabled="referralRewardLedgerMutationId === ledger.id"
+                        @click="cancelReferralRewardLedger(ledger)"
+                      >
+                        取消
+                      </Button>
+                    </div>
+                    <span
+                      v-else
+                      class="text-xs text-muted-foreground"
+                    >
+                      -
+                    </span>
                   </TableCell>
                 </TableRow>
               </TableBody>
@@ -2489,6 +2525,7 @@ import {
   Textarea,
 } from '@/components/ui'
 import {
+  cancelNifflerReferralRewardLedger,
   createNifflerErrorReturnSetting,
   createNifflerProductPlan,
   createNifflerUpstreamAccount,
@@ -2507,6 +2544,7 @@ import {
   listNifflerUpstreamServiceCapabilities,
   listNifflerUpstreamAccounts,
   listNifflerUpstreamServices,
+  retryNifflerReferralRewardLedger,
   updateNifflerUpstreamServiceCapabilities,
   upsertNifflerApiKeyProductPlanBinding,
   upsertNifflerProductPlanModel,
@@ -2664,6 +2702,7 @@ const savingProductPlanModel = ref(false)
 const savingApiKeyBindingId = ref<string | null>(null)
 const savingRuntimeRolloutTargetKey = ref<string | null>(null)
 const savingErrorReturnSetting = ref(false)
+const referralRewardLedgerMutationId = ref<string | null>(null)
 const serviceError = ref('')
 const serviceCapabilityError = ref('')
 const accountError = ref('')
@@ -3400,6 +3439,38 @@ async function loadReferralRewardLedger() {
     showError(referralRewardLedgerError.value)
   } finally {
     referralRewardLedgerLoading.value = false
+  }
+}
+
+function canMutateReferralLedger(ledger: NifflerReferralRewardLedger): boolean {
+  return ledger.status === 'pending' || ledger.status === 'failed'
+}
+
+async function retryReferralRewardLedger(ledger: NifflerReferralRewardLedger) {
+  if (!canMutateReferralLedger(ledger)) return
+  referralRewardLedgerMutationId.value = ledger.id
+  try {
+    await retryNifflerReferralRewardLedger(ledger.id)
+    success('返利流水已重试')
+    await loadReferralRewardLedger()
+  } catch (err) {
+    showError(extractErrorMessage(err, '重试返利流水失败'))
+  } finally {
+    referralRewardLedgerMutationId.value = null
+  }
+}
+
+async function cancelReferralRewardLedger(ledger: NifflerReferralRewardLedger) {
+  if (!canMutateReferralLedger(ledger)) return
+  referralRewardLedgerMutationId.value = ledger.id
+  try {
+    await cancelNifflerReferralRewardLedger(ledger.id)
+    success('返利流水已取消')
+    await loadReferralRewardLedger()
+  } catch (err) {
+    showError(extractErrorMessage(err, '取消返利流水失败'))
+  } finally {
+    referralRewardLedgerMutationId.value = null
   }
 }
 

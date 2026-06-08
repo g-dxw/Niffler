@@ -1,4 +1,5 @@
 use aether_data::DataLayerError;
+use aether_data_contracts::repository::niffler_core::StoredNifflerReferralRewardLedger;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::collections::HashSet;
@@ -122,6 +123,38 @@ struct ReferralCreditTarget {
     amount_usd: f64,
     reward_type: String,
     trigger_point: String,
+}
+
+#[derive(Debug, Clone)]
+struct NifflerReferralLedgerPaymentTarget {
+    id: String,
+    order_id: String,
+    inviter_user_id: String,
+    invitee_user_id: String,
+    reward_amount_usd: f64,
+    status: String,
+}
+
+impl NifflerReferralLedgerPaymentTarget {
+    fn to_stored_ledger(&self) -> StoredNifflerReferralRewardLedger {
+        StoredNifflerReferralRewardLedger {
+            id: self.id.clone(),
+            order_id: self.order_id.clone(),
+            idempotency_key: format!("niffler-referral-ledger:order:{}", self.order_id),
+            inviter_user_id: self.inviter_user_id.clone(),
+            invitee_user_id: self.invitee_user_id.clone(),
+            rule_id: None,
+            reward_amount_usd: self.reward_amount_usd,
+            rule_snapshot: serde_json::Value::Null,
+            status: aether_data_contracts::repository::niffler_core::NifflerReferralRewardLedgerStatus::Pending,
+            failure_reason: None,
+            retry_count: 0,
+            paid_at_unix_ms: None,
+            cancelled_at_unix_ms: None,
+            created_at_unix_ms: 0,
+            updated_at_unix_ms: 0,
+        }
+    }
 }
 
 macro_rules! row_string {
@@ -561,6 +594,7 @@ WHERE id = ?
             trigger_point,
             amount_usd,
             &idempotency_key,
+            "pending",
         )
         .await?;
         self.credit_pending_referral_rewards(&[idempotency_key], None, None)
@@ -571,6 +605,26 @@ WHERE id = ?
         &self,
         order_id: &str,
         config: ReferralRewardConfig,
+    ) -> Result<Vec<ReferralRewardRecord>, DataLayerError> {
+        self.create_paid_order_referral_rewards(order_id, config, "pending", true)
+            .await
+    }
+
+    pub(crate) async fn create_paid_order_referral_rewards_for_ledger(
+        &self,
+        order_id: &str,
+        config: ReferralRewardConfig,
+    ) -> Result<Vec<ReferralRewardRecord>, DataLayerError> {
+        self.create_paid_order_referral_rewards(order_id, config, "ledger_pending", false)
+            .await
+    }
+
+    async fn create_paid_order_referral_rewards(
+        &self,
+        order_id: &str,
+        config: ReferralRewardConfig,
+        initial_status: &str,
+        credit_legacy_rewards: bool,
     ) -> Result<Vec<ReferralRewardRecord>, DataLayerError> {
         if self.backends.is_none() {
             return Ok(Vec::new());
@@ -619,6 +673,7 @@ WHERE id = ?
                     "paid_order",
                     amount_usd,
                     &idempotency_key,
+                    initial_status,
                 )
                 .await?;
                 idempotency_keys.push(idempotency_key);
@@ -638,6 +693,7 @@ WHERE id = ?
                 "first_paid_order",
                 config.headcount_amount_usd,
                 &idempotency_key,
+                initial_status,
             )
             .await?;
             idempotency_keys.push(idempotency_key);
@@ -646,8 +702,20 @@ WHERE id = ?
         if idempotency_keys.is_empty() {
             return Ok(Vec::new());
         }
-        self.credit_pending_referral_rewards(&idempotency_keys, None, None)
-            .await
+        if credit_legacy_rewards {
+            return self
+                .credit_pending_referral_rewards(&idempotency_keys, None, None)
+                .await;
+        }
+        let mut rewards = Vec::new();
+        for key in idempotency_keys {
+            if let Some(reward) = self.find_referral_reward_by_idempotency_key(&key).await? {
+                if reward.status == initial_status {
+                    rewards.push(reward);
+                }
+            }
+        }
+        Ok(rewards)
     }
 
     pub(crate) async fn retry_referral_reward(
@@ -687,6 +755,56 @@ WHERE id = ?
         self.update_referral_reward_status(reward_id, "voided", operator_id, note)
             .await?;
         self.find_referral_reward(reward_id).await
+    }
+
+    pub(crate) async fn retry_niffler_referral_reward_ledger(
+        &self,
+        ledger_id: &str,
+        operator_id: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<ReferralMutationStatus, DataLayerError> {
+        let Some(target) = self
+            .find_niffler_referral_ledger_payment_target(ledger_id)
+            .await?
+        else {
+            return Ok(ReferralMutationStatus::NotFound);
+        };
+        if !matches!(target.status.as_str(), "pending" | "failed") {
+            return Ok(ReferralMutationStatus::Invalid);
+        }
+        let rewards = self
+            .find_niffler_ledger_managed_referral_rewards_by_order(&target.order_id)
+            .await?;
+        if rewards.is_empty() {
+            return Ok(ReferralMutationStatus::Invalid);
+        }
+        let ledger = target.to_stored_ledger();
+        match self
+            .pay_niffler_referral_reward_ledger(&ledger, &rewards, operator_id, note)
+            .await?
+        {
+            Some(_) => Ok(ReferralMutationStatus::Applied),
+            None => Ok(ReferralMutationStatus::Invalid),
+        }
+    }
+
+    pub(crate) async fn cancel_niffler_referral_reward_ledger(
+        &self,
+        ledger_id: &str,
+        operator_id: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<ReferralMutationStatus, DataLayerError> {
+        let Some(target) = self
+            .find_niffler_referral_ledger_payment_target(ledger_id)
+            .await?
+        else {
+            return Ok(ReferralMutationStatus::NotFound);
+        };
+        if !matches!(target.status.as_str(), "pending" | "failed") {
+            return Ok(ReferralMutationStatus::Invalid);
+        }
+        self.cancel_niffler_referral_reward_ledger_target(&target, operator_id, note)
+            .await
     }
 
     pub(crate) async fn reverse_referral_rewards_for_order(
@@ -1546,6 +1664,7 @@ ORDER BY created_at ASC
         trigger_point: &str,
         amount_usd: f64,
         idempotency_key: &str,
+        initial_status: &str,
     ) -> Result<bool, DataLayerError> {
         let Some(backends) = self.backends.as_ref() else {
             return Ok(false);
@@ -1558,7 +1677,7 @@ INSERT INTO referral_rewards (
   id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
   trigger_point, amount_usd, status, idempotency_key, created_at, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, NOW(), NOW())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
 ON CONFLICT (idempotency_key) DO NOTHING
 "#,
             )
@@ -1570,6 +1689,7 @@ ON CONFLICT (idempotency_key) DO NOTHING
             .bind(source_order_id)
             .bind(trigger_point)
             .bind(amount_usd)
+            .bind(initial_status)
             .bind(idempotency_key)
             .execute(&backend.pool_clone())
             .await
@@ -1584,7 +1704,7 @@ INSERT IGNORE INTO referral_rewards (
   id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
   trigger_point, amount_usd, status, idempotency_key, created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 "#,
             )
             .bind(&reward_id)
@@ -1595,6 +1715,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
             .bind(source_order_id)
             .bind(trigger_point)
             .bind(amount_usd)
+            .bind(initial_status)
             .bind(idempotency_key)
             .bind(now_unix_secs() as i64)
             .bind(now_unix_secs() as i64)
@@ -1611,7 +1732,7 @@ INSERT OR IGNORE INTO referral_rewards (
   id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
   trigger_point, amount_usd, status, idempotency_key, created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 "#,
             )
             .bind(&reward_id)
@@ -1622,6 +1743,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
             .bind(source_order_id)
             .bind(trigger_point)
             .bind(amount_usd)
+            .bind(initial_status)
             .bind(idempotency_key)
             .bind(now_unix_secs() as i64)
             .bind(now_unix_secs() as i64)
@@ -2135,6 +2257,438 @@ WHERE id = $1
         Ok(())
     }
 
+    async fn find_niffler_referral_ledger_payment_target(
+        &self,
+        ledger_id: &str,
+    ) -> Result<Option<NifflerReferralLedgerPaymentTarget>, DataLayerError> {
+        let Some(backends) = self.backends.as_ref() else {
+            return Ok(None);
+        };
+        if let Some(backend) = backends.postgres() {
+            let row = sqlx::query(
+                r#"
+SELECT
+  id, order_id, inviter_user_id, invitee_user_id,
+  CAST(reward_amount_usd AS DOUBLE PRECISION) AS reward_amount_usd,
+  status
+FROM niffler_referral_reward_ledger
+WHERE id = $1
+"#,
+            )
+            .bind(ledger_id)
+            .fetch_optional(&backend.pool_clone())
+            .await
+            .map_err(DataLayerError::postgres)?;
+            return row
+                .map(niffler_referral_ledger_payment_target_from_row)
+                .transpose();
+        }
+        if let Some(backend) = backends.mysql() {
+            let row = sqlx::query(
+                r#"
+SELECT id, order_id, inviter_user_id, invitee_user_id, reward_amount_usd, status
+FROM niffler_referral_reward_ledger
+WHERE id = ?
+"#,
+            )
+            .bind(ledger_id)
+            .fetch_optional(&backend.pool_clone())
+            .await
+            .map_err(DataLayerError::sql)?;
+            return row
+                .map(niffler_referral_ledger_payment_target_from_row)
+                .transpose();
+        }
+        if let Some(backend) = backends.sqlite() {
+            let row = sqlx::query(
+                r#"
+SELECT id, order_id, inviter_user_id, invitee_user_id, reward_amount_usd, status
+FROM niffler_referral_reward_ledger
+WHERE id = ?
+"#,
+            )
+            .bind(ledger_id)
+            .fetch_optional(&backend.pool_clone())
+            .await
+            .map_err(DataLayerError::sql)?;
+            return row
+                .map(niffler_referral_ledger_payment_target_from_row)
+                .transpose();
+        }
+        Ok(None)
+    }
+
+    async fn find_niffler_ledger_managed_referral_rewards_by_order(
+        &self,
+        order_id: &str,
+    ) -> Result<Vec<ReferralRewardRecord>, DataLayerError> {
+        let Some(backends) = self.backends.as_ref() else {
+            return Ok(Vec::new());
+        };
+        if let Some(backend) = backends.postgres() {
+            let rows = sqlx::query(
+                r#"
+SELECT
+  id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
+  trigger_point, CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  status, wallet_transaction_id, idempotency_key,
+  CAST(reversed_amount_usd AS DOUBLE PRECISION) AS reversed_amount_usd,
+  CAST(pending_reversal_amount_usd AS DOUBLE PRECISION) AS pending_reversal_amount_usd,
+  admin_operator_id, admin_note,
+  EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix_secs,
+  EXTRACT(EPOCH FROM updated_at)::BIGINT AS updated_at_unix_secs
+FROM referral_rewards
+WHERE source_order_id = $1 AND status IN ('ledger_pending', 'ledger_failed')
+ORDER BY created_at ASC
+"#,
+            )
+            .bind(order_id)
+            .fetch_all(&backend.pool_clone())
+            .await
+            .map_err(DataLayerError::postgres)?;
+            return rows.iter().map(|row| reward_from_row!(row)).collect();
+        }
+        if let Some(backend) = backends.mysql() {
+            let rows = sqlx::query(
+                r#"
+SELECT
+  id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
+  trigger_point, amount_usd, status, wallet_transaction_id, idempotency_key,
+  reversed_amount_usd, pending_reversal_amount_usd, admin_operator_id, admin_note,
+  created_at AS created_at_unix_secs, updated_at AS updated_at_unix_secs
+FROM referral_rewards
+WHERE source_order_id = ? AND status IN ('ledger_pending', 'ledger_failed')
+ORDER BY created_at ASC
+"#,
+            )
+            .bind(order_id)
+            .fetch_all(&backend.pool_clone())
+            .await
+            .map_err(DataLayerError::sql)?;
+            return rows.iter().map(|row| reward_from_row!(row)).collect();
+        }
+        if let Some(backend) = backends.sqlite() {
+            let rows = sqlx::query(
+                r#"
+SELECT
+  id, referral_id, inviter_user_id, invitee_user_id, reward_type, source_order_id,
+  trigger_point, amount_usd, status, wallet_transaction_id, idempotency_key,
+  reversed_amount_usd, pending_reversal_amount_usd, admin_operator_id, admin_note,
+  created_at AS created_at_unix_secs, updated_at AS updated_at_unix_secs
+FROM referral_rewards
+WHERE source_order_id = ? AND status IN ('ledger_pending', 'ledger_failed')
+ORDER BY created_at ASC
+"#,
+            )
+            .bind(order_id)
+            .fetch_all(&backend.pool_clone())
+            .await
+            .map_err(DataLayerError::sql)?;
+            return rows.iter().map(|row| reward_from_row!(row)).collect();
+        }
+        Ok(Vec::new())
+    }
+
+    async fn cancel_niffler_referral_reward_ledger_target(
+        &self,
+        target: &NifflerReferralLedgerPaymentTarget,
+        operator_id: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<ReferralMutationStatus, DataLayerError> {
+        let Some(backends) = self.backends.as_ref() else {
+            return Ok(ReferralMutationStatus::Unavailable);
+        };
+        let reason = note.unwrap_or("管理员取消返利发放");
+        if let Some(backend) = backends.postgres() {
+            let mut tx = backend
+                .pool_clone()
+                .begin()
+                .await
+                .map_err(DataLayerError::postgres)?;
+            let now_ms = now_unix_ms() as i64;
+            let affected = sqlx::query(
+                r#"
+UPDATE niffler_referral_reward_ledger
+SET status = 'cancelled',
+    failure_reason = NULL,
+    cancelled_at_unix_ms = $2,
+    updated_at_unix_ms = $2
+WHERE id = $1 AND status IN ('pending', 'failed')
+"#,
+            )
+            .bind(&target.id)
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?
+            .rows_affected();
+            if affected == 0 {
+                tx.commit().await.map_err(DataLayerError::postgres)?;
+                return Ok(ReferralMutationStatus::Invalid);
+            }
+            sqlx::query(
+                r#"
+UPDATE referral_rewards
+SET status = 'ledger_cancelled',
+    admin_operator_id = COALESCE($2, admin_operator_id),
+    admin_note = COALESCE($3, admin_note),
+    updated_at = NOW()
+WHERE source_order_id = $1 AND status IN ('ledger_pending', 'ledger_failed')
+"#,
+            )
+            .bind(&target.order_id)
+            .bind(operator_id)
+            .bind(reason)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            sqlx::query(
+                r#"
+INSERT INTO niffler_referral_reward_events (
+  id, reward_ledger_id, event_kind, reason, actor_id, event_snapshot, created_at_unix_ms
+)
+VALUES ($1, $2, 'cancelled', $3, $4, $5, $6)
+"#,
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&target.id)
+            .bind(reason)
+            .bind(operator_id)
+            .bind(serde_json::json!({
+                "order_id": target.order_id,
+                "reward_amount_usd": target.reward_amount_usd,
+            }))
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            tx.commit().await.map_err(DataLayerError::postgres)?;
+            return Ok(ReferralMutationStatus::Applied);
+        }
+        if let Some(backend) = backends.mysql() {
+            return self
+                .cancel_niffler_referral_reward_ledger_mysql_numeric_time(
+                    &backend.pool_clone(),
+                    target,
+                    operator_id,
+                    reason,
+                )
+                .await;
+        }
+        if let Some(backend) = backends.sqlite() {
+            return self
+                .cancel_niffler_referral_reward_ledger_sqlite_numeric_time(
+                    &backend.pool_clone(),
+                    target,
+                    operator_id,
+                    reason,
+                )
+                .await;
+        }
+        Ok(ReferralMutationStatus::Unavailable)
+    }
+
+    pub(crate) async fn pay_niffler_referral_reward_ledger(
+        &self,
+        ledger: &StoredNifflerReferralRewardLedger,
+        rewards: &[ReferralRewardRecord],
+        operator_id: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<Option<String>, DataLayerError> {
+        if ledger.reward_amount_usd <= 0.0 || rewards.is_empty() {
+            return Ok(None);
+        }
+        let Some(backends) = self.backends.as_ref() else {
+            return Ok(None);
+        };
+        if let Some(backend) = backends.postgres() {
+            let mut tx = backend
+                .pool_clone()
+                .begin()
+                .await
+                .map_err(DataLayerError::postgres)?;
+            let row = sqlx::query(
+                r#"
+SELECT status
+FROM niffler_referral_reward_ledger
+WHERE id = $1
+FOR UPDATE
+"#,
+            )
+            .bind(&ledger.id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            if !row
+                .as_ref()
+                .and_then(|row| row.try_get::<String, _>("status").ok())
+                .is_some_and(|status| matches!(status.as_str(), "pending" | "failed"))
+            {
+                tx.commit().await.map_err(DataLayerError::postgres)?;
+                return Ok(None);
+            }
+            let wallet = sqlx::query(
+                r#"
+SELECT
+  id,
+  CAST(balance AS DOUBLE PRECISION) AS balance,
+  CAST(gift_balance AS DOUBLE PRECISION) AS gift_balance
+FROM wallets
+WHERE user_id = $1
+FOR UPDATE
+"#,
+            )
+            .bind(&ledger.inviter_user_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            let Some(wallet) = wallet else {
+                mark_postgres_niffler_referral_ledger_failed(
+                    &mut tx,
+                    ledger,
+                    rewards,
+                    operator_id,
+                    "邀请人钱包不存在",
+                )
+                .await?;
+                tx.commit().await.map_err(DataLayerError::postgres)?;
+                return Ok(None);
+            };
+            let wallet_id = row_string!(wallet, "id");
+            let balance = row_f64!(wallet, "balance");
+            let gift_before = row_f64!(wallet, "gift_balance");
+            let gift_after = gift_before + ledger.reward_amount_usd;
+            let tx_id = uuid::Uuid::new_v4().to_string();
+            let description = note
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| "邀请返利".to_string());
+            sqlx::query(
+                r#"
+UPDATE wallets
+SET gift_balance = $2,
+    total_adjusted = total_adjusted + $3,
+    updated_at = NOW()
+WHERE id = $1
+"#,
+            )
+            .bind(&wallet_id)
+            .bind(gift_after)
+            .bind(ledger.reward_amount_usd)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            sqlx::query(
+                r#"
+INSERT INTO wallet_transactions (
+  id, wallet_id, category, reason_code, amount,
+  balance_before, balance_after,
+  recharge_balance_before, recharge_balance_after,
+  gift_balance_before, gift_balance_after,
+  link_type, link_id, operator_id, description, created_at
+)
+VALUES ($1, $2, 'adjust', 'referral_reward', $3, $4, $5, $6, $6, $7, $8,
+        'niffler_referral_reward_ledger', $9, $10, $11, NOW())
+"#,
+            )
+            .bind(&tx_id)
+            .bind(&wallet_id)
+            .bind(ledger.reward_amount_usd)
+            .bind(balance + gift_before)
+            .bind(balance + gift_after)
+            .bind(balance)
+            .bind(gift_before)
+            .bind(gift_after)
+            .bind(&ledger.id)
+            .bind(operator_id)
+            .bind(&description)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            let now_ms = now_unix_ms() as i64;
+            sqlx::query(
+                r#"
+UPDATE niffler_referral_reward_ledger
+SET status = 'paid',
+    failure_reason = NULL,
+    paid_at_unix_ms = $2,
+    updated_at_unix_ms = $2
+WHERE id = $1 AND status IN ('pending', 'failed')
+"#,
+            )
+            .bind(&ledger.id)
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            for reward in rewards {
+                sqlx::query(
+                    r#"
+UPDATE referral_rewards
+SET status = 'applied',
+    wallet_transaction_id = $2,
+    admin_operator_id = COALESCE($3, admin_operator_id),
+    admin_note = COALESCE($4, admin_note),
+    updated_at = NOW()
+WHERE id = $1 AND status IN ('ledger_pending', 'ledger_failed')
+"#,
+                )
+                .bind(&reward.id)
+                .bind(&tx_id)
+                .bind(operator_id)
+                .bind(note)
+                .execute(&mut *tx)
+                .await
+                .map_err(DataLayerError::postgres)?;
+            }
+            sqlx::query(
+                r#"
+INSERT INTO niffler_referral_reward_events (
+  id, reward_ledger_id, event_kind, reason, actor_id, event_snapshot, created_at_unix_ms
+)
+VALUES ($1, $2, 'paid', $3, $4, $5, $6)
+"#,
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&ledger.id)
+            .bind(note)
+            .bind(operator_id)
+            .bind(niffler_referral_paid_event_snapshot(
+                &tx_id,
+                rewards,
+                ledger.reward_amount_usd,
+            ))
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::postgres)?;
+            tx.commit().await.map_err(DataLayerError::postgres)?;
+            return Ok(Some(tx_id));
+        }
+        if let Some(backend) = backends.mysql() {
+            return self
+                .pay_niffler_referral_reward_ledger_mysql_numeric_time(
+                    &backend.pool_clone(),
+                    ledger,
+                    rewards,
+                    operator_id,
+                    note,
+                )
+                .await;
+        }
+        if let Some(backend) = backends.sqlite() {
+            return self
+                .pay_niffler_referral_reward_ledger_sqlite_numeric_time(
+                    &backend.pool_clone(),
+                    ledger,
+                    rewards,
+                    operator_id,
+                    note,
+                )
+                .await;
+        }
+        Ok(None)
+    }
+
     async fn apply_referral_reward_reversal(
         &self,
         reward: &ReferralRewardRecord,
@@ -2269,6 +2823,383 @@ WHERE id = $1
         self.apply_referral_reward_reversal_numeric_time(reward, target_reversal_amount_usd)
             .await
     }
+}
+
+async fn mark_postgres_niffler_referral_ledger_failed(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ledger: &StoredNifflerReferralRewardLedger,
+    rewards: &[ReferralRewardRecord],
+    operator_id: Option<&str>,
+    reason: &str,
+) -> Result<(), DataLayerError> {
+    let now_ms = now_unix_ms() as i64;
+    sqlx::query(
+        r#"
+UPDATE niffler_referral_reward_ledger
+SET status = 'failed',
+    failure_reason = $2,
+    retry_count = retry_count + 1,
+    updated_at_unix_ms = $3
+WHERE id = $1 AND status IN ('pending', 'failed')
+"#,
+    )
+    .bind(&ledger.id)
+    .bind(reason)
+    .bind(now_ms)
+    .execute(&mut **tx)
+    .await
+    .map_err(DataLayerError::postgres)?;
+    for reward in rewards {
+        sqlx::query(
+            r#"
+UPDATE referral_rewards
+SET status = 'ledger_failed',
+    admin_operator_id = COALESCE($2, admin_operator_id),
+    admin_note = COALESCE($3, admin_note),
+    updated_at = NOW()
+WHERE id = $1 AND status IN ('ledger_pending', 'ledger_failed')
+"#,
+        )
+        .bind(&reward.id)
+        .bind(operator_id)
+        .bind(reason)
+        .execute(&mut **tx)
+        .await
+        .map_err(DataLayerError::postgres)?;
+    }
+    sqlx::query(
+        r#"
+INSERT INTO niffler_referral_reward_events (
+  id, reward_ledger_id, event_kind, reason, actor_id, event_snapshot, created_at_unix_ms
+)
+VALUES ($1, $2, 'failed', $3, $4, $5, $6)
+"#,
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&ledger.id)
+    .bind(reason)
+    .bind(operator_id)
+    .bind(niffler_referral_failed_event_snapshot(
+        rewards,
+        ledger.reward_amount_usd,
+    ))
+    .bind(now_ms)
+    .execute(&mut **tx)
+    .await
+    .map_err(DataLayerError::postgres)?;
+    Ok(())
+}
+
+fn niffler_referral_paid_event_snapshot(
+    wallet_transaction_id: &str,
+    rewards: &[ReferralRewardRecord],
+    reward_amount_usd: f64,
+) -> serde_json::Value {
+    serde_json::json!({
+        "wallet_transaction_id": wallet_transaction_id,
+        "reward_amount_usd": reward_amount_usd,
+        "legacy_reward_ids": rewards.iter().map(|reward| reward.id.clone()).collect::<Vec<_>>(),
+        "legacy_reward_idempotency_keys": rewards.iter().map(|reward| reward.idempotency_key.clone()).collect::<Vec<_>>(),
+    })
+}
+
+fn niffler_referral_failed_event_snapshot(
+    rewards: &[ReferralRewardRecord],
+    reward_amount_usd: f64,
+) -> serde_json::Value {
+    serde_json::json!({
+        "reward_amount_usd": reward_amount_usd,
+        "legacy_reward_ids": rewards.iter().map(|reward| reward.id.clone()).collect::<Vec<_>>(),
+        "legacy_reward_idempotency_keys": rewards.iter().map(|reward| reward.idempotency_key.clone()).collect::<Vec<_>>(),
+    })
+}
+
+fn niffler_referral_event_snapshot_text(
+    snapshot: serde_json::Value,
+) -> Result<String, DataLayerError> {
+    serde_json::to_string(&snapshot).map_err(|err| {
+        DataLayerError::InvalidInput(format!("invalid referral event snapshot: {err}"))
+    })
+}
+
+macro_rules! niffler_referral_ledger_numeric_method {
+    ($name:ident, $pool_ty:ty, $ledger_sql:expr, $wallet_sql:expr) => {
+        async fn $name(
+            &self,
+            pool: &$pool_ty,
+            ledger: &StoredNifflerReferralRewardLedger,
+            rewards: &[ReferralRewardRecord],
+            operator_id: Option<&str>,
+            note: Option<&str>,
+        ) -> Result<Option<String>, DataLayerError> {
+            let mut tx = pool.begin().await.map_err(DataLayerError::sql)?;
+            let row = sqlx::query($ledger_sql)
+                .bind(&ledger.id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(DataLayerError::sql)?;
+            if !row
+                .as_ref()
+                .and_then(|row| row.try_get::<String, _>("status").ok())
+                .is_some_and(|status| matches!(status.as_str(), "pending" | "failed"))
+            {
+                tx.commit().await.map_err(DataLayerError::sql)?;
+                return Ok(None);
+            }
+            let wallet = sqlx::query($wallet_sql)
+                .bind(&ledger.inviter_user_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(DataLayerError::sql)?;
+            let Some(wallet) = wallet else {
+                let reason = "邀请人钱包不存在";
+                let now_ms = now_unix_ms() as i64;
+                sqlx::query(
+                    r#"
+UPDATE niffler_referral_reward_ledger
+SET status = 'failed',
+    failure_reason = ?,
+    retry_count = retry_count + 1,
+    updated_at_unix_ms = ?
+WHERE id = ? AND status IN ('pending', 'failed')
+"#,
+                )
+                .bind(reason)
+                .bind(now_ms)
+                .bind(&ledger.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(DataLayerError::sql)?;
+                for reward in rewards {
+                    sqlx::query(
+                        r#"
+UPDATE referral_rewards
+SET status = 'ledger_failed',
+    admin_operator_id = COALESCE(?, admin_operator_id),
+    admin_note = COALESCE(?, admin_note),
+    updated_at = ?
+WHERE id = ? AND status IN ('ledger_pending', 'ledger_failed')
+"#,
+                    )
+                    .bind(operator_id)
+                    .bind(reason)
+                    .bind(now_unix_secs() as i64)
+                    .bind(&reward.id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(DataLayerError::sql)?;
+                }
+                sqlx::query(
+                    r#"
+INSERT INTO niffler_referral_reward_events (
+  id, reward_ledger_id, event_kind, reason, actor_id, event_snapshot, created_at_unix_ms
+)
+VALUES (?, ?, 'failed', ?, ?, ?, ?)
+"#,
+                )
+                .bind(uuid::Uuid::new_v4().to_string())
+                .bind(&ledger.id)
+                .bind(reason)
+                .bind(operator_id)
+                .bind(niffler_referral_event_snapshot_text(
+                    niffler_referral_failed_event_snapshot(rewards, ledger.reward_amount_usd),
+                )?)
+                .bind(now_ms)
+                .execute(&mut *tx)
+                .await
+                .map_err(DataLayerError::sql)?;
+                tx.commit().await.map_err(DataLayerError::sql)?;
+                return Ok(None);
+            };
+            let wallet_id = row_string!(wallet, "id");
+            let balance = row_f64!(wallet, "balance");
+            let gift_before = row_f64!(wallet, "gift_balance");
+            let gift_after = gift_before + ledger.reward_amount_usd;
+            let tx_id = uuid::Uuid::new_v4().to_string();
+            let description = note
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| "邀请返利".to_string());
+            sqlx::query(
+                r#"
+UPDATE wallets
+SET gift_balance = ?,
+    total_adjusted = total_adjusted + ?,
+    updated_at = ?
+WHERE id = ?
+"#,
+            )
+            .bind(gift_after)
+            .bind(ledger.reward_amount_usd)
+            .bind(now_unix_secs() as i64)
+            .bind(&wallet_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::sql)?;
+            sqlx::query(
+                r#"
+INSERT INTO wallet_transactions (
+  id, wallet_id, category, reason_code, amount,
+  balance_before, balance_after,
+  recharge_balance_before, recharge_balance_after,
+  gift_balance_before, gift_balance_after,
+  link_type, link_id, operator_id, description, created_at
+)
+VALUES (?, ?, 'adjust', 'referral_reward', ?, ?, ?, ?, ?, ?, ?,
+        'niffler_referral_reward_ledger', ?, ?, ?, ?)
+"#,
+            )
+            .bind(&tx_id)
+            .bind(&wallet_id)
+            .bind(ledger.reward_amount_usd)
+            .bind(balance + gift_before)
+            .bind(balance + gift_after)
+            .bind(balance)
+            .bind(balance)
+            .bind(gift_before)
+            .bind(gift_after)
+            .bind(&ledger.id)
+            .bind(operator_id)
+            .bind(&description)
+            .bind(now_unix_ms() as i64)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::sql)?;
+            let now_ms = now_unix_ms() as i64;
+            sqlx::query(
+                r#"
+UPDATE niffler_referral_reward_ledger
+SET status = 'paid',
+    failure_reason = NULL,
+    paid_at_unix_ms = ?,
+    updated_at_unix_ms = ?
+WHERE id = ? AND status IN ('pending', 'failed')
+"#,
+            )
+            .bind(now_ms)
+            .bind(now_ms)
+            .bind(&ledger.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::sql)?;
+            for reward in rewards {
+                sqlx::query(
+                    r#"
+UPDATE referral_rewards
+SET status = 'applied',
+    wallet_transaction_id = ?,
+    admin_operator_id = COALESCE(?, admin_operator_id),
+    admin_note = COALESCE(?, admin_note),
+    updated_at = ?
+WHERE id = ? AND status IN ('ledger_pending', 'ledger_failed')
+"#,
+                )
+                .bind(&tx_id)
+                .bind(operator_id)
+                .bind(note)
+                .bind(now_unix_secs() as i64)
+                .bind(&reward.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(DataLayerError::sql)?;
+            }
+            sqlx::query(
+                r#"
+INSERT INTO niffler_referral_reward_events (
+  id, reward_ledger_id, event_kind, reason, actor_id, event_snapshot, created_at_unix_ms
+)
+VALUES (?, ?, 'paid', ?, ?, ?, ?)
+"#,
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&ledger.id)
+            .bind(note)
+            .bind(operator_id)
+            .bind(niffler_referral_event_snapshot_text(
+                niffler_referral_paid_event_snapshot(&tx_id, rewards, ledger.reward_amount_usd),
+            )?)
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::sql)?;
+            tx.commit().await.map_err(DataLayerError::sql)?;
+            Ok(Some(tx_id))
+        }
+    };
+}
+
+macro_rules! niffler_referral_ledger_cancel_numeric_method {
+    ($name:ident, $pool_ty:ty) => {
+        async fn $name(
+            &self,
+            pool: &$pool_ty,
+            target: &NifflerReferralLedgerPaymentTarget,
+            operator_id: Option<&str>,
+            reason: &str,
+        ) -> Result<ReferralMutationStatus, DataLayerError> {
+            let mut tx = pool.begin().await.map_err(DataLayerError::sql)?;
+            let now_ms = now_unix_ms() as i64;
+            let affected = sqlx::query(
+                r#"
+UPDATE niffler_referral_reward_ledger
+SET status = 'cancelled',
+    failure_reason = NULL,
+    cancelled_at_unix_ms = ?,
+    updated_at_unix_ms = ?
+WHERE id = ? AND status IN ('pending', 'failed')
+"#,
+            )
+            .bind(now_ms)
+            .bind(now_ms)
+            .bind(&target.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::sql)?
+            .rows_affected();
+            if affected == 0 {
+                tx.commit().await.map_err(DataLayerError::sql)?;
+                return Ok(ReferralMutationStatus::Invalid);
+            }
+            sqlx::query(
+                r#"
+UPDATE referral_rewards
+SET status = 'ledger_cancelled',
+    admin_operator_id = COALESCE(?, admin_operator_id),
+    admin_note = COALESCE(?, admin_note),
+    updated_at = ?
+WHERE source_order_id = ? AND status IN ('ledger_pending', 'ledger_failed')
+"#,
+            )
+            .bind(operator_id)
+            .bind(reason)
+            .bind(now_unix_secs() as i64)
+            .bind(&target.order_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::sql)?;
+            sqlx::query(
+                r#"
+INSERT INTO niffler_referral_reward_events (
+  id, reward_ledger_id, event_kind, reason, actor_id, event_snapshot, created_at_unix_ms
+)
+VALUES (?, ?, 'cancelled', ?, ?, ?, ?)
+"#,
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&target.id)
+            .bind(reason)
+            .bind(operator_id)
+            .bind(niffler_referral_event_snapshot_text(serde_json::json!({
+                "order_id": target.order_id,
+                "reward_amount_usd": target.reward_amount_usd,
+            }))?)
+            .bind(now_ms)
+            .execute(&mut *tx)
+            .await
+            .map_err(DataLayerError::sql)?;
+            tx.commit().await.map_err(DataLayerError::sql)?;
+            Ok(ReferralMutationStatus::Applied)
+        }
+    };
 }
 
 macro_rules! referral_credit_numeric_method {
@@ -2407,6 +3338,27 @@ WHERE id = ?
 }
 
 impl GatewayDataState {
+    niffler_referral_ledger_numeric_method!(
+        pay_niffler_referral_reward_ledger_mysql_numeric_time,
+        sqlx::MySqlPool,
+        "SELECT status FROM niffler_referral_reward_ledger WHERE id = ? FOR UPDATE",
+        "SELECT id, balance, gift_balance FROM wallets WHERE user_id = ? FOR UPDATE"
+    );
+    niffler_referral_ledger_numeric_method!(
+        pay_niffler_referral_reward_ledger_sqlite_numeric_time,
+        sqlx::SqlitePool,
+        "SELECT status FROM niffler_referral_reward_ledger WHERE id = ?",
+        "SELECT id, balance, gift_balance FROM wallets WHERE user_id = ?"
+    );
+    niffler_referral_ledger_cancel_numeric_method!(
+        cancel_niffler_referral_reward_ledger_mysql_numeric_time,
+        sqlx::MySqlPool
+    );
+    niffler_referral_ledger_cancel_numeric_method!(
+        cancel_niffler_referral_reward_ledger_sqlite_numeric_time,
+        sqlx::SqlitePool
+    );
+
     referral_credit_numeric_method!(
         credit_referral_reward_mysql_numeric_time,
         sqlx::MySqlPool,
@@ -2498,6 +3450,25 @@ where
         amount_usd: row_f64!(row, "amount_usd"),
         reward_type: row_string!(row, "reward_type"),
         trigger_point: row_string!(row, "trigger_point"),
+    })
+}
+
+fn niffler_referral_ledger_payment_target_from_row<R>(
+    row: R,
+) -> Result<NifflerReferralLedgerPaymentTarget, DataLayerError>
+where
+    R: Row,
+    for<'c> &'c str: sqlx::ColumnIndex<R>,
+    for<'r> String: sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
+    for<'r> f64: sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
+{
+    Ok(NifflerReferralLedgerPaymentTarget {
+        id: row_string!(row, "id"),
+        order_id: row_string!(row, "order_id"),
+        inviter_user_id: row_string!(row, "inviter_user_id"),
+        invitee_user_id: row_string!(row, "invitee_user_id"),
+        reward_amount_usd: row_f64!(row, "reward_amount_usd"),
+        status: row_string!(row, "status"),
     })
 }
 
@@ -2643,7 +3614,14 @@ mod tests {
     fn referral_retry_only_allows_failed_rewards() {
         assert!(referral_retry_allowed("failed"));
 
-        for status in ["pending", "applied", "reversed", "voided"] {
+        for status in [
+            "pending",
+            "applied",
+            "reversed",
+            "voided",
+            "ledger_pending",
+            "ledger_failed",
+        ] {
             assert!(!referral_retry_allowed(status), "{status} must not retry");
         }
     }
@@ -2653,7 +3631,13 @@ mod tests {
         assert!(referral_void_allowed("pending"));
         assert!(referral_void_allowed("failed"));
 
-        for status in ["applied", "reversed", "voided"] {
+        for status in [
+            "applied",
+            "reversed",
+            "voided",
+            "ledger_pending",
+            "ledger_failed",
+        ] {
             assert!(!referral_void_allowed(status), "{status} must not void");
         }
     }

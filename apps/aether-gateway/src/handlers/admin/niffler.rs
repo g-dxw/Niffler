@@ -222,6 +222,32 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
         ));
     }
 
+    if let Some(ledger_id) = referral_reward_ledger_action_path_id(request_context.path(), "retry")
+    {
+        return Ok(Some(
+            build_referral_reward_ledger_retry_response(
+                &state,
+                &request_context,
+                request.request_body(),
+                ledger_id,
+            )
+            .await?,
+        ));
+    }
+
+    if let Some(ledger_id) = referral_reward_ledger_action_path_id(request_context.path(), "cancel")
+    {
+        return Ok(Some(
+            build_referral_reward_ledger_cancel_response(
+                &state,
+                &request_context,
+                request.request_body(),
+                ledger_id,
+            )
+            .await?,
+        ));
+    }
+
     if request_context.path().trim_end_matches('/') == REFERRAL_REWARD_LEDGER_PATH {
         return Ok(Some(
             build_referral_reward_ledger_response(&state, &request_context).await?,
@@ -364,6 +390,12 @@ struct AdminNifflerCreateErrorReturnSettingRequest {
     pause_duration: Option<NifflerPauseDuration>,
     #[serde(default = "default_true")]
     is_active: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct AdminNifflerReferralLedgerMutationRequest {
+    #[serde(default)]
+    note: Option<String>,
 }
 
 fn default_multiplier() -> f64 {
@@ -1533,6 +1565,88 @@ async fn build_referral_reward_ledger_response(
     Ok(Json(page).into_response())
 }
 
+async fn build_referral_reward_ledger_retry_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    ledger_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    if request_context.method() != http::Method::POST {
+        return Ok(niffler_method_not_allowed("只支持重试返利流水"));
+    }
+    let note = match parse_referral_ledger_mutation_note(request_body) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    match state
+        .app()
+        .retry_niffler_referral_reward_ledger(
+            &ledger_id,
+            niffler_admin_operator_id(request_context).as_deref(),
+            note.as_deref(),
+        )
+        .await?
+    {
+        crate::data::state::ReferralMutationStatus::Applied => Ok(attach_admin_audit_response(
+            Json(json!({ "status": "applied" })).into_response(),
+            "admin_niffler_referral_ledger_retry",
+            "retry_niffler_referral_reward_ledger",
+            "niffler_referral_reward_ledger",
+            &ledger_id,
+        )),
+        crate::data::state::ReferralMutationStatus::NotFound => {
+            Ok(niffler_not_found("返利流水不存在"))
+        }
+        crate::data::state::ReferralMutationStatus::Invalid => {
+            Ok(niffler_bad_request("当前返利流水不能重试"))
+        }
+        crate::data::state::ReferralMutationStatus::Unavailable => {
+            Ok(niffler_data_unavailable_response())
+        }
+    }
+}
+
+async fn build_referral_reward_ledger_cancel_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+    ledger_id: String,
+) -> Result<Response<Body>, GatewayError> {
+    if request_context.method() != http::Method::POST {
+        return Ok(niffler_method_not_allowed("只支持取消返利流水"));
+    }
+    let note = match parse_referral_ledger_mutation_note(request_body) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    match state
+        .app()
+        .cancel_niffler_referral_reward_ledger(
+            &ledger_id,
+            niffler_admin_operator_id(request_context).as_deref(),
+            note.as_deref(),
+        )
+        .await?
+    {
+        crate::data::state::ReferralMutationStatus::Applied => Ok(attach_admin_audit_response(
+            Json(json!({ "status": "cancelled" })).into_response(),
+            "admin_niffler_referral_ledger_cancel",
+            "cancel_niffler_referral_reward_ledger",
+            "niffler_referral_reward_ledger",
+            &ledger_id,
+        )),
+        crate::data::state::ReferralMutationStatus::NotFound => {
+            Ok(niffler_not_found("返利流水不存在"))
+        }
+        crate::data::state::ReferralMutationStatus::Invalid => {
+            Ok(niffler_bad_request("当前返利流水不能取消"))
+        }
+        crate::data::state::ReferralMutationStatus::Unavailable => {
+            Ok(niffler_data_unavailable_response())
+        }
+    }
+}
+
 async fn build_route_attempts_response(
     state: &AdminAppState<'_>,
     request_context: &AdminRequestContext<'_>,
@@ -1636,6 +1750,15 @@ fn product_plan_api_key_bindings_path_id(path: &str) -> Option<String> {
     (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
 }
 
+fn referral_reward_ledger_action_path_id(path: &str, action: &str) -> Option<String> {
+    let rest = path
+        .trim_end_matches('/')
+        .strip_prefix("/api/admin/niffler-core/referral-reward-ledger/")?;
+    let suffix = format!("/{action}");
+    let id = rest.strip_suffix(&suffix)?;
+    (!id.is_empty() && !id.contains('/')).then_some(id.to_string())
+}
+
 fn parse_required_body<T: for<'de> Deserialize<'de>>(
     request_body: Option<&axum::body::Bytes>,
 ) -> Result<T, Response<Body>> {
@@ -1644,6 +1767,24 @@ fn parse_required_body<T: for<'de> Deserialize<'de>>(
     };
     serde_json::from_slice(request_body)
         .map_err(|err| niffler_bad_request(format!("请求体不是合法 JSON：{err}")))
+}
+
+fn parse_referral_ledger_mutation_note(
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Option<String>, Response<Body>> {
+    let Some(request_body) = request_body.filter(|body| !body.is_empty()) else {
+        return Ok(None);
+    };
+    let payload = serde_json::from_slice::<AdminNifflerReferralLedgerMutationRequest>(request_body)
+        .map_err(|err| niffler_bad_request(format!("请求体不是合法 JSON：{err}")))?;
+    normalize_optional_text(payload.note, 500)
+}
+
+fn niffler_admin_operator_id(request_context: &AdminRequestContext<'_>) -> Option<String> {
+    request_context
+        .decision()
+        .and_then(|decision| decision.admin_principal.as_ref())
+        .map(|principal| principal.user_id.clone())
 }
 
 fn normalize_required_text(

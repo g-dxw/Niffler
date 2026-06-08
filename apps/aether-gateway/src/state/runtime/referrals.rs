@@ -8,6 +8,7 @@ use crate::niffler_runtime::{
 use crate::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
     CreateNifflerReferralRewardLedgerRecord, NifflerReferralRewardLedgerStatus,
+    StoredNifflerReferralRewardLedger,
 };
 use axum::http::StatusCode;
 use serde_json::json;
@@ -219,30 +220,72 @@ impl AppState {
             .map_err(referral_data_error)
     }
 
+    pub(crate) async fn retry_niffler_referral_reward_ledger(
+        &self,
+        ledger_id: &str,
+        operator_id: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<crate::data::state::ReferralMutationStatus, GatewayError> {
+        self.data
+            .retry_niffler_referral_reward_ledger(ledger_id, operator_id, note)
+            .await
+            .map_err(referral_data_error)
+    }
+
+    pub(crate) async fn cancel_niffler_referral_reward_ledger(
+        &self,
+        ledger_id: &str,
+        operator_id: Option<&str>,
+        note: Option<&str>,
+    ) -> Result<crate::data::state::ReferralMutationStatus, GatewayError> {
+        self.data
+            .cancel_niffler_referral_reward_ledger(ledger_id, operator_id, note)
+            .await
+            .map_err(referral_data_error)
+    }
+
     pub(crate) async fn apply_referral_rewards_for_paid_order(
         &self,
         order: &aether_data::repository::wallet::StoredAdminPaymentOrder,
     ) -> Result<Vec<ReferralRewardRecord>, GatewayError> {
-        let Some(config) = self.referral_reward_config().await? else {
-            return Ok(Vec::new());
-        };
-        let rewards = self
-            .data
-            .apply_paid_order_referral_rewards(&order.id, config.clone())
+        self.apply_referral_rewards_for_paid_order_inner(&order.id, order.user_id.as_deref())
             .await
-            .map_err(|err| GatewayError::Internal(err.to_string()))?;
-        self.record_niffler_referral_ledger_shadow(&order.id, &rewards, &config)
-            .await;
-        Ok(rewards)
     }
 
-    pub(crate) async fn apply_referral_rewards_for_payment_order_id(
+    async fn apply_referral_rewards_for_paid_order_inner(
         &self,
         order_id: &str,
+        order_user_id: Option<&str>,
     ) -> Result<Vec<ReferralRewardRecord>, GatewayError> {
         let Some(config) = self.referral_reward_config().await? else {
             return Ok(Vec::new());
         };
+        if let Some(user_id) = order_user_id {
+            if let Some(rollout) = self
+                .resolve_referral_ledger_rollout_for_user(user_id)
+                .await?
+            {
+                let rewards = self
+                    .data
+                    .create_paid_order_referral_rewards_for_ledger(order_id, config.clone())
+                    .await
+                    .map_err(|err| GatewayError::Internal(err.to_string()))?;
+                let Some(ledger) = self
+                    .create_niffler_referral_ledger_for_rewards(
+                        order_id, &rewards, &config, &rollout, false,
+                    )
+                    .await?
+                else {
+                    return Ok(rewards);
+                };
+                let _ = self
+                    .data
+                    .pay_niffler_referral_reward_ledger(&ledger, &rewards, None, None)
+                    .await
+                    .map_err(|err| GatewayError::Internal(err.to_string()))?;
+                return Ok(rewards);
+            }
+        }
         let rewards = self
             .data
             .apply_paid_order_referral_rewards(order_id, config.clone())
@@ -251,6 +294,18 @@ impl AppState {
         self.record_niffler_referral_ledger_shadow(order_id, &rewards, &config)
             .await;
         Ok(rewards)
+    }
+
+    pub(crate) async fn apply_referral_rewards_for_payment_order_id(
+        &self,
+        order_id: &str,
+    ) -> Result<Vec<ReferralRewardRecord>, GatewayError> {
+        let order_user_id = match self.read_admin_payment_order(order_id).await? {
+            crate::AdminWalletMutationOutcome::Applied(order) => order.user_id,
+            _ => None,
+        };
+        self.apply_referral_rewards_for_paid_order_inner(order_id, order_user_id.as_deref())
+            .await
     }
 
     async fn record_niffler_referral_ledger_shadow(
@@ -301,9 +356,40 @@ impl AppState {
             Some(value) => value,
             None => return Ok(()),
         };
+        let _ = self
+            .create_niffler_referral_ledger_for_rewards(order_id, rewards, config, &rollout, true)
+            .await?;
+        Ok(())
+    }
+
+    async fn create_niffler_referral_ledger_for_rewards(
+        &self,
+        order_id: &str,
+        rewards: &[ReferralRewardRecord],
+        config: &ReferralRewardConfig,
+        rollout: &ReferralLedgerRolloutMatch,
+        shadow_only: bool,
+    ) -> Result<Option<StoredNifflerReferralRewardLedger>, GatewayError> {
+        if rewards.is_empty() {
+            return Ok(None);
+        }
+        let Some(first_reward) = rewards.first() else {
+            return Ok(None);
+        };
+        let inviter_user_id = first_reward.inviter_user_id.clone();
+        let invitee_user_id = first_reward.invitee_user_id.clone();
+        if rewards.iter().any(|reward| {
+            reward.inviter_user_id != inviter_user_id || reward.invitee_user_id != invitee_user_id
+        }) {
+            warn!(
+                order_id = %order_id,
+                "skip niffler referral ledger because legacy rewards disagree on users"
+            );
+            return Ok(None);
+        }
         let reward_amount_usd: f64 = rewards.iter().map(|reward| reward.amount_usd).sum();
         if reward_amount_usd <= 0.0 {
-            return Ok(());
+            return Ok(None);
         }
         let now_unix_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
         let source = match rollout.source {
@@ -334,7 +420,7 @@ impl AppState {
                 "wallet_transaction_id": reward.wallet_transaction_id,
                 "idempotency_key": reward.idempotency_key,
             })).collect::<Vec<_>>(),
-            "shadow_only": true,
+            "shadow_only": shadow_only,
         });
         let record = CreateNifflerReferralRewardLedgerRecord {
             id: uuid::Uuid::new_v4().to_string(),
@@ -349,8 +435,7 @@ impl AppState {
             created_at_unix_ms: now_unix_ms,
             updated_at_unix_ms: now_unix_ms,
         };
-        let _ = self.create_niffler_referral_reward_ledger(record).await?;
-        Ok(())
+        self.create_niffler_referral_reward_ledger(record).await
     }
 
     async fn resolve_referral_ledger_rollout_for_user(

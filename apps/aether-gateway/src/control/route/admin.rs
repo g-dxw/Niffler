@@ -246,6 +246,27 @@ pub(super) fn classify_admin_route(
             "admin:wallets",
             false,
         ))
+    } else if method == http::Method::POST
+        && normalized_path_no_trailing
+            .strip_prefix("/api/admin/niffler-core/referral-reward-ledger/")
+            .is_some_and(|rest| {
+                !rest.is_empty()
+                    && (rest.ends_with("/retry") || rest.ends_with("/cancel"))
+                    && rest.split('/').count() == 2
+            })
+    {
+        let route_kind = if normalized_path_no_trailing.ends_with("/retry") {
+            "retry_referral_reward_ledger"
+        } else {
+            "cancel_referral_reward_ledger"
+        };
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            route_kind,
+            "admin:wallets",
+            false,
+        ))
     } else if method == http::Method::GET
         && normalized_path_no_trailing == "/api/admin/niffler-core/route-attempts"
     {

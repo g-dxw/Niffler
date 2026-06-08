@@ -787,6 +787,28 @@ export async function listNifflerReferralRewardLedger(params?: {
   return response.data
 }
 
+export async function retryNifflerReferralRewardLedger(
+  ledgerId: string,
+  payload?: { note?: string }
+): Promise<{ status: string }> {
+  const response = await apiClient.post<{ status: string }>(
+    `/api/admin/niffler-core/referral-reward-ledger/${encodeURIComponent(ledgerId)}/retry`,
+    payload ?? {}
+  )
+  return response.data
+}
+
+export async function cancelNifflerReferralRewardLedger(
+  ledgerId: string,
+  payload?: { note?: string }
+): Promise<{ status: string }> {
+  const response = await apiClient.post<{ status: string }>(
+    `/api/admin/niffler-core/referral-reward-ledger/${encodeURIComponent(ledgerId)}/cancel`,
+    payload ?? {}
+  )
+  return response.data
+}
+
 export async function listNifflerRouteAttempts(params?: {
   request_id?: string
   upstream_service_id?: string
