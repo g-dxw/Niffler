@@ -523,7 +523,7 @@ pub(crate) async fn refresh_execution_runtime_auth_context(
     };
 
     let wallet_access = resolve_wallet_auth_gate(state, &snapshot).await?;
-    Ok(build_data_backed_auth_context(
+    build_data_backed_auth_context(
         state,
         snapshot,
         auth_endpoint_signature,
@@ -531,7 +531,7 @@ pub(crate) async fn refresh_execution_runtime_auth_context(
         auth_context.balance_remaining,
         wallet_access,
     )
-    .await?)
+    .await
 }
 
 fn put_cached_auth_context(
