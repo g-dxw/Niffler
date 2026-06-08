@@ -29,6 +29,13 @@ export type NifflerPauseDuration =
   | 'twenty_four_hours'
   | 'manual_restore'
 export type NifflerRuntimeRolloutTargetScope = 'api_key' | 'product_plan'
+export type NifflerBillingReservationStatus =
+  | 'active'
+  | 'settled'
+  | 'released'
+  | 'expired'
+  | 'manual_review'
+export type NifflerReferralRewardLedgerStatus = 'pending' | 'paid' | 'failed' | 'cancelled'
 
 export interface NifflerUpstreamService {
   id: string
@@ -167,6 +174,42 @@ export interface NifflerErrorReturnSetting {
   account_protection_action: NifflerAccountProtectionAction
   pause_duration?: NifflerPauseDuration | null
   is_active: boolean
+  created_at_unix_ms: number
+  updated_at_unix_ms: number
+}
+
+export interface NifflerBillingReservation {
+  id: string
+  request_id: string
+  user_id?: string | null
+  api_key_id?: string | null
+  product_plan_id?: string | null
+  status: NifflerBillingReservationStatus
+  reserved_total_usd: number
+  wallet_reserved_usd: number
+  entitlement_reserved_usd: number
+  reserved_at_unix_ms: number
+  expires_at_unix_ms: number
+  finalized_at_unix_ms?: number | null
+  settlement_snapshot_id?: string | null
+  release_reason?: string | null
+  idempotency_key: string
+}
+
+export interface NifflerReferralRewardLedger {
+  id: string
+  order_id: string
+  idempotency_key: string
+  inviter_user_id: string
+  invitee_user_id: string
+  rule_id?: string | null
+  reward_amount_usd: number
+  rule_snapshot: Record<string, unknown> | unknown[]
+  status: NifflerReferralRewardLedgerStatus
+  failure_reason?: string | null
+  retry_count: number
+  paid_at_unix_ms?: number | null
+  cancelled_at_unix_ms?: number | null
   created_at_unix_ms: number
   updated_at_unix_ms: number
 }
@@ -618,6 +661,36 @@ export async function createNifflerErrorReturnSetting(
   const response = await apiClient.post<NifflerErrorReturnSetting>(
     '/api/admin/niffler-core/error-return-settings',
     payload
+  )
+  return response.data
+}
+
+export async function listNifflerBillingReservations(params?: {
+  status?: NifflerBillingReservationStatus
+  user_id?: string
+  api_key_id?: string
+  request_id?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerBillingReservation>> {
+  const response = await apiClient.get<NifflerListPage<NifflerBillingReservation>>(
+    '/api/admin/niffler-core/billing-reservations',
+    { params }
+  )
+  return response.data
+}
+
+export async function listNifflerReferralRewardLedger(params?: {
+  status?: NifflerReferralRewardLedgerStatus
+  inviter_user_id?: string
+  invitee_user_id?: string
+  order_id?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerReferralRewardLedger>> {
+  const response = await apiClient.get<NifflerListPage<NifflerReferralRewardLedger>>(
+    '/api/admin/niffler-core/referral-reward-ledger',
+    { params }
   )
   return response.data
 }

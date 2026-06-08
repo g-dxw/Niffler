@@ -10,12 +10,13 @@ use aether_data_contracts::repository::niffler_core::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
     NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerCoreMappingSummary, NifflerCoreReadinessReport, NifflerCoreReadinessSummary,
-    NifflerDisabledProviderReference, NifflerErrorResponseScope,
-    NifflerErrorReturnSettingListQuery, NifflerGroupPolicyGap, NifflerKeyScopeResidue,
-    NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
+    NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreMappingSummary,
+    NifflerCoreReadinessReport, NifflerCoreReadinessSummary, NifflerDisabledProviderReference,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerGroupPolicyGap,
+    NifflerKeyScopeResidue, NifflerPauseDuration, NifflerPriceGap, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerProtocolKind, NifflerReadinessIssue,
-    NifflerReadinessSeverity, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
+    NifflerReadinessSeverity, NifflerReferralRewardLedgerListQuery,
+    NifflerReferralRewardLedgerStatus, NifflerRouteSkipReasonSummary, NifflerRouteSkipSample,
     NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
     NifflerServiceCapabilityKind, NifflerShadowTableItem, NifflerShadowTableStatus,
     NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
@@ -54,6 +55,8 @@ const API_KEY_PRODUCT_PLAN_BINDINGS_PATH: &str =
 const RUNTIME_ROLLOUT_SETTINGS_PATH: &str = "/api/admin/niffler-core/runtime-rollout-settings";
 const RUNTIME_ROLLOUT_PREVIEW_PATH: &str = "/api/admin/niffler-core/runtime-rollout-preview";
 const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
+const BILLING_RESERVATIONS_PATH: &str = "/api/admin/niffler-core/billing-reservations";
+const REFERRAL_REWARD_LEDGER_PATH: &str = "/api/admin/niffler-core/referral-reward-ledger";
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
 const MAX_USAGE_ITEMS: usize = 50;
@@ -191,6 +194,18 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
         return Ok(Some(
             build_error_return_settings_response(&state, &request_context, request.request_body())
                 .await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == BILLING_RESERVATIONS_PATH {
+        return Ok(Some(
+            build_billing_reservations_response(&state, &request_context).await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == REFERRAL_REWARD_LEDGER_PATH {
+        return Ok(Some(
+            build_referral_reward_ledger_response(&state, &request_context).await?,
         ));
     }
 
@@ -1389,6 +1404,58 @@ async fn create_error_return_setting_response(
     ))
 }
 
+async fn build_billing_reservations_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if request_context.method() != http::Method::GET {
+        return Ok(niffler_method_not_allowed("只支持读取计费预占"));
+    }
+    let status = match parse_billing_reservation_status_query(request_context.query_string()) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let query = NifflerBillingReservationListQuery {
+        status,
+        user_id: optional_query_text(request_context.query_string(), "user_id"),
+        api_key_id: optional_query_text(request_context.query_string(), "api_key_id"),
+        request_id: optional_query_text(request_context.query_string(), "request_id"),
+        offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+        limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
+    };
+    let page = state.list_niffler_billing_reservations(&query).await?;
+    Ok(Json(page).into_response())
+}
+
+async fn build_referral_reward_ledger_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if request_context.method() != http::Method::GET {
+        return Ok(niffler_method_not_allowed("只支持读取返利流水"));
+    }
+    let status = match parse_referral_reward_ledger_status_query(request_context.query_string()) {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let query = NifflerReferralRewardLedgerListQuery {
+        status,
+        inviter_user_id: optional_query_text(request_context.query_string(), "inviter_user_id"),
+        invitee_user_id: optional_query_text(request_context.query_string(), "invitee_user_id"),
+        order_id: optional_query_text(request_context.query_string(), "order_id"),
+        offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+        limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
+    };
+    let page = state.list_niffler_referral_reward_ledger(&query).await?;
+    Ok(Json(page).into_response())
+}
+
 fn build_capability_records(
     upstream_service_id: &str,
     protocol_kind: NifflerProtocolKind,
@@ -1520,6 +1587,12 @@ fn parse_bool_query(query: Option<&str>, key: &str) -> Option<bool> {
     })
 }
 
+fn optional_query_text(query: Option<&str>, key: &str) -> Option<String> {
+    query_param_value(query, key)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn parse_error_response_scope_query(
     query: Option<&str>,
     key: &str,
@@ -1538,6 +1611,32 @@ fn parse_runtime_rollout_target_scope_query(
         .map(|value| {
             NifflerRuntimeRolloutTargetScope::from_database(value.as_str())
                 .map_err(|_| niffler_bad_request("灰度对象范围只能是 api_key 或 product_plan"))
+        })
+        .transpose()
+}
+
+fn parse_billing_reservation_status_query(
+    query: Option<&str>,
+) -> Result<Option<NifflerBillingReservationStatus>, Response<Body>> {
+    query_param_value(query, "status")
+        .map(|value| {
+            NifflerBillingReservationStatus::from_database(value.as_str()).map_err(|_| {
+                niffler_bad_request(
+                    "计费预占状态只能是 active、settled、released、expired 或 manual_review",
+                )
+            })
+        })
+        .transpose()
+}
+
+fn parse_referral_reward_ledger_status_query(
+    query: Option<&str>,
+) -> Result<Option<NifflerReferralRewardLedgerStatus>, Response<Body>> {
+    query_param_value(query, "status")
+        .map(|value| {
+            NifflerReferralRewardLedgerStatus::from_database(value.as_str()).map_err(|_| {
+                niffler_bad_request("返利流水状态只能是 pending、paid、failed 或 cancelled")
+            })
         })
         .transpose()
 }

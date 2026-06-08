@@ -5,17 +5,21 @@ use super::{
     bounded_limit, bounded_offset, i64_from_u64, CreateNifflerErrorReturnSettingRecord,
     CreateNifflerProductPlanRecord, CreateNifflerUpstreamAccountRecord,
     CreateNifflerUpstreamServiceRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
-    NifflerApiKeyProductPlanBindingListQuery, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
-    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    NifflerBillingReservationStatus, NifflerCoreReadRepository, NifflerCoreWriteRepository,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
+    NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
+    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
     NifflerServiceCapabilityKind, NifflerUpstreamAccountListQuery,
     NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
     StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
+    StoredNifflerBillingReservation, StoredNifflerBillingReservationListPage,
     StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
     StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
-    StoredNifflerProductPlanModelListPage, StoredNifflerRuntimeRolloutSetting,
+    StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
+    StoredNifflerReferralRewardLedgerListPage, StoredNifflerRuntimeRolloutSetting,
     StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
     StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
     StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
@@ -488,6 +492,54 @@ LIMIT 1
             .map(map_error_return_setting_row)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StoredNifflerErrorReturnSettingListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_billing_reservations(
+        &self,
+        query: &NifflerBillingReservationListQuery,
+    ) -> Result<StoredNifflerBillingReservationListPage, DataLayerError> {
+        let total = build_billing_reservation_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_billing_reservation_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_billing_reservation_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerBillingReservationListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_referral_reward_ledger(
+        &self,
+        query: &NifflerReferralRewardLedgerListQuery,
+    ) -> Result<StoredNifflerReferralRewardLedgerListPage, DataLayerError> {
+        let total = build_referral_reward_ledger_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_referral_reward_ledger_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_referral_reward_ledger_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerReferralRewardLedgerListPage {
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
@@ -1150,6 +1202,139 @@ fn push_error_return_setting_filters(
     }
 }
 
+fn build_billing_reservation_count_query(
+    query: &NifflerBillingReservationListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_billing_reservations");
+    push_billing_reservation_filters(&mut builder, query);
+    builder
+}
+
+fn build_billing_reservation_rows_query(
+    query: &NifflerBillingReservationListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, request_id, user_id, api_key_id, product_plan_id, status, \
+         reserved_total_usd, wallet_reserved_usd, entitlement_reserved_usd, \
+         reserved_at_unix_ms, expires_at_unix_ms, finalized_at_unix_ms, \
+         settlement_snapshot_id, release_reason, idempotency_key \
+         FROM niffler_billing_reservations",
+    );
+    push_billing_reservation_filters(&mut builder, query);
+    builder.push(" ORDER BY reserved_at_unix_ms DESC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_billing_reservation_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerBillingReservationListQuery,
+) {
+    let mut has_where = false;
+    if let Some(status) = query.status {
+        builder.push(" WHERE status = ");
+        builder.push_bind(status.as_str());
+        has_where = true;
+    }
+    if let Some(user_id) = query
+        .user_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("user_id = ");
+        builder.push_bind(user_id.clone());
+        has_where = true;
+    }
+    if let Some(api_key_id) = query
+        .api_key_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("api_key_id = ");
+        builder.push_bind(api_key_id.clone());
+        has_where = true;
+    }
+    if let Some(request_id) = query
+        .request_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("request_id = ");
+        builder.push_bind(request_id.clone());
+    }
+}
+
+fn build_referral_reward_ledger_count_query(
+    query: &NifflerReferralRewardLedgerListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_referral_reward_ledger");
+    push_referral_reward_ledger_filters(&mut builder, query);
+    builder
+}
+
+fn build_referral_reward_ledger_rows_query(
+    query: &NifflerReferralRewardLedgerListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT id, order_id, idempotency_key, inviter_user_id, invitee_user_id, rule_id, \
+         reward_amount_usd, rule_snapshot, status, failure_reason, retry_count, \
+         paid_at_unix_ms, cancelled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms \
+         FROM niffler_referral_reward_ledger",
+    );
+    push_referral_reward_ledger_filters(&mut builder, query);
+    builder.push(" ORDER BY created_at_unix_ms DESC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_referral_reward_ledger_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerReferralRewardLedgerListQuery,
+) {
+    let mut has_where = false;
+    if let Some(status) = query.status {
+        builder.push(" WHERE status = ");
+        builder.push_bind(status.as_str());
+        has_where = true;
+    }
+    if let Some(inviter_user_id) = query
+        .inviter_user_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("inviter_user_id = ");
+        builder.push_bind(inviter_user_id.clone());
+        has_where = true;
+    }
+    if let Some(invitee_user_id) = query
+        .invitee_user_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("invitee_user_id = ");
+        builder.push_bind(invitee_user_id.clone());
+        has_where = true;
+    }
+    if let Some(order_id) = query
+        .order_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("order_id = ");
+        builder.push_bind(order_id.clone());
+    }
+}
+
 fn map_service_row(row: &PgRow) -> Result<StoredNifflerUpstreamService, DataLayerError> {
     Ok(StoredNifflerUpstreamService {
         id: row.try_get("id").map_sql_err()?,
@@ -1353,6 +1538,81 @@ fn map_error_return_setting_row(
             .map(NifflerPauseDuration::from_database)
             .transpose()?,
         is_active: row.try_get("is_active").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        updated_at_unix_ms: super::u64_from_i64(
+            row.try_get("updated_at_unix_ms").map_sql_err()?,
+            "updated_at_unix_ms",
+        )?,
+    })
+}
+
+fn map_billing_reservation_row(
+    row: &PgRow,
+) -> Result<StoredNifflerBillingReservation, DataLayerError> {
+    let status: String = row.try_get("status").map_sql_err()?;
+    Ok(StoredNifflerBillingReservation {
+        id: row.try_get("id").map_sql_err()?,
+        request_id: row.try_get("request_id").map_sql_err()?,
+        user_id: row.try_get("user_id").map_sql_err()?,
+        api_key_id: row.try_get("api_key_id").map_sql_err()?,
+        product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        status: NifflerBillingReservationStatus::from_database(&status)?,
+        reserved_total_usd: row.try_get("reserved_total_usd").map_sql_err()?,
+        wallet_reserved_usd: row.try_get("wallet_reserved_usd").map_sql_err()?,
+        entitlement_reserved_usd: row.try_get("entitlement_reserved_usd").map_sql_err()?,
+        reserved_at_unix_ms: super::u64_from_i64(
+            row.try_get("reserved_at_unix_ms").map_sql_err()?,
+            "reserved_at_unix_ms",
+        )?,
+        expires_at_unix_ms: super::u64_from_i64(
+            row.try_get("expires_at_unix_ms").map_sql_err()?,
+            "expires_at_unix_ms",
+        )?,
+        finalized_at_unix_ms: row
+            .try_get::<Option<i64>, _>("finalized_at_unix_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "finalized_at_unix_ms"))
+            .transpose()?,
+        settlement_snapshot_id: row.try_get("settlement_snapshot_id").map_sql_err()?,
+        release_reason: row.try_get("release_reason").map_sql_err()?,
+        idempotency_key: row.try_get("idempotency_key").map_sql_err()?,
+    })
+}
+
+fn map_referral_reward_ledger_row(
+    row: &PgRow,
+) -> Result<StoredNifflerReferralRewardLedger, DataLayerError> {
+    let status: String = row.try_get("status").map_sql_err()?;
+    let retry_count: i32 = row.try_get("retry_count").map_sql_err()?;
+    Ok(StoredNifflerReferralRewardLedger {
+        id: row.try_get("id").map_sql_err()?,
+        order_id: row.try_get("order_id").map_sql_err()?,
+        idempotency_key: row.try_get("idempotency_key").map_sql_err()?,
+        inviter_user_id: row.try_get("inviter_user_id").map_sql_err()?,
+        invitee_user_id: row.try_get("invitee_user_id").map_sql_err()?,
+        rule_id: row.try_get("rule_id").map_sql_err()?,
+        reward_amount_usd: row.try_get("reward_amount_usd").map_sql_err()?,
+        rule_snapshot: row.try_get("rule_snapshot").map_sql_err()?,
+        status: NifflerReferralRewardLedgerStatus::from_database(&status)?,
+        failure_reason: row.try_get("failure_reason").map_sql_err()?,
+        retry_count: u32::try_from(retry_count).map_err(|_| {
+            DataLayerError::UnexpectedValue(format!(
+                "referral reward retry_count is negative: {retry_count}"
+            ))
+        })?,
+        paid_at_unix_ms: row
+            .try_get::<Option<i64>, _>("paid_at_unix_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "paid_at_unix_ms"))
+            .transpose()?,
+        cancelled_at_unix_ms: row
+            .try_get::<Option<i64>, _>("cancelled_at_unix_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "cancelled_at_unix_ms"))
+            .transpose()?,
         created_at_unix_ms: super::u64_from_i64(
             row.try_get("created_at_unix_ms").map_sql_err()?,
             "created_at_unix_ms",

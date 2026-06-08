@@ -8,12 +8,12 @@
       <template #actions>
         <Button
           variant="outline"
-          :disabled="serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || runtimeRolloutPreviewLoading || errorReturnSettingLoading"
+          :disabled="pageLoading"
           @click="refreshAll"
         >
           <RefreshCw
             class="mr-2 h-4 w-4"
-            :class="{ 'animate-spin': serviceLoading || serviceCapabilityLoading || accountLoading || productPlanLoading || productPlanModelLoading || apiKeyLoading || apiKeyBindingLoading || runtimeRolloutLoading || runtimeRolloutPreviewLoading || errorReturnSettingLoading }"
+            :class="{ 'animate-spin': pageLoading }"
           />
           刷新
         </Button>
@@ -985,6 +985,282 @@
         <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 class="text-lg font-semibold">
+              预占和返利流水对账
+            </h2>
+            <p class="mt-1 text-sm text-muted-foreground">
+              只读查看新表里的钱包预占和邀请返利流水。刷新和筛选不会扣费、不会释放预占，也不会发放返利。
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            class="h-9"
+            :disabled="billingReservationLoading || referralRewardLedgerLoading"
+            @click="loadReconciliationData"
+          >
+            <RefreshCw
+              class="mr-2 h-4 w-4"
+              :class="{ 'animate-spin': billingReservationLoading || referralRewardLedgerLoading }"
+            />
+            刷新对账
+          </Button>
+        </div>
+
+        <div class="grid gap-5 p-5 xl:grid-cols-2">
+          <section class="rounded-xl border border-border/70">
+            <div class="flex flex-col gap-3 border-b border-border/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 class="font-medium">
+                  计费预占
+                </h3>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  查看请求开始时预留的钱包和套餐金额。
+                </p>
+              </div>
+              <Select v-model="billingReservationStatusFilter">
+                <SelectTrigger class="h-9 sm:w-36">
+                  <SelectValue placeholder="状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in billingReservationStatusOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <p
+              v-if="billingReservationError"
+              class="border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            >
+              {{ billingReservationError }}
+            </p>
+
+            <div
+              v-if="billingReservationLoading && billingReservations.length === 0"
+              class="flex items-center justify-center py-12 text-sm text-muted-foreground"
+            >
+              <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+              正在读取计费预占...
+            </div>
+
+            <div
+              v-else-if="billingReservations.length === 0"
+              class="py-12 text-center"
+            >
+              <PackageCheck class="mx-auto h-9 w-9 text-muted-foreground/50" />
+              <p class="mt-3 text-sm font-medium">
+                没有计费预占记录
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                当前筛选条件下没有新表记录；新链路未写入前为空是正常的。
+              </p>
+            </div>
+
+            <Table v-else>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>请求</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>金额</TableHead>
+                  <TableHead>时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="reservation in billingReservations"
+                  :key="reservation.id"
+                >
+                  <TableCell>
+                    <div class="font-mono text-xs">
+                      {{ reservation.request_id }}
+                    </div>
+                    <div class="mt-1 text-xs text-muted-foreground">
+                      用户 {{ reservation.user_id || '未知' }}
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                      Key {{ reservation.api_key_id || '未知' }}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge :variant="reconciliationStatusVariant(reservation.status)">
+                      {{ billingReservationStatusLabel(reservation.status) }}
+                    </Badge>
+                    <div
+                      v-if="reservation.release_reason"
+                      class="mt-1 text-xs text-muted-foreground"
+                    >
+                      {{ reservation.release_reason }}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div class="text-sm font-medium">
+                      {{ formatUsdAmount(reservation.reserved_total_usd) }}
+                    </div>
+                    <div class="mt-1 text-xs text-muted-foreground">
+                      钱包 {{ formatUsdAmount(reservation.wallet_reserved_usd) }}
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                      套餐 {{ formatUsdAmount(reservation.entitlement_reserved_usd) }}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div class="text-xs">
+                      预占 {{ formatNifflerUnixMs(reservation.reserved_at_unix_ms) }}
+                    </div>
+                    <div class="mt-1 text-xs text-muted-foreground">
+                      到期 {{ formatNifflerUnixMs(reservation.expires_at_unix_ms) }}
+                    </div>
+                    <div
+                      v-if="reservation.finalized_at_unix_ms"
+                      class="text-xs text-muted-foreground"
+                    >
+                      完成 {{ formatNifflerUnixMs(reservation.finalized_at_unix_ms) }}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </section>
+
+          <section class="rounded-xl border border-border/70">
+            <div class="flex flex-col gap-3 border-b border-border/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 class="font-medium">
+                  返利流水
+                </h3>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  查看订单触发的邀请返利账本记录。
+                </p>
+              </div>
+              <Select v-model="referralRewardLedgerStatusFilter">
+                <SelectTrigger class="h-9 sm:w-36">
+                  <SelectValue placeholder="状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in referralRewardLedgerStatusOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <p
+              v-if="referralRewardLedgerError"
+              class="border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            >
+              {{ referralRewardLedgerError }}
+            </p>
+
+            <div
+              v-if="referralRewardLedgerLoading && referralRewardLedger.length === 0"
+              class="flex items-center justify-center py-12 text-sm text-muted-foreground"
+            >
+              <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+              正在读取返利流水...
+            </div>
+
+            <div
+              v-else-if="referralRewardLedger.length === 0"
+              class="py-12 text-center"
+            >
+              <Tags class="mx-auto h-9 w-9 text-muted-foreground/50" />
+              <p class="mt-3 text-sm font-medium">
+                没有返利流水
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                当前筛选条件下没有新表记录；新链路未写入前为空是正常的。
+              </p>
+            </div>
+
+            <Table v-else>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>订单</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>返利</TableHead>
+                  <TableHead>时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="ledger in referralRewardLedger"
+                  :key="ledger.id"
+                >
+                  <TableCell>
+                    <div class="font-mono text-xs">
+                      {{ ledger.order_id }}
+                    </div>
+                    <div class="mt-1 text-xs text-muted-foreground">
+                      邀请人 {{ ledger.inviter_user_id }}
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                      被邀请人 {{ ledger.invitee_user_id }}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge :variant="reconciliationStatusVariant(ledger.status)">
+                      {{ referralRewardLedgerStatusLabel(ledger.status) }}
+                    </Badge>
+                    <div
+                      v-if="ledger.failure_reason"
+                      class="mt-1 text-xs text-muted-foreground"
+                    >
+                      {{ ledger.failure_reason }}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div class="text-sm font-medium">
+                      {{ formatUsdAmount(ledger.reward_amount_usd) }}
+                    </div>
+                    <div class="mt-1 text-xs text-muted-foreground">
+                      重试 {{ ledger.retry_count }} 次
+                    </div>
+                    <div
+                      v-if="ledger.rule_id"
+                      class="text-xs text-muted-foreground"
+                    >
+                      规则 {{ ledger.rule_id }}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div class="text-xs">
+                      创建 {{ formatNifflerUnixMs(ledger.created_at_unix_ms) }}
+                    </div>
+                    <div class="mt-1 text-xs text-muted-foreground">
+                      更新 {{ formatNifflerUnixMs(ledger.updated_at_unix_ms) }}
+                    </div>
+                    <div
+                      v-if="ledger.paid_at_unix_ms"
+                      class="text-xs text-muted-foreground"
+                    >
+                      发放 {{ formatNifflerUnixMs(ledger.paid_at_unix_ms) }}
+                    </div>
+                    <div
+                      v-if="ledger.cancelled_at_unix_ms"
+                      class="text-xs text-muted-foreground"
+                    >
+                      取消 {{ formatNifflerUnixMs(ledger.cancelled_at_unix_ms) }}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </section>
+        </div>
+      </Card>
+
+      <Card class="overflow-hidden">
+        <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">
               错误文案规则
             </h2>
             <p class="mt-1 text-sm text-muted-foreground">
@@ -1801,9 +2077,11 @@ import {
   createNifflerUpstreamService,
   getNifflerRuntimeRolloutPreview,
   listNifflerApiKeyProductPlanBindings,
+  listNifflerBillingReservations,
   listNifflerErrorReturnSettings,
   listNifflerProductPlanModels,
   listNifflerProductPlans,
+  listNifflerReferralRewardLedger,
   listNifflerRuntimeRolloutSettings,
   listNifflerUpstreamServiceCapabilities,
   listNifflerUpstreamAccounts,
@@ -1819,12 +2097,16 @@ import {
   type NifflerAccountProtectionAction,
   type NifflerAccountStatus,
   type NifflerApiKeyProductPlanBinding,
+  type NifflerBillingReservation,
+  type NifflerBillingReservationStatus,
   type NifflerErrorResponseScope,
   type NifflerErrorReturnSetting,
   type NifflerPauseDuration,
   type NifflerProductPlan,
   type NifflerProductPlanModel,
   type NifflerProtocolKind,
+  type NifflerReferralRewardLedger,
+  type NifflerReferralRewardLedgerStatus,
   type NifflerRuntimeRolloutPreview,
   type NifflerRuntimeRolloutSetting,
   type NifflerRuntimeRolloutTargetScope,
@@ -1911,6 +2193,8 @@ type RuntimeRolloutForm = Required<
     | 'is_active'
   >
 >
+type BillingReservationStatusFilter = NifflerBillingReservationStatus | 'all'
+type ReferralRewardLedgerStatusFilter = NifflerReferralRewardLedgerStatus | 'all'
 
 const { success, error: showError } = useToast()
 
@@ -1925,6 +2209,8 @@ const globalModels = ref<GlobalModelResponse[]>([])
 const runtimeRolloutSettings = ref<NifflerRuntimeRolloutSetting[]>([])
 const runtimeRolloutPreview = ref<NifflerRuntimeRolloutPreview | null>(null)
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
+const billingReservations = ref<NifflerBillingReservation[]>([])
+const referralRewardLedger = ref<NifflerReferralRewardLedger[]>([])
 const serviceLoading = ref(false)
 const serviceCapabilityLoading = ref(false)
 const accountLoading = ref(false)
@@ -1936,6 +2222,8 @@ const globalModelsLoading = ref(false)
 const runtimeRolloutLoading = ref(false)
 const runtimeRolloutPreviewLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
+const billingReservationLoading = ref(false)
+const referralRewardLedgerLoading = ref(false)
 const savingService = ref(false)
 const savingServiceCapabilities = ref(false)
 const savingAccount = ref(false)
@@ -1954,8 +2242,12 @@ const globalModelsError = ref('')
 const runtimeRolloutError = ref('')
 const runtimeRolloutPreviewError = ref('')
 const errorReturnSettingError = ref('')
+const billingReservationError = ref('')
+const referralRewardLedgerError = ref('')
 const serviceSearch = ref('')
 const productPlanSearch = ref('')
+const billingReservationStatusFilter = ref<BillingReservationStatusFilter>('all')
+const referralRewardLedgerStatusFilter = ref<ReferralRewardLedgerStatusFilter>('all')
 const selectedServiceId = ref<string | null>(null)
 const selectedProductPlanId = ref<string | null>(null)
 const selectedRuntimeRolloutApiKeyId = ref('')
@@ -2053,6 +2345,51 @@ const runtimeRolloutFlagOptions: Array<{
   { key: 'enable_billing_reservation', label: '钱包预扣', description: '后续支持请求开始前预留钱包余额。' },
   { key: 'enable_referral_ledger', label: '返利账本', description: '后续把邀请返利写入独立账本。' },
 ]
+
+const billingReservationStatusOptions: Array<{
+  value: BillingReservationStatusFilter
+  label: string
+}> = [
+  { value: 'all', label: '全部状态' },
+  { value: 'active', label: '预占中' },
+  { value: 'settled', label: '已结算' },
+  { value: 'released', label: '已释放' },
+  { value: 'expired', label: '已过期' },
+  { value: 'manual_review', label: '人工处理' },
+]
+
+const referralRewardLedgerStatusOptions: Array<{
+  value: ReferralRewardLedgerStatusFilter
+  label: string
+}> = [
+  { value: 'all', label: '全部状态' },
+  { value: 'pending', label: '待发' },
+  { value: 'paid', label: '已发' },
+  { value: 'failed', label: '失败' },
+  { value: 'cancelled', label: '已取消' },
+]
+
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 6,
+})
+
+const pageLoading = computed(() =>
+  serviceLoading.value
+  || serviceCapabilityLoading.value
+  || accountLoading.value
+  || productPlanLoading.value
+  || productPlanModelLoading.value
+  || apiKeyLoading.value
+  || apiKeyBindingLoading.value
+  || runtimeRolloutLoading.value
+  || runtimeRolloutPreviewLoading.value
+  || errorReturnSettingLoading.value
+  || billingReservationLoading.value
+  || referralRewardLedgerLoading.value
+)
 
 const selectedService = computed(() =>
   services.value.find(service => service.id === selectedServiceId.value) ?? null
@@ -2232,6 +2569,14 @@ watch(selectedRuntimeRolloutApiKeyId, () => {
   runtimeRolloutPreviewError.value = ''
 })
 
+watch(billingReservationStatusFilter, () => {
+  void loadBillingReservations()
+})
+
+watch(referralRewardLedgerStatusFilter, () => {
+  void loadReferralRewardLedger()
+})
+
 async function refreshAll() {
   await Promise.all([
     loadServices(),
@@ -2239,6 +2584,8 @@ async function refreshAll() {
     loadApiKeyBindingData(),
     loadRuntimeRolloutSettings(),
     loadErrorReturnSettings(),
+    loadBillingReservations(),
+    loadReferralRewardLedger(),
   ])
   if (selectedServiceId.value) {
     await Promise.all([
@@ -2497,6 +2844,53 @@ async function loadRuntimeRolloutPreview() {
   } finally {
     runtimeRolloutPreviewLoading.value = false
   }
+}
+
+async function loadBillingReservations() {
+  billingReservationLoading.value = true
+  billingReservationError.value = ''
+  try {
+    const response = await listNifflerBillingReservations({
+      status: billingReservationStatusFilter.value === 'all'
+        ? undefined
+        : billingReservationStatusFilter.value,
+      offset: 0,
+      limit: 50,
+    })
+    billingReservations.value = response.items
+  } catch (err) {
+    billingReservationError.value = extractErrorMessage(err, '读取计费预占失败')
+    showError(billingReservationError.value)
+  } finally {
+    billingReservationLoading.value = false
+  }
+}
+
+async function loadReferralRewardLedger() {
+  referralRewardLedgerLoading.value = true
+  referralRewardLedgerError.value = ''
+  try {
+    const response = await listNifflerReferralRewardLedger({
+      status: referralRewardLedgerStatusFilter.value === 'all'
+        ? undefined
+        : referralRewardLedgerStatusFilter.value,
+      offset: 0,
+      limit: 50,
+    })
+    referralRewardLedger.value = response.items
+  } catch (err) {
+    referralRewardLedgerError.value = extractErrorMessage(err, '读取返利流水失败')
+    showError(referralRewardLedgerError.value)
+  } finally {
+    referralRewardLedgerLoading.value = false
+  }
+}
+
+async function loadReconciliationData() {
+  await Promise.all([
+    loadBillingReservations(),
+    loadReferralRewardLedger(),
+  ])
 }
 
 async function selectProductPlan(productPlanId: string) {
@@ -2945,6 +3339,39 @@ function accountStatusLabel(status: NifflerAccountStatus): string {
   return labels[status] ?? status
 }
 
+function billingReservationStatusLabel(status: NifflerBillingReservationStatus): string {
+  const labels: Record<NifflerBillingReservationStatus, string> = {
+    active: '预占中',
+    settled: '已结算',
+    released: '已释放',
+    expired: '已过期',
+    manual_review: '人工处理',
+  }
+  return labels[status] ?? status
+}
+
+function referralRewardLedgerStatusLabel(status: NifflerReferralRewardLedgerStatus): string {
+  const labels: Record<NifflerReferralRewardLedgerStatus, string> = {
+    pending: '待发',
+    paid: '已发',
+    failed: '失败',
+    cancelled: '已取消',
+  }
+  return labels[status] ?? status
+}
+
+function reconciliationStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (status === 'failed' || status === 'manual_review') return 'destructive'
+  if (status === 'active' || status === 'pending') return 'outline'
+  if (status === 'settled' || status === 'paid') return 'default'
+  return 'secondary'
+}
+
+function formatUsdAmount(value: number): string {
+  if (!Number.isFinite(value)) return '$0.0000'
+  return usdFormatter.format(value)
+}
+
 function errorScopeLabel(scope: NifflerErrorResponseScope): string {
   const labels: Record<NifflerErrorResponseScope, string> = {
     platform: '平台本地错误',
@@ -3079,5 +3506,7 @@ onMounted(() => {
   void loadApiKeyBindingData()
   void loadRuntimeRolloutSettings()
   void loadErrorReturnSettings()
+  void loadBillingReservations()
+  void loadReferralRewardLedger()
 })
 </script>

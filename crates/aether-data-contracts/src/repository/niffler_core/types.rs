@@ -339,6 +339,29 @@ pub enum NifflerBillingReservationStatus {
 }
 
 impl NifflerBillingReservationStatus {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "active" => Ok(Self::Active),
+            "settled" => Ok(Self::Settled),
+            "released" => Ok(Self::Released),
+            "expired" => Ok(Self::Expired),
+            "manual_review" => Ok(Self::ManualReview),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler billing reservation status: {value}"
+            ))),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Settled => "settled",
+            Self::Released => "released",
+            Self::Expired => "expired",
+            Self::ManualReview => "manual_review",
+        }
+    }
+
     pub const fn is_open(self) -> bool {
         matches!(self, Self::Active | Self::ManualReview)
     }
@@ -375,6 +398,29 @@ pub enum NifflerReferralRewardLedgerStatus {
     Paid,
     Failed,
     Cancelled,
+}
+
+impl NifflerReferralRewardLedgerStatus {
+    pub fn from_database(value: &str) -> Result<Self, crate::DataLayerError> {
+        match value {
+            "pending" => Ok(Self::Pending),
+            "paid" => Ok(Self::Paid),
+            "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err(crate::DataLayerError::UnexpectedValue(format!(
+                "unknown niffler referral reward ledger status: {value}"
+            ))),
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Paid => "paid",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -665,6 +711,16 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         &self,
         query: &NifflerErrorReturnSettingListQuery,
     ) -> Result<StoredNifflerErrorReturnSettingListPage, crate::DataLayerError>;
+
+    async fn list_billing_reservations(
+        &self,
+        query: &NifflerBillingReservationListQuery,
+    ) -> Result<StoredNifflerBillingReservationListPage, crate::DataLayerError>;
+
+    async fn list_referral_reward_ledger(
+        &self,
+        query: &NifflerReferralRewardLedgerListQuery,
+    ) -> Result<StoredNifflerReferralRewardLedgerListPage, crate::DataLayerError>;
 }
 
 #[async_trait]
@@ -859,6 +915,38 @@ pub struct NifflerRuntimeRolloutSettingListQuery {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredNifflerRuntimeRolloutSettingListPage {
     pub items: Vec<StoredNifflerRuntimeRolloutSetting>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerBillingReservationListQuery {
+    pub status: Option<NifflerBillingReservationStatus>,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub request_id: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerBillingReservationListPage {
+    pub items: Vec<StoredNifflerBillingReservation>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerReferralRewardLedgerListQuery {
+    pub status: Option<NifflerReferralRewardLedgerStatus>,
+    pub inviter_user_id: Option<String>,
+    pub invitee_user_id: Option<String>,
+    pub order_id: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerReferralRewardLedgerListPage {
+    pub items: Vec<StoredNifflerReferralRewardLedger>,
     pub total: usize,
 }
 

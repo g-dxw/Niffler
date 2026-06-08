@@ -2,21 +2,22 @@ use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
     CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerApiKeyProductPlanBindingListQuery, NifflerErrorReturnSettingListQuery,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
     NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
     NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
-    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerErrorReturnSetting,
-    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
-    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
-    StoredNifflerProductPlanModelListPage, StoredNifflerRuntimeRolloutSetting,
-    StoredNifflerRuntimeRolloutSettingListPage, StoredNifflerUpstreamAccount,
-    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
-    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
-    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
-    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
-    UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservationListPage,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
+    StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
+    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
+    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
+    StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
+    UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
+    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 
 impl AppState {
@@ -145,6 +146,26 @@ impl AppState {
     ) -> Result<StoredNifflerErrorReturnSettingListPage, GatewayError> {
         self.data
             .list_niffler_error_return_settings(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn list_niffler_billing_reservations(
+        &self,
+        query: &NifflerBillingReservationListQuery,
+    ) -> Result<StoredNifflerBillingReservationListPage, GatewayError> {
+        self.data
+            .list_niffler_billing_reservations(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn list_niffler_referral_reward_ledger(
+        &self,
+        query: &NifflerReferralRewardLedgerListQuery,
+    ) -> Result<StoredNifflerReferralRewardLedgerListPage, GatewayError> {
+        self.data
+            .list_niffler_referral_reward_ledger(query)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
