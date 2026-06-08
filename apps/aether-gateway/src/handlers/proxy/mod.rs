@@ -1048,7 +1048,7 @@ pub(crate) async fn proxy_request(
             &trace_id,
             request_context.control_decision.as_ref(),
             "请求过于频繁，请稍后重试",
-            u64::from(rejection.retry_after),
+            rejection.retry_after,
             u64::from(rejection.limit),
             rejection.scope,
         )
@@ -1394,7 +1394,7 @@ pub(crate) async fn proxy_request(
             &trace_id,
             control_decision,
             "请求过于频繁，请稍后重试",
-            u64::from(rejection.retry_after),
+            rejection.retry_after,
             u64::from(rejection.limit),
             rejection.scope,
         )
