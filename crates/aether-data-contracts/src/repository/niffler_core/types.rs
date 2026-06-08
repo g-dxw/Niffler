@@ -712,6 +712,11 @@ pub trait NifflerCoreReadRepository: Send + Sync {
         query: &NifflerErrorReturnSettingListQuery,
     ) -> Result<StoredNifflerErrorReturnSettingListPage, crate::DataLayerError>;
 
+    async fn list_settlement_snapshots(
+        &self,
+        query: &NifflerSettlementSnapshotListQuery,
+    ) -> Result<StoredNifflerSettlementSnapshotListPage, crate::DataLayerError>;
+
     async fn list_billing_reservations(
         &self,
         query: &NifflerBillingReservationListQuery,
@@ -769,6 +774,11 @@ pub trait NifflerCoreWriteRepository: Send + Sync {
         &self,
         record: CreateNifflerErrorReturnSettingRecord,
     ) -> Result<StoredNifflerErrorReturnSetting, crate::DataLayerError>;
+
+    async fn create_settlement_snapshot(
+        &self,
+        record: CreateNifflerSettlementSnapshotRecord,
+    ) -> Result<StoredNifflerSettlementSnapshot, crate::DataLayerError>;
 
     async fn create_route_attempt(
         &self,
@@ -926,6 +936,48 @@ pub struct NifflerRuntimeRolloutSettingListQuery {
 pub struct StoredNifflerRuntimeRolloutSettingListPage {
     pub items: Vec<StoredNifflerRuntimeRolloutSetting>,
     pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NifflerSettlementSnapshotListQuery {
+    pub request_id: Option<String>,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerSettlementSnapshotListPage {
+    pub items: Vec<StoredNifflerSettlementSnapshotListItem>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredNifflerSettlementSnapshotListItem {
+    pub id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub product_plan_name: Option<String>,
+    pub upstream_service_id: Option<String>,
+    pub upstream_service_name: Option<String>,
+    pub upstream_account_id: Option<String>,
+    pub upstream_account_display_name: Option<String>,
+    pub upstream_account_email: Option<String>,
+    pub upstream_account_phone: Option<String>,
+    pub requested_model_name: String,
+    pub upstream_execution_model_name: Option<String>,
+    pub image_tool_model_name: Option<String>,
+    pub pricing_snapshot: serde_json::Value,
+    pub wallet_charge_usd: f64,
+    pub entitlement_charge_usd: f64,
+    pub upstream_cost_usd: f64,
+    pub gross_margin_usd: f64,
+    pub created_at_unix_ms: u64,
+    pub finalized_at_unix_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1383,6 +1435,52 @@ impl StoredNifflerSettlementSnapshot {
             self.gross_margin_usd,
         )?;
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateNifflerSettlementSnapshotRecord {
+    pub id: String,
+    pub request_id: String,
+    pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
+    pub product_plan_id: Option<String>,
+    pub upstream_service_id: Option<String>,
+    pub upstream_account_id: Option<String>,
+    pub requested_model_name: String,
+    pub upstream_execution_model_name: Option<String>,
+    pub image_tool_model_name: Option<String>,
+    pub pricing_snapshot: serde_json::Value,
+    pub wallet_charge_usd: f64,
+    pub entitlement_charge_usd: f64,
+    pub upstream_cost_usd: f64,
+    pub gross_margin_usd: f64,
+    pub created_at_unix_ms: u64,
+    pub finalized_at_unix_ms: Option<u64>,
+}
+
+impl CreateNifflerSettlementSnapshotRecord {
+    pub fn validate(&self) -> Result<(), crate::DataLayerError> {
+        StoredNifflerSettlementSnapshot {
+            id: self.id.clone(),
+            request_id: self.request_id.clone(),
+            user_id: self.user_id.clone(),
+            api_key_id: self.api_key_id.clone(),
+            product_plan_id: self.product_plan_id.clone(),
+            upstream_service_id: self.upstream_service_id.clone(),
+            upstream_account_id: self.upstream_account_id.clone(),
+            requested_model_name: self.requested_model_name.clone(),
+            upstream_execution_model_name: self.upstream_execution_model_name.clone(),
+            image_tool_model_name: self.image_tool_model_name.clone(),
+            pricing_snapshot: self.pricing_snapshot.clone(),
+            wallet_charge_usd: self.wallet_charge_usd,
+            entitlement_charge_usd: self.entitlement_charge_usd,
+            upstream_cost_usd: self.upstream_cost_usd,
+            gross_margin_usd: self.gross_margin_usd,
+            created_at_unix_ms: self.created_at_unix_ms,
+            finalized_at_unix_ms: self.finalized_at_unix_ms,
+        }
+        .validate()
     }
 }
 

@@ -196,6 +196,31 @@ export interface NifflerBillingReservation {
   idempotency_key: string
 }
 
+export interface NifflerSettlementSnapshot {
+  id: string
+  request_id: string
+  user_id?: string | null
+  api_key_id?: string | null
+  product_plan_id?: string | null
+  product_plan_name?: string | null
+  upstream_service_id?: string | null
+  upstream_service_name?: string | null
+  upstream_account_id?: string | null
+  upstream_account_display_name?: string | null
+  upstream_account_email?: string | null
+  upstream_account_phone?: string | null
+  requested_model_name: string
+  upstream_execution_model_name?: string | null
+  image_tool_model_name?: string | null
+  pricing_snapshot: Record<string, unknown> | unknown[]
+  wallet_charge_usd: number
+  entitlement_charge_usd: number
+  upstream_cost_usd: number
+  gross_margin_usd: number
+  created_at_unix_ms: number
+  finalized_at_unix_ms?: number | null
+}
+
 export interface NifflerReferralRewardLedger {
   id: string
   order_id: string
@@ -695,6 +720,21 @@ export async function listNifflerBillingReservations(params?: {
 }): Promise<NifflerListPage<NifflerBillingReservation>> {
   const response = await apiClient.get<NifflerListPage<NifflerBillingReservation>>(
     '/api/admin/niffler-core/billing-reservations',
+    { params }
+  )
+  return response.data
+}
+
+export async function listNifflerSettlementSnapshots(params?: {
+  request_id?: string
+  user_id?: string
+  api_key_id?: string
+  product_plan_id?: string
+  offset?: number
+  limit?: number
+}): Promise<NifflerListPage<NifflerSettlementSnapshot>> {
+  const response = await apiClient.get<NifflerListPage<NifflerSettlementSnapshot>>(
+    '/api/admin/niffler-core/settlement-snapshots',
     { params }
   )
   return response.data

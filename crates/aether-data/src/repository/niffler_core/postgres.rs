@@ -4,30 +4,33 @@ use sqlx::{postgres::PgRow, Postgres, QueryBuilder, Row};
 use super::{
     bounded_limit, bounded_offset, i64_from_u64, CreateNifflerErrorReturnSettingRecord,
     CreateNifflerProductPlanRecord, CreateNifflerRouteAttemptRecord,
-    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
-    NifflerAccountProtectionAction, NifflerAccountStatus, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationListQuery, NifflerBillingReservationStatus, NifflerCoreReadRepository,
-    NifflerCoreWriteRepository, NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery,
-    NifflerPauseDuration, NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerProtocolKind, NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
+    CreateNifflerSettlementSnapshotRecord, CreateNifflerUpstreamAccountRecord,
+    CreateNifflerUpstreamServiceRecord, NifflerAccountProtectionAction, NifflerAccountStatus,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    NifflerBillingReservationStatus, NifflerCoreReadRepository, NifflerCoreWriteRepository,
+    NifflerErrorResponseScope, NifflerErrorReturnSettingListQuery, NifflerPauseDuration,
+    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery, NifflerProtocolKind,
+    NifflerReferralRewardLedgerListQuery, NifflerReferralRewardLedgerStatus,
     NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
     NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind,
-    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    NifflerUserResponseMode, StoredNifflerApiKeyProductPlanBinding,
-    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservation,
-    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
-    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
-    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerSettlementSnapshotListQuery, NifflerUpstreamAccountListQuery,
+    NifflerUpstreamErrorHandlingStep, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, NifflerUserResponseMode,
+    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
+    StoredNifflerBillingReservation, StoredNifflerBillingReservationListPage,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedger,
     StoredNifflerReferralRewardLedgerListPage, StoredNifflerRouteAttempt,
     StoredNifflerRouteAttemptListItem, StoredNifflerRouteAttemptListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
-    StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
-    StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
-    StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
-    UpsertNifflerApiKeyProductPlanBindingRecord, UpsertNifflerProductPlanModelRecord,
-    UpsertNifflerRuntimeRolloutSettingRecord, UpsertNifflerUpstreamServiceCapabilityRecord,
+    StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListItem,
+    StoredNifflerSettlementSnapshotListPage, StoredNifflerUpstreamAccount,
+    StoredNifflerUpstreamAccountListPage, StoredNifflerUpstreamService,
+    StoredNifflerUpstreamServiceCapability, StoredNifflerUpstreamServiceCapabilityListPage,
+    StoredNifflerUpstreamServiceListPage, UpsertNifflerApiKeyProductPlanBindingRecord,
+    UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
+    UpsertNifflerUpstreamServiceCapabilityRecord,
 };
 use crate::driver::postgres::PostgresPool;
 use crate::error::SqlResultExt;
@@ -206,6 +209,37 @@ LIMIT 1
             .ok_or_else(|| {
                 DataLayerError::UnexpectedValue(
                     "niffler error return setting missing after write".into(),
+                )
+            })
+    }
+
+    async fn reload_settlement_snapshot_by_request_id(
+        &self,
+        request_id: &str,
+    ) -> Result<StoredNifflerSettlementSnapshot, DataLayerError> {
+        let row = sqlx::query(
+            r#"
+SELECT
+  id, request_id, user_id, api_key_id, product_plan_id, upstream_service_id,
+  upstream_account_id, requested_model_name, upstream_execution_model_name,
+  image_tool_model_name, pricing_snapshot, wallet_charge_usd,
+  entitlement_charge_usd, upstream_cost_usd, gross_margin_usd,
+  created_at_unix_ms, finalized_at_unix_ms
+FROM niffler_settlement_snapshots
+WHERE request_id = $1
+LIMIT 1
+"#,
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_sql_err()?;
+        row.as_ref()
+            .map(map_settlement_snapshot_row)
+            .transpose()?
+            .ok_or_else(|| {
+                DataLayerError::UnexpectedValue(
+                    "niffler settlement snapshot missing after write".into(),
                 )
             })
     }
@@ -494,6 +528,30 @@ LIMIT 1
             .map(map_error_return_setting_row)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StoredNifflerErrorReturnSettingListPage {
+            items,
+            total: usize::try_from(total).unwrap_or_default(),
+        })
+    }
+
+    async fn list_settlement_snapshots(
+        &self,
+        query: &NifflerSettlementSnapshotListQuery,
+    ) -> Result<StoredNifflerSettlementSnapshotListPage, DataLayerError> {
+        let total = build_settlement_snapshot_count_query(query)
+            .build_query_scalar::<i64>()
+            .fetch_one(&self.pool)
+            .await
+            .map_sql_err()?;
+        let rows = build_settlement_snapshot_rows_query(query)
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_sql_err()?;
+        let items = rows
+            .iter()
+            .map(map_settlement_snapshot_list_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(StoredNifflerSettlementSnapshotListPage {
             items,
             total: usize::try_from(total).unwrap_or_default(),
         })
@@ -898,6 +956,70 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         self.reload_error_return_setting(&record.id).await
     }
 
+    async fn create_settlement_snapshot(
+        &self,
+        record: CreateNifflerSettlementSnapshotRecord,
+    ) -> Result<StoredNifflerSettlementSnapshot, DataLayerError> {
+        record.validate()?;
+        let finalized_at_unix_ms = record
+            .finalized_at_unix_ms
+            .map(|value| i64_from_u64(value, "finalized_at_unix_ms"))
+            .transpose()?;
+        sqlx::query(
+            r#"
+INSERT INTO niffler_settlement_snapshots (
+  id, request_id, user_id, api_key_id, product_plan_id, upstream_service_id,
+  upstream_account_id, requested_model_name, upstream_execution_model_name,
+  image_tool_model_name, pricing_snapshot, wallet_charge_usd,
+  entitlement_charge_usd, upstream_cost_usd, gross_margin_usd,
+  created_at_unix_ms, finalized_at_unix_ms
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+ON CONFLICT (request_id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  api_key_id = EXCLUDED.api_key_id,
+  product_plan_id = EXCLUDED.product_plan_id,
+  upstream_service_id = EXCLUDED.upstream_service_id,
+  upstream_account_id = EXCLUDED.upstream_account_id,
+  requested_model_name = EXCLUDED.requested_model_name,
+  upstream_execution_model_name = EXCLUDED.upstream_execution_model_name,
+  image_tool_model_name = EXCLUDED.image_tool_model_name,
+  pricing_snapshot = EXCLUDED.pricing_snapshot,
+  wallet_charge_usd = EXCLUDED.wallet_charge_usd,
+  entitlement_charge_usd = EXCLUDED.entitlement_charge_usd,
+  upstream_cost_usd = EXCLUDED.upstream_cost_usd,
+  gross_margin_usd = EXCLUDED.gross_margin_usd,
+  created_at_unix_ms = EXCLUDED.created_at_unix_ms,
+  finalized_at_unix_ms = EXCLUDED.finalized_at_unix_ms
+"#,
+        )
+        .bind(&record.id)
+        .bind(&record.request_id)
+        .bind(&record.user_id)
+        .bind(&record.api_key_id)
+        .bind(&record.product_plan_id)
+        .bind(&record.upstream_service_id)
+        .bind(&record.upstream_account_id)
+        .bind(&record.requested_model_name)
+        .bind(&record.upstream_execution_model_name)
+        .bind(&record.image_tool_model_name)
+        .bind(&record.pricing_snapshot)
+        .bind(record.wallet_charge_usd)
+        .bind(record.entitlement_charge_usd)
+        .bind(record.upstream_cost_usd)
+        .bind(record.gross_margin_usd)
+        .bind(i64_from_u64(
+            record.created_at_unix_ms,
+            "created_at_unix_ms",
+        )?)
+        .bind(finalized_at_unix_ms)
+        .execute(&self.pool)
+        .await
+        .map_sql_err()?;
+        self.reload_settlement_snapshot_by_request_id(&record.request_id)
+            .await
+    }
+
     async fn create_route_attempt(
         &self,
         record: CreateNifflerRouteAttemptRecord,
@@ -1293,6 +1415,84 @@ fn push_error_return_setting_filters(
     if !query.include_inactive {
         builder.push(if has_where { " AND " } else { " WHERE " });
         builder.push("is_active = TRUE");
+    }
+}
+
+fn build_settlement_snapshot_count_query(
+    query: &NifflerSettlementSnapshotListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new("SELECT COUNT(*) FROM niffler_settlement_snapshots ss");
+    push_settlement_snapshot_filters(&mut builder, query);
+    builder
+}
+
+fn build_settlement_snapshot_rows_query(
+    query: &NifflerSettlementSnapshotListQuery,
+) -> QueryBuilder<'_, Postgres> {
+    let mut builder = QueryBuilder::new(
+        "SELECT ss.id, ss.request_id, ss.user_id, ss.api_key_id, ss.product_plan_id, \
+         pp.display_name AS product_plan_name, ss.upstream_service_id, \
+         us.display_name AS upstream_service_name, ss.upstream_account_id, \
+         ua.display_name AS upstream_account_display_name, ua.email AS upstream_account_email, \
+         ua.phone AS upstream_account_phone, ss.requested_model_name, \
+         ss.upstream_execution_model_name, ss.image_tool_model_name, ss.pricing_snapshot, \
+         ss.wallet_charge_usd, ss.entitlement_charge_usd, ss.upstream_cost_usd, \
+         ss.gross_margin_usd, ss.created_at_unix_ms, ss.finalized_at_unix_ms \
+         FROM niffler_settlement_snapshots ss \
+         LEFT JOIN niffler_product_plans pp ON pp.id = ss.product_plan_id \
+         LEFT JOIN niffler_upstream_services us ON us.id = ss.upstream_service_id \
+         LEFT JOIN niffler_upstream_accounts ua ON ua.id = ss.upstream_account_id",
+    );
+    push_settlement_snapshot_filters(&mut builder, query);
+    builder.push(" ORDER BY ss.created_at_unix_ms DESC, ss.request_id ASC LIMIT ");
+    builder.push_bind(bounded_limit(query.limit.min(100)));
+    builder.push(" OFFSET ");
+    builder.push_bind(bounded_offset(query.offset));
+    builder
+}
+
+fn push_settlement_snapshot_filters(
+    builder: &mut QueryBuilder<'_, Postgres>,
+    query: &NifflerSettlementSnapshotListQuery,
+) {
+    let mut has_where = false;
+    if let Some(request_id) = query
+        .request_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(" WHERE ss.request_id = ");
+        builder.push_bind(request_id.clone());
+        has_where = true;
+    }
+    if let Some(user_id) = query
+        .user_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ss.user_id = ");
+        builder.push_bind(user_id.clone());
+        has_where = true;
+    }
+    if let Some(api_key_id) = query
+        .api_key_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ss.api_key_id = ");
+        builder.push_bind(api_key_id.clone());
+        has_where = true;
+    }
+    if let Some(product_plan_id) = query
+        .product_plan_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("ss.product_plan_id = ");
+        builder.push_bind(product_plan_id.clone());
     }
 }
 
@@ -1717,6 +1917,79 @@ fn map_error_return_setting_row(
             row.try_get("updated_at_unix_ms").map_sql_err()?,
             "updated_at_unix_ms",
         )?,
+    })
+}
+
+fn map_settlement_snapshot_row(
+    row: &PgRow,
+) -> Result<StoredNifflerSettlementSnapshot, DataLayerError> {
+    Ok(StoredNifflerSettlementSnapshot {
+        id: row.try_get("id").map_sql_err()?,
+        request_id: row.try_get("request_id").map_sql_err()?,
+        user_id: row.try_get("user_id").map_sql_err()?,
+        api_key_id: row.try_get("api_key_id").map_sql_err()?,
+        product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        upstream_service_id: row.try_get("upstream_service_id").map_sql_err()?,
+        upstream_account_id: row.try_get("upstream_account_id").map_sql_err()?,
+        requested_model_name: row.try_get("requested_model_name").map_sql_err()?,
+        upstream_execution_model_name: row
+            .try_get("upstream_execution_model_name")
+            .map_sql_err()?,
+        image_tool_model_name: row.try_get("image_tool_model_name").map_sql_err()?,
+        pricing_snapshot: row.try_get("pricing_snapshot").map_sql_err()?,
+        wallet_charge_usd: row.try_get("wallet_charge_usd").map_sql_err()?,
+        entitlement_charge_usd: row.try_get("entitlement_charge_usd").map_sql_err()?,
+        upstream_cost_usd: row.try_get("upstream_cost_usd").map_sql_err()?,
+        gross_margin_usd: row.try_get("gross_margin_usd").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        finalized_at_unix_ms: row
+            .try_get::<Option<i64>, _>("finalized_at_unix_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "finalized_at_unix_ms"))
+            .transpose()?,
+    })
+}
+
+fn map_settlement_snapshot_list_row(
+    row: &PgRow,
+) -> Result<StoredNifflerSettlementSnapshotListItem, DataLayerError> {
+    Ok(StoredNifflerSettlementSnapshotListItem {
+        id: row.try_get("id").map_sql_err()?,
+        request_id: row.try_get("request_id").map_sql_err()?,
+        user_id: row.try_get("user_id").map_sql_err()?,
+        api_key_id: row.try_get("api_key_id").map_sql_err()?,
+        product_plan_id: row.try_get("product_plan_id").map_sql_err()?,
+        product_plan_name: row.try_get("product_plan_name").map_sql_err()?,
+        upstream_service_id: row.try_get("upstream_service_id").map_sql_err()?,
+        upstream_service_name: row.try_get("upstream_service_name").map_sql_err()?,
+        upstream_account_id: row.try_get("upstream_account_id").map_sql_err()?,
+        upstream_account_display_name: row
+            .try_get("upstream_account_display_name")
+            .map_sql_err()?,
+        upstream_account_email: row.try_get("upstream_account_email").map_sql_err()?,
+        upstream_account_phone: row.try_get("upstream_account_phone").map_sql_err()?,
+        requested_model_name: row.try_get("requested_model_name").map_sql_err()?,
+        upstream_execution_model_name: row
+            .try_get("upstream_execution_model_name")
+            .map_sql_err()?,
+        image_tool_model_name: row.try_get("image_tool_model_name").map_sql_err()?,
+        pricing_snapshot: row.try_get("pricing_snapshot").map_sql_err()?,
+        wallet_charge_usd: row.try_get("wallet_charge_usd").map_sql_err()?,
+        entitlement_charge_usd: row.try_get("entitlement_charge_usd").map_sql_err()?,
+        upstream_cost_usd: row.try_get("upstream_cost_usd").map_sql_err()?,
+        gross_margin_usd: row.try_get("gross_margin_usd").map_sql_err()?,
+        created_at_unix_ms: super::u64_from_i64(
+            row.try_get("created_at_unix_ms").map_sql_err()?,
+            "created_at_unix_ms",
+        )?,
+        finalized_at_unix_ms: row
+            .try_get::<Option<i64>, _>("finalized_at_unix_ms")
+            .map_sql_err()?
+            .map(|value| super::u64_from_i64(value, "finalized_at_unix_ms"))
+            .transpose()?,
     })
 }
 

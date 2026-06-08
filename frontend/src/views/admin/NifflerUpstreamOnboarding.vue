@@ -994,12 +994,12 @@
           <Button
             variant="outline"
             class="h-9"
-            :disabled="billingReservationLoading || referralRewardLedgerLoading || routeAttemptLoading"
+            :disabled="billingReservationLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading"
             @click="loadReconciliationData"
           >
             <RefreshCw
               class="mr-2 h-4 w-4"
-              :class="{ 'animate-spin': billingReservationLoading || referralRewardLedgerLoading || routeAttemptLoading }"
+              :class="{ 'animate-spin': billingReservationLoading || settlementSnapshotLoading || referralRewardLedgerLoading || routeAttemptLoading }"
             />
             刷新对账
           </Button>
@@ -1255,6 +1255,144 @@
             </Table>
           </section>
         </div>
+
+        <section class="border-t border-border/70 p-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 class="font-medium">
+                结算快照
+              </h3>
+              <p class="mt-1 text-xs text-muted-foreground">
+                只读查看旧计费链路已经算出的价格和成本快照。这里不扣费，也不会改套餐或钱包。
+              </p>
+            </div>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                v-model="settlementSnapshotRequestIdFilter"
+                class="h-9 sm:w-56"
+                placeholder="按请求 ID 筛选"
+                @keyup.enter="loadSettlementSnapshots"
+              />
+              <Button
+                variant="outline"
+                class="h-9"
+                :disabled="settlementSnapshotLoading"
+                @click="loadSettlementSnapshots"
+              >
+                <RefreshCw
+                  class="mr-2 h-4 w-4"
+                  :class="{ 'animate-spin': settlementSnapshotLoading }"
+                />
+                刷新
+              </Button>
+            </div>
+          </div>
+
+          <p
+            v-if="settlementSnapshotError"
+            class="mt-4 rounded-md border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            {{ settlementSnapshotError }}
+          </p>
+
+          <div
+            v-if="settlementSnapshotLoading && settlementSnapshots.length === 0"
+            class="flex items-center justify-center py-12 text-sm text-muted-foreground"
+          >
+            <Loader2 class="mr-2 h-5 w-5 animate-spin" />
+            正在读取结算快照...
+          </div>
+
+          <div
+            v-else-if="settlementSnapshots.length === 0"
+            class="py-12 text-center"
+          >
+            <PackageCheck class="mx-auto h-9 w-9 text-muted-foreground/50" />
+            <p class="mt-3 text-sm font-medium">
+              没有结算快照
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              只有启用结算快照灰度写入后，这里才会出现记录。
+            </p>
+          </div>
+
+          <Table v-else class="mt-4">
+            <TableHeader>
+              <TableRow>
+                <TableHead>请求和模型</TableHead>
+                <TableHead>服务和账号</TableHead>
+                <TableHead>金额</TableHead>
+                <TableHead>时间</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="snapshot in settlementSnapshots"
+                :key="snapshot.id"
+              >
+                <TableCell>
+                  <div class="font-mono text-xs">
+                    {{ snapshot.request_id }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    用户 {{ snapshot.user_id || '未知' }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    请求模型 {{ snapshot.requested_model_name }}
+                  </div>
+                  <div
+                    v-if="snapshot.upstream_execution_model_name"
+                    class="text-xs text-muted-foreground"
+                  >
+                    上游模型 {{ snapshot.upstream_execution_model_name }}
+                  </div>
+                  <div
+                    v-if="snapshot.image_tool_model_name"
+                    class="text-xs text-muted-foreground"
+                  >
+                    生图模型 {{ snapshot.image_tool_model_name }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-sm">
+                    {{ settlementSnapshotServiceLabel(snapshot) }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    {{ settlementSnapshotAccountLabel(snapshot) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    策略 {{ settlementSnapshotProductPlanLabel(snapshot) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-sm font-medium">
+                    钱包 {{ formatUsdAmount(snapshot.wallet_charge_usd) }}
+                  </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    套餐 {{ formatUsdAmount(snapshot.entitlement_charge_usd) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    上游成本 {{ formatUsdAmount(snapshot.upstream_cost_usd) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    毛利 {{ formatUsdAmount(snapshot.gross_margin_usd) }}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="text-xs">
+                    创建 {{ formatNifflerUnixMs(snapshot.created_at_unix_ms) }}
+                  </div>
+                  <div
+                    v-if="snapshot.finalized_at_unix_ms"
+                    class="mt-1 text-xs text-muted-foreground"
+                  >
+                    完成 {{ formatNifflerUnixMs(snapshot.finalized_at_unix_ms) }}
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </section>
 
         <section class="border-t border-border/70 p-5">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -2227,6 +2365,7 @@ import {
   listNifflerReferralRewardLedger,
   listNifflerRouteAttempts,
   listNifflerRuntimeRolloutSettings,
+  listNifflerSettlementSnapshots,
   listNifflerUpstreamServiceCapabilities,
   listNifflerUpstreamAccounts,
   listNifflerUpstreamServices,
@@ -2255,6 +2394,7 @@ import {
   type NifflerRuntimeRolloutPreview,
   type NifflerRuntimeRolloutSetting,
   type NifflerRuntimeRolloutTargetScope,
+  type NifflerSettlementSnapshot,
   type NifflerUpstreamErrorHandlingStep,
   type NifflerUpstreamAccount,
   type NifflerUpstreamService,
@@ -2356,6 +2496,7 @@ const runtimeRolloutSettings = ref<NifflerRuntimeRolloutSetting[]>([])
 const runtimeRolloutPreview = ref<NifflerRuntimeRolloutPreview | null>(null)
 const errorReturnSettings = ref<NifflerErrorReturnSetting[]>([])
 const billingReservations = ref<NifflerBillingReservation[]>([])
+const settlementSnapshots = ref<NifflerSettlementSnapshot[]>([])
 const referralRewardLedger = ref<NifflerReferralRewardLedger[]>([])
 const routeAttempts = ref<NifflerRouteAttempt[]>([])
 const serviceLoading = ref(false)
@@ -2370,6 +2511,7 @@ const runtimeRolloutLoading = ref(false)
 const runtimeRolloutPreviewLoading = ref(false)
 const errorReturnSettingLoading = ref(false)
 const billingReservationLoading = ref(false)
+const settlementSnapshotLoading = ref(false)
 const referralRewardLedgerLoading = ref(false)
 const routeAttemptLoading = ref(false)
 const savingService = ref(false)
@@ -2391,6 +2533,7 @@ const runtimeRolloutError = ref('')
 const runtimeRolloutPreviewError = ref('')
 const errorReturnSettingError = ref('')
 const billingReservationError = ref('')
+const settlementSnapshotError = ref('')
 const referralRewardLedgerError = ref('')
 const routeAttemptError = ref('')
 const serviceSearch = ref('')
@@ -2399,6 +2542,7 @@ const billingReservationStatusFilter = ref<BillingReservationStatusFilter>('all'
 const referralRewardLedgerStatusFilter = ref<ReferralRewardLedgerStatusFilter>('all')
 const routeAttemptStatusFilter = ref<RouteAttemptStatusFilter>('all')
 const routeAttemptRequestIdFilter = ref('')
+const settlementSnapshotRequestIdFilter = ref('')
 const selectedServiceId = ref<string | null>(null)
 const selectedProductPlanId = ref<string | null>(null)
 const selectedRuntimeRolloutApiKeyId = ref('')
@@ -2550,6 +2694,7 @@ const pageLoading = computed(() =>
   || runtimeRolloutPreviewLoading.value
   || errorReturnSettingLoading.value
   || billingReservationLoading.value
+  || settlementSnapshotLoading.value
   || referralRewardLedgerLoading.value
   || routeAttemptLoading.value
 )
@@ -2760,6 +2905,7 @@ async function refreshAll() {
     loadRuntimeRolloutSettings(),
     loadErrorReturnSettings(),
     loadBillingReservations(),
+    loadSettlementSnapshots(),
     loadReferralRewardLedger(),
     loadRouteAttempts(),
   ])
@@ -3042,6 +3188,24 @@ async function loadBillingReservations() {
   }
 }
 
+async function loadSettlementSnapshots() {
+  settlementSnapshotLoading.value = true
+  settlementSnapshotError.value = ''
+  try {
+    const response = await listNifflerSettlementSnapshots({
+      request_id: settlementSnapshotRequestIdFilter.value.trim() || undefined,
+      offset: 0,
+      limit: 50,
+    })
+    settlementSnapshots.value = response.items
+  } catch (err) {
+    settlementSnapshotError.value = extractErrorMessage(err, '读取结算快照失败')
+    showError(settlementSnapshotError.value)
+  } finally {
+    settlementSnapshotLoading.value = false
+  }
+}
+
 async function loadReferralRewardLedger() {
   referralRewardLedgerLoading.value = true
   referralRewardLedgerError.value = ''
@@ -3086,6 +3250,7 @@ async function loadRouteAttempts() {
 async function loadReconciliationData() {
   await Promise.all([
     loadBillingReservations(),
+    loadSettlementSnapshots(),
     loadReferralRewardLedger(),
     loadRouteAttempts(),
   ])
@@ -3622,6 +3787,26 @@ function routeAttemptProductPlanLabel(attempt: NifflerRouteAttempt): string {
   return '未绑定策略'
 }
 
+function settlementSnapshotServiceLabel(snapshot: NifflerSettlementSnapshot): string {
+  if (snapshot.upstream_service_name) return snapshot.upstream_service_name
+  if (snapshot.upstream_service_id) return serviceNameById.value.get(snapshot.upstream_service_id) || '未知上游服务'
+  return '未记录服务'
+}
+
+function settlementSnapshotAccountLabel(snapshot: NifflerSettlementSnapshot): string {
+  const contacts = [snapshot.upstream_account_email, snapshot.upstream_account_phone].filter(Boolean)
+  if (contacts.length > 0) return contacts.join(' / ')
+  if (snapshot.upstream_account_display_name) return snapshot.upstream_account_display_name
+  if (snapshot.upstream_account_id) return accountNameById.value.get(snapshot.upstream_account_id) || '未知账号'
+  return '未记录账号'
+}
+
+function settlementSnapshotProductPlanLabel(snapshot: NifflerSettlementSnapshot): string {
+  if (snapshot.product_plan_name) return snapshot.product_plan_name
+  if (snapshot.product_plan_id) return productPlanNameById.value.get(snapshot.product_plan_id) || '未知产品策略'
+  return '未绑定策略'
+}
+
 function formatLatencyMs(value?: number | null): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '无'
   return `${Math.round(value)} ms`
@@ -3747,6 +3932,7 @@ onMounted(() => {
   void loadRuntimeRolloutSettings()
   void loadErrorReturnSettings()
   void loadBillingReservations()
+  void loadSettlementSnapshots()
   void loadReferralRewardLedger()
   void loadRouteAttempts()
 })

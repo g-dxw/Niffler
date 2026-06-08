@@ -1,12 +1,13 @@
 use super::{AppState, GatewayError};
 use aether_data_contracts::repository::niffler_core::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, NifflerApiKeyProductPlanBindingListQuery,
-    NifflerBillingReservationListQuery, NifflerErrorReturnSettingListQuery,
-    NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
-    NifflerReferralRewardLedgerListQuery, NifflerRouteAttemptListQuery,
-    NifflerRuntimeRolloutSettingListQuery, NifflerRuntimeRolloutTargetScope,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord,
+    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
+    NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
+    NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
+    NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
     NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
     NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
     StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservationListPage,
@@ -15,6 +16,7 @@ use aether_data_contracts::repository::niffler_core::{
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
     StoredNifflerRouteAttempt, StoredNifflerRouteAttemptListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
+    StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListPage,
     StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
     StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
     StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
@@ -162,6 +164,16 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_niffler_settlement_snapshots(
+        &self,
+        query: &NifflerSettlementSnapshotListQuery,
+    ) -> Result<StoredNifflerSettlementSnapshotListPage, GatewayError> {
+        self.data
+            .list_niffler_settlement_snapshots(query)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn list_niffler_referral_reward_ledger(
         &self,
         query: &NifflerReferralRewardLedgerListQuery,
@@ -264,6 +276,16 @@ impl AppState {
     ) -> Result<Option<StoredNifflerErrorReturnSetting>, GatewayError> {
         self.data
             .create_niffler_error_return_setting(record)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn create_niffler_settlement_snapshot(
+        &self,
+        record: CreateNifflerSettlementSnapshotRecord,
+    ) -> Result<Option<StoredNifflerSettlementSnapshot>, GatewayError> {
+        self.data
+            .create_niffler_settlement_snapshot(record)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

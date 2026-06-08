@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use aether_contracts::ExecutionError;
 use aether_data_contracts::repository::candidates::RequestCandidateStatus;
-use aether_data_contracts::repository::niffler_core::CreateNifflerRouteAttemptRecord;
+use aether_data_contracts::repository::niffler_core::{
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+};
 use aether_scheduler_core::{
     execution_error_details, parse_request_candidate_report_context,
     SchedulerRequestCandidateStatusUpdate,
@@ -30,7 +32,7 @@ use aether_usage_runtime::{
 };
 pub(crate) use aether_usage_runtime::{GatewayStreamReportRequest, GatewaySyncReportRequest};
 
-const TASK_KEY_NIFFLER_ROUTE_ATTEMPT_SHADOW_REPORT: &str = "usage.niffler.route_attempt.shadow";
+const TASK_KEY_NIFFLER_SHADOW_REPORT: &str = "usage.niffler.shadow";
 
 fn log_local_report_handled(
     trace_id: &str,
@@ -258,7 +260,7 @@ async fn handle_local_sync_report(state: &AppState, payload: &GatewaySyncReportR
     )
     .await;
     apply_local_report_effect(state, LocalReportEffect::Sync { payload }).await;
-    spawn_niffler_route_attempt_shadow_report(
+    spawn_niffler_shadow_reports(
         state,
         payload.report_context.as_ref(),
         status,
@@ -289,7 +291,7 @@ async fn handle_local_stream_report(state: &AppState, payload: &GatewayStreamRep
     )
     .await;
     apply_local_report_effect(state, LocalReportEffect::Stream { payload }).await;
-    spawn_niffler_route_attempt_shadow_report(
+    spawn_niffler_shadow_reports(
         state,
         payload.report_context.as_ref(),
         RequestCandidateStatus::Success,
@@ -299,7 +301,7 @@ async fn handle_local_stream_report(state: &AppState, payload: &GatewayStreamRep
     );
 }
 
-fn spawn_niffler_route_attempt_shadow_report(
+fn spawn_niffler_shadow_reports(
     state: &AppState,
     report_context: Option<&serde_json::Value>,
     status: RequestCandidateStatus,
@@ -317,51 +319,74 @@ fn spawn_niffler_route_attempt_shadow_report(
     };
 
     let state = state.clone();
-    spawn_fire_and_forget(TASK_KEY_NIFFLER_ROUTE_ATTEMPT_SHADOW_REPORT, async move {
+    spawn_fire_and_forget(TASK_KEY_NIFFLER_SHADOW_REPORT, async move {
         let decision = match resolve_niffler_runtime_rollout_decision(&state, &api_key_id).await {
             Ok(decision) => decision,
             Err(error) => {
                 warn!(
-                    event_name = "niffler_route_attempt_shadow_rollout_failed",
+                    event_name = "niffler_shadow_rollout_failed",
                     log_type = "ops",
                     api_key_id = %api_key_id,
                     error = ?error,
-                    "gateway skipped niffler route attempt shadow write because rollout lookup failed"
+                    "gateway skipped niffler shadow writes because rollout lookup failed"
                 );
                 return;
             }
         };
 
-        if !decision.enable_new_routing {
-            return;
+        if decision.enable_new_routing {
+            if let Some(record) = build_niffler_route_attempt_shadow_record(
+                Some(&context),
+                &decision,
+                status,
+                upstream_status_code,
+                latency_ms,
+                created_at_unix_ms,
+            ) {
+                if let Err(error) = state.create_niffler_route_attempt(record).await {
+                    warn!(
+                        event_name = "niffler_route_attempt_shadow_write_failed",
+                        log_type = "ops",
+                        api_key_id = %api_key_id,
+                        error = ?error,
+                        "gateway failed to write niffler route attempt shadow record"
+                    );
+                }
+            } else {
+                warn!(
+                    event_name = "niffler_route_attempt_shadow_record_skipped",
+                    log_type = "ops",
+                    api_key_id = %api_key_id,
+                    report_request_id = %short_request_id(aether_usage_runtime::report_request_id(Some(&context))),
+                    "gateway skipped niffler route attempt shadow write because report context is incomplete"
+                );
+            }
         }
 
-        let Some(record) = build_niffler_route_attempt_shadow_record(
-            Some(&context),
-            &decision,
-            status,
-            upstream_status_code,
-            latency_ms,
-            created_at_unix_ms,
-        ) else {
-            warn!(
-                event_name = "niffler_route_attempt_shadow_record_skipped",
-                log_type = "ops",
-                api_key_id = %api_key_id,
-                report_request_id = %short_request_id(aether_usage_runtime::report_request_id(Some(&context))),
-                "gateway skipped niffler route attempt shadow write because report context is incomplete"
-            );
-            return;
-        };
-
-        if let Err(error) = state.create_niffler_route_attempt(record).await {
-            warn!(
-                event_name = "niffler_route_attempt_shadow_write_failed",
-                log_type = "ops",
-                api_key_id = %api_key_id,
-                error = ?error,
-                "gateway failed to write niffler route attempt shadow record"
-            );
+        if decision.enable_settlement_snapshot {
+            if let Some(record) = build_niffler_settlement_snapshot_shadow_record(
+                Some(&context),
+                &decision,
+                created_at_unix_ms,
+            ) {
+                if let Err(error) = state.create_niffler_settlement_snapshot(record).await {
+                    warn!(
+                        event_name = "niffler_settlement_snapshot_shadow_write_failed",
+                        log_type = "ops",
+                        api_key_id = %api_key_id,
+                        error = ?error,
+                        "gateway failed to write niffler settlement snapshot shadow record"
+                    );
+                }
+            } else {
+                warn!(
+                    event_name = "niffler_settlement_snapshot_shadow_record_skipped",
+                    log_type = "ops",
+                    api_key_id = %api_key_id,
+                    report_request_id = %short_request_id(aether_usage_runtime::report_request_id(Some(&context))),
+                    "gateway skipped niffler settlement snapshot shadow write because report context has no complete settlement snapshot"
+                );
+            }
         }
     });
 }
@@ -395,6 +420,104 @@ fn build_niffler_route_attempt_shadow_record(
         latency_ms,
         created_at_unix_ms,
     })
+}
+
+fn build_niffler_settlement_snapshot_shadow_record(
+    report_context: Option<&serde_json::Value>,
+    decision: &NifflerRuntimeRolloutDecision,
+    created_at_unix_ms: u64,
+) -> Option<CreateNifflerSettlementSnapshotRecord> {
+    let context = report_context?;
+    let metadata = parse_request_candidate_report_context(Some(context))?;
+    let request_id = metadata.request_id?;
+    let settlement_snapshot = context.get("settlement_snapshot")?.as_object()?;
+    let charge_breakdown = context.get("charge_breakdown_snapshot")?.as_object()?;
+    let pricing_snapshot = settlement_snapshot.get("pricing_snapshot")?.clone();
+    let requested_model_name = resolve_niffler_settlement_requested_model_name(
+        context,
+        settlement_snapshot,
+        metadata.mapped_model.clone(),
+    )?;
+    let upstream_execution_model_name =
+        metadata
+            .mapped_model
+            .and_then(non_empty_string)
+            .or_else(|| {
+                settlement_snapshot_nested_string(
+                    settlement_snapshot,
+                    "pricing_snapshot",
+                    "provider_model_name",
+                )
+            });
+    let image_tool_model_name = string_field(context, "image_tool_model_name")
+        .or_else(|| string_field(context, "image_model"))
+        .or_else(|| {
+            settlement_snapshot_nested_string(
+                settlement_snapshot,
+                "pricing_snapshot",
+                "image_tool_model_name",
+            )
+        });
+    let wallet_charge = snapshot_number(charge_breakdown, "wallet_debit_usd");
+    let entitlement_charge = snapshot_number(charge_breakdown, "package_debit_usd");
+    if wallet_charge.is_none() && entitlement_charge.is_none() {
+        return None;
+    }
+    let wallet_charge_usd = wallet_charge.unwrap_or_default();
+    let entitlement_charge_usd = entitlement_charge.unwrap_or_default();
+    let upstream_cost_usd = settlement_snapshot_number(settlement_snapshot, "actual_total_cost")
+        .or_else(|| context_number_field(context, "actual_total_cost_usd"))?;
+    let user_charge_usd = wallet_charge_usd + entitlement_charge_usd;
+    let gross_margin_usd = user_charge_usd - upstream_cost_usd;
+    if !gross_margin_usd.is_finite() {
+        return None;
+    }
+
+    Some(CreateNifflerSettlementSnapshotRecord {
+        id: build_niffler_settlement_snapshot_shadow_id(&request_id),
+        request_id,
+        user_id: metadata.user_id,
+        api_key_id: metadata.api_key_id,
+        product_plan_id: decision.product_plan_id.clone(),
+        upstream_service_id: metadata.provider_id,
+        upstream_account_id: metadata.key_id,
+        requested_model_name,
+        upstream_execution_model_name,
+        image_tool_model_name,
+        pricing_snapshot,
+        wallet_charge_usd,
+        entitlement_charge_usd,
+        upstream_cost_usd,
+        gross_margin_usd,
+        created_at_unix_ms,
+        finalized_at_unix_ms: Some(created_at_unix_ms),
+    })
+}
+
+fn build_niffler_settlement_snapshot_shadow_id(request_id: &str) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("niffler-settlement-snapshot:{request_id}").as_bytes(),
+    )
+    .to_string()
+}
+
+fn resolve_niffler_settlement_requested_model_name(
+    context: &serde_json::Value,
+    settlement_snapshot: &serde_json::Map<String, serde_json::Value>,
+    mapped_model: Option<String>,
+) -> Option<String> {
+    string_field(context, "model")
+        .or_else(|| string_field(context, "global_model_name"))
+        .or_else(|| string_field(context, "requested_model"))
+        .or_else(|| {
+            settlement_snapshot_nested_string(
+                settlement_snapshot,
+                "pricing_snapshot",
+                "global_model_name",
+            )
+        })
+        .or_else(|| mapped_model.and_then(non_empty_string))
 }
 
 fn build_niffler_route_attempt_shadow_id(request_id: &str, attempt_index: u32) -> String {
@@ -436,6 +559,46 @@ fn string_field(context: &serde_json::Value, key: &str) -> Option<String> {
         .and_then(|value| non_empty_string(value.to_string()))
 }
 
+fn context_number_field(context: &serde_json::Value, key: &str) -> Option<f64> {
+    context
+        .get(key)
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+}
+
+fn settlement_snapshot_number(
+    snapshot: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<f64> {
+    snapshot
+        .get(key)
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+}
+
+fn snapshot_number(
+    snapshot: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<f64> {
+    snapshot
+        .get(key)
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+}
+
+fn settlement_snapshot_nested_string(
+    snapshot: &serde_json::Map<String, serde_json::Value>,
+    child: &str,
+    key: &str,
+) -> Option<String> {
+    snapshot
+        .get(child)
+        .and_then(serde_json::Value::as_object)
+        .and_then(|object| object.get(key))
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| non_empty_string(value.to_string()))
+}
+
 fn non_empty_string(value: String) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
@@ -465,9 +628,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        build_niffler_route_attempt_shadow_record, resolve_locally_actionable_report_context,
-        submit_stream_report, submit_sync_report, GatewayStreamReportRequest,
-        GatewaySyncReportRequest,
+        build_niffler_route_attempt_shadow_record, build_niffler_settlement_snapshot_shadow_record,
+        resolve_locally_actionable_report_context, submit_stream_report, submit_sync_report,
+        GatewayStreamReportRequest, GatewaySyncReportRequest,
     };
     use crate::data::GatewayDataState;
     use crate::niffler_runtime::{
@@ -1742,6 +1905,104 @@ mod tests {
             RequestCandidateStatus::Success,
             Some(200),
             None,
+            1_700_000_000_000,
+        );
+
+        assert!(record.is_none());
+    }
+
+    #[test]
+    fn builds_niffler_settlement_snapshot_shadow_record_from_existing_snapshot() {
+        let mut decision = enabled_rollout_decision("api-key-settlement-shadow-123");
+        decision.enable_settlement_snapshot = true;
+        let context = json!({
+            "request_id": "req-settlement-shadow-123",
+            "user_id": "user-settlement-shadow-123",
+            "api_key_id": "api-key-settlement-shadow-123",
+            "provider_id": "provider-settlement-shadow-123",
+            "key_id": "provider-key-settlement-shadow-123",
+            "model": "gpt-5.5",
+            "mapped_model": "gpt-5.5-upstream",
+            "settlement_snapshot": {
+                "schema_version": "3.0",
+                "pricing_snapshot": {
+                    "provider_id": "provider-settlement-shadow-123",
+                    "provider_api_key_id": "provider-key-settlement-shadow-123",
+                    "global_model_name": "gpt-5.5",
+                    "provider_model_name": "gpt-5.5-upstream",
+                    "sales_multiplier": 1.2
+                },
+                "base_cost_usd": 0.2,
+                "user_total_cost_usd": 0.24,
+                "total_cost": 0.24,
+                "actual_total_cost": 0.08
+            },
+            "charge_breakdown_snapshot": {
+                "wallet_debit_usd": 0.14,
+                "package_debit_usd": 0.1
+            }
+        });
+
+        let record = build_niffler_settlement_snapshot_shadow_record(
+            Some(&context),
+            &decision,
+            1_700_000_000_000,
+        )
+        .expect("settlement snapshot record should build");
+
+        assert_eq!(record.request_id, "req-settlement-shadow-123");
+        assert_eq!(
+            record.user_id.as_deref(),
+            Some("user-settlement-shadow-123")
+        );
+        assert_eq!(
+            record.api_key_id.as_deref(),
+            Some("api-key-settlement-shadow-123")
+        );
+        assert_eq!(
+            record.product_plan_id.as_deref(),
+            Some("product-plan-reporting-tests-123")
+        );
+        assert_eq!(
+            record.upstream_service_id.as_deref(),
+            Some("provider-settlement-shadow-123")
+        );
+        assert_eq!(
+            record.upstream_account_id.as_deref(),
+            Some("provider-key-settlement-shadow-123")
+        );
+        assert_eq!(record.requested_model_name, "gpt-5.5");
+        assert_eq!(
+            record.upstream_execution_model_name.as_deref(),
+            Some("gpt-5.5-upstream")
+        );
+        assert_eq!(record.wallet_charge_usd, 0.14);
+        assert_eq!(record.entitlement_charge_usd, 0.1);
+        assert_eq!(record.upstream_cost_usd, 0.08);
+        assert!((record.gross_margin_usd - 0.16).abs() < f64::EPSILON);
+        assert_eq!(record.finalized_at_unix_ms, Some(1_700_000_000_000));
+    }
+
+    #[test]
+    fn skips_niffler_settlement_snapshot_shadow_record_without_charge_breakdown() {
+        let mut decision = enabled_rollout_decision("api-key-settlement-no-charge-123");
+        decision.enable_settlement_snapshot = true;
+        let context = json!({
+            "request_id": "req-settlement-no-charge-123",
+            "api_key_id": "api-key-settlement-no-charge-123",
+            "model": "gpt-5.5",
+            "settlement_snapshot": {
+                "pricing_snapshot": {
+                    "global_model_name": "gpt-5.5"
+                },
+                "actual_total_cost": 0.08,
+                "total_cost": 0.24
+            }
+        });
+
+        let record = build_niffler_settlement_snapshot_shadow_record(
+            Some(&context),
+            &decision,
             1_700_000_000_000,
         );
 

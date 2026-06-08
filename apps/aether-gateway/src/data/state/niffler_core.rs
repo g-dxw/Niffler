@@ -1,20 +1,21 @@
 use super::{
     CreateNifflerErrorReturnSettingRecord, CreateNifflerProductPlanRecord,
-    CreateNifflerRouteAttemptRecord, CreateNifflerUpstreamAccountRecord,
-    CreateNifflerUpstreamServiceRecord, DataLayerError, GatewayDataState,
-    NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
+    CreateNifflerRouteAttemptRecord, CreateNifflerSettlementSnapshotRecord,
+    CreateNifflerUpstreamAccountRecord, CreateNifflerUpstreamServiceRecord, DataLayerError,
+    GatewayDataState, NifflerApiKeyProductPlanBindingListQuery, NifflerBillingReservationListQuery,
     NifflerErrorReturnSettingListQuery, NifflerProductPlanListQuery,
     NifflerProductPlanModelListQuery, NifflerReferralRewardLedgerListQuery,
     NifflerRouteAttemptListQuery, NifflerRuntimeRolloutSettingListQuery,
-    NifflerRuntimeRolloutTargetScope, NifflerUpstreamAccountListQuery,
-    NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
-    StoredNifflerApiKeyProductPlanBinding, StoredNifflerApiKeyProductPlanBindingListPage,
-    StoredNifflerBillingReservationListPage, StoredNifflerErrorReturnSetting,
-    StoredNifflerErrorReturnSettingListPage, StoredNifflerProductPlan,
-    StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
+    NifflerRuntimeRolloutTargetScope, NifflerSettlementSnapshotListQuery,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamServiceCapabilityListQuery,
+    NifflerUpstreamServiceListQuery, StoredNifflerApiKeyProductPlanBinding,
+    StoredNifflerApiKeyProductPlanBindingListPage, StoredNifflerBillingReservationListPage,
+    StoredNifflerErrorReturnSetting, StoredNifflerErrorReturnSettingListPage,
+    StoredNifflerProductPlan, StoredNifflerProductPlanListPage, StoredNifflerProductPlanModel,
     StoredNifflerProductPlanModelListPage, StoredNifflerReferralRewardLedgerListPage,
     StoredNifflerRouteAttempt, StoredNifflerRouteAttemptListPage,
     StoredNifflerRuntimeRolloutSetting, StoredNifflerRuntimeRolloutSettingListPage,
+    StoredNifflerSettlementSnapshot, StoredNifflerSettlementSnapshotListPage,
     StoredNifflerUpstreamAccount, StoredNifflerUpstreamAccountListPage,
     StoredNifflerUpstreamService, StoredNifflerUpstreamServiceCapability,
     StoredNifflerUpstreamServiceCapabilityListPage, StoredNifflerUpstreamServiceListPage,
@@ -240,6 +241,23 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_niffler_settlement_snapshots(
+        &self,
+        query: &NifflerSettlementSnapshotListQuery,
+    ) -> Result<StoredNifflerSettlementSnapshotListPage, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().niffler_core())
+        {
+            Some(repository) => repository.list_settlement_snapshots(query).await,
+            None => Ok(StoredNifflerSettlementSnapshotListPage {
+                items: Vec::new(),
+                total: 0,
+            }),
+        }
+    }
+
     pub(crate) async fn list_niffler_billing_reservations(
         &self,
         query: &NifflerBillingReservationListQuery,
@@ -409,6 +427,23 @@ impl GatewayDataState {
         {
             Some(repository) => repository
                 .create_error_return_setting(record)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn create_niffler_settlement_snapshot(
+        &self,
+        record: CreateNifflerSettlementSnapshotRecord,
+    ) -> Result<Option<StoredNifflerSettlementSnapshot>, DataLayerError> {
+        match self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().niffler_core())
+        {
+            Some(repository) => repository
+                .create_settlement_snapshot(record)
                 .await
                 .map(Some),
             None => Ok(None),

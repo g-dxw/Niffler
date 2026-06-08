@@ -18,8 +18,9 @@ use aether_data_contracts::repository::niffler_core::{
     NifflerReadinessSeverity, NifflerReferralRewardLedgerListQuery,
     NifflerReferralRewardLedgerStatus, NifflerRouteAttemptListQuery, NifflerRouteSkipReasonSummary,
     NifflerRouteSkipSample, NifflerRuntimeRolloutSettingListQuery,
-    NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind, NifflerShadowTableItem,
-    NifflerShadowTableStatus, NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
+    NifflerRuntimeRolloutTargetScope, NifflerServiceCapabilityKind,
+    NifflerSettlementSnapshotListQuery, NifflerShadowTableItem, NifflerShadowTableStatus,
+    NifflerUpstreamAccountListQuery, NifflerUpstreamErrorHandlingStep,
     NifflerUpstreamServiceCapabilityListQuery, NifflerUpstreamServiceListQuery,
     NifflerUsageAnomaly, NifflerUserResponseMode, UpsertNifflerApiKeyProductPlanBindingRecord,
     UpsertNifflerProductPlanModelRecord, UpsertNifflerRuntimeRolloutSettingRecord,
@@ -56,6 +57,7 @@ const RUNTIME_ROLLOUT_SETTINGS_PATH: &str = "/api/admin/niffler-core/runtime-rol
 const RUNTIME_ROLLOUT_PREVIEW_PATH: &str = "/api/admin/niffler-core/runtime-rollout-preview";
 const ERROR_RETURN_SETTINGS_PATH: &str = "/api/admin/niffler-core/error-return-settings";
 const BILLING_RESERVATIONS_PATH: &str = "/api/admin/niffler-core/billing-reservations";
+const SETTLEMENT_SNAPSHOTS_PATH: &str = "/api/admin/niffler-core/settlement-snapshots";
 const REFERRAL_REWARD_LEDGER_PATH: &str = "/api/admin/niffler-core/referral-reward-ledger";
 const ROUTE_ATTEMPTS_PATH: &str = "/api/admin/niffler-core/route-attempts";
 const MAX_ISSUE_ITEMS: usize = 50;
@@ -201,6 +203,12 @@ pub(crate) async fn maybe_build_local_admin_niffler_response(
     if request_context.path().trim_end_matches('/') == BILLING_RESERVATIONS_PATH {
         return Ok(Some(
             build_billing_reservations_response(&state, &request_context).await?,
+        ));
+    }
+
+    if request_context.path().trim_end_matches('/') == SETTLEMENT_SNAPSHOTS_PATH {
+        return Ok(Some(
+            build_settlement_snapshots_response(&state, &request_context).await?,
         ));
     }
 
@@ -1434,6 +1442,30 @@ async fn build_billing_reservations_response(
         limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
     };
     let page = state.list_niffler_billing_reservations(&query).await?;
+    Ok(Json(page).into_response())
+}
+
+async fn build_settlement_snapshots_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_niffler_core_reader() {
+        return Ok(niffler_data_unavailable_response());
+    }
+    if request_context.method() != http::Method::GET {
+        return Ok(niffler_method_not_allowed("只支持读取结算快照"));
+    }
+    let query = NifflerSettlementSnapshotListQuery {
+        request_id: optional_query_text(request_context.query_string(), "request_id"),
+        user_id: optional_query_text(request_context.query_string(), "user_id"),
+        api_key_id: optional_query_text(request_context.query_string(), "api_key_id"),
+        product_plan_id: optional_query_text(request_context.query_string(), "product_plan_id"),
+        offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
+        limit: parse_usize_query(request_context.query_string(), "limit")
+            .unwrap_or(50)
+            .clamp(1, 100),
+    };
+    let page = state.list_niffler_settlement_snapshots(&query).await?;
     Ok(Json(page).into_response())
 }
 
