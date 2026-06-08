@@ -154,6 +154,56 @@ fn classifies_admin_niffler_core_upstream_account_writes_as_admin_proxy_route() 
 }
 
 #[test]
+fn classifies_admin_niffler_core_upstream_service_capabilities_as_admin_proxy_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/niffler-core/upstream-services/service-1/capabilities"
+        .parse()
+        .expect("uri should parse");
+    let read_decision =
+        classify_control_route(&http::Method::GET, &uri, &headers).expect("route should classify");
+    let write_decision =
+        classify_control_route(&http::Method::PUT, &uri, &headers).expect("route should classify");
+
+    assert_eq!(read_decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        read_decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        read_decision.route_kind.as_deref(),
+        Some("list_upstream_service_capabilities")
+    );
+    assert_eq!(
+        read_decision.auth_endpoint_signature.as_deref(),
+        Some("admin:providers")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::GET, &read_decision).as_deref(),
+        Some("admin:providers:read")
+    );
+    assert!(!read_decision.is_execution_runtime_candidate());
+
+    assert_eq!(write_decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        write_decision.route_family.as_deref(),
+        Some("niffler_core_manage")
+    );
+    assert_eq!(
+        write_decision.route_kind.as_deref(),
+        Some("update_upstream_service_capabilities")
+    );
+    assert_eq!(
+        write_decision.auth_endpoint_signature.as_deref(),
+        Some("admin:providers")
+    );
+    assert_eq!(
+        management_token_required_permission(&http::Method::PUT, &write_decision).as_deref(),
+        Some("admin:providers:write")
+    );
+    assert!(!write_decision.is_execution_runtime_candidate());
+}
+
+#[test]
 fn classifies_admin_niffler_core_product_plan_writes_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/niffler-core/product-plans"
@@ -248,6 +298,10 @@ fn admin_niffler_core_write_routes_buffer_request_body() {
         (
             http::Method::POST,
             "/api/admin/niffler-core/upstream-services/service-1/accounts",
+        ),
+        (
+            http::Method::PUT,
+            "/api/admin/niffler-core/upstream-services/service-1/capabilities",
         ),
         (http::Method::POST, "/api/admin/niffler-core/product-plans"),
         (

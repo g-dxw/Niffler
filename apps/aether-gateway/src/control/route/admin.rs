@@ -93,6 +93,23 @@ pub(super) fn classify_admin_route(
             "admin:providers",
             false,
         ))
+    } else if matches!(method, &http::Method::GET | &http::Method::PUT)
+        && normalized_path_no_trailing
+            .strip_prefix("/api/admin/niffler-core/upstream-services/")
+            .and_then(|rest| rest.strip_suffix("/capabilities"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+    {
+        Some(classified(
+            "admin_proxy",
+            "niffler_core_manage",
+            if method == http::Method::GET {
+                "list_upstream_service_capabilities"
+            } else {
+                "update_upstream_service_capabilities"
+            },
+            "admin:providers",
+            false,
+        ))
     } else if matches!(method, &http::Method::GET | &http::Method::POST)
         && normalized_path_no_trailing == "/api/admin/niffler-core/product-plans"
     {
