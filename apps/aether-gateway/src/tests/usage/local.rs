@@ -2,14 +2,15 @@ use super::{
     any, build_router_with_state, build_state_with_execution_runtime_override,
     encrypt_python_fernet_plaintext, hash_api_key, json, sample_local_openai_auth_snapshot,
     sample_local_openai_candidate_row, sample_local_openai_endpoint, sample_local_openai_key,
-    sample_local_openai_provider, send_request, start_server, strip_sse_keepalive_comments, Arc,
-    Body, GatewayDataState, HeaderValue, InMemoryAuthApiKeySnapshotRepository,
-    InMemoryMinimalCandidateSelectionReadRepository, InMemoryProviderCatalogReadRepository,
-    InMemoryRequestCandidateRepository, InMemoryUsageReadRepository, Json, Mutex, Request,
-    RequestCandidateReadRepository, RequestCandidateStatus, Response, Router, StatusCode,
-    StoredAuthApiKeySnapshot, StoredMinimalCandidateSelectionRow, StoredProviderCatalogEndpoint,
-    StoredProviderCatalogKey, StoredProviderCatalogProvider, StoredProviderModelMapping,
-    UsageReadRepository, UsageRuntimeConfig, DEVELOPMENT_ENCRYPTION_KEY, TRACE_ID_HEADER,
+    sample_local_openai_provider, send_request, start_server, strip_sse_keepalive_comments,
+    wait_for_request_candidate_status, Arc, Body, GatewayDataState, HeaderValue,
+    InMemoryAuthApiKeySnapshotRepository, InMemoryMinimalCandidateSelectionReadRepository,
+    InMemoryProviderCatalogReadRepository, InMemoryRequestCandidateRepository,
+    InMemoryUsageReadRepository, Json, Mutex, Request, RequestCandidateReadRepository,
+    RequestCandidateStatus, Response, Router, StatusCode, StoredAuthApiKeySnapshot,
+    StoredMinimalCandidateSelectionRow, StoredProviderCatalogEndpoint, StoredProviderCatalogKey,
+    StoredProviderCatalogProvider, StoredProviderModelMapping, UsageReadRepository,
+    UsageRuntimeConfig, DEVELOPMENT_ENCRYPTION_KEY, TRACE_ID_HEADER,
 };
 use crate::constants::LOCAL_EXECUTION_RUNTIME_MISS_REASON_HEADER;
 use aether_data_contracts::repository::usage::UsageBodyCaptureState;
@@ -245,7 +246,7 @@ async fn gateway_handles_local_openai_chat_sync_report_with_local_reporting_when
         enabled: true,
         ..UsageRuntimeConfig::default()
     });
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -275,10 +276,13 @@ async fn gateway_handles_local_openai_chat_sync_report_with_local_reporting_when
     assert_eq!(stored_usage.total_tokens, 5);
     assert_eq!(stored_usage.response_time_ms, Some(25));
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-report-sync-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-local-report-sync-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -679,7 +683,7 @@ async fn gateway_strips_request_and_response_bodies_when_request_record_level_is
             enabled: true,
             ..UsageRuntimeConfig::default()
         });
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -729,10 +733,13 @@ async fn gateway_strips_request_and_response_bodies_when_request_record_level_is
     assert!(stored_usage.client_response_body.is_none());
     assert!(stored_usage.client_response_body_ref.is_none());
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-report-sync-base-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-local-report-sync-base-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
@@ -809,7 +816,7 @@ async fn gateway_records_failed_usage_when_all_local_openai_chat_candidates_exha
             enabled: true,
             ..UsageRuntimeConfig::default()
         });
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let request = Request::builder()
         .method(http::Method::POST)
         .uri("/v1/chat/completions")
@@ -879,10 +886,13 @@ async fn gateway_records_failed_usage_when_all_local_openai_chat_candidates_exha
         Some("http_error")
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-report-sync-failure-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-local-report-sync-failure-123",
+        RequestCandidateStatus::Failed,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
     assert_eq!(stored_candidates[0].status_code, Some(503));
@@ -939,7 +949,7 @@ async fn gateway_records_failed_usage_when_sync_runtime_transport_is_unavailable
             enabled: true,
             ..UsageRuntimeConfig::default()
         });
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let request = Request::builder()
         .method(http::Method::POST)
         .uri("/v1/chat/completions")
@@ -978,10 +988,13 @@ async fn gateway_records_failed_usage_when_sync_runtime_transport_is_unavailable
         Some("execution_runtime_unavailable")
     );
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-transport-unavailable-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-local-transport-unavailable-123",
+        RequestCandidateStatus::Failed,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Failed);
     assert_eq!(
@@ -1321,7 +1334,7 @@ async fn gateway_handles_local_openai_chat_stream_report_with_local_reporting_wh
         enabled: true,
         ..UsageRuntimeConfig::default()
     });
-    let gateway = build_router_with_state(gateway_state);
+    let gateway = build_router_with_state(gateway_state.clone());
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
@@ -1356,10 +1369,13 @@ async fn gateway_handles_local_openai_chat_stream_report_with_local_reporting_wh
     assert_eq!(stored_usage.first_byte_time_ms, Some(11));
     assert!(stored_usage.is_stream);
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-openai-chat-local-report-stream-123")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = wait_for_request_candidate_status(
+        &gateway_state,
+        &request_candidate_repository,
+        "trace-openai-chat-local-report-stream-123",
+        RequestCandidateStatus::Success,
+    )
+    .await;
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
