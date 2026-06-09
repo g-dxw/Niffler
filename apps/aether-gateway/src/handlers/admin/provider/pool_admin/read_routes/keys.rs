@@ -35,76 +35,6 @@ use std::{
 type AdminPoolCodexCycleUsageByKey =
     BTreeMap<String, BTreeMap<String, StoredProviderApiKeyWindowUsageSummary>>;
 
-fn admin_pool_status_snapshot_bool(key: &StoredProviderCatalogKey, path: &[&str]) -> bool {
-    let mut current = key.status_snapshot.as_ref();
-    for segment in path {
-        current = current.and_then(|value| value.get(*segment));
-    }
-    current.and_then(Value::as_bool).unwrap_or(false)
-}
-
-fn admin_pool_key_status_bucket(
-    key: &StoredProviderCatalogKey,
-    provider_type: &str,
-    cooldown_key_ids: &BTreeSet<String>,
-    now_unix_secs: u64,
-) -> &'static str {
-    let account_blocked = admin_pool_status_snapshot_bool(key, &["account", "blocked"]);
-    let account_quota_exhausted =
-        admin_provider_pool_pure::admin_pool_key_account_quota_exhausted(key, provider_type);
-    let cooldown_reason = cooldown_key_ids
-        .contains(&key.id)
-        .then_some("pool_cooldown");
-    let scheduling = admin_provider_pool_pure::admin_pool_resolve_scheduling_state(
-        admin_provider_pool_pure::AdminPoolSchedulingStateInput {
-            key,
-            now_unix_secs,
-            cooldown_reason,
-            cooldown_ttl_seconds: None,
-            account_blocked,
-            account_status_code: None,
-            account_status_label: None,
-            account_status_reason: None,
-            account_status_source: None,
-            account_quota_exhausted,
-        },
-    );
-    scheduling.state.code()
-}
-
-fn admin_pool_status_filter_matches(
-    status_filter: &str,
-    status_bucket: &str,
-    key: &StoredProviderCatalogKey,
-) -> bool {
-    match status_filter {
-        "all" => true,
-        "active" => key.is_active,
-        "available" => status_bucket == "available",
-        "invalid" => status_bucket == "invalid",
-        "inactive" | "disabled" => status_bucket == "disabled",
-        "quota_exhausted" => status_bucket == "quota_exhausted",
-        "cooldown" | "temporary_unavailable" => status_bucket == "temporary_unavailable",
-        "blocked" => status_bucket == "blocked",
-        _ => true,
-    }
-}
-
-fn admin_pool_key_plan_bucket(
-    state: &AdminAppState<'_>,
-    key: &StoredProviderCatalogKey,
-    provider_type: &str,
-) -> String {
-    pool_selection::admin_pool_derive_plan_tier(state, key, provider_type)
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn admin_pool_plan_filter_matches(plan_filter: &str, plan_bucket: &str) -> bool {
-    plan_filter == "all" || plan_filter == plan_bucket
-}
-
 fn admin_pool_plan_label(code: &str) -> &'static str {
     match code {
         "free" => "Free",
@@ -139,10 +69,14 @@ fn admin_pool_key_summary_payload(
     let mut by_plan: BTreeMap<String, usize> = BTreeMap::new();
     let mut by_status: BTreeMap<String, usize> = BTreeMap::new();
     for key in keys {
-        let plan_bucket = admin_pool_key_plan_bucket(state, key, provider_type);
+        let plan_bucket = pool_selection::admin_pool_key_plan_bucket(state, key, provider_type);
         *by_plan.entry(plan_bucket).or_default() += 1;
-        let status_bucket =
-            admin_pool_key_status_bucket(key, provider_type, cooldown_key_ids, now_unix_secs);
+        let status_bucket = pool_selection::admin_pool_key_status_bucket(
+            key,
+            provider_type,
+            cooldown_key_ids,
+            now_unix_secs,
+        );
         *by_status.entry(status_bucket.to_string()).or_default() += 1;
     }
     let plan_order = ["free", "plus", "team", "pro", "enterprise", "unknown"];
@@ -604,15 +538,16 @@ pub(super) async fn build_admin_pool_list_keys_response(
             now_unix_secs,
         );
         loaded_keys.retain(|key| {
-            let plan_bucket = admin_pool_key_plan_bucket(state, key, &provider.provider_type);
-            let status_bucket = admin_pool_key_status_bucket(
+            let plan_bucket =
+                pool_selection::admin_pool_key_plan_bucket(state, key, &provider.provider_type);
+            let status_bucket = pool_selection::admin_pool_key_status_bucket(
                 key,
                 &provider.provider_type,
                 &cooldown_key_ids,
                 now_unix_secs,
             );
-            admin_pool_plan_filter_matches(&plan_filter, &plan_bucket)
-                && admin_pool_status_filter_matches(&status, status_bucket, key)
+            pool_selection::admin_pool_plan_filter_matches(&plan_filter, &plan_bucket)
+                && pool_selection::admin_pool_status_filter_matches(&status, status_bucket, key)
         });
         let preloaded_pool_scores_by_key_id = if sort_by_score {
             let key_ids = loaded_keys

@@ -320,6 +320,8 @@ export interface PoolScoresQuery {
 
 export interface PoolKeySelectionRequest {
   search?: string
+  status?: PoolKeysQuery['status']
+  plan_type?: string
   quick_selectors?: string[]
 }
 

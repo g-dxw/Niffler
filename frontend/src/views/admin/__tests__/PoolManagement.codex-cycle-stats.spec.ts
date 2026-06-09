@@ -12,6 +12,7 @@ const endpointMocks = vi.hoisted(() => ({
   clearPoolCooldown: vi.fn(),
   batchActionPoolKeys: vi.fn(),
   getPoolBatchDeleteTask: vi.fn(),
+  resolvePoolKeySelection: vi.fn(),
   getProvider: vi.fn(),
   updateProvider: vi.fn(),
   revealEndpointKey: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('@/api/endpoints/pool', () => ({
   clearPoolCooldown: endpointMocks.clearPoolCooldown,
   batchActionPoolKeys: endpointMocks.batchActionPoolKeys,
   getPoolBatchDeleteTask: endpointMocks.getPoolBatchDeleteTask,
+  resolvePoolKeySelection: endpointMocks.resolvePoolKeySelection,
 }))
 
 vi.mock('@/api/endpoints/keys', () => ({
@@ -578,6 +580,7 @@ beforeEach(() => {
   endpointMocks.clearPoolCooldown.mockReset()
   endpointMocks.batchActionPoolKeys.mockReset()
   endpointMocks.getPoolBatchDeleteTask.mockReset()
+  endpointMocks.resolvePoolKeySelection.mockReset()
   endpointMocks.getProvider.mockReset()
   endpointMocks.updateProvider.mockReset()
   endpointMocks.revealEndpointKey.mockReset()
@@ -592,6 +595,7 @@ beforeEach(() => {
   endpointMocks.clearPoolCooldown.mockResolvedValue({ message: 'ok' })
   endpointMocks.batchActionPoolKeys.mockResolvedValue({ affected: 0, message: 'ok' })
   endpointMocks.getPoolBatchDeleteTask.mockResolvedValue({ task_id: 'task-1', status: 'completed', total: 0, deleted: 0, message: 'ok' })
+  endpointMocks.resolvePoolKeySelection.mockResolvedValue({ total: 0, items: [] })
   endpointMocks.refreshProviderQuota.mockResolvedValue({ success: 0, failed: 0 })
   endpointMocks.resetProviderKeyCycleStats.mockResolvedValue({ message: '已重置周期统计', reset_at: 123, windows: 2 })
 })
@@ -807,6 +811,73 @@ describe('PoolManagement Codex cycle stats mode', () => {
       action: 'delete',
     })
     expect(endpointMocks.listPoolKeys).toHaveBeenCalledTimes(2)
+  })
+
+  it('deletes all filtered pool accounts without selecting each page', async () => {
+    routeMocks.query.providerId = 'codex-provider'
+    routeMocks.query.status = 'invalid'
+    const firstKey = createPoolKey('codex', { key_id: 'codex-invalid-a', key_name: 'invalid a' })
+    const secondKey = createPoolKey('codex', { key_id: 'codex-invalid-b', key_name: 'invalid b' })
+    endpointMocks.getPoolOverview.mockResolvedValue({
+      items: [{ ...createOverview('codex'), total_keys: 5000, active_keys: 0 }],
+    })
+    endpointMocks.listPoolKeys.mockResolvedValue({
+      total: 123,
+      page: 1,
+      page_size: 50,
+      keys: [firstKey, secondKey],
+      summary: {
+        total: 123,
+        plans: [],
+        statuses: [{ code: 'invalid', label: '已失效', count: 123 }],
+      },
+    })
+    endpointMocks.getProvider.mockResolvedValue(createProvider('codex'))
+    endpointMocks.resolvePoolKeySelection.mockResolvedValue({
+      total: 3,
+      items: [
+        { key_id: 'codex-invalid-a', key_name: 'invalid a', auth_type: 'oauth' },
+        { key_id: 'codex-invalid-b', key_name: 'invalid b', auth_type: 'oauth' },
+        { key_id: 'codex-invalid-c', key_name: 'invalid c', auth_type: 'oauth' },
+      ],
+    })
+    endpointMocks.batchActionPoolKeys.mockResolvedValue({
+      affected: 0,
+      message: 'delete task submitted',
+      task_id: 'task-large-delete',
+    })
+    endpointMocks.getPoolBatchDeleteTask.mockResolvedValue({
+      task_id: 'task-large-delete',
+      status: 'completed',
+      total_keys: 3,
+      deleted_keys: 3,
+      message: '3 keys deleted',
+    })
+
+    const root = mountPoolManagement()
+    await settle()
+
+    const selectFilteredButton = root.querySelector<HTMLButtonElement>('[data-testid="pool-select-filtered-results"]')
+    expect(selectFilteredButton).not.toBeNull()
+    expect(selectFilteredButton?.textContent).toContain('选择全部 123')
+
+    selectFilteredButton?.click()
+    await settle()
+
+    const deleteButton = root.querySelector<HTMLButtonElement>('[data-testid="pool-bulk-delete-selected"]')
+    expect(deleteButton?.textContent).toContain('删除已选 123')
+
+    deleteButton?.click()
+    await settle()
+
+    expect(endpointMocks.resolvePoolKeySelection).toHaveBeenCalledWith('codex-provider', {
+      status: 'invalid',
+    })
+    expect(endpointMocks.batchActionPoolKeys).toHaveBeenCalledWith('codex-provider', {
+      key_ids: ['codex-invalid-a', 'codex-invalid-b', 'codex-invalid-c'],
+      action: 'delete',
+    })
+    expect(endpointMocks.getPoolBatchDeleteTask).toHaveBeenCalledWith('codex-provider', 'task-large-delete')
   })
 
   it('toggles Codex stats to account totals and persists the choice', async () => {

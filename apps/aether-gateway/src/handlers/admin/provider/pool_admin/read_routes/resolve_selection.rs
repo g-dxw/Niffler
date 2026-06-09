@@ -1,5 +1,6 @@
 use super::{
-    admin_pool_provider_id_from_path, build_admin_pool_error_response, pool_selection,
+    admin_pool_provider_id_from_path, build_admin_pool_error_response,
+    normalize_admin_pool_status_filter, pool_selection, read_admin_provider_pool_cooldown_key_ids,
     AdminPoolResolveSelectionRequest, ADMIN_POOL_PROVIDER_CATALOG_READER_UNAVAILABLE_DETAIL,
 };
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
@@ -61,8 +62,29 @@ pub(super) async fn build_admin_pool_resolve_selection_response(
 
     let provider_type = provider.provider_type.clone();
     let search = payload.search.trim();
+    let status = match normalize_admin_pool_status_filter(Some(payload.status.as_str())) {
+        Ok(value) => value,
+        Err(detail) => {
+            return Ok(build_admin_pool_error_response(
+                http::StatusCode::BAD_REQUEST,
+                detail,
+            ));
+        }
+    };
+    let plan_filter = payload.plan_type.trim().to_ascii_lowercase();
+    let plan_filter = if plan_filter.is_empty() {
+        "all".to_string()
+    } else {
+        plan_filter
+    };
     let quick_selectors =
         admin_provider_pool_pure::admin_pool_sanitize_quick_selectors(payload.quick_selectors);
+    let cooldown_key_ids =
+        read_admin_provider_pool_cooldown_key_ids(state.runtime_state(), &provider.id)
+            .await
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+    let now_unix_secs = admin_provider_pool_pure::admin_pool_now_unix_secs();
 
     let mut keys = state
         .list_provider_catalog_keys_by_provider_ids(std::slice::from_ref(&provider.id))
@@ -81,6 +103,18 @@ pub(super) async fn build_admin_pool_resolve_selection_response(
                         selector,
                     )
                 })
+        })
+        .filter(|key| {
+            let plan_bucket =
+                pool_selection::admin_pool_key_plan_bucket(state, key, &provider_type);
+            let status_bucket = pool_selection::admin_pool_key_status_bucket(
+                key,
+                &provider_type,
+                &cooldown_key_ids,
+                now_unix_secs,
+            );
+            pool_selection::admin_pool_plan_filter_matches(&plan_filter, &plan_bucket)
+                && pool_selection::admin_pool_status_filter_matches(&status, status_bucket, key)
         })
         .collect::<Vec<_>>();
 

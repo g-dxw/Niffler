@@ -7,6 +7,10 @@ use axum::{
     Json,
 };
 use serde_json::json;
+use uuid::Uuid;
+
+const ADMIN_POOL_BATCH_DELETE_ASYNC_THRESHOLD: usize = 100;
+const ADMIN_POOL_BATCH_DELETE_TASK_NAME: &str = "admin.pool.batch_delete";
 
 impl<'a> AdminAppState<'a> {
     pub(crate) async fn clear_admin_provider_pool_cooldown(&self, provider_id: &str, key_id: &str) {
@@ -70,6 +74,92 @@ impl<'a> AdminAppState<'a> {
             )
                 .into_response());
         }
+        Ok(task)
+    }
+
+    pub(crate) fn submit_admin_pool_batch_delete_task(
+        &self,
+        provider_id: &str,
+        key_ids: Vec<String>,
+    ) -> String {
+        let task_id = Uuid::new_v4().simple().to_string()[..16].to_string();
+        self.put_provider_delete_task(crate::LocalProviderDeleteTaskState {
+            task_id: task_id.clone(),
+            provider_id: provider_id.to_string(),
+            status: "pending".to_string(),
+            stage: "queued".to_string(),
+            total_keys: key_ids.len(),
+            deleted_keys: 0,
+            total_endpoints: 0,
+            deleted_endpoints: 0,
+            message: "delete task submitted".to_string(),
+        });
+
+        let app = self.cloned_app();
+        let provider_id = provider_id.to_string();
+        let run_id = task_id.clone();
+        crate::task_runtime::spawn_fire_and_forget(ADMIN_POOL_BATCH_DELETE_TASK_NAME, async move {
+            let admin_state = AdminAppState::new(&app);
+            if let Err(err) = admin_state
+                .run_admin_pool_batch_delete_task(&provider_id, &run_id, key_ids)
+                .await
+            {
+                admin_state.put_provider_delete_task(crate::LocalProviderDeleteTaskState {
+                    task_id: run_id,
+                    provider_id,
+                    status: "failed".to_string(),
+                    stage: "failed".to_string(),
+                    total_keys: 0,
+                    deleted_keys: 0,
+                    total_endpoints: 0,
+                    deleted_endpoints: 0,
+                    message: format!("delete task failed: {err:?}"),
+                });
+            }
+        });
+
+        task_id
+    }
+
+    pub(crate) async fn run_admin_pool_batch_delete_task(
+        &self,
+        provider_id: &str,
+        task_id: &str,
+        key_ids: Vec<String>,
+    ) -> Result<crate::LocalProviderDeleteTaskState, GatewayError> {
+        let total_keys = key_ids.len();
+        let mut task = crate::LocalProviderDeleteTaskState {
+            task_id: task_id.to_string(),
+            provider_id: provider_id.to_string(),
+            status: "running".to_string(),
+            stage: "deleting_keys".to_string(),
+            total_keys,
+            deleted_keys: 0,
+            total_endpoints: 0,
+            deleted_endpoints: 0,
+            message: format!("deleting 0 / {total_keys} keys"),
+        };
+        self.put_provider_delete_task(task.clone());
+
+        for key_id in &key_ids {
+            self.clear_admin_provider_pool_cooldown(provider_id, key_id)
+                .await;
+            self.reset_admin_provider_pool_cost(provider_id, key_id)
+                .await;
+            if self.delete_provider_catalog_key(key_id).await? {
+                task.deleted_keys = task.deleted_keys.saturating_add(1);
+                task.message = format!("deleted {} / {} keys", task.deleted_keys, task.total_keys);
+                self.put_provider_delete_task(task.clone());
+            }
+        }
+
+        self.cleanup_deleted_provider_catalog_refs(provider_id, &[], &key_ids)
+            .await?;
+
+        task.status = "completed".to_string();
+        task.stage = "completed".to_string();
+        task.message = format!("{} keys deleted", task.deleted_keys);
+        self.put_provider_delete_task(task.clone());
         Ok(task)
     }
 
@@ -307,6 +397,17 @@ impl<'a> AdminAppState<'a> {
 
         if plan.action == AdminPoolBatchActionKind::Delete {
             let deleted_key_ids = keys.iter().map(|key| key.id.clone()).collect::<Vec<_>>();
+            if deleted_key_ids.len() > ADMIN_POOL_BATCH_DELETE_ASYNC_THRESHOLD {
+                let task_id =
+                    self.submit_admin_pool_batch_delete_task(&provider.id, deleted_key_ids);
+                return Ok(Json(json!({
+                    "affected": 0,
+                    "message": "delete task submitted",
+                    "task_id": task_id,
+                }))
+                .into_response());
+            }
+
             for key in &keys {
                 self.clear_admin_provider_pool_cooldown(&provider.id, &key.id)
                     .await;

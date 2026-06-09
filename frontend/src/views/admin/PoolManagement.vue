@@ -466,13 +466,24 @@
             <Checkbox
               :checked="isCurrentPageFullySelected"
               :indeterminate="isCurrentPagePartiallySelected"
-              :disabled="keysLoading || deletingSelectedKeys"
+              :disabled="keysLoading || deletingSelectedKeys || allFilteredPoolKeysSelected"
               data-testid="pool-select-current-page"
               @update:checked="toggleSelectCurrentPageKeys"
             />
             <span>当前页 {{ keyPage.keys.length }} 个，已选 {{ selectedPoolKeyCount }} 个</span>
           </label>
           <div class="flex flex-wrap items-center gap-2">
+            <Button
+              v-if="keyPage.total > keyPage.keys.length && !allFilteredPoolKeysSelected"
+              variant="outline"
+              size="sm"
+              class="h-7 px-2 text-xs"
+              :disabled="keyPage.total === 0 || deletingSelectedKeys"
+              data-testid="pool-select-filtered-results"
+              @click="selectAllFilteredPoolKeys"
+            >
+              选择全部 {{ keyPage.total }} 个筛选结果
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -510,7 +521,7 @@
                   <Checkbox
                     :checked="isCurrentPageFullySelected"
                     :indeterminate="isCurrentPagePartiallySelected"
-                    :disabled="keyPage.keys.length === 0 || keysLoading || deletingSelectedKeys"
+                    :disabled="keyPage.keys.length === 0 || keysLoading || deletingSelectedKeys || allFilteredPoolKeysSelected"
                     title="勾选或取消当前页所有账号"
                     @update:checked="toggleSelectCurrentPageKeys"
                   />
@@ -652,7 +663,7 @@
                 <TableCell class="px-3 py-3 text-center align-middle">
                   <Checkbox
                     :checked="isPoolKeySelected(key.key_id)"
-                    :disabled="deletingSelectedKeys"
+                    :disabled="deletingSelectedKeys || allFilteredPoolKeysSelected"
                     :data-testid="`pool-key-select-${key.key_id}`"
                     :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
                     @update:checked="(checked: boolean) => togglePoolKeySelection(key.key_id, checked)"
@@ -1095,7 +1106,7 @@
               <div class="flex items-start gap-2.5">
                 <Checkbox
                   :checked="isPoolKeySelected(key.key_id)"
-                  :disabled="deletingSelectedKeys"
+                  :disabled="deletingSelectedKeys || allFilteredPoolKeysSelected"
                   :data-testid="`pool-key-select-mobile-${key.key_id}`"
                   :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
                   class="mt-0.5 shrink-0"
@@ -1703,6 +1714,7 @@ import {
   clearPoolCooldown,
   batchActionPoolKeys,
   getPoolBatchDeleteTask,
+  resolvePoolKeySelection,
 } from '@/api/endpoints/pool'
 import {
   revealEndpointKey,
@@ -2428,6 +2440,7 @@ const scoreMobilePopoverOpenKeyId = ref<string | null>(null)
 const deletingKeyId = ref<string | null>(null)
 const deletingSelectedKeys = ref(false)
 const selectedPoolKeyIds = ref<string[]>([])
+const allFilteredPoolKeysSelected = ref(false)
 const togglingKeyId = ref<string | null>(null)
 const editingPriorityKeyId = ref<string | null>(null)
 const editingPriorityValue = ref<number>(0)
@@ -3047,9 +3060,10 @@ const editingKey = computed<EndpointAPIKey | null>(() => {
 })
 
 const selectedPoolKeyIdSet = computed(() => new Set(selectedPoolKeyIds.value))
-const selectedPoolKeyCount = computed(() => selectedPoolKeyIds.value.length)
+const selectedPoolKeyCount = computed(() => allFilteredPoolKeysSelected.value ? keyPage.value.total : selectedPoolKeyIds.value.length)
 const currentPagePoolKeyIds = computed(() => keyPage.value.keys.map(key => key.key_id).filter(Boolean))
 const selectedCurrentPagePoolKeyCount = computed(() => {
+  if (allFilteredPoolKeysSelected.value) return currentPagePoolKeyIds.value.length
   const selected = selectedPoolKeyIdSet.value
   return currentPagePoolKeyIds.value.filter(id => selected.has(id)).length
 })
@@ -3063,10 +3077,12 @@ const isCurrentPagePartiallySelected = computed(() => {
 })
 
 function isPoolKeySelected(keyId: string): boolean {
+  if (allFilteredPoolKeysSelected.value) return true
   return selectedPoolKeyIdSet.value.has(keyId)
 }
 
 function togglePoolKeySelection(keyId: string, checked: boolean): void {
+  if (allFilteredPoolKeysSelected.value) return
   const normalized = String(keyId || '').trim()
   if (!normalized) return
   const next = new Set(selectedPoolKeyIds.value)
@@ -3076,6 +3092,7 @@ function togglePoolKeySelection(keyId: string, checked: boolean): void {
 }
 
 function toggleSelectCurrentPageKeys(checked: boolean): void {
+  if (allFilteredPoolKeysSelected.value) return
   const next = new Set(selectedPoolKeyIds.value)
   for (const keyId of currentPagePoolKeyIds.value) {
     if (checked) next.add(keyId)
@@ -3085,7 +3102,24 @@ function toggleSelectCurrentPageKeys(checked: boolean): void {
 }
 
 function clearPoolKeySelection(): void {
+  allFilteredPoolKeysSelected.value = false
   selectedPoolKeyIds.value = []
+}
+
+function selectAllFilteredPoolKeys(): void {
+  allFilteredPoolKeysSelected.value = true
+  selectedPoolKeyIds.value = []
+}
+
+function buildPoolSelectionFilters(): { search?: string; status?: PoolManagementViewState['status']; plan_type?: string } {
+  const search = searchQuery.value.trim()
+  const status = statusFilter.value === 'all' ? undefined : statusFilter.value
+  const planType = planTypeFilter.value === 'all' ? undefined : String(planTypeFilter.value || '').trim()
+  return {
+    ...(search ? { search } : {}),
+    ...(status ? { status } : {}),
+    ...(planType ? { plan_type: planType } : {}),
+  }
 }
 
 function sortCurrentPageKeysByPriority() {
@@ -3329,12 +3363,12 @@ async function pollPoolBatchDeleteTask(
 
 async function deleteSelectedPoolKeys(): Promise<void> {
   const providerId = selectedProviderId.value
-  const keyIds = [...selectedPoolKeyIds.value]
-  if (!providerId || keyIds.length === 0 || deletingSelectedKeys.value) return
+  const selectedCount = selectedPoolKeyCount.value
+  if (!providerId || selectedCount === 0 || deletingSelectedKeys.value) return
 
   const confirmed = await confirm({
     title: '删除已选账号',
-    message: `确定要删除已选 ${keyIds.length} 个账号吗？删除后不可恢复。`,
+    message: `确定要删除已选 ${selectedCount} 个账号吗？删除后不可恢复。`,
     confirmText: '确认删除',
     variant: 'destructive',
   })
@@ -3342,6 +3376,18 @@ async function deleteSelectedPoolKeys(): Promise<void> {
 
   deletingSelectedKeys.value = true
   try {
+    let keyIds = [...selectedPoolKeyIds.value]
+    if (allFilteredPoolKeysSelected.value) {
+      const resolved = await resolvePoolKeySelection(providerId, buildPoolSelectionFilters())
+      keyIds = Array.isArray(resolved.items)
+        ? resolved.items.map(item => item.key_id).filter(Boolean)
+        : []
+    }
+    if (keyIds.length === 0) {
+      showWarning('没有找到可删除的账号，请刷新后重试')
+      return
+    }
+
     const result = await batchActionPoolKeys(providerId, {
       key_ids: keyIds,
       action: 'delete',

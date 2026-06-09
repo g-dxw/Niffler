@@ -14,6 +14,10 @@ pub struct AdminPoolResolveSelectionRequest {
     pub search: String,
     #[serde(default)]
     pub quick_selectors: Vec<String>,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default, alias = "plan")]
+    pub plan_type: String,
 }
 
 #[derive(Debug, Default, Clone, serde::Deserialize)]

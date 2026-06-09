@@ -101,10 +101,11 @@ pub(crate) fn parse_admin_pool_quick_selectors(query: Option<&str>) -> Vec<Strin
         .unwrap_or_default()
 }
 
-pub(crate) fn parse_admin_pool_status_filter(query: Option<&str>) -> Result<String, String> {
-    let value = query_param_value(query, "status")
-        .unwrap_or_else(|| "all".to_string())
-        .trim()
+pub(crate) fn normalize_admin_pool_status_filter(value: Option<&str>) -> Result<String, String> {
+    let value = value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("all")
         .to_ascii_lowercase();
     match value.as_str() {
         "all"
@@ -119,6 +120,10 @@ pub(crate) fn parse_admin_pool_status_filter(query: Option<&str>) -> Result<Stri
         | "blocked" => Ok(value),
         _ => Err("status must be one of: all, active, available, invalid, disabled, quota_exhausted, temporary_unavailable, blocked".to_string()),
     }
+}
+
+pub(crate) fn parse_admin_pool_status_filter(query: Option<&str>) -> Result<String, String> {
+    normalize_admin_pool_status_filter(query_param_value(query, "status").as_deref())
 }
 
 pub(crate) fn parse_admin_pool_plan_filter(query: Option<&str>) -> String {

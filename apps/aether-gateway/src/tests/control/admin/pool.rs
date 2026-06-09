@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY};
 use aether_data::repository::pool_scores::InMemoryPoolMemberScoreRepository;
@@ -3119,6 +3120,74 @@ async fn gateway_handles_admin_pool_resolve_selection_locally_with_trusted_admin
 }
 
 #[tokio::test]
+async fn gateway_resolve_selection_applies_status_filter() {
+    let provider = sample_provider("provider-openai", "openai", 10).with_transport_fields(
+        true,
+        false,
+        true,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(json!({
+            "pool_advanced": {
+                "enabled": true
+            }
+        })),
+    );
+    let mut invalid_key = sample_key(
+        "key-openai-invalid",
+        "provider-openai",
+        "openai:chat",
+        "sk-invalid",
+    );
+    invalid_key.name = "invalid account".to_string();
+    invalid_key.oauth_invalid_at_unix_secs = Some(1_700_000_000);
+    invalid_key.oauth_invalid_reason = Some("refresh token expired".to_string());
+    let mut available_key = sample_key(
+        "key-openai-available",
+        "provider-openai",
+        "openai:chat",
+        "sk-ok",
+    );
+    available_key.name = "available account".to_string();
+
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![provider],
+        Vec::new(),
+        vec![invalid_key, available_key],
+    ));
+    let state = AppState::new()
+        .expect("gateway should build")
+        .with_data_state_for_tests(GatewayDataState::with_provider_catalog_reader_for_tests(
+            provider_catalog_repository,
+        ));
+
+    let response = local_admin_pool_response(
+        &state,
+        http::Method::POST,
+        "/api/admin/pool/provider-openai/keys/resolve-selection",
+        Some(json!({
+            "status": "invalid"
+        })),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body should read"),
+    )
+    .expect("json body should parse");
+    assert_eq!(payload["total"], json!(1));
+    let items = payload["items"].as_array().expect("items should be array");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["key_id"], json!("key-openai-invalid"));
+}
+
+#[tokio::test]
 async fn gateway_resolve_selection_marks_legacy_kiro_bearer_keys_as_oauth_managed() {
     let mut provider = sample_provider("provider-kiro", "kiro", 10);
     provider.provider_type = "kiro".to_string();
@@ -3342,6 +3411,89 @@ async fn gateway_handles_admin_pool_batch_delete_locally_with_trusted_admin_prin
 
     gateway_handle.abort();
     upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_submits_admin_pool_batch_delete_task_for_large_key_selection() {
+    let provider = sample_provider("provider-openai", "openai", 10).with_transport_fields(
+        true,
+        false,
+        true,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(json!({
+            "pool_advanced": {
+                "enabled": true
+            }
+        })),
+    );
+    let key_ids = (0..101)
+        .map(|index| format!("key-openai-{index:03}"))
+        .collect::<Vec<_>>();
+    let keys = key_ids
+        .iter()
+        .map(|key_id| sample_key(key_id, "provider-openai", "openai:chat", "sk-test"))
+        .collect::<Vec<_>>();
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![provider],
+        Vec::new(),
+        keys,
+    ));
+    let state = AppState::new()
+        .expect("gateway should build")
+        .with_data_state_for_tests(
+            GatewayDataState::with_provider_catalog_repository_for_tests(Arc::clone(
+                &provider_catalog_repository,
+            )),
+        );
+
+    let response = local_admin_pool_response(
+        &state,
+        http::Method::POST,
+        "/api/admin/pool/provider-openai/keys/batch-action",
+        Some(json!({
+            "action": "delete",
+            "key_ids": key_ids
+        })),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body should read"),
+    )
+    .expect("json body should parse");
+    let task_id = payload["task_id"]
+        .as_str()
+        .expect("task id should be returned");
+    assert_eq!(payload["affected"], json!(0));
+    assert_eq!(payload["message"], json!("delete task submitted"));
+    let task = state
+        .get_provider_delete_task(task_id)
+        .expect("task status should be readable");
+    assert_eq!(task.provider_id, "provider-openai");
+    assert_eq!(task.total_keys, 101);
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        let stored = provider_catalog_repository
+            .list_keys_by_ids(&key_ids)
+            .await
+            .expect("keys should load");
+        if stored.is_empty() {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "background delete task should delete all selected keys"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 }
 
 #[tokio::test]
