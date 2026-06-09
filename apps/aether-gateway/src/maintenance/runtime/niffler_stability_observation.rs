@@ -94,6 +94,7 @@ pub(crate) fn classify_niffler_stability_observation(
     }
 
     if !reset_blockers.is_empty() {
+        reset_blockers.extend(pending_blockers);
         return ("reset_required".to_string(), reset_blockers);
     }
     if !pending_blockers.is_empty() {
@@ -390,6 +391,30 @@ mod tests {
     }
 
     #[test]
+    fn stability_observation_keeps_pending_blockers_visible_when_reset_is_required() {
+        let (status, blockers) =
+            classify_niffler_stability_observation(NifflerStabilityObservationInput {
+                rollback_drill_status: "not_recorded",
+                rollback_drill_evidence_complete: false,
+                incident_status: "p0",
+                audit_reader_available: false,
+                request_candidate_reader_available: false,
+                consistency_sample_limit_reached: true,
+                consistency_issue_count: 0,
+                unknown_upstream_count: 0,
+                legacy_write_call_count: 0,
+                billing_reservation_exception_count: 0,
+                referral_exception_count: 0,
+            });
+        assert_eq!(status, "reset_required");
+        assert!(blockers.contains(&"p0_incident_recorded".to_string()));
+        assert!(blockers.contains(&"rollback_drill_not_recorded".to_string()));
+        assert!(blockers.contains(&"legacy_write_audit_unavailable".to_string()));
+        assert!(blockers.contains(&"request_candidate_audit_unavailable".to_string()));
+        assert!(blockers.contains(&"consistency_sample_limit_reached".to_string()));
+    }
+
+    #[test]
     fn stability_observation_is_pending_when_evidence_is_missing() {
         let (status, blockers) =
             classify_niffler_stability_observation(NifflerStabilityObservationInput {
@@ -410,6 +435,26 @@ mod tests {
         assert!(blockers.contains(&"legacy_write_audit_unavailable".to_string()));
         assert!(blockers.contains(&"request_candidate_audit_unavailable".to_string()));
         assert!(blockers.contains(&"consistency_sample_limit_reached".to_string()));
+    }
+
+    #[test]
+    fn stability_observation_is_pending_when_incident_status_is_unknown() {
+        let (status, blockers) =
+            classify_niffler_stability_observation(NifflerStabilityObservationInput {
+                rollback_drill_status: "passed",
+                rollback_drill_evidence_complete: true,
+                incident_status: "unexpected",
+                audit_reader_available: true,
+                request_candidate_reader_available: true,
+                consistency_sample_limit_reached: false,
+                consistency_issue_count: 0,
+                unknown_upstream_count: 0,
+                legacy_write_call_count: 0,
+                billing_reservation_exception_count: 0,
+                referral_exception_count: 0,
+            });
+        assert_eq!(status, "pending");
+        assert_eq!(blockers, vec!["incident_status_unknown"]);
     }
 
     #[test]
