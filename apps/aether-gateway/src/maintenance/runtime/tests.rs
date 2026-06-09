@@ -27,10 +27,11 @@ use super::{
     spawn_proxy_upgrade_rollout_worker, spawn_stats_aggregation_worker,
     spawn_stats_hourly_aggregation_worker, spawn_usage_cleanup_worker,
     spawn_wallet_daily_usage_aggregation_worker, start_proxy_upgrade_rollout,
-    stats_aggregation_target_day, stats_hourly_aggregation_target_hour, summarize_database_pool,
-    usage_cleanup_settings, usage_cleanup_window, usage_cleanup_window_for_mode,
-    usage_cleanup_window_with_override, wallet_daily_usage_aggregation_target, AppState,
-    DbMaintenanceRunSummary, FailedPendingUsageRow, GatewayDataState, ManualUsageCleanupMode,
+    stats_aggregation_target_day, stats_daily_catch_up_pause_after_success,
+    stats_hourly_aggregation_target_hour, summarize_database_pool, usage_cleanup_settings,
+    usage_cleanup_window, usage_cleanup_window_for_mode, usage_cleanup_window_with_override,
+    wallet_daily_usage_aggregation_target, AppState, DbMaintenanceRunSummary,
+    FailedPendingUsageRow, GatewayDataState, ManualUsageCleanupMode,
     ProxyNodeMetricsCleanupSettings, ProxyUpgradeRolloutProbeConfig, StalePendingUsageRow,
     UsageCleanupSettings, USAGE_CLEANUP_HOUR, USAGE_CLEANUP_MINUTE,
     WALLET_DAILY_USAGE_AGGREGATION_HOUR, WALLET_DAILY_USAGE_AGGREGATION_MINUTE,
@@ -551,6 +552,15 @@ async fn proxy_upgrade_rollout_active_probe_advances_next_wave_after_version_con
 #[tokio::test]
 async fn spawn_stats_aggregation_worker_skips_when_stats_daily_backend_unavailable() {
     assert!(spawn_stats_aggregation_worker(Arc::new(GatewayDataState::disabled())).is_none());
+}
+
+#[test]
+fn stats_daily_catch_up_pauses_after_successful_day() {
+    assert_eq!(stats_daily_catch_up_pause_after_success(0), None);
+    assert_eq!(
+        stats_daily_catch_up_pause_after_success(1),
+        Some(Duration::from_secs(5))
+    );
 }
 
 #[tokio::test]

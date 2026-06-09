@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use tracing::warn;
@@ -31,6 +31,7 @@ use super::{
 };
 
 const STATS_DAILY_CATCH_UP_BURST_LIMIT: usize = 14;
+const STATS_DAILY_CATCH_UP_PAUSE: Duration = Duration::from_secs(5);
 const STATS_HOURLY_CATCH_UP_BURST_LIMIT: usize = 72;
 
 fn log_maintenance_worker_failure(
@@ -46,6 +47,10 @@ fn log_maintenance_worker_failure(
         error = ?error,
         "gateway maintenance worker failed"
     );
+}
+
+pub(super) fn stats_daily_catch_up_pause_after_success(processed_days: usize) -> Option<Duration> {
+    (processed_days > 0).then_some(STATS_DAILY_CATCH_UP_PAUSE)
 }
 
 pub(crate) fn spawn_audit_cleanup_worker(
@@ -125,7 +130,12 @@ pub(crate) fn spawn_stats_aggregation_worker(
             let mut processed = 0_usize;
             while processed < STATS_DAILY_CATCH_UP_BURST_LIMIT {
                 match run_stats_aggregation_once(&data).await {
-                    Ok(true) => processed += 1,
+                    Ok(true) => {
+                        processed += 1;
+                        if let Some(pause) = stats_daily_catch_up_pause_after_success(processed) {
+                            tokio::time::sleep(pause).await;
+                        }
+                    }
                     Ok(false) => break,
                     Err(err) => {
                         log_maintenance_worker_failure("stats_daily_aggregation", "tick", &err);

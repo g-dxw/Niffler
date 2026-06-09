@@ -13,6 +13,9 @@ mod sql;
 use self::percentiles::{percentile_ms_to_i64, PercentileSummary};
 use self::sql::*;
 
+const POSTGRES_STATS_DAILY_LOW_PRESSURE_SETUP_SQL: &str =
+    "SET LOCAL max_parallel_workers_per_gather = 0";
+
 impl PostgresBackend {
     pub async fn aggregate_stats_daily(
         &self,
@@ -66,6 +69,9 @@ async fn perform_stats_aggregation_for_day(
 ) -> Result<StatsDailyAggregationSummary, sqlx::Error> {
     let day_end_utc = day_start_utc + chrono::Duration::days(1);
     let mut tx = pool.begin().await?;
+    sqlx::query(POSTGRES_STATS_DAILY_LOW_PRESSURE_SETUP_SQL)
+        .execute(&mut *tx)
+        .await?;
     let aggregate_row = sqlx::query(SELECT_STATS_DAILY_AGGREGATE_SQL)
         .bind(day_start_utc)
         .bind(day_end_utc)
@@ -635,4 +641,17 @@ async fn refresh_stats_user_summary_rows(
         .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::POSTGRES_STATS_DAILY_LOW_PRESSURE_SETUP_SQL;
+
+    #[test]
+    fn postgres_stats_daily_low_pressure_setup_disables_parallel_query() {
+        assert_eq!(
+            POSTGRES_STATS_DAILY_LOW_PRESSURE_SETUP_SQL,
+            "SET LOCAL max_parallel_workers_per_gather = 0"
+        );
+    }
 }
