@@ -1,6 +1,7 @@
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
 use crate::handlers::admin::provider::shared::paths::admin_clear_oauth_invalid_key_id;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -60,12 +61,16 @@ pub(super) async fn maybe_handle(
     state
         .clear_provider_catalog_key_oauth_invalid_marker(&key_id)
         .await?;
-    Ok(Some(
+    Ok(Some(attach_admin_audit_response(
         Json(json!({
             "message": "已清除 OAuth 失效标记"
         }))
         .into_response(),
-    ))
+        "admin_provider_key_oauth_invalid_cleared",
+        "clear_provider_key_oauth_invalid",
+        "provider_key",
+        &key_id,
+    )))
 }
 
 fn not_found_response(detail: impl Into<String>) -> Response<Body> {

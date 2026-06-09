@@ -3,6 +3,7 @@ use super::payloads::key_api_formats_without_entry;
 use super::support::build_admin_endpoints_data_unavailable_response;
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_endpoint_write;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -108,11 +109,15 @@ pub(super) async fn maybe_handle(
         ));
     }
 
-    Ok(Some(
+    Ok(Some(attach_admin_audit_response(
         Json(json!({
             "message": format!("Endpoint {endpoint_id} 已删除"),
             "affected_keys_count": affected_keys_count,
         }))
         .into_response(),
-    ))
+        "admin_provider_endpoint_deleted",
+        "delete_provider_endpoint",
+        "provider_endpoint",
+        &endpoint_id,
+    )))
 }

@@ -561,7 +561,7 @@ Provider Key 残留判断规则：
 - readiness 的 Key 残留项必须区分“手工限制”和“自动同步模型清单”。`auto_fetch_models = true` 时保存在旧 Key 上的 `allowed_models` 只能标记为“自动同步模型清单”，不能在页面上显示成“允许模型”或“限制”，避免管理员误判为手工白名单。
 - 稳定观察状态只允许三类：`pass` 表示本窗口没有阻断项；`reset_required` 表示本窗口出现会让 T0 清零的阻断项；`pending` 表示数据不足或回滚演练状态未记录，不能计入稳定天数。
 - 如果同一个窗口同时有 `reset_required` 类阻断和 `pending` 类阻断，状态按 `reset_required` 保存，`blocker_codes` 同时保留两类原因，避免管理员只看到一部分阻断项。
-- 旧写入口真实调用先读取管理员审计日志里的冻结事件和旧写入口事件；如果某环境没有审计仓储，快照必须写明 `legacy_write_audit_unavailable`，状态为 `pending`，不能假装通过。
+- 旧写入口真实调用读取管理员审计日志里的冻结尝试事件和旧入口成功写入事件。冻结尝试事件为 `niffler_legacy_write_frozen`；旧入口成功写入事件包括旧 Provider、旧 Provider Key、旧 Provider 端点、旧 Provider 模型价格、旧用户分组和旧用户 Key 限制相关写入。所有仍保留的旧写入口都必须挂审计事件，避免稳定观察漏算真实旧入口调用。如果某环境没有审计仓储，快照必须写明 `legacy_write_audit_unavailable`，状态为 `pending`，不能假装通过。
 - 回滚演练状态通过专用记录接口写入，底层仍保存到系统配置；允许值为 `passed`、`failed`、`not_recorded`。记录 `passed` 时必须同时保存备份引用、可回滚镜像标签和演练说明；只有状态和值得追溯的证据同时存在，稳定观察才允许计入通过。
 - 如果状态被通用系统配置手工改成 `passed`，但缺少回滚演练证据，快照必须写明 `rollback_drill_evidence_missing`，状态为 `pending`，不能假装通过。
 - 后台任务必须限量查询，不做全表统计；每轮只生成一个固定窗口快照，同一窗口重复执行时更新同一条记录，保证任务可重试。

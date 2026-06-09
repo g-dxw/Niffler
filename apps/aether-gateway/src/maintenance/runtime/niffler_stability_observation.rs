@@ -15,6 +15,38 @@ const MAX_CONSISTENCY_SAMPLE: usize = 100;
 const ROLLBACK_DRILL_STATUS_KEY: &str = "niffler_stability_rollback_drill_status";
 const ROLLBACK_DRILL_EVIDENCE_KEY: &str = "niffler_stability_rollback_drill_evidence";
 const INCIDENT_STATUS_KEY: &str = "niffler_stability_incident_status";
+const LEGACY_WRITE_AUDIT_EVENT_TYPES: &[&str] = &[
+    "niffler_legacy_write_frozen",
+    "admin_provider_created",
+    "admin_provider_updated",
+    "admin_provider_delete_queued",
+    "admin_provider_endpoint_created",
+    "admin_provider_endpoint_updated",
+    "admin_provider_endpoint_deleted",
+    "admin_provider_key_created",
+    "admin_provider_key_updated",
+    "admin_provider_key_deleted",
+    "admin_provider_key_batch_deleted",
+    "admin_provider_key_oauth_invalid_cleared",
+    "admin_provider_key_cycle_stats_reset",
+    "admin_provider_pool_cooldown_cleared",
+    "admin_provider_pool_cost_reset",
+    "admin_provider_model_created",
+    "admin_provider_models_batch_created",
+    "admin_provider_model_updated",
+    "admin_provider_model_deleted",
+    "admin_provider_models_imported",
+    "admin_provider_global_models_assigned",
+    "admin_user_group_created",
+    "admin_user_group_updated",
+    "admin_user_group_deleted",
+    "admin_user_group_members_updated",
+    "admin_default_user_group_set",
+    "admin_user_api_key_created",
+    "admin_user_api_key_updated",
+    "admin_user_api_key_deleted",
+    "admin_user_api_key_lock_toggled",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NifflerStabilityObservationSummary {
@@ -166,15 +198,7 @@ pub(crate) async fn perform_niffler_stability_observation_once(
 
     let audit_reader_available = data.has_admin_audit_log_reader();
     let legacy_write_call_count = if audit_reader_available {
-        data.list_admin_audit_logs(&AuditLogListQuery {
-            cutoff_unix_secs: window_start_unix_secs,
-            username_pattern: None,
-            event_type: Some("niffler_legacy_write_frozen".to_string()),
-            limit: 1,
-            offset: 0,
-        })
-        .await?
-        .total
+        count_legacy_write_audit_events(data, window_start_unix_secs).await?
     } else {
         0
     };
@@ -256,6 +280,26 @@ pub(crate) async fn perform_niffler_stability_observation_once(
     .await?;
 
     Ok(Some(summary))
+}
+
+async fn count_legacy_write_audit_events(
+    data: &GatewayDataState,
+    window_start_unix_secs: u64,
+) -> Result<u64, DataLayerError> {
+    let mut total = 0u64;
+    for event_type in LEGACY_WRITE_AUDIT_EVENT_TYPES {
+        let page = data
+            .list_admin_audit_logs(&AuditLogListQuery {
+                cutoff_unix_secs: window_start_unix_secs,
+                username_pattern: None,
+                event_type: Some((*event_type).to_string()),
+                limit: 1,
+                offset: 0,
+            })
+            .await?;
+        total = total.saturating_add(page.total);
+    }
+    Ok(total)
 }
 
 fn stability_window_for_unix_secs(now_unix_secs: u64) -> (u64, u64) {
@@ -355,6 +399,24 @@ mod tests {
         let (second_start, second_end) = stability_window_for_unix_secs(86_400 + 80_000);
         assert_eq!((first_start, first_end), (86_400, 172_800));
         assert_eq!((second_start, second_end), (86_400, 172_800));
+    }
+
+    #[test]
+    fn legacy_write_audit_events_cover_frozen_and_successful_old_writes() {
+        for event_type in [
+            "niffler_legacy_write_frozen",
+            "admin_provider_updated",
+            "admin_provider_endpoint_updated",
+            "admin_provider_key_updated",
+            "admin_provider_model_updated",
+            "admin_user_group_updated",
+            "admin_user_api_key_updated",
+        ] {
+            assert!(
+                LEGACY_WRITE_AUDIT_EVENT_TYPES.contains(&event_type),
+                "missing legacy write audit event {event_type}"
+            );
+        }
     }
 
     #[test]

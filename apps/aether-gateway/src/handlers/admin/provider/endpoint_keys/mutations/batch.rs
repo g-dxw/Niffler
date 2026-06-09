@@ -1,6 +1,7 @@
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderKeyBatchDeleteRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -78,14 +79,18 @@ pub(super) async fn maybe_handle(
         }
     }
 
-    Ok(Some(
+    Ok(Some(attach_admin_audit_response(
         Json(json!({
             "success_count": success_count,
             "failed_count": failed.len(),
             "failed": failed,
         }))
         .into_response(),
-    ))
+        "admin_provider_key_batch_deleted",
+        "batch_delete_provider_keys",
+        "provider_key",
+        "batch",
+    )))
 }
 
 fn bad_request_response(detail: impl Into<String>) -> Response<Body> {

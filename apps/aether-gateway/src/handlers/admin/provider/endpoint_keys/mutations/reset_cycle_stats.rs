@@ -1,7 +1,9 @@
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
 use crate::handlers::admin::provider::shared::paths::admin_reset_cycle_stats_key_id;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
-use crate::handlers::admin::shared::provider_key_status_snapshot_payload;
+use crate::handlers::admin::shared::{
+    attach_admin_audit_response, provider_key_status_snapshot_payload,
+};
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -75,14 +77,18 @@ pub(super) async fn maybe_handle(
         return Ok(None);
     };
 
-    Ok(Some(
+    Ok(Some(attach_admin_audit_response(
         Json(json!({
             "message": "已重置周期统计",
             "reset_at": now_unix_secs,
             "windows": reset_windows,
         }))
         .into_response(),
-    ))
+        "admin_provider_key_cycle_stats_reset",
+        "reset_provider_key_cycle_stats",
+        "provider_key",
+        &key_id,
+    )))
 }
 
 fn current_unix_secs() -> u64 {

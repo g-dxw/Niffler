@@ -3,6 +3,7 @@ use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_
 use crate::handlers::admin::provider::shared::paths::admin_provider_id_for_models_list;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderModelCreateRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -96,12 +97,18 @@ pub(super) async fn maybe_handle(
                         .ok()
                         .map(|duration| duration.as_secs())
                         .unwrap_or(0);
-                    Json(build_admin_provider_model_response(
-                        &provider,
-                        &created,
-                        now_unix_secs,
-                    ))
-                    .into_response()
+                    attach_admin_audit_response(
+                        Json(build_admin_provider_model_response(
+                            &provider,
+                            &created,
+                            now_unix_secs,
+                        ))
+                        .into_response(),
+                        "admin_provider_model_created",
+                        "create_provider_model",
+                        "provider_model",
+                        &created.id,
+                    )
                 }
                 None => (
                     http::StatusCode::INTERNAL_SERVER_ERROR,

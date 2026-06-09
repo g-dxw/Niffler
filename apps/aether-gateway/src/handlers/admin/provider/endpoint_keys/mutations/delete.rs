@@ -1,6 +1,7 @@
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
 use crate::handlers::admin::provider::shared::paths::admin_update_key_id;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -46,12 +47,16 @@ pub(super) async fn maybe_handle(
         return Ok(Some(not_found_response(format!("Key {key_id} 不存在"))));
     }
 
-    Ok(Some(
+    Ok(Some(attach_admin_audit_response(
         Json(json!({
             "message": format!("Key {key_id} 已删除")
         }))
         .into_response(),
-    ))
+        "admin_provider_key_deleted",
+        "delete_provider_key",
+        "provider_key",
+        &key_id,
+    )))
 }
 
 fn not_found_response(detail: impl Into<String>) -> Response<Body> {

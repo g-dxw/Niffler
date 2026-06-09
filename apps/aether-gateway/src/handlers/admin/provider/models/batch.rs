@@ -3,6 +3,7 @@ use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_
 use crate::handlers::admin::provider::shared::paths::admin_provider_models_batch_path;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderModelCreateRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -131,7 +132,7 @@ pub(super) async fn maybe_handle(
             .ok()
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
-        return Ok(Some(
+        return Ok(Some(attach_admin_audit_response(
             Json(serde_json::Value::Array(
                 created
                     .iter()
@@ -141,7 +142,11 @@ pub(super) async fn maybe_handle(
                     .collect(),
             ))
             .into_response(),
-        ));
+            "admin_provider_models_batch_created",
+            "batch_create_provider_models",
+            "provider",
+            &provider_id,
+        )));
     }
 
     Ok(None)

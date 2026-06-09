@@ -6,6 +6,7 @@ use super::payloads::{
 use super::support::build_admin_endpoints_data_unavailable_response;
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_endpoint_write;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -161,7 +162,7 @@ pub(super) async fn maybe_handle(
     );
     let updated_api_format = normalize_endpoint_api_format(&updated.api_format);
 
-    Ok(Some(
+    Ok(Some(attach_admin_audit_response(
         Json(build_admin_provider_endpoint_response(
             &updated,
             &provider.name,
@@ -176,5 +177,9 @@ pub(super) async fn maybe_handle(
             now_unix_secs,
         ))
         .into_response(),
-    ))
+        "admin_provider_endpoint_updated",
+        "update_provider_endpoint",
+        "provider_endpoint",
+        &updated.id,
+    )))
 }

@@ -3,6 +3,7 @@ use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_
 use crate::handlers::admin::provider::shared::paths::admin_provider_model_route_parts;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderModelUpdatePatch;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -130,12 +131,18 @@ pub(super) async fn maybe_handle(
                         .ok()
                         .map(|duration| duration.as_secs())
                         .unwrap_or(0);
-                    Json(build_admin_provider_model_response(
-                        &provider,
-                        &updated,
-                        now_unix_secs,
-                    ))
-                    .into_response()
+                    attach_admin_audit_response(
+                        Json(build_admin_provider_model_response(
+                            &provider,
+                            &updated,
+                            now_unix_secs,
+                        ))
+                        .into_response(),
+                        "admin_provider_model_updated",
+                        "update_provider_model",
+                        "provider_model",
+                        &updated.id,
+                    )
                 }
                 None => (
                     http::StatusCode::NOT_FOUND,

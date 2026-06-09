@@ -2,6 +2,7 @@ use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_
 use crate::handlers::admin::provider::shared::paths::admin_provider_assign_global_models_path;
 use crate::handlers::admin::provider::shared::payloads::AdminBatchAssignGlobalModelsRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -86,7 +87,13 @@ pub(super) async fn maybe_handle(
                 ));
             }
         };
-        return Ok(Some(Json(payload).into_response()));
+        return Ok(Some(attach_admin_audit_response(
+            Json(payload).into_response(),
+            "admin_provider_global_models_assigned",
+            "assign_provider_global_models",
+            "provider",
+            &provider_id,
+        )));
     }
 
     Ok(None)

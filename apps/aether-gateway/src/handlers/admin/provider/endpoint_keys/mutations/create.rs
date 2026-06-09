@@ -3,6 +3,7 @@ use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_
 use crate::handlers::admin::provider::shared::paths::admin_provider_id_for_keys;
 use crate::handlers::admin::provider::shared::payloads::AdminProviderKeyCreateRequest;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::maintenance::ensure_provider_key_pool_scores_for_keys;
 use crate::provider_key_auth::provider_key_effective_api_formats;
 use crate::{model_fetch::perform_model_fetch_for_key, GatewayError};
@@ -130,7 +131,7 @@ pub(super) async fn maybe_handle(
     let api_formats =
         provider_key_effective_api_formats(&created, &provider.provider_type, &endpoints);
 
-    Ok(Some(
+    Ok(Some(attach_admin_audit_response(
         Json(state.build_admin_provider_key_response(
             &created,
             &provider.provider_type,
@@ -138,7 +139,11 @@ pub(super) async fn maybe_handle(
             now_unix_secs,
         ))
         .into_response(),
-    ))
+        "admin_provider_key_created",
+        "create_provider_key",
+        "provider_key",
+        &created.id,
+    )))
 }
 
 fn bad_request_response(detail: impl Into<String>) -> Response<Body> {
