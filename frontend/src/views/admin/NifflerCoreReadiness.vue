@@ -271,6 +271,34 @@
                 <span>{{ rollbackEvidenceError }}</span>
               </div>
 
+              <div
+                v-if="rollbackEvidence"
+                class="rounded-md border px-3 py-3 text-sm"
+                :class="rollbackEvidenceHintClass"
+              >
+                <div class="flex items-start gap-2">
+                  <component
+                    :is="rollbackEvidenceHintIcon"
+                    class="mt-0.5 h-4 w-4 shrink-0"
+                    :class="toneClass(rollbackEvidenceHint.tone)"
+                  />
+                  <div class="space-y-1">
+                    <p class="font-medium text-foreground">
+                      {{ rollbackEvidenceHint.title }}
+                    </p>
+                    <p class="text-muted-foreground">
+                      {{ rollbackEvidenceHint.description }}
+                    </p>
+                    <p
+                      v-if="rollbackEvidenceMissingLabels.length"
+                      class="text-xs text-muted-foreground"
+                    >
+                      缺少字段：{{ rollbackEvidenceMissingLabels.join('、') }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div class="grid gap-3 text-sm md:grid-cols-3">
                 <div>
                   <p class="text-xs text-muted-foreground">
@@ -879,6 +907,10 @@ import {
   getStabilityGateState,
   sortStabilityObservations
 } from './niffler-stability-gate'
+import {
+  getRollbackEvidenceHint,
+  getRollbackEvidenceMissingLabels
+} from './niffler-rollback-drill'
 
 const { success: showSuccess, error: showError } = useToast()
 const recentDays = ref('7')
@@ -1194,6 +1226,17 @@ const stabilityBlockerItems = computed(() => {
   }))
 })
 
+const rollbackEvidenceMissingLabels = computed(() => (
+  getRollbackEvidenceMissingLabels(rollbackEvidence.value)
+))
+
+const rollbackEvidenceHint = computed(() => (
+  getRollbackEvidenceHint(
+    rollbackEvidence.value,
+    latestStabilityObservation.value?.blocker_codes ?? []
+  )
+))
+
 const rollbackEvidenceSubmitDisabled = computed(() => {
   if (rollbackEvidenceSaving.value) return true
   const form = rollbackEvidenceForm.value
@@ -1289,6 +1332,7 @@ function rollbackDrillTone(status: string): Tone {
 function stabilityBlockerLabel(code: string): string {
   const labels: Record<string, string> = {
     rollback_drill_not_recorded: '还没有回滚演练记录',
+    rollback_drill_evidence_missing: '回滚演练证据不完整',
     rollback_drill_failed: '回滚演练失败',
     p0_incident_recorded: '记录过 P0 事故',
     p1_incident_recorded: '记录过 P1 事故',
@@ -1308,6 +1352,7 @@ function stabilityBlockerLabel(code: string): string {
 function stabilityBlockerDescription(code: string): string {
   const descriptions: Record<string, string> = {
     rollback_drill_not_recorded: '缺少可回滚镜像、近期数据库备份或演练记录的确认。',
+    rollback_drill_evidence_missing: '回滚演练状态已经记为通过，但备份引用、可回滚镜像标签或演练说明至少缺了一项。',
     rollback_drill_failed: '回滚演练失败会重置稳定期，修复演练问题后再重新观察。',
     p0_incident_recorded: '稳定窗口内出现 P0 事故，不能计入 14 天稳定期。',
     p1_incident_recorded: '稳定窗口内出现 P1 事故，不能计入 14 天稳定期。',
@@ -1375,6 +1420,22 @@ function toneClass(tone?: Tone): string {
   if (tone === 'danger') return 'text-destructive'
   return 'text-foreground'
 }
+
+const rollbackEvidenceHintIcon = computed(() => {
+  if (rollbackEvidenceHint.value.tone === 'success') return CheckCircle2
+  if (rollbackEvidenceHint.value.tone === 'danger') return AlertCircle
+  return TriangleAlert
+})
+
+const rollbackEvidenceHintClass = computed(() => {
+  if (rollbackEvidenceHint.value.tone === 'success') {
+    return 'border-primary/20 bg-primary/5'
+  }
+  if (rollbackEvidenceHint.value.tone === 'danger') {
+    return 'border-destructive/30 bg-destructive/5'
+  }
+  return 'border-warning/30 bg-warning/10'
+})
 
 const MetricCard = defineComponent({
   name: 'MetricCard',
