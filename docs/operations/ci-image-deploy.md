@@ -16,6 +16,7 @@
 - 主应用镜像构建不再跟随 `main` 推送自动执行，需要在 GitHub Actions 手动触发 `Build App Image`。
 - 当前线上只使用 Linux amd64，因此 `Build App Image` 只构建 amd64 的 `aether-gateway`。
 - `Build App Image` 只产出 `niffler-app-linux-amd64` 镜像文件，不再推送 GHCR 镜像，避免重复构建和上传。
+- `Build App Image` 使用 Node 24 运行时的官方 GitHub Actions，避免 CI 运行时升级影响生产镜像产物。
 - `deploy.sh` 不再使用 `Dockerfile.app.local`，也不再计算代码哈希。
 - `deploy.sh` 只执行镜像拉取和 `docker compose up -d --no-build`。
 - `scripts/deploy-ci-artifact.sh` 会从 CI 下载镜像文件，上传到服务器，执行 `docker load`，再重启指定服务。
@@ -72,5 +73,5 @@ GH_REPO=ryfineZ/Niffler \
 - `bash -n deploy.sh`
 - `bash -n scripts/deploy-ci-artifact.sh`
 - 不传 `--run-id`、`--commit` 和 `--allow-latest-for-local` 时，`scripts/deploy-ci-artifact.sh` 必须拒绝执行。
-- GitHub Actions 的 `Build App Image` 工作流成功。
+- GitHub Actions 的 `Build App Image` 工作流成功，且日志不再出现官方 action 运行在 Node 20 的弃用警告。
 - 服务器执行发布脚本后，`docker compose ps` 显示应用容器健康。

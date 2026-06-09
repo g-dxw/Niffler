@@ -19,6 +19,7 @@
 - 应用镜像构建只生成当前线上需要的 `linux/amd64` 版本，不再生成 `linux/arm64`。
 - Docker 镜像只构建一次 `linux/amd64` 本地镜像，并导出为 `niffler-app-linux-amd64.tar`；不再重复构建并推送 GHCR。
 - 正式 release 和 tunnel 多平台构建仍保留在标签或手动场景，不绑定日常上线。
+- GitHub Actions 中官方 JavaScript action 必须使用 Node 24 运行时版本，避免 GitHub 停止 Node 20 后影响 CI 镜像产物和发版产物。
 
 ## 影响范围
 
@@ -33,3 +34,4 @@
 - 使用 GitHub Actions 语法检查或实际触发一次手动应用镜像构建。
 - 日常 push 后确认不会自动触发应用镜像构建。
 - 手动触发 Rust CI 且开启全量选项时，确认 SQLite/MySQL 冒烟测试会运行。
+- 手动应用镜像构建日志不再出现官方 action 运行在 Node 20 的弃用警告。
