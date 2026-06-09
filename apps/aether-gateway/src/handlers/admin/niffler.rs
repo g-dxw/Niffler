@@ -3289,13 +3289,7 @@ fn usage_anomaly_diagnosis(
         || row.provider_name.trim().is_empty()
         || row.provider_id.is_none();
     if provider_unknown && is_api_key_concurrency_limited(row) {
-        return Some(UsageAnomalyDiagnosis {
-            kind: "api_key_concurrency_limited",
-            label: "平台并发拦截",
-            diagnosis: "平台在选择上游前拦截了这个请求：用户 API Key 并发数已达上限，所以没有实际 Provider 或账号。",
-            impact: "这类 unknown 不代表 Provider 丢失；请求没有进入上游，也不会消耗上游账号。",
-            recommended_action: "检查用户 Key 的并发限制，或等待该用户的并发请求结束。",
-        });
+        return None;
     }
     if provider_unknown {
         return Some(UsageAnomalyDiagnosis {
@@ -3908,6 +3902,24 @@ mod tests {
     #[test]
     fn readiness_usage_anomaly_ignores_fresh_in_progress_pending() {
         let usage = usage_audit("streaming", "pending", 1_780_000_000);
+
+        assert!(usage_anomaly_diagnosis(&usage, 1_780_000_000 + 60).is_none());
+    }
+
+    #[test]
+    fn readiness_usage_anomaly_ignores_api_key_concurrency_limit() {
+        let mut usage = usage_audit("failed", "void", 1_780_000_000);
+        usage.provider_name = "unknown".to_string();
+        usage.provider_id = None;
+        usage.provider_endpoint_id = None;
+        usage.provider_api_key_id = None;
+        usage.status_code = Some(503);
+        usage.error_message = Some("API Key 并发请求数已达上限".to_string());
+        usage.error_category = Some("server_error".to_string());
+        usage.execution_path =
+            Some(crate::constants::EXECUTION_PATH_LOCAL_API_KEY_CONCURRENCY_LIMITED.to_string());
+        usage.local_execution_runtime_miss_reason =
+            Some("api_key_concurrency_limit_reached".to_string());
 
         assert!(usage_anomaly_diagnosis(&usage, 1_780_000_000 + 60).is_none());
     }
