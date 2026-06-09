@@ -874,10 +874,13 @@ import {
   type NifflerReadinessSeverity,
   type NifflerStabilityObservation
 } from '@/api/niffler-core'
+import {
+  STABILITY_REQUIRED_PASS_DAYS,
+  getStabilityGateState,
+  sortStabilityObservations
+} from './niffler-stability-gate'
 
 const { success: showSuccess, error: showError } = useToast()
-const STABILITY_REQUIRED_PASS_DAYS = 14
-const STABILITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const recentDays = ref('7')
 const loading = ref(false)
 const legacyAuditLoading = ref(false)
@@ -1169,81 +1172,19 @@ const legacyRuntimeReadItems = computed(() => {
 
 const routeSkipSamples = computed(() => report.value?.route_skip_samples ?? [])
 
-const latestStabilityObservation = computed(() => stabilityObservations.value[0] ?? null)
+const latestStabilityObservation = computed(() => sortedStabilityObservations.value[0] ?? null)
 
 const sortedStabilityObservations = computed(() => {
-  return [...stabilityObservations.value].sort(
-    (left, right) => right.window_start_unix_ms - left.window_start_unix_ms
-  )
+  return sortStabilityObservations(stabilityObservations.value)
 })
 
-const completedStabilityObservations = computed(() =>
-  sortedStabilityObservations.value.filter((item) => isCompletedStabilityObservation(item))
-)
+const stabilityGateState = computed(() => getStabilityGateState(stabilityObservations.value))
 
-const stabilityConsecutivePassDays = computed(() => {
-  let count = 0
-  let expectedWindowStart = currentUtcDayStartUnixMs() - STABILITY_WINDOW_MS
-  for (const item of completedStabilityObservations.value) {
-    if (item.window_start_unix_ms !== expectedWindowStart) {
-      break
-    }
-    if (!isPassingStabilityObservation(item)) {
-      break
-    }
-    count += 1
-    expectedWindowStart = item.window_start_unix_ms - STABILITY_WINDOW_MS
-  }
-  return count
-})
+const stabilityConsecutivePassDays = computed(() => stabilityGateState.value.consecutivePassDays)
 
-const stabilityReadyForLegacyRemoval = computed(() =>
-  Boolean(latestStabilityObservation.value)
-    && isFreshStabilityObservation(latestStabilityObservation.value)
-    && latestStabilityObservationAllowsGate(latestStabilityObservation.value)
-    && stabilityConsecutivePassDays.value >= STABILITY_REQUIRED_PASS_DAYS
-)
+const stabilityReadyForLegacyRemoval = computed(() => stabilityGateState.value.ready)
 
-const stabilityGateDescription = computed(() => {
-  if (stabilityReadyForLegacyRemoval.value) {
-    return '第 5 批第六片可以开始'
-  }
-  return stabilityGateBlockReason.value
-})
-
-const stabilityGateBlockReason = computed(() => {
-  if (!latestStabilityObservation.value) {
-    return '还没有稳定观察记录'
-  }
-  if (latestStabilityObservation.value.window_start_unix_ms > currentUtcDayStartUnixMs()) {
-    return '观察窗口时间异常，不能开始第六片'
-  }
-  if (!isFreshStabilityObservation(latestStabilityObservation.value)) {
-    return '稳定观察任务超过 1 天没有更新，不能开始第六片'
-  }
-  if (!isCompletedStabilityObservation(latestStabilityObservation.value)
-    && !isPassingStabilityObservation(latestStabilityObservation.value)) {
-    return '当前观察窗口已经有阻断项，不能开始第六片'
-  }
-  let expectedWindowStart = currentUtcDayStartUnixMs() - STABILITY_WINDOW_MS
-  const items = completedStabilityObservations.value
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index]
-    if (item.window_start_unix_ms !== expectedWindowStart) {
-      return '最近观察窗口不连续，不能开始第六片'
-    }
-    if (!isPassingStabilityObservation(item)) {
-      return index === 0
-        ? '最新窗口未通过，不能开始第六片'
-        : '最近 14 个窗口中有未通过记录'
-    }
-    expectedWindowStart = item.window_start_unix_ms - STABILITY_WINDOW_MS
-  }
-  if (completedStabilityObservations.value.length < STABILITY_REQUIRED_PASS_DAYS) {
-    return `还缺 ${STABILITY_REQUIRED_PASS_DAYS - completedStabilityObservations.value.length} 个已结束观察窗口`
-  }
-  return '还需要连续 14 天通过'
-})
+const stabilityGateDescription = computed(() => stabilityGateState.value.description)
 
 const stabilityBlockerItems = computed(() => {
   return (latestStabilityObservation.value?.blocker_codes ?? []).map((code) => ({
@@ -1321,28 +1262,6 @@ function stabilityStatusTone(status: string): Tone {
   if (status === 'pass') return 'success'
   if (status === 'reset_required') return 'danger'
   return 'warning'
-}
-
-function isPassingStabilityObservation(item: NifflerStabilityObservation): boolean {
-  return item.status === 'pass' && item.blocker_codes.length === 0
-}
-
-function isCompletedStabilityObservation(item: NifflerStabilityObservation): boolean {
-  return item.window_end_unix_ms <= Date.now()
-}
-
-function currentUtcDayStartUnixMs(): number {
-  return Math.floor(Date.now() / STABILITY_WINDOW_MS) * STABILITY_WINDOW_MS
-}
-
-function isFreshStabilityObservation(item: NifflerStabilityObservation): boolean {
-  const currentDayStart = currentUtcDayStartUnixMs()
-  return item.window_start_unix_ms <= currentDayStart
-    && item.window_end_unix_ms >= currentDayStart
-}
-
-function latestStabilityObservationAllowsGate(item: NifflerStabilityObservation): boolean {
-  return isCompletedStabilityObservation(item) || isPassingStabilityObservation(item)
 }
 
 function rollbackDrillLabel(status: string): string {
