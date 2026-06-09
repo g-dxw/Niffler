@@ -477,6 +477,13 @@
 - 管理后台旧用户分组页面只能提供启用中的 Provider 作为可选项；停用 Provider 不再进入新保存请求。
 - 稽核看板继续只读、分页和限量；旧写入口清单改为说明已经接入冻结机制，不做无界统计。
 
+Provider Key 残留判断规则：
+
+- `api_formats`、`auth_type_by_format` 和 `allow_auth_channel_mismatch_formats` 表示账号协议和认证能力，旧运行时、账号测试、OAuth 导入和模型获取仍需要读取；readiness 不把这些字段当成 Key 自身旧限制。
+- `allowed_models`、`locked_models`、`model_include_patterns` 和 `model_exclude_patterns` 表示账号模型范围，迁移后应归入 `niffler_account_model_capabilities`，readiness 继续提示。
+- `rate_multipliers` 和 `global_priority_by_format` 表示账号成本或调度覆盖，迁移后应归入 Niffler Core 上游账号成本倍率和调度策略，readiness 继续提示。
+- readiness 只负责指出需要迁移或清理的旧范围/策略字段，不自动改写生产账号，也不删除协议和认证能力字段。
+
 第 5 批第二片验证方式：
 
 - 单元或路由测试覆盖冻结响应为 `409 Conflict`，响应体包含清楚的下一步页面提示，并带管理员审计事件。

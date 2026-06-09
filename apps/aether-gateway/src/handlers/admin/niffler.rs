@@ -2972,13 +2972,6 @@ fn collect_key_scope_residue(
     let mut residue = Vec::new();
     for key in keys {
         let mut fields = Vec::new();
-        push_json_field_if_present(&mut fields, "api_formats", &key.api_formats);
-        push_json_field_if_present(&mut fields, "auth_type_by_format", &key.auth_type_by_format);
-        push_json_field_if_present(
-            &mut fields,
-            "allow_auth_channel_mismatch_formats",
-            &key.allow_auth_channel_mismatch_formats,
-        );
         push_json_field_if_present(&mut fields, "rate_multipliers", &key.rate_multipliers);
         push_json_field_if_present(
             &mut fields,
@@ -3019,9 +3012,9 @@ fn collect_key_scope_residue(
             account_label: None,
             residue_fields: fields,
             field_labels,
-            reason: "这把上游账号仍在 Key 自身保存模型、格式或优先级限制。".to_string(),
-            impact: "新模型里这些限制应该归到账号能力或调度策略；如果继续散落在 Key 上，页面和后端调度容易不一致。".to_string(),
-            recommended_action: "迁移前确认这些限制是否还需要保留，需要保留的迁到账号能力或调度策略，不需要的清理掉。".to_string(),
+            reason: "这把上游账号仍在旧 Key 字段里保存模型范围、成本倍率或调度优先级。".to_string(),
+            impact: "新模型里这些配置应该归到账号模型能力、账号成本倍率或调度策略；如果继续散落在旧 Key 上，页面和后端调度容易不一致。".to_string(),
+            recommended_action: "迁移前确认这些配置是否还需要保留，需要保留的迁到 Niffler Core 对应配置，不需要的清理掉。".to_string(),
         });
     }
     residue.truncate(MAX_ISSUE_ITEMS);
@@ -3784,7 +3777,7 @@ fn collect_issues(
             NifflerReadinessSeverity::Warning,
             "key_scope_residue",
             "Key 仍有独立限制",
-            "部分上游账号还有模型、格式或优先级限制，需要归入新账号能力或调度策略。",
+            "部分上游账号还有模型范围、成本倍率或调度优先级，需要归入新账号能力或调度策略。",
         ));
     }
     if !group_policy_gaps.is_empty() {
@@ -3830,10 +3823,16 @@ fn issue(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use aether_data_contracts::repository::provider_catalog::{
+        StoredProviderCatalogKey, StoredProviderCatalogProvider,
+    };
     use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
+    use serde_json::json;
 
     use super::{
-        normalize_rollback_drill_evidence_request, parse_recent_days,
+        collect_key_scope_residue, normalize_rollback_drill_evidence_request, parse_recent_days,
         rollback_drill_evidence_is_complete, usage_anomaly_diagnosis,
         AdminNifflerRollbackDrillEvidenceRequest,
     };
@@ -3844,6 +3843,48 @@ mod tests {
         assert_eq!(parse_recent_days(Some("recent_days=0")), 7);
         assert_eq!(parse_recent_days(Some("recent_days=91")), 7);
         assert_eq!(parse_recent_days(None), 7);
+    }
+
+    #[test]
+    fn readiness_key_scope_residue_ignores_protocol_auth_capabilities() {
+        let provider = readiness_provider();
+        let mut key = readiness_key("key-1", &provider.id);
+        key.api_formats = Some(json!(["openai:chat"]));
+        key.auth_type_by_format = Some(json!({"openai:chat": "bearer"}));
+        key.allow_auth_channel_mismatch_formats = Some(json!(["openai:chat"]));
+        let providers = readiness_provider_map(&provider);
+
+        let residue = collect_key_scope_residue(&[key], &providers);
+
+        assert!(residue.is_empty());
+    }
+
+    #[test]
+    fn readiness_key_scope_residue_reports_model_scope_and_strategy_fields() {
+        let provider = readiness_provider();
+        let mut key = readiness_key("key-1", &provider.id);
+        key.allowed_models = Some(json!(["gpt-5"]));
+        key.locked_models = Some(json!(["gpt-5"]));
+        key.model_include_patterns = Some(json!(["gpt-*"]));
+        key.model_exclude_patterns = Some(json!(["gpt-4*"]));
+        key.rate_multipliers = Some(json!({"openai:chat": 0.8}));
+        key.global_priority_by_format = Some(json!({"openai:chat": 10}));
+        let providers = readiness_provider_map(&provider);
+
+        let residue = collect_key_scope_residue(&[key], &providers);
+
+        assert_eq!(residue.len(), 1);
+        assert_eq!(
+            residue[0].residue_fields,
+            vec![
+                "rate_multipliers",
+                "global_priority_by_format",
+                "allowed_models",
+                "locked_models",
+                "model_include_patterns",
+                "model_exclude_patterns",
+            ]
+        );
     }
 
     #[test]
@@ -4027,5 +4068,35 @@ mod tests {
             None,
         )
         .expect("usage audit should build")
+    }
+
+    fn readiness_provider() -> StoredProviderCatalogProvider {
+        StoredProviderCatalogProvider::new(
+            "provider-1".to_string(),
+            "Provider 1".to_string(),
+            None,
+            "openai".to_string(),
+        )
+        .expect("provider should be valid")
+    }
+
+    fn readiness_key(key_id: &str, provider_id: &str) -> StoredProviderCatalogKey {
+        StoredProviderCatalogKey::new(
+            key_id.to_string(),
+            provider_id.to_string(),
+            "Account 1".to_string(),
+            "bearer".to_string(),
+            None,
+            true,
+        )
+        .expect("key should be valid")
+    }
+
+    fn readiness_provider_map<'a>(
+        provider: &'a StoredProviderCatalogProvider,
+    ) -> BTreeMap<&'a str, &'a StoredProviderCatalogProvider> {
+        let mut providers = BTreeMap::new();
+        providers.insert(provider.id.as_str(), provider);
+        providers
     }
 }
