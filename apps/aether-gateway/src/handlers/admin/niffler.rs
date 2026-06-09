@@ -1613,7 +1613,11 @@ async fn build_billing_reservations_response(
         user_id: optional_query_text(request_context.query_string(), "user_id"),
         api_key_id: optional_query_text(request_context.query_string(), "api_key_id"),
         request_id: optional_query_text(request_context.query_string(), "request_id"),
+        expires_at_gte_unix_ms: None,
         expires_at_lte_unix_ms: None,
+        expires_at_lt_unix_ms: None,
+        finalized_at_gte_unix_ms: None,
+        finalized_at_lt_unix_ms: None,
         offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
         limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
     };
@@ -1691,6 +1695,8 @@ async fn build_referral_reward_ledger_response(
         inviter_user_id: optional_query_text(request_context.query_string(), "inviter_user_id"),
         invitee_user_id: optional_query_text(request_context.query_string(), "invitee_user_id"),
         order_id: optional_query_text(request_context.query_string(), "order_id"),
+        updated_at_gte_unix_ms: None,
+        updated_at_lt_unix_ms: None,
         offset: parse_usize_query(request_context.query_string(), "offset").unwrap_or(0),
         limit: parse_usize_query(request_context.query_string(), "limit").unwrap_or(50),
     };

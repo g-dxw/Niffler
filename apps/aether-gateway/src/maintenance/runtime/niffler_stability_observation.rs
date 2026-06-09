@@ -179,11 +179,18 @@ pub(crate) async fn perform_niffler_stability_observation_once(
         0
     };
 
-    let billing_reservation_exception_count =
-        count_billing_reservation_exceptions(data, now_unix_secs).await?;
+    let billing_reservation_exception_count = count_billing_reservation_exceptions(
+        data,
+        now_unix_secs,
+        window_start_unix_ms,
+        window_end_unix_ms,
+    )
+    .await?;
     let referral_exception_count = data
         .list_niffler_referral_reward_ledger(&NifflerReferralRewardLedgerListQuery {
             status: Some(NifflerReferralRewardLedgerStatus::Failed),
+            updated_at_gte_unix_ms: Some(window_start_unix_ms),
+            updated_at_lt_unix_ms: Some(window_end_unix_ms),
             offset: 0,
             limit: 1,
             ..Default::default()
@@ -310,11 +317,15 @@ fn evidence_text_present(evidence: &serde_json::Map<String, serde_json::Value>, 
 async fn count_billing_reservation_exceptions(
     data: &GatewayDataState,
     now_unix_secs: u64,
+    window_start_unix_ms: u64,
+    window_end_unix_ms: u64,
 ) -> Result<u64, DataLayerError> {
     let now_unix_ms = now_unix_secs.saturating_mul(1000);
     let manual_review = data
         .list_niffler_billing_reservations(&NifflerBillingReservationListQuery {
             status: Some(NifflerBillingReservationStatus::ManualReview),
+            finalized_at_gte_unix_ms: Some(window_start_unix_ms),
+            finalized_at_lt_unix_ms: Some(window_end_unix_ms),
             limit: 1,
             ..Default::default()
         })
@@ -323,7 +334,9 @@ async fn count_billing_reservation_exceptions(
     let expired_active = data
         .list_niffler_billing_reservations(&NifflerBillingReservationListQuery {
             status: Some(NifflerBillingReservationStatus::Active),
+            expires_at_gte_unix_ms: Some(window_start_unix_ms),
             expires_at_lte_unix_ms: Some(now_unix_ms),
+            expires_at_lt_unix_ms: Some(window_end_unix_ms),
             limit: 1,
             ..Default::default()
         })

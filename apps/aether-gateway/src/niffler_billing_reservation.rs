@@ -342,7 +342,11 @@ mod tests {
                 user_id: None,
                 api_key_id: None,
                 request_id: None,
+                expires_at_gte_unix_ms: None,
                 expires_at_lte_unix_ms: None,
+                expires_at_lt_unix_ms: None,
+                finalized_at_gte_unix_ms: None,
+                finalized_at_lt_unix_ms: None,
                 offset: 0,
                 limit: 10,
             })

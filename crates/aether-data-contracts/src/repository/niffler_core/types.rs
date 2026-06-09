@@ -1065,7 +1065,11 @@ pub struct NifflerBillingReservationListQuery {
     pub user_id: Option<String>,
     pub api_key_id: Option<String>,
     pub request_id: Option<String>,
+    pub expires_at_gte_unix_ms: Option<u64>,
     pub expires_at_lte_unix_ms: Option<u64>,
+    pub expires_at_lt_unix_ms: Option<u64>,
+    pub finalized_at_gte_unix_ms: Option<u64>,
+    pub finalized_at_lt_unix_ms: Option<u64>,
     pub offset: usize,
     pub limit: usize,
 }
@@ -1099,6 +1103,8 @@ pub struct NifflerReferralRewardLedgerListQuery {
     pub inviter_user_id: Option<String>,
     pub invitee_user_id: Option<String>,
     pub order_id: Option<String>,
+    pub updated_at_gte_unix_ms: Option<u64>,
+    pub updated_at_lt_unix_ms: Option<u64>,
     pub offset: usize,
     pub limit: usize,
 }

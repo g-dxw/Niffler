@@ -2487,10 +2487,34 @@ fn push_billing_reservation_filters(
         builder.push_bind(request_id.clone());
         has_where = true;
     }
+    if let Some(expires_at_gte_unix_ms) = query.expires_at_gte_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("expires_at_unix_ms >= ");
+        builder.push_bind(i64::try_from(expires_at_gte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
     if let Some(expires_at_lte_unix_ms) = query.expires_at_lte_unix_ms {
         builder.push(if has_where { " AND " } else { " WHERE " });
         builder.push("expires_at_unix_ms <= ");
         builder.push_bind(i64::try_from(expires_at_lte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(expires_at_lt_unix_ms) = query.expires_at_lt_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("expires_at_unix_ms < ");
+        builder.push_bind(i64::try_from(expires_at_lt_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(finalized_at_gte_unix_ms) = query.finalized_at_gte_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("finalized_at_unix_ms >= ");
+        builder.push_bind(i64::try_from(finalized_at_gte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(finalized_at_lt_unix_ms) = query.finalized_at_lt_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("finalized_at_unix_ms < ");
+        builder.push_bind(i64::try_from(finalized_at_lt_unix_ms).unwrap_or(i64::MAX));
     }
 }
 
@@ -2638,6 +2662,18 @@ fn push_referral_reward_ledger_filters(
         builder.push(if has_where { " AND " } else { " WHERE " });
         builder.push("order_id = ");
         builder.push_bind(order_id.clone());
+        has_where = true;
+    }
+    if let Some(updated_at_gte_unix_ms) = query.updated_at_gte_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("updated_at_unix_ms >= ");
+        builder.push_bind(i64::try_from(updated_at_gte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(updated_at_lt_unix_ms) = query.updated_at_lt_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("updated_at_unix_ms < ");
+        builder.push_bind(i64::try_from(updated_at_lt_unix_ms).unwrap_or(i64::MAX));
     }
 }
 

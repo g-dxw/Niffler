@@ -2524,10 +2524,34 @@ fn push_billing_reservation_filters(
         builder.push_bind(request_id.clone());
         has_where = true;
     }
+    if let Some(expires_at_gte_unix_ms) = query.expires_at_gte_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("expires_at_unix_ms >= ");
+        builder.push_bind(i64::try_from(expires_at_gte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
     if let Some(expires_at_lte_unix_ms) = query.expires_at_lte_unix_ms {
         builder.push(if has_where { " AND " } else { " WHERE " });
         builder.push("expires_at_unix_ms <= ");
         builder.push_bind(i64::try_from(expires_at_lte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(expires_at_lt_unix_ms) = query.expires_at_lt_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("expires_at_unix_ms < ");
+        builder.push_bind(i64::try_from(expires_at_lt_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(finalized_at_gte_unix_ms) = query.finalized_at_gte_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("finalized_at_unix_ms >= ");
+        builder.push_bind(i64::try_from(finalized_at_gte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(finalized_at_lt_unix_ms) = query.finalized_at_lt_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("finalized_at_unix_ms < ");
+        builder.push_bind(i64::try_from(finalized_at_lt_unix_ms).unwrap_or(i64::MAX));
     }
 }
 
@@ -2675,6 +2699,18 @@ fn push_referral_reward_ledger_filters(
         builder.push(if has_where { " AND " } else { " WHERE " });
         builder.push("order_id = ");
         builder.push_bind(order_id.clone());
+        has_where = true;
+    }
+    if let Some(updated_at_gte_unix_ms) = query.updated_at_gte_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("updated_at_unix_ms >= ");
+        builder.push_bind(i64::try_from(updated_at_gte_unix_ms).unwrap_or(i64::MAX));
+        has_where = true;
+    }
+    if let Some(updated_at_lt_unix_ms) = query.updated_at_lt_unix_ms {
+        builder.push(if has_where { " AND " } else { " WHERE " });
+        builder.push("updated_at_unix_ms < ");
+        builder.push_bind(i64::try_from(updated_at_lt_unix_ms).unwrap_or(i64::MAX));
     }
 }
 
@@ -3892,7 +3928,11 @@ VALUES (?, 'settled', 10.0, 9.5, 0.0, 0.0, 1, 1)
                 user_id: None,
                 api_key_id: None,
                 request_id: None,
+                expires_at_gte_unix_ms: None,
                 expires_at_lte_unix_ms: Some(2_500),
+                expires_at_lt_unix_ms: None,
+                finalized_at_gte_unix_ms: None,
+                finalized_at_lt_unix_ms: None,
                 offset: 0,
                 limit: 10,
             })
@@ -3952,6 +3992,136 @@ VALUES (?, 'settled', 10.0, 9.5, 0.0, 0.0, 1, 1)
         .try_get("count")
         .expect("count should decode");
         assert_eq!(expired_events, 1);
+    }
+
+    #[tokio::test]
+    async fn sqlite_billing_reservation_filters_exception_window() {
+        let repository = test_repository().await;
+        for request_id in [
+            "request-manual-old",
+            "request-manual-window",
+            "request-active-old-expired",
+            "request-active-window-expired",
+            "request-active-future",
+        ] {
+            let expires_at = match request_id {
+                "request-active-old-expired" => 1_500,
+                "request-active-window-expired" => 2_500,
+                _ => 10_000,
+            };
+            repository
+                .create_billing_reservation(reservation_record(request_id, 1.0, expires_at))
+                .await
+                .expect("reservation should create");
+        }
+        for (request_id, finalized_at) in [
+            ("request-manual-old", 1_500),
+            ("request-manual-window", 2_500),
+        ] {
+            repository
+                .finalize_billing_reservation_by_request_id(
+                    FinalizeNifflerBillingReservationRecord {
+                        request_id: request_id.to_string(),
+                        status: NifflerBillingReservationStatus::ManualReview,
+                        finalized_at_unix_ms: finalized_at,
+                        settlement_snapshot_id: None,
+                        release_reason: Some("test_manual_review".to_string()),
+                        event_id: format!("manual-review-event-{request_id}"),
+                        event_idempotency_key: format!(
+                            "manual-review-event-idempotency-{request_id}"
+                        ),
+                        actor_id: Some("test".to_string()),
+                    },
+                )
+                .await
+                .expect("manual review reservation should finalize");
+        }
+
+        let manual_review = repository
+            .list_billing_reservations(&NifflerBillingReservationListQuery {
+                status: Some(NifflerBillingReservationStatus::ManualReview),
+                finalized_at_gte_unix_ms: Some(2_000),
+                finalized_at_lt_unix_ms: Some(3_000),
+                offset: 0,
+                limit: 10,
+                ..Default::default()
+            })
+            .await
+            .expect("manual review reservations should list");
+        assert_eq!(manual_review.items.len(), 1);
+        assert_eq!(manual_review.items[0].request_id, "request-manual-window");
+
+        let expired_active = repository
+            .list_billing_reservations(&NifflerBillingReservationListQuery {
+                status: Some(NifflerBillingReservationStatus::Active),
+                expires_at_gte_unix_ms: Some(2_000),
+                expires_at_lte_unix_ms: Some(3_000),
+                expires_at_lt_unix_ms: Some(3_000),
+                offset: 0,
+                limit: 10,
+                ..Default::default()
+            })
+            .await
+            .expect("expired active reservations should list");
+        assert_eq!(expired_active.items.len(), 1);
+        assert_eq!(
+            expired_active.items[0].request_id,
+            "request-active-window-expired"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_referral_reward_ledger_filters_updated_window() {
+        let repository = test_repository().await;
+        for (id, status, failure_reason, updated_at) in [
+            (
+                "ledger-failed-old",
+                "failed",
+                Some("old failure"),
+                1_500_i64,
+            ),
+            (
+                "ledger-failed-window",
+                "failed",
+                Some("window failure"),
+                2_500_i64,
+            ),
+            ("ledger-pending-window", "pending", None, 2_500_i64),
+        ] {
+            sqlx::query(
+                r#"
+INSERT INTO niffler_referral_reward_ledger (
+  id, order_id, idempotency_key, inviter_user_id, invitee_user_id, rule_id,
+  reward_amount_usd, rule_snapshot, status, failure_reason, retry_count,
+  paid_at_unix_ms, cancelled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, 'inviter-1', 'invitee-1', NULL, 1.0, '{}', ?, ?, 0, NULL, NULL, 1000, ?)
+"#,
+            )
+            .bind(id)
+            .bind(format!("order-{id}"))
+            .bind(format!("ledger-idempotency-{id}"))
+            .bind(status)
+            .bind(failure_reason)
+            .bind(updated_at)
+            .execute(&repository.pool)
+            .await
+            .expect("referral ledger should insert");
+        }
+
+        let page = repository
+            .list_referral_reward_ledger(&NifflerReferralRewardLedgerListQuery {
+                status: Some(NifflerReferralRewardLedgerStatus::Failed),
+                updated_at_gte_unix_ms: Some(2_000),
+                updated_at_lt_unix_ms: Some(3_000),
+                offset: 0,
+                limit: 10,
+                ..Default::default()
+            })
+            .await
+            .expect("referral reward ledger should list");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].id, "ledger-failed-window");
     }
 
     #[tokio::test]
