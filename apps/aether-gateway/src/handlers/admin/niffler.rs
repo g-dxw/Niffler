@@ -2978,7 +2978,7 @@ fn collect_key_scope_residue(
             "global_priority_by_format",
             &key.global_priority_by_format,
         );
-        push_json_field_if_present(&mut fields, "allowed_models", &key.allowed_models);
+        push_key_allowed_models_field_if_present(&mut fields, key);
         push_json_field_if_present(&mut fields, "locked_models", &key.locked_models);
         push_json_field_if_present(
             &mut fields,
@@ -3012,7 +3012,7 @@ fn collect_key_scope_residue(
             account_label: None,
             residue_fields: fields,
             field_labels,
-            reason: "这把上游账号仍在旧 Key 字段里保存模型范围、成本倍率或调度优先级。".to_string(),
+            reason: "这把上游账号仍在旧 Key 字段里保存模型清单、模型范围、成本倍率或调度优先级。".to_string(),
             impact: "新模型里这些配置应该归到账号模型能力、账号成本倍率或调度策略；如果继续散落在旧 Key 上，页面和后端调度容易不一致。".to_string(),
             recommended_action: "迁移前确认这些配置是否还需要保留，需要保留的迁到 Niffler Core 对应配置，不需要的清理掉。".to_string(),
         });
@@ -3029,6 +3029,21 @@ fn push_json_field_if_present(
     if value.as_ref().is_some_and(value_has_content) {
         fields.push(field_name.to_string());
     }
+}
+
+fn push_key_allowed_models_field_if_present(
+    fields: &mut Vec<String>,
+    key: &StoredProviderCatalogKey,
+) {
+    if !key.allowed_models.as_ref().is_some_and(value_has_content) {
+        return;
+    }
+    let field_name = if key.auto_fetch_models {
+        "auto_fetched_allowed_models"
+    } else {
+        "allowed_models"
+    };
+    fields.push(field_name.to_string());
 }
 
 fn value_has_content(value: &serde_json::Value) -> bool {
@@ -3666,6 +3681,7 @@ fn residue_field_label(field: &str) -> &'static str {
         "allow_auth_channel_mismatch_formats" => "允许认证通道不一致",
         "rate_multipliers" => "成本/倍率覆盖",
         "global_priority_by_format" => "按格式优先级",
+        "auto_fetched_allowed_models" => "自动同步模型清单",
         "allowed_models" => "允许模型",
         "locked_models" => "锁定模型",
         "model_include_patterns" => "模型包含规则",
@@ -3776,8 +3792,8 @@ fn collect_issues(
         issues.push(issue(
             NifflerReadinessSeverity::Warning,
             "key_scope_residue",
-            "Key 仍有独立限制",
-            "部分上游账号还有模型范围、成本倍率或调度优先级，需要归入新账号能力或调度策略。",
+            "Key 仍有旧模型或策略字段",
+            "部分上游账号还有旧模型清单、模型范围、成本倍率或调度优先级，需要归入新账号能力或调度策略。",
         ));
     }
     if !group_policy_gaps.is_empty() {
@@ -3885,6 +3901,24 @@ mod tests {
                 "model_exclude_patterns",
             ]
         );
+    }
+
+    #[test]
+    fn readiness_key_scope_residue_labels_auto_fetched_models_as_model_catalog() {
+        let provider = readiness_provider();
+        let mut key = readiness_key("key-1", &provider.id);
+        key.auto_fetch_models = true;
+        key.allowed_models = Some(json!(["gpt-5", "claude-sonnet-4-5"]));
+        let providers = readiness_provider_map(&provider);
+
+        let residue = collect_key_scope_residue(&[key], &providers);
+
+        assert_eq!(residue.len(), 1);
+        assert_eq!(
+            residue[0].residue_fields,
+            vec!["auto_fetched_allowed_models"]
+        );
+        assert_eq!(residue[0].field_labels, vec!["自动同步模型清单"]);
     }
 
     #[test]
