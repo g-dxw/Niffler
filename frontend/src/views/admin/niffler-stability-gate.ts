@@ -1,6 +1,7 @@
 import type { NifflerStabilityObservation } from '@/api/niffler-core'
 
 export const STABILITY_REQUIRED_PASS_DAYS = 14
+export const STABILITY_OBSERVATION_FETCH_LIMIT = STABILITY_REQUIRED_PASS_DAYS + 1
 export const STABILITY_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export interface NifflerStabilityGateState {

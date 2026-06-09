@@ -109,7 +109,7 @@
                 稳定观察
               </h3>
               <Badge variant="outline">
-                最近 14 条
+                最多 15 条
               </Badge>
             </div>
             <p class="mt-1 text-sm text-muted-foreground">
@@ -206,7 +206,7 @@
             <div class="rounded-lg border border-border/60">
               <div class="border-b border-border/60 px-4 py-3">
                 <p class="font-medium">
-                  最近 14 天观察
+                  最近观察记录
                 </p>
               </div>
               <div class="divide-y divide-border/60">
@@ -903,6 +903,7 @@ import {
   type NifflerStabilityObservation
 } from '@/api/niffler-core'
 import {
+  STABILITY_OBSERVATION_FETCH_LIMIT,
   STABILITY_REQUIRED_PASS_DAYS,
   getStabilityGateState,
   sortStabilityObservations
@@ -977,7 +978,7 @@ async function loadStabilityObservations() {
   try {
     const page = await listNifflerStabilityObservations({
       offset: 0,
-      limit: STABILITY_REQUIRED_PASS_DAYS
+      limit: STABILITY_OBSERVATION_FETCH_LIMIT
     })
     stabilityObservations.value = page.items
   } catch (err) {

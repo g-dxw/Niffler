@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { NifflerStabilityObservation } from '@/api/niffler-core'
 import {
+  STABILITY_OBSERVATION_FETCH_LIMIT,
   STABILITY_REQUIRED_PASS_DAYS,
   STABILITY_WINDOW_MS,
   getStabilityGateState,
@@ -40,6 +41,10 @@ function completedPassingDays(count: number): NifflerStabilityObservation[] {
 }
 
 describe('niffler stability gate', () => {
+  it('fetches one extra observation for the current unfinished window', () => {
+    expect(STABILITY_OBSERVATION_FETCH_LIMIT).toBe(STABILITY_REQUIRED_PASS_DAYS + 1)
+  })
+
   it('requires 14 completed passing windows before allowing legacy removal', () => {
     const gate = getStabilityGateState(completedPassingDays(13), NOW)
 
@@ -65,6 +70,16 @@ describe('niffler stability gate', () => {
     expect(gate.ready).toBe(false)
     expect(gate.consecutivePassDays).toBe(14)
     expect(gate.description).toBe('当前观察窗口未通过，不能开始第六片')
+  })
+
+  it('allows 14 completed passing windows when the latest unfinished window is also passing', () => {
+    const gate = getStabilityGateState([
+      observation(0, 'pass'),
+      ...completedPassingDays(STABILITY_REQUIRED_PASS_DAYS),
+    ], NOW)
+
+    expect(gate.ready).toBe(true)
+    expect(gate.consecutivePassDays).toBe(14)
   })
 
   it('blocks when the latest observation is no longer fresh', () => {
