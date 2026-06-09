@@ -19,7 +19,7 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, serde::Deserialize)]
 struct AdminUserGroupPayload {
@@ -133,6 +133,9 @@ pub(in super::super) async fn build_admin_create_user_group_response(
         Ok(value) => value,
         Err(detail) => return Ok(bad_request_owned(detail)),
     };
+    if let Some(response) = validate_group_allowed_providers(state, &record).await? {
+        return Ok(response);
+    }
     let group = match state.create_user_group(record).await {
         Ok(Some(group)) => group,
         Ok(None) => {
@@ -175,6 +178,9 @@ pub(in super::super) async fn build_admin_update_user_group_response(
         Ok(value) => value,
         Err(detail) => return Ok(bad_request_owned(detail)),
     };
+    if let Some(response) = validate_group_allowed_providers(state, &record).await? {
+        return Ok(response);
+    }
     let group = match state.update_user_group(&group_id, record).await {
         Ok(Some(group)) => group,
         Ok(None) => return Ok(not_found("用户分组不存在")),
@@ -480,6 +486,61 @@ fn parse_group_record(
         concurrent_limit: payload.concurrent_limit,
         concurrent_limit_mode: normalize_rate_mode(&payload.concurrent_limit_mode)?,
     })
+}
+
+async fn validate_group_allowed_providers(
+    state: &AdminAppState<'_>,
+    record: &aether_data::repository::users::UpsertUserGroupRecord,
+) -> Result<Option<Response<Body>>, GatewayError> {
+    if record.allowed_providers_mode != "specific" {
+        return Ok(None);
+    }
+    let Some(provider_ids) = record
+        .allowed_providers
+        .as_ref()
+        .filter(|provider_ids| !provider_ids.is_empty())
+    else {
+        return Ok(None);
+    };
+    if !state.has_provider_catalog_data_reader() {
+        return Ok(Some(bad_request_owned(
+            "Provider 数据不可读，无法保存可用 Provider 限制".to_string(),
+        )));
+    }
+
+    let providers = state
+        .read_provider_catalog_providers_by_ids(provider_ids)
+        .await?;
+    let providers_by_id = providers
+        .into_iter()
+        .map(|provider| (provider.id.clone(), provider))
+        .collect::<BTreeMap<_, _>>();
+    let missing_provider_ids = provider_ids
+        .iter()
+        .filter(|provider_id| !providers_by_id.contains_key(*provider_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_provider_ids.is_empty() {
+        return Ok(Some(bad_request_owned(format!(
+            "可用 Provider 不存在：{}",
+            missing_provider_ids.join("、")
+        ))));
+    }
+
+    let inactive_provider_names = provider_ids
+        .iter()
+        .filter_map(|provider_id| providers_by_id.get(provider_id))
+        .filter(|provider| !provider.is_active)
+        .map(|provider| provider.name.clone())
+        .collect::<Vec<_>>();
+    if !inactive_provider_names.is_empty() {
+        return Ok(Some(bad_request_owned(format!(
+            "不能选择已停用 Provider：{}",
+            inactive_provider_names.join("、")
+        ))));
+    }
+
+    Ok(None)
 }
 
 fn parse_members_payload(

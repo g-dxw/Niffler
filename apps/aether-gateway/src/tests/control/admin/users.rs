@@ -5,6 +5,7 @@ use aether_data::repository::auth::{
     InMemoryAuthApiKeySnapshotRepository, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
 };
 use aether_data::repository::billing::InMemoryBillingReadRepository;
+use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
 use aether_data::repository::usage::InMemoryUsageReadRepository;
 use aether_data::repository::users::{
     InMemoryUserReadRepository, StoredUserAuthRecord, StoredUserExportRow, UpsertUserGroupRecord,
@@ -13,6 +14,7 @@ use aether_data::repository::users::{
 use aether_data::repository::wallet::InMemoryWalletRepository;
 use aether_data::repository::wallet::StoredWalletSnapshot;
 use aether_data_contracts::repository::billing::{BillingPlanRecord, UserPlanEntitlementRecord};
+use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogProvider;
 use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
 use axum::body::Body;
 use axum::routing::{any, delete, get, patch, post, put};
@@ -86,6 +88,22 @@ fn sample_admin_export_user_with(
         is_active,
     )
     .expect("user export row should build")
+}
+
+fn sample_provider_catalog_provider(
+    provider_id: &str,
+    provider_name: &str,
+    is_active: bool,
+) -> StoredProviderCatalogProvider {
+    let mut provider = StoredProviderCatalogProvider::new(
+        provider_id.to_string(),
+        provider_name.to_string(),
+        None,
+        "openai".to_string(),
+    )
+    .expect("provider should build");
+    provider.is_active = is_active;
+    provider
 }
 
 fn sample_admin_session(
@@ -664,6 +682,14 @@ async fn gateway_allows_default_user_group_access_policy_updates() {
         .expect("user group should create")
         .expect("user group should exist");
     let group_id = group.id.clone();
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![
+            sample_provider_catalog_provider("openai", "OpenAI", true),
+            sample_provider_catalog_provider("anthropic", "Anthropic", true),
+        ],
+        Vec::new(),
+        Vec::new(),
+    ));
 
     let (upstream_url, upstream_handle) = start_server(upstream).await;
     let gateway = build_router_with_state(
@@ -671,6 +697,7 @@ async fn gateway_allows_default_user_group_access_policy_updates() {
             .expect("gateway should build")
             .with_data_state_for_tests(
                 GatewayDataState::with_user_reader_for_tests(user_repository.clone())
+                    .with_provider_catalog_reader(provider_catalog_repository)
                     .with_system_config_values_for_tests(Vec::<(String, serde_json::Value)>::new()),
             ),
     );
@@ -738,6 +765,102 @@ async fn gateway_allows_default_user_group_access_policy_updates() {
 
     gateway_handle.abort();
     upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_rejects_user_group_writes_with_inactive_provider() {
+    let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![
+        sample_admin_user_with_role("admin-1", "admin", "admin@example.com", "admin"),
+    ]));
+    let group = user_repository
+        .create_user_group(UpsertUserGroupRecord {
+            name: "Limited".to_string(),
+            description: None,
+            visibility: "public".to_string(),
+            priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
+            allowed_providers: Some(vec!["openai".to_string()]),
+            allowed_providers_mode: "specific".to_string(),
+            allowed_api_formats: None,
+            allowed_api_formats_mode: "unrestricted".to_string(),
+            allowed_models: None,
+            allowed_models_mode: "unrestricted".to_string(),
+            rate_limit: None,
+            rate_limit_mode: "inherit".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
+        })
+        .await
+        .expect("user group should create")
+        .expect("user group should exist");
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![
+            sample_provider_catalog_provider("openai", "OpenAI", true),
+            sample_provider_catalog_provider("disabled-provider", "停用服务", false),
+        ],
+        Vec::new(),
+        Vec::new(),
+    ));
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_user_reader_for_tests(user_repository)
+                    .with_provider_catalog_reader(provider_catalog_repository),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+    let client = reqwest::Client::new();
+
+    let create_response = client
+        .post(format!("{gateway_url}/api/admin/user-groups"))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "name": "New Limited",
+            "allowed_providers": ["disabled-provider"],
+            "allowed_providers_mode": "specific",
+            "allowed_api_formats_mode": "unrestricted",
+            "allowed_models_mode": "unrestricted"
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(create_response.status(), StatusCode::BAD_REQUEST);
+    let create_payload: serde_json::Value = create_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(
+        create_payload["detail"],
+        "不能选择已停用 Provider：停用服务"
+    );
+
+    let response = client
+        .put(format!("{gateway_url}/api/admin/user-groups/{}", group.id))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "name": "Limited",
+            "allowed_providers": ["disabled-provider"],
+            "allowed_providers_mode": "specific",
+            "allowed_api_formats_mode": "unrestricted",
+            "allowed_models_mode": "unrestricted"
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["detail"], "不能选择已停用 Provider：停用服务");
+
+    gateway_handle.abort();
 }
 
 #[tokio::test]

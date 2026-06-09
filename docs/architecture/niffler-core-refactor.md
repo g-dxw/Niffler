@@ -468,6 +468,13 @@
 - 已绑定新产品策略的用户 Key，旧页面提交 `group_id` 时返回 `409 Conflict`，提示到 Niffler core 用户 Key 产品策略绑定页面修改；只改 Key 名称、限速、并发和功能开关仍允许。
 - 系统导入、后台 OAuth 刷新、配额同步、自动探测和固定 Provider 模板维护本片不冻结；这些路径在第三片运行时读源切换前仍承担维护和回滚职责，必须等新读源接管后再改为只读投影或新表写入。
 - 冻结响应必须通过 `attach_admin_audit_response` 写审计，事件名为 `niffler_legacy_write_frozen`，动作名为 `freeze_legacy_write`。
+
+旧用户分组 Provider 写入收敛规则：
+
+- 历史用户分组中已经保存的停用 Provider 不由本片自动删除；这些引用继续只读展示，并由 readiness 报告提示管理员清理。
+- 新建或更新旧用户分组时，如果 `allowed_providers_mode` 为 `specific`，提交的 `allowed_providers` 必须全部能在 Provider catalog 中找到，且 Provider 必须处于启用状态。
+- Provider catalog 读源不可用时，旧用户分组不能保存指定 Provider 限制，接口必须返回明确错误，避免在无法校验供给侧状态时写入新的错误配置。
+- 管理后台旧用户分组页面只能提供启用中的 Provider 作为可选项；停用 Provider 不再进入新保存请求。
 - 稽核看板继续只读、分页和限量；旧写入口清单改为说明已经接入冻结机制，不做无界统计。
 
 第 5 批第二片验证方式：

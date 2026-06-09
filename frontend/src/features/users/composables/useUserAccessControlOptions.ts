@@ -11,10 +11,12 @@ export function useUserAccessControlOptions() {
   const apiFormats = ref<Array<{ value: string; label: string }>>([])
 
   const providerOptions = computed(() =>
-    providers.value.map((provider) => ({
-      value: provider.id,
-      label: provider.name,
-    })),
+    providers.value
+      .filter((provider) => provider.is_active)
+      .map((provider) => ({
+        value: provider.id,
+        label: provider.name,
+      })),
   )
   const apiFormatOptions = computed(() =>
     apiFormats.value.map((format) => ({
