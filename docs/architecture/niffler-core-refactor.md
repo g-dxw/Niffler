@@ -486,6 +486,11 @@ Provider Key 残留判断规则：
 - `rate_multipliers` 和 `global_priority_by_format` 表示账号成本或调度覆盖，迁移后应归入 Niffler Core 上游账号成本倍率和调度策略，readiness 继续提示。
 - readiness 只负责指出需要迁移或清理的旧范围/策略字段，不自动改写生产账号，也不删除协议和认证能力字段。
 
+用户分组模型范围缺口判断规则：
+
+- 旧用户分组的 `allowed_models_mode` 不是 `specific` 时，readiness 应标记为“模型范围未收敛”，不能简单写成“允许全部模型”。实际可用范围仍可能受可用 Provider、端点和账号能力限制；迁移前要确认的是产品策略是否需要明确可售模型列表。
+- 旧用户分组的 `allowed_models_mode = specific` 但 `allowed_models` 为空时，readiness 应标记为“指定模型为空”，提示补齐可售模型或停用该分组后再迁移。
+
 第 5 批第二片验证方式：
 
 - 单元或路由测试覆盖冻结响应为 `409 Conflict`，响应体包含清楚的下一步页面提示，并带管理员审计事件。

@@ -3102,11 +3102,11 @@ fn collect_group_policy_gaps(user_groups: &[StoredUserGroup]) -> Vec<NifflerGrou
                 product_plan_id: group.id.clone(),
                 product_plan_name: group.name.clone(),
                 gap_kind: "unrestricted_models".to_string(),
-                gap_label: "允许全部模型".to_string(),
-                message: "这个用户分组当前允许全部模型；迁移为产品策略前需要确认是否继续开放全部模型。"
+                gap_label: "模型范围未收敛".to_string(),
+                message: "这个用户分组当前没有明确的可售模型列表；实际可用范围仍可能受 Provider、端点和账号能力限制，迁移为产品策略前需要确认是否要继续不限制模型。"
                     .to_string(),
-                impact: "如果直接迁移，会变成一个可售模型范围很大的产品策略，用户可能看到不该开放的模型。".to_string(),
-                recommended_action: "确认这个分组是否真的要开放全部模型；如果不是，先收敛为明确的可售模型列表。".to_string(),
+                impact: "如果直接迁移，新产品策略的模型范围会不够明确，管理员难以判断用户到底应该看到哪些模型。".to_string(),
+                recommended_action: "确认这个分组是否要继续不限制模型；如果不是，先收敛为明确的可售模型列表。".to_string(),
             });
             if gaps.len() >= MAX_ISSUE_ITEMS {
                 break;
@@ -3836,7 +3836,7 @@ fn collect_issues(
             NifflerReadinessSeverity::Warning,
             "group_policy_gaps",
             "分组策略需要确认",
-            "部分用户分组存在全部模型开放或指定模型列表为空，迁移为产品策略前需要确认。",
+            "部分用户分组没有明确的可售模型列表，或指定模型列表为空，迁移为产品策略前需要确认。",
         ));
     }
     if !price_gaps.is_empty() {
@@ -3912,6 +3912,7 @@ fn issue(
 mod tests {
     use std::collections::BTreeMap;
 
+    use aether_data::repository::users::StoredUserGroup;
     use aether_data_contracts::repository::provider_catalog::{
         StoredProviderCatalogKey, StoredProviderCatalogProvider,
     };
@@ -3919,8 +3920,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        collect_key_scope_residue, key_scope_residue_detail_text, key_scope_residue_issue_text,
-        normalize_rollback_drill_evidence_request, parse_recent_days,
+        collect_group_policy_gaps, collect_key_scope_residue, key_scope_residue_detail_text,
+        key_scope_residue_issue_text, normalize_rollback_drill_evidence_request, parse_recent_days,
         rollback_drill_evidence_is_complete, usage_anomaly_diagnosis,
         AdminNifflerRollbackDrillEvidenceRequest,
     };
@@ -4059,6 +4060,31 @@ mod tests {
         assert_eq!(title, "上游账号仍有旧模型或策略字段");
         assert!(message.contains("自动同步模型清单"));
         assert!(message.contains("手工模型范围"));
+    }
+
+    #[test]
+    fn readiness_group_policy_gap_names_unrestricted_model_scope() {
+        let group = readiness_user_group("group-1", "legacy group", "unrestricted", None);
+
+        let gaps = collect_group_policy_gaps(&[group]);
+
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].gap_kind, "unrestricted_models");
+        assert_eq!(gaps[0].gap_label, "模型范围未收敛");
+        assert!(gaps[0].message.contains("没有明确的可售模型列表"));
+        assert!(gaps[0].message.contains("Provider"));
+        assert!(!gaps[0].message.contains("允许全部模型"));
+    }
+
+    #[test]
+    fn readiness_group_policy_gap_reports_empty_specific_models() {
+        let group = readiness_user_group("group-1", "legacy group", "specific", Some(json!([])));
+
+        let gaps = collect_group_policy_gaps(&[group]);
+
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].gap_kind, "empty_specific_models");
+        assert_eq!(gaps[0].gap_label, "指定模型为空");
     }
 
     #[test]
@@ -4264,6 +4290,37 @@ mod tests {
             true,
         )
         .expect("key should be valid")
+    }
+
+    fn readiness_user_group(
+        id: &str,
+        name: &str,
+        allowed_models_mode: &str,
+        allowed_models: Option<serde_json::Value>,
+    ) -> StoredUserGroup {
+        StoredUserGroup::new(
+            id.to_string(),
+            name.to_string(),
+            name.to_ascii_lowercase(),
+            None,
+            0,
+            "internal".to_string(),
+            Some(json!(["provider-1"])),
+            "specific".to_string(),
+            Some(json!(["openai:chat"])),
+            "specific".to_string(),
+            allowed_models,
+            allowed_models_mode.to_string(),
+            None,
+            "inherit".to_string(),
+            None,
+            "inherit".to_string(),
+            1.0,
+            None,
+            None,
+            None,
+        )
+        .expect("user group should be valid")
     }
 
     fn readiness_provider_map<'a>(
