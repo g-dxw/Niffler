@@ -107,6 +107,7 @@ pub(super) async fn run_niffler_stability_observation_once(
         worker = "niffler_stability_observation",
         status = %summary.status,
         blockers = summary.blocker_codes.len(),
+        blocker_codes = %summary.blocker_codes.join(","),
         consistency_checked_count = summary.consistency_checked_count,
         consistency_issue_count = summary.consistency_issue_count,
         unknown_upstream_count = summary.unknown_upstream_count,
