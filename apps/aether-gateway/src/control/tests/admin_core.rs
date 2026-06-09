@@ -805,6 +805,10 @@ fn admin_niffler_core_write_routes_buffer_request_body() {
             http::Method::POST,
             "/api/admin/niffler-core/error-return-settings",
         ),
+        (
+            http::Method::PUT,
+            "/api/admin/niffler-core/rollback-drill-evidence",
+        ),
     ];
 
     for (method, path) in routes {

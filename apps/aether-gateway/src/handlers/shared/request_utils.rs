@@ -329,7 +329,7 @@ pub(crate) fn admin_proxy_local_requires_buffered_body(
                 | (
                     Some("niffler_core_manage"),
                     http::Method::PUT,
-                    Some("update_upstream_service_capabilities"),
+                    Some("update_upstream_service_capabilities" | "rollback_drill_evidence"),
                 )
                 | (
                     Some("payments_manage"),
