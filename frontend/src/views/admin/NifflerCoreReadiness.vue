@@ -1043,7 +1043,7 @@ const keyResidueItems = computed(() => {
     title: item.display_name || item.account_label || item.key_name || item.key_id,
     description: joinParts([
       item.provider_name ? `Provider：${item.provider_name}` : '',
-      `限制：${(item.field_labels?.length ? item.field_labels : item.residue_fields).join('、')}`,
+      `配置项：${(item.field_labels?.length ? item.field_labels : item.residue_fields).join('、')}`,
       item.reason,
       `影响：${item.impact}`,
       `建议：${item.recommended_action}`
@@ -1126,7 +1126,7 @@ const legacyProviderKeyRestrictionItems = computed(() => {
     title: item.display_name || item.account_label || item.key_name || item.key_id,
     description: joinParts([
       item.provider_name ? `Provider：${item.provider_name}` : '',
-      `字段：${(item.field_labels.length ? item.field_labels : item.residue_fields).join('、')}`,
+      `配置项：${(item.field_labels.length ? item.field_labels : item.residue_fields).join('、')}`,
       item.reason,
       `影响：${item.impact}`,
       `建议：${item.recommended_action}`

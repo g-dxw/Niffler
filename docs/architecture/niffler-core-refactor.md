@@ -552,6 +552,7 @@ Provider Key 残留判断规则：
 - 快照必须记录一致性看板问题数量、实际请求到上游但服务或账号仍无法确定的数量、旧写入口真实调用数量、异常预占数量、异常返利流水数量、回滚演练状态和阻断原因。
 - 异常预占和异常返利流水必须按当前 UTC 自然日窗口统计，不能按全量历史统计。人工处理预占按进入 `manual_review` 的 `finalized_at_unix_ms` 计入窗口；超时仍未释放的 `active` 预占按 `expires_at_unix_ms` 计入窗口；返利失败按失败状态写入时的 `updated_at_unix_ms` 计入窗口。
 - `unknown_upstream_count` 只统计 `request_candidates` 中已经开始尝试上游调用的记录，并且服务 ID 或账号 ID 为空、`unknown`、`unknow` 或 `pending`。平台内失败，例如用户 Key 并发上限、产品策略拒绝、没有可用上游账号，不能计入该指标。
+- readiness 的 Key 残留项必须区分“手工限制”和“自动同步模型清单”。`auto_fetch_models = true` 时保存在旧 Key 上的 `allowed_models` 只能标记为“自动同步模型清单”，不能在页面上显示成“允许模型”或“限制”，避免管理员误判为手工白名单。
 - 稳定观察状态只允许三类：`pass` 表示本窗口没有阻断项；`reset_required` 表示本窗口出现会让 T0 清零的阻断项；`pending` 表示数据不足或回滚演练状态未记录，不能计入稳定天数。
 - 如果同一个窗口同时有 `reset_required` 类阻断和 `pending` 类阻断，状态按 `reset_required` 保存，`blocker_codes` 同时保留两类原因，避免管理员只看到一部分阻断项。
 - 旧写入口真实调用先读取管理员审计日志里的冻结事件和旧写入口事件；如果某环境没有审计仓储，快照必须写明 `legacy_write_audit_unavailable`，状态为 `pending`，不能假装通过。

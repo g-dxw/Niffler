@@ -3789,11 +3789,12 @@ fn collect_issues(
         ));
     }
     if !key_scope_residue.is_empty() {
+        let (title, message) = key_scope_residue_issue_text(key_scope_residue);
         issues.push(issue(
             NifflerReadinessSeverity::Warning,
             "key_scope_residue",
-            "Key 仍有旧模型或策略字段",
-            "部分上游账号还有旧模型清单、模型范围、成本倍率或调度优先级，需要归入新账号能力或调度策略。",
+            title,
+            message,
         ));
     }
     if !group_policy_gaps.is_empty() {
@@ -3823,6 +3824,42 @@ fn collect_issues(
     issues
 }
 
+fn key_scope_residue_issue_text(
+    key_scope_residue: &[NifflerKeyScopeResidue],
+) -> (&'static str, &'static str) {
+    let mut has_auto_fetched_model_catalog = false;
+    let mut has_manual_scope_or_strategy = false;
+
+    for item in key_scope_residue {
+        for field in &item.residue_fields {
+            if field == "auto_fetched_allowed_models" {
+                has_auto_fetched_model_catalog = true;
+            } else {
+                has_manual_scope_or_strategy = true;
+            }
+        }
+    }
+
+    if has_auto_fetched_model_catalog && !has_manual_scope_or_strategy {
+        return (
+            "上游账号自动同步模型清单待迁移",
+            "部分上游账号的自动同步模型清单仍保存在旧账号字段里，需要归入 Niffler Core 的账号模型能力。",
+        );
+    }
+
+    if has_auto_fetched_model_catalog {
+        return (
+            "上游账号仍有旧模型或策略字段",
+            "部分上游账号还有自动同步模型清单、手工模型范围、成本倍率或调度优先级，需要归入新账号能力或调度策略。",
+        );
+    }
+
+    (
+        "上游账号仍有旧模型或策略字段",
+        "部分上游账号还有旧模型清单、模型范围、成本倍率或调度优先级，需要归入新账号能力或调度策略。",
+    )
+}
+
 fn issue(
     severity: NifflerReadinessSeverity,
     code: &str,
@@ -3848,7 +3885,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        collect_key_scope_residue, normalize_rollback_drill_evidence_request, parse_recent_days,
+        collect_key_scope_residue, key_scope_residue_issue_text,
+        normalize_rollback_drill_evidence_request, parse_recent_days,
         rollback_drill_evidence_is_complete, usage_anomaly_diagnosis,
         AdminNifflerRollbackDrillEvidenceRequest,
     };
@@ -3919,6 +3957,40 @@ mod tests {
             vec!["auto_fetched_allowed_models"]
         );
         assert_eq!(residue[0].field_labels, vec!["自动同步模型清单"]);
+    }
+
+    #[test]
+    fn readiness_key_scope_residue_issue_names_auto_fetched_models() {
+        let provider = readiness_provider();
+        let mut key = readiness_key("key-1", &provider.id);
+        key.auto_fetch_models = true;
+        key.allowed_models = Some(json!(["gpt-5"]));
+        let providers = readiness_provider_map(&provider);
+        let residue = collect_key_scope_residue(&[key], &providers);
+
+        let (title, message) = key_scope_residue_issue_text(&residue);
+
+        assert_eq!(title, "上游账号自动同步模型清单待迁移");
+        assert!(message.contains("自动同步模型清单"));
+        assert!(!message.contains("手工模型范围"));
+    }
+
+    #[test]
+    fn readiness_key_scope_residue_issue_keeps_mixed_scope_wording() {
+        let provider = readiness_provider();
+        let mut auto_key = readiness_key("key-1", &provider.id);
+        auto_key.auto_fetch_models = true;
+        auto_key.allowed_models = Some(json!(["gpt-5"]));
+        let mut manual_key = readiness_key("key-2", &provider.id);
+        manual_key.allowed_models = Some(json!(["claude-sonnet-4-5"]));
+        let providers = readiness_provider_map(&provider);
+        let residue = collect_key_scope_residue(&[auto_key, manual_key], &providers);
+
+        let (title, message) = key_scope_residue_issue_text(&residue);
+
+        assert_eq!(title, "上游账号仍有旧模型或策略字段");
+        assert!(message.contains("自动同步模型清单"));
+        assert!(message.contains("手工模型范围"));
     }
 
     #[test]
