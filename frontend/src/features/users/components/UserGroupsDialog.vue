@@ -472,6 +472,7 @@ import { useUsersStore } from '@/stores/users'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { parseApiError } from '@/utils/errorParser'
+import { isApiError } from '@/types/api-error'
 import { parseNumberInput } from '@/utils/form'
 import { cn } from '@/lib/utils'
 import { useUserAccessControlOptions } from '@/features/users/composables/useUserAccessControlOptions'
@@ -491,11 +492,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   changed: []
+  inspectApiKeyGroup: [groupId: string]
 }>()
 
 const usersStore = useUsersStore()
 const { success, error, warning } = useToast()
-const { confirmDanger, confirmInfo } = useConfirm()
+const { confirm, confirmDanger, confirmInfo } = useConfirm()
 const {
   providers,
   globalModels,
@@ -560,6 +562,20 @@ interface ProviderModelMultiplierSource {
   id: string
   name: string
   modelIds: string[]
+}
+
+interface UserGroupApiKeyConflictItem {
+  id?: string
+  name?: string | null
+  user_id?: string
+  username?: string
+  email?: string | null
+}
+
+interface UserGroupApiKeyConflictPayload {
+  detail?: string
+  api_key_count?: number
+  api_keys?: UserGroupApiKeyConflictItem[]
 }
 
 const globalModelById = computed(() => {
@@ -930,6 +946,49 @@ async function saveGroup(): Promise<void> {
   }
 }
 
+function readUserGroupApiKeyConflictPayload(err: unknown): UserGroupApiKeyConflictPayload | null {
+  if (!isApiError(err) || err.response?.status !== 409) return null
+  const data = err.response.data as UserGroupApiKeyConflictPayload | undefined
+  if (!data || typeof data !== 'object') return null
+  const count = Number(data.api_key_count ?? 0)
+  if (!Number.isFinite(count) || count <= 0) return null
+  return data
+}
+
+function formatConflictApiKeyExamples(items: UserGroupApiKeyConflictItem[] | undefined): string {
+  const examples = (items ?? [])
+    .slice(0, 5)
+    .map((item) => {
+      const keyName = String(item.name || item.id || '未命名 API Key').trim()
+      const userName = String(item.username || item.user_id || '未知用户').trim()
+      const email = String(item.email || '').trim()
+      return email && email !== userName ? `${keyName}（${userName} / ${email}）` : `${keyName}（${userName}）`
+    })
+    .filter(Boolean)
+  return examples.length ? examples.join('、') : ''
+}
+
+async function showUserGroupApiKeyConflict(
+  group: UserGroup,
+  payload: UserGroupApiKeyConflictPayload,
+): Promise<void> {
+  const count = Number(payload.api_key_count ?? 0)
+  const examples = formatConflictApiKeyExamples(payload.api_keys)
+  const message = examples
+    ? `这个分组还有 ${count} 把 API Key 正在使用，不能删除。当前占用：${examples}。`
+    : `这个分组还有 ${count} 把 API Key 正在使用，不能删除。`
+  const inspect = await confirm({
+    title: '分组正在被 API Key 使用',
+    message,
+    confirmText: '查看绑定 Key',
+    cancelText: '知道了',
+    variant: 'warning',
+  })
+  if (inspect) {
+    emit('inspectApiKeyGroup', group.id)
+  }
+}
+
 async function deleteSelectedGroup(): Promise<void> {
   if (!selectedGroup.value) return
   const group = selectedGroup.value
@@ -950,6 +1009,11 @@ async function deleteSelectedGroup(): Promise<void> {
     editingGroupId.value = null
     await loadDialogData()
   } catch (err) {
+    const conflict = readUserGroupApiKeyConflictPayload(err)
+    if (conflict) {
+      await showUserGroupApiKeyConflict(group, conflict)
+      return
+    }
     error(parseApiError(err, '删除用户分组失败'))
   } finally {
     saving.value = false

@@ -466,7 +466,7 @@
             <Checkbox
               :checked="isCurrentPageFullySelected"
               :indeterminate="isCurrentPagePartiallySelected"
-              :disabled="keysLoading || deletingSelectedKeys || allFilteredPoolKeysSelected"
+              :disabled="keysLoading || poolSelectionActionBusy || allFilteredPoolKeysSelected"
               data-testid="pool-select-current-page"
               @update:checked="toggleSelectCurrentPageKeys"
             />
@@ -478,7 +478,7 @@
               variant="outline"
               size="sm"
               class="h-7 px-2 text-xs"
-              :disabled="keyPage.total === 0 || deletingSelectedKeys"
+              :disabled="keyPage.total === 0 || poolSelectionActionBusy"
               data-testid="pool-select-filtered-results"
               @click="selectAllFilteredPoolKeys"
             >
@@ -488,16 +488,36 @@
               variant="ghost"
               size="sm"
               class="h-7 px-2 text-xs"
-              :disabled="selectedPoolKeyCount === 0 || deletingSelectedKeys"
+              :disabled="selectedPoolKeyCount === 0 || poolSelectionActionBusy"
               @click="clearPoolKeySelection"
             >
               清空选择
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              class="h-7 px-2.5 text-xs"
+              :disabled="selectedPoolKeyCount === 0 || poolSelectionActionBusy"
+              data-testid="pool-bulk-enable-selected"
+              @click="enableSelectedPoolKeys"
+            >
+              {{ updatingSelectedKeyStatus === 'enable' ? '启用中...' : `启用已选 ${selectedPoolKeyCount}` }}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 px-2.5 text-xs"
+              :disabled="selectedPoolKeyCount === 0 || poolSelectionActionBusy"
+              data-testid="pool-bulk-disable-selected"
+              @click="disableSelectedPoolKeys"
+            >
+              {{ updatingSelectedKeyStatus === 'disable' ? '停用中...' : `停用已选 ${selectedPoolKeyCount}` }}
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               class="h-7 px-2.5 text-xs"
-              :disabled="selectedPoolKeyCount === 0 || deletingSelectedKeys"
+              :disabled="selectedPoolKeyCount === 0 || poolSelectionActionBusy"
               data-testid="pool-bulk-delete-selected"
               @click="deleteSelectedPoolKeys"
             >
@@ -521,7 +541,7 @@
                   <Checkbox
                     :checked="isCurrentPageFullySelected"
                     :indeterminate="isCurrentPagePartiallySelected"
-                    :disabled="keyPage.keys.length === 0 || keysLoading || deletingSelectedKeys || allFilteredPoolKeysSelected"
+                    :disabled="keyPage.keys.length === 0 || keysLoading || poolSelectionActionBusy || allFilteredPoolKeysSelected"
                     title="勾选或取消当前页所有账号"
                     @update:checked="toggleSelectCurrentPageKeys"
                   />
@@ -663,7 +683,7 @@
                 <TableCell class="px-3 py-3 text-center align-middle">
                   <Checkbox
                     :checked="isPoolKeySelected(key.key_id)"
-                    :disabled="deletingSelectedKeys || allFilteredPoolKeysSelected"
+                    :disabled="poolSelectionActionBusy || allFilteredPoolKeysSelected"
                     :data-testid="`pool-key-select-${key.key_id}`"
                     :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
                     @update:checked="(checked: boolean) => togglePoolKeySelection(key.key_id, checked)"
@@ -1106,7 +1126,7 @@
               <div class="flex items-start gap-2.5">
                 <Checkbox
                   :checked="isPoolKeySelected(key.key_id)"
-                  :disabled="deletingSelectedKeys || allFilteredPoolKeysSelected"
+                  :disabled="poolSelectionActionBusy || allFilteredPoolKeysSelected"
                   :data-testid="`pool-key-select-mobile-${key.key_id}`"
                   :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
                   class="mt-0.5 shrink-0"
@@ -2439,6 +2459,7 @@ const scoreDesktopPopoverOpenKeyId = ref<string | null>(null)
 const scoreMobilePopoverOpenKeyId = ref<string | null>(null)
 const deletingKeyId = ref<string | null>(null)
 const deletingSelectedKeys = ref(false)
+const updatingSelectedKeyStatus = ref<'enable' | 'disable' | null>(null)
 const selectedPoolKeyIds = ref<string[]>([])
 const allFilteredPoolKeysSelected = ref(false)
 const togglingKeyId = ref<string | null>(null)
@@ -3060,6 +3081,7 @@ const editingKey = computed<EndpointAPIKey | null>(() => {
 })
 
 const selectedPoolKeyIdSet = computed(() => new Set(selectedPoolKeyIds.value))
+const poolSelectionActionBusy = computed(() => deletingSelectedKeys.value || updatingSelectedKeyStatus.value !== null)
 const selectedPoolKeyCount = computed(() => allFilteredPoolKeysSelected.value ? keyPage.value.total : selectedPoolKeyIds.value.length)
 const currentPagePoolKeyIds = computed(() => keyPage.value.keys.map(key => key.key_id).filter(Boolean))
 const selectedCurrentPagePoolKeyCount = computed(() => {
@@ -3361,10 +3383,70 @@ async function pollPoolBatchDeleteTask(
   return { status: 'failed', deleted: 0 }
 }
 
+async function resolveSelectedPoolKeyIdsForBatch(providerId: string): Promise<string[]> {
+  if (allFilteredPoolKeysSelected.value) {
+    const resolved = await resolvePoolKeySelection(providerId, buildPoolSelectionFilters())
+    return Array.isArray(resolved.items)
+      ? resolved.items.map(item => item.key_id).filter(Boolean)
+      : []
+  }
+  return [...selectedPoolKeyIds.value]
+}
+
+async function updateSelectedPoolKeyActiveStatus(action: 'enable' | 'disable'): Promise<void> {
+  const providerId = selectedProviderId.value
+  const selectedCount = selectedPoolKeyCount.value
+  if (!providerId || selectedCount === 0 || poolSelectionActionBusy.value) return
+
+  const enable = action === 'enable'
+  const confirmed = await confirm({
+    title: enable ? '启用已选账号' : '停用已选账号',
+    message: enable
+      ? `确定要启用已选 ${selectedCount} 个账号吗？启用后这些账号可以重新参与调度。`
+      : `确定要停用已选 ${selectedCount} 个账号吗？停用后这些账号不会参与调度。`,
+    confirmText: enable ? '确认启用' : '确认停用',
+    variant: enable ? 'question' : 'warning',
+  })
+  if (!confirmed) return
+
+  updatingSelectedKeyStatus.value = action
+  try {
+    const keyIds = await resolveSelectedPoolKeyIdsForBatch(providerId)
+    if (keyIds.length === 0) {
+      showWarning('没有找到可操作的账号，请刷新后重试')
+      return
+    }
+    const result = await batchActionPoolKeys(providerId, {
+      key_ids: keyIds,
+      action,
+    })
+    const affected = Number(result.affected ?? 0)
+    if (selectedProviderId.value !== providerId) return
+    clearPoolKeySelection()
+    await loadKeys()
+    refreshOverviewInBackground()
+    success(affected > 0
+      ? `${enable ? '已启用' : '已停用'} ${affected} 个账号`
+      : '没有账号被更新')
+  } catch (err) {
+    showError(parseApiError(err, enable ? '批量启用账号失败' : '批量停用账号失败'))
+  } finally {
+    updatingSelectedKeyStatus.value = null
+  }
+}
+
+async function enableSelectedPoolKeys(): Promise<void> {
+  await updateSelectedPoolKeyActiveStatus('enable')
+}
+
+async function disableSelectedPoolKeys(): Promise<void> {
+  await updateSelectedPoolKeyActiveStatus('disable')
+}
+
 async function deleteSelectedPoolKeys(): Promise<void> {
   const providerId = selectedProviderId.value
   const selectedCount = selectedPoolKeyCount.value
-  if (!providerId || selectedCount === 0 || deletingSelectedKeys.value) return
+  if (!providerId || selectedCount === 0 || poolSelectionActionBusy.value) return
 
   const confirmed = await confirm({
     title: '删除已选账号',
@@ -3376,13 +3458,7 @@ async function deleteSelectedPoolKeys(): Promise<void> {
 
   deletingSelectedKeys.value = true
   try {
-    let keyIds = [...selectedPoolKeyIds.value]
-    if (allFilteredPoolKeysSelected.value) {
-      const resolved = await resolvePoolKeySelection(providerId, buildPoolSelectionFilters())
-      keyIds = Array.isArray(resolved.items)
-        ? resolved.items.map(item => item.key_id).filter(Boolean)
-        : []
-    }
+    const keyIds = await resolveSelectedPoolKeyIdsForBatch(providerId)
     if (keyIds.length === 0) {
       showWarning('没有找到可删除的账号，请刷新后重试')
       return
@@ -3912,6 +3988,10 @@ function getSchedulingBadgeVariant(key: PoolKeyDetail): PoolStatusVariant {
 }
 
 function getSchedulingTitle(key: PoolKeyDetail): string {
+  if (!key.is_active || getSchedulingState(key) === 'disabled') {
+    return '已禁用：不会参与调度。这个状态来自手动停用、批量停用或导入时标记为 disabled；当前系统没有历史审计字段，无法从账号数据反推出具体操作者。'
+  }
+
   const accountAlertTitle = getAccountAlertTitle(key)
   if (accountAlertTitle) return accountAlertTitle
 

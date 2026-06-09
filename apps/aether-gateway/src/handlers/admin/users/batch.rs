@@ -24,6 +24,8 @@ struct AdminUserSelectionFilters {
     is_active: Option<bool>,
     #[serde(default)]
     group_id: Option<String>,
+    #[serde(default)]
+    api_key_group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -55,6 +57,7 @@ struct NormalizedAdminUserSelectionFilters {
     role: Option<String>,
     is_active: Option<bool>,
     group_id: Option<String>,
+    api_key_group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -406,6 +409,7 @@ async fn resolve_admin_user_selection(
                 || filters.role.is_some()
                 || filters.is_active.is_some()
                 || filters.group_id.is_some()
+                || filters.api_key_group_id.is_some()
         }) {
             state
                 .list_export_users_page(&aether_data::repository::users::UserExportListQuery {
@@ -417,6 +421,9 @@ async fn resolve_admin_user_selection(
                     group_id: filters
                         .as_ref()
                         .and_then(|filters| filters.group_id.clone()),
+                    api_key_group_id: filters
+                        .as_ref()
+                        .and_then(|filters| filters.api_key_group_id.clone()),
                 })
                 .await
                 .map_err(|_| "用户数据不可用".to_string())?
@@ -514,6 +521,10 @@ fn normalize_selection_filters(
         is_active: filters.is_active,
         group_id: filters
             .group_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        api_key_group_id: filters
+            .api_key_group_id
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
     }))

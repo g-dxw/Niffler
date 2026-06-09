@@ -2687,6 +2687,7 @@ mod tests {
                 is_active: Some(true),
                 search: None,
                 group_id: None,
+                api_key_group_id: None,
             })
             .await
             .expect("paged export should succeed");

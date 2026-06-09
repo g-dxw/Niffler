@@ -33,6 +33,8 @@ export const useUsersStore = defineStore('users', () => {
     role?: 'admin' | 'user'
     is_active?: boolean
     group_id?: string
+    api_key_group_id?: string
+    limit?: number
   } = {}) {
     loading.value = true
     error.value = null

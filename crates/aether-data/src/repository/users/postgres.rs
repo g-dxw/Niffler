@@ -1007,6 +1007,18 @@ WHERE user_group_members.user_id IN (
             builder.push_bind(group_id);
             builder.push(")");
         }
+        if let Some(api_key_group_id) = query
+            .api_key_group_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            builder.push(
+                " AND EXISTS (SELECT 1 FROM api_keys WHERE api_keys.user_id = users.id AND api_keys.group_id = ",
+            );
+            builder.push_bind(api_key_group_id);
+            builder.push(" AND api_keys.is_standalone = FALSE)");
+        }
         if let Some(search) = query
             .search
             .as_deref()

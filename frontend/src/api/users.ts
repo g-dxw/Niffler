@@ -81,6 +81,7 @@ export interface UserBatchSelectionFilters {
   role?: UserRole
   is_active?: boolean
   group_id?: string
+  api_key_group_id?: string
 }
 
 export interface UserBatchSelection {
@@ -303,6 +304,7 @@ export interface GetAllUsersOptions {
   role?: UserRole
   is_active?: boolean
   group_id?: string
+  api_key_group_id?: string
   skip?: number
   limit?: number
   cacheTtlMs?: number
@@ -318,6 +320,7 @@ export const usersApi = {
     if (options.role) params.role = options.role
     if (options.is_active !== undefined) params.is_active = options.is_active ? 'true' : 'false'
     if (options.group_id) params.group_id = options.group_id
+    if (options.api_key_group_id) params.api_key_group_id = options.api_key_group_id
     if (options.skip !== undefined) params.skip = options.skip
     if (options.limit !== undefined) params.limit = options.limit
 
@@ -329,6 +332,7 @@ export const usersApi = {
           options.role ?? '',
           options.is_active ?? '',
           options.group_id ?? '',
+          options.api_key_group_id ?? '',
           options.skip ?? '',
           options.limit ?? '',
         ].join(':')

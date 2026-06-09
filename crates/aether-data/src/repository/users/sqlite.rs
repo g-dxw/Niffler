@@ -302,6 +302,18 @@ impl UserReadRepository for SqliteUserReadRepository {
             builder.push_bind(group_id);
             builder.push(")");
         }
+        if let Some(api_key_group_id) = query
+            .api_key_group_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            builder.push(
+                " AND EXISTS (SELECT 1 FROM api_keys WHERE api_keys.user_id = users.id AND api_keys.group_id = ",
+            );
+            builder.push_bind(api_key_group_id);
+            builder.push(" AND api_keys.is_standalone = 0)");
+        }
         if let Some(search) = query
             .search
             .as_deref()
@@ -2193,6 +2205,7 @@ INSERT INTO users (
                 is_active: Some(true),
                 search: None,
                 group_id: None,
+                api_key_group_id: None,
             })
             .await
             .expect("export page should load");

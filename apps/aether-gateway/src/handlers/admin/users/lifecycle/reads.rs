@@ -36,6 +36,9 @@ pub(in super::super) async fn build_admin_list_users_response(
     let group_id = query_param_value(request_context.query_string(), "group_id")
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
+    let api_key_group_id = query_param_value(request_context.query_string(), "api_key_group_id")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
 
     let paged_rows = state
         .list_export_users_page(&aether_data::repository::users::UserExportListQuery {
@@ -45,6 +48,7 @@ pub(in super::super) async fn build_admin_list_users_response(
             is_active,
             search,
             group_id,
+            api_key_group_id,
         })
         .await?;
     let user_ids = paged_rows

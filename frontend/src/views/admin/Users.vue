@@ -93,6 +93,25 @@
               </SelectContent>
             </Select>
             <Select
+              v-model="filterApiKeyGroup"
+            >
+              <SelectTrigger class="w-24 h-8 text-xs border-border/60">
+                <SelectValue placeholder="Key 分组" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  全部 Key
+                </SelectItem>
+                <SelectItem
+                  v-for="group in userGroups"
+                  :key="group.id"
+                  :value="group.id"
+                >
+                  {{ group.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
               v-model="filterStatus"
             >
               <SelectTrigger class="w-20 h-8 text-xs border-border/60">
@@ -190,6 +209,23 @@
               <SelectContent>
                 <SelectItem value="all">
                   全部分组
+                </SelectItem>
+                <SelectItem
+                  v-for="group in userGroups"
+                  :key="group.id"
+                  :value="group.id"
+                >
+                  {{ group.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-model="filterApiKeyGroup">
+              <SelectTrigger class="w-36 h-8 text-xs border-border/60">
+                <SelectValue placeholder="全部 Key 分组" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  全部 Key 分组
                 </SelectItem>
                 <SelectItem
                   v-for="group in userGroups"
@@ -576,10 +612,10 @@
             </AvatarFallback>
           </Avatar>
           <p class="text-sm font-medium text-foreground">
-            {{ searchQuery || filterRole !== 'all' || filterStatus !== 'all' ? '未找到匹配的用户' : '暂无用户' }}
+            {{ hasActiveUserFilter ? '未找到匹配的用户' : '暂无用户' }}
           </p>
           <p
-            v-if="searchQuery || filterRole !== 'all' || filterStatus !== 'all'"
+            v-if="hasActiveUserFilter"
             class="mt-1 text-xs text-muted-foreground"
           >
             尝试调整筛选条件
@@ -846,6 +882,7 @@
       :users="usersStore.users"
       @close="showUserGroupsDialog = false"
       @changed="handleUserGroupsChanged"
+      @inspect-api-key-group="handleInspectApiKeyGroup"
     />
 
     <Dialog
@@ -1189,9 +1226,9 @@
       </template>
 
       <div class="max-h-[60vh] overflow-y-auto space-y-3">
-        <template v-if="userApiKeys.length > 0">
+        <template v-if="visibleUserApiKeys.length > 0">
           <div
-            v-for="apiKey in userApiKeys"
+            v-for="apiKey in visibleUserApiKeys"
             :key="apiKey.id"
             class="rounded-lg border border-border bg-card p-4 hover:border-primary/30 transition-colors"
           >
@@ -1322,10 +1359,10 @@
             </div>
             <div>
               <p class="mb-1 text-base font-semibold text-foreground">
-                暂无 API Keys
+                {{ filterApiKeyGroup === 'all' ? '暂无 API Keys' : '这个用户没有绑定该 Key 分组的 API Key' }}
               </p>
               <p class="text-sm text-muted-foreground">
-                点击下方按钮创建
+                {{ filterApiKeyGroup === 'all' ? '点击下方按钮创建' : '可以切换 Key 分组筛选，或编辑其它用户的 API Key' }}
               </p>
             </div>
           </div>
@@ -1806,6 +1843,7 @@ const searchQuery = ref('')
 const filterRole = ref('all')
 const filterStatus = ref('all')
 const filterGroup = ref('all')
+const filterApiKeyGroup = ref('all')
 const userGroups = ref<UserGroup[]>([])
 const defaultUserGroupId = ref<string | null>(null)
 const userRoleFilterOptions = [
@@ -1819,6 +1857,13 @@ const userStatusFilterOptions = [
   { value: 'active', label: '活跃' },
   { value: 'inactive', label: '禁用' },
 ]
+const hasActiveUserFilter = computed(() =>
+  Boolean(searchQuery.value.trim())
+  || filterRole.value !== 'all'
+  || filterStatus.value !== 'all'
+  || filterGroup.value !== 'all'
+  || filterApiKeyGroup.value !== 'all'
+)
 
 const currentPage = ref(1)
 const pageSize = ref(20)
@@ -1863,6 +1908,10 @@ const filteredUsers = computed(() => {
 
   return filtered
 })
+const visibleUserApiKeys = computed(() => {
+  if (filterApiKeyGroup.value === 'all') return userApiKeys.value
+  return userApiKeys.value.filter(apiKey => apiKey.group_id === filterApiKeyGroup.value)
+})
 
 const paginatedUsers = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
@@ -1899,6 +1948,7 @@ const batchSelectionFilters = computed<UserBatchSelectionFilters>(() => {
   if (filterStatus.value === 'active') filters.is_active = true
   if (filterStatus.value === 'inactive') filters.is_active = false
   if (filterGroup.value !== 'all') filters.group_id = filterGroup.value
+  if (filterApiKeyGroup.value !== 'all') filters.api_key_group_id = filterApiKeyGroup.value
   return filters
 })
 
@@ -1923,9 +1973,12 @@ const apiKeyGroupOptions = computed(() => {
 })
 
 // Watch filter changes and reset to first page
-watch([searchQuery, filterRole, filterStatus, filterGroup], () => {
+watch([searchQuery, filterRole, filterStatus, filterGroup, filterApiKeyGroup], () => {
   currentPage.value = 1
   resetBatchSelection()
+})
+watch(filterApiKeyGroup, () => {
+  void refreshUsers()
 })
 
 watch(paginatedUsers, (users) => rememberBatchPageUsers(users), { immediate: true })
@@ -1950,8 +2003,13 @@ onMounted(() => {
 
 async function refreshUsers(options: { preferCache?: boolean } = {}) {
   const cacheTtlMs = options.preferCache ? USERS_PAGE_CACHE_TTL_MS : 0
+  const apiKeyGroupId = filterApiKeyGroup.value !== 'all' ? filterApiKeyGroup.value : undefined
   await Promise.all([
-    usersStore.fetchUsers({ cacheTtlMs }),
+    usersStore.fetchUsers({
+      cacheTtlMs,
+      api_key_group_id: apiKeyGroupId,
+      limit: 1000,
+    }),
     loadUserGroups(),
   ])
   void loadUserWallets({
@@ -1967,6 +2025,9 @@ async function loadUserGroups(): Promise<void> {
     if (filterGroup.value !== 'all' && !userGroups.value.some((group) => group.id === filterGroup.value)) {
       filterGroup.value = 'all'
     }
+    if (filterApiKeyGroup.value !== 'all' && !userGroups.value.some((group) => group.id === filterApiKeyGroup.value)) {
+      filterApiKeyGroup.value = 'all'
+    }
   } catch (err) {
     log.error('加载用户分组失败:', err)
   }
@@ -1974,6 +2035,15 @@ async function loadUserGroups(): Promise<void> {
 
 async function handleUserGroupsChanged(): Promise<void> {
   await refreshUsers()
+}
+
+async function handleInspectApiKeyGroup(groupId: string): Promise<void> {
+  showUserGroupsDialog.value = false
+  if (filterApiKeyGroup.value === groupId) {
+    await refreshUsers()
+    return
+  }
+  filterApiKeyGroup.value = groupId
 }
 
 function openUserBatchDialog(): void {

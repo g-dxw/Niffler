@@ -671,6 +671,7 @@ pub struct UserExportListQuery {
     pub is_active: Option<bool>,
     pub search: Option<String>,
     pub group_id: Option<String>,
+    pub api_key_group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
