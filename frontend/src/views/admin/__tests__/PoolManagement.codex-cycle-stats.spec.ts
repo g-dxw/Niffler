@@ -10,6 +10,8 @@ const endpointMocks = vi.hoisted(() => ({
   getPoolSchedulingPresets: vi.fn(),
   listPoolKeys: vi.fn(),
   clearPoolCooldown: vi.fn(),
+  batchActionPoolKeys: vi.fn(),
+  getPoolBatchDeleteTask: vi.fn(),
   getProvider: vi.fn(),
   updateProvider: vi.fn(),
   revealEndpointKey: vi.fn(),
@@ -43,6 +45,8 @@ vi.mock('@/api/endpoints/pool', () => ({
   getPoolSchedulingPresets: endpointMocks.getPoolSchedulingPresets,
   listPoolKeys: endpointMocks.listPoolKeys,
   clearPoolCooldown: endpointMocks.clearPoolCooldown,
+  batchActionPoolKeys: endpointMocks.batchActionPoolKeys,
+  getPoolBatchDeleteTask: endpointMocks.getPoolBatchDeleteTask,
 }))
 
 vi.mock('@/api/endpoints/keys', () => ({
@@ -201,6 +205,27 @@ vi.mock('@/components/ui', async () => {
     },
   })
 
+  const Checkbox = defineComponent({
+    name: 'CheckboxStub',
+    inheritAttrs: false,
+    props: {
+      checked: Boolean,
+      indeterminate: Boolean,
+      disabled: Boolean,
+    },
+    emits: ['update:checked'],
+    setup(props, { attrs, emit }) {
+      return () => h('input', {
+        ...attrs,
+        type: 'checkbox',
+        checked: props.checked,
+        disabled: props.disabled,
+        'data-indeterminate': props.indeterminate ? 'true' : undefined,
+        onChange: (event: Event) => emit('update:checked', (event.target as HTMLInputElement).checked),
+      })
+    },
+  })
+
   const Pagination = defineComponent({
     name: 'PaginationStub',
     setup() {
@@ -273,6 +298,7 @@ vi.mock('@/components/ui', async () => {
     SortableTableHead: passthrough('SortableTableHeadStub', 'th'),
     TableFilterMenu: passthrough('TableFilterMenuStub'),
     TableCell: passthrough('TableCellStub', 'td'),
+    Checkbox,
     Switch,
     Pagination,
     Popover,
@@ -550,6 +576,8 @@ beforeEach(() => {
   endpointMocks.getPoolSchedulingPresets.mockReset()
   endpointMocks.listPoolKeys.mockReset()
   endpointMocks.clearPoolCooldown.mockReset()
+  endpointMocks.batchActionPoolKeys.mockReset()
+  endpointMocks.getPoolBatchDeleteTask.mockReset()
   endpointMocks.getProvider.mockReset()
   endpointMocks.updateProvider.mockReset()
   endpointMocks.revealEndpointKey.mockReset()
@@ -562,6 +590,8 @@ beforeEach(() => {
 
   endpointMocks.getPoolSchedulingPresets.mockResolvedValue([])
   endpointMocks.clearPoolCooldown.mockResolvedValue({ message: 'ok' })
+  endpointMocks.batchActionPoolKeys.mockResolvedValue({ affected: 0, message: 'ok' })
+  endpointMocks.getPoolBatchDeleteTask.mockResolvedValue({ task_id: 'task-1', status: 'completed', total: 0, deleted: 0, message: 'ok' })
   endpointMocks.refreshProviderQuota.mockResolvedValue({ success: 0, failed: 0 })
   endpointMocks.resetProviderKeyCycleStats.mockResolvedValue({ message: '已重置周期统计', reset_at: 123, windows: 2 })
 })
@@ -725,6 +755,58 @@ describe('PoolManagement Codex cycle stats mode', () => {
       ['codex-page-key-1', 'codex-page-key-2'],
     )
     expect(endpointMocks.refreshProviderQuota).not.toHaveBeenCalledWith('codex-provider')
+  })
+
+  it('deletes selected pool accounts from the main list', async () => {
+    const firstKey = createPoolKey('codex', { key_id: 'codex-key-a', key_name: 'alpha' })
+    const secondKey = createPoolKey('codex', { key_id: 'codex-key-b', key_name: 'beta' })
+    endpointMocks.getPoolOverview.mockResolvedValue({
+      items: [{ ...createOverview('codex'), total_keys: 2, active_keys: 2 }],
+    })
+    endpointMocks.listPoolKeys
+      .mockResolvedValueOnce({
+        total: 2,
+        page: 1,
+        page_size: 50,
+        keys: [firstKey, secondKey],
+      })
+      .mockResolvedValue({
+        total: 0,
+        page: 1,
+        page_size: 50,
+        keys: [],
+      })
+    endpointMocks.getProvider.mockResolvedValue(createProvider('codex'))
+    endpointMocks.batchActionPoolKeys.mockResolvedValue({
+      affected: 2,
+      message: '2 keys deleted',
+    })
+
+    const root = mountPoolManagement()
+    await settle()
+
+    const firstCheckbox = root.querySelector<HTMLInputElement>('[data-testid="pool-key-select-codex-key-a"]')
+    const secondCheckbox = root.querySelector<HTMLInputElement>('[data-testid="pool-key-select-codex-key-b"]')
+    expect(firstCheckbox).not.toBeNull()
+    expect(secondCheckbox).not.toBeNull()
+
+    firstCheckbox?.click()
+    secondCheckbox?.click()
+    await settle()
+
+    const deleteButton = root.querySelector<HTMLButtonElement>('[data-testid="pool-bulk-delete-selected"]')
+    expect(deleteButton).not.toBeNull()
+    expect(deleteButton?.disabled).toBe(false)
+    expect(deleteButton?.textContent).toContain('删除已选 2')
+
+    deleteButton?.click()
+    await settle()
+
+    expect(endpointMocks.batchActionPoolKeys).toHaveBeenCalledWith('codex-provider', {
+      key_ids: ['codex-key-a', 'codex-key-b'],
+      action: 'delete',
+    })
+    expect(endpointMocks.listPoolKeys).toHaveBeenCalledTimes(2)
   })
 
   it('toggles Codex stats to account totals and persists the choice', async () => {

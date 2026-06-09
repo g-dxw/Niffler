@@ -763,6 +763,12 @@ const DELETE_POLL_INTERVAL_MS = 2000
 const DELETE_POLL_MAX_MS = 10 * 60 * 1000
 const DELETE_POLL_MAX_FAILURES = 3
 
+function getDeleteTaskDeletedCount(task: Awaited<ReturnType<typeof getPoolBatchDeleteTask>>): number {
+  const raw = task.deleted ?? task.deleted_keys ?? 0
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
 async function pollDeleteTask(
   providerId: string,
   taskId: string,
@@ -774,9 +780,10 @@ async function pollDeleteTask(
     try {
       const task = await getPoolBatchDeleteTask(providerId, taskId)
       consecutiveFailures = 0
-      progressDone.value = progressOffset + task.deleted
+      const deleted = getDeleteTaskDeletedCount(task)
+      progressDone.value = progressOffset + deleted
       if (task.status === 'completed' || task.status === 'failed') {
-        return { status: task.status, deleted: task.deleted }
+        return { status: task.status, deleted }
       }
     } catch {
       consecutiveFailures++

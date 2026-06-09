@@ -332,7 +332,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="账号"
+              title="账号批量操作"
               @click="showAccountBatchDialog = true"
             >
               <Users class="w-3.5 h-3.5" />
@@ -458,6 +458,43 @@
           </div>
         </div>
 
+        <div
+          v-if="keyPage.keys.length > 0"
+          class="flex flex-col gap-2 border-b border-border/50 bg-background/70 px-4 py-2.5 sm:px-6 xl:flex-row xl:items-center xl:justify-between"
+        >
+          <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
+            <Checkbox
+              :checked="isCurrentPageFullySelected"
+              :indeterminate="isCurrentPagePartiallySelected"
+              :disabled="keysLoading || deletingSelectedKeys"
+              data-testid="pool-select-current-page"
+              @update:checked="toggleSelectCurrentPageKeys"
+            />
+            <span>当前页 {{ keyPage.keys.length }} 个，已选 {{ selectedPoolKeyCount }} 个</span>
+          </label>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 px-2 text-xs"
+              :disabled="selectedPoolKeyCount === 0 || deletingSelectedKeys"
+              @click="clearPoolKeySelection"
+            >
+              清空选择
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              class="h-7 px-2.5 text-xs"
+              :disabled="selectedPoolKeyCount === 0 || deletingSelectedKeys"
+              data-testid="pool-bulk-delete-selected"
+              @click="deleteSelectedPoolKeys"
+            >
+              {{ deletingSelectedKeys ? '删除中...' : `删除已选 ${selectedPoolKeyCount}` }}
+            </Button>
+          </div>
+        </div>
+
         <!-- Desktop table -->
         <div
           v-if="keyPage.keys.length > 0 || hasPoolKeyFilters"
@@ -466,6 +503,18 @@
           <Table class="w-full table-fixed">
             <TableHeader>
               <TableRow class="border-b border-border/60 hover:bg-transparent">
+                <TableHead
+                  class="px-3 text-center"
+                  :style="{ width: desktopColumnWidths.select }"
+                >
+                  <Checkbox
+                    :checked="isCurrentPageFullySelected"
+                    :indeterminate="isCurrentPagePartiallySelected"
+                    :disabled="keyPage.keys.length === 0 || keysLoading || deletingSelectedKeys"
+                    title="勾选或取消当前页所有账号"
+                    @update:checked="toggleSelectCurrentPageKeys"
+                  />
+                </TableHead>
                 <SortableTableHead
                   class="font-semibold whitespace-nowrap"
                   :sortable="false"
@@ -600,6 +649,15 @@
                 class="border-b border-border/40 last:border-b-0 hover:bg-muted/30 transition-colors"
                 :class="keyUiStateMap[key.key_id]?.rowClass || ''"
               >
+                <TableCell class="px-3 py-3 text-center align-middle">
+                  <Checkbox
+                    :checked="isPoolKeySelected(key.key_id)"
+                    :disabled="deletingSelectedKeys"
+                    :data-testid="`pool-key-select-${key.key_id}`"
+                    :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
+                    @update:checked="(checked: boolean) => togglePoolKeySelection(key.key_id, checked)"
+                  />
+                </TableCell>
                 <TableCell
                   class="py-3"
                 >
@@ -1034,14 +1092,24 @@
             :class="keyUiStateMap[key.key_id]?.rowClass || ''"
           >
             <div class="space-y-3">
-              <button
-                type="button"
-                class="max-w-full truncate text-left text-sm font-medium transition-colors hover:text-primary"
-                :title="`${getPoolAccountDisplayName(key)}\n点击复制`"
-                @click.stop="copyPoolAccountDisplay(key)"
-              >
-                {{ getPoolAccountDisplayName(key) }}
-              </button>
+              <div class="flex items-start gap-2.5">
+                <Checkbox
+                  :checked="isPoolKeySelected(key.key_id)"
+                  :disabled="deletingSelectedKeys"
+                  :data-testid="`pool-key-select-mobile-${key.key_id}`"
+                  :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
+                  class="mt-0.5 shrink-0"
+                  @update:checked="(checked: boolean) => togglePoolKeySelection(key.key_id, checked)"
+                />
+                <button
+                  type="button"
+                  class="min-w-0 flex-1 truncate text-left text-sm font-medium transition-colors hover:text-primary"
+                  :title="`${getPoolAccountDisplayName(key)}\n点击复制`"
+                  @click.stop="copyPoolAccountDisplay(key)"
+                >
+                  {{ getPoolAccountDisplayName(key) }}
+                </button>
+              </div>
 
               <div class="flex flex-wrap items-center gap-1.5">
                 <Badge
@@ -1614,6 +1682,7 @@ import {
   SortableTableHead,
   TableFilterMenu,
   TableCell,
+  Checkbox,
   Pagination,
   Popover,
   PopoverTrigger,
@@ -1632,6 +1701,8 @@ import {
   getPoolSchedulingPresets,
   listPoolKeys,
   clearPoolCooldown,
+  batchActionPoolKeys,
+  getPoolBatchDeleteTask,
 } from '@/api/endpoints/pool'
 import {
   revealEndpointKey,
@@ -1854,6 +1925,7 @@ async function loadOverview(options: { cacheTtlMs?: number, silent?: boolean } =
       selectedProviderId.value = null
       selectedProviderData.value = null
       keysLoadedOnce.value = false
+      clearPoolKeySelection()
       endpointEditDialogOpen.value = false
       providerEndpointsForEdit.value = []
       showAccountBatchDialog.value = false
@@ -2176,7 +2248,7 @@ const showAccountQuotaColumn = computed(() => {
     || selectedProviderType.value === 'chatgpt_web'
 })
 
-type PoolDesktopColumnKey = 'name' | 'quota' | 'stats' | 'imported' | 'lastUsed' | 'score' | 'status' | 'actions'
+type PoolDesktopColumnKey = 'select' | 'name' | 'quota' | 'stats' | 'imported' | 'lastUsed' | 'score' | 'status' | 'actions'
 const poolColumnWidths = ref<Partial<Record<PoolDesktopColumnKey, number>>>({})
 let poolColumnResizeCleanup: (() => void) | null = null
 
@@ -2188,6 +2260,7 @@ function poolColumnWidthStyle(column: PoolDesktopColumnKey, fallback: string): s
 const desktopColumnWidths = computed(() => {
   if (showAccountQuotaColumn.value) {
     return {
+      select: poolColumnWidthStyle('select', '3rem'),
       name: poolColumnWidthStyle('name', '21%'),
       quota: poolColumnWidthStyle('quota', '18%'),
       stats: poolColumnWidthStyle('stats', '13%'),
@@ -2199,6 +2272,7 @@ const desktopColumnWidths = computed(() => {
     }
   }
   return {
+    select: poolColumnWidthStyle('select', '3rem'),
     name: poolColumnWidthStyle('name', '31%'),
     quota: '0%',
     stats: poolColumnWidthStyle('stats', '15%'),
@@ -2263,6 +2337,7 @@ async function selectProvider(
   endpointEditDialogOpen.value = false
   providerEndpointsForEdit.value = []
   editingKeyDetail.value = null
+  clearPoolKeySelection()
   showAccountBatchDialog.value = false
   keyPermissionsDialogOpen.value = false
   keyFormDialogOpen.value = false
@@ -2351,6 +2426,8 @@ const proxyMobilePopoverOpenKeyId = ref<string | null>(null)
 const scoreDesktopPopoverOpenKeyId = ref<string | null>(null)
 const scoreMobilePopoverOpenKeyId = ref<string | null>(null)
 const deletingKeyId = ref<string | null>(null)
+const deletingSelectedKeys = ref(false)
+const selectedPoolKeyIds = ref<string[]>([])
 const togglingKeyId = ref<string | null>(null)
 const editingPriorityKeyId = ref<string | null>(null)
 const editingPriorityValue = ref<number>(0)
@@ -2369,6 +2446,7 @@ function togglePoolStatsMode() {
 
 function clearPoolKeyFilters() {
   if (!hasPoolKeyFilters.value) return
+  clearPoolKeySelection()
   suppressFiltersWatch = true
   searchQuery.value = ''
   statusFilter.value = 'all'
@@ -2867,12 +2945,14 @@ watch([currentPage, pageSize], () => {
 
 watch(statusFilter, () => {
   if (suppressFiltersWatch) return
+  clearPoolKeySelection()
   currentPage.value = 1
   void loadKeys({ cacheTtlMs: POOL_KEYS_CACHE_TTL_MS })
 })
 
 watch(planTypeFilter, () => {
   if (suppressFiltersWatch) return
+  clearPoolKeySelection()
   currentPage.value = 1
   void loadKeys({ cacheTtlMs: POOL_KEYS_CACHE_TTL_MS })
 })
@@ -2887,6 +2967,7 @@ watch([sortBy, sortOrder], () => {
 
 watch(searchQuery, () => {
   if (suppressFiltersWatch) return
+  clearPoolKeySelection()
   currentPage.value = 1
   if (keysSearchDebounceTimer !== null) {
     clearTimeout(keysSearchDebounceTimer)
@@ -2964,6 +3045,48 @@ const editingKey = computed<EndpointAPIKey | null>(() => {
   if (!editingKeyDetail.value) return null
   return toEndpointApiKey(editingKeyDetail.value)
 })
+
+const selectedPoolKeyIdSet = computed(() => new Set(selectedPoolKeyIds.value))
+const selectedPoolKeyCount = computed(() => selectedPoolKeyIds.value.length)
+const currentPagePoolKeyIds = computed(() => keyPage.value.keys.map(key => key.key_id).filter(Boolean))
+const selectedCurrentPagePoolKeyCount = computed(() => {
+  const selected = selectedPoolKeyIdSet.value
+  return currentPagePoolKeyIds.value.filter(id => selected.has(id)).length
+})
+const isCurrentPageFullySelected = computed(() => {
+  const ids = currentPagePoolKeyIds.value
+  return ids.length > 0 && selectedCurrentPagePoolKeyCount.value === ids.length
+})
+const isCurrentPagePartiallySelected = computed(() => {
+  const selectedCount = selectedCurrentPagePoolKeyCount.value
+  return selectedCount > 0 && selectedCount < currentPagePoolKeyIds.value.length
+})
+
+function isPoolKeySelected(keyId: string): boolean {
+  return selectedPoolKeyIdSet.value.has(keyId)
+}
+
+function togglePoolKeySelection(keyId: string, checked: boolean): void {
+  const normalized = String(keyId || '').trim()
+  if (!normalized) return
+  const next = new Set(selectedPoolKeyIds.value)
+  if (checked) next.add(normalized)
+  else next.delete(normalized)
+  selectedPoolKeyIds.value = [...next]
+}
+
+function toggleSelectCurrentPageKeys(checked: boolean): void {
+  const next = new Set(selectedPoolKeyIds.value)
+  for (const keyId of currentPagePoolKeyIds.value) {
+    if (checked) next.add(keyId)
+    else next.delete(keyId)
+  }
+  selectedPoolKeyIds.value = [...next]
+}
+
+function clearPoolKeySelection(): void {
+  selectedPoolKeyIds.value = []
+}
 
 function sortCurrentPageKeysByPriority() {
   keyPage.value.keys = [...keyPage.value.keys].sort((a, b) => {
@@ -3150,6 +3273,7 @@ async function handleDeleteKey(key: PoolKeyDetail) {
   try {
     await deleteEndpointKey(key.key_id)
     success('账号已删除')
+    selectedPoolKeyIds.value = selectedPoolKeyIds.value.filter(id => id !== key.key_id)
     // 乐观更新：直接从本地列表移除，避免等待网络重载
     keyPage.value.keys = keyPage.value.keys.filter(k => k.key_id !== key.key_id)
     keyPage.value.total = Math.max(0, keyPage.value.total - 1)
@@ -3162,6 +3286,90 @@ async function handleDeleteKey(key: PoolKeyDetail) {
     showError(parseApiError(err, '删除账号失败'))
   } finally {
     deletingKeyId.value = null
+  }
+}
+
+const POOL_BULK_DELETE_POLL_INTERVAL_MS = 2000
+const POOL_BULK_DELETE_POLL_MAX_MS = 10 * 60 * 1000
+const POOL_BULK_DELETE_POLL_MAX_FAILURES = 3
+
+function getPoolDeleteTaskDeletedCount(task: Awaited<ReturnType<typeof getPoolBatchDeleteTask>>): number {
+  const raw = task.deleted ?? task.deleted_keys ?? 0
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+async function pollPoolBatchDeleteTask(
+  providerId: string,
+  taskId: string,
+): Promise<{ status: string; deleted: number }> {
+  const deadline = Date.now() + POOL_BULK_DELETE_POLL_MAX_MS
+  let consecutiveFailures = 0
+
+  while (Date.now() < deadline) {
+    try {
+      const task = await getPoolBatchDeleteTask(providerId, taskId)
+      consecutiveFailures = 0
+      const deleted = getPoolDeleteTaskDeletedCount(task)
+      if (task.status === 'completed' || task.status === 'failed') {
+        return { status: task.status, deleted }
+      }
+    } catch {
+      consecutiveFailures += 1
+      if (consecutiveFailures >= POOL_BULK_DELETE_POLL_MAX_FAILURES) {
+        return { status: 'failed', deleted: 0 }
+      }
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, POOL_BULK_DELETE_POLL_INTERVAL_MS))
+  }
+
+  return { status: 'failed', deleted: 0 }
+}
+
+async function deleteSelectedPoolKeys(): Promise<void> {
+  const providerId = selectedProviderId.value
+  const keyIds = [...selectedPoolKeyIds.value]
+  if (!providerId || keyIds.length === 0 || deletingSelectedKeys.value) return
+
+  const confirmed = await confirm({
+    title: '删除已选账号',
+    message: `确定要删除已选 ${keyIds.length} 个账号吗？删除后不可恢复。`,
+    confirmText: '确认删除',
+    variant: 'destructive',
+  })
+  if (!confirmed) return
+
+  deletingSelectedKeys.value = true
+  try {
+    const result = await batchActionPoolKeys(providerId, {
+      key_ids: keyIds,
+      action: 'delete',
+    })
+    let deletedCount = Number(result.affected ?? 0)
+    let taskFailed = false
+    if (!Number.isFinite(deletedCount) || deletedCount < 0) deletedCount = 0
+
+    if (result.task_id) {
+      const taskResult = await pollPoolBatchDeleteTask(providerId, result.task_id)
+      deletedCount = taskResult.deleted
+      if (taskResult.status === 'failed') {
+        taskFailed = true
+        showWarning(`批量删除任务未完成，已删除 ${deletedCount} 个账号，请刷新后确认`)
+      }
+    }
+
+    if (selectedProviderId.value !== providerId) return
+    clearPoolKeySelection()
+    await loadKeys()
+    refreshOverviewInBackground()
+    if (!taskFailed) {
+      success(deletedCount > 0 ? `已删除 ${deletedCount} 个账号` : '没有账号被删除')
+    }
+  } catch (err) {
+    showError(parseApiError(err, '批量删除账号失败'))
+  } finally {
+    deletingSelectedKeys.value = false
   }
 }
 

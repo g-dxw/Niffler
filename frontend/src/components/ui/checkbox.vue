@@ -4,6 +4,7 @@
     :class="checkboxClass"
     v-bind="$attrs"
     :checked="isChecked"
+    :indeterminate="isIndeterminate"
     @change="handleChange"
   >
 </template>
@@ -15,6 +16,7 @@ import { cn } from '@/lib/utils'
 interface Props {
   modelValue?: boolean
   checked?: boolean
+  indeterminate?: boolean
   class?: string
 }
 
@@ -37,6 +39,8 @@ const isChecked = computed<boolean>(() => {
   }
   return props.modelValue ?? false
 })
+
+const isIndeterminate = computed<boolean>(() => props.indeterminate === true && !isChecked.value)
 
 function handleChange(event: Event) {
   const target = event.target as HTMLInputElement

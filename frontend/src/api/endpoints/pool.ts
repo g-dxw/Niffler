@@ -457,9 +457,15 @@ export async function batchActionPoolKeys(
 
 export interface BatchDeleteTaskStatus {
   task_id: string
+  provider_id?: string
   status: 'pending' | 'running' | 'completed' | 'failed'
-  total: number
-  deleted: number
+  stage?: string
+  total?: number
+  deleted?: number
+  total_keys?: number
+  deleted_keys?: number
+  total_endpoints?: number
+  deleted_endpoints?: number
   message: string
 }
 
