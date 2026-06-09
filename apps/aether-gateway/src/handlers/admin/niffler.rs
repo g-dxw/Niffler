@@ -75,6 +75,7 @@ const ROLLBACK_DRILL_EVIDENCE_CONFIG_KEY: &str = "niffler_stability_rollback_dri
 const MAX_ISSUE_ITEMS: usize = 50;
 const MAX_USAGE_SCAN: usize = 200;
 const MAX_USAGE_ITEMS: usize = 50;
+const READINESS_PENDING_USAGE_STALE_SECS: u64 = 30 * 60;
 const MAX_PROVIDER_MODELS_PER_PROVIDER: usize = 2_000;
 const MAX_GLOBAL_MODELS: usize = 10_000;
 const MAX_ROUTE_SKIP_SAMPLE: usize = 500;
@@ -3218,7 +3219,7 @@ async fn collect_recent_usage_anomalies(
         .await?;
     let mut anomalies = Vec::new();
     for row in rows {
-        let Some(diagnosis) = usage_anomaly_diagnosis(&row) else {
+        let Some(diagnosis) = usage_anomaly_diagnosis(&row, now_unix_secs) else {
             continue;
         };
         let key = row
@@ -3280,7 +3281,10 @@ struct UsageAnomalyDiagnosis {
     recommended_action: &'static str,
 }
 
-fn usage_anomaly_diagnosis(row: &StoredRequestUsageAudit) -> Option<UsageAnomalyDiagnosis> {
+fn usage_anomaly_diagnosis(
+    row: &StoredRequestUsageAudit,
+    now_unix_secs: u64,
+) -> Option<UsageAnomalyDiagnosis> {
     let provider_unknown = row.provider_name.trim().eq_ignore_ascii_case("unknown")
         || row.provider_name.trim().is_empty()
         || row.provider_id.is_none();
@@ -3314,13 +3318,16 @@ fn usage_anomaly_diagnosis(row: &StoredRequestUsageAudit) -> Option<UsageAnomaly
                 "检查 usage 结算任务和 pending 清理任务；长期停留 pending 的记录需要进入人工对账。",
         });
     }
-    if row.billing_status.trim().eq_ignore_ascii_case("pending") {
+    if row.billing_status.trim().eq_ignore_ascii_case("pending")
+        && pending_usage_is_stale(row, now_unix_secs)
+    {
         return Some(UsageAnomalyDiagnosis {
-            kind: "billing_pending",
-            label: "等待结算",
-            diagnosis: "请求仍在进行或等待超时清理，暂时没有最终扣费拆分。",
-            impact: "这类记录在结算完成前不应用来判断最终扣费。",
-            recommended_action: "等待请求结束或清理任务处理；超过预期时间仍 pending 时再人工检查。",
+            kind: "stale_billing_pending",
+            label: "长时间未结算",
+            diagnosis: "这条请求创建超过 30 分钟后仍停留在 pending 结算状态。",
+            impact: "管理员暂时看不到最终套餐或钱包扣费拆分，迁移前需要确认它会被清理任务处理。",
+            recommended_action:
+                "检查 usage 结算任务、pending 清理任务和请求最终状态；确认不是卡住的旧记录。",
         });
     }
     if row.status.trim().eq_ignore_ascii_case("failed") && row.provider_api_key_id.is_none() {
@@ -3352,6 +3359,11 @@ fn usage_anomaly_diagnosis(row: &StoredRequestUsageAudit) -> Option<UsageAnomaly
         });
     }
     None
+}
+
+fn pending_usage_is_stale(row: &StoredRequestUsageAudit, now_unix_secs: u64) -> bool {
+    let created_at_unix_secs = unix_millis_or_secs_to_secs(row.created_at_unix_ms);
+    now_unix_secs.saturating_sub(created_at_unix_secs) >= READINESS_PENDING_USAGE_STALE_SECS
 }
 
 fn is_api_key_concurrency_limited(row: &StoredRequestUsageAudit) -> bool {
@@ -3814,9 +3826,12 @@ fn issue(
 
 #[cfg(test)]
 mod tests {
+    use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
+
     use super::{
         normalize_rollback_drill_evidence_request, parse_recent_days,
-        rollback_drill_evidence_is_complete, AdminNifflerRollbackDrillEvidenceRequest,
+        rollback_drill_evidence_is_complete, usage_anomaly_diagnosis,
+        AdminNifflerRollbackDrillEvidenceRequest,
     };
 
     #[test]
@@ -3890,6 +3905,31 @@ mod tests {
         assert!(!rollback_drill_evidence_is_complete(evidence.as_object()));
     }
 
+    #[test]
+    fn readiness_usage_anomaly_ignores_fresh_in_progress_pending() {
+        let usage = usage_audit("streaming", "pending", 1_780_000_000);
+
+        assert!(usage_anomaly_diagnosis(&usage, 1_780_000_000 + 60).is_none());
+    }
+
+    #[test]
+    fn readiness_usage_anomaly_flags_stale_pending() {
+        let usage = usage_audit("streaming", "pending", 1_780_000_000);
+        let diagnosis = usage_anomaly_diagnosis(&usage, 1_780_000_000 + 30 * 60)
+            .expect("stale pending usage should be reported");
+
+        assert_eq!(diagnosis.kind, "stale_billing_pending");
+    }
+
+    #[test]
+    fn readiness_usage_anomaly_flags_completed_pending_immediately() {
+        let usage = usage_audit("completed", "pending", 1_780_000_000);
+        let diagnosis = usage_anomaly_diagnosis(&usage, 1_780_000_000 + 60)
+            .expect("completed pending usage should be reported");
+
+        assert_eq!(diagnosis.kind, "completed_billing_pending");
+    }
+
     fn rollback_drill_request(
         status: &str,
         backup_reference: Option<&str>,
@@ -3902,5 +3942,52 @@ mod tests {
             rollback_image_tag: rollback_image_tag.map(str::to_string),
             drill_summary: drill_summary.map(str::to_string),
         }
+    }
+
+    fn usage_audit(
+        status: &str,
+        billing_status: &str,
+        created_at_unix_secs: u64,
+    ) -> StoredRequestUsageAudit {
+        StoredRequestUsageAudit::new(
+            "usage-1".to_string(),
+            "request-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            None,
+            None,
+            "Codex".to_string(),
+            "gpt-5.5".to_string(),
+            None,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            Some("chat".to_string()),
+            Some("openai:responses".to_string()),
+            Some("openai".to_string()),
+            Some("responses".to_string()),
+            Some("openai:responses".to_string()),
+            Some("openai".to_string()),
+            Some("responses".to_string()),
+            false,
+            true,
+            10,
+            20,
+            30,
+            0.1,
+            0.1,
+            Some(200),
+            None,
+            None,
+            Some(120),
+            Some(80),
+            status.to_string(),
+            billing_status.to_string(),
+            i64::try_from(created_at_unix_secs.saturating_mul(1000))
+                .expect("test timestamp should fit i64"),
+            i64::try_from(created_at_unix_secs).expect("test timestamp should fit i64"),
+            None,
+        )
+        .expect("usage audit should build")
     }
 }
