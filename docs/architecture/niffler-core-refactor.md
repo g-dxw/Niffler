@@ -553,6 +553,7 @@
 - `GET /api/admin/niffler-core/rollback-drill-evidence`
 - `PUT /api/admin/niffler-core/rollback-drill-evidence`
 - 专用回滚演练证据接口只写系统配置，不执行回滚、不执行数据库备份、不重启服务。`passed` 必须提交 `backup_reference`、`rollback_image_tag` 和 `drill_summary`，避免无证据标记通过。
+- `not_recorded` 表示没有可用回滚演练证据，接口必须清空备份引用、可回滚镜像标签和演练说明，避免页面残留旧证据。
 
 第 5 批第五片验证方式：
 

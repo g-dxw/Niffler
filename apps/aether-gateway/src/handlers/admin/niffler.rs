@@ -1966,6 +1966,17 @@ fn normalize_rollback_drill_evidence_request(
     if status == "failed" && drill_summary.is_none() {
         return Err(niffler_bad_request("记录失败时必须填写演练说明"));
     }
+    if status == "not_recorded" {
+        return Ok(json!({
+            "schema_version": 1,
+            "status": status,
+            "backup_reference": null,
+            "rollback_image_tag": null,
+            "drill_summary": null,
+            "recorded_at_unix_ms": current_unix_secs().saturating_mul(1000),
+            "recorded_by": operator_id
+        }));
+    }
     Ok(json!({
         "schema_version": 1,
         "status": status,
@@ -3797,7 +3808,10 @@ fn issue(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_recent_days;
+    use super::{
+        normalize_rollback_drill_evidence_request, parse_recent_days,
+        rollback_drill_evidence_is_complete, AdminNifflerRollbackDrillEvidenceRequest,
+    };
 
     #[test]
     fn recent_days_is_bounded() {
@@ -3805,5 +3819,82 @@ mod tests {
         assert_eq!(parse_recent_days(Some("recent_days=0")), 7);
         assert_eq!(parse_recent_days(Some("recent_days=91")), 7);
         assert_eq!(parse_recent_days(None), 7);
+    }
+
+    #[test]
+    fn rollback_drill_evidence_passed_requires_all_evidence() {
+        let response = normalize_rollback_drill_evidence_request(
+            rollback_drill_request("passed", Some("backup-2026-06-09"), Some(""), Some("ok")),
+            Some("admin-1".to_string()),
+        )
+        .expect_err("passed must require rollback image tag");
+
+        assert_eq!(response.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn rollback_drill_evidence_passed_is_complete() {
+        let evidence = normalize_rollback_drill_evidence_request(
+            rollback_drill_request(
+                "passed",
+                Some(" backup-2026-06-09 "),
+                Some(" niffler-app:previous "),
+                Some(" drill passed "),
+            ),
+            Some("admin-1".to_string()),
+        )
+        .expect("complete evidence should be accepted");
+
+        assert_eq!(evidence["status"], "passed");
+        assert_eq!(evidence["backup_reference"], "backup-2026-06-09");
+        assert_eq!(evidence["rollback_image_tag"], "niffler-app:previous");
+        assert_eq!(evidence["drill_summary"], "drill passed");
+        assert_eq!(evidence["recorded_by"], "admin-1");
+        assert!(rollback_drill_evidence_is_complete(evidence.as_object()));
+    }
+
+    #[test]
+    fn rollback_drill_evidence_failed_requires_summary() {
+        let response = normalize_rollback_drill_evidence_request(
+            rollback_drill_request("failed", Some("backup-2026-06-09"), None, Some(" ")),
+            None,
+        )
+        .expect_err("failed drill should explain the failure");
+
+        assert_eq!(response.status(), http::StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn rollback_drill_evidence_not_recorded_clears_evidence_fields() {
+        let evidence = normalize_rollback_drill_evidence_request(
+            rollback_drill_request(
+                "not_recorded",
+                Some("backup-2026-06-09"),
+                Some("niffler-app:previous"),
+                Some("old drill notes"),
+            ),
+            Some("admin-1".to_string()),
+        )
+        .expect("not_recorded should be accepted");
+
+        assert_eq!(evidence["status"], "not_recorded");
+        assert!(evidence["backup_reference"].is_null());
+        assert!(evidence["rollback_image_tag"].is_null());
+        assert!(evidence["drill_summary"].is_null());
+        assert!(!rollback_drill_evidence_is_complete(evidence.as_object()));
+    }
+
+    fn rollback_drill_request(
+        status: &str,
+        backup_reference: Option<&str>,
+        rollback_image_tag: Option<&str>,
+        drill_summary: Option<&str>,
+    ) -> AdminNifflerRollbackDrillEvidenceRequest {
+        AdminNifflerRollbackDrillEvidenceRequest {
+            status: status.to_string(),
+            backup_reference: backup_reference.map(str::to_string),
+            rollback_image_tag: rollback_image_tag.map(str::to_string),
+            drill_summary: drill_summary.map(str::to_string),
+        }
     }
 }

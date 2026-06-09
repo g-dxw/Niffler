@@ -17,6 +17,7 @@
 - 页面展示最近 14 个 UTC 自然日窗口的稳定期进度，并明确第 5 批第六片现在是否可以开始。稳定期只计算已经结束的窗口；最新窗口过期时，页面会提示稳定观察任务没有更新。当前未结束窗口已经出现阻断项时，也不能开始第六片。
 - 页面明确提示回滚演练状态来自系统配置 `niffler_stability_rollback_drill_status`，允许值为 `passed`、`failed`、`not_recorded`。
 - 回滚演练状态必须通过 `/api/admin/niffler-core/rollback-drill-evidence` 记录。记录 `passed` 时必须同时提交备份引用、可回滚镜像标签和演练说明。
+- 记录 `not_recorded` 时会清空备份引用、可回滚镜像标签和演练说明，避免页面残留旧证据。
 - 如果有人只通过通用系统配置把 `niffler_stability_rollback_drill_status` 改成 `passed`，但没有提交演练证据，稳定观察仍显示 `pending`。
 - 管理员只有在确认可回滚镜像、近期数据库备份和演练记录都存在后，才能把回滚演练状态记录为 `passed`。
 
