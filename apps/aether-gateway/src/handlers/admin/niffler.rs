@@ -3288,7 +3288,9 @@ fn usage_anomaly_diagnosis(
     let provider_unknown = row.provider_name.trim().eq_ignore_ascii_case("unknown")
         || row.provider_name.trim().is_empty()
         || row.provider_id.is_none();
-    if provider_unknown && is_api_key_concurrency_limited(row) {
+    if provider_unknown
+        && (is_api_key_concurrency_limited(row) || is_candidate_list_empty_runtime_miss(row))
+    {
         return None;
     }
     if provider_unknown {
@@ -3370,6 +3372,14 @@ fn is_api_key_concurrency_limited(row: &StoredRequestUsageAudit) -> bool {
         || row
             .routing_execution_path()
             .is_some_and(|path| path == "local_api_key_concurrency_limited")
+}
+
+fn is_candidate_list_empty_runtime_miss(row: &StoredRequestUsageAudit) -> bool {
+    row.routing_local_execution_runtime_miss_reason()
+        .is_some_and(|reason| reason == "candidate_list_empty")
+        && row.routing_execution_path().is_some_and(|path| {
+            path == crate::constants::EXECUTION_PATH_LOCAL_EXECUTION_RUNTIME_MISS
+        })
 }
 
 async fn collect_route_skip_reports(
@@ -3920,6 +3930,22 @@ mod tests {
             Some(crate::constants::EXECUTION_PATH_LOCAL_API_KEY_CONCURRENCY_LIMITED.to_string());
         usage.local_execution_runtime_miss_reason =
             Some("api_key_concurrency_limit_reached".to_string());
+
+        assert!(usage_anomaly_diagnosis(&usage, 1_780_000_000 + 60).is_none());
+    }
+
+    #[test]
+    fn readiness_usage_anomaly_ignores_empty_candidate_runtime_miss() {
+        let mut usage = usage_audit("failed", "void", 1_780_000_000);
+        usage.provider_name = "unknown".to_string();
+        usage.provider_id = None;
+        usage.provider_endpoint_id = None;
+        usage.provider_api_key_id = None;
+        usage.status_code = Some(503);
+        usage.error_category = Some("server_error".to_string());
+        usage.execution_path =
+            Some(crate::constants::EXECUTION_PATH_LOCAL_EXECUTION_RUNTIME_MISS.to_string());
+        usage.local_execution_runtime_miss_reason = Some("candidate_list_empty".to_string());
 
         assert!(usage_anomaly_diagnosis(&usage, 1_780_000_000 + 60).is_none());
     }
