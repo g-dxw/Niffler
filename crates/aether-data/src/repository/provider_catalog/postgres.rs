@@ -294,7 +294,7 @@ SELECT
   NULL::bigint AS error_count,
   NULL::bigint AS total_response_time_ms,
   NULL::bigint AS last_used_at_unix_secs,
-  FALSE AS auto_fetch_models,
+  auto_fetch_models,
   NULL::bigint AS last_models_fetch_at_unix_secs,
   NULL::text AS last_models_fetch_error,
   locked_models,
@@ -2525,6 +2525,13 @@ mod tests {
         assert!(source.contains("concurrent_limit = $13"));
         assert!(source.contains(".bind(key.concurrent_limit)"));
         assert!(source.contains("row_get::<Option<i32>>(row, \"concurrent_limit\")"));
+    }
+
+    #[test]
+    fn provider_api_key_summary_queries_include_auto_fetch_models() {
+        assert!(super::LIST_KEY_SUMMARIES_BY_PROVIDER_IDS_PREFIX.contains("auto_fetch_models"));
+        assert!(!super::LIST_KEY_SUMMARIES_BY_PROVIDER_IDS_PREFIX
+            .contains("FALSE AS auto_fetch_models"));
     }
 
     #[test]

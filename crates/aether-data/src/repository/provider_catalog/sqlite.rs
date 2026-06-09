@@ -248,7 +248,7 @@ SELECT
   NULL AS error_count,
   NULL AS total_response_time_ms,
   NULL AS last_used_at_unix_secs,
-  FALSE AS auto_fetch_models,
+  auto_fetch_models,
   NULL AS last_models_fetch_at_unix_secs,
   NULL AS last_models_fetch_error,
   locked_models,
@@ -2039,6 +2039,14 @@ mod tests {
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].total_tokens, 1234);
         assert_eq!(keys[0].concurrent_limit, Some(3));
+        assert!(keys[0].auto_fetch_models);
+
+        let key_summaries = repository
+            .list_key_summaries_by_provider_ids(&["provider-1".to_string()])
+            .await
+            .expect("key summaries should list");
+        assert_eq!(key_summaries.len(), 1);
+        assert!(key_summaries[0].auto_fetch_models);
 
         let page = repository
             .list_keys_page(&ProviderCatalogKeyListQuery {
@@ -2326,12 +2334,12 @@ INSERT INTO provider_api_keys (
   api_formats, auth_type_by_format, internal_priority, rpm_limit,
   concurrent_limit, request_count, total_tokens, total_cost_usd,
   success_count, error_count, total_response_time_ms, health_by_format,
-  created_at, updated_at
+  auto_fetch_models, created_at, updated_at
 ) VALUES (
   'key-1', 'provider-1', 'default', 'enc-key', 'api_key',
   '{"cache_1h":true}', 1, '["openai:chat"]', '{"openai:chat":"api_key"}',
   5, 120, 3, 10, 1234, 1.5, 9, 1, 250, '{"openai:chat":{"score":1}}',
-  5, 6
+  1, 5, 6
 )
 "#,
         )
