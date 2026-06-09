@@ -481,6 +481,7 @@ Provider Key 残留判断规则：
 
 - `api_formats`、`auth_type_by_format` 和 `allow_auth_channel_mismatch_formats` 表示账号协议和认证能力，旧运行时、账号测试、OAuth 导入和模型获取仍需要读取；readiness 不把这些字段当成 Key 自身旧限制。
 - `allowed_models` 在 `auto_fetch_models = true` 时表示旧 Key 上自动同步出来的账号模型清单，不是管理员手动白名单；readiness 必须标成“自动同步模型清单”，并提示迁到 `niffler_account_model_capabilities`。
+- 自动同步模型清单的 readiness 明细说明也必须使用专门文案，不能混写模型范围、成本倍率或调度优先级，避免管理员以为这把账号同时存在手工限制或策略覆盖。
 - `allowed_models` 在未开启自动获取时，以及 `locked_models`、`model_include_patterns` 和 `model_exclude_patterns` 表示账号模型范围或过滤规则，迁移后应归入 `niffler_account_model_capabilities`，readiness 继续提示。
 - `rate_multipliers` 和 `global_priority_by_format` 表示账号成本或调度覆盖，迁移后应归入 Niffler Core 上游账号成本倍率和调度策略，readiness 继续提示。
 - readiness 只负责指出需要迁移或清理的旧范围/策略字段，不自动改写生产账号，也不删除协议和认证能力字段。

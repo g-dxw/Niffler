@@ -3001,24 +3001,58 @@ fn collect_key_scope_residue(
             .iter()
             .map(|field| residue_field_label(field).to_string())
             .collect::<Vec<_>>();
+        let (reason, impact, recommended_action) = key_scope_residue_detail_text(&fields);
         residue.push(NifflerKeyScopeResidue {
             subject_kind: "provider_key".to_string(),
             key_id: key.id.clone(),
             key_name: Some(key.name.clone()),
-            owner_label: provider_name.clone().or_else(|| Some(key.provider_id.clone())),
+            owner_label: provider_name
+                .clone()
+                .or_else(|| Some(key.provider_id.clone())),
             display_name,
             provider_id: Some(key.provider_id.clone()),
             provider_name,
             account_label: None,
             residue_fields: fields,
             field_labels,
-            reason: "这把上游账号仍在旧 Key 字段里保存模型清单、模型范围、成本倍率或调度优先级。".to_string(),
-            impact: "新模型里这些配置应该归到账号模型能力、账号成本倍率或调度策略；如果继续散落在旧 Key 上，页面和后端调度容易不一致。".to_string(),
-            recommended_action: "迁移前确认这些配置是否还需要保留，需要保留的迁到 Niffler Core 对应配置，不需要的清理掉。".to_string(),
+            reason: reason.to_string(),
+            impact: impact.to_string(),
+            recommended_action: recommended_action.to_string(),
         });
     }
     residue.truncate(MAX_ISSUE_ITEMS);
     residue
+}
+
+fn key_scope_residue_detail_text(fields: &[String]) -> (&'static str, &'static str, &'static str) {
+    let has_auto_fetched_model_catalog = fields
+        .iter()
+        .any(|field| field == "auto_fetched_allowed_models");
+    let has_manual_scope_or_strategy = fields
+        .iter()
+        .any(|field| field != "auto_fetched_allowed_models");
+
+    if has_auto_fetched_model_catalog && !has_manual_scope_or_strategy {
+        return (
+            "这把上游账号的自动同步模型清单仍保存在旧账号字段里。",
+            "新模型里自动同步模型清单应该归到账号模型能力；如果继续留在旧账号字段里，账号能力页面和迁移看板容易不一致。",
+            "迁移前确认这份自动同步模型清单是否仍要保留；需要保留的迁到 Niffler Core 账号模型能力，不需要的清理掉。",
+        );
+    }
+
+    if has_auto_fetched_model_catalog {
+        return (
+            "这把上游账号仍在旧账号字段里保存自动同步模型清单、手工模型范围、成本倍率或调度优先级。",
+            "新模型里这些配置应该归到账号模型能力、账号成本倍率或调度策略；如果继续散落在旧账号字段里，页面和后端调度容易不一致。",
+            "迁移前逐项确认这些配置是否还需要保留，需要保留的迁到 Niffler Core 对应配置，不需要的清理掉。",
+        );
+    }
+
+    (
+        "这把上游账号仍在旧账号字段里保存模型范围、成本倍率或调度优先级。",
+        "新模型里这些配置应该归到账号模型能力、账号成本倍率或调度策略；如果继续散落在旧账号字段里，页面和后端调度容易不一致。",
+        "迁移前确认这些配置是否还需要保留，需要保留的迁到 Niffler Core 对应配置，不需要的清理掉。",
+    )
 }
 
 fn push_json_field_if_present(
@@ -3885,7 +3919,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        collect_key_scope_residue, key_scope_residue_issue_text,
+        collect_key_scope_residue, key_scope_residue_detail_text, key_scope_residue_issue_text,
         normalize_rollback_drill_evidence_request, parse_recent_days,
         rollback_drill_evidence_is_complete, usage_anomaly_diagnosis,
         AdminNifflerRollbackDrillEvidenceRequest,
@@ -3957,6 +3991,40 @@ mod tests {
             vec!["auto_fetched_allowed_models"]
         );
         assert_eq!(residue[0].field_labels, vec!["自动同步模型清单"]);
+    }
+
+    #[test]
+    fn readiness_key_scope_residue_detail_names_auto_fetched_models_only() {
+        let provider = readiness_provider();
+        let mut key = readiness_key("key-1", &provider.id);
+        key.auto_fetch_models = true;
+        key.allowed_models = Some(json!(["gpt-5"]));
+        let providers = readiness_provider_map(&provider);
+
+        let residue = collect_key_scope_residue(&[key], &providers);
+
+        assert_eq!(
+            residue[0].reason,
+            "这把上游账号的自动同步模型清单仍保存在旧账号字段里。"
+        );
+        assert!(residue[0].impact.contains("账号模型能力"));
+        assert!(!residue[0].reason.contains("成本倍率"));
+        assert!(!residue[0].reason.contains("调度优先级"));
+    }
+
+    #[test]
+    fn readiness_key_scope_residue_detail_keeps_mixed_scope_wording() {
+        let fields = vec![
+            "auto_fetched_allowed_models".to_string(),
+            "rate_multipliers".to_string(),
+        ];
+
+        let (reason, impact, recommended_action) = key_scope_residue_detail_text(&fields);
+
+        assert!(reason.contains("自动同步模型清单"));
+        assert!(reason.contains("成本倍率"));
+        assert!(impact.contains("调度策略"));
+        assert!(recommended_action.contains("逐项确认"));
     }
 
     #[test]
