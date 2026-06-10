@@ -1165,6 +1165,10 @@ impl AppState {
             spawn_usage_counter_flush_worker(self.data.clone()),
         );
         supervise_worker(
+            crate::task_runtime::TASK_KEY_AUTH_EMAIL_DELIVERY_WORKER,
+            crate::email::spawn_auth_email_delivery_worker(self.clone()),
+        );
+        supervise_worker(
             crate::task_runtime::TASK_KEY_PROVIDER_QUOTA_RESET,
             crate::wallet_runtime::spawn_provider_quota_reset_worker(self.data.clone()),
         );

@@ -19,6 +19,8 @@ pub(crate) const TASK_KEY_PROVIDER_DELETE: &str = "admin.provider.delete";
 pub(crate) const TASK_KEY_PROVIDER_OAUTH_BATCH_IMPORT: &str = "admin.provider.oauth.batch_import";
 pub(crate) const TASK_KEY_USAGE_QUEUE_WORKER: &str = "usage.queue.worker";
 pub(crate) const TASK_KEY_USAGE_COUNTER_FLUSH: &str = "usage.counter.flush.worker";
+pub(crate) const TASK_KEY_AUTH_EMAIL_DELIVERY_WORKER: &str = "auth.email.delivery.worker";
+pub(crate) const TASK_TRIGGER_AUTH_EMAIL: &str = "auth_email";
 pub(crate) const TASK_KEY_VIDEO_TASK_POLLER: &str = "video.task.poller";
 pub(crate) const TASK_KEY_MODEL_FETCH_WORKER: &str = "model.fetch.worker";
 pub(crate) const TASK_KEY_PROVIDER_QUOTA_RESET: &str = "provider.quota.reset.worker";
@@ -77,6 +79,14 @@ const TASK_DEFINITIONS: &[TaskDefinition] = &[
     ),
     TaskDefinition::new(
         TASK_KEY_USAGE_COUNTER_FLUSH,
+        TaskKind::Daemon,
+        "daemon",
+        true,
+        true,
+        RETRY_ONCE,
+    ),
+    TaskDefinition::new(
+        TASK_KEY_AUTH_EMAIL_DELIVERY_WORKER,
         TaskKind::Daemon,
         "daemon",
         true,
