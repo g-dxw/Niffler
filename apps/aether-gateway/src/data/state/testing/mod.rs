@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
+use aether_data_contracts::repository::background_tasks::{
+    BackgroundTaskReadRepository, BackgroundTaskWriteRepository,
+};
 use aether_data_contracts::repository::candidates::RequestCandidateRepository;
 use aether_data_contracts::repository::pool_scores::PoolMemberScoreRepository;
 use aether_data_contracts::repository::quota::ProviderQuotaRepository;
@@ -221,6 +224,18 @@ impl GatewayDataState {
         repository: Arc<dyn SettlementWriteRepository>,
     ) -> Self {
         self.settlement_writer = Some(repository);
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_background_task_repository_for_tests<T>(mut self, repository: Arc<T>) -> Self
+    where
+        T: BackgroundTaskReadRepository + BackgroundTaskWriteRepository + 'static,
+    {
+        let background_task_reader: Arc<dyn BackgroundTaskReadRepository> = repository.clone();
+        let background_task_writer: Arc<dyn BackgroundTaskWriteRepository> = repository;
+        self.background_task_reader = Some(background_task_reader);
+        self.background_task_writer = Some(background_task_writer);
         self
     }
 

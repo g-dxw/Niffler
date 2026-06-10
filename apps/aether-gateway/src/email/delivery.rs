@@ -4,12 +4,12 @@ use aether_data_contracts::repository::background_tasks::{
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{EmailMessage, SmtpConfig, send_email_blocking};
+use super::{send_email_blocking, EmailMessage, SmtpConfig};
 use crate::handlers::shared::{
     decrypt_catalog_secret_with_fallbacks, system_config_bool, system_config_string,
 };
 use crate::task_runtime::{
-    TASK_TRIGGER_AUTH_EMAIL, append_event_with_logging, now_unix_secs, upsert_run_with_logging,
+    append_event_with_logging, now_unix_secs, upsert_run_with_logging, TASK_TRIGGER_AUTH_EMAIL,
 };
 use crate::{AppState, GatewayError};
 
@@ -99,18 +99,39 @@ pub(crate) async fn execute_email_delivery(
     state: &AppState,
     run: StoredBackgroundTaskRun,
 ) -> Result<(), GatewayError> {
-    let payload = run
-        .payload_json
-        .as_ref()
-        .ok_or_else(|| GatewayError::Internal("email delivery payload missing".to_string()))
-        .and_then(|value| {
-            serde_json::from_value::<EmailDeliveryPayload>(value.clone()).map_err(|err| {
-                GatewayError::Internal(format!("email delivery payload parse failed: {err}"))
-            })
-        })?;
-    let smtp_config = read_email_smtp_config(state).await?;
     let attempt = run.attempt.saturating_add(1).max(1);
     let started_at = run.started_at_unix_secs.or_else(|| Some(now_unix_secs()));
+    let payload = match parse_email_delivery_payload(&run) {
+        Ok(payload) => payload,
+        Err(err) => {
+            let run_id = run.id.clone();
+            let result_json = run.result_json.clone();
+            let message = email_delivery_error_message(&err);
+            let mut failed = with_task_status(
+                run,
+                BackgroundTaskStatus::Failed,
+                100,
+                "邮件任务内容无效",
+                result_json,
+                Some(message.clone()),
+                Some(now_unix_secs()),
+            );
+            failed.attempt = attempt;
+            failed.max_attempts = failed.max_attempts.max(1);
+            failed.owner_instance = Some(state.tunnel.local_instance_id().to_string());
+            failed.started_at_unix_secs = started_at;
+            let _ = upsert_run_with_logging(state, failed).await;
+            append_event_with_logging(
+                state,
+                &run_id,
+                "failed",
+                "邮件任务内容无效",
+                Some(json!({ "error": message })),
+            )
+            .await;
+            return Ok(());
+        }
+    };
     let running = UpsertBackgroundTaskRun {
         id: run.id.clone(),
         task_key: run.task_key.clone(),
@@ -150,15 +171,48 @@ pub(crate) async fn execute_email_delivery(
     )
     .await;
 
+    let smtp_config = match read_email_smtp_config(state).await {
+        Ok(config) => config,
+        Err(err) => {
+            let message = email_delivery_error_message(&err);
+            let failed = with_task_status(
+                running,
+                BackgroundTaskStatus::Failed,
+                100,
+                "邮件配置不完整",
+                Some(safe_email_delivery_summary(&payload)),
+                Some(message.clone()),
+                Some(now_unix_secs()),
+            );
+            let _ = upsert_run_with_logging(state, failed).await;
+            append_event_with_logging(
+                state,
+                &run.id,
+                "failed",
+                "邮件配置不完整",
+                Some(json!({
+                    "message_type": payload.message_type,
+                    "to_email": mask_email_address(&payload.to_email),
+                    "attempt": attempt,
+                    "error": message,
+                })),
+            )
+            .await;
+            return Ok(());
+        }
+    };
+
     let email = EmailMessage {
         to_email: payload.to_email.clone(),
         subject: payload.subject.clone(),
         html_body: payload.html_body.clone(),
         text_body: payload.text_body.clone(),
     };
-    let send_result = tokio::task::spawn_blocking(move || send_email_blocking(smtp_config, email))
-        .await
-        .map_err(|err| GatewayError::Internal(err.to_string()))?;
+    let send_result =
+        match tokio::task::spawn_blocking(move || send_email_blocking(smtp_config, email)).await {
+            Ok(result) => result,
+            Err(err) => Err(GatewayError::Internal(err.to_string())),
+        };
 
     match send_result {
         Ok(()) => {
@@ -186,7 +240,7 @@ pub(crate) async fn execute_email_delivery(
             Ok(())
         }
         Err(err) => {
-            let message = format!("{err:?}");
+            let message = email_delivery_error_message(&err);
             let final_failure = attempt >= running.max_attempts.max(1);
             let status = if final_failure {
                 BackgroundTaskStatus::Failed
@@ -223,6 +277,28 @@ pub(crate) async fn execute_email_delivery(
             .await;
             Ok(())
         }
+    }
+}
+
+fn parse_email_delivery_payload(
+    run: &StoredBackgroundTaskRun,
+) -> Result<EmailDeliveryPayload, GatewayError> {
+    run.payload_json
+        .as_ref()
+        .ok_or_else(|| GatewayError::Internal("email delivery payload missing".to_string()))
+        .and_then(|value| {
+            serde_json::from_value::<EmailDeliveryPayload>(value.clone()).map_err(|err| {
+                GatewayError::Internal(format!("email delivery payload parse failed: {err}"))
+            })
+        })
+}
+
+fn email_delivery_error_message(error: &GatewayError) -> String {
+    match error {
+        GatewayError::Internal(message) => message.clone(),
+        GatewayError::Client { message, .. } => message.clone(),
+        GatewayError::UpstreamUnavailable { message, .. }
+        | GatewayError::ControlUnavailable { message, .. } => message.clone(),
     }
 }
 
@@ -319,5 +395,122 @@ fn with_task_status(
         started_at_unix_secs: run.started_at_unix_secs,
         finished_at_unix_secs,
         updated_at_unix_secs: now_unix_secs(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use aether_data::repository::background_tasks::InMemoryBackgroundTaskRepository;
+    use serde_json::json;
+
+    use super::*;
+    use crate::data::GatewayDataState;
+
+    fn stored_email_run(payload: EmailDeliveryPayload) -> StoredBackgroundTaskRun {
+        StoredBackgroundTaskRun {
+            id: "email-run-1".to_string(),
+            task_key: "auth.email.delivery:email-run-1".to_string(),
+            kind: BackgroundTaskKind::FireAndForget,
+            trigger: TASK_TRIGGER_AUTH_EMAIL.to_string(),
+            status: BackgroundTaskStatus::Queued,
+            attempt: 0,
+            max_attempts: 2,
+            owner_instance: None,
+            progress_percent: 0,
+            progress_message: Some("等待发送邮件".to_string()),
+            payload_json: Some(serde_json::to_value(&payload).expect("payload should serialize")),
+            result_json: Some(safe_email_delivery_summary(&payload)),
+            error_message: None,
+            cancel_requested: false,
+            created_by: None,
+            created_at_unix_secs: 1,
+            started_at_unix_secs: None,
+            finished_at_unix_secs: None,
+            updated_at_unix_secs: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_email_delivery_marks_missing_smtp_config_as_failed() {
+        let payload = EmailDeliveryPayload {
+            message_type: "test".to_string(),
+            to_email: "person@example.com".to_string(),
+            subject: "测试邮件".to_string(),
+            html_body: "<p>hello</p>".to_string(),
+            text_body: "hello".to_string(),
+        };
+        let run = stored_email_run(payload);
+        let repository = Arc::new(InMemoryBackgroundTaskRepository::seed_runs([run.clone()]));
+        let data_state = GatewayDataState::disabled()
+            .with_background_task_repository_for_tests(Arc::clone(&repository))
+            .with_system_config_values_for_tests(Vec::<(String, serde_json::Value)>::new());
+        let state = AppState::new()
+            .expect("state should build")
+            .with_data_state_for_tests(data_state);
+
+        execute_email_delivery(&state, run)
+            .await
+            .expect("missing SMTP config should be recorded, not returned");
+
+        let stored = state
+            .find_background_task_run("email-run-1")
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        assert_eq!(stored.status, BackgroundTaskStatus::Failed);
+        assert_eq!(stored.attempt, 1);
+        assert_eq!(stored.progress_message.as_deref(), Some("邮件配置不完整"));
+        assert!(stored
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("SMTP 服务器地址未配置"));
+        assert_eq!(
+            stored.result_json,
+            Some(json!({
+                "message_type": "test",
+                "to_email": "p***@example.com",
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_email_delivery_marks_invalid_payload_as_failed() {
+        let mut run = stored_email_run(EmailDeliveryPayload {
+            message_type: "test".to_string(),
+            to_email: "person@example.com".to_string(),
+            subject: "测试邮件".to_string(),
+            html_body: "<p>hello</p>".to_string(),
+            text_body: "hello".to_string(),
+        });
+        run.payload_json = Some(json!({"message_type": "test"}));
+        let repository = Arc::new(InMemoryBackgroundTaskRepository::seed_runs([run.clone()]));
+        let data_state = GatewayDataState::disabled()
+            .with_background_task_repository_for_tests(Arc::clone(&repository))
+            .with_system_config_values_for_tests(Vec::<(String, serde_json::Value)>::new());
+        let state = AppState::new()
+            .expect("state should build")
+            .with_data_state_for_tests(data_state);
+
+        execute_email_delivery(&state, run)
+            .await
+            .expect("invalid payload should be recorded, not returned");
+
+        let stored = state
+            .find_background_task_run("email-run-1")
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        assert_eq!(stored.status, BackgroundTaskStatus::Failed);
+        assert_eq!(stored.attempt, 1);
+        assert_eq!(stored.progress_message.as_deref(), Some("邮件任务内容无效"));
+        assert!(stored.started_at_unix_secs.is_some());
+        assert!(stored
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("email delivery payload parse failed"));
     }
 }
