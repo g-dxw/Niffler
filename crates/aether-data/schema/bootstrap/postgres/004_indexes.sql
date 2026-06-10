@@ -1311,6 +1311,14 @@ CREATE INDEX IF NOT EXISTS ix_usage_provider_api_key_id ON public.usage USING bt
 
 
 --
+-- Name: idx_usage_provider_api_key_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS idx_usage_provider_api_key_created_at ON public.usage USING btree (provider_api_key_id, created_at);
+
+
+
+--
 -- Name: ix_usage_provider_endpoint_id; Type: INDEX; Schema: public; Owner: -
 --
 

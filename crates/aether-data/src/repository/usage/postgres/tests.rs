@@ -257,10 +257,19 @@ fn usage_sql_rebuilds_provider_key_window_usage_into_status_snapshot() {
         .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
     assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
         .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("FROM requested"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("LEFT JOIN LATERAL"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("FROM \"usage\""));
+    assert!(!super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("FROM usage_billing_facts"));
     assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
-        .contains("\"usage\".billing_status = 'settled'"));
+        .contains("usage_row.final_billing_status = 'settled'"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("usage_facts.is_billable"));
     assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
         .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("settlement.billing_total_cost_usd"));
     assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
         .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
 }
