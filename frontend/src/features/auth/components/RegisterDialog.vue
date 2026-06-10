@@ -768,7 +768,10 @@ const handleSendCode = async () => {
         expireMinutes.value = response.expire_minutes
       }
 
-      success(`请查收邮件，验证码有效期 ${expireMinutes.value} 分钟`, '验证码已发送')
+      success(
+        response.message || `验证码正在发送，请稍后查收。有效期 ${expireMinutes.value} 分钟`,
+        '验证码发送中'
+      )
 
       // Start 60 second cooldown
       startCooldown(60)

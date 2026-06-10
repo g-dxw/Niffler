@@ -29,13 +29,31 @@ pub(crate) async fn queue_email_delivery(
     payload: EmailDeliveryPayload,
     created_by: Option<String>,
 ) -> Result<String, GatewayError> {
+    let run_id = Uuid::new_v4().to_string();
+    #[cfg(test)]
+    {
+        if let Some(store) = state.auth_email_delivery_store.as_ref() {
+            store
+                .lock()
+                .expect("auth email delivery store should lock")
+                .push(json!({
+                    "delivery_id": run_id,
+                    "message_type": payload.message_type,
+                    "to_email": payload.to_email,
+                    "subject": payload.subject,
+                    "html_body": payload.html_body,
+                    "text_body": payload.text_body,
+                }));
+            return Ok(run_id);
+        }
+    }
+
     if !state.has_background_task_data_writer() {
         return Err(GatewayError::Internal(
             "email delivery task storage is unavailable".to_string(),
         ));
     }
 
-    let run_id = Uuid::new_v4().to_string();
     let now = now_unix_secs();
     let run = UpsertBackgroundTaskRun {
         id: run_id.clone(),

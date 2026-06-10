@@ -8934,6 +8934,10 @@ async fn gateway_handles_auth_send_verification_code_locally_without_proxying_up
         send_response.json().await.expect("json body should parse");
     assert_eq!(send_payload["success"], true);
     assert_eq!(send_payload["expire_minutes"], 5);
+    assert_eq!(send_payload["message"], "验证码正在发送，请稍后查收");
+    assert!(send_payload["delivery_id"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
 
     let status_response = client
         .post(format!("{gateway_url}/api/auth/verification-status"))
@@ -9066,6 +9070,9 @@ async fn gateway_verifies_turnstile_token_before_auth_send_verification_code() {
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
     assert_eq!(payload["success"], true);
+    assert!(payload["delivery_id"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
     let requests = turnstile_requests
         .lock()
         .expect("turnstile requests should lock");

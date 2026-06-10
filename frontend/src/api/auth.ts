@@ -40,6 +40,7 @@ export interface SendVerificationCodeResponse {
   message: string
   success: boolean
   expire_minutes?: number
+  delivery_id?: string
 }
 
 export interface VerifyEmailRequest {

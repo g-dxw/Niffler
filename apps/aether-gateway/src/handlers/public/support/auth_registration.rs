@@ -1,12 +1,11 @@
 use super::{
-    auth_email_is_verified, auth_now, auth_registration_email_configured,
-    auth_verification_code_expire_minutes, auth_verification_send_cooldown_seconds,
-    build_auth_error_response, build_auth_json_response, build_auth_verification_email,
+    AppState, AuthTurnstileAction, Body, GatewayError, Regex, Response, auth_email_is_verified,
+    auth_now, auth_registration_email_configured, auth_verification_code_expire_minutes,
+    auth_verification_send_cooldown_seconds, build_auth_error_response, build_auth_json_response,
     clear_auth_email_pending_code, clear_auth_email_verification, generate_auth_verification_code,
-    http, json, mark_auth_email_verified, read_auth_email_verification_code, read_auth_smtp_config,
-    send_auth_email, store_auth_email_verification_code, system_config_bool, system_config_f64,
-    system_config_string, system_config_string_list, verify_auth_turnstile, AppState,
-    AuthTurnstileAction, Body, GatewayError, Regex, Response,
+    http, json, mark_auth_email_verified, read_auth_email_verification_code,
+    store_auth_email_verification_code, system_config_bool, system_config_f64,
+    system_config_string, system_config_string_list, verify_auth_turnstile,
 };
 use serde::Deserialize;
 
@@ -263,24 +262,6 @@ pub(super) async fn handle_auth_send_verification_code(
         );
     }
 
-    let smtp_config = match read_auth_smtp_config(state).await {
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            return build_auth_error_response(
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-                "发送验证码失败，请稍后重试",
-                false,
-            );
-        }
-        Err(err) => {
-            return build_auth_error_response(
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("auth smtp settings lookup failed: {err:?}"),
-                false,
-            );
-        }
-    };
-
     let now = auth_now();
     if let Ok(Some(stored)) = read_auth_email_verification_code(state, &email).await {
         let created_at = chrono::DateTime::parse_from_rfc3339(&stored.created_at)
@@ -306,8 +287,10 @@ pub(super) async fn handle_auth_send_verification_code(
 
     let expire_minutes = auth_verification_code_expire_minutes();
     let code = generate_auth_verification_code();
-    let email_message =
-        match build_auth_verification_email(state, &email, &code, expire_minutes).await {
+    let email_payload =
+        match crate::email::build_verification_email_payload(state, &email, &code, expire_minutes)
+            .await
+        {
             Ok(value) => value,
             Err(err) => {
                 return build_auth_error_response(
@@ -334,21 +317,31 @@ pub(super) async fn handle_auth_send_verification_code(
         );
     }
 
-    if let Err(_err) = send_auth_email(state, smtp_config, email_message).await {
-        let _ = clear_auth_email_pending_code(state, &email).await;
-        return build_auth_error_response(
-            http::StatusCode::INTERNAL_SERVER_ERROR,
-            "发送验证码失败，请稍后重试",
-            false,
-        );
-    }
+    let delivery_id = match crate::email::queue_email_delivery(
+        state,
+        email_payload,
+        Some("auth:send_verification_code".to_string()),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(_err) => {
+            let _ = clear_auth_email_pending_code(state, &email).await;
+            return build_auth_error_response(
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+                "发送验证码失败，请稍后重试",
+                false,
+            );
+        }
+    };
 
     build_auth_json_response(
         http::StatusCode::OK,
         json!({
-            "message": "验证码已发送，请查收邮件",
+            "message": "验证码正在发送，请稍后查收",
             "success": true,
             "expire_minutes": expire_minutes,
+            "delivery_id": delivery_id,
         }),
         None,
     )
@@ -366,7 +359,7 @@ pub(super) async fn handle_auth_register(
     let payload = match serde_json::from_slice::<AuthRegisterRequest>(request_body) {
         Ok(value) => value,
         Err(_) => {
-            return build_auth_error_response(http::StatusCode::BAD_REQUEST, "输入验证失败", false)
+            return build_auth_error_response(http::StatusCode::BAD_REQUEST, "输入验证失败", false);
         }
     };
     let email = match normalize_auth_optional_email(payload.email.as_deref()) {
@@ -688,7 +681,7 @@ pub(super) async fn handle_auth_verify_email(
     let payload = match serde_json::from_slice::<AuthVerifyEmailRequest>(request_body) {
         Ok(value) => value,
         Err(_) => {
-            return build_auth_error_response(http::StatusCode::BAD_REQUEST, "输入验证失败", false)
+            return build_auth_error_response(http::StatusCode::BAD_REQUEST, "输入验证失败", false);
         }
     };
     let Some(email) = normalize_auth_email(&payload.email) else {
@@ -709,7 +702,7 @@ pub(super) async fn handle_auth_verify_email(
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 format!("verification lookup failed: {err:?}"),
                 false,
-            )
+            );
         }
     };
     let Some(pending) = pending else {
@@ -756,7 +749,7 @@ pub(super) async fn handle_auth_verification_status(
     let payload = match serde_json::from_slice::<AuthEmailRequest>(request_body) {
         Ok(value) => value,
         Err(_) => {
-            return build_auth_error_response(http::StatusCode::BAD_REQUEST, "输入验证失败", false)
+            return build_auth_error_response(http::StatusCode::BAD_REQUEST, "输入验证失败", false);
         }
     };
     let Some(email) = normalize_auth_email(&payload.email) else {
