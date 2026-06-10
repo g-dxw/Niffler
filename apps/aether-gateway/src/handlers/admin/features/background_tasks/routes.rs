@@ -389,6 +389,35 @@ fn mask_email_address(email: &str) -> String {
     format!("{first}***@{domain}")
 }
 
+fn task_id_from_path(request_path: &str) -> Option<&str> {
+    let task_id = request_path.strip_prefix("/api/admin/tasks/")?;
+    if task_id.is_empty() || task_id.contains('/') || task_id == "stats" {
+        return None;
+    }
+    Some(task_id)
+}
+
+fn nested_task_id_from_path<'a>(request_path: &'a str, suffix: &str) -> Option<&'a str> {
+    let task_id = request_path
+        .strip_prefix("/api/admin/tasks/")?
+        .strip_suffix(suffix)?;
+    if task_id.is_empty() || task_id.contains('/') {
+        return None;
+    }
+    Some(task_id)
+}
+
+fn parse_json_payload(request_body: Option<&Bytes>) -> Result<serde_json::Value, GatewayError> {
+    let Some(body) = request_body else {
+        return Ok(json!({}));
+    };
+    if body.is_empty() {
+        return Ok(json!({}));
+    }
+    serde_json::from_slice::<serde_json::Value>(body)
+        .map_err(|err| GatewayError::Internal(format!("invalid json body: {err}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,33 +484,4 @@ mod tests {
         assert_eq!(safe_task_payload_json(&run), payload);
         assert_eq!(safe_task_result_json(&run), result);
     }
-}
-
-fn task_id_from_path(request_path: &str) -> Option<&str> {
-    let task_id = request_path.strip_prefix("/api/admin/tasks/")?;
-    if task_id.is_empty() || task_id.contains('/') || task_id == "stats" {
-        return None;
-    }
-    Some(task_id)
-}
-
-fn nested_task_id_from_path<'a>(request_path: &'a str, suffix: &str) -> Option<&'a str> {
-    let task_id = request_path
-        .strip_prefix("/api/admin/tasks/")?
-        .strip_suffix(suffix)?;
-    if task_id.is_empty() || task_id.contains('/') {
-        return None;
-    }
-    Some(task_id)
-}
-
-fn parse_json_payload(request_body: Option<&Bytes>) -> Result<serde_json::Value, GatewayError> {
-    let Some(body) = request_body else {
-        return Ok(json!({}));
-    };
-    if body.is_empty() {
-        return Ok(json!({}));
-    }
-    serde_json::from_slice::<serde_json::Value>(body)
-        .map_err(|err| GatewayError::Internal(format!("invalid json body: {err}")))
 }
