@@ -624,6 +624,21 @@ type = "int64"
 default = 0
 
 [[table.usage_counter_deltas.columns]]
+name = "window_request_count_delta"
+type = "int64"
+nullable = true
+
+[[table.usage_counter_deltas.columns]]
+name = "window_total_tokens_delta"
+type = "int64"
+nullable = true
+
+[[table.usage_counter_deltas.columns]]
+name = "window_total_cost_usd_delta"
+type = "float64"
+nullable = true
+
+[[table.usage_counter_deltas.columns]]
 name = "last_used_at_unix_secs"
 type = "unix_seconds"
 nullable = true
