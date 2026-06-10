@@ -1,6 +1,6 @@
 use axum::http;
 
-use super::{classified, ClassifiedRoute};
+use super::{ClassifiedRoute, classified};
 
 pub(super) fn classify_admin_system_family_route(
     method: &http::Method,
@@ -100,6 +100,15 @@ pub(super) fn classify_admin_system_family_route(
             "admin_proxy",
             "system_manage",
             "smtp_test",
+            "admin:system",
+            false,
+        ))
+    } else if method == http::Method::POST && normalized_path == "/api/admin/system/email/test-send"
+    {
+        Some(classified(
+            "admin_proxy",
+            "system_manage",
+            "email_test_send",
             "admin:system",
             false,
         ))

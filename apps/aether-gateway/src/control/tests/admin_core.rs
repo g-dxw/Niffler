@@ -3,7 +3,7 @@ use http::Uri;
 use crate::control::management_token_required_permission;
 use crate::handlers::shared::local_proxy_route_requires_buffered_body;
 
-use super::{classify_control_route, headers, GatewayPublicRequestContext};
+use super::{GatewayPublicRequestContext, classify_control_route, headers};
 
 #[test]
 fn classifies_admin_endpoint_health_api_formats_as_admin_proxy_route() {
@@ -933,6 +933,7 @@ fn classifies_admin_system_maintenance_write_routes_as_admin_proxy_route() {
         ("/api/admin/system/users/import", "users_import"),
         ("/api/admin/system/data/import", "data_import"),
         ("/api/admin/system/smtp/test", "smtp_test"),
+        ("/api/admin/system/email/test-send", "email_test_send"),
         ("/api/admin/system/cleanup", "cleanup"),
         ("/api/admin/system/purge/config", "purge_config"),
         ("/api/admin/system/purge/users", "purge_users"),

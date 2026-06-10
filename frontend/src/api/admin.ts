@@ -284,6 +284,12 @@ export interface EmailTemplateResetResponse {
   }
 }
 
+export interface EmailTestSendResponse {
+  success: boolean
+  message: string
+  delivery_id?: string
+}
+
 export interface CleanupRunRecord {
   id: string
   kind: string
@@ -913,6 +919,14 @@ export const adminApi = {
     const response = await apiClient.post<{ success: boolean; message: string }>(
       '/api/admin/system/smtp/test',
       config
+    )
+    return response.data
+  },
+
+  async sendTestEmail(toEmail: string): Promise<EmailTestSendResponse> {
+    const response = await apiClient.post<EmailTestSendResponse>(
+      '/api/admin/system/email/test-send',
+      { to_email: toEmail }
     )
     return response.data
   },

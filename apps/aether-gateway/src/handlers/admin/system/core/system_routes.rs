@@ -1,4 +1,5 @@
 use super::ADMIN_AWS_REGIONS;
+use crate::GatewayError;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::handlers::admin::shared::build_proxy_error_response;
@@ -18,17 +19,22 @@ use crate::handlers::admin::system::shared::settings::{
 };
 use crate::handlers::admin::system::shared::smtp::build_admin_smtp_test_payload;
 use crate::maintenance::{ManualUsageCleanupMode, ManualUsageCleanupOptions};
-use crate::GatewayError;
 use aether_data_contracts::repository::usage::UsageCleanupTargets;
 use axum::{
-    body::{Body, Bytes},
-    http,
-    response::{IntoResponse, Response},
     Json,
+    body::{Body, Bytes},
+    http::{self, StatusCode},
+    response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 use serde_json::json;
 use std::time::Instant;
 use url::form_urlencoded;
+
+#[derive(Debug, Deserialize)]
+struct AdminEmailTestSendRequest {
+    to_email: String,
+}
 
 pub(super) async fn maybe_build_local_admin_core_system_response(
     state: &AdminAppState<'_>,
@@ -239,6 +245,28 @@ pub(super) async fn maybe_build_local_admin_core_system_response(
         return Ok(Some(
             Json(build_admin_smtp_test_payload(state, request_body).await?).into_response(),
         ));
+    }
+
+    if decision.route_kind.as_deref() == Some("email_test_send")
+        && request_method == http::Method::POST
+        && request_path == "/api/admin/system/email/test-send"
+    {
+        let response = build_admin_email_test_send_response(
+            state,
+            request_body,
+            decision
+                .admin_principal
+                .as_ref()
+                .map(|principal| principal.user_id.as_str()),
+        )
+        .await?;
+        return Ok(Some(attach_admin_audit_response(
+            Json(response).into_response(),
+            "admin_email_test_send_queued",
+            "send_test_email",
+            "email_delivery",
+            "test",
+        )));
     }
 
     if decision.route_kind.as_deref() == Some("cleanup") && request_method == http::Method::POST {
@@ -526,6 +554,58 @@ pub(super) async fn maybe_build_local_admin_core_system_response(
     Ok(None)
 }
 
+async fn build_admin_email_test_send_response(
+    state: &AdminAppState<'_>,
+    request_body: Option<&Bytes>,
+    admin_user_id: Option<&str>,
+) -> Result<serde_json::Value, GatewayError> {
+    let Some(request_body) = request_body else {
+        return Ok(json!({
+            "success": false,
+            "message": "请填写测试收件人邮箱",
+        }));
+    };
+    let payload =
+        serde_json::from_slice::<AdminEmailTestSendRequest>(request_body).map_err(|err| {
+            GatewayError::Client {
+                status: StatusCode::BAD_REQUEST,
+                message: format!("请求格式无效: {err}"),
+            }
+        })?;
+    let Some(to_email) = normalize_admin_email(&payload.to_email) else {
+        return Ok(json!({
+            "success": false,
+            "message": "测试收件人邮箱格式无效",
+        }));
+    };
+    let delivery_payload = crate::email::build_test_email_payload(state.app(), &to_email).await?;
+    let delivery_id = crate::email::queue_email_delivery(
+        state.app(),
+        delivery_payload,
+        Some(
+            admin_user_id
+                .map(|value| format!("admin:{value}"))
+                .unwrap_or_else(|| "admin".to_string()),
+        ),
+    )
+    .await?;
+    Ok(json!({
+        "success": true,
+        "message": "测试邮件正在发送",
+        "delivery_id": delivery_id,
+    }))
+}
+
+fn normalize_admin_email(value: &str) -> Option<String> {
+    let value = value.trim().to_ascii_lowercase();
+    if value.is_empty() {
+        return None;
+    }
+    let pattern = regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+        .expect("email regex should compile");
+    pattern.is_match(&value).then_some(value)
+}
+
 fn admin_system_purge_task_for_route_kind(
     route_kind: Option<&str>,
 ) -> Option<(
@@ -731,7 +811,7 @@ fn parse_manual_usage_cleanup_request(
                 http::StatusCode::BAD_REQUEST,
                 Json(json!({ "detail": format!("请求体无效 JSON: {err}") })),
             )
-                .into_response())
+                .into_response());
         }
     };
     let Some(object) = parsed.as_object() else {
@@ -910,7 +990,7 @@ fn parse_manual_cleanup_targets(
             _ => {
                 return Err(bad_manual_cleanup_request(
                     "targets 只能包含 detail_body、compressed_body、headers、records",
-                ))
+                ));
             }
         }
     }

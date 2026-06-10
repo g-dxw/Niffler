@@ -1,19 +1,20 @@
+use crate::GatewayError;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::{
     attach_admin_audit_response, query_param_value, unix_secs_to_rfc3339,
 };
 use crate::task_runtime::{
-    self, set_cancel_signal, TASK_KEY_PROVIDER_DELETE, TASK_KEY_PROVIDER_OAUTH_BATCH_IMPORT,
+    self, TASK_KEY_PROVIDER_DELETE, TASK_KEY_PROVIDER_OAUTH_BATCH_IMPORT, TASK_TRIGGER_AUTH_EMAIL,
+    set_cancel_signal,
 };
-use crate::GatewayError;
 use aether_data_contracts::repository::background_tasks::{
-    BackgroundTaskKind, BackgroundTaskListQuery, BackgroundTaskStatus,
+    BackgroundTaskKind, BackgroundTaskListQuery, BackgroundTaskStatus, StoredBackgroundTaskRun,
 };
 use axum::{
+    Json,
     body::{Body, Bytes},
     http,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 
@@ -83,8 +84,8 @@ pub(super) async fn maybe_build_local_admin_background_tasks_response(
                         "owner_instance": run.owner_instance,
                         "progress_percent": run.progress_percent,
                         "progress_message": run.progress_message,
-                        "payload": run.payload_json,
-                        "result": run.result_json,
+                        "payload": safe_task_payload_json(run),
+                        "result": safe_task_result_json(run),
                         "error_message": run.error_message,
                         "cancel_requested": run.cancel_requested,
                         "created_by": run.created_by,
@@ -165,8 +166,8 @@ pub(super) async fn maybe_build_local_admin_background_tasks_response(
                     "owner_instance": run.owner_instance,
                     "progress_percent": run.progress_percent,
                     "progress_message": run.progress_message,
-                    "payload": run.payload_json,
-                    "result": run.result_json,
+                    "payload": safe_task_payload_json(&run),
+                    "result": safe_task_result_json(&run),
                     "error_message": run.error_message,
                     "cancel_requested": run.cancel_requested,
                     "created_by": run.created_by,
@@ -202,6 +203,11 @@ pub(super) async fn maybe_build_local_admin_background_tasks_response(
                 .unwrap_or(DEFAULT_EVENTS_PAGE_SIZE)
                 .clamp(1, MAX_PAGE_SIZE);
             let offset = (page - 1).saturating_mul(page_size);
+            let is_auth_email_task = state
+                .find_background_task_run(run_id)
+                .await?
+                .as_ref()
+                .is_some_and(|run| run.trigger == TASK_TRIGGER_AUTH_EMAIL);
             let events = state
                 .list_background_task_events(run_id, offset, page_size)
                 .await?;
@@ -213,7 +219,11 @@ pub(super) async fn maybe_build_local_admin_background_tasks_response(
                             "run_id": event.run_id,
                             "event_type": event.event_type,
                             "message": event.message,
-                            "payload": event.payload_json,
+                            "payload": if is_auth_email_task {
+                                serde_json::Value::Null
+                            } else {
+                                event.payload_json.unwrap_or(serde_json::Value::Null)
+                            },
                             "created_at": unix_secs_to_rfc3339(event.created_at_unix_secs),
                         })
                     }).collect::<Vec<_>>(),
@@ -341,6 +351,110 @@ pub(super) async fn maybe_build_local_admin_background_tasks_response(
     }
 
     Ok(None)
+}
+
+fn safe_task_payload_json(run: &StoredBackgroundTaskRun) -> serde_json::Value {
+    if run.trigger == TASK_TRIGGER_AUTH_EMAIL {
+        serde_json::Value::Null
+    } else {
+        run.payload_json.clone().unwrap_or(serde_json::Value::Null)
+    }
+}
+
+fn safe_task_result_json(run: &StoredBackgroundTaskRun) -> serde_json::Value {
+    if run.trigger != TASK_TRIGGER_AUTH_EMAIL {
+        return run.result_json.clone().unwrap_or(serde_json::Value::Null);
+    }
+    let source = run.result_json.as_ref().or(run.payload_json.as_ref());
+    let message_type = source
+        .and_then(|value| value.get("message_type"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let to_email = source
+        .and_then(|value| value.get("to_email"))
+        .and_then(serde_json::Value::as_str)
+        .map(mask_email_address);
+    json!({
+        "message_type": message_type,
+        "to_email": to_email,
+    })
+}
+
+fn mask_email_address(email: &str) -> String {
+    let email = email.trim();
+    let Some((local, domain)) = email.split_once('@') else {
+        return "***".to_string();
+    };
+    let first = local.chars().next().unwrap_or('*');
+    format!("{first}***@{domain}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stored_run(
+        trigger: &str,
+        payload_json: Option<serde_json::Value>,
+        result_json: Option<serde_json::Value>,
+    ) -> StoredBackgroundTaskRun {
+        StoredBackgroundTaskRun {
+            id: "task-1".to_string(),
+            task_key: "task.key".to_string(),
+            kind: BackgroundTaskKind::FireAndForget,
+            trigger: trigger.to_string(),
+            status: BackgroundTaskStatus::Queued,
+            attempt: 0,
+            max_attempts: 1,
+            owner_instance: None,
+            progress_percent: 0,
+            progress_message: None,
+            payload_json,
+            result_json,
+            error_message: None,
+            cancel_requested: false,
+            created_by: None,
+            created_at_unix_secs: 1,
+            started_at_unix_secs: None,
+            finished_at_unix_secs: None,
+            updated_at_unix_secs: 1,
+        }
+    }
+
+    #[test]
+    fn auth_email_task_response_hides_payload_and_keeps_safe_result() {
+        let run = stored_run(
+            TASK_TRIGGER_AUTH_EMAIL,
+            Some(json!({
+                "message_type": "verification",
+                "to_email": "person@example.com",
+                "subject": "验证码",
+                "html_body": "<p>123456</p>",
+                "text_body": "123456",
+            })),
+            None,
+        );
+
+        assert_eq!(safe_task_payload_json(&run), serde_json::Value::Null);
+        let result = safe_task_result_json(&run);
+        assert_eq!(result["message_type"], "verification");
+        assert_eq!(result["to_email"], "p***@example.com");
+        let result_text = result.to_string();
+        assert!(!result_text.contains("123456"));
+        assert!(!result_text.contains("html_body"));
+        assert!(!result_text.contains("text_body"));
+        assert!(!result_text.contains("subject"));
+    }
+
+    #[test]
+    fn non_email_task_response_keeps_payload_and_result() {
+        let payload = json!({ "provider_id": "provider-1" });
+        let result = json!({ "deleted": 3 });
+        let run = stored_run("manual", Some(payload.clone()), Some(result.clone()));
+
+        assert_eq!(safe_task_payload_json(&run), payload);
+        assert_eq!(safe_task_result_json(&run), result);
+    }
 }
 
 fn task_id_from_path(request_path: &str) -> Option<&str> {

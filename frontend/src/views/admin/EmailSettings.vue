@@ -26,161 +26,193 @@
               :disabled="smtpSaveLoading"
               @click="saveSmtpConfig"
             >
-              {{ smtpSaveLoading ? '保存中...' : '保存' }}
+              {{ smtpSaveLoading ? '保存中...' : '保存配置' }}
             </Button>
           </div>
         </template>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <Label
-              for="smtp-host"
-              class="block text-sm font-medium"
-            >
-              SMTP 服务器地址
-            </Label>
-            <Input
-              id="smtp-host"
-              v-model="emailConfig.smtp_host"
-              type="text"
-              placeholder="smtp.gmail.com"
-              class="mt-1"
-            />
-            <p class="mt-1 text-xs text-muted-foreground">
-              邮件服务器地址
-            </p>
-          </div>
-
-          <div>
-            <Label
-              for="smtp-port"
-              class="block text-sm font-medium"
-            >
-              SMTP 端口
-            </Label>
-            <Input
-              id="smtp-port"
-              v-model.number="emailConfig.smtp_port"
-              type="number"
-              placeholder="587"
-              class="mt-1"
-            />
-            <p class="mt-1 text-xs text-muted-foreground">
-              常用端口: 587 (TLS), 465 (SSL), 25 (无加密)
-            </p>
-          </div>
-
-          <div>
-            <Label
-              for="smtp-user"
-              class="block text-sm font-medium"
-            >
-              SMTP 用户名
-            </Label>
-            <Input
-              id="smtp-user"
-              v-model="emailConfig.smtp_user"
-              type="text"
-              placeholder="your-email@example.com"
-              class="mt-1"
-              autocomplete="off"
-              data-lpignore="true"
-              data-1p-ignore="true"
-              data-form-type="other"
-            />
-            <p class="mt-1 text-xs text-muted-foreground">
-              通常是您的邮箱地址
-            </p>
-          </div>
-
-          <div>
-            <Label
-              for="smtp-password"
-              class="block text-sm font-medium"
-            >
-              SMTP 密码
-            </Label>
-            <div class="mt-1">
-              <Input
-                id="smtp-password"
-                v-model="emailConfig.smtp_password"
-                masked
-                :placeholder="smtpPasswordIsSet ? '已设置（留空保持不变）' : '请输入密码'"
-              />
-            </div>
-            <p class="mt-1 text-xs text-muted-foreground">
-              邮箱密码或应用专用密码
-            </p>
-          </div>
-
-          <div>
-            <Label
-              for="smtp-from-email"
-              class="block text-sm font-medium"
-            >
-              发件人邮箱
-            </Label>
-            <Input
-              id="smtp-from-email"
-              v-model="emailConfig.smtp_from_email"
-              type="email"
-              placeholder="noreply@example.com"
-              class="mt-1"
-            />
-            <p class="mt-1 text-xs text-muted-foreground">
-              显示为发件人的邮箱地址
-            </p>
-          </div>
-
-          <div>
-            <Label
-              for="smtp-from-name"
-              class="block text-sm font-medium"
-            >
-              发件人名称
-            </Label>
-            <Input
-              id="smtp-from-name"
-              v-model="emailConfig.smtp_from_name"
-              type="text"
-              placeholder="Niffler"
-              class="mt-1"
-            />
-            <p class="mt-1 text-xs text-muted-foreground">
-              显示为发件人的名称
-            </p>
-          </div>
-
-          <div>
-            <Label
-              for="smtp-encryption"
-              class="block text-sm font-medium mb-2"
-            >
-              加密方式
-            </Label>
-            <Select
-              v-model="smtpEncryption"
-            >
-              <SelectTrigger
-                id="smtp-encryption"
-                class="mt-1"
+        <div class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <Label
+                for="smtp-host"
+                class="block text-sm font-medium"
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ssl">
-                  SSL (隐式加密)
-                </SelectItem>
-                <SelectItem value="tls">
-                  TLS / STARTTLS
-                </SelectItem>
-                <SelectItem value="none">
-                  无加密
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p class="mt-1 text-xs text-muted-foreground">
-              Gmail 等服务推荐使用 SSL
-            </p>
+                SMTP 服务器地址
+              </Label>
+              <Input
+                id="smtp-host"
+                v-model="emailConfig.smtp_host"
+                type="text"
+                placeholder="smtp.gmail.com"
+                class="mt-1"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                邮件服务器地址
+              </p>
+            </div>
+
+            <div>
+              <Label
+                for="smtp-port"
+                class="block text-sm font-medium"
+              >
+                SMTP 端口
+              </Label>
+              <Input
+                id="smtp-port"
+                v-model.number="emailConfig.smtp_port"
+                type="number"
+                placeholder="587"
+                class="mt-1"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                常用端口: 587 (TLS), 465 (SSL), 25 (无加密)
+              </p>
+            </div>
+
+            <div>
+              <Label
+                for="smtp-user"
+                class="block text-sm font-medium"
+              >
+                SMTP 用户名
+              </Label>
+              <Input
+                id="smtp-user"
+                v-model="emailConfig.smtp_user"
+                type="text"
+                placeholder="your-email@example.com"
+                class="mt-1"
+                autocomplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                通常是您的邮箱地址
+              </p>
+            </div>
+
+            <div>
+              <Label
+                for="smtp-password"
+                class="block text-sm font-medium"
+              >
+                SMTP 密码
+              </Label>
+              <div class="mt-1">
+                <Input
+                  id="smtp-password"
+                  v-model="emailConfig.smtp_password"
+                  masked
+                  :placeholder="smtpPasswordIsSet ? '已设置（留空保持不变）' : '请输入密码'"
+                />
+              </div>
+              <p class="mt-1 text-xs text-muted-foreground">
+                邮箱密码或应用专用密码
+              </p>
+            </div>
+
+            <div>
+              <Label
+                for="smtp-from-email"
+                class="block text-sm font-medium"
+              >
+                发件人邮箱
+              </Label>
+              <Input
+                id="smtp-from-email"
+                v-model="emailConfig.smtp_from_email"
+                type="email"
+                placeholder="noreply@example.com"
+                class="mt-1"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                显示为发件人的邮箱地址
+              </p>
+            </div>
+
+            <div>
+              <Label
+                for="smtp-from-name"
+                class="block text-sm font-medium"
+              >
+                发件人名称
+              </Label>
+              <Input
+                id="smtp-from-name"
+                v-model="emailConfig.smtp_from_name"
+                type="text"
+                placeholder="Niffler"
+                class="mt-1"
+              />
+              <p class="mt-1 text-xs text-muted-foreground">
+                显示为发件人的名称
+              </p>
+            </div>
+
+            <div>
+              <Label
+                for="smtp-encryption"
+                class="block text-sm font-medium mb-2"
+              >
+                加密方式
+              </Label>
+              <Select
+                v-model="smtpEncryption"
+              >
+                <SelectTrigger
+                  id="smtp-encryption"
+                  class="mt-1"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ssl">
+                    SSL (隐式加密)
+                  </SelectItem>
+                  <SelectItem value="tls">
+                    TLS / STARTTLS
+                  </SelectItem>
+                  <SelectItem value="none">
+                    无加密
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Gmail 等服务推荐使用 SSL
+              </p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-border/70 bg-muted/20 p-4">
+            <div class="flex flex-col gap-3 md:flex-row md:items-end">
+              <div class="flex-1">
+                <Label
+                  for="test-email-recipient"
+                  class="block text-sm font-medium"
+                >
+                  测试收件人
+                </Label>
+                <Input
+                  id="test-email-recipient"
+                  v-model="testEmailRecipient"
+                  type="email"
+                  placeholder="admin@example.com"
+                  class="mt-1"
+                />
+                <p class="mt-1 text-xs text-muted-foreground">
+                  保存 SMTP 配置后，发送一封真实测试邮件。
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                :disabled="testEmailLoading"
+                @click="handleSendTestEmail"
+              >
+                {{ testEmailLoading ? '发送中...' : '发送测试邮件' }}
+              </Button>
+            </div>
           </div>
         </div>
       </CardSection>
@@ -196,7 +228,7 @@
             :disabled="emailVerificationSaveLoading"
             @click="saveEmailVerificationConfig"
           >
-            {{ emailVerificationSaveLoading ? '保存中...' : '保存' }}
+            {{ emailVerificationSaveLoading ? '保存中...' : '保存验证规则' }}
           </Button>
         </template>
         <div class="space-y-6">
@@ -305,7 +337,7 @@
             :disabled="templateSaveLoading"
             @click="handleSaveTemplate"
           >
-            {{ templateSaveLoading ? '保存中...' : '保存' }}
+            {{ templateSaveLoading ? '保存中...' : '保存模板' }}
           </Button>
         </template>
 
@@ -412,6 +444,8 @@
         </div>
       </CardSection>
 
+      <EmailDeliveryHistory ref="emailDeliveryHistoryRef" />
+
       <!-- 预览对话框 -->
       <Dialog
         v-model:open="previewDialogOpen"
@@ -488,6 +522,7 @@ import { adminApi, type EmailTemplateInfo } from '@/api/admin'
 import { authApi } from '@/api/auth'
 import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
+import EmailDeliveryHistory from '@/features/admin-email/components/EmailDeliveryHistory.vue'
 
 const { success, error } = useToast()
 
@@ -509,6 +544,9 @@ interface EmailConfig {
 const smtpSaveLoading = ref(false)
 const emailVerificationSaveLoading = ref(false)
 const testSmtpLoading = ref(false)
+const testEmailLoading = ref(false)
+const testEmailRecipient = ref('')
+const emailDeliveryHistoryRef = ref<InstanceType<typeof EmailDeliveryHistory> | null>(null)
 const smtpPasswordIsSet = ref(false)
 const requireEmailVerification = ref(false) // 是否开启了邮箱验证
 const smtpConfigured = ref(false) // SMTP 是否已配置
@@ -873,6 +911,30 @@ async function handleTestSmtp() {
     error(parseApiError(err, '未知错误'), 'SMTP 连接测试失败')
   } finally {
     testSmtpLoading.value = false
+  }
+}
+
+async function handleSendTestEmail() {
+  const toEmail = testEmailRecipient.value.trim()
+  if (!toEmail) {
+    error('请填写测试收件人邮箱')
+    return
+  }
+
+  testEmailLoading.value = true
+  try {
+    const result = await adminApi.sendTestEmail(toEmail)
+    if (result.success) {
+      success(result.message || '测试邮件正在发送')
+      await emailDeliveryHistoryRef.value?.refresh()
+    } else {
+      error(result.message || '测试邮件发送失败')
+    }
+  } catch (err: unknown) {
+    log.error('发送测试邮件失败:', err)
+    error(parseApiError(err, '发送测试邮件失败'))
+  } finally {
+    testEmailLoading.value = false
   }
 }
 </script>
