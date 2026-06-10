@@ -967,6 +967,25 @@ fn classifies_admin_system_maintenance_write_routes_as_admin_proxy_route() {
 }
 
 #[test]
+fn admin_system_email_test_send_buffers_request_body() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/system/email/test-send"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::POST, &uri, &headers).expect("route should classify");
+    let context = GatewayPublicRequestContext::from_request_parts(
+        "trace-email-test-send",
+        &http::Method::POST,
+        &uri,
+        &headers,
+        Some(decision),
+    );
+
+    assert!(local_proxy_route_requires_buffered_body(&context));
+}
+
+#[test]
 fn classifies_admin_system_check_update_as_admin_proxy_route() {
     let headers = headers(&[]);
     let uri: Uri = "/api/admin/system/check-update"

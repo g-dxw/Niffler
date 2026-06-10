@@ -254,6 +254,7 @@ pub(crate) fn admin_proxy_local_requires_buffered_body(
                 | (Some("system_manage"), http::Method::PUT, Some("config_set"))
                 | (Some("system_manage"), http::Method::PUT, Some("email_template_set"))
                 | (Some("system_manage"), http::Method::POST, Some("email_template_preview"))
+                | (Some("system_manage"), http::Method::POST, Some("email_test_send"))
                 | (
                     Some("provider_models_manage"),
                     http::Method::POST,
