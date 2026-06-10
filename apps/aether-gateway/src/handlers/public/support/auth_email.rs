@@ -1,11 +1,11 @@
 use super::{
+    decrypt_catalog_secret_with_fallbacks, escape_admin_email_template_html, json,
+    read_admin_email_template_payload, render_admin_email_template_html, system_config_bool,
+    system_config_string, system_config_u16, AppState, GatewayError,
     AUTH_EMAIL_VERIFICATION_PREFIX, AUTH_EMAIL_VERIFIED_PREFIX, AUTH_EMAIL_VERIFIED_TTL_SECS,
-    AppState, GatewayError, decrypt_catalog_secret_with_fallbacks,
-    escape_admin_email_template_html, json, read_admin_email_template_payload,
-    render_admin_email_template_html, system_config_bool, system_config_string, system_config_u16,
 };
 use crate::email::{
-    EmailMessage as AuthComposedEmail, SmtpConfig as AuthSmtpConfig, send_email_blocking,
+    send_email_blocking, EmailMessage as AuthComposedEmail, SmtpConfig as AuthSmtpConfig,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

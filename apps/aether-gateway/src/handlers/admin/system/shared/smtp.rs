@@ -1,7 +1,7 @@
-use crate::GatewayError;
-use crate::email::{SmtpConfig, test_smtp_connection_blocking};
+use crate::email::{test_smtp_connection_blocking, SmtpConfig};
 use crate::handlers::admin::request::AdminAppState;
 use crate::handlers::shared::{system_config_bool, system_config_string};
+use crate::GatewayError;
 use axum::body::Bytes;
 use serde::Deserialize;
 use serde_json::json;

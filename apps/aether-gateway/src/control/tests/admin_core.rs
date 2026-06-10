@@ -3,7 +3,7 @@ use http::Uri;
 use crate::control::management_token_required_permission;
 use crate::handlers::shared::local_proxy_route_requires_buffered_body;
 
-use super::{GatewayPublicRequestContext, classify_control_route, headers};
+use super::{classify_control_route, headers, GatewayPublicRequestContext};
 
 #[test]
 fn classifies_admin_endpoint_health_api_formats_as_admin_proxy_route() {
