@@ -38,6 +38,7 @@ mod control;
 mod data;
 mod dispatch;
 mod error;
+mod email;
 mod execution_runtime;
 mod executor;
 mod fallback_metrics;
