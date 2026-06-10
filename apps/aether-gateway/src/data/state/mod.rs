@@ -51,8 +51,8 @@ use aether_data::repository::proxy_nodes::{
 };
 pub(crate) use aether_data::repository::system::{AdminSystemStats, StoredSystemConfigEntry};
 use aether_data::repository::users::{
-    StoredUserAuthRecord, StoredUserExportRow, StoredUserOAuthLinkSummary, StoredUserSummary,
-    UserReadRepository,
+    DeleteUserGroupReplacementOutcome, StoredUserAuthRecord, StoredUserExportRow,
+    StoredUserOAuthLinkSummary, StoredUserSummary, UserReadRepository,
 };
 pub(crate) use aether_data::repository::users::{
     StoredUserPreferenceRecord, StoredUserSessionRecord,

@@ -60,6 +60,12 @@ struct AdminUserGroupMembersPayload {
 }
 
 #[derive(Debug, serde::Deserialize)]
+struct AdminDeleteUserGroupWithReplacementPayload {
+    #[serde(default)]
+    replacement_group_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
 struct AdminDefaultUserGroupPayload {
     #[serde(default)]
     group_id: Option<String>,
@@ -242,6 +248,69 @@ pub(in super::super) async fn build_admin_delete_user_group_response(
         Json(json!({ "deleted": true })).into_response(),
         "admin_user_group_deleted",
         "delete_user_group",
+        "user_group",
+        &group_id,
+    ))
+}
+
+pub(in super::super) async fn build_admin_delete_user_group_with_replacement_response(
+    state: &AdminAppState<'_>,
+    request_context: &AdminRequestContext<'_>,
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<Response<Body>, GatewayError> {
+    if !state.has_auth_user_write_capability() {
+        return Ok(build_admin_users_read_only_response(
+            "当前为只读模式，无法删除用户分组",
+        ));
+    }
+    let Some(group_id) = user_group_delete_replacement_group_id_from_path(request_context.path())
+    else {
+        return Ok(build_admin_users_bad_request_response("缺少 group_id"));
+    };
+    if let Some(response) = maybe_freeze_migrated_legacy_user_group_write(state, &group_id).await? {
+        return Ok(response);
+    }
+    if read_default_user_group_id(state).await?.as_deref() == Some(group_id.as_str()) {
+        return Ok(bad_request_owned("默认用户组不能删除".to_string()));
+    }
+    let payload = match parse_delete_replacement_payload(request_body) {
+        Ok(value) => value,
+        Err(detail) => return Ok(bad_request_owned(detail)),
+    };
+    let replacement_group_id = payload.replacement_group_id.trim().to_string();
+    if replacement_group_id.is_empty() {
+        return Ok(bad_request_owned("请选择替换目标分组".to_string()));
+    }
+    if replacement_group_id == group_id {
+        return Ok(bad_request_owned("替换目标不能是当前分组".to_string()));
+    }
+    if let Some(response) =
+        maybe_freeze_migrated_legacy_user_group_write(state, &replacement_group_id).await?
+    {
+        return Ok(response);
+    }
+    if state
+        .find_user_group_by_id(&replacement_group_id)
+        .await?
+        .is_none()
+    {
+        return Ok(bad_request_owned("替换目标分组不存在".to_string()));
+    }
+
+    let outcome = state
+        .delete_user_group_replacing_api_keys(&group_id, &replacement_group_id)
+        .await?;
+    if !outcome.deleted {
+        return Ok(not_found("用户分组不存在"));
+    }
+    Ok(attach_admin_audit_response(
+        Json(json!({
+            "deleted": true,
+            "migrated_api_key_count": outcome.migrated_api_key_count,
+        }))
+        .into_response(),
+        "admin_user_group_deleted_with_replacement",
+        "delete_user_group_with_replacement",
         "user_group",
         &group_id,
     ))
@@ -553,6 +622,16 @@ fn parse_members_payload(
         .map_err(|_| "请求数据验证失败".to_string())
 }
 
+fn parse_delete_replacement_payload(
+    request_body: Option<&axum::body::Bytes>,
+) -> Result<AdminDeleteUserGroupWithReplacementPayload, String> {
+    let Some(body) = request_body.filter(|body| !body.is_empty()) else {
+        return Err("请求数据验证失败".to_string());
+    };
+    serde_json::from_slice::<AdminDeleteUserGroupWithReplacementPayload>(body)
+        .map_err(|_| "请求数据验证失败".to_string())
+}
+
 fn user_group_payload(
     group: aether_data::repository::users::StoredUserGroup,
     default_group_id: Option<&str>,
@@ -669,6 +748,21 @@ fn user_group_id_from_path(request_path: &str) -> Option<String> {
         None
     } else {
         Some(value)
+    }
+}
+
+fn user_group_delete_replacement_group_id_from_path(request_path: &str) -> Option<String> {
+    let value = request_path
+        .strip_prefix("/api/admin/user-groups/")?
+        .trim()
+        .trim_matches('/');
+    let group_id = value
+        .strip_suffix("/delete-with-replacement")?
+        .trim_matches('/');
+    if group_id.is_empty() || group_id.contains('/') || group_id == "default" {
+        None
+    } else {
+        Some(group_id.to_string())
     }
 }
 

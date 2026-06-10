@@ -250,7 +250,10 @@ fn apply_codex_window_usage_stats_delta(
     let Some(usage_created_at) = delta.usage_created_at_unix_secs else {
         return;
     };
-    if delta.request_count == 0 && delta.total_tokens == 0 && delta.total_cost_usd == 0.0 {
+    if delta.window_request_count == 0
+        && delta.window_total_tokens == 0
+        && delta.window_total_cost_usd == 0.0
+    {
         return;
     }
 
@@ -288,9 +291,9 @@ fn apply_codex_window_usage_stats_delta(
             let Some(usage) = window.get_mut("usage").and_then(Value::as_object_mut) else {
                 continue;
             };
-            let request_count = apply_i64_delta_to_json_u64(0, delta.request_count);
-            let total_tokens = apply_i64_delta_to_json_u64(0, delta.total_tokens);
-            let total_cost_usd = apply_f64_delta_to_json_cost(0.0, delta.total_cost_usd);
+            let request_count = apply_i64_delta_to_json_u64(0, delta.window_request_count);
+            let total_tokens = apply_i64_delta_to_json_u64(0, delta.window_total_tokens);
+            let total_cost_usd = apply_f64_delta_to_json_cost(0.0, delta.window_total_cost_usd);
             usage.insert("request_count".to_string(), json!(request_count));
             usage.insert("total_tokens".to_string(), json!(total_tokens));
             usage.insert(
@@ -302,15 +305,15 @@ fn apply_codex_window_usage_stats_delta(
 
         let request_count = apply_i64_delta_to_json_u64(
             json_i64(usage.get("request_count")).unwrap_or(0).max(0) as u64,
-            delta.request_count,
+            delta.window_request_count,
         );
         let total_tokens = apply_i64_delta_to_json_u64(
             json_i64(usage.get("total_tokens")).unwrap_or(0).max(0) as u64,
-            delta.total_tokens,
+            delta.window_total_tokens,
         );
         let total_cost_usd = apply_f64_delta_to_json_cost(
             json_f64(usage.get("total_cost_usd")).unwrap_or(0.0),
-            delta.total_cost_usd,
+            delta.window_total_cost_usd,
         );
 
         usage.insert("request_count".to_string(), json!(request_count));
@@ -983,9 +986,9 @@ mod tests {
         repository.apply_usage_stats_delta(
             "key-1",
             &ProviderApiKeyUsageDelta {
-                request_count: 2,
-                total_tokens: 25,
-                total_cost_usd: 0.25,
+                window_request_count: 2,
+                window_total_tokens: 25,
+                window_total_cost_usd: 0.25,
                 usage_created_at_unix_secs: Some(110_000),
                 ..ProviderApiKeyUsageDelta::default()
             },

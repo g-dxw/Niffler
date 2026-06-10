@@ -1,16 +1,16 @@
 use super::{
     AuthApiKeyGroupReferenceSummary, AuthApiKeyLookupKey, CreateManagementTokenRecord,
-    DataLayerError, GatewayAuthApiKeySnapshot, GatewayDataState, ManagementTokenCounterDelta,
-    ManagementTokenListQuery, ProxyNodeCounterDelta, ProxyNodeHeartbeatMutation,
-    ProxyNodeManualCreateMutation, ProxyNodeManualUpdateMutation, ProxyNodeRegistrationMutation,
-    ProxyNodeRemoteConfigMutation, ProxyNodeTrafficMutation, ProxyNodeTunnelStatusMutation,
-    RegenerateManagementTokenSecret, StoredAuthApiKeyExportRecord, StoredAuthApiKeySnapshot,
-    StoredLdapModuleConfig, StoredManagementToken, StoredManagementTokenListPage,
-    StoredManagementTokenWithUser, StoredOAuthProviderConfig, StoredOAuthProviderModuleConfig,
-    StoredProxyFleetMetricsBucket, StoredProxyNode, StoredProxyNodeEvent,
-    StoredProxyNodeMetricsBucket, StoredUserAuthRecord, StoredUserOAuthLinkSummary,
-    StoredUserPreferenceRecord, StoredUserSessionRecord, StoredWalletSnapshot,
-    UpdateManagementTokenRecord, UpsertOAuthProviderConfigRecord,
+    DataLayerError, DeleteUserGroupReplacementOutcome, GatewayAuthApiKeySnapshot, GatewayDataState,
+    ManagementTokenCounterDelta, ManagementTokenListQuery, ProxyNodeCounterDelta,
+    ProxyNodeHeartbeatMutation, ProxyNodeManualCreateMutation, ProxyNodeManualUpdateMutation,
+    ProxyNodeRegistrationMutation, ProxyNodeRemoteConfigMutation, ProxyNodeTrafficMutation,
+    ProxyNodeTunnelStatusMutation, RegenerateManagementTokenSecret, StoredAuthApiKeyExportRecord,
+    StoredAuthApiKeySnapshot, StoredLdapModuleConfig, StoredManagementToken,
+    StoredManagementTokenListPage, StoredManagementTokenWithUser, StoredOAuthProviderConfig,
+    StoredOAuthProviderModuleConfig, StoredProxyFleetMetricsBucket, StoredProxyNode,
+    StoredProxyNodeEvent, StoredProxyNodeMetricsBucket, StoredUserAuthRecord,
+    StoredUserOAuthLinkSummary, StoredUserPreferenceRecord, StoredUserSessionRecord,
+    StoredWalletSnapshot, UpdateManagementTokenRecord, UpsertOAuthProviderConfigRecord,
 };
 use crate::LocalMutationOutcome;
 use aether_data::repository::auth::{
@@ -148,6 +148,21 @@ impl GatewayDataState {
         match &self.user_reader {
             Some(repository) => repository.delete_user_group(group_id).await,
             None => Ok(false),
+        }
+    }
+
+    pub(crate) async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<DeleteUserGroupReplacementOutcome, DataLayerError> {
+        match &self.user_reader {
+            Some(repository) => {
+                repository
+                    .delete_user_group_replacing_api_keys(group_id, replacement_group_id)
+                    .await
+            }
+            None => Ok(DeleteUserGroupReplacementOutcome::default()),
         }
     }
 

@@ -301,6 +301,11 @@ pub(crate) fn admin_proxy_local_requires_buffered_body(
                     http::Method::POST,
                     Some("query_models" | "test_model" | "test_model_failover"),
                 )
+                | (
+                    Some("users_manage"),
+                    http::Method::POST,
+                    Some("delete_user_group_with_replacement"),
+                )
                 | (Some("routing_profiles_manage"), http::Method::POST, Some("create_group"))
                 | (Some("routing_profiles_manage"), http::Method::PATCH, Some("update_group"))
                 | (Some("routing_profiles_manage"), http::Method::POST, Some("dry_run_group"))

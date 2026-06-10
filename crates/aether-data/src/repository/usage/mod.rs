@@ -507,6 +507,9 @@ pub(crate) struct ProviderApiKeyUsageContribution {
     pub total_response_time_ms: i64,
     pub last_used_at_unix_secs: Option<u64>,
     pub usage_created_at_unix_secs: Option<u64>,
+    pub window_request_count: i64,
+    pub window_total_tokens: i64,
+    pub window_total_cost_usd: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -520,6 +523,9 @@ pub(crate) struct ProviderApiKeyUsageDelta {
     pub candidate_last_used_at_unix_secs: Option<u64>,
     pub removed_last_used_at_unix_secs: Option<u64>,
     pub usage_created_at_unix_secs: Option<u64>,
+    pub window_request_count: i64,
+    pub window_total_tokens: i64,
+    pub window_total_cost_usd: f64,
 }
 
 impl ProviderApiKeyUsageDelta {
@@ -540,6 +546,9 @@ impl ProviderApiKeyUsageDelta {
             ),
             removed_last_used_at_unix_secs: None,
             usage_created_at_unix_secs: after.usage_created_at_unix_secs,
+            window_request_count: after.window_request_count - before.window_request_count,
+            window_total_tokens: after.window_total_tokens - before.window_total_tokens,
+            window_total_cost_usd: after.window_total_cost_usd - before.window_total_cost_usd,
         }
     }
 
@@ -554,6 +563,9 @@ impl ProviderApiKeyUsageDelta {
             candidate_last_used_at_unix_secs: after.last_used_at_unix_secs,
             removed_last_used_at_unix_secs: None,
             usage_created_at_unix_secs: after.usage_created_at_unix_secs,
+            window_request_count: after.window_request_count,
+            window_total_tokens: after.window_total_tokens,
+            window_total_cost_usd: after.window_total_cost_usd,
         }
     }
 
@@ -568,6 +580,9 @@ impl ProviderApiKeyUsageDelta {
             candidate_last_used_at_unix_secs: None,
             removed_last_used_at_unix_secs: before.last_used_at_unix_secs,
             usage_created_at_unix_secs: before.usage_created_at_unix_secs,
+            window_request_count: -before.window_request_count,
+            window_total_tokens: -before.window_total_tokens,
+            window_total_cost_usd: -before.window_total_cost_usd,
         }
     }
 
@@ -580,6 +595,9 @@ impl ProviderApiKeyUsageDelta {
             && self.total_response_time_ms == 0
             && self.candidate_last_used_at_unix_secs.is_none()
             && self.removed_last_used_at_unix_secs.is_none()
+            && self.window_request_count == 0
+            && self.window_total_tokens == 0
+            && self.window_total_cost_usd == 0.0
     }
 }
 
@@ -659,6 +677,16 @@ pub(crate) fn provider_api_key_usage_contribution(
         usage.status_code,
         usage.error_message.as_deref(),
     );
+    let window_cost_usd = if usage.billing_status == "settled" {
+        usage
+            .settlement_base_cost_usd()
+            .filter(|value| *value > 0.0)
+            .unwrap_or(usage.total_cost_usd)
+            .max(0.0)
+    } else {
+        0.0
+    };
+    let has_window_cost = window_cost_usd > 0.0;
 
     Some(ProviderApiKeyUsageContribution {
         key_id,
@@ -681,6 +709,17 @@ pub(crate) fn provider_api_key_usage_contribution(
         },
         last_used_at_unix_secs: Some(usage.created_at_unix_ms),
         usage_created_at_unix_secs: Some(usage.created_at_unix_ms),
+        window_request_count: i64::from(has_window_cost),
+        window_total_tokens: if has_window_cost {
+            i64::try_from(usage.total_tokens).unwrap_or(i64::MAX)
+        } else {
+            0
+        },
+        window_total_cost_usd: if has_window_cost {
+            window_cost_usd
+        } else {
+            0.0
+        },
     })
 }
 
@@ -737,6 +776,8 @@ fn newer_last_used_at(before: Option<u64>, after: Option<u64>) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::{
         api_key_usage_contribution, incoming_usage_can_recover_terminal_failure,
         model_usage_contribution, provider_api_key_usage_contribution,
@@ -968,6 +1009,68 @@ mod tests {
         assert_eq!(contribution.total_cost_usd, 0.25);
         assert_eq!(contribution.total_response_time_ms, 120);
         assert_eq!(contribution.last_used_at_unix_secs, Some(123));
+        assert_eq!(contribution.window_request_count, 1);
+        assert_eq!(contribution.window_total_tokens, 20);
+        assert_eq!(contribution.window_total_cost_usd, 0.25);
+    }
+
+    #[test]
+    fn provider_key_window_usage_prefers_settlement_base_cost() {
+        let mut usage = StoredRequestUsageAudit::new(
+            "usage-1".to_string(),
+            "request-1".to_string(),
+            None,
+            None,
+            None,
+            None,
+            "OpenAI".to_string(),
+            "gpt-5".to_string(),
+            None,
+            Some("provider-1".to_string()),
+            None,
+            Some("provider-key-1".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            false,
+            12,
+            8,
+            20,
+            2.00,
+            2.00,
+            Some(200),
+            None,
+            None,
+            Some(120),
+            None,
+            "completed".to_string(),
+            "settled".to_string(),
+            123,
+            124,
+            Some(125),
+        )
+        .expect("usage should build");
+        usage.request_metadata = Some(json!({
+            "settlement_snapshot": {
+                "base_cost_usd": 0.25,
+                "pricing_snapshot": {
+                    "sales_multiplier": 8.0
+                }
+            }
+        }));
+
+        let contribution =
+            provider_api_key_usage_contribution(&usage).expect("contribution should exist");
+
+        assert_eq!(contribution.total_cost_usd, 2.00);
+        assert_eq!(contribution.window_total_cost_usd, 0.25);
+        assert_eq!(contribution.window_request_count, 1);
+        assert_eq!(contribution.window_total_tokens, 20);
     }
 
     #[test]
@@ -1102,6 +1205,9 @@ mod tests {
             total_response_time_ms: 120,
             last_used_at_unix_secs: Some(123),
             usage_created_at_unix_secs: Some(123),
+            window_request_count: 1,
+            window_total_tokens: 20,
+            window_total_cost_usd: 0.25,
         };
         assert!(
             ProviderApiKeyUsageDelta::between(&provider_contribution, &provider_contribution,)

@@ -16,15 +16,20 @@
 - 管理端号池账号列表计算 Codex 5H/周用量时，不再读取 `usage_billing_facts` 视图做全表并行连接。
 - 查询按每个账号的每个窗口单独聚合，先用 `provider_api_key_id + created_at` 缩小 `usage` 记录范围，再连接 `usage_settlement_snapshots` 判断最终结算状态和基础成本。
 - 新增 Postgres 索引 `idx_usage_provider_api_key_created_at`，服务这类小窗口统计查询。
+- 后续优化将 5H/周窗口用量从列表页同步查询改为写入时维护：使用记录结算完成后，后台用量队列把窗口专用增量写入 `provider_api_keys.status_snapshot.quota.windows[].usage`。
+- 号池账号列表只读取账号状态快照，不再为了展示 5H/周用量临时聚合 `usage` 和 `usage_settlement_snapshots`。
+- 窗口用量仍按上游基础成本口径统计：优先使用结算快照 `base_cost_usd`，没有时按已有结算成本口径退回；未结算或无成本请求不计入窗口用量。
 
 ## 影响范围
 
 - 管理端号池管理页的 Codex 账号列表。
 - Postgres 使用记录窗口统计查询。
 - 新建库和现有库的 Postgres 索引结构。
+- Postgres 后台用量队列 `usage_counter_deltas` 新增窗口专用增量列；新增列只用于后续增量写入，不在迁移时回扫历史记录。
 
 ## 验证方式
 
 - SQL 单元断言确认窗口统计不再从 `usage_billing_facts` 读取。
 - 生产只读 `EXPLAIN` 对比确认执行计划不再全表并行扫描 `usage` 和 `usage_settlement_snapshots`，也不再出现 `Parallel Hash`。
 - 打开号池管理页确认 `/api/admin/pool/{provider}/keys?page_size=50` 返回正常且耗时下降。
+- 单元断言确认列表接口不再调用窗口历史聚合查询，Postgres 用量队列会写入 Codex 窗口用量快照。

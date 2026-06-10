@@ -11,6 +11,7 @@ use crate::{AppState, GatewayError};
 
 const EMAIL_DELIVERY_INTERVAL: Duration = Duration::from_secs(5);
 const EMAIL_DELIVERY_BATCH_SIZE: usize = 10;
+const EMAIL_DELIVERY_LOCK_TTL: Duration = Duration::from_secs(180);
 
 pub(crate) fn spawn_auth_email_delivery_worker(
     state: AppState,
@@ -36,10 +37,13 @@ async fn run_auth_email_delivery_once(state: &AppState) -> Result<(), GatewayErr
     let runs = collect_pending_email_runs(state).await?;
     for run in runs {
         let lock_key = format!("task_runtime:lock:auth.email.delivery:{}", run.id);
-        let lock_ttl = Duration::from_secs(60);
         let lock = state
             .runtime_state
-            .lock_try_acquire(&lock_key, state.tunnel.local_instance_id(), lock_ttl)
+            .lock_try_acquire(
+                &lock_key,
+                state.tunnel.local_instance_id(),
+                EMAIL_DELIVERY_LOCK_TTL,
+            )
             .await
             .ok()
             .flatten();
@@ -88,4 +92,17 @@ async fn append_email_runs_by_status(
         .await?;
     runs.extend(page.items);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn email_delivery_lock_covers_smtp_worst_case_timeout() {
+        assert!(
+            EMAIL_DELIVERY_LOCK_TTL >= Duration::from_secs(180),
+            "邮件发送锁必须覆盖一次 SMTP 发送的多阶段超时窗口"
+        );
+    }
 }

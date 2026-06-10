@@ -1,17 +1,14 @@
 use super::{
-    decrypt_catalog_secret_with_fallbacks, escape_admin_email_template_html, json,
-    read_admin_email_template_payload, render_admin_email_template_html, system_config_bool,
-    system_config_string, system_config_u16, AppState, GatewayError,
-    AUTH_EMAIL_VERIFICATION_PREFIX, AUTH_EMAIL_VERIFIED_PREFIX, AUTH_EMAIL_VERIFIED_TTL_SECS,
-};
-use crate::email::{
-    send_email_blocking, EmailMessage as AuthComposedEmail, SmtpConfig as AuthSmtpConfig,
+    json, system_config_string, AppState, GatewayError, AUTH_EMAIL_VERIFICATION_PREFIX,
+    AUTH_EMAIL_VERIFIED_PREFIX, AUTH_EMAIL_VERIFIED_TTL_SECS,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct StoredAuthEmailVerificationCode {
     pub(super) code: String,
     pub(super) created_at: String,
+    #[serde(default)]
+    pub(super) delivery_id: Option<String>,
 }
 
 pub(super) fn auth_email_verification_key(email: &str) -> String {
@@ -22,58 +19,8 @@ pub(super) fn auth_email_verified_key(email: &str) -> String {
     format!("{AUTH_EMAIL_VERIFIED_PREFIX}{email}")
 }
 
-pub(super) fn record_auth_email_delivery_for_tests(
-    _state: &AppState,
-    _payload: serde_json::Value,
-) -> bool {
-    #[cfg(test)]
-    {
-        if let Some(store) = _state.auth_email_delivery_store.as_ref() {
-            store
-                .lock()
-                .expect("auth email delivery store should lock")
-                .push(_payload);
-            return true;
-        }
-    }
-
-    false
-}
-
 pub(super) fn generate_auth_verification_code() -> String {
     format!("{:06}", uuid::Uuid::new_v4().as_u128() % 1_000_000)
-}
-
-fn render_auth_template_string(
-    template: &str,
-    variables: &std::collections::BTreeMap<String, String>,
-    escape_html: bool,
-) -> Result<String, GatewayError> {
-    let mut rendered = template.to_string();
-    for (key, value) in variables {
-        let pattern = regex::Regex::new(&format!(r"\{{\{{\s*{}\s*\}}\}}", regex::escape(key)))
-            .map_err(|err| GatewayError::Internal(err.to_string()))?;
-        let replacement = if escape_html {
-            escape_admin_email_template_html(value)
-        } else {
-            value.clone()
-        };
-        rendered = pattern
-            .replace_all(&rendered, replacement.as_str())
-            .into_owned();
-    }
-    Ok(rendered)
-}
-
-fn auth_build_verification_text_body(
-    app_name: &str,
-    email: &str,
-    code: &str,
-    expire_minutes: i64,
-) -> String {
-    format!(
-        "{app_name}\n\n您的验证码是：{code}\n目标邮箱：{email}\n有效期：{expire_minutes} 分钟\n\n如果这不是您本人的操作，请忽略此邮件。"
-    )
 }
 
 pub(super) async fn read_auth_email_verification_code(
@@ -127,60 +74,35 @@ pub(super) async fn clear_auth_email_verification(
     Ok(deleted_pending || deleted_verified)
 }
 
-pub(super) async fn store_auth_email_verification_code(
+pub(super) async fn store_auth_email_verification_code_with_delivery(
     state: &AppState,
     email: &str,
     code: &str,
     created_at: chrono::DateTime<chrono::Utc>,
     ttl_seconds: u64,
+    delivery_id: Option<&str>,
 ) -> Result<bool, GatewayError> {
     let key = auth_email_verification_key(email);
     let value = json!({
         "code": code,
         "created_at": created_at.to_rfc3339(),
+        "delivery_id": delivery_id,
     })
     .to_string();
     state.runtime_kv_setex(&key, &value, ttl_seconds).await?;
     Ok(true)
 }
 
-pub(super) async fn read_auth_smtp_config(
-    state: &AppState,
-) -> Result<Option<AuthSmtpConfig>, GatewayError> {
-    let smtp_host = state.read_system_config_json_value("smtp_host").await?;
-    let smtp_from_email = state
-        .read_system_config_json_value("smtp_from_email")
-        .await?;
-    let Some(host) = system_config_string(smtp_host.as_ref()) else {
-        return Ok(None);
-    };
-    let Some(from_email) = system_config_string(smtp_from_email.as_ref()) else {
-        return Ok(None);
-    };
-    let smtp_port = state.read_system_config_json_value("smtp_port").await?;
-    let smtp_user = state.read_system_config_json_value("smtp_user").await?;
-    let smtp_password = state.read_system_config_json_value("smtp_password").await?;
-    let smtp_use_tls = state.read_system_config_json_value("smtp_use_tls").await?;
-    let smtp_use_ssl = state.read_system_config_json_value("smtp_use_ssl").await?;
-    let smtp_from_name = state
-        .read_system_config_json_value("smtp_from_name")
-        .await?;
-
-    let password = system_config_string(smtp_password.as_ref()).map(|value| {
-        decrypt_catalog_secret_with_fallbacks(state.encryption_key(), &value).unwrap_or(value)
-    });
-
-    Ok(Some(AuthSmtpConfig {
-        host,
-        port: system_config_u16(smtp_port.as_ref(), 587),
-        user: system_config_string(smtp_user.as_ref()),
-        password,
-        use_tls: system_config_bool(smtp_use_tls.as_ref(), true),
-        use_ssl: system_config_bool(smtp_use_ssl.as_ref(), false),
-        from_email,
-        from_name: system_config_string(smtp_from_name.as_ref())
-            .unwrap_or_else(|| "Niffler".to_string()),
-    }))
+pub(super) fn smtp_config_is_complete(
+    host: Option<&serde_json::Value>,
+    user: Option<&serde_json::Value>,
+    password: Option<&serde_json::Value>,
+    from_email: Option<&serde_json::Value>,
+) -> bool {
+    system_config_string(host).is_some()
+        && system_config_string(user).is_some()
+        && system_config_string(password).is_some()
+        && system_config_string(from_email).is_some()
 }
 
 pub(super) async fn auth_email_app_name(state: &AppState) -> Result<String, GatewayError> {
@@ -197,70 +119,19 @@ pub(super) async fn auth_email_app_name(state: &AppState) -> Result<String, Gate
         .unwrap_or_else(|| "Niffler".to_string()))
 }
 
-pub(super) async fn build_auth_verification_email(
-    state: &AppState,
-    email: &str,
-    code: &str,
-    expire_minutes: i64,
-) -> Result<AuthComposedEmail, GatewayError> {
-    let template = read_admin_email_template_payload(state, "verification")
-        .await?
-        .ok_or_else(|| GatewayError::Internal("verification email template missing".to_string()))?;
-    let subject_template = template
-        .get("subject")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("邮箱验证码");
-    let html_template = template
-        .get("html")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default();
-    let app_name = auth_email_app_name(state).await?;
-    let variables = std::collections::BTreeMap::from([
-        ("app_name".to_string(), app_name.clone()),
-        ("code".to_string(), code.to_string()),
-        ("expire_minutes".to_string(), expire_minutes.to_string()),
-        ("email".to_string(), email.to_string()),
-    ]);
-    let subject = render_auth_template_string(subject_template, &variables, false)?;
-    let html_body = render_admin_email_template_html(html_template, &variables)?;
-    let text_body = auth_build_verification_text_body(&app_name, email, code, expire_minutes);
-    Ok(AuthComposedEmail {
-        to_email: email.to_string(),
-        subject,
-        html_body,
-        text_body,
-    })
-}
-
-pub(super) async fn send_auth_email(
-    state: &AppState,
-    config: AuthSmtpConfig,
-    email: AuthComposedEmail,
-) -> Result<(), GatewayError> {
-    if record_auth_email_delivery_for_tests(
-        state,
-        json!({
-            "to_email": email.to_email,
-            "subject": email.subject,
-            "html_body": email.html_body,
-            "text_body": email.text_body,
-        }),
-    ) {
-        return Ok(());
-    }
-
-    tokio::task::spawn_blocking(move || send_email_blocking(config, email))
-        .await
-        .map_err(|err| GatewayError::Internal(err.to_string()))?
-}
-
 pub(super) async fn auth_registration_email_configured(
     state: &AppState,
 ) -> Result<bool, GatewayError> {
     let smtp_host = state.read_system_config_json_value("smtp_host").await?;
+    let smtp_user = state.read_system_config_json_value("smtp_user").await?;
+    let smtp_password = state.read_system_config_json_value("smtp_password").await?;
     let smtp_from_email = state
         .read_system_config_json_value("smtp_from_email")
         .await?;
-    Ok(system_config_string(smtp_host.as_ref()).is_some()
-        && system_config_string(smtp_from_email.as_ref()).is_some())
+    Ok(smtp_config_is_complete(
+        smtp_host.as_ref(),
+        smtp_user.as_ref(),
+        smtp_password.as_ref(),
+        smtp_from_email.as_ref(),
+    ))
 }

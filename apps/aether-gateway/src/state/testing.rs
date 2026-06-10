@@ -601,6 +601,32 @@ impl AppState {
         self
     }
 
+    pub(crate) fn with_auth_email_verification_pending_delivery_for_tests(
+        mut self,
+        email: &str,
+        code: &str,
+        created_at: chrono::DateTime<chrono::Utc>,
+        delivery_id: &str,
+    ) -> Self {
+        let store = self
+            .auth_email_verification_store
+            .get_or_insert_with(|| Arc::new(StdMutex::new(HashMap::new())));
+        let key = format!("email:verification:{}", email.trim().to_ascii_lowercase());
+        let value = json!({
+            "code": code,
+            "created_at": created_at.to_rfc3339(),
+            "delivery_id": delivery_id,
+        })
+        .to_string();
+        store
+            .lock()
+            .expect("auth email verification store should lock")
+            .insert(key.clone(), value.clone());
+        self.runtime_state
+            .kv_set_local_nowait(&key, value, Some(Duration::from_secs(600)));
+        self
+    }
+
     pub(crate) fn with_auth_email_verified_for_tests(mut self, email: &str) -> Self {
         let store = self
             .auth_email_verification_store

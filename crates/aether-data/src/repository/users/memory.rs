@@ -4,11 +4,11 @@ use std::sync::RwLock;
 use async_trait::async_trait;
 
 use super::types::{
-    normalize_user_group_name, LdapAuthUserProvisioningOutcome, StoredUserAuthRecord,
-    StoredUserExportRow, StoredUserGroup, StoredUserGroupMember, StoredUserGroupMembership,
-    StoredUserOAuthLinkSummary, StoredUserPreferenceRecord, StoredUserSessionRecord,
-    StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery, UserExportSummary,
-    UserReadRepository,
+    normalize_user_group_name, DeleteUserGroupReplacementOutcome, LdapAuthUserProvisioningOutcome,
+    StoredUserAuthRecord, StoredUserExportRow, StoredUserGroup, StoredUserGroupMember,
+    StoredUserGroupMembership, StoredUserOAuthLinkSummary, StoredUserPreferenceRecord,
+    StoredUserSessionRecord, StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery,
+    UserExportSummary, UserReadRepository,
 };
 use crate::DataLayerError;
 
@@ -669,6 +669,37 @@ impl UserReadRepository for InMemoryUserReadRepository {
                 .retain(|key, _| key.0 != group_id);
         }
         Ok(removed)
+    }
+
+    async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<DeleteUserGroupReplacementOutcome, DataLayerError> {
+        if self.read_only {
+            return Ok(DeleteUserGroupReplacementOutcome::default());
+        }
+        if group_id.trim().is_empty() || replacement_group_id.trim().is_empty() {
+            return Err(DataLayerError::InvalidInput(
+                "user group id is required".to_string(),
+            ));
+        }
+        if group_id == replacement_group_id {
+            return Err(DataLayerError::InvalidInput(
+                "replacement user group must be different".to_string(),
+            ));
+        }
+        {
+            let groups = self.groups_by_id.read().expect("user repository lock");
+            if !groups.contains_key(group_id) || !groups.contains_key(replacement_group_id) {
+                return Ok(DeleteUserGroupReplacementOutcome::default());
+            }
+        }
+        let deleted = self.delete_user_group(group_id).await?;
+        Ok(DeleteUserGroupReplacementOutcome {
+            deleted,
+            migrated_api_key_count: 0,
+        })
     }
 
     async fn list_user_group_members(

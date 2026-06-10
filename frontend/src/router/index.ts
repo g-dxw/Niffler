@@ -238,6 +238,21 @@ const routes: RouteRecordRaw[] = [
         component: () => importWithRetry(() => import('@/views/admin/NifflerUpstreamOnboarding.vue'))
       },
       {
+        path: 'niffler-product-plans',
+        name: 'NifflerProductPlans',
+        component: () => importWithRetry(() => import('@/views/admin/NifflerProductPlans.vue'))
+      },
+      {
+        path: 'niffler-error-messages',
+        name: 'NifflerErrorMessages',
+        component: () => importWithRetry(() => import('@/views/admin/NifflerErrorMessages.vue'))
+      },
+      {
+        path: 'niffler-migration',
+        name: 'NifflerMigrationConsole',
+        component: () => importWithRetry(() => import('@/views/admin/NifflerMigrationConsole.vue'))
+      },
+      {
         path: 'health-monitor',
         name: 'HealthMonitor',
         component: () => importWithRetry(() => import('@/views/shared/HealthMonitor.vue'))

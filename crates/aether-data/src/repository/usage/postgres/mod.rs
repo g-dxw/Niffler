@@ -1334,6 +1334,8 @@ const REBUILD_API_KEY_USAGE_STATS_SQL: &str =
 
 const APPLY_PROVIDER_API_KEY_USAGE_DELTA_SQL: &str =
     include_str!("queries/apply_provider_api_key_usage_delta_sql.sql");
+const APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL: &str =
+    include_str!("queries/apply_provider_api_key_codex_window_usage_delta_sql.sql");
 
 const INSERT_USAGE_COUNTER_DELTA_SQL: &str = r#"
 INSERT INTO usage_counter_deltas (
@@ -1350,13 +1352,16 @@ INSERT INTO usage_counter_deltas (
   total_tokens_delta,
   total_cost_usd_delta,
   total_response_time_ms_delta,
+  window_request_count_delta,
+  window_total_tokens_delta,
+  window_total_cost_usd_delta,
   last_used_at_unix_secs,
   last_used_ip,
   candidate_last_used_at_unix_secs,
   removed_last_used_at_unix_secs,
   usage_created_at_unix_secs
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
 )
 "#;
 
@@ -1382,6 +1387,9 @@ SELECT
   delta.total_tokens_delta,
   delta.total_cost_usd_delta,
   delta.total_response_time_ms_delta,
+  COALESCE(delta.window_request_count_delta, 0) AS window_request_count_delta,
+  COALESCE(delta.window_total_tokens_delta, 0) AS window_total_tokens_delta,
+  COALESCE(delta.window_total_cost_usd_delta, 0) AS window_total_cost_usd_delta,
   delta.last_used_at_unix_secs,
   delta.last_used_ip,
   delta.candidate_last_used_at_unix_secs,
@@ -8039,6 +8047,12 @@ ORDER BY "usage".user_id ASC
                         apply_provider_api_key_main_usage_delta_in_tx(tx, key_id.as_str(), delta)
                             .await?;
                     }
+                    for row in rows
+                        .iter()
+                        .filter(|row| row.kind == USAGE_COUNTER_KIND_PROVIDER_API_KEY)
+                    {
+                        apply_provider_api_key_codex_window_usage_delta_in_tx(tx, row).await?;
+                    }
                     for (provider_id, delta) in &aggregates.provider_monthly {
                         apply_provider_monthly_usage_delta_in_tx(tx, provider_id.as_str(), *delta)
                             .await?;
@@ -8099,6 +8113,9 @@ ORDER BY "usage".user_id ASC
                             total_tokens_delta: 0,
                             total_cost_usd_delta: 0.0,
                             total_response_time_ms_delta: 0,
+                            window_request_count_delta: 0,
+                            window_total_tokens_delta: 0,
+                            window_total_cost_usd_delta: 0.0,
                             last_used_at_unix_secs: None,
                             last_used_ip: None,
                             candidate_last_used_at_unix_secs: None,
@@ -8149,6 +8166,9 @@ ORDER BY "usage".user_id ASC
                             total_tokens_delta: 0,
                             total_cost_usd_delta: 0.0,
                             total_response_time_ms_delta: 0,
+                            window_request_count_delta: 0,
+                            window_total_tokens_delta: 0,
+                            window_total_cost_usd_delta: 0.0,
                             last_used_at_unix_secs: Some(last_used_at),
                             last_used_ip: last_used_ip.as_deref(),
                             candidate_last_used_at_unix_secs: None,
@@ -8190,6 +8210,9 @@ ORDER BY "usage".user_id ASC
                             total_tokens_delta: 0,
                             total_cost_usd_delta: 0.0,
                             total_response_time_ms_delta: 0,
+                            window_request_count_delta: 0,
+                            window_total_tokens_delta: 0,
+                            window_total_cost_usd_delta: 0.0,
                             last_used_at_unix_secs: Some(delta.last_used_at_unix_secs),
                             last_used_ip: None,
                             candidate_last_used_at_unix_secs: None,
@@ -8815,6 +8838,9 @@ struct UsageCounterDeltaRow {
     total_tokens_delta: i64,
     total_cost_usd_delta: f64,
     total_response_time_ms_delta: i64,
+    window_request_count_delta: i64,
+    window_total_tokens_delta: i64,
+    window_total_cost_usd_delta: f64,
     last_used_at_unix_secs: Option<u64>,
     last_used_ip: Option<String>,
     candidate_last_used_at_unix_secs: Option<u64>,
@@ -9040,6 +9066,9 @@ async fn enqueue_api_key_usage_delta_in_tx(
             total_tokens_delta: delta.total_tokens,
             total_cost_usd_delta,
             total_response_time_ms_delta: 0,
+            window_request_count_delta: 0,
+            window_total_tokens_delta: 0,
+            window_total_cost_usd_delta: 0.0,
             last_used_at_unix_secs: None,
             last_used_ip: None,
             candidate_last_used_at_unix_secs: delta.candidate_last_used_at_unix_secs,
@@ -9074,6 +9103,9 @@ async fn enqueue_model_usage_delta_in_tx(
             total_tokens_delta: 0,
             total_cost_usd_delta: 0.0,
             total_response_time_ms_delta: 0,
+            window_request_count_delta: 0,
+            window_total_tokens_delta: 0,
+            window_total_cost_usd_delta: 0.0,
             last_used_at_unix_secs: None,
             last_used_ip: None,
             candidate_last_used_at_unix_secs: None,
@@ -9113,6 +9145,9 @@ async fn enqueue_provider_api_key_usage_delta_in_tx(
             total_tokens_delta: delta.total_tokens,
             total_cost_usd_delta,
             total_response_time_ms_delta: delta.total_response_time_ms,
+            window_request_count_delta: delta.window_request_count,
+            window_total_tokens_delta: delta.window_total_tokens,
+            window_total_cost_usd_delta: delta.window_total_cost_usd,
             last_used_at_unix_secs: None,
             last_used_ip: None,
             candidate_last_used_at_unix_secs: delta.candidate_last_used_at_unix_secs,
@@ -9136,6 +9171,9 @@ struct UsageCounterDeltaInsert<'a> {
     total_tokens_delta: i64,
     total_cost_usd_delta: f64,
     total_response_time_ms_delta: i64,
+    window_request_count_delta: i64,
+    window_total_tokens_delta: i64,
+    window_total_cost_usd_delta: f64,
     last_used_at_unix_secs: Option<u64>,
     last_used_ip: Option<&'a str>,
     candidate_last_used_at_unix_secs: Option<u64>,
@@ -9183,6 +9221,9 @@ async fn insert_usage_counter_delta_in_tx(
         .bind(input.total_tokens_delta)
         .bind(input.total_cost_usd_delta)
         .bind(input.total_response_time_ms_delta)
+        .bind(input.window_request_count_delta)
+        .bind(input.window_total_tokens_delta)
+        .bind(input.window_total_cost_usd_delta)
         .bind(last_used_at_unix_secs)
         .bind(
             input
@@ -9251,6 +9292,15 @@ fn map_usage_counter_delta_row(row: &PgRow) -> Result<UsageCounterDeltaRow, Data
             .map_postgres_err()?,
         total_response_time_ms_delta: row
             .try_get::<i64, _>("total_response_time_ms_delta")
+            .map_postgres_err()?,
+        window_request_count_delta: row
+            .try_get::<i64, _>("window_request_count_delta")
+            .map_postgres_err()?,
+        window_total_tokens_delta: row
+            .try_get::<i64, _>("window_total_tokens_delta")
+            .map_postgres_err()?,
+        window_total_cost_usd_delta: row
+            .try_get::<f64, _>("window_total_cost_usd_delta")
             .map_postgres_err()?,
         last_used_at_unix_secs: optional_i64_to_unix_secs(
             "usage_counter_deltas.last_used_at_unix_secs",
@@ -9418,6 +9468,48 @@ async fn apply_provider_api_key_main_usage_delta_in_tx(
                 .removed_last_used_at_unix_secs
                 .map(|value| value as f64),
         )
+        .execute(&mut **tx)
+        .await
+        .map_postgres_err()?;
+    Ok(())
+}
+
+async fn apply_provider_api_key_codex_window_usage_delta_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    row: &UsageCounterDeltaRow,
+) -> Result<(), DataLayerError> {
+    let key_id = row.target_id.trim();
+    if key_id.is_empty() || row.usage_created_at_unix_secs.is_none() {
+        return Ok(());
+    }
+    if row.window_request_count_delta == 0
+        && row.window_total_tokens_delta == 0
+        && row.window_total_cost_usd_delta == 0.0
+    {
+        return Ok(());
+    }
+    if !row.window_total_cost_usd_delta.is_finite() {
+        return Err(DataLayerError::UnexpectedValue(format!(
+            "usage_counter_deltas.window_total_cost_usd_delta is not finite for {}",
+            row.id
+        )));
+    }
+    let usage_created_at_unix_secs = row
+        .usage_created_at_unix_secs
+        .and_then(|value| i64::try_from(value).ok())
+        .ok_or_else(|| {
+            DataLayerError::UnexpectedValue(format!(
+                "usage_counter_deltas.usage_created_at_unix_secs exceeds i64 for {}",
+                row.id
+            ))
+        })?;
+
+    sqlx::query(APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL)
+        .bind(key_id)
+        .bind(row.window_request_count_delta)
+        .bind(row.window_total_tokens_delta)
+        .bind(row.window_total_cost_usd_delta)
+        .bind(usage_created_at_unix_secs)
         .execute(&mut **tx)
         .await
         .map_postgres_err()?;

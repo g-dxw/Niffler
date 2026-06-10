@@ -259,7 +259,6 @@ const COUNT_API_KEY_GROUP_REFERENCES_SQL: &str = r#"
 SELECT COUNT(*)::BIGINT AS total
 FROM api_keys
 WHERE group_id = $1
-  AND is_standalone = FALSE
 "#;
 
 const LIST_API_KEY_GROUP_REFERENCES_SQL: &str = r#"
@@ -272,7 +271,6 @@ SELECT
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
 WHERE api_keys.group_id = $1
-  AND api_keys.is_standalone = FALSE
 ORDER BY users.username ASC, users.id ASC, api_keys.name ASC NULLS LAST, api_keys.id ASC
 LIMIT $2
 "#;

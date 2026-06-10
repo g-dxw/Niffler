@@ -1,7 +1,7 @@
 use super::{
-    http, json, ldap_module_config_is_valid, module_available_from_env, system_config_bool,
-    system_config_string, AppState, Body, GatewayError, GatewayPublicRequestContext, IntoResponse,
-    Json, Response,
+    http, json, ldap_module_config_is_valid, module_available_from_env, smtp_config_is_complete,
+    system_config_bool, system_config_string, AppState, Body, GatewayError,
+    GatewayPublicRequestContext, IntoResponse, Json, Response,
 };
 
 pub(crate) async fn build_auth_registration_settings_payload(
@@ -14,6 +14,8 @@ pub(crate) async fn build_auth_registration_settings_payload(
         .read_system_config_json_value("require_email_verification")
         .await?;
     let smtp_host = state.read_system_config_json_value("smtp_host").await?;
+    let smtp_user = state.read_system_config_json_value("smtp_user").await?;
+    let smtp_password = state.read_system_config_json_value("smtp_password").await?;
     let smtp_from_email = state
         .read_system_config_json_value("smtp_from_email")
         .await?;
@@ -39,18 +41,12 @@ pub(crate) async fn build_auth_registration_settings_payload(
         .read_system_config_json_value("registration_privacy_policy_version")
         .await?;
 
-    let email_configured = smtp_host
-        .as_ref()
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_some()
-        && smtp_from_email
-            .as_ref()
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .is_some();
+    let email_configured = smtp_config_is_complete(
+        smtp_host.as_ref(),
+        smtp_user.as_ref(),
+        smtp_password.as_ref(),
+        smtp_from_email.as_ref(),
+    );
     let enable_registration = system_config_bool(enable_registration.as_ref(), false);
     let require_email_verification =
         system_config_bool(require_email_verification.as_ref(), false) && email_configured;

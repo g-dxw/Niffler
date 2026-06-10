@@ -295,6 +295,23 @@ impl AppState {
         Ok(deleted)
     }
 
+    pub(crate) async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<aether_data::repository::users::DeleteUserGroupReplacementOutcome, GatewayError>
+    {
+        let outcome = self
+            .data
+            .delete_user_group_replacing_api_keys(group_id, replacement_group_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if outcome.deleted || outcome.migrated_api_key_count > 0 {
+            self.invalidate_auth_context_cache();
+        }
+        Ok(outcome)
+    }
+
     pub(crate) async fn list_user_group_members(
         &self,
         group_id: &str,

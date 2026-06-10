@@ -16,6 +16,7 @@ import {
   type UserGroupMember,
   type UpsertUserGroupRequest,
   type ListUserGroupsResponse,
+  type DeleteUserGroupWithReplacementResponse,
   type AdminUserPlanEntitlementsResponse,
   type GrantUserPlanRequest,
   type GrantUserPlanResponse,
@@ -165,6 +166,20 @@ export const useUsersStore = defineStore('users', () => {
     }
   }
 
+  async function deleteUserGroupWithReplacement(
+    groupId: string,
+    replacementGroupId: string,
+  ): Promise<DeleteUserGroupWithReplacementResponse> {
+    try {
+      return await usersApi.deleteUserGroupWithReplacement(groupId, {
+        replacement_group_id: replacementGroupId,
+      })
+    } catch (err: unknown) {
+      error.value = parseApiError(err, '替换 Key 分组并删除失败')
+      throw err
+    }
+  }
+
   async function listUserGroupMembers(groupId: string): Promise<UserGroupMember[]> {
     try {
       return await usersApi.listUserGroupMembers(groupId)
@@ -310,6 +325,7 @@ export const useUsersStore = defineStore('users', () => {
     createUserGroup,
     updateUserGroup,
     deleteUserGroup,
+    deleteUserGroupWithReplacement,
     listUserGroupMembers,
     replaceUserGroupMembers,
     setDefaultUserGroup,

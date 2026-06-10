@@ -3,11 +3,11 @@ use chrono::{DateTime, TimeZone, Utc};
 use sqlx::{sqlite::SqliteRow, QueryBuilder, Row, Sqlite};
 
 use super::types::{
-    normalize_user_group_name, LdapAuthUserProvisioningOutcome, StoredUserAuthRecord,
-    StoredUserExportRow, StoredUserGroup, StoredUserGroupMember, StoredUserGroupMembership,
-    StoredUserOAuthLinkSummary, StoredUserPreferenceRecord, StoredUserSessionRecord,
-    StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery, UserExportSummary,
-    UserReadRepository,
+    normalize_user_group_name, DeleteUserGroupReplacementOutcome, LdapAuthUserProvisioningOutcome,
+    StoredUserAuthRecord, StoredUserExportRow, StoredUserGroup, StoredUserGroupMember,
+    StoredUserGroupMembership, StoredUserOAuthLinkSummary, StoredUserPreferenceRecord,
+    StoredUserSessionRecord, StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery,
+    UserExportSummary, UserReadRepository,
 };
 use crate::driver::sqlite::SqlitePool;
 use crate::error::SqlResultExt;
@@ -560,6 +560,56 @@ WHERE id = ?
             .await
             .map_sql_err()?;
         Ok(result.rows_affected() > 0)
+    }
+
+    async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<DeleteUserGroupReplacementOutcome, DataLayerError> {
+        if group_id.trim().is_empty() || replacement_group_id.trim().is_empty() {
+            return Err(DataLayerError::InvalidInput(
+                "user group id is required".to_string(),
+            ));
+        }
+        if group_id == replacement_group_id {
+            return Err(DataLayerError::InvalidInput(
+                "replacement user group must be different".to_string(),
+            ));
+        }
+
+        let now = current_unix_secs();
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let count_row = sqlx::query("SELECT COUNT(*) AS total FROM user_groups WHERE id IN (?, ?)")
+            .bind(group_id)
+            .bind(replacement_group_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_sql_err()?;
+        if count_row.try_get::<i64, _>("total").map_sql_err()? != 2 {
+            tx.rollback().await.map_sql_err()?;
+            return Ok(DeleteUserGroupReplacementOutcome::default());
+        }
+
+        let update_result =
+            sqlx::query("UPDATE api_keys SET group_id = ?, updated_at = ? WHERE group_id = ?")
+                .bind(replacement_group_id)
+                .bind(now)
+                .bind(group_id)
+                .execute(&mut *tx)
+                .await
+                .map_sql_err()?;
+        let delete_result = sqlx::query("DELETE FROM user_groups WHERE id = ?")
+            .bind(group_id)
+            .execute(&mut *tx)
+            .await
+            .map_sql_err()?;
+        tx.commit().await.map_sql_err()?;
+
+        Ok(DeleteUserGroupReplacementOutcome {
+            deleted: delete_result.rows_affected() > 0,
+            migrated_api_key_count: update_result.rows_affected(),
+        })
     }
 
     async fn list_user_group_members(
@@ -2466,6 +2516,78 @@ INSERT INTO users (
             .await
             .expect("deleted user lookup should run")
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_replaces_api_key_group_before_deleting_user_group() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        sqlx::query(
+            r#"
+INSERT INTO users (
+  id, email, email_verified, username, password_hash, role, auth_source,
+  is_active, is_deleted, created_at, updated_at
+) VALUES (
+  'user-1', 'alice@example.com', 1, 'alice', NULL, 'user', 'local',
+  1, 0, 1, 1
+)
+"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("seed user should insert");
+        sqlx::query(
+            r#"
+INSERT INTO user_groups (
+  id, name, normalized_name, priority, allowed_providers_mode,
+  allowed_api_formats_mode, allowed_models_mode, rate_limit_mode, created_at, updated_at
+) VALUES
+  ('group-old', 'Old group', 'old group', 0, 'unrestricted', 'unrestricted', 'unrestricted', 'system', 1, 1),
+  ('group-new', 'New group', 'new group', 0, 'unrestricted', 'unrestricted', 'unrestricted', 'system', 1, 1)
+"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("seed groups should insert");
+        sqlx::query(
+            r#"
+INSERT INTO api_keys (
+  id, user_id, key_hash, name, is_standalone, group_id, created_at, updated_at
+) VALUES (
+  'key-1', 'user-1', 'hash-1', 'Billing key', 1, 'group-old', 1, 1
+)
+"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("seed api key should insert");
+
+        let repository = SqliteUserReadRepository::new(pool.clone());
+        let outcome = repository
+            .delete_user_group_replacing_api_keys("group-old", "group-new")
+            .await
+            .expect("group replacement delete should run");
+        assert!(outcome.deleted);
+        assert_eq!(outcome.migrated_api_key_count, 1);
+
+        let api_key_group_id: Option<String> =
+            sqlx::query_scalar("SELECT group_id FROM api_keys WHERE id = 'key-1'")
+                .fetch_one(&pool)
+                .await
+                .expect("api key group should load");
+        assert_eq!(api_key_group_id.as_deref(), Some("group-new"));
+        let old_group_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM user_groups WHERE id = 'group-old'")
+                .fetch_one(&pool)
+                .await
+                .expect("old group count should load");
+        assert_eq!(old_group_count, 0);
     }
 
     #[tokio::test]

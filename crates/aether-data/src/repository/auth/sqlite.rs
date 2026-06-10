@@ -300,9 +300,7 @@ impl AuthApiKeyReadRepository for SqliteAuthApiKeyReadRepository {
         })?;
         let mut count_builder =
             QueryBuilder::<Sqlite>::new("SELECT COUNT(*) AS total FROM api_keys WHERE group_id = ");
-        count_builder
-            .push_bind(group_id)
-            .push(" AND is_standalone = 0");
+        count_builder.push_bind(group_id);
         let count_row = count_builder
             .build()
             .fetch_one(&self.pool)
@@ -325,7 +323,6 @@ WHERE api_keys.group_id =
         );
         list_builder
             .push_bind(group_id)
-            .push(" AND api_keys.is_standalone = 0")
             .push(" ORDER BY users.username ASC, users.id ASC, api_keys.name ASC, api_keys.id ASC")
             .push(" LIMIT ")
             .push_bind(limit);

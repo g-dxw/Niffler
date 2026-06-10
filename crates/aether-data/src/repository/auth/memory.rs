@@ -305,7 +305,7 @@ impl AuthApiKeyReadRepository for InMemoryAuthApiKeySnapshotRepository {
         let mut items = index
             .export_by_api_key_id
             .values()
-            .filter(|record| !record.is_standalone && record.group_id.as_deref() == Some(group_id))
+            .filter(|record| record.group_id.as_deref() == Some(group_id))
             .map(|record| {
                 let snapshot = index.by_api_key_id.get(&record.api_key_id);
                 AuthApiKeyGroupReference {

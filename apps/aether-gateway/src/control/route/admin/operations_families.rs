@@ -664,6 +664,18 @@ pub(super) fn classify_admin_operations_family_route(
             "admin:users",
             false,
         ))
+    } else if method == http::Method::POST
+        && normalized_path.starts_with("/api/admin/user-groups/")
+        && normalized_path.ends_with("/delete-with-replacement")
+        && normalized_path.matches('/').count() == 5
+    {
+        Some(classified(
+            "admin_proxy",
+            "users_manage",
+            "delete_user_group_with_replacement",
+            "admin:users",
+            false,
+        ))
     } else if method == http::Method::PUT
         && matches!(
             normalized_path,

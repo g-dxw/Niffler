@@ -877,6 +877,7 @@ async function saveSmtpConfig() {
       smtpPasswordIsSet.value = true
     }
     emailConfig.value.smtp_password = null
+    await loadRequireEmailVerification()
   } catch (err) {
     error('保存配置失败')
     log.error('保存 SMTP 配置失败:', err)

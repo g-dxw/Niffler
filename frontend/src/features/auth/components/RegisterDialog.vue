@@ -615,6 +615,18 @@ const checkAndRestoreVerificationStatus = async (email: string) => {
   try {
     const status = await authApi.getVerificationStatus(email)
 
+    if (status.delivery_status === 'failed') {
+      codeSentAt.value = null
+      verificationError.value = true
+      cooldownSeconds.value = 0
+      if (cooldownTimer.value !== null) {
+        clearInterval(cooldownTimer.value)
+        cooldownTimer.value = null
+      }
+      error(status.delivery_error || '验证码邮件发送失败，请重新发送验证码')
+      return
+    }
+
     // 注意：不恢复 is_verified 状态
     // 刷新页面后需要重新发送验证码并验证，防止验证码被他人使用
     // 只恢复"有待验证验证码"的状态（冷却时间）

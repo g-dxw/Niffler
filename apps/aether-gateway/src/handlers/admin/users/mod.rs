@@ -33,6 +33,7 @@ use self::billing::{
 };
 use self::groups::{
     build_admin_create_user_group_response, build_admin_delete_user_group_response,
+    build_admin_delete_user_group_with_replacement_response,
     build_admin_list_user_group_members_response, build_admin_list_user_groups_response,
     build_admin_replace_user_group_members_response, build_admin_set_default_user_group_response,
     build_admin_update_user_group_response,

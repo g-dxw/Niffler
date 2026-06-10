@@ -63,6 +63,8 @@ export interface VerificationStatusResponse {
   is_verified: boolean
   cooldown_remaining: number | null
   code_expires_in: number | null
+  delivery_status?: string | null
+  delivery_error?: string | null
 }
 
 export interface RegisterRequest {

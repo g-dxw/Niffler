@@ -454,6 +454,82 @@
       </Button>
     </template>
   </Dialog>
+
+  <Dialog
+    :model-value="deleteReplacementDialogOpen"
+    title="替换 Key 分组并删除"
+    description="这个分组还有 API Key 正在使用，选择新分组后再删除原分组"
+    size="md"
+    :z-index="90"
+    persistent
+    @update:model-value="handleDeleteReplacementDialogUpdate"
+  >
+    <div class="space-y-4">
+      <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+        <p>
+          「{{ deleteConflictGroup?.name || '当前分组' }}」还有 {{ deleteConflictApiKeyCount }} 把 API Key 正在使用。
+        </p>
+        <p
+          v-if="deleteConflictExampleText"
+          class="mt-1 text-xs opacity-90"
+        >
+          当前占用：{{ deleteConflictExampleText }}
+        </p>
+      </div>
+
+      <div class="space-y-2">
+        <Label class="text-sm font-medium">替换到</Label>
+        <select
+          v-model="replacementGroupId"
+          class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          :disabled="replacingAndDeleting || replacementGroupOptions.length === 0"
+        >
+          <option
+            v-for="group in replacementGroupOptions"
+            :key="group.id"
+            :value="group.id"
+          >
+            {{ group.name }}{{ group.is_default ? '（默认）' : '' }}
+          </option>
+        </select>
+        <p
+          v-if="replacementGroupOptions.length === 0"
+          class="text-xs text-destructive"
+        >
+          暂无可替换分组，请先新建一个分组。
+        </p>
+        <p
+          v-else
+          class="text-xs text-muted-foreground"
+        >
+          后端会在同一个操作里把这些 API Key 改到新分组，然后删除原分组。
+        </p>
+      </div>
+    </div>
+
+    <template #footer>
+      <Button
+        variant="ghost"
+        :disabled="replacingAndDeleting"
+        @click="inspectDeleteConflictApiKeys"
+      >
+        查看绑定 Key
+      </Button>
+      <Button
+        variant="outline"
+        :disabled="replacingAndDeleting"
+        @click="resetDeleteReplacementDialog"
+      >
+        取消
+      </Button>
+      <Button
+        :disabled="replacingAndDeleting || !replacementGroupId || replacementGroupOptions.length === 0"
+        @click="replaceAndDeleteGroup"
+      >
+        {{ replacingAndDeleting ? '处理中...' : '迁移并删除' }}
+      </Button>
+    </template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -497,7 +573,7 @@ const emit = defineEmits<{
 
 const usersStore = useUsersStore()
 const { success, error, warning } = useToast()
-const { confirm, confirmDanger, confirmInfo } = useConfirm()
+const { confirmDanger, confirmInfo } = useConfirm()
 const {
   providers,
   globalModels,
@@ -514,6 +590,11 @@ const editingGroupId = ref<string | null>(null)
 const memberUserIds = ref<string[]>([])
 const modelSalesMultiplierRows = ref<ModelSalesMultiplierRow[]>([])
 const providerBatchSalesMultipliers = ref<Record<string, number | undefined>>({})
+const deleteReplacementDialogOpen = ref(false)
+const deleteConflictGroup = ref<UserGroup | null>(null)
+const deleteConflictPayload = ref<UserGroupApiKeyConflictPayload | null>(null)
+const replacementGroupId = ref('')
+const replacingAndDeleting = ref(false)
 let modelSalesMultiplierRowSequence = 0
 
 const form = ref({
@@ -534,6 +615,14 @@ const form = ref({
 
 const selectedGroup = computed(() => groups.value.find((group) => group.id === editingGroupId.value) ?? null)
 const selectedGroupReadOnly = computed(() => selectedGroup.value?.legacy_read_only === true)
+const replacementGroupOptions = computed(() =>
+  groups.value.filter((group) =>
+    group.id !== deleteConflictGroup.value?.id
+    && group.legacy_read_only !== true
+  ),
+)
+const deleteConflictApiKeyCount = computed(() => Number(deleteConflictPayload.value?.api_key_count ?? 0))
+const deleteConflictExampleText = computed(() => formatConflictApiKeyExamples(deleteConflictPayload.value?.api_keys))
 
 function showSelectedGroupReadOnly(): void {
   warning(selectedGroup.value?.legacy_read_only_reason || '这个分组已迁移到 Niffler Core，旧入口只读')
@@ -664,7 +753,10 @@ const providerModelMultiplierSourceOptions = computed<ProviderModelMultiplierSou
 watch(
   () => props.open,
   (open) => {
-    if (!open) return
+    if (!open) {
+      resetDeleteReplacementDialog()
+      return
+    }
     void loadDialogData()
     void loadAccessControlOptions().catch((err) => {
       error(parseApiError(err, '加载访问控制选项失败'))
@@ -674,6 +766,11 @@ watch(
 
 function handleDialogUpdate(value: boolean): void {
   if (!value) emit('close')
+}
+
+function handleDeleteReplacementDialogUpdate(value: boolean): void {
+  if (value) return
+  resetDeleteReplacementDialog()
 }
 
 async function loadDialogData(): Promise<void> {
@@ -968,24 +1065,50 @@ function formatConflictApiKeyExamples(items: UserGroupApiKeyConflictItem[] | und
   return examples.length ? examples.join('、') : ''
 }
 
-async function showUserGroupApiKeyConflict(
+function showUserGroupApiKeyConflict(
   group: UserGroup,
   payload: UserGroupApiKeyConflictPayload,
-): Promise<void> {
-  const count = Number(payload.api_key_count ?? 0)
-  const examples = formatConflictApiKeyExamples(payload.api_keys)
-  const message = examples
-    ? `这个分组还有 ${count} 把 API Key 正在使用，不能删除。当前占用：${examples}。`
-    : `这个分组还有 ${count} 把 API Key 正在使用，不能删除。`
-  const inspect = await confirm({
-    title: '分组正在被 API Key 使用',
-    message,
-    confirmText: '查看绑定 Key',
-    cancelText: '知道了',
-    variant: 'warning',
-  })
-  if (inspect) {
-    emit('inspectApiKeyGroup', group.id)
+) {
+  deleteConflictGroup.value = group
+  deleteConflictPayload.value = payload
+  replacementGroupId.value = replacementGroupOptions.value[0]?.id ?? ''
+  deleteReplacementDialogOpen.value = true
+}
+
+function resetDeleteReplacementDialog(): void {
+  if (replacingAndDeleting.value) return
+  deleteReplacementDialogOpen.value = false
+  deleteConflictGroup.value = null
+  deleteConflictPayload.value = null
+  replacementGroupId.value = ''
+}
+
+function inspectDeleteConflictApiKeys(): void {
+  const groupId = deleteConflictGroup.value?.id
+  if (!groupId) return
+  resetDeleteReplacementDialog()
+  emit('inspectApiKeyGroup', groupId)
+}
+
+async function replaceAndDeleteGroup(): Promise<void> {
+  const group = deleteConflictGroup.value
+  const targetGroupId = replacementGroupId.value
+  if (!group || !targetGroupId) return
+  replacingAndDeleting.value = true
+  try {
+    const result = await usersStore.deleteUserGroupWithReplacement(group.id, targetGroupId)
+    success(`已迁移 ${result.migrated_api_key_count} 把 API Key，并删除分组`)
+    deleteReplacementDialogOpen.value = false
+    deleteConflictGroup.value = null
+    deleteConflictPayload.value = null
+    replacementGroupId.value = ''
+    emit('changed')
+    editingGroupId.value = null
+    await loadDialogData()
+  } catch (err) {
+    error(parseApiError(err, '替换 Key 分组并删除失败'))
+  } finally {
+    replacingAndDeleting.value = false
   }
 }
 
@@ -1011,7 +1134,7 @@ async function deleteSelectedGroup(): Promise<void> {
   } catch (err) {
     const conflict = readUserGroupApiKeyConflictPayload(err)
     if (conflict) {
-      await showUserGroupApiKeyConflict(group, conflict)
+      showUserGroupApiKeyConflict(group, conflict)
       return
     }
     error(parseApiError(err, '删除用户分组失败'))

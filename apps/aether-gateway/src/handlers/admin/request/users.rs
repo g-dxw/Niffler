@@ -102,6 +102,17 @@ impl<'a> AdminAppState<'a> {
         self.app.delete_user_group(group_id).await
     }
 
+    pub(crate) async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<aether_data::repository::users::DeleteUserGroupReplacementOutcome, GatewayError>
+    {
+        self.app
+            .delete_user_group_replacing_api_keys(group_id, replacement_group_id)
+            .await
+    }
+
     pub(crate) async fn summarize_auth_api_key_group_references(
         &self,
         group_id: &str,

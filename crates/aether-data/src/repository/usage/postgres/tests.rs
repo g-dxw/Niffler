@@ -286,13 +286,23 @@ fn usage_sql_serializes_request_id_upserts_before_reading_previous_usage() {
 fn usage_sql_moves_shared_counter_updates_behind_outbox() {
     let source = include_str!("mod.rs");
     assert!(super::INSERT_USAGE_COUNTER_DELTA_SQL.contains("usage_counter_deltas"));
+    assert!(super::INSERT_USAGE_COUNTER_DELTA_SQL.contains("window_request_count_delta"));
+    assert!(super::INSERT_USAGE_COUNTER_DELTA_SQL.contains("window_total_tokens_delta"));
+    assert!(super::INSERT_USAGE_COUNTER_DELTA_SQL.contains("window_total_cost_usd_delta"));
     assert!(super::CLAIM_USAGE_COUNTER_DELTAS_SQL.contains("FOR UPDATE SKIP LOCKED"));
+    assert!(super::CLAIM_USAGE_COUNTER_DELTAS_SQL
+        .contains("COALESCE(delta.window_request_count_delta, 0)"));
+    assert!(super::CLAIM_USAGE_COUNTER_DELTAS_SQL
+        .contains("COALESCE(delta.window_total_tokens_delta, 0)"));
+    assert!(super::CLAIM_USAGE_COUNTER_DELTAS_SQL
+        .contains("COALESCE(delta.window_total_cost_usd_delta, 0)"));
     assert!(super::MARK_USAGE_COUNTER_DELTAS_PROCESSED_SQL.contains("processed_at = NOW()"));
     assert!(super::TRY_LOCK_USAGE_COUNTER_FLUSH_SQL.contains("pg_try_advisory_xact_lock"));
     assert!(source.contains("enqueue_api_key_usage_delta_in_tx("));
     assert!(source.contains("enqueue_provider_api_key_usage_delta_in_tx("));
     assert!(source.contains("enqueue_model_usage_delta_in_tx("));
     assert!(source.contains("apply_provider_api_key_main_usage_delta_in_tx("));
+    assert!(source.contains("apply_provider_api_key_codex_window_usage_delta_in_tx("));
     assert!(source.contains("USAGE_COUNTER_KIND_PROVIDER_MONTHLY"));
     assert!(source.contains("apply_provider_monthly_usage_delta_in_tx("));
 }
@@ -533,7 +543,7 @@ fn usage_sql_raw_aggregates_use_canonical_billing_facts() {
         .contains("FROM usage_billing_facts AS \"usage\""));
     assert!(super::SUMMARIZE_USAGE_TOTALS_BY_USER_IDS_SQL
         .contains("FROM usage_billing_facts AS \"usage\""));
-    assert!(!source.contains("apply_provider_api_key_codex_window_usage_delta_in_tx"));
+    assert!(source.contains("apply_provider_api_key_codex_window_usage_delta_in_tx"));
 }
 
 #[test]

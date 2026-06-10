@@ -24,6 +24,7 @@ use aether_data::repository::auth::{
 use aether_data::repository::auth_modules::{
     InMemoryAuthModuleReadRepository, StoredLdapModuleConfig, StoredOAuthProviderModuleConfig,
 };
+use aether_data::repository::background_tasks::InMemoryBackgroundTaskRepository;
 use aether_data::repository::management_tokens::{
     InMemoryManagementTokenRepository, StoredManagementToken, StoredManagementTokenUserSummary,
     StoredManagementTokenWithUser,
@@ -35,6 +36,9 @@ use aether_data::repository::users::{
 };
 use aether_data::repository::wallet::{
     InMemoryWalletRepository, StoredWalletSnapshot, WalletWriteRepository,
+};
+use aether_data_contracts::repository::background_tasks::{
+    BackgroundTaskKind, BackgroundTaskStatus, StoredBackgroundTaskRun,
 };
 use aether_data_contracts::repository::global_models::StoredProviderActiveGlobalModel;
 use aether_data_contracts::repository::provider_catalog::ProviderCatalogReadRepository;
@@ -1437,6 +1441,8 @@ async fn gateway_handles_auth_registration_settings_without_proxying_upstream() 
         ("enable_registration".to_string(), json!(true)),
         ("require_email_verification".to_string(), json!(true)),
         ("smtp_host".to_string(), json!("smtp.example.com")),
+        ("smtp_user".to_string(), json!("smtp-user")),
+        ("smtp_password".to_string(), json!("smtp-password")),
         ("smtp_from_email".to_string(), json!("noreply@example.com")),
         ("password_policy_level".to_string(), json!("strong")),
         ("turnstile_enabled".to_string(), json!(true)),
@@ -1497,6 +1503,55 @@ async fn gateway_handles_auth_registration_settings_without_proxying_upstream() 
             },
         })
     );
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_reports_email_unconfigured_when_smtp_credentials_are_missing() {
+    let upstream_hits = Arc::new(Mutex::new(0usize));
+    let upstream_hits_clone = Arc::clone(&upstream_hits);
+    let upstream = Router::new().route(
+        "/{*path}",
+        any(move |_request: Request| {
+            let upstream_hits_inner = Arc::clone(&upstream_hits_clone);
+            async move {
+                *upstream_hits_inner.lock().expect("mutex should lock") += 1;
+                (StatusCode::OK, Body::from("proxied"))
+            }
+        }),
+    );
+
+    let data_state = crate::data::GatewayDataState::with_auth_module_reader_for_tests(Arc::new(
+        InMemoryAuthModuleReadRepository::seed(Vec::new(), None),
+    ))
+    .with_system_config_values_for_tests(vec![
+        ("enable_registration".to_string(), json!(true)),
+        ("require_email_verification".to_string(), json!(true)),
+        ("smtp_host".to_string(), json!("smtp.example.com")),
+        ("smtp_from_email".to_string(), json!("noreply@example.com")),
+    ]);
+
+    let (upstream_url, upstream_handle) = start_server(upstream).await;
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(data_state),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("{gateway_url}/api/auth/registration-settings"))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["email_configured"], false);
+    assert_eq!(payload["require_email_verification"], false);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();
@@ -9119,6 +9174,89 @@ async fn gateway_handles_auth_verification_status_locally_without_proxying_upstr
     assert_eq!(payload["is_verified"], false);
     assert!(payload["cooldown_remaining"].as_i64().unwrap_or_default() > 0);
     assert!(payload["code_expires_in"].as_i64().unwrap_or_default() > 0);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_reports_failed_verification_delivery_and_allows_resend() {
+    let now = Utc::now() - chrono::Duration::seconds(10);
+    let failed_delivery = StoredBackgroundTaskRun {
+        id: "delivery-failed-1".to_string(),
+        task_key: "auth.email.delivery:delivery-failed-1".to_string(),
+        kind: BackgroundTaskKind::FireAndForget,
+        trigger: "auth_email".to_string(),
+        status: BackgroundTaskStatus::Failed,
+        attempt: 2,
+        max_attempts: 2,
+        owner_instance: None,
+        progress_percent: 100,
+        progress_message: Some("邮件发送失败".to_string()),
+        payload_json: None,
+        result_json: Some(json!({
+            "message_type": "verification",
+            "to_email": "a***@example.com",
+        })),
+        error_message: Some("SMTP 认证失败".to_string()),
+        cancel_requested: false,
+        created_by: Some("auth:send_verification_code".to_string()),
+        created_at_unix_secs: 1,
+        started_at_unix_secs: Some(2),
+        finished_at_unix_secs: Some(3),
+        updated_at_unix_secs: 3,
+    };
+    let background_tasks = Arc::new(InMemoryBackgroundTaskRepository::seed_runs([
+        failed_delivery,
+    ]));
+    let data_state = crate::data::GatewayDataState::disabled()
+        .with_background_task_repository_for_tests(Arc::clone(&background_tasks));
+    let (gateway_url, upstream_hits, gateway_handle, upstream_handle) =
+        start_auth_gateway_with_builder(move || {
+            AppState::new()
+                .expect("gateway should build")
+                .with_data_state_for_tests(data_state.clone())
+                .with_auth_email_verification_pending_delivery_for_tests(
+                    "alice@example.com",
+                    "123456",
+                    now,
+                    "delivery-failed-1",
+                )
+        })
+        .await;
+
+    let client = reqwest::Client::new();
+    let status_response = client
+        .post(format!("{gateway_url}/api/auth/verification-status"))
+        .json(&json!({ "email": "alice@example.com" }))
+        .send()
+        .await
+        .expect("status request should succeed");
+
+    assert_eq!(status_response.status(), StatusCode::OK);
+    let status_payload: serde_json::Value = status_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(status_payload["has_pending_code"], false);
+    assert_eq!(status_payload["delivery_status"], "failed");
+    assert_eq!(status_payload["delivery_error"], "SMTP 认证失败");
+    assert!(status_payload["cooldown_remaining"].is_null());
+
+    let resend_response = client
+        .post(format!("{gateway_url}/api/auth/send-verification-code"))
+        .json(&json!({ "email": "alice@example.com" }))
+        .send()
+        .await
+        .expect("resend request should succeed");
+
+    assert_eq!(resend_response.status(), StatusCode::OK);
+    let resend_payload: serde_json::Value = resend_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(resend_payload["success"], true);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();

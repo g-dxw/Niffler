@@ -680,6 +680,12 @@ pub struct UserExportSummary {
     pub active: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct DeleteUserGroupReplacementOutcome {
+    pub deleted: bool,
+    pub migrated_api_key_count: u64,
+}
+
 #[async_trait]
 pub trait UserReadRepository: Send + Sync {
     async fn list_users_by_ids(
@@ -730,6 +736,12 @@ pub trait UserReadRepository: Send + Sync {
     ) -> Result<Option<StoredUserGroup>, crate::DataLayerError>;
 
     async fn delete_user_group(&self, group_id: &str) -> Result<bool, crate::DataLayerError>;
+
+    async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<DeleteUserGroupReplacementOutcome, crate::DataLayerError>;
 
     async fn list_user_group_members(
         &self,

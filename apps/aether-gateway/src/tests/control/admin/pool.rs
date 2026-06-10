@@ -4,12 +4,10 @@ use std::time::Duration;
 use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY};
 use aether_data::repository::pool_scores::InMemoryPoolMemberScoreRepository;
 use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
-use aether_data::repository::usage::InMemoryUsageReadRepository;
 use aether_data_contracts::repository::pool_scores::{
     PoolMemberHardState, PoolMemberIdentity, PoolMemberProbeStatus, StoredPoolMemberScore,
 };
 use aether_data_contracts::repository::provider_catalog::ProviderCatalogReadRepository;
-use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
 use axum::body::{to_bytes, Body, Bytes};
 use axum::routing::{any, get, post};
 use axum::{extract::Request, Router};
@@ -106,111 +104,6 @@ fn sample_pool_member_score(provider_id: &str, key_id: &str, score: f64) -> Stor
         probe_status: PoolMemberProbeStatus::Ok,
         updated_at: 1_700_000_050,
     }
-}
-
-fn sample_provider_key_usage_row(
-    id: &str,
-    request_id: &str,
-    provider_id: &str,
-    provider_api_key_id: &str,
-    created_at_unix_secs: i64,
-    total_tokens: i32,
-    total_cost_usd: f64,
-) -> StoredRequestUsageAudit {
-    StoredRequestUsageAudit::new(
-        id.to_string(),
-        request_id.to_string(),
-        Some("user-1".to_string()),
-        Some("api-key-1".to_string()),
-        Some("alice".to_string()),
-        Some("user key".to_string()),
-        "codex".to_string(),
-        "gpt-5".to_string(),
-        None,
-        Some(provider_id.to_string()),
-        Some("endpoint-1".to_string()),
-        Some(provider_api_key_id.to_string()),
-        Some("responses".to_string()),
-        Some("openai:responses".to_string()),
-        Some("openai".to_string()),
-        Some("responses".to_string()),
-        Some("openai:responses".to_string()),
-        Some("openai".to_string()),
-        Some("responses".to_string()),
-        false,
-        false,
-        total_tokens,
-        0,
-        total_tokens,
-        total_cost_usd,
-        total_cost_usd,
-        Some(200),
-        None,
-        None,
-        Some(120),
-        Some(40),
-        "completed".to_string(),
-        "settled".to_string(),
-        created_at_unix_secs,
-        created_at_unix_secs + 1,
-        Some(created_at_unix_secs + 2),
-    )
-    .expect("usage row should build")
-}
-
-fn sample_provider_key_non_billable_usage_row(
-    id: &str,
-    request_id: &str,
-    provider_id: &str,
-    provider_api_key_id: &str,
-    created_at_unix_secs: i64,
-    total_tokens: i32,
-    status: &str,
-    billing_status: &str,
-) -> StoredRequestUsageAudit {
-    StoredRequestUsageAudit::new(
-        id.to_string(),
-        request_id.to_string(),
-        Some("user-1".to_string()),
-        Some("api-key-1".to_string()),
-        Some("alice".to_string()),
-        Some("user key".to_string()),
-        "codex".to_string(),
-        "gpt-5".to_string(),
-        None,
-        Some(provider_id.to_string()),
-        Some("endpoint-1".to_string()),
-        Some(provider_api_key_id.to_string()),
-        Some("responses".to_string()),
-        Some("openai:responses".to_string()),
-        Some("openai".to_string()),
-        Some("responses".to_string()),
-        Some("openai:responses".to_string()),
-        Some("openai".to_string()),
-        Some("responses".to_string()),
-        false,
-        status == "streaming",
-        total_tokens,
-        0,
-        total_tokens,
-        0.0,
-        0.0,
-        Some(if status == "failed" { 500 } else { 200 }),
-        if status == "failed" {
-            Some("upstream failed".to_string())
-        } else {
-            None
-        },
-        None,
-        Some(120),
-        Some(40),
-        status.to_string(),
-        billing_status.to_string(),
-        created_at_unix_secs,
-        created_at_unix_secs + 1,
-        Some(created_at_unix_secs + 2),
-    )
-    .expect("usage row should build")
 }
 
 #[tokio::test]
@@ -1356,7 +1249,7 @@ async fn gateway_pool_list_reads_materialized_codex_cycle_usage_from_quota_windo
 }
 
 #[tokio::test]
-async fn gateway_pool_list_overrides_stale_codex_cycle_usage_from_usage_facts() {
+async fn gateway_pool_list_uses_persisted_codex_cycle_usage_without_usage_fact_override() {
     let now_unix_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time should be after unix epoch")
@@ -1428,63 +1321,11 @@ async fn gateway_pool_list_overrides_stale_codex_cycle_usage_from_usage_facts() 
         Vec::new(),
         vec![key],
     ));
-    let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![
-        sample_provider_key_usage_row(
-            "usage-weekly-only",
-            "req-weekly-only",
-            "provider-codex",
-            "key-codex-stale-cycle",
-            now_unix_secs.saturating_sub(400_000) as i64,
-            1_000,
-            1.25,
-        ),
-        sample_provider_key_usage_row(
-            "usage-five-hour-before-manual-reset",
-            "req-five-hour-before-manual-reset",
-            "provider-codex",
-            "key-codex-stale-cycle",
-            now_unix_secs.saturating_sub(1_000) as i64,
-            999,
-            9.99,
-        ),
-        sample_provider_key_usage_row(
-            "usage-five-hour",
-            "req-five-hour",
-            "provider-codex",
-            "key-codex-stale-cycle",
-            now_unix_secs.saturating_sub(100) as i64,
-            200,
-            0.75,
-        ),
-        sample_provider_key_non_billable_usage_row(
-            "usage-five-hour-failed",
-            "req-five-hour-failed",
-            "provider-codex",
-            "key-codex-stale-cycle",
-            now_unix_secs.saturating_sub(90) as i64,
-            500,
-            "failed",
-            "void",
-        ),
-        sample_provider_key_non_billable_usage_row(
-            "usage-five-hour-pending",
-            "req-five-hour-pending",
-            "provider-codex",
-            "key-codex-stale-cycle",
-            now_unix_secs.saturating_sub(80) as i64,
-            600,
-            "pending",
-            "pending",
-        ),
-    ]));
     let state = AppState::new()
         .expect("gateway should build")
-        .with_data_state_for_tests(
-            GatewayDataState::with_provider_catalog_and_usage_reader_for_tests(
-                provider_catalog_repository,
-                usage_repository,
-            ),
-        );
+        .with_data_state_for_tests(GatewayDataState::with_provider_catalog_reader_for_tests(
+            provider_catalog_repository,
+        ));
 
     let response = local_admin_pool_response(
         &state,
@@ -1518,12 +1359,12 @@ async fn gateway_pool_list_overrides_stale_codex_cycle_usage_from_usage_facts() 
         .find(|window| window["code"] == json!("5h"))
         .expect("5h window should exist");
 
-    assert_eq!(weekly["usage"]["request_count"], json!(3));
-    assert_eq!(weekly["usage"]["total_tokens"], json!(2_199));
-    assert_eq!(weekly["usage"]["total_cost_usd"], json!("11.99000000"));
-    assert_eq!(five_hour["usage"]["request_count"], json!(1));
-    assert_eq!(five_hour["usage"]["total_tokens"], json!(200));
-    assert_eq!(five_hour["usage"]["total_cost_usd"], json!("0.75000000"));
+    assert_eq!(weekly["usage"]["request_count"], json!(1));
+    assert_eq!(weekly["usage"]["total_tokens"], json!(50));
+    assert_eq!(weekly["usage"]["total_cost_usd"], json!("0.05000000"));
+    assert_eq!(five_hour["usage"]["request_count"], json!(9));
+    assert_eq!(five_hour["usage"]["total_tokens"], json!(700));
+    assert_eq!(five_hour["usage"]["total_cost_usd"], json!("0.70000000"));
 }
 
 #[tokio::test]

@@ -179,6 +179,13 @@ fn accumulate_provider_api_key_usage_contribution(
     entry.error_count = entry.error_count.saturating_add(contribution.error_count);
     entry.total_tokens = entry.total_tokens.saturating_add(contribution.total_tokens);
     entry.total_cost_usd += contribution.total_cost_usd;
+    entry.window_request_count = entry
+        .window_request_count
+        .saturating_add(contribution.window_request_count);
+    entry.window_total_tokens = entry
+        .window_total_tokens
+        .saturating_add(contribution.window_total_tokens);
+    entry.window_total_cost_usd += contribution.window_total_cost_usd;
     entry.total_response_time_ms = entry
         .total_response_time_ms
         .saturating_add(contribution.total_response_time_ms);

@@ -3,11 +3,11 @@ use chrono::{DateTime, TimeZone, Utc};
 use sqlx::{mysql::MySqlRow, MySql, QueryBuilder, Row};
 
 use super::types::{
-    normalize_user_group_name, LdapAuthUserProvisioningOutcome, StoredUserAuthRecord,
-    StoredUserExportRow, StoredUserGroup, StoredUserGroupMember, StoredUserGroupMembership,
-    StoredUserOAuthLinkSummary, StoredUserPreferenceRecord, StoredUserSessionRecord,
-    StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery, UserExportSummary,
-    UserReadRepository,
+    normalize_user_group_name, DeleteUserGroupReplacementOutcome, LdapAuthUserProvisioningOutcome,
+    StoredUserAuthRecord, StoredUserExportRow, StoredUserGroup, StoredUserGroupMember,
+    StoredUserGroupMembership, StoredUserOAuthLinkSummary, StoredUserPreferenceRecord,
+    StoredUserSessionRecord, StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery,
+    UserExportSummary, UserReadRepository,
 };
 use crate::driver::mysql::MysqlPool;
 use crate::error::SqlResultExt;
@@ -560,6 +560,56 @@ WHERE id = ?
             .await
             .map_sql_err()?;
         Ok(result.rows_affected() > 0)
+    }
+
+    async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<DeleteUserGroupReplacementOutcome, DataLayerError> {
+        if group_id.trim().is_empty() || replacement_group_id.trim().is_empty() {
+            return Err(DataLayerError::InvalidInput(
+                "user group id is required".to_string(),
+            ));
+        }
+        if group_id == replacement_group_id {
+            return Err(DataLayerError::InvalidInput(
+                "replacement user group must be different".to_string(),
+            ));
+        }
+
+        let now = current_unix_secs();
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let count_row = sqlx::query("SELECT COUNT(*) AS total FROM user_groups WHERE id IN (?, ?)")
+            .bind(group_id)
+            .bind(replacement_group_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_sql_err()?;
+        if count_row.try_get::<i64, _>("total").map_sql_err()? != 2 {
+            tx.rollback().await.map_sql_err()?;
+            return Ok(DeleteUserGroupReplacementOutcome::default());
+        }
+
+        let update_result =
+            sqlx::query("UPDATE api_keys SET group_id = ?, updated_at = ? WHERE group_id = ?")
+                .bind(replacement_group_id)
+                .bind(now)
+                .bind(group_id)
+                .execute(&mut *tx)
+                .await
+                .map_sql_err()?;
+        let delete_result = sqlx::query("DELETE FROM user_groups WHERE id = ?")
+            .bind(group_id)
+            .execute(&mut *tx)
+            .await
+            .map_sql_err()?;
+        tx.commit().await.map_sql_err()?;
+
+        Ok(DeleteUserGroupReplacementOutcome {
+            deleted: delete_result.rows_affected() > 0,
+            migrated_api_key_count: update_result.rows_affected(),
+        })
     }
 
     async fn list_user_group_members(

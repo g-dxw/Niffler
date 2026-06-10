@@ -390,6 +390,7 @@
 </template>
 
 <script setup lang="ts">
+/* global __APP_VERSION__ */
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
@@ -737,6 +738,7 @@ const navigation = computed(() => {
   const systemItems: { name: string; href: string; icon: LucideIcon }[] = [
     { name: '公告管理', href: '/admin/announcements', icon: Megaphone },
     { name: '核心对账', href: '/admin/niffler-core', icon: Gauge },
+    { name: '迁移观察', href: '/admin/niffler-migration', icon: Gauge },
     { name: '缓存监控', href: '/admin/cache-monitoring', icon: Gauge },
   ]
 
@@ -784,6 +786,8 @@ const navigation = computed(() => {
       items: [
         { name: '用户管理', href: '/admin/users', icon: Users },
         { name: '上游接入', href: '/admin/niffler-upstreams', icon: Server },
+        { name: '产品策略', href: '/admin/niffler-product-plans', icon: Package },
+        { name: '错误提示', href: '/admin/niffler-error-messages', icon: AlertTriangle },
         { name: '提供商', href: '/admin/providers', icon: FolderTree },
         { name: '模型管理', href: '/admin/models', icon: Layers },
         { name: '调度策略', href: '/admin/routing', icon: SlidersHorizontal },

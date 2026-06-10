@@ -3,11 +3,11 @@ use futures_util::TryStreamExt;
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 
 use super::types::{
-    normalize_user_group_name, LdapAuthUserProvisioningOutcome, StoredUserAuthRecord,
-    StoredUserExportRow, StoredUserGroup, StoredUserGroupMember, StoredUserGroupMembership,
-    StoredUserOAuthLinkSummary, StoredUserPreferenceRecord, StoredUserSessionRecord,
-    StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery, UserExportSummary,
-    UserReadRepository,
+    normalize_user_group_name, DeleteUserGroupReplacementOutcome, LdapAuthUserProvisioningOutcome,
+    StoredUserAuthRecord, StoredUserExportRow, StoredUserGroup, StoredUserGroupMember,
+    StoredUserGroupMembership, StoredUserOAuthLinkSummary, StoredUserPreferenceRecord,
+    StoredUserSessionRecord, StoredUserSummary, UpsertUserGroupRecord, UserExportListQuery,
+    UserExportSummary, UserReadRepository,
 };
 use crate::{error::SqlxResultExt, DataLayerError};
 
@@ -855,6 +855,56 @@ WHERE id = $1
             .await
             .map_postgres_err()?;
         Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<DeleteUserGroupReplacementOutcome, DataLayerError> {
+        if group_id.trim().is_empty() || replacement_group_id.trim().is_empty() {
+            return Err(DataLayerError::InvalidInput(
+                "user group id is required".to_string(),
+            ));
+        }
+        if group_id == replacement_group_id {
+            return Err(DataLayerError::InvalidInput(
+                "replacement user group must be different".to_string(),
+            ));
+        }
+
+        let mut tx = self.pool.begin().await.map_postgres_err()?;
+        let count_row = sqlx::query(
+            "SELECT COUNT(*)::BIGINT AS total FROM user_groups WHERE id = ANY($1::text[])",
+        )
+        .bind(vec![group_id.to_string(), replacement_group_id.to_string()])
+        .fetch_one(&mut *tx)
+        .await
+        .map_postgres_err()?;
+        if count_row.try_get::<i64, _>("total").map_postgres_err()? != 2 {
+            tx.rollback().await.map_postgres_err()?;
+            return Ok(DeleteUserGroupReplacementOutcome::default());
+        }
+
+        let update_result = sqlx::query(
+            "UPDATE api_keys SET group_id = $2, updated_at = NOW() WHERE group_id = $1",
+        )
+        .bind(group_id)
+        .bind(replacement_group_id)
+        .execute(&mut *tx)
+        .await
+        .map_postgres_err()?;
+        let delete_result = sqlx::query("DELETE FROM user_groups WHERE id = $1")
+            .bind(group_id)
+            .execute(&mut *tx)
+            .await
+            .map_postgres_err()?;
+        tx.commit().await.map_postgres_err()?;
+
+        Ok(DeleteUserGroupReplacementOutcome {
+            deleted: delete_result.rows_affected() > 0,
+            migrated_api_key_count: update_result.rows_affected(),
+        })
     }
 
     pub async fn list_user_group_members(
@@ -2392,6 +2442,15 @@ impl UserReadRepository for SqlxUserReadRepository {
 
     async fn delete_user_group(&self, group_id: &str) -> Result<bool, DataLayerError> {
         self.delete_user_group(group_id).await
+    }
+
+    async fn delete_user_group_replacing_api_keys(
+        &self,
+        group_id: &str,
+        replacement_group_id: &str,
+    ) -> Result<DeleteUserGroupReplacementOutcome, DataLayerError> {
+        self.delete_user_group_replacing_api_keys(group_id, replacement_group_id)
+            .await
     }
 
     async fn list_user_group_members(

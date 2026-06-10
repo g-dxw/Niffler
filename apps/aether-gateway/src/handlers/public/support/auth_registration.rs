@@ -4,10 +4,11 @@ use super::{
     build_auth_error_response, build_auth_json_response, clear_auth_email_pending_code,
     clear_auth_email_verification, generate_auth_verification_code, http, json,
     mark_auth_email_verified, read_auth_email_verification_code,
-    store_auth_email_verification_code, system_config_bool, system_config_f64,
+    store_auth_email_verification_code_with_delivery, system_config_bool, system_config_f64,
     system_config_string, system_config_string_list, verify_auth_turnstile, AppState,
     AuthTurnstileAction, Body, GatewayError, Regex, Response,
 };
+use aether_data_contracts::repository::background_tasks::BackgroundTaskStatus;
 use serde::Deserialize;
 
 const AUTH_REGISTRATION_STORAGE_UNAVAILABLE_DETAIL: &str = "注册数据存储暂不可用";
@@ -33,6 +34,12 @@ struct AuthEmailRequest {
 struct AuthVerifyEmailRequest {
     email: String,
     code: String,
+}
+
+struct AuthEmailDeliveryState {
+    status: Option<String>,
+    error: Option<String>,
+    failed: bool,
 }
 
 fn normalize_auth_email(value: &str) -> Option<String> {
@@ -200,6 +207,46 @@ async fn validate_auth_email_suffix(
     Ok(Ok(()))
 }
 
+async fn read_auth_email_delivery_state(
+    state: &AppState,
+    delivery_id: Option<&str>,
+) -> Result<AuthEmailDeliveryState, GatewayError> {
+    let Some(delivery_id) = delivery_id else {
+        return Ok(AuthEmailDeliveryState {
+            status: None,
+            error: None,
+            failed: false,
+        });
+    };
+    let Some(run) = state.find_background_task_run(delivery_id).await? else {
+        return Ok(AuthEmailDeliveryState {
+            status: None,
+            error: None,
+            failed: false,
+        });
+    };
+    let status = run.status.as_database().to_string();
+    let failed = run.status == BackgroundTaskStatus::Failed;
+    Ok(AuthEmailDeliveryState {
+        status: Some(status),
+        error: run.error_message,
+        failed,
+    })
+}
+
+async fn pending_verification_delivery_failed(
+    state: &AppState,
+    email: &str,
+    delivery_id: Option<&str>,
+) -> Result<bool, GatewayError> {
+    let delivery = read_auth_email_delivery_state(state, delivery_id).await?;
+    if delivery.failed {
+        let _ = clear_auth_email_pending_code(state, email).await;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 pub(super) async fn handle_auth_send_verification_code(
     state: &AppState,
     headers: &http::HeaderMap,
@@ -265,23 +312,37 @@ pub(super) async fn handle_auth_send_verification_code(
 
     let now = auth_now();
     if let Ok(Some(stored)) = read_auth_email_verification_code(state, &email).await {
-        let created_at = chrono::DateTime::parse_from_rfc3339(&stored.created_at)
-            .ok()
-            .map(|value| value.with_timezone(&chrono::Utc));
-        let expires_at = created_at.map(|value| {
-            value + chrono::Duration::minutes(auth_verification_code_expire_minutes())
-        });
-        if expires_at.is_some_and(|value| value <= now) {
-            let _ = clear_auth_email_pending_code(state, &email).await;
-        } else if let Some(created_at) = created_at {
-            let elapsed = now.signed_duration_since(created_at).num_seconds();
-            let remaining = auth_verification_send_cooldown_seconds() - elapsed;
-            if remaining > 0 {
+        match pending_verification_delivery_failed(state, &email, stored.delivery_id.as_deref())
+            .await
+        {
+            Ok(true) => {}
+            Err(err) => {
                 return build_auth_error_response(
-                    http::StatusCode::BAD_REQUEST,
-                    format!("请在 {remaining} 秒后重试"),
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("verification delivery lookup failed: {err:?}"),
                     false,
                 );
+            }
+            Ok(false) => {
+                let created_at = chrono::DateTime::parse_from_rfc3339(&stored.created_at)
+                    .ok()
+                    .map(|value| value.with_timezone(&chrono::Utc));
+                let expires_at = created_at.map(|value| {
+                    value + chrono::Duration::minutes(auth_verification_code_expire_minutes())
+                });
+                if expires_at.is_some_and(|value| value <= now) {
+                    let _ = clear_auth_email_pending_code(state, &email).await;
+                } else if let Some(created_at) = created_at {
+                    let elapsed = now.signed_duration_since(created_at).num_seconds();
+                    let remaining = auth_verification_send_cooldown_seconds() - elapsed;
+                    if remaining > 0 {
+                        return build_auth_error_response(
+                            http::StatusCode::BAD_REQUEST,
+                            format!("请在 {remaining} 秒后重试"),
+                            false,
+                        );
+                    }
+                }
             }
         }
     }
@@ -302,22 +363,6 @@ pub(super) async fn handle_auth_send_verification_code(
             }
         };
 
-    if let Err(err) = store_auth_email_verification_code(
-        state,
-        &email,
-        &code,
-        now,
-        u64::try_from(expire_minutes.saturating_mul(60)).unwrap_or(300),
-    )
-    .await
-    {
-        return build_auth_error_response(
-            http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("auth verification code save failed: {err:?}"),
-            false,
-        );
-    }
-
     let delivery_id = match crate::email::queue_email_delivery(
         state,
         email_payload,
@@ -335,6 +380,23 @@ pub(super) async fn handle_auth_send_verification_code(
             );
         }
     };
+
+    if let Err(err) = store_auth_email_verification_code_with_delivery(
+        state,
+        &email,
+        &code,
+        now,
+        u64::try_from(expire_minutes.saturating_mul(60)).unwrap_or(300),
+        Some(&delivery_id),
+    )
+    .await
+    {
+        return build_auth_error_response(
+            http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("auth verification code save failed: {err:?}"),
+            false,
+        );
+    }
 
     build_auth_json_response(
         http::StatusCode::OK,
@@ -713,6 +775,24 @@ pub(super) async fn handle_auth_verify_email(
             false,
         );
     };
+    match pending_verification_delivery_failed(state, &email, pending.delivery_id.as_deref()).await
+    {
+        Ok(true) => {
+            return build_auth_error_response(
+                http::StatusCode::BAD_REQUEST,
+                "验证码邮件发送失败，请重新发送验证码",
+                false,
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            return build_auth_error_response(
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("verification delivery lookup failed: {err:?}"),
+                false,
+            );
+        }
+    }
     let created_at = chrono::DateTime::parse_from_rfc3339(&pending.created_at)
         .ok()
         .map(|value| value.with_timezone(&chrono::Utc));
@@ -762,31 +842,47 @@ pub(super) async fn handle_auth_verification_status(
         .flatten();
     let is_verified = auth_email_is_verified(state, &email).await.unwrap_or(false);
     let now = auth_now();
+    let mut delivery_status = None;
+    let mut delivery_error = None;
     let (has_pending_code, cooldown_remaining, code_expires_in) = if let Some(pending) = pending {
-        let created_at = chrono::DateTime::parse_from_rfc3339(&pending.created_at)
-            .ok()
-            .map(|value| value.with_timezone(&chrono::Utc));
-        let expires_at = created_at.map(|value| {
-            value + chrono::Duration::minutes(auth_verification_code_expire_minutes())
-        });
-        if expires_at.is_some_and(|value| value <= now) {
+        let delivery = read_auth_email_delivery_state(state, pending.delivery_id.as_deref())
+            .await
+            .unwrap_or(AuthEmailDeliveryState {
+                status: None,
+                error: None,
+                failed: false,
+            });
+        delivery_status = delivery.status;
+        delivery_error = delivery.error;
+        if delivery.failed {
             let _ = clear_auth_email_pending_code(state, &email).await;
             (false, None, None)
         } else {
-            let cooldown_remaining = created_at.and_then(|value| {
-                let elapsed = now.signed_duration_since(value).num_seconds();
-                let remaining = auth_verification_send_cooldown_seconds() - elapsed;
-                (remaining > 0)
-                    .then_some(i32::try_from(remaining).ok())
-                    .flatten()
+            let created_at = chrono::DateTime::parse_from_rfc3339(&pending.created_at)
+                .ok()
+                .map(|value| value.with_timezone(&chrono::Utc));
+            let expires_at = created_at.map(|value| {
+                value + chrono::Duration::minutes(auth_verification_code_expire_minutes())
             });
-            let code_expires_in = expires_at.and_then(|value| {
-                let remaining = value.signed_duration_since(now).num_seconds();
-                (remaining > 0)
-                    .then_some(i32::try_from(remaining).ok())
-                    .flatten()
-            });
-            (true, cooldown_remaining, code_expires_in)
+            if expires_at.is_some_and(|value| value <= now) {
+                let _ = clear_auth_email_pending_code(state, &email).await;
+                (false, None, None)
+            } else {
+                let cooldown_remaining = created_at.and_then(|value| {
+                    let elapsed = now.signed_duration_since(value).num_seconds();
+                    let remaining = auth_verification_send_cooldown_seconds() - elapsed;
+                    (remaining > 0)
+                        .then_some(i32::try_from(remaining).ok())
+                        .flatten()
+                });
+                let code_expires_in = expires_at.and_then(|value| {
+                    let remaining = value.signed_duration_since(now).num_seconds();
+                    (remaining > 0)
+                        .then_some(i32::try_from(remaining).ok())
+                        .flatten()
+                });
+                (true, cooldown_remaining, code_expires_in)
+            }
         }
     } else {
         (false, None, None)
@@ -799,6 +895,8 @@ pub(super) async fn handle_auth_verification_status(
             "is_verified": is_verified,
             "cooldown_remaining": cooldown_remaining,
             "code_expires_in": code_expires_in,
+            "delivery_status": delivery_status,
+            "delivery_error": delivery_error,
         }),
         None,
     )

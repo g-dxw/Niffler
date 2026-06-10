@@ -224,6 +224,15 @@ export interface ListUserGroupsResponse {
   default_group_id?: string | null
 }
 
+export interface DeleteUserGroupWithReplacementRequest {
+  replacement_group_id: string
+}
+
+export interface DeleteUserGroupWithReplacementResponse {
+  deleted: boolean
+  migrated_api_key_count: number
+}
+
 export interface ApiKey {
   id: string // UUID
   key?: string  // 完整的 key，只在创建时返回
@@ -399,6 +408,17 @@ export const usersApi = {
 
   async deleteUserGroup(groupId: string): Promise<void> {
     await apiClient.delete(`/api/admin/user-groups/${groupId}`)
+  },
+
+  async deleteUserGroupWithReplacement(
+    groupId: string,
+    payload: DeleteUserGroupWithReplacementRequest,
+  ): Promise<DeleteUserGroupWithReplacementResponse> {
+    const response = await apiClient.post<DeleteUserGroupWithReplacementResponse>(
+      `/api/admin/user-groups/${groupId}/delete-with-replacement`,
+      payload,
+    )
+    return response.data
   },
 
   async listUserGroupMembers(groupId: string): Promise<UserGroupMember[]> {

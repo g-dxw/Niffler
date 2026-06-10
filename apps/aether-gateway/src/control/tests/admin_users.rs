@@ -169,6 +169,17 @@ fn classifies_admin_user_group_routes_as_admin_proxy_route() {
     assert_eq!(update.route_family.as_deref(), Some("users_manage"));
     assert_eq!(update.route_kind.as_deref(), Some("update_user_group"));
 
+    let replace_delete_uri: Uri = "/api/admin/user-groups/group-1/delete-with-replacement"
+        .parse()
+        .expect("uri should parse");
+    let replace_delete = classify_control_route(&http::Method::POST, &replace_delete_uri, &headers)
+        .expect("route should classify");
+    assert_eq!(replace_delete.route_family.as_deref(), Some("users_manage"));
+    assert_eq!(
+        replace_delete.route_kind.as_deref(),
+        Some("delete_user_group_with_replacement")
+    );
+
     let members_uri: Uri = "/api/admin/user-groups/group-1/members"
         .parse()
         .expect("uri should parse");
@@ -204,6 +215,10 @@ fn admin_user_group_write_routes_buffer_request_body() {
         (http::Method::PUT, "/api/admin/user-groups/group-1"),
         (http::Method::PUT, "/api/admin/user-groups/group-1/members"),
         (http::Method::PUT, "/api/admin/user-groups/default"),
+        (
+            http::Method::POST,
+            "/api/admin/user-groups/group-1/delete-with-replacement",
+        ),
     ];
 
     for (method, path) in routes {

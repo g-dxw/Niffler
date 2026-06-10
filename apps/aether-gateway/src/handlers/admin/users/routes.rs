@@ -2,10 +2,10 @@ use super::{
     build_admin_cancel_user_billing_entitlement_response, build_admin_create_user_api_key_response,
     build_admin_create_user_group_response, build_admin_create_user_response,
     build_admin_delete_user_api_key_response, build_admin_delete_user_group_response,
-    build_admin_delete_user_response, build_admin_delete_user_session_response,
-    build_admin_delete_user_sessions_response, build_admin_get_user_response,
-    build_admin_grant_user_billing_plan_response, build_admin_list_user_api_keys_response,
-    build_admin_list_user_billing_entitlements_response,
+    build_admin_delete_user_group_with_replacement_response, build_admin_delete_user_response,
+    build_admin_delete_user_session_response, build_admin_delete_user_sessions_response,
+    build_admin_get_user_response, build_admin_grant_user_billing_plan_response,
+    build_admin_list_user_api_keys_response, build_admin_list_user_billing_entitlements_response,
     build_admin_list_user_group_members_response, build_admin_list_user_groups_response,
     build_admin_list_user_sessions_response, build_admin_list_users_response,
     build_admin_replace_user_group_members_response, build_admin_resolve_user_selection_response,
@@ -29,6 +29,10 @@ fn is_admin_users_route(request_context: &AdminRequestContext<'_>) -> bool {
                 path,
                 "/api/admin/user-groups/default" | "/api/admin/user-groups/default/"
             ))
+        || (request_context.method() == http::Method::POST
+            && path.starts_with("/api/admin/user-groups/")
+            && path.ends_with("/delete-with-replacement")
+            && path.matches('/').count() == 5)
         || ((request_context.method() == http::Method::PUT
             || request_context.method() == http::Method::DELETE)
             && path.starts_with("/api/admin/user-groups/")
@@ -134,6 +138,14 @@ pub(super) async fn maybe_build_local_admin_users_routes_response(
         )),
         Some("delete_user_group") => Ok(Some(
             build_admin_delete_user_group_response(state, request_context).await?,
+        )),
+        Some("delete_user_group_with_replacement") => Ok(Some(
+            build_admin_delete_user_group_with_replacement_response(
+                state,
+                request_context,
+                request_body,
+            )
+            .await?,
         )),
         Some("list_user_group_members") => Ok(Some(
             build_admin_list_user_group_members_response(state, request_context).await?,
