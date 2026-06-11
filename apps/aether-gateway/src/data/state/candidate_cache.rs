@@ -25,6 +25,31 @@ pub(super) struct CachedMinimalCandidateSelectionReadRepository {
     epoch: AtomicU64,
 }
 
+struct InflightGuard<'a> {
+    cache: &'a CachedMinimalCandidateSelectionReadRepository,
+    key: Option<CandidateSelectionCacheKey>,
+}
+
+impl<'a> InflightGuard<'a> {
+    fn new(
+        cache: &'a CachedMinimalCandidateSelectionReadRepository,
+        key: CandidateSelectionCacheKey,
+    ) -> Self {
+        Self {
+            cache,
+            key: Some(key),
+        }
+    }
+}
+
+impl Drop for InflightGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(key) = self.key.take() {
+            self.cache.finish_inflight(&key);
+        }
+    }
+}
+
 impl CachedMinimalCandidateSelectionReadRepository {
     pub(super) fn new(inner: Arc<dyn MinimalCandidateSelectionReadRepository>) -> Self {
         Self {
@@ -64,6 +89,7 @@ impl CachedMinimalCandidateSelectionReadRepository {
                 InflightRegistration::Leader => {}
             }
 
+            let _inflight_guard = InflightGuard::new(self, key.clone());
             let load_epoch = self.epoch.load(Ordering::Acquire);
             let result = load().await;
             if let Ok(rows) = &result {
@@ -76,7 +102,6 @@ impl CachedMinimalCandidateSelectionReadRepository {
                     );
                 }
             }
-            self.finish_inflight(&key);
             return result;
         }
     }
@@ -291,6 +316,7 @@ mod tests {
     struct StubCandidateSelectionRepository {
         calls: AtomicUsize,
         delay: Duration,
+        load_started: Option<Arc<Notify>>,
     }
 
     impl StubCandidateSelectionRepository {
@@ -298,6 +324,15 @@ mod tests {
             Self {
                 calls: AtomicUsize::new(0),
                 delay,
+                load_started: None,
+            }
+        }
+
+        fn with_load_started_notify(delay: Duration, load_started: Arc<Notify>) -> Self {
+            Self {
+                calls: AtomicUsize::new(0),
+                delay,
+                load_started: Some(load_started),
             }
         }
 
@@ -307,6 +342,9 @@ mod tests {
 
         async fn load(&self) -> Result<Vec<StoredMinimalCandidateSelectionRow>, DataLayerError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(load_started) = &self.load_started {
+                load_started.notify_waiters();
+            }
             if !self.delay.is_zero() {
                 tokio::time::sleep(self.delay).await;
             }
@@ -396,6 +434,58 @@ mod tests {
 
         cache.clear_local_cache();
         cache.list_for_exact_api_format("openai").await.unwrap();
+        assert_eq!(inner.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn candidate_selection_cache_releases_inflight_when_leader_is_cancelled() {
+        let load_started = Arc::new(Notify::new());
+        let inner = Arc::new(StubCandidateSelectionRepository::with_load_started_notify(
+            Duration::from_millis(200),
+            load_started.clone(),
+        ));
+        let cache = Arc::new(CachedMinimalCandidateSelectionReadRepository::new(
+            inner.clone(),
+        ));
+        let key = CandidateSelectionCacheKey::ApiFormat {
+            api_format: normalize_api_format_key("openai"),
+        };
+
+        let leader_cache = cache.clone();
+        let leader = tokio::spawn(async move {
+            leader_cache
+                .list_for_exact_api_format("openai")
+                .await
+                .unwrap();
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), load_started.notified())
+            .await
+            .expect("leader load should start");
+        assert_eq!(inner.calls(), 1);
+        assert!(cache
+            .inflight
+            .lock()
+            .expect("inflight lock should be available")
+            .contains(&key));
+
+        leader.abort();
+        let _ = leader.await;
+
+        assert!(!cache
+            .inflight
+            .lock()
+            .expect("inflight lock should be available")
+            .contains(&key));
+
+        tokio::time::timeout(
+            Duration::from_millis(300),
+            cache.list_for_exact_api_format("openai"),
+        )
+        .await
+        .expect("follower should not hang after leader cancellation")
+        .expect("follower load should succeed");
+
         assert_eq!(inner.calls(), 2);
     }
 }
