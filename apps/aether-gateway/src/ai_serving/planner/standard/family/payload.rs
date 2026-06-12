@@ -366,6 +366,7 @@ mod tests {
             required_capabilities: None,
             request_auth_channel: None,
             client_session_affinity: None,
+            defer_scheduler_affinity_until_success: false,
             routing_policy: None,
             routing_trace_seed: None,
             routing_context: None,

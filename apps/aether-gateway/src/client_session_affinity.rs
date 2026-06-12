@@ -6,6 +6,8 @@ use crate::headers::header_value_str;
 pub(crate) const AETHER_SESSION_ID_HEADER: &str = "x-aether-session-id";
 pub(crate) const AETHER_AGENT_ID_HEADER: &str = "x-aether-agent-id";
 pub(crate) const CLIENT_SESSION_AFFINITY_REPORT_CONTEXT_FIELD: &str = "client_session_affinity";
+pub(crate) const CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD: &str =
+    "codex_encrypted_context_handoff";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ClientSessionSignalSource {
@@ -111,7 +113,7 @@ pub(crate) fn client_session_affinity_from_parts(
     client_session_scope_from_parts(parts, body_json)?.scheduler_affinity()
 }
 
-pub(crate) fn codex_encrypted_context_requires_session(
+pub(crate) fn codex_encrypted_context_handoff_from_request(
     headers: &http::HeaderMap,
     body_json: Option<&Value>,
     client_session_affinity: Option<&ClientSessionAffinity>,
@@ -490,8 +492,7 @@ mod tests {
     use super::{
         client_session_affinity_from_report_context_value, client_session_affinity_from_request,
         client_session_affinity_report_context_value, client_session_scope_from_request,
-        codex_encrypted_context_requires_session, ClientSessionSignalSource,
-        AETHER_AGENT_ID_HEADER, AETHER_SESSION_ID_HEADER,
+        ClientSessionSignalSource, AETHER_AGENT_ID_HEADER, AETHER_SESSION_ID_HEADER,
     };
     use aether_scheduler_core::ClientSessionAffinity;
     use http::{HeaderMap, HeaderValue};
@@ -748,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_encrypted_context_without_session_requires_local_rejection() {
+    fn codex_encrypted_context_without_session_has_no_explicit_affinity() {
         let mut headers = HeaderMap::new();
         headers.insert(
             http::header::USER_AGENT,
@@ -764,15 +765,13 @@ mod tests {
             ]
         });
 
-        assert!(codex_encrypted_context_requires_session(
-            &headers,
-            Some(&body),
-            None,
-        ));
+        let affinity = client_session_affinity_from_request(&headers, Some(&body));
+
+        assert!(affinity.is_none());
     }
 
     #[test]
-    fn codex_encrypted_context_with_explicit_session_is_allowed() {
+    fn codex_encrypted_context_with_explicit_session_builds_affinity() {
         let mut headers = HeaderMap::new();
         headers.insert(
             http::header::USER_AGENT,
@@ -793,30 +792,8 @@ mod tests {
         });
         let affinity = client_session_affinity_from_request(&headers, Some(&body));
 
-        assert!(!codex_encrypted_context_requires_session(
-            &headers,
-            Some(&body),
-            affinity.as_ref(),
-        ));
-    }
-
-    #[test]
-    fn non_codex_encrypted_context_does_not_require_codex_session() {
-        let headers = HeaderMap::new();
-        let body = json!({
-            "model": "gpt-5.5",
-            "input": [
-                {
-                    "type": "compaction",
-                    "encrypted_content": "encrypted-payload"
-                }
-            ]
-        });
-
-        assert!(!codex_encrypted_context_requires_session(
-            &headers,
-            Some(&body),
-            None,
-        ));
+        let affinity = affinity.expect("explicit session should build affinity");
+        assert_eq!(affinity.client_family.as_deref(), Some("codex"));
+        assert_eq!(affinity.session_key.as_deref(), Some("session=session-1"));
     }
 }

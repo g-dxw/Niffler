@@ -150,6 +150,7 @@ pub(crate) async fn materialize_local_openai_chat_candidate_attempts(
         candidates,
         preselection_skipped,
         LocalCandidateResolutionMode::Standard,
+        false,
         |eligible| {
             let provider_api_format = eligible.provider_api_format.clone();
             let (execution_strategy, conversion_mode) =
@@ -231,6 +232,7 @@ pub(crate) async fn build_local_openai_chat_candidate_attempt_source<'a>(
         candidates,
         preselection_skipped,
         LocalCandidateResolutionMode::Standard,
+        false,
         |eligible| {
             let provider_api_format = eligible.provider_api_format.clone();
             let (execution_strategy, conversion_mode) =
@@ -310,6 +312,7 @@ pub(crate) async fn build_lazy_local_openai_chat_candidate_attempt_source<'a>(
         false,
         LocalCandidatePreselectionKeyMode::ProviderEndpointKeyModel,
         LocalCandidateResolutionMode::Standard,
+        false,
         move |eligible| {
             let provider_api_format = eligible.provider_api_format.clone();
             let (execution_strategy, conversion_mode) =
@@ -402,6 +405,7 @@ pub(crate) async fn build_local_openai_chat_image_candidate_attempt_source<'a>(
         preselection.candidates,
         preselection.skipped_candidates,
         LocalCandidateResolutionMode::WithoutTransportPairGate,
+        false,
         |eligible| {
             let provider_api_format = eligible.provider_api_format.clone();
             let (execution_strategy, conversion_mode) =

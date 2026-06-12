@@ -232,6 +232,7 @@ pub(super) async fn build_local_video_create_candidate_attempt_source<'a>(
             })
             .collect(),
         LocalCandidateResolutionMode::Standard,
+        false,
         |eligible| {
             Some(build_local_execution_candidate_metadata(
                 LocalExecutionCandidateMetadataParts {
@@ -289,6 +290,7 @@ async fn materialize_local_video_create_candidate_attempts(
         candidates,
         preselection_skipped,
         LocalCandidateResolutionMode::Standard,
+        false,
         |eligible| {
             Some(build_local_execution_candidate_metadata(
                 LocalExecutionCandidateMetadataParts {

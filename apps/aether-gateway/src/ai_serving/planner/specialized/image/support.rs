@@ -266,6 +266,7 @@ pub(super) async fn build_local_openai_image_candidate_attempt_source<'a>(
             })
             .collect(),
         LocalCandidateResolutionMode::WithoutTransportPairGate,
+        false,
         |eligible| {
             Some(build_local_execution_candidate_metadata(
                 LocalExecutionCandidateMetadataParts {
@@ -334,6 +335,7 @@ async fn materialize_local_openai_image_candidate_attempts(
         candidates,
         preselection_skipped,
         LocalCandidateResolutionMode::WithoutTransportPairGate,
+        false,
         |eligible| {
             Some(build_local_execution_candidate_metadata(
                 LocalExecutionCandidateMetadataParts {

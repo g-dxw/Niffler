@@ -14,6 +14,7 @@ use crate::ai_serving::planner::{
 use crate::ai_serving::transport::{
     resolve_transport_execution_timeouts, resolve_transport_profile,
 };
+use crate::client_session_affinity::CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD;
 use crate::{
     append_execution_contract_fields_to_value, append_local_failover_policy_to_value,
     AiExecutionDecision, AppState, GatewayError,
@@ -83,6 +84,12 @@ pub(crate) async fn maybe_build_local_openai_responses_decision_payload_for_cand
     }
     if let Some(image_request_summary) = resolved.image_request_summary.as_ref() {
         extra_fields.insert("image_request".to_string(), image_request_summary.clone());
+    }
+    if input.defer_scheduler_affinity_until_success {
+        extra_fields.insert(
+            CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD.to_string(),
+            json!(true),
+        );
     }
     if resolved
         .provider_api_format

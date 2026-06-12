@@ -150,6 +150,7 @@ pub(crate) async fn materialize_local_same_format_provider_candidate_attempts(
             })
             .collect(),
         LocalCandidateResolutionMode::Standard,
+        false,
         |eligible| {
             let (execution_strategy, conversion_mode) = ai_local_execution_contract_for_formats(
                 spec_metadata.api_format,
@@ -248,6 +249,7 @@ pub(crate) async fn build_local_same_format_provider_candidate_attempt_source<'a
             })
             .collect(),
         LocalCandidateResolutionMode::Standard,
+        false,
         |eligible| {
             let (execution_strategy, conversion_mode) = ai_local_execution_contract_for_formats(
                 spec_metadata.api_format,

@@ -160,6 +160,7 @@ pub(super) async fn materialize_local_standard_candidate_attempts(
         } else {
             LocalCandidateResolutionMode::Standard
         },
+        false,
         |eligible| {
             let provider_api_format = eligible.provider_api_format.clone();
             let (execution_strategy, conversion_mode) = ai_local_execution_contract_for_formats(
@@ -257,6 +258,7 @@ pub(super) async fn build_local_standard_candidate_attempt_source<'a>(
             false,
             LocalCandidatePreselectionKeyMode::ProviderEndpointKeyModelAndApiFormat,
             LocalCandidateResolutionMode::Standard,
+            false,
             move |eligible| {
                 let provider_api_format = eligible.provider_api_format.clone();
                 let (execution_strategy, conversion_mode) = ai_local_execution_contract_for_formats(

@@ -1,6 +1,7 @@
 use aether_contracts::{ExecutionPlan, ExecutionResult};
 use serde_json::Value;
 
+use crate::client_session_affinity::CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD;
 use crate::orchestration::{
     resolve_local_failover_analysis_for_attempt, LocalFailoverAnalysis,
     LocalFailoverClassification, LocalFailoverDecision,
@@ -22,6 +23,40 @@ fn openai_image_success_disables_local_success_failover(
         && plan
             .provider_api_format
             .eq_ignore_ascii_case("openai:image")
+}
+
+fn report_context_is_codex_encrypted_context_handoff(
+    report_context: Option<&serde_json::Value>,
+) -> bool {
+    report_context
+        .and_then(|value| value.get(CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn response_text_is_codex_encrypted_context_error(response_text: Option<&str>) -> bool {
+    let Some(text) = response_text
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+    text.to_ascii_lowercase().contains("encrypted_content")
+}
+
+fn stop_codex_encrypted_context_handoff_failover(
+    report_context: Option<&serde_json::Value>,
+    response_text: Option<&str>,
+) -> Option<LocalFailoverAnalysis> {
+    if report_context_is_codex_encrypted_context_handoff(report_context)
+        && response_text_is_codex_encrypted_context_error(response_text)
+    {
+        return Some(LocalFailoverAnalysis {
+            classification: LocalFailoverClassification::StopErrorPattern,
+            decision: LocalFailoverDecision::StopLocalFailover,
+        });
+    }
+    None
 }
 
 pub(crate) async fn should_retry_next_local_candidate_sync(
@@ -61,6 +96,12 @@ pub(crate) async fn analyze_local_candidate_failover_sync(
 
     if openai_image_success_disables_local_success_failover(plan, result.status_code) {
         return LocalFailoverAnalysis::use_default();
+    }
+
+    if let Some(analysis) =
+        stop_codex_encrypted_context_handoff_failover(report_context, response_text)
+    {
+        return analysis;
     }
 
     if let Some(error) = result.error.as_ref() {
@@ -244,6 +285,12 @@ pub(crate) async fn resolve_local_candidate_failover_analysis_stream(
 ) -> LocalFailoverAnalysis {
     if openai_image_success_disables_local_success_failover(plan, status_code) {
         return LocalFailoverAnalysis::use_default();
+    }
+
+    if let Some(analysis) =
+        stop_codex_encrypted_context_handoff_failover(report_context, response_text)
+    {
+        return analysis;
     }
 
     resolve_local_failover_analysis_for_attempt(
@@ -696,6 +743,130 @@ mod tests {
             )
             .await
         );
+    }
+
+    #[tokio::test]
+    async fn unbound_codex_encrypted_context_error_stops_sync_failover() {
+        let result = ExecutionResult {
+            request_id: "req-1".to_string(),
+            candidate_id: None,
+            status_code: 400,
+            headers: Default::default(),
+            body: None,
+            telemetry: None,
+            error: None,
+        };
+        let local_report_context = serde_json::json!({
+            "candidate_index": 0,
+            "retry_index": 0,
+            "codex_encrypted_context_handoff": true,
+        });
+        let state = build_state_with_provider_config(None);
+        let plan = sample_plan();
+
+        let analysis = analyze_local_candidate_failover_sync(
+            &state,
+            &plan,
+            "openai_responses_sync",
+            Some(&local_report_context),
+            &result,
+            Some("{\"error\":{\"message\":\"invalid encrypted_content for this conversation\"}}"),
+        )
+        .await;
+
+        assert_eq!(
+            analysis.decision,
+            crate::orchestration::LocalFailoverDecision::StopLocalFailover
+        );
+        assert!(
+            !should_retry_next_local_candidate_sync(
+                &state,
+                &plan,
+                "openai_responses_sync",
+                Some(&local_report_context),
+                &result,
+                Some(
+                    "{\"error\":{\"message\":\"invalid encrypted_content for this conversation\"}}"
+                ),
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn unbound_codex_encrypted_context_error_stops_stream_failover() {
+        let local_report_context = serde_json::json!({
+            "candidate_index": 0,
+            "retry_index": 0,
+            "codex_encrypted_context_handoff": true,
+        });
+        let state = build_state_with_provider_config(None);
+        let plan = sample_plan();
+
+        assert!(
+            !should_retry_next_local_candidate_stream(
+                &state,
+                &plan,
+                "openai_responses_stream",
+                Some(&local_report_context),
+                400,
+                Some(
+                    "{\"error\":{\"message\":\"invalid encrypted_content for this conversation\"}}"
+                ),
+            )
+            .await
+        );
+        assert!(
+            should_stop_local_candidate_failover_stream(
+                &state,
+                &plan,
+                "openai_responses_stream",
+                Some(&local_report_context),
+                400,
+                Some(
+                    "{\"error\":{\"message\":\"invalid encrypted_content for this conversation\"}}"
+                ),
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn unbound_codex_handoff_does_not_stop_failover_for_unconfirmed_error_text() {
+        let result = ExecutionResult {
+            request_id: "req-1".to_string(),
+            candidate_id: None,
+            status_code: 400,
+            headers: Default::default(),
+            body: None,
+            telemetry: None,
+            error: None,
+        };
+        let local_report_context = serde_json::json!({
+            "candidate_index": 0,
+            "retry_index": 0,
+            "codex_encrypted_context_handoff": true,
+        });
+        let state = build_state_with_provider_config(None);
+        let plan = sample_plan();
+
+        for response_text in [
+            "{\"error\":{\"message\":\"invalid context length\"}}",
+            "{\"error\":{\"message\":\"invalid encrypted reasoning context\"}}",
+        ] {
+            assert!(
+                should_retry_next_local_candidate_sync(
+                    &state,
+                    &plan,
+                    "openai_responses_sync",
+                    Some(&local_report_context),
+                    &result,
+                    Some(response_text),
+                )
+                .await,
+                "{response_text} should keep normal failover behavior"
+            );
+        }
     }
 
     #[tokio::test]

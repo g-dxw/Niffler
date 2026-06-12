@@ -15,7 +15,7 @@ use tracing::warn;
 use crate::ai_serving::planner::common::extract_standard_requested_model;
 use crate::ai_serving::{ExecutionRuntimeAuthContext, GatewayAuthApiKeySnapshot, PlannerAppState};
 use crate::client_session_affinity::{
-    client_session_affinity_from_request, codex_encrypted_context_requires_session,
+    client_session_affinity_from_request, codex_encrypted_context_handoff_from_request,
 };
 use crate::clock::current_unix_secs;
 use crate::routing::{
@@ -40,6 +40,7 @@ pub(crate) struct LocalRequestedModelDecisionInput {
     pub(crate) required_capabilities: Option<serde_json::Value>,
     pub(crate) request_auth_channel: Option<String>,
     pub(crate) client_session_affinity: Option<ClientSessionAffinity>,
+    pub(crate) defer_scheduler_affinity_until_success: bool,
     pub(crate) routing_policy: Option<ResolvedRoutingPolicy>,
     pub(crate) routing_trace_seed: Option<RoutingDecisionTrace>,
     pub(crate) routing_context: Option<LocalRoutingRequestContext>,
@@ -207,6 +208,7 @@ pub(crate) fn build_local_requested_model_decision_input(
         required_capabilities: resolved_input.required_capabilities,
         request_auth_channel: None,
         client_session_affinity: None,
+        defer_scheduler_affinity_until_success: false,
         routing_policy: None,
         routing_trace_seed: None,
         routing_context: None,
@@ -275,12 +277,13 @@ pub(crate) async fn attach_routing_policy_to_local_requested_model_input(
     else {
         input.client_session_affinity =
             client_session_affinity_from_request(&parts.headers, Some(body_json));
-        ensure_codex_encrypted_context_has_session(
-            client_api_format,
-            &parts.headers,
-            body_json,
-            input.client_session_affinity.as_ref(),
-        )?;
+        input.defer_scheduler_affinity_until_success =
+            codex_encrypted_context_handoff_applies(client_api_format)
+                && codex_encrypted_context_handoff_from_request(
+                    &parts.headers,
+                    Some(body_json),
+                    input.client_session_affinity.as_ref(),
+                );
         input.routing_policy = None;
         input.routing_trace_seed = None;
         input.routing_context = None;
@@ -332,12 +335,13 @@ pub(crate) async fn attach_routing_policy_to_local_requested_model_input(
     let effective_headers_json = headers_to_routing_value(&effective_headers);
     input.client_session_affinity =
         client_session_affinity_from_request(&effective_headers, Some(&effective_body_json));
-    ensure_codex_encrypted_context_has_session(
-        client_api_format,
-        &effective_headers,
-        &effective_body_json,
-        input.client_session_affinity.as_ref(),
-    )?;
+    input.defer_scheduler_affinity_until_success =
+        codex_encrypted_context_handoff_applies(client_api_format)
+            && codex_encrypted_context_handoff_from_request(
+                &effective_headers,
+                Some(&effective_body_json),
+                input.client_session_affinity.as_ref(),
+            );
     let mut final_policy = resolve_gateway_routing_policy(GatewayRoutingPolicyInput {
         group_id: group_id.as_deref(),
         group_version,
@@ -367,26 +371,7 @@ pub(crate) async fn attach_routing_policy_to_local_requested_model_input(
     Ok(())
 }
 
-fn ensure_codex_encrypted_context_has_session(
-    client_api_format: &str,
-    headers: &HeaderMap,
-    body_json: &Value,
-    client_session_affinity: Option<&ClientSessionAffinity>,
-) -> Result<(), GatewayError> {
-    if !codex_encrypted_context_protection_applies(client_api_format) {
-        return Ok(());
-    }
-    if !codex_encrypted_context_requires_session(headers, Some(body_json), client_session_affinity)
-    {
-        return Ok(());
-    }
-    Err(GatewayError::Client {
-        status: StatusCode::BAD_REQUEST,
-        message: "此 Codex 请求包含加密上下文，但没有会话标识。请重新开始会话，或让客户端发送 x-aether-session-id。".to_string(),
-    })
-}
-
-fn codex_encrypted_context_protection_applies(client_api_format: &str) -> bool {
+fn codex_encrypted_context_handoff_applies(client_api_format: &str) -> bool {
     matches!(
         client_api_format.trim().to_ascii_lowercase().as_str(),
         "openai:responses" | "openai:responses:compact"
@@ -695,6 +680,7 @@ mod tests {
             required_capabilities: None,
             request_auth_channel: None,
             client_session_affinity: None,
+            defer_scheduler_affinity_until_success: false,
             routing_policy: None,
             routing_trace_seed: None,
             routing_context: Some(LocalRoutingRequestContext {
@@ -862,13 +848,15 @@ mod tests {
         );
     }
 
-    #[test]
-    fn codex_encrypted_context_without_session_is_rejected_before_upstream_selection() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            http::header::USER_AGENT,
-            HeaderValue::from_static("codex-tui/0.135.0"),
-        );
+    #[tokio::test]
+    async fn codex_encrypted_context_without_session_attaches_routing_policy_without_local_rejection(
+    ) {
+        let state = AppState::new().expect("state should build");
+        let (parts, _) = http::Request::builder()
+            .header(http::header::USER_AGENT, "codex-tui/0.135.0")
+            .body(())
+            .expect("request should build")
+            .into_parts();
         let body = json!({
             "model": "gpt-5.5",
             "input": [{
@@ -876,44 +864,64 @@ mod tests {
                 "encrypted_content": "encrypted-payload"
             }]
         });
+        let resolved_input = ResolvedLocalDecisionAuthInput {
+            auth_context: sample_auth_context(),
+            auth_snapshot: sample_auth_snapshot(),
+            required_capabilities: None,
+        };
+        let mut input =
+            build_local_requested_model_decision_input(resolved_input, "gpt-5.5".to_string());
 
-        let error =
-            ensure_codex_encrypted_context_has_session("openai:responses", &headers, &body, None)
-                .expect_err("unbound Codex encrypted context should be rejected locally");
+        attach_routing_policy_to_local_requested_model_input(
+            &state,
+            &parts,
+            &mut input,
+            &body,
+            "openai:responses",
+        )
+        .await
+        .expect("Codex encrypted context without explicit session should not be rejected locally");
 
-        match error {
-            GatewayError::Client { status, message } => {
-                assert_eq!(status, StatusCode::BAD_REQUEST);
-                assert!(message.contains("加密上下文"));
-            }
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert!(input.client_session_affinity.is_none());
+        assert!(input.defer_scheduler_affinity_until_success);
+        assert!(input.routing_policy.is_none());
     }
 
-    #[test]
-    fn codex_encrypted_context_with_session_can_continue() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            http::header::USER_AGENT,
-            HeaderValue::from_static("codex-tui/0.135.0"),
-        );
+    #[tokio::test]
+    async fn codex_encrypted_context_handoff_only_applies_to_responses_api_format() {
+        let state = AppState::new().expect("state should build");
+        let (parts, _) = http::Request::builder()
+            .header(http::header::USER_AGENT, "codex-tui/0.135.0")
+            .body(())
+            .expect("request should build")
+            .into_parts();
         let body = json!({
             "model": "gpt-5.5",
-            "prompt_cache_key": "session-1",
-            "input": [{
-                "type": "compaction",
+            "messages": [{
+                "role": "user",
+                "content": "hello",
                 "encrypted_content": "encrypted-payload"
             }]
         });
-        let affinity = client_session_affinity_from_request(&headers, Some(&body));
+        let resolved_input = ResolvedLocalDecisionAuthInput {
+            auth_context: sample_auth_context(),
+            auth_snapshot: sample_auth_snapshot(),
+            required_capabilities: None,
+        };
+        let mut input =
+            build_local_requested_model_decision_input(resolved_input, "gpt-5.5".to_string());
 
-        ensure_codex_encrypted_context_has_session(
-            "openai:responses",
-            &headers,
+        attach_routing_policy_to_local_requested_model_input(
+            &state,
+            &parts,
+            &mut input,
             &body,
-            affinity.as_ref(),
+            "openai:chat",
         )
-        .expect("Codex encrypted context with session should continue");
+        .await
+        .expect("non-Responses Codex request should keep normal routing behavior");
+
+        assert!(!input.defer_scheduler_affinity_until_success);
     }
 
     #[test]

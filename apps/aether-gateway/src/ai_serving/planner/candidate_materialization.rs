@@ -203,6 +203,7 @@ struct GatewayLocalCandidateMaterializationPort<'a, F, G> {
     persistence_policy: LocalCandidatePersistencePolicy<'a>,
     resolution_mode: LocalCandidateResolutionMode,
     scheduler_cache_affinity_enabled: bool,
+    defer_scheduler_affinity_until_success: bool,
     build_available_extra_data: F,
     decorate_skipped_candidate: G,
 }
@@ -267,6 +268,9 @@ where
 
     fn remember_first_candidate_affinity(&self, candidates: &[Self::Eligible]) {
         if !self.scheduler_cache_affinity_enabled {
+            return;
+        }
+        if self.defer_scheduler_affinity_until_success {
             return;
         }
         remember_first_local_candidate_affinity(
@@ -457,6 +461,7 @@ pub(crate) async fn materialize_local_execution_candidates_with_serving<F, G>(
     candidates: Vec<SchedulerMinimalCandidateSelectionCandidate>,
     preselection_skipped: Vec<SkippedLocalExecutionCandidate>,
     resolution_mode: LocalCandidateResolutionMode,
+    defer_scheduler_affinity_until_success: bool,
     build_available_extra_data: F,
     decorate_skipped_candidate: G,
 ) -> AiCandidateMaterializationOutcome<LocalExecutionCandidateAttempt>
@@ -480,6 +485,7 @@ where
         persistence_policy,
         resolution_mode,
         scheduler_cache_affinity_enabled,
+        defer_scheduler_affinity_until_success,
         build_available_extra_data,
         decorate_skipped_candidate,
     };
@@ -506,6 +512,7 @@ pub(crate) async fn build_local_execution_candidate_attempt_source_with_serving<
     candidates: Vec<SchedulerMinimalCandidateSelectionCandidate>,
     preselection_skipped: Vec<SkippedLocalExecutionCandidate>,
     resolution_mode: LocalCandidateResolutionMode,
+    defer_scheduler_affinity_until_success: bool,
     build_available_extra_data: F,
     decorate_skipped_candidate: G,
 ) -> (LocalExecutionCandidateAttemptSource<'a>, usize)
@@ -538,7 +545,7 @@ where
         .collect::<Vec<_>>();
     let candidate_count = candidates.len() + skipped_candidate_count;
 
-    if scheduler_cache_affinity_enabled {
+    if scheduler_cache_affinity_enabled && !defer_scheduler_affinity_until_success {
         remember_first_local_candidate_affinity(
             state,
             auth_snapshot,
@@ -654,6 +661,7 @@ pub(crate) async fn build_lazy_requested_model_execution_candidate_attempt_sourc
     use_api_format_alias_match: bool,
     key_mode: LocalCandidatePreselectionKeyMode,
     resolution_mode: LocalCandidateResolutionMode,
+    defer_scheduler_affinity_until_success: bool,
     build_available_extra_data: F,
     decorate_skipped_candidate: G,
 ) -> (LocalExecutionCandidateAttemptSource<'a>, usize)
@@ -703,6 +711,7 @@ where
         next_candidate_index: 0,
         remembered_affinity: false,
         scheduler_cache_affinity_enabled,
+        defer_scheduler_affinity_until_success,
         auth_api_key_concurrency_wait_deadline: None,
     };
     cursor.load_next_page().await;
@@ -745,6 +754,7 @@ struct RequestedModelAttemptPageCursor<'a> {
     next_candidate_index: u32,
     remembered_affinity: bool,
     scheduler_cache_affinity_enabled: bool,
+    defer_scheduler_affinity_until_success: bool,
     auth_api_key_concurrency_wait_deadline: Option<Instant>,
 }
 
@@ -810,6 +820,7 @@ impl<'a> RequestedModelAttemptPageCursor<'a> {
                 .candidate_count
                 .saturating_add(candidates.len() + skipped_candidate_count);
             if self.scheduler_cache_affinity_enabled
+                && !self.defer_scheduler_affinity_until_success
                 && !self.remembered_affinity
                 && !candidates.is_empty()
             {
@@ -1874,6 +1885,7 @@ mod tests {
             },
             resolution_mode: LocalCandidateResolutionMode::Standard,
             scheduler_cache_affinity_enabled: false,
+            defer_scheduler_affinity_until_success: false,
             build_available_extra_data: no_extra_data,
             decorate_skipped_candidate: identity_skipped_candidate,
         };
@@ -1881,6 +1893,61 @@ mod tests {
         let cache_key =
             build_scheduler_affinity_cache_key_for_api_key_id("api-key-1", "openai:chat", "gpt-5")
                 .expect("scheduler affinity cache key should build");
+
+        aether_ai_serving::AiCandidateMaterializationPort::remember_first_candidate_affinity(
+            &port,
+            &[candidate],
+        );
+
+        assert!(app
+            .read_scheduler_affinity_target(cache_key.as_str(), SCHEDULER_AFFINITY_TTL)
+            .is_none());
+    }
+
+    #[test]
+    fn materialization_port_defers_scheduler_affinity_until_success_for_unbound_encrypted_context()
+    {
+        let app = AppState::new().expect("state should build");
+        let auth_snapshot = sample_auth_snapshot();
+        let port = GatewayLocalCandidateMaterializationPort {
+            state: PlannerAppState::new(&app),
+            trace_id: "trace-affinity-deferred",
+            client_api_format: "openai:responses",
+            requested_model: Some("gpt-5.5"),
+            auth_snapshot: Some(&auth_snapshot),
+            client_session_affinity: None,
+            required_capabilities: None,
+            routing_policy: None,
+            sticky_session_token: None,
+            request_auth_channel: None,
+            persistence_policy: LocalCandidatePersistencePolicy {
+                available: LocalAvailableCandidatePersistenceContext {
+                    user_id: "user-1",
+                    api_key_id: "api-key-1",
+                    required_capabilities: None,
+                    error_context: "test available",
+                },
+                skipped: LocalSkippedCandidatePersistenceContext {
+                    user_id: "user-1",
+                    api_key_id: "api-key-1",
+                    required_capabilities: None,
+                    error_context: "test skipped",
+                    record_runtime_miss_diagnostic: false,
+                },
+            },
+            resolution_mode: LocalCandidateResolutionMode::Standard,
+            scheduler_cache_affinity_enabled: true,
+            defer_scheduler_affinity_until_success: true,
+            build_available_extra_data: no_extra_data,
+            decorate_skipped_candidate: identity_skipped_candidate,
+        };
+        let candidate = sample_eligible("key-a", None);
+        let cache_key = build_scheduler_affinity_cache_key_for_api_key_id(
+            "api-key-1",
+            "openai:responses",
+            "gpt-5.5",
+        )
+        .expect("scheduler affinity cache key should build");
 
         aether_ai_serving::AiCandidateMaterializationPort::remember_first_candidate_affinity(
             &port,

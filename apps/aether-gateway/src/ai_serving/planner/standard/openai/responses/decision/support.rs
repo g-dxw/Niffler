@@ -197,6 +197,7 @@ pub(crate) async fn materialize_local_openai_responses_candidate_attempts(
         preselection.candidates,
         preselection.skipped_candidates,
         LocalCandidateResolutionMode::Standard,
+        input.defer_scheduler_affinity_until_success,
         |eligible| {
             let provider_api_format = eligible.provider_api_format.clone();
             let (execution_strategy, conversion_mode) = ai_local_execution_contract_for_formats(
@@ -294,6 +295,7 @@ pub(crate) async fn build_local_openai_responses_candidate_attempt_source<'a>(
             true,
             LocalCandidatePreselectionKeyMode::ProviderEndpointKeyModelAndApiFormat,
             LocalCandidateResolutionMode::Standard,
+            input.defer_scheduler_affinity_until_success,
             move |eligible| {
                 let provider_api_format = eligible.provider_api_format.clone();
                 let (execution_strategy, conversion_mode) = ai_local_execution_contract_for_formats(
@@ -393,6 +395,7 @@ pub(crate) async fn build_local_openai_responses_image_candidate_attempt_source<
         preselection.candidates,
         preselection.skipped_candidates,
         LocalCandidateResolutionMode::WithoutTransportPairGate,
+        input.defer_scheduler_affinity_until_success,
         move |eligible| {
             let provider_api_format = eligible.provider_api_format.clone();
             let (execution_strategy, conversion_mode) = ai_local_execution_contract_for_formats(
