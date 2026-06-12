@@ -14,7 +14,7 @@
 
       <div class="px-5 py-5">
         <Tabs v-model="activeTab">
-          <TabsList class="tabs-button-list grid w-full max-w-[960px] grid-cols-5">
+          <TabsList class="tabs-button-list grid w-full max-w-[960px] grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="ledger">
               资金流水
             </TabsTrigger>
@@ -117,18 +117,76 @@
 
             <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
               <div class="overflow-x-auto">
-                <Table>
+                <Table class="w-full min-w-[1200px] table-fixed">
+                  <colgroup>
+                    <col :style="{ width: ledgerTableColumnWidths.time }">
+                    <col :style="{ width: ledgerTableColumnWidths.owner }">
+                    <col :style="{ width: ledgerTableColumnWidths.type }">
+                    <col :style="{ width: ledgerTableColumnWidths.amount }">
+                    <col :style="{ width: ledgerTableColumnWidths.balance }">
+                    <col :style="{ width: ledgerTableColumnWidths.description }">
+                    <col :style="{ width: ledgerTableColumnWidths.actions }">
+                  </colgroup>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>时间</TableHead>
-                      <TableHead>归属</TableHead>
-                      <TableHead>类型</TableHead>
-                      <TableHead>金额</TableHead>
-                      <TableHead>余额变化</TableHead>
-                      <TableHead>说明</TableHead>
-                      <TableHead class="text-right">
+                      <SortableTableHead
+                        :sortable="false"
+                        resize-column-key="time"
+                        :resizable="true"
+                        @resize-start="handleLedgerTableColumnResizeStart"
+                      >
+                        时间
+                      </SortableTableHead>
+                      <SortableTableHead
+                        :sortable="false"
+                        resize-column-key="owner"
+                        :resizable="true"
+                        @resize-start="handleLedgerTableColumnResizeStart"
+                      >
+                        归属
+                      </SortableTableHead>
+                      <SortableTableHead
+                        :sortable="false"
+                        resize-column-key="type"
+                        :resizable="true"
+                        @resize-start="handleLedgerTableColumnResizeStart"
+                      >
+                        类型
+                      </SortableTableHead>
+                      <SortableTableHead
+                        :sortable="false"
+                        resize-column-key="amount"
+                        :resizable="true"
+                        @resize-start="handleLedgerTableColumnResizeStart"
+                      >
+                        金额
+                      </SortableTableHead>
+                      <SortableTableHead
+                        :sortable="false"
+                        resize-column-key="balance"
+                        :resizable="true"
+                        @resize-start="handleLedgerTableColumnResizeStart"
+                      >
+                        余额变化
+                      </SortableTableHead>
+                      <SortableTableHead
+                        :sortable="false"
+                        resize-column-key="description"
+                        :resizable="true"
+                        @resize-start="handleLedgerTableColumnResizeStart"
+                      >
+                        说明
+                      </SortableTableHead>
+                      <SortableTableHead
+                        class="text-right"
+                        :sortable="false"
+                        align="right"
+                        resize-column-key="actions"
+                        :resizable="true"
+                        @resize-start="handleLedgerTableColumnResizeStart"
+                      >
                         操作
-                      </TableHead>
+                      </SortableTableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -181,7 +239,10 @@
                           · 赠 {{ Number(tx.gift_balance_before).toFixed(4) }}→{{ Number(tx.gift_balance_after ?? 0).toFixed(4) }}
                         </div>
                       </TableCell>
-                      <TableCell class="text-xs text-muted-foreground max-w-[280px] truncate">
+                      <TableCell
+                        class="text-xs text-muted-foreground whitespace-pre-wrap break-words"
+                        :title="tx.description || '-'"
+                      >
                         {{ tx.description || '-' }}
                       </TableCell>
                       <TableCell class="text-right">
@@ -286,19 +347,43 @@
 
             <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
               <div class="overflow-x-auto">
-                <Table>
+                <Table class="w-full min-w-[1260px] table-fixed">
+                  <colgroup>
+                    <col :style="{ width: refundTableColumnWidths.owner }">
+                    <col :style="{ width: refundTableColumnWidths.refundNo }">
+                    <col :style="{ width: refundTableColumnWidths.amount }">
+                    <col :style="{ width: refundTableColumnWidths.mode }">
+                    <col :style="{ width: refundTableColumnWidths.status }">
+                    <col :style="{ width: refundTableColumnWidths.reason }">
+                    <col :style="{ width: refundTableColumnWidths.created }">
+                    <col :style="{ width: refundTableColumnWidths.actions }">
+                  </colgroup>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>归属</TableHead>
-                      <TableHead>退款单号</TableHead>
-                      <TableHead>金额</TableHead>
-                      <TableHead>模式</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>原因</TableHead>
-                      <TableHead>申请时间</TableHead>
-                      <TableHead class="text-right">
+                      <SortableTableHead :sortable="false" resize-column-key="owner" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
+                        归属
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="refundNo" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
+                        退款单号
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
+                        金额
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="mode" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
+                        模式
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
+                        状态
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="reason" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
+                        原因
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="created" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
+                        申请时间
+                      </SortableTableHead>
+                      <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
                         操作
-                      </TableHead>
+                      </SortableTableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -336,7 +421,10 @@
                           {{ refundStatusLabel(refund.status) }}
                         </Badge>
                       </TableCell>
-                      <TableCell class="text-xs text-muted-foreground max-w-[240px] truncate">
+                      <TableCell
+                        class="text-xs text-muted-foreground whitespace-pre-wrap break-words"
+                        :title="refund.reason || refund.failure_reason || '-'"
+                      >
                         {{ refund.reason || refund.failure_reason || '-' }}
                       </TableCell>
                       <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
@@ -454,18 +542,39 @@
 
             <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
               <div class="overflow-x-auto">
-                <Table>
+                <Table class="w-full min-w-[1080px] table-fixed">
+                  <colgroup>
+                    <col :style="{ width: paymentOrderTableColumnWidths.orderNo }">
+                    <col :style="{ width: paymentOrderTableColumnWidths.wallet }">
+                    <col :style="{ width: paymentOrderTableColumnWidths.amount }">
+                    <col :style="{ width: paymentOrderTableColumnWidths.method }">
+                    <col :style="{ width: paymentOrderTableColumnWidths.status }">
+                    <col :style="{ width: paymentOrderTableColumnWidths.created }">
+                    <col :style="{ width: paymentOrderTableColumnWidths.actions }">
+                  </colgroup>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>订单号</TableHead>
-                      <TableHead>钱包名称</TableHead>
-                      <TableHead>金额</TableHead>
-                      <TableHead>支付方式</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>创建时间</TableHead>
-                      <TableHead class="text-right">
+                      <SortableTableHead :sortable="false" resize-column-key="orderNo" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
+                        订单号
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="wallet" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
+                        钱包名称
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
+                        金额
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="method" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
+                        支付方式
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
+                        状态
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="created" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
+                        创建时间
+                      </SortableTableHead>
+                      <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
                         操作
-                      </TableHead>
+                      </SortableTableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -473,10 +582,13 @@
                       v-for="order in orders"
                       :key="order.id"
                     >
-                      <TableCell class="font-mono text-xs whitespace-nowrap">
+                      <TableCell
+                        class="font-mono text-xs break-all"
+                        :title="order.order_no"
+                      >
                         {{ order.order_no }}
                       </TableCell>
-                      <TableCell class="min-w-[180px]">
+                      <TableCell>
                         <div class="text-sm font-medium">
                           {{ orderWalletName(order.wallet_id) }}
                         </div>
@@ -580,15 +692,35 @@
 
             <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
               <div class="overflow-x-auto">
-                <Table>
+                <Table class="w-full min-w-[920px] table-fixed">
+                  <colgroup>
+                    <col :style="{ width: callbackTableColumnWidths.callbackKey }">
+                    <col :style="{ width: callbackTableColumnWidths.orderNo }">
+                    <col :style="{ width: callbackTableColumnWidths.method }">
+                    <col :style="{ width: callbackTableColumnWidths.signature }">
+                    <col :style="{ width: callbackTableColumnWidths.status }">
+                    <col :style="{ width: callbackTableColumnWidths.time }">
+                  </colgroup>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>回调键</TableHead>
-                      <TableHead>订单号</TableHead>
-                      <TableHead>方式</TableHead>
-                      <TableHead>验签</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>时间</TableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="callbackKey" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
+                        回调键
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="orderNo" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
+                        订单号
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="method" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
+                        方式
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="signature" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
+                        验签
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
+                        状态
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
+                        时间
+                      </SortableTableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -596,10 +728,16 @@
                       v-for="callback in callbacks"
                       :key="callback.id"
                     >
-                      <TableCell class="font-mono text-xs">
+                      <TableCell
+                        class="font-mono text-xs break-all"
+                        :title="callback.callback_key"
+                      >
                         {{ callback.callback_key }}
                       </TableCell>
-                      <TableCell class="font-mono text-xs whitespace-nowrap">
+                      <TableCell
+                        class="font-mono text-xs break-all"
+                        :title="callback.order_no || '-'"
+                      >
                         {{ callback.order_no || '-' }}
                       </TableCell>
                       <TableCell>{{ paymentMethodLabel(callback.payment_method) }}</TableCell>
@@ -755,16 +893,31 @@
 
                 <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
                   <div class="overflow-x-auto">
-                    <Table>
+                    <Table class="w-full min-w-[800px] table-fixed">
+                      <colgroup>
+                        <col :style="{ width: redeemBatchTableColumnWidths.batch }">
+                        <col :style="{ width: redeemBatchTableColumnWidths.amount }">
+                        <col :style="{ width: redeemBatchTableColumnWidths.count }">
+                        <col :style="{ width: redeemBatchTableColumnWidths.status }">
+                        <col :style="{ width: redeemBatchTableColumnWidths.actions }">
+                      </colgroup>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>批次</TableHead>
-                          <TableHead>面额</TableHead>
-                          <TableHead>数量</TableHead>
-                          <TableHead>状态</TableHead>
-                          <TableHead class="text-right">
+                          <SortableTableHead :sortable="false" resize-column-key="batch" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
+                            批次
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
+                            面额
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="count" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
+                            数量
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
+                            状态
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
                             操作
-                          </TableHead>
+                          </SortableTableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -774,8 +927,11 @@
                           class="hover:bg-muted/20"
                           :class="batch.id === selectedRedeemBatchId ? 'bg-muted/30 ring-1 ring-border/60' : ''"
                         >
-                          <TableCell class="min-w-[220px]">
-                            <div class="text-sm font-medium">
+                          <TableCell>
+                            <div
+                              class="break-words text-sm font-medium"
+                              :title="batch.name"
+                            >
                               {{ batch.name }}
                             </div>
                             <div class="text-xs text-muted-foreground mt-1">
@@ -901,16 +1057,31 @@
 
                 <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
                   <div class="overflow-x-auto">
-                    <Table>
+                    <Table class="w-full min-w-[900px] table-fixed">
+                      <colgroup>
+                        <col :style="{ width: redeemCodeTableColumnWidths.code }">
+                        <col :style="{ width: redeemCodeTableColumnWidths.status }">
+                        <col :style="{ width: redeemCodeTableColumnWidths.redeemer }">
+                        <col :style="{ width: redeemCodeTableColumnWidths.order }">
+                        <col :style="{ width: redeemCodeTableColumnWidths.actions }">
+                      </colgroup>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>兑换码</TableHead>
-                          <TableHead>状态</TableHead>
-                          <TableHead>兑换用户</TableHead>
-                          <TableHead>关联订单</TableHead>
-                          <TableHead class="text-right">
+                          <SortableTableHead :sortable="false" resize-column-key="code" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                            兑换码
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                            状态
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="redeemer" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                            兑换用户
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="order" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                            关联订单
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
                             操作
-                          </TableHead>
+                          </SortableTableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -918,7 +1089,10 @@
                           v-for="code in redeemCodes"
                           :key="code.id"
                         >
-                          <TableCell class="font-mono text-xs">
+                          <TableCell
+                            class="font-mono text-xs break-all"
+                            :title="displayRedeemCode(code)"
+                          >
                             {{ displayRedeemCode(code) }}
                           </TableCell>
                           <TableCell>
@@ -929,7 +1103,10 @@
                           <TableCell class="text-xs text-muted-foreground">
                             {{ code.redeemed_by_user_name || code.redeemed_by_user_id || '-' }}
                           </TableCell>
-                          <TableCell class="font-mono text-xs">
+                          <TableCell
+                            class="font-mono text-xs break-all"
+                            :title="code.redeemed_order_no || code.redeemed_payment_order_id || '-'"
+                          >
                             {{ code.redeemed_order_no || code.redeemed_payment_order_id || '-' }}
                           </TableCell>
                           <TableCell class="text-right">
@@ -1379,9 +1556,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
   Tabs,
   TabsContent,
   TabsList,
@@ -1390,6 +1567,7 @@ import {
 } from '@/components/ui'
 import { EmptyState } from '@/components/common'
 import { X } from 'lucide-vue-next'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import {
   adminWalletApi,
   type AdminGlobalRefund,
@@ -1443,6 +1621,116 @@ const LEDGER_REASON_OPTIONS: LedgerReasonOption[] = [
 ]
 
 const { success, error: showError } = useToast()
+
+type LedgerTableColumnKey = 'time' | 'owner' | 'type' | 'amount' | 'balance' | 'description' | 'actions'
+const ledgerTableColumns: ResizableTableColumn<LedgerTableColumnKey>[] = [
+  { key: 'time', width: '150px', minWidth: 140 },
+  { key: 'owner', width: '210px', minWidth: 180 },
+  { key: 'type', width: '130px', minWidth: 120 },
+  { key: 'amount', width: '120px', minWidth: 110 },
+  { key: 'balance', width: '220px', minWidth: 190 },
+  { key: 'description', width: '280px', minWidth: 220 },
+  { key: 'actions', width: '90px', minWidth: 84 },
+]
+const {
+  columnWidths: ledgerTableColumnWidths,
+  startResize: handleLedgerTableColumnResizeStart,
+} = useResizableTableColumns<LedgerTableColumnKey>({
+  storageKey: 'wallet-ledger-table-column-widths',
+  columns: ledgerTableColumns,
+  defaultMinWidth: 84,
+})
+
+type RefundTableColumnKey = 'owner' | 'refundNo' | 'amount' | 'mode' | 'status' | 'reason' | 'created' | 'actions'
+const refundTableColumns: ResizableTableColumn<RefundTableColumnKey>[] = [
+  { key: 'owner', width: '210px', minWidth: 180 },
+  { key: 'refundNo', width: '190px', minWidth: 160 },
+  { key: 'amount', width: '120px', minWidth: 110 },
+  { key: 'mode', width: '110px', minWidth: 100 },
+  { key: 'status', width: '110px', minWidth: 100 },
+  { key: 'reason', width: '240px', minWidth: 190 },
+  { key: 'created', width: '150px', minWidth: 140 },
+  { key: 'actions', width: '150px', minWidth: 140 },
+]
+const {
+  columnWidths: refundTableColumnWidths,
+  startResize: handleRefundTableColumnResizeStart,
+} = useResizableTableColumns<RefundTableColumnKey>({
+  storageKey: 'wallet-refunds-table-column-widths',
+  columns: refundTableColumns,
+  defaultMinWidth: 84,
+})
+
+type PaymentOrderTableColumnKey = 'orderNo' | 'wallet' | 'amount' | 'method' | 'status' | 'created' | 'actions'
+const paymentOrderTableColumns: ResizableTableColumn<PaymentOrderTableColumnKey>[] = [
+  { key: 'orderNo', width: '210px', minWidth: 180 },
+  { key: 'wallet', width: '210px', minWidth: 180 },
+  { key: 'amount', width: '120px', minWidth: 110 },
+  { key: 'method', width: '120px', minWidth: 110 },
+  { key: 'status', width: '120px', minWidth: 110 },
+  { key: 'created', width: '150px', minWidth: 140 },
+  { key: 'actions', width: '150px', minWidth: 140 },
+]
+const {
+  columnWidths: paymentOrderTableColumnWidths,
+  startResize: handlePaymentOrderTableColumnResizeStart,
+} = useResizableTableColumns<PaymentOrderTableColumnKey>({
+  storageKey: 'wallet-payment-orders-table-column-widths',
+  columns: paymentOrderTableColumns,
+  defaultMinWidth: 84,
+})
+
+type CallbackTableColumnKey = 'callbackKey' | 'orderNo' | 'method' | 'signature' | 'status' | 'time'
+const callbackTableColumns: ResizableTableColumn<CallbackTableColumnKey>[] = [
+  { key: 'callbackKey', width: '220px', minWidth: 180 },
+  { key: 'orderNo', width: '210px', minWidth: 180 },
+  { key: 'method', width: '120px', minWidth: 110 },
+  { key: 'signature', width: '110px', minWidth: 100 },
+  { key: 'status', width: '110px', minWidth: 100 },
+  { key: 'time', width: '150px', minWidth: 140 },
+]
+const {
+  columnWidths: callbackTableColumnWidths,
+  startResize: handleCallbackTableColumnResizeStart,
+} = useResizableTableColumns<CallbackTableColumnKey>({
+  storageKey: 'wallet-callbacks-table-column-widths',
+  columns: callbackTableColumns,
+  defaultMinWidth: 84,
+})
+
+type RedeemBatchTableColumnKey = 'batch' | 'amount' | 'count' | 'status' | 'actions'
+const redeemBatchTableColumns: ResizableTableColumn<RedeemBatchTableColumnKey>[] = [
+  { key: 'batch', width: '260px', minWidth: 220 },
+  { key: 'amount', width: '120px', minWidth: 110 },
+  { key: 'count', width: '150px', minWidth: 130 },
+  { key: 'status', width: '120px', minWidth: 110 },
+  { key: 'actions', width: '150px', minWidth: 140 },
+]
+const {
+  columnWidths: redeemBatchTableColumnWidths,
+  startResize: handleRedeemBatchTableColumnResizeStart,
+} = useResizableTableColumns<RedeemBatchTableColumnKey>({
+  storageKey: 'wallet-redeem-batches-table-column-widths',
+  columns: redeemBatchTableColumns,
+  defaultMinWidth: 84,
+})
+
+type RedeemCodeTableColumnKey = 'code' | 'status' | 'redeemer' | 'order' | 'actions'
+const redeemCodeTableColumns: ResizableTableColumn<RedeemCodeTableColumnKey>[] = [
+  { key: 'code', width: '260px', minWidth: 220 },
+  { key: 'status', width: '120px', minWidth: 110 },
+  { key: 'redeemer', width: '180px', minWidth: 150 },
+  { key: 'order', width: '220px', minWidth: 180 },
+  { key: 'actions', width: '120px', minWidth: 110 },
+]
+const {
+  columnWidths: redeemCodeTableColumnWidths,
+  startResize: handleRedeemCodeTableColumnResizeStart,
+} = useResizableTableColumns<RedeemCodeTableColumnKey>({
+  storageKey: 'wallet-redeem-codes-table-column-widths',
+  columns: redeemCodeTableColumns,
+  defaultMinWidth: 84,
+})
 const route = useRoute()
 
 const activeTab = ref<WalletManagementTab>('ledger')

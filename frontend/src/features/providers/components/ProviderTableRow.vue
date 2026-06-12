@@ -7,7 +7,7 @@
     <TableCell class="py-3.5">
       <div class="space-y-0.5">
         <div class="flex items-center gap-1.5">
-          <span class="text-sm font-medium text-foreground">{{ provider.name }}</span>
+          <span class="break-words text-sm font-medium text-foreground leading-4">{{ provider.name }}</span>
           <Badge
             v-if="provider.legacy_read_only"
             variant="outline"
@@ -59,7 +59,7 @@
         </div>
         <span
           v-else-if="provider.description"
-          class="text-xs text-muted-foreground truncate block max-w-[200px] group/desc transition-colors"
+          class="block break-words text-xs text-muted-foreground group/desc transition-colors"
           :class="provider.legacy_read_only ? 'cursor-default' : 'cursor-pointer hover:text-foreground/70'"
           :title="provider.description"
           @click="handleStartEdit"
@@ -106,7 +106,7 @@
     <TableCell class="py-3.5 align-middle">
       <div
         v-if="provider.endpoint_health_details && provider.endpoint_health_details.length > 0"
-        class="grid grid-cols-3 gap-x-3 gap-y-2 max-w-[240px]"
+        class="grid grid-cols-3 gap-x-3 gap-y-2"
       >
         <div
           v-for="endpoint in sortEndpoints(provider.endpoint_health_details)"

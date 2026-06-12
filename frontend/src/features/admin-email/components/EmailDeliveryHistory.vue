@@ -35,14 +35,34 @@
       暂无邮件发送记录
     </div>
 
-    <Table v-else>
+    <Table
+      v-else
+      class="w-full min-w-[820px] table-fixed"
+    >
+      <colgroup>
+        <col :style="{ width: emailHistoryColumnWidths.time }">
+        <col :style="{ width: emailHistoryColumnWidths.type }">
+        <col :style="{ width: emailHistoryColumnWidths.recipient }">
+        <col :style="{ width: emailHistoryColumnWidths.status }">
+        <col :style="{ width: emailHistoryColumnWidths.error }">
+      </colgroup>
       <TableHeader>
         <TableRow>
-          <TableHead>时间</TableHead>
-          <TableHead>类型</TableHead>
-          <TableHead>收件人</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead>失败原因</TableHead>
+          <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
+            时间
+          </SortableTableHead>
+          <SortableTableHead :sortable="false" resize-column-key="type" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
+            类型
+          </SortableTableHead>
+          <SortableTableHead :sortable="false" resize-column-key="recipient" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
+            收件人
+          </SortableTableHead>
+          <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
+            状态
+          </SortableTableHead>
+          <SortableTableHead :sortable="false" resize-column-key="error" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
+            失败原因
+          </SortableTableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -64,7 +84,10 @@
               {{ statusLabel(item.status) }}
             </Badge>
           </TableCell>
-          <TableCell class="max-w-[360px] truncate text-muted-foreground">
+          <TableCell
+            class="whitespace-pre-wrap break-words text-muted-foreground"
+            :title="item.error_message || '-'"
+          >
             {{ item.error_message || '-' }}
           </TableCell>
         </TableRow>
@@ -76,15 +99,16 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { CardSection } from '@/components/layout'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import {
   Badge,
   Button,
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from '@/components/ui'
 import { asyncTasksApi, type AsyncTaskItem, type AsyncTaskStatus } from '@/api/async-tasks'
 import { parseApiError } from '@/utils/errorParser'
@@ -97,6 +121,22 @@ interface EmailDeliveryResult {
 const items = ref<AsyncTaskItem[]>([])
 const loading = ref(false)
 const loadError = ref('')
+type EmailHistoryColumnKey = 'time' | 'type' | 'recipient' | 'status' | 'error'
+const emailHistoryColumns: ResizableTableColumn<EmailHistoryColumnKey>[] = [
+  { key: 'time', width: '150px', minWidth: 140 },
+  { key: 'type', width: '140px', minWidth: 120 },
+  { key: 'recipient', width: '190px', minWidth: 160 },
+  { key: 'status', width: '110px', minWidth: 100 },
+  { key: 'error', width: '230px', minWidth: 200 },
+]
+const {
+  columnWidths: emailHistoryColumnWidths,
+  startResize: handleEmailHistoryColumnResizeStart,
+} = useResizableTableColumns<EmailHistoryColumnKey>({
+  storageKey: 'email-delivery-history-table-column-widths',
+  columns: emailHistoryColumns,
+  defaultMinWidth: 96,
+})
 
 onMounted(() => {
   void loadHistory()

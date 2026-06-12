@@ -41,8 +41,8 @@
             </div>
           </div>
           <!-- 筛选器 -->
-          <div class="flex items-center gap-2">
-            <div class="relative flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="relative min-w-[12rem] flex-1">
               <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10 pointer-events-none" />
               <Input
                 id="users-search-mobile"
@@ -55,7 +55,7 @@
             <Select
               v-model="filterRole"
             >
-              <SelectTrigger class="w-24 h-8 text-xs border-border/60">
+              <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
                 <SelectValue placeholder="角色" />
               </SelectTrigger>
               <SelectContent>
@@ -76,7 +76,7 @@
             <Select
               v-model="filterGroup"
             >
-              <SelectTrigger class="w-24 h-8 text-xs border-border/60">
+              <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
                 <SelectValue placeholder="分组" />
               </SelectTrigger>
               <SelectContent>
@@ -95,7 +95,7 @@
             <Select
               v-model="filterApiKeyGroup"
             >
-              <SelectTrigger class="w-24 h-8 text-xs border-border/60">
+              <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
                 <SelectValue placeholder="Key 分组" />
               </SelectTrigger>
               <SelectContent>
@@ -114,7 +114,7 @@
             <Select
               v-model="filterStatus"
             >
-              <SelectTrigger class="w-20 h-8 text-xs border-border/60">
+              <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
                 <SelectValue placeholder="状态" />
               </SelectTrigger>
               <SelectContent>
@@ -319,10 +319,19 @@
 
       <!-- 桌面端表格 -->
       <div class="hidden xl:block overflow-x-auto">
-        <Table>
+        <Table class="w-full min-w-[1280px] table-fixed">
+          <colgroup>
+            <col :style="{ width: userTableColumnWidths.select }">
+            <col :style="{ width: userTableColumnWidths.user }">
+            <col :style="{ width: userTableColumnWidths.wallet }">
+            <col :style="{ width: userTableColumnWidths.stats }">
+            <col :style="{ width: userTableColumnWidths.created }">
+            <col :style="{ width: userTableColumnWidths.status }">
+            <col :style="{ width: userTableColumnWidths.actions }">
+          </colgroup>
           <TableHeader>
             <TableRow class="border-b border-border/60 hover:bg-transparent">
-              <TableHead class="w-[44px] h-12 px-4">
+              <TableHead class="h-12 px-4">
                 <Checkbox
                   :checked="isCurrentPageFullySelected || isAllFilteredSelected"
                   :indeterminate="isPartiallyFilteredSelected && !isCurrentPageFullySelected"
@@ -331,12 +340,15 @@
                 />
               </TableHead>
               <SortableTableHead
-                class="w-[260px] h-12 font-semibold"
+                class="h-12 font-semibold"
                 column-key="role"
                 :sortable="false"
+                resize-column-key="user"
+                :resizable="true"
                 :filter-active="filterRole !== 'all'"
                 filter-title="筛选角色"
                 filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                @resize-start="handleUserTableColumnResizeStart"
               >
                 用户信息
                 <template #filter="{ close }">
@@ -347,22 +359,43 @@
                   />
                 </template>
               </SortableTableHead>
-              <TableHead class="w-[240px] h-12 font-semibold">
-                钱包
-              </TableHead>
-              <TableHead class="w-[170px] h-12 font-semibold">
-                统计/限速
-              </TableHead>
-              <TableHead class="w-[170px] h-12 font-semibold">
-                创建时间
-              </TableHead>
               <SortableTableHead
-                class="w-[180px] h-12 font-semibold"
+                class="h-12 font-semibold"
+                :sortable="false"
+                resize-column-key="wallet"
+                :resizable="true"
+                @resize-start="handleUserTableColumnResizeStart"
+              >
+                钱包
+              </SortableTableHead>
+              <SortableTableHead
+                class="h-12 font-semibold"
+                :sortable="false"
+                resize-column-key="stats"
+                :resizable="true"
+                @resize-start="handleUserTableColumnResizeStart"
+              >
+                统计/限速
+              </SortableTableHead>
+              <SortableTableHead
+                class="h-12 font-semibold"
+                :sortable="false"
+                resize-column-key="created"
+                :resizable="true"
+                @resize-start="handleUserTableColumnResizeStart"
+              >
+                创建时间
+              </SortableTableHead>
+              <SortableTableHead
+                class="h-12 font-semibold"
                 column-key="status"
                 :sortable="false"
+                resize-column-key="status"
+                :resizable="true"
                 :filter-active="filterStatus !== 'all'"
                 filter-title="筛选状态"
                 filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                @resize-start="handleUserTableColumnResizeStart"
               >
                 状态
                 <template #filter="{ close }">
@@ -373,9 +406,16 @@
                   />
                 </template>
               </SortableTableHead>
-              <TableHead class="w-[260px] h-12 font-semibold text-center">
+              <SortableTableHead
+                class="h-12 font-semibold text-center"
+                :sortable="false"
+                align="center"
+                resize-column-key="actions"
+                :resizable="true"
+                @resize-start="handleUserTableColumnResizeStart"
+              >
                 操作
-              </TableHead>
+              </SortableTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -384,7 +424,7 @@
               :key="user.id"
               class="border-b border-border/40 hover:bg-muted/30 transition-colors"
             >
-              <TableCell class="w-[44px] px-4 py-4">
+              <TableCell class="px-4 py-4">
                 <Checkbox
                   :checked="selectAllFiltered || selectedIdSet.has(user.id)"
                   :disabled="selectAllFiltered || usersStore.loading"
@@ -401,7 +441,7 @@
                   <div class="flex-1 min-w-0">
                     <div class="mb-1 flex items-center gap-1.5">
                       <div
-                        class="truncate text-sm font-semibold"
+                        class="break-all text-sm font-semibold leading-4"
                         :title="user.username"
                       >
                         {{ user.username }}
@@ -414,7 +454,7 @@
                       </Badge>
                     </div>
                     <div
-                      class="truncate text-xs text-muted-foreground"
+                      class="break-all text-xs text-muted-foreground leading-4"
                       :title="user.email || '-'"
                     >
                       {{ user.email || '-' }}
@@ -427,7 +467,8 @@
                         v-for="group in user.groups"
                         :key="group.id"
                         variant="outline"
-                        class="h-5 px-1.5 py-0 text-[10px]"
+                        class="min-h-5 px-1.5 py-0 text-[10px] leading-4"
+                        :title="group.name"
                       >
                         {{ group.name }}
                       </Badge>
@@ -1698,6 +1739,7 @@ import { adminBillingPlansApi, type BillingPlan, type DailyQuotaEntitlement } fr
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useClipboard } from '@/composables/useClipboard'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import { adminApi } from '@/api/admin'
 import { walletStatusBadge, walletStatusLabel } from '@/utils/walletDisplay'
 import {
@@ -1859,6 +1901,24 @@ const userStatusFilterOptions = [
   { value: 'active', label: '活跃' },
   { value: 'inactive', label: '禁用' },
 ]
+type UserTableColumnKey = 'select' | 'user' | 'wallet' | 'stats' | 'created' | 'status' | 'actions'
+const userTableColumns: ResizableTableColumn<UserTableColumnKey>[] = [
+  { key: 'select', width: '44px', minWidth: 44 },
+  { key: 'user', width: '260px', minWidth: 220 },
+  { key: 'wallet', width: '240px', minWidth: 190 },
+  { key: 'stats', width: '170px', minWidth: 150 },
+  { key: 'created', width: '170px', minWidth: 150 },
+  { key: 'status', width: '180px', minWidth: 130 },
+  { key: 'actions', width: '260px', minWidth: 220 },
+]
+const {
+  columnWidths: userTableColumnWidths,
+  startResize: handleUserTableColumnResizeStart,
+} = useResizableTableColumns<UserTableColumnKey>({
+  storageKey: 'admin-users-table-column-widths',
+  columns: userTableColumns,
+  defaultMinWidth: 96,
+})
 const hasActiveUserFilter = computed(() =>
   Boolean(searchQuery.value.trim())
   || filterRole.value !== 'all'

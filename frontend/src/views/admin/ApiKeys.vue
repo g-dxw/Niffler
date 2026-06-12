@@ -86,19 +86,38 @@
 
       <div v-else>
         <div class="hidden xl:block overflow-x-auto">
-          <Table>
+          <Table class="w-full min-w-[1250px] table-fixed">
+            <colgroup>
+              <col :style="{ width: apiKeyTableColumnWidths.key }">
+              <col :style="{ width: apiKeyTableColumnWidths.wallet }">
+              <col :style="{ width: apiKeyTableColumnWidths.stats }">
+              <col :style="{ width: apiKeyTableColumnWidths.created }">
+              <col :style="{ width: apiKeyTableColumnWidths.expires }">
+              <col :style="{ width: apiKeyTableColumnWidths.lastUsed }">
+              <col :style="{ width: apiKeyTableColumnWidths.status }">
+              <col :style="{ width: apiKeyTableColumnWidths.actions }">
+            </colgroup>
             <TableHeader>
               <TableRow class="border-b border-border/60 hover:bg-transparent">
-                <TableHead class="w-[200px] h-12 font-semibold">
-                  密钥信息
-                </TableHead>
                 <SortableTableHead
-                  class="w-[240px] h-12 font-semibold"
+                  class="h-12 font-semibold"
+                  :sortable="false"
+                  resize-column-key="key"
+                  :resizable="true"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
+                >
+                  密钥信息
+                </SortableTableHead>
+                <SortableTableHead
+                  class="h-12 font-semibold"
                   column-key="balance"
                   :sortable="false"
+                  resize-column-key="wallet"
+                  :resizable="true"
                   :filter-active="filterBalance !== 'all'"
                   filter-title="筛选余额类型"
                   filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
                 >
                   钱包
                   <template #filter="{ close }">
@@ -109,25 +128,52 @@
                     />
                   </template>
                 </SortableTableHead>
-                <TableHead class="w-[190px] h-12 font-semibold">
-                  统计/限制
-                </TableHead>
-                <TableHead class="w-[140px] h-12 font-semibold">
-                  创建时间
-                </TableHead>
-                <TableHead class="w-[110px] h-12 font-semibold">
-                  有效期
-                </TableHead>
-                <TableHead class="w-[140px] h-12 font-semibold">
-                  最近使用
-                </TableHead>
                 <SortableTableHead
-                  class="w-[100px] h-12 font-semibold"
+                  class="h-12 font-semibold"
+                  :sortable="false"
+                  resize-column-key="stats"
+                  :resizable="true"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
+                >
+                  统计/限制
+                </SortableTableHead>
+                <SortableTableHead
+                  class="h-12 font-semibold"
+                  :sortable="false"
+                  resize-column-key="created"
+                  :resizable="true"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
+                >
+                  创建时间
+                </SortableTableHead>
+                <SortableTableHead
+                  class="h-12 font-semibold"
+                  :sortable="false"
+                  resize-column-key="expires"
+                  :resizable="true"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
+                >
+                  有效期
+                </SortableTableHead>
+                <SortableTableHead
+                  class="h-12 font-semibold"
+                  :sortable="false"
+                  resize-column-key="lastUsed"
+                  :resizable="true"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
+                >
+                  最近使用
+                </SortableTableHead>
+                <SortableTableHead
+                  class="h-12 font-semibold"
                   column-key="status"
                   :sortable="false"
+                  resize-column-key="status"
+                  :resizable="true"
                   :filter-active="filterStatus !== 'all'"
                   filter-title="筛选状态"
                   filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
                 >
                   状态
                   <template #filter="{ close }">
@@ -138,9 +184,16 @@
                     />
                   </template>
                 </SortableTableHead>
-                <TableHead class="w-[130px] h-12 font-semibold text-center">
+                <SortableTableHead
+                  class="h-12 font-semibold text-center"
+                  :sortable="false"
+                  align="center"
+                  resize-column-key="actions"
+                  :resizable="true"
+                  @resize-start="handleApiKeyTableColumnResizeStart"
+                >
                   操作
-                </TableHead>
+                </SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -170,13 +223,13 @@
                 <TableCell class="py-4">
                   <div class="space-y-1">
                     <div
-                      class="text-sm font-medium text-foreground truncate"
+                      class="break-words text-sm font-medium text-foreground leading-4"
                       :title="apiKey.name || '未命名 Key'"
                     >
                       {{ apiKey.name || '未命名 Key' }}
                     </div>
                     <div class="flex items-center gap-1.5">
-                      <code class="text-xs font-mono text-muted-foreground">
+                      <code class="break-all text-xs font-mono text-muted-foreground leading-4">
                         {{ apiKey.key_display || '****' }}
                       </code>
                       <Button
@@ -298,7 +351,7 @@
                     >暂无记录</span>
                   </div>
                 </TableCell>
-                <TableCell class="w-[100px] py-4">
+                <TableCell class="py-4">
                   <div class="flex flex-col items-start gap-1.5">
                     <Badge
                       :variant="apiKey.is_active ? 'success' : 'destructive'"
@@ -806,6 +859,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useClipboard } from '@/composables/useClipboard'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import { adminApi, type AdminApiKey, type CreateStandaloneApiKeyRequest } from '@/api/admin'
 import type { ApiKeyInstallSession, InstallSessionTargetSystem, InstallTargetCli } from '@/api/me'
 import type { AdminWallet } from '@/api/admin-wallets'
@@ -823,7 +877,6 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableHead,
   SortableTableHead,
   TableFilterMenu,
   TableCell,
@@ -912,6 +965,25 @@ const balanceFilters = [
   { value: 'limited' as const, label: '限额' },
   { value: 'unlimited' as const, label: '无限' }
 ]
+type ApiKeyTableColumnKey = 'key' | 'wallet' | 'stats' | 'created' | 'expires' | 'lastUsed' | 'status' | 'actions'
+const apiKeyTableColumns: ResizableTableColumn<ApiKeyTableColumnKey>[] = [
+  { key: 'key', width: '200px', minWidth: 190 },
+  { key: 'wallet', width: '240px', minWidth: 190 },
+  { key: 'stats', width: '190px', minWidth: 160 },
+  { key: 'created', width: '140px', minWidth: 130 },
+  { key: 'expires', width: '110px', minWidth: 110 },
+  { key: 'lastUsed', width: '140px', minWidth: 130 },
+  { key: 'status', width: '100px', minWidth: 96 },
+  { key: 'actions', width: '130px', minWidth: 128 },
+]
+const {
+  columnWidths: apiKeyTableColumnWidths,
+  startResize: handleApiKeyTableColumnResizeStart,
+} = useResizableTableColumns<ApiKeyTableColumnKey>({
+  storageKey: 'admin-api-keys-table-column-widths',
+  columns: apiKeyTableColumns,
+  defaultMinWidth: 96,
+})
 
 const hasActiveFilters = computed(() => {
   return searchQuery.value !== '' || filterStatus.value !== 'all' || filterBalance.value !== 'all'

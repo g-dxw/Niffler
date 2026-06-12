@@ -327,45 +327,55 @@
       :class="[desktopTableMinWidthClass]"
     >
       <colgroup v-if="isAdmin">
-        <col v-if="isColumnVisible('time')" class="w-[8%]">
-        <col v-if="isColumnVisible('user')" class="w-[12%]">
-        <col v-if="isColumnVisible('model')" class="w-[13%]">
-        <col v-if="isColumnVisible('provider')" class="w-[14%]">
-        <col v-if="isColumnVisible('api_format')" class="w-[13%]">
-        <col v-if="isColumnVisible('status')" class="w-[9%]">
-        <col v-if="isColumnVisible('tokens')" class="w-[9%]">
-        <col v-if="isColumnVisible('cost')" class="w-[12%]">
-        <col v-if="isColumnVisible('performance')" class="w-[10%]">
-        <col v-if="isColumnVisible('client_family')" class="w-[12%]">
-        <col v-if="isColumnVisible('client_ip')" class="w-[10%]">
-        <col v-if="isColumnVisible('user_agent')" class="w-[13%]">
+        <col v-if="isColumnVisible('time')" :style="{ width: desktopColumnWidths.time }">
+        <col v-if="isColumnVisible('user')" :style="{ width: desktopColumnWidths.user }">
+        <col v-if="isColumnVisible('model')" :style="{ width: desktopColumnWidths.model }">
+        <col v-if="isColumnVisible('provider')" :style="{ width: desktopColumnWidths.provider }">
+        <col v-if="isColumnVisible('api_format')" :style="{ width: desktopColumnWidths.api_format }">
+        <col v-if="isColumnVisible('status')" :style="{ width: desktopColumnWidths.status }">
+        <col v-if="isColumnVisible('tokens')" :style="{ width: desktopColumnWidths.tokens }">
+        <col v-if="isColumnVisible('cost')" :style="{ width: desktopColumnWidths.cost }">
+        <col v-if="isColumnVisible('performance')" :style="{ width: desktopColumnWidths.performance }">
+        <col v-if="isColumnVisible('client_family')" :style="{ width: desktopColumnWidths.client_family }">
+        <col v-if="isColumnVisible('client_ip')" :style="{ width: desktopColumnWidths.client_ip }">
+        <col v-if="isColumnVisible('user_agent')" :style="{ width: desktopColumnWidths.user_agent }">
       </colgroup>
       <colgroup v-else>
-        <col v-if="isColumnVisible('time')" class="w-[9%]">
-        <col v-if="isColumnVisible('key')" class="w-[16%]">
-        <col v-if="isColumnVisible('model')" class="w-[20%]">
-        <col v-if="isColumnVisible('api_format')" class="w-[13%]">
-        <col v-if="isColumnVisible('status')" class="w-[10%]">
-        <col v-if="isColumnVisible('tokens')" class="w-[10%]">
-        <col v-if="isColumnVisible('cost')" class="w-[12%]">
-        <col v-if="isColumnVisible('performance')" class="w-[10%]">
-        <col v-if="isColumnVisible('client_family')" class="w-[12%]">
-        <col v-if="isColumnVisible('client_ip')" class="w-[10%]">
-        <col v-if="isColumnVisible('user_agent')" class="w-[13%]">
+        <col v-if="isColumnVisible('time')" :style="{ width: desktopColumnWidths.time }">
+        <col v-if="isColumnVisible('key')" :style="{ width: desktopColumnWidths.key }">
+        <col v-if="isColumnVisible('model')" :style="{ width: desktopColumnWidths.model }">
+        <col v-if="isColumnVisible('api_format')" :style="{ width: desktopColumnWidths.api_format }">
+        <col v-if="isColumnVisible('status')" :style="{ width: desktopColumnWidths.status }">
+        <col v-if="isColumnVisible('tokens')" :style="{ width: desktopColumnWidths.tokens }">
+        <col v-if="isColumnVisible('cost')" :style="{ width: desktopColumnWidths.cost }">
+        <col v-if="isColumnVisible('performance')" :style="{ width: desktopColumnWidths.performance }">
+        <col v-if="isColumnVisible('client_family')" :style="{ width: desktopColumnWidths.client_family }">
+        <col v-if="isColumnVisible('client_ip')" :style="{ width: desktopColumnWidths.client_ip }">
+        <col v-if="isColumnVisible('user_agent')" :style="{ width: desktopColumnWidths.user_agent }">
       </colgroup>
       <TableHeader>
         <TableRow class="border-b border-border/60 hover:bg-transparent">
-          <TableHead v-if="isColumnVisible('time')" class="h-12 font-semibold w-[8%]">
+          <SortableTableHead
+            v-if="isColumnVisible('time')"
+            class="h-12 font-semibold"
+            :sortable="false"
+            resize-column-key="time"
+            :resizable="true"
+            @resize-start="handleUsageColumnResizeStart"
+          >
             时间
-          </TableHead>
+          </SortableTableHead>
           <SortableTableHead
             v-if="isAdmin && isColumnVisible('user')"
-            class="h-12 font-semibold w-[12%]"
+            class="h-12 font-semibold"
             column-key="user"
             :sortable="false"
+            resize-column-key="user"
+            :resizable="true"
             :filter-active="filterUser !== '__all__'"
             filter-title="筛选用户"
             filter-content-class="w-64 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+            @resize-start="handleUsageColumnResizeStart"
           >
             用户
             <template #filter="{ close }">
@@ -377,21 +387,27 @@
               />
             </template>
           </SortableTableHead>
-          <TableHead
+          <SortableTableHead
             v-if="!isAdmin && isColumnVisible('key')"
-            class="h-12 font-semibold w-[17%]"
+            class="h-12 font-semibold"
+            :sortable="false"
+            resize-column-key="key"
+            :resizable="true"
+            @resize-start="handleUsageColumnResizeStart"
           >
             密钥
-          </TableHead>
+          </SortableTableHead>
           <SortableTableHead
             v-if="isColumnVisible('model')"
             class="h-12 font-semibold"
-            :class="[isAdmin ? 'w-[14%]' : 'w-[22%]']"
             column-key="model"
             :sortable="false"
+            resize-column-key="model"
+            :resizable="true"
             :filter-active="filterModel !== '__all__'"
             filter-title="筛选模型"
             filter-content-class="w-64 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+            @resize-start="handleUsageColumnResizeStart"
           >
             模型
             <template #filter="{ close }">
@@ -405,12 +421,15 @@
           </SortableTableHead>
           <SortableTableHead
             v-if="isAdmin && isColumnVisible('provider')"
-            class="h-12 font-semibold w-[16%]"
+            class="h-12 font-semibold"
             column-key="provider"
             :sortable="false"
+            resize-column-key="provider"
+            :resizable="true"
             :filter-active="filterProvider !== '__all__'"
             filter-title="筛选提供商"
             filter-content-class="w-48 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+            @resize-start="handleUsageColumnResizeStart"
           >
             提供商
             <template #filter="{ close }">
@@ -425,12 +444,14 @@
           <SortableTableHead
             v-if="isColumnVisible('api_format')"
             class="h-12 font-semibold"
-            :class="[isAdmin ? 'w-[15%]' : 'w-[14%]']"
             column-key="api_format"
             :sortable="false"
+            resize-column-key="api_format"
+            :resizable="true"
             :filter-active="filterApiFormat !== '__all__'"
             filter-title="筛选 API 格式"
             filter-content-class="w-72 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+            @resize-start="handleUsageColumnResizeStart"
           >
             API格式
             <template #filter="{ close }">
@@ -444,13 +465,16 @@
           </SortableTableHead>
           <SortableTableHead
             v-if="isColumnVisible('status')"
-            class="h-12 font-semibold w-[10%] text-center"
+            class="h-12 font-semibold text-center"
             column-key="status"
             :sortable="false"
             align="center"
+            resize-column-key="status"
+            :resizable="true"
             :filter-active="filterStatus !== '__all__'"
             filter-title="筛选类型"
             filter-content-class="w-44 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+            @resize-start="handleUsageColumnResizeStart"
           >
             类型
             <template #filter="{ close }">
@@ -462,26 +486,53 @@
               />
             </template>
           </SortableTableHead>
-          <TableHead v-if="isColumnVisible('tokens')" class="h-12 font-semibold w-[10%] text-center">
+          <SortableTableHead
+            v-if="isColumnVisible('tokens')"
+            class="h-12 font-semibold text-center"
+            :sortable="false"
+            align="center"
+            resize-column-key="tokens"
+            :resizable="true"
+            @resize-start="handleUsageColumnResizeStart"
+          >
             Tokens
-          </TableHead>
-          <TableHead v-if="isColumnVisible('cost')" class="h-12 font-semibold w-[12%] text-right">
+          </SortableTableHead>
+          <SortableTableHead
+            v-if="isColumnVisible('cost')"
+            class="h-12 font-semibold text-right"
+            :sortable="false"
+            align="right"
+            resize-column-key="cost"
+            :resizable="true"
+            @resize-start="handleUsageColumnResizeStart"
+          >
             费用/倍率
-          </TableHead>
-          <TableHead v-if="isColumnVisible('performance')" class="h-12 font-semibold w-[9%] text-right">
+          </SortableTableHead>
+          <SortableTableHead
+            v-if="isColumnVisible('performance')"
+            class="h-12 font-semibold text-right"
+            :sortable="false"
+            align="right"
+            resize-column-key="performance"
+            :resizable="true"
+            @resize-start="handleUsageColumnResizeStart"
+          >
             <div class="flex flex-col items-end text-xs gap-0.5">
               <span class="whitespace-nowrap">首字/总耗时</span>
               <span class="text-muted-foreground font-normal">输出速度</span>
             </div>
-          </TableHead>
+          </SortableTableHead>
           <SortableTableHead
             v-if="isColumnVisible('client_family')"
-            class="h-12 font-semibold w-[12%]"
+            class="h-12 font-semibold"
             column-key="client_family"
             :sortable="false"
+            resize-column-key="client_family"
+            :resizable="true"
             :filter-active="filterClientFamily !== '__all__'"
             filter-title="筛选客户端"
             filter-content-class="w-44 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+            @resize-start="handleUsageColumnResizeStart"
           >
             客户端
             <template #filter="{ close }">
@@ -493,12 +544,26 @@
               />
             </template>
           </SortableTableHead>
-          <TableHead v-if="isColumnVisible('client_ip')" class="h-12 font-semibold w-[10%]">
+          <SortableTableHead
+            v-if="isColumnVisible('client_ip')"
+            class="h-12 font-semibold"
+            :sortable="false"
+            resize-column-key="client_ip"
+            :resizable="true"
+            @resize-start="handleUsageColumnResizeStart"
+          >
             IP 地址
-          </TableHead>
-          <TableHead v-if="isColumnVisible('user_agent')" class="h-12 font-semibold w-[13%]">
+          </SortableTableHead>
+          <SortableTableHead
+            v-if="isColumnVisible('user_agent')"
+            class="h-12 font-semibold"
+            :sortable="false"
+            resize-column-key="user_agent"
+            :resizable="true"
+            @resize-start="handleUsageColumnResizeStart"
+          >
             User-Agent
-          </TableHead>
+          </SortableTableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -518,7 +583,7 @@
           @mousedown="handleRowMouseDown($event, record.id)"
           @click="handleRowClick($event, record.id)"
         >
-          <TableCell v-if="isColumnVisible('time')" class="py-4 w-[8%] align-top">
+          <TableCell v-if="isColumnVisible('time')" class="py-4 align-top">
             <div class="flex flex-col gap-0.5 leading-tight">
               <span class="text-xs text-foreground tabular-nums whitespace-nowrap">
                 {{ formatRecordTime(record.created_at) }}
@@ -530,16 +595,16 @@
           </TableCell>
           <TableCell
             v-if="isAdmin && isColumnVisible('user')"
-            class="py-4 w-[12%] truncate"
+            class="py-4 align-top"
             :title="record.username || record.user_email || (record.user_id ? `User ${record.user_id}` : '已删除用户')"
           >
             <div class="flex flex-col text-xs gap-0.5">
-              <span class="truncate">
+              <span class="break-words leading-4">
                 {{ record.username || record.user_email || (record.user_id ? `User ${record.user_id}` : '已删除用户') }}
               </span>
               <span
                 v-if="record.api_key?.name"
-                class="text-muted-foreground truncate"
+                class="break-words text-muted-foreground leading-4"
                 :title="record.api_key.name"
               >
                 {{ record.api_key.name }}
@@ -549,14 +614,14 @@
           <!-- 用户页面的密钥列 -->
           <TableCell
             v-if="!isAdmin && isColumnVisible('key')"
-            class="py-4 w-[17%]"
+            class="py-4 align-top"
             :title="record.api_key?.name || '-'"
           >
             <div class="flex flex-col text-xs gap-0.5">
-              <span class="truncate">{{ record.api_key?.name || '-' }}</span>
+              <span class="break-words leading-4">{{ record.api_key?.name || '-' }}</span>
               <span
                 v-if="record.api_key?.display"
-                class="text-muted-foreground truncate"
+                class="break-all text-muted-foreground leading-4"
               >
                 {{ record.api_key.display }}
               </span>
@@ -564,16 +629,15 @@
           </TableCell>
           <TableCell
             v-if="isColumnVisible('model')"
-            class="font-medium py-4"
-            :class="[isAdmin ? 'w-[14%]' : 'w-[22%]']"
+            class="font-medium py-4 align-top"
             :title="getModelTooltip(record)"
           >
             <div
               v-if="getActualModel(record)"
               class="flex flex-col text-xs gap-0.5"
             >
-              <div class="flex items-center gap-1 truncate">
-                <span class="truncate">{{ record.model }}</span>
+              <div class="flex min-w-0 items-center gap-1">
+                <span class="min-w-0 break-all leading-4">{{ record.model }}</span>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 20 20"
@@ -587,29 +651,29 @@
                   />
                 </svg>
               </div>
-              <span class="text-muted-foreground truncate">{{ getActualModel(record) }}</span>
+              <span class="break-all text-muted-foreground leading-4">{{ getActualModel(record) }}</span>
             </div>
             <span
               v-else
-              class="truncate block"
+              class="block break-all leading-4"
             >{{ record.model }}</span>
           </TableCell>
           <TableCell
             v-if="isAdmin && isColumnVisible('provider')"
-            class="py-4 w-[16%]"
+            class="py-4 align-top"
           >
             <div class="flex min-w-0 items-center gap-1">
               <div class="flex min-w-0 flex-col text-xs gap-0.5">
                 <div
                   v-if="getProviderRouteDisplay(record).length > 1"
-                  class="flex min-w-0 items-center gap-1"
+                  class="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5"
                   :title="getProviderRouteDisplay(record).join(' → ')"
                 >
                   <template
                     v-for="(provider, routeIndex) in getProviderRouteDisplay(record)"
                     :key="`${record.id}-provider-route-${routeIndex}`"
                   >
-                    <span class="truncate">{{ provider }}</span>
+                    <span class="break-words leading-4">{{ provider }}</span>
                     <span
                       v-if="routeIndex < getProviderRouteDisplay(record).length - 1"
                       class="text-amber-600 dark:text-amber-400"
@@ -618,12 +682,12 @@
                 </div>
                 <span
                   v-else
-                  class="truncate"
+                  class="break-words leading-4"
                 >{{ getProviderRouteDisplay(record)[0] || record.provider }}</span>
                 <button
                   v-if="getProviderAccountDisplay(record)"
                   type="button"
-                  class="truncate text-left text-muted-foreground transition-colors hover:text-foreground"
+                  class="break-words text-left text-muted-foreground transition-colors hover:text-foreground"
                   :title="`${getProviderAccountDisplay(record)}\n点击复制`"
                   @click.stop="copyProviderAccountDisplay(record)"
                 >
@@ -662,7 +726,7 @@
                 stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0"
+                class="w-3.5 h-3.5 text-primary flex-shrink-0"
                 title="此请求发生了亲和缓存重试"
               >
                 <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
@@ -675,7 +739,6 @@
           <TableCell
             v-if="isColumnVisible('api_format')"
             class="py-4"
-            :class="[isAdmin ? 'w-[15%]' : 'w-[14%]']"
             :title="getApiFormatTooltip(record)"
           >
             <!-- 有格式转换或同族格式差异：两行显示 -->
@@ -710,7 +773,7 @@
               class="text-muted-foreground text-xs"
             >-</span>
           </TableCell>
-          <TableCell v-if="isColumnVisible('status')" class="text-center py-4 w-[10%]">
+          <TableCell v-if="isColumnVisible('status')" class="text-center py-4 align-top">
             <!-- 优先显示请求状态 -->
             <Badge
               v-if="getDisplayStatus(record) === 'pending'"
@@ -761,7 +824,7 @@
               {{ getStreamModeLabel(record) }}
             </Badge>
           </TableCell>
-          <TableCell v-if="isColumnVisible('tokens')" class="py-4 w-[10%]">
+          <TableCell v-if="isColumnVisible('tokens')" class="py-4 align-top">
             <div class="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-x-1 text-xs leading-tight tabular-nums">
               <span class="justify-self-end whitespace-nowrap text-right">
                 {{ formatTokens(getRecordEffectiveInputTokens(record)) }}
@@ -797,7 +860,7 @@
           </TableCell>
           <TableCell
             v-if="isColumnVisible('cost')"
-            class="text-right py-4 w-[12%]"
+            class="text-right py-4 align-top"
             :title="getRecordCostTitle(record)"
           >
             <div class="flex flex-col items-end text-xs gap-0.5">
@@ -825,7 +888,7 @@
               </span>
             </div>
           </TableCell>
-          <TableCell v-if="isColumnVisible('performance')" class="text-right py-4 w-[9%]">
+          <TableCell v-if="isColumnVisible('performance')" class="text-right py-4 align-top">
             <!-- pending/streaming 状态：首字与动态总耗时保留在同一行 -->
             <div
               v-if="getDisplayStatus(record) === 'pending' || getDisplayStatus(record) === 'streaming'"
@@ -860,7 +923,7 @@
           </TableCell>
           <TableCell
             v-if="isColumnVisible('client_family')"
-            class="py-4 w-[12%] text-xs"
+            class="py-4 text-xs align-top"
             :title="formatClientFamily(record.client_family)"
           >
             <Badge
@@ -872,14 +935,14 @@
           </TableCell>
           <TableCell
             v-if="isColumnVisible('client_ip')"
-            class="py-4 w-[10%] text-xs truncate"
+            class="py-4 text-xs break-all align-top"
             :title="record.client_ip || '-'"
           >
             {{ record.client_ip || '-' }}
           </TableCell>
           <TableCell
             v-if="isColumnVisible('user_agent')"
-            class="py-4 w-[13%] text-xs truncate"
+            class="py-4 text-xs break-all align-top"
             :title="record.user_agent || '-'"
           >
             {{ formatUserAgent(record.user_agent) }}
@@ -921,7 +984,6 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableHead,
   TableCell,
   Pagination,
   SortableTableHead,
@@ -945,6 +1007,7 @@ import {
 } from '../utils/status'
 import { useRowClick } from '@/composables/useRowClick'
 import { useClipboard } from '@/composables/useClipboard'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import { formatApiFormat } from '@/api/endpoints/types/api-format'
 import type { DateRangeParams, UsageRecord } from '../types'
 import { MultiSelect, TimeRangePicker } from '@/components/common'
@@ -1191,6 +1254,70 @@ const desktopTableMinWidthClass = computed(() => {
   if (metadataColumnCount >= 3) return 'min-w-[1520px]'
   if (metadataColumnCount > 0) return 'min-w-[1320px]'
   return props.isAdmin ? 'min-w-[1120px]' : 'min-w-[960px]'
+})
+const usageDesktopColumns = computed<ResizableTableColumn<UsageRecordColumnId>[]>(() => {
+  const widths: Record<UsageRecordColumnId, string> = props.isAdmin
+    ? {
+        time: '8%',
+        user: '12%',
+        key: '16%',
+        model: '13%',
+        provider: '14%',
+        api_format: '13%',
+        status: '9%',
+        tokens: '9%',
+        cost: '12%',
+        performance: '10%',
+        client_family: '12%',
+        client_ip: '10%',
+        user_agent: '13%',
+      }
+    : {
+        time: '9%',
+        user: '12%',
+        key: '16%',
+        model: '20%',
+        provider: '14%',
+        api_format: '13%',
+        status: '10%',
+        tokens: '10%',
+        cost: '12%',
+        performance: '10%',
+        client_family: '12%',
+        client_ip: '10%',
+        user_agent: '13%',
+      }
+  const minWidths: Record<UsageRecordColumnId, number> = {
+    time: 112,
+    user: 140,
+    key: 150,
+    model: 180,
+    provider: 190,
+    api_format: 150,
+    status: 112,
+    tokens: 112,
+    cost: 140,
+    performance: 128,
+    client_family: 130,
+    client_ip: 120,
+    user_agent: 220,
+  }
+
+  return visibleColumnIds.value.map(column => ({
+    key: column,
+    width: widths[column],
+    minWidth: minWidths[column],
+  }))
+})
+const {
+  columnWidths: desktopColumnWidths,
+  startResize: handleUsageColumnResizeStart,
+} = useResizableTableColumns<UsageRecordColumnId>({
+  storageKey: props.isAdmin
+    ? 'usage-records-admin-table-column-widths'
+    : 'usage-records-user-table-column-widths',
+  columns: usageDesktopColumns,
+  defaultMinWidth: 96,
 })
 
 const columnSelectOptions = computed<MultiSelectOption[]>(() => roleColumnOptions.value.map(column => ({
@@ -1576,10 +1703,7 @@ function getApiFormatTooltip(record: UsageRecord): string {
   return record.api_format
 }
 
-// 获取实际使用的模型（优先 target_model，其次列表接口下发的 model_version）
-// 只有当实际模型与请求模型不同时才返回，用于显示映射箭头
 function getActualModel(record: UsageRecord): string | null {
-  // 优先显示模型映射
   if (record.target_model && record.target_model !== record.model) {
     return record.target_model
   }

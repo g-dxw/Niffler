@@ -1725,6 +1725,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useCountdownTimer, getCodexResetCountdown } from '@/composables/useCountdownTimer'
 import { useConfirm } from '@/composables/useConfirm'
 import { useRouteQuery } from '@/composables/useRouteQuery'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import { parseApiError } from '@/utils/errorParser'
 import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 import {
@@ -2281,76 +2282,38 @@ const showAccountQuotaColumn = computed(() => {
 })
 
 type PoolDesktopColumnKey = 'select' | 'name' | 'quota' | 'stats' | 'imported' | 'lastUsed' | 'score' | 'status' | 'actions'
-const poolColumnWidths = ref<Partial<Record<PoolDesktopColumnKey, number>>>({})
-let poolColumnResizeCleanup: (() => void) | null = null
-
-function poolColumnWidthStyle(column: PoolDesktopColumnKey, fallback: string): string {
-  const width = poolColumnWidths.value[column]
-  return typeof width === 'number' && Number.isFinite(width) ? `${width}px` : fallback
-}
-
-const desktopColumnWidths = computed(() => {
+const poolDesktopColumns = computed<ResizableTableColumn<PoolDesktopColumnKey>[]>(() => {
   if (showAccountQuotaColumn.value) {
-    return {
-      select: poolColumnWidthStyle('select', '3rem'),
-      name: poolColumnWidthStyle('name', '21%'),
-      quota: poolColumnWidthStyle('quota', '18%'),
-      stats: poolColumnWidthStyle('stats', '13%'),
-      imported: poolColumnWidthStyle('imported', '10%'),
-      lastUsed: poolColumnWidthStyle('lastUsed', '8%'),
-      score: poolColumnWidthStyle('score', '9%'),
-      status: poolColumnWidthStyle('status', '7%'),
-      actions: poolColumnWidthStyle('actions', '14%'),
-    }
+    return [
+      { key: 'select', width: '3rem', minWidth: 44 },
+      { key: 'name', width: '21%', minWidth: 180 },
+      { key: 'quota', width: '18%', minWidth: 180 },
+      { key: 'stats', width: '13%', minWidth: 160 },
+      { key: 'imported', width: '10%', minWidth: 120 },
+      { key: 'lastUsed', width: '8%', minWidth: 120 },
+      { key: 'score', width: '9%', minWidth: 96 },
+      { key: 'status', width: '7%', minWidth: 96 },
+      { key: 'actions', width: '14%', minWidth: 150 },
+    ]
   }
-  return {
-    select: poolColumnWidthStyle('select', '3rem'),
-    name: poolColumnWidthStyle('name', '31%'),
-    quota: '0%',
-    stats: poolColumnWidthStyle('stats', '15%'),
-    imported: poolColumnWidthStyle('imported', '11%'),
-    lastUsed: poolColumnWidthStyle('lastUsed', '11%'),
-    score: poolColumnWidthStyle('score', '9%'),
-    status: poolColumnWidthStyle('status', '8%'),
-    actions: poolColumnWidthStyle('actions', '15%'),
-  }
+  return [
+    { key: 'select', width: '3rem', minWidth: 44 },
+    { key: 'name', width: '31%', minWidth: 220 },
+    { key: 'stats', width: '15%', minWidth: 160 },
+    { key: 'imported', width: '11%', minWidth: 120 },
+    { key: 'lastUsed', width: '11%', minWidth: 120 },
+    { key: 'score', width: '9%', minWidth: 96 },
+    { key: 'status', width: '8%', minWidth: 96 },
+    { key: 'actions', width: '15%', minWidth: 150 },
+  ]
 })
-
-function handlePoolColumnResizeStart(payload: { key: string, event: PointerEvent }) {
-  const column = payload.key as PoolDesktopColumnKey
-  const header = (payload.event.currentTarget as HTMLElement | null)?.closest('th') as HTMLElement | null
-  if (!header) return
-
-  poolColumnResizeCleanup?.()
-  const startX = payload.event.clientX
-  const startWidth = header.getBoundingClientRect().width
-
-  const handlePointerMove = (event: PointerEvent) => {
-    const nextWidth = Math.max(64, Math.round(startWidth + event.clientX - startX))
-    poolColumnWidths.value = {
-      ...poolColumnWidths.value,
-      [column]: nextWidth,
-    }
-  }
-  const stopResize = () => {
-    window.removeEventListener('pointermove', handlePointerMove)
-    window.removeEventListener('pointerup', stopResize)
-    window.removeEventListener('pointercancel', stopResize)
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-    poolColumnResizeCleanup = null
-  }
-
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
-  window.addEventListener('pointermove', handlePointerMove)
-  window.addEventListener('pointerup', stopResize)
-  window.addEventListener('pointercancel', stopResize)
-  poolColumnResizeCleanup = stopResize
-}
-
-onBeforeUnmount(() => {
-  poolColumnResizeCleanup?.()
+const {
+  columnWidths: desktopColumnWidths,
+  startResize: handlePoolColumnResizeStart,
+} = useResizableTableColumns<PoolDesktopColumnKey>({
+  storageKey: 'pool-management-table-column-widths',
+  columns: poolDesktopColumns,
+  defaultMinWidth: 64,
 })
 
 async function selectProvider(

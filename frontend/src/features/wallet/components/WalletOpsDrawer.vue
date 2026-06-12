@@ -278,14 +278,31 @@
 
                 <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
                   <div class="overflow-x-auto">
-                    <Table>
+                    <Table class="w-full min-w-[890px] table-fixed">
+                      <colgroup>
+                        <col :style="{ width: walletTxColumnWidths.time }">
+                        <col :style="{ width: walletTxColumnWidths.type }">
+                        <col :style="{ width: walletTxColumnWidths.amount }">
+                        <col :style="{ width: walletTxColumnWidths.balance }">
+                        <col :style="{ width: walletTxColumnWidths.description }">
+                      </colgroup>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>时间</TableHead>
-                          <TableHead>类型</TableHead>
-                          <TableHead>金额</TableHead>
-                          <TableHead>余额变化</TableHead>
-                          <TableHead>说明</TableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
+                            时间
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="type" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
+                            类型
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
+                            金额
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="balance" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
+                            余额变化
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="description" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
+                            说明
+                          </SortableTableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -325,7 +342,10 @@
                               · 赠 {{ formatFixed(tx.gift_balance_before, 4) }}→{{ formatFixed(tx.gift_balance_after, 4) }}
                             </div>
                           </TableCell>
-                          <TableCell class="text-xs text-muted-foreground max-w-[260px] truncate">
+                          <TableCell
+                            class="text-xs text-muted-foreground whitespace-pre-wrap break-words"
+                            :title="tx.description || '-'"
+                          >
                             {{ tx.description || '-' }}
                           </TableCell>
                         </TableRow>
@@ -371,27 +391,43 @@
 
                 <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
                   <div class="overflow-x-auto">
-                    <Table>
+                    <Table class="w-full min-w-[1120px] table-fixed">
+                      <colgroup>
+                        <col :style="{ width: walletUsageColumnWidths.time }">
+                        <col :style="{ width: walletUsageColumnWidths.model }">
+                        <col :style="{ width: walletUsageColumnWidths.status }">
+                        <col :style="{ width: walletUsageColumnWidths.official }">
+                        <col :style="{ width: walletUsageColumnWidths.packageDebit }">
+                        <col :style="{ width: walletUsageColumnWidths.walletDebit }">
+                        <col :style="{ width: walletUsageColumnWidths.platformCost }">
+                        <col :style="{ width: walletUsageColumnWidths.costMultiplier }">
+                      </colgroup>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>时间</TableHead>
-                          <TableHead>模型</TableHead>
-                          <TableHead>状态</TableHead>
-                          <TableHead class="text-right">
+                          <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
+                            时间
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="model" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
+                            模型
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
+                            状态
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="official" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
                             官方价格
-                          </TableHead>
-                          <TableHead class="text-right">
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="packageDebit" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
                             套餐扣除
-                          </TableHead>
-                          <TableHead class="text-right">
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="walletDebit" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
                             钱包扣除
-                          </TableHead>
-                          <TableHead class="text-right">
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="platformCost" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
                             平台成本
-                          </TableHead>
-                          <TableHead class="text-right">
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="costMultiplier" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
                             成本倍率
-                          </TableHead>
+                          </SortableTableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -403,11 +439,11 @@
                           <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
                             {{ formatDateTime(record.created_at) }}
                           </TableCell>
-                          <TableCell class="min-w-[220px]">
-                            <div class="text-sm font-medium text-foreground">
+                          <TableCell>
+                            <div class="break-all text-sm font-medium text-foreground">
                               {{ record.model || '-' }}
                             </div>
-                            <div class="mt-1 text-[11px] text-muted-foreground">
+                            <div class="mt-1 break-words text-[11px] text-muted-foreground">
                               {{ record.api_key?.name || record.api_key_name || '未命名 Key' }}
                             </div>
                           </TableCell>
@@ -474,16 +510,39 @@
 
                 <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
                   <div class="overflow-x-auto">
-                    <Table>
+                    <Table class="w-full min-w-[1170px] table-fixed">
+                      <colgroup>
+                        <col :style="{ width: walletPlanColumnWidths.plan }">
+                        <col :style="{ width: walletPlanColumnWidths.status }">
+                        <col :style="{ width: walletPlanColumnWidths.entitlements }">
+                        <col :style="{ width: walletPlanColumnWidths.price }">
+                        <col :style="{ width: walletPlanColumnWidths.created }">
+                        <col :style="{ width: walletPlanColumnWidths.starts }">
+                        <col :style="{ width: walletPlanColumnWidths.expires }">
+                      </colgroup>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>套餐</TableHead>
-                          <TableHead>状态</TableHead>
-                          <TableHead>权益</TableHead>
-                          <TableHead>价格/额度</TableHead>
-                          <TableHead>获得时间</TableHead>
-                          <TableHead>开始</TableHead>
-                          <TableHead>到期</TableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="plan" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
+                            套餐
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
+                            状态
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="entitlements" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
+                            权益
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="price" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
+                            价格/额度
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="created" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
+                            获得时间
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="starts" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
+                            开始
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="expires" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
+                            到期
+                          </SortableTableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -491,11 +550,11 @@
                           v-for="plan in planItems"
                           :key="plan.id"
                         >
-                          <TableCell class="min-w-[160px]">
-                            <div class="font-medium text-foreground">
+                          <TableCell>
+                            <div class="break-words font-medium text-foreground">
                               {{ plan.plan_title || plan.plan?.title || plan.plan_id }}
                             </div>
-                            <div class="mt-1 text-[11px] text-muted-foreground">
+                            <div class="mt-1 break-all text-[11px] text-muted-foreground">
                               {{ plan.payment_order_id || '-' }}
                             </div>
                           </TableCell>
@@ -507,7 +566,7 @@
                               {{ plan.active ? '生效中' : planStatusLabel(plan.status) }}
                             </Badge>
                           </TableCell>
-                          <TableCell class="max-w-[260px]">
+                          <TableCell>
                             <div class="flex flex-wrap gap-1.5">
                               <Badge
                                 v-for="label in entitlementLabels(plan.entitlements)"
@@ -622,17 +681,35 @@
 
                 <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
                   <div class="overflow-x-auto">
-                    <Table>
+                    <Table class="w-full min-w-[930px] table-fixed">
+                      <colgroup>
+                        <col :style="{ width: walletRefundColumnWidths.refundNo }">
+                        <col :style="{ width: walletRefundColumnWidths.amount }">
+                        <col :style="{ width: walletRefundColumnWidths.mode }">
+                        <col :style="{ width: walletRefundColumnWidths.status }">
+                        <col :style="{ width: walletRefundColumnWidths.reason }">
+                        <col :style="{ width: walletRefundColumnWidths.actions }">
+                      </colgroup>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>退款单号</TableHead>
-                          <TableHead>金额</TableHead>
-                          <TableHead>模式</TableHead>
-                          <TableHead>状态</TableHead>
-                          <TableHead>原因</TableHead>
-                          <TableHead class="text-right">
+                          <SortableTableHead :sortable="false" resize-column-key="refundNo" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
+                            退款单号
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
+                            金额
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="mode" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
+                            模式
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
+                            状态
+                          </SortableTableHead>
+                          <SortableTableHead :sortable="false" resize-column-key="reason" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
+                            原因
+                          </SortableTableHead>
+                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
                             操作
-                          </TableHead>
+                          </SortableTableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -640,7 +717,10 @@
                           v-for="refund in refundItems"
                           :key="refund.id"
                         >
-                          <TableCell class="font-mono text-xs whitespace-nowrap">
+                          <TableCell
+                            class="font-mono text-xs break-all"
+                            :title="refund.refund_no"
+                          >
                             {{ refund.refund_no }}
                           </TableCell>
                           <TableCell class="tabular-nums whitespace-nowrap">
@@ -654,7 +734,10 @@
                               {{ refundStatusLabel(refund.status) }}
                             </Badge>
                           </TableCell>
-                          <TableCell class="text-xs text-muted-foreground max-w-[220px] truncate">
+                          <TableCell
+                            class="text-xs text-muted-foreground whitespace-pre-wrap break-words"
+                            :title="refund.reason || refund.failure_reason || '-'"
+                          >
                             {{ refund.reason || refund.failure_reason || '-' }}
                           </TableCell>
                           <TableCell class="text-right">
@@ -737,9 +820,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
   Tabs,
   TabsContent,
   TabsList,
@@ -773,6 +856,7 @@ import {
 } from '@/utils/walletDisplay'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import { Wallet, X } from 'lucide-vue-next'
 import { log } from '@/utils/logger'
 
@@ -834,6 +918,80 @@ const submittingRefundAction = ref(false)
 const loadingPlans = ref(false)
 const planItems = ref<AdminUserPlanEntitlement[]>([])
 
+type WalletTxColumnKey = 'time' | 'type' | 'amount' | 'balance' | 'description'
+const walletTxColumns: ResizableTableColumn<WalletTxColumnKey>[] = [
+  { key: 'time', width: '150px', minWidth: 140 },
+  { key: 'type', width: '150px', minWidth: 130 },
+  { key: 'amount', width: '110px', minWidth: 100 },
+  { key: 'balance', width: '220px', minWidth: 190 },
+  { key: 'description', width: '260px', minWidth: 210 },
+]
+const {
+  columnWidths: walletTxColumnWidths,
+  startResize: handleWalletTxColumnResizeStart,
+} = useResizableTableColumns<WalletTxColumnKey>({
+  storageKey: 'wallet-drawer-transactions-table-column-widths',
+  columns: walletTxColumns,
+  defaultMinWidth: 90,
+})
+
+type WalletUsageColumnKey = 'time' | 'model' | 'status' | 'official' | 'packageDebit' | 'walletDebit' | 'platformCost' | 'costMultiplier'
+const walletUsageColumns: ResizableTableColumn<WalletUsageColumnKey>[] = [
+  { key: 'time', width: '150px', minWidth: 140 },
+  { key: 'model', width: '240px', minWidth: 200 },
+  { key: 'status', width: '110px', minWidth: 100 },
+  { key: 'official', width: '120px', minWidth: 110 },
+  { key: 'packageDebit', width: '130px', minWidth: 120 },
+  { key: 'walletDebit', width: '130px', minWidth: 120 },
+  { key: 'platformCost', width: '120px', minWidth: 110 },
+  { key: 'costMultiplier', width: '120px', minWidth: 110 },
+]
+const {
+  columnWidths: walletUsageColumnWidths,
+  startResize: handleWalletUsageColumnResizeStart,
+} = useResizableTableColumns<WalletUsageColumnKey>({
+  storageKey: 'wallet-drawer-usage-table-column-widths',
+  columns: walletUsageColumns,
+  defaultMinWidth: 90,
+})
+
+type WalletPlanColumnKey = 'plan' | 'status' | 'entitlements' | 'price' | 'created' | 'starts' | 'expires'
+const walletPlanColumns: ResizableTableColumn<WalletPlanColumnKey>[] = [
+  { key: 'plan', width: '200px', minWidth: 170 },
+  { key: 'status', width: '110px', minWidth: 100 },
+  { key: 'entitlements', width: '260px', minWidth: 220 },
+  { key: 'price', width: '150px', minWidth: 130 },
+  { key: 'created', width: '150px', minWidth: 140 },
+  { key: 'starts', width: '150px', minWidth: 140 },
+  { key: 'expires', width: '150px', minWidth: 140 },
+]
+const {
+  columnWidths: walletPlanColumnWidths,
+  startResize: handleWalletPlanColumnResizeStart,
+} = useResizableTableColumns<WalletPlanColumnKey>({
+  storageKey: 'wallet-drawer-plans-table-column-widths',
+  columns: walletPlanColumns,
+  defaultMinWidth: 90,
+})
+
+type WalletRefundColumnKey = 'refundNo' | 'amount' | 'mode' | 'status' | 'reason' | 'actions'
+const walletRefundColumns: ResizableTableColumn<WalletRefundColumnKey>[] = [
+  { key: 'refundNo', width: '190px', minWidth: 160 },
+  { key: 'amount', width: '110px', minWidth: 100 },
+  { key: 'mode', width: '110px', minWidth: 100 },
+  { key: 'status', width: '110px', minWidth: 100 },
+  { key: 'reason', width: '240px', minWidth: 190 },
+  { key: 'actions', width: '170px', minWidth: 150 },
+]
+const {
+  columnWidths: walletRefundColumnWidths,
+  startResize: handleWalletRefundColumnResizeStart,
+} = useResizableTableColumns<WalletRefundColumnKey>({
+  storageKey: 'wallet-drawer-refunds-table-column-widths',
+  columns: walletRefundColumns,
+  defaultMinWidth: 90,
+})
+
 const refundActionType = ref<'fail' | 'complete' | null>(null)
 const actionRefund = ref<RefundRequest | null>(null)
 const refundFailReason = ref('')
@@ -864,7 +1022,8 @@ const tabsListClass = computed(() => {
     'tabs-button-list',
     'grid',
     'w-full',
-    columnCount === 5 ? 'grid-cols-5' : columnCount === 4 ? 'grid-cols-4' : columnCount === 3 ? 'grid-cols-3' : 'grid-cols-2',
+    'grid-cols-2',
+    columnCount === 5 ? 'sm:grid-cols-5' : columnCount === 4 ? 'sm:grid-cols-4' : columnCount === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2',
   ]
 })
 const submitMoneyDisabled = computed(() => {

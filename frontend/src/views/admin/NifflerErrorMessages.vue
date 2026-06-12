@@ -101,15 +101,38 @@
           </Button>
         </div>
 
-        <Table v-else>
+        <Table
+          v-else
+          class="w-full min-w-[1100px] table-fixed"
+        >
+          <colgroup>
+            <col :style="{ width: errorRuleColumnWidths.scope }">
+            <col :style="{ width: errorRuleColumnWidths.match }">
+            <col :style="{ width: errorRuleColumnWidths.response }">
+            <col :style="{ width: errorRuleColumnWidths.message }">
+            <col :style="{ width: errorRuleColumnWidths.protection }">
+            <col :style="{ width: errorRuleColumnWidths.status }">
+          </colgroup>
           <TableHeader>
             <TableRow>
-              <TableHead>范围</TableHead>
-              <TableHead>匹配</TableHead>
-              <TableHead>返回</TableHead>
-              <TableHead>用户文案</TableHead>
-              <TableHead>账号保护</TableHead>
-              <TableHead>状态</TableHead>
+              <SortableTableHead :sortable="false" resize-column-key="scope" :resizable="true" @resize-start="handleErrorRuleColumnResizeStart">
+                范围
+              </SortableTableHead>
+              <SortableTableHead :sortable="false" resize-column-key="match" :resizable="true" @resize-start="handleErrorRuleColumnResizeStart">
+                匹配
+              </SortableTableHead>
+              <SortableTableHead :sortable="false" resize-column-key="response" :resizable="true" @resize-start="handleErrorRuleColumnResizeStart">
+                返回
+              </SortableTableHead>
+              <SortableTableHead :sortable="false" resize-column-key="message" :resizable="true" @resize-start="handleErrorRuleColumnResizeStart">
+                用户文案
+              </SortableTableHead>
+              <SortableTableHead :sortable="false" resize-column-key="protection" :resizable="true" @resize-start="handleErrorRuleColumnResizeStart">
+                账号保护
+              </SortableTableHead>
+              <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleErrorRuleColumnResizeStart">
+                状态
+              </SortableTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -138,7 +161,10 @@
                 {{ responseModeLabel(rule.response_mode) }}
               </TableCell>
               <TableCell>
-                <div class="max-w-[420px] truncate">
+                <div
+                  class="whitespace-pre-wrap break-words"
+                  :title="rule.user_message"
+                >
                   {{ rule.user_message }}
                 </div>
               </TableCell>
@@ -403,9 +429,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
   Textarea,
 } from '@/components/ui'
 import {
@@ -422,6 +448,7 @@ import {
   type NifflerUserResponseMode,
 } from '@/api/niffler-core'
 import { useToast } from '@/composables/useToast'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import { extractErrorMessage } from '@/utils/error'
 
 type ScopeFilter = 'all' | NifflerErrorResponseScope
@@ -440,6 +467,23 @@ type ErrorReturnSettingForm = {
 }
 
 const { success, error: showError } = useToast()
+type ErrorRuleColumnKey = 'scope' | 'match' | 'response' | 'message' | 'protection' | 'status'
+const errorRuleColumns: ResizableTableColumn<ErrorRuleColumnKey>[] = [
+  { key: 'scope', width: '150px', minWidth: 130 },
+  { key: 'match', width: '220px', minWidth: 180 },
+  { key: 'response', width: '130px', minWidth: 110 },
+  { key: 'message', width: '360px', minWidth: 260 },
+  { key: 'protection', width: '160px', minWidth: 140 },
+  { key: 'status', width: '100px', minWidth: 90 },
+]
+const {
+  columnWidths: errorRuleColumnWidths,
+  startResize: handleErrorRuleColumnResizeStart,
+} = useResizableTableColumns<ErrorRuleColumnKey>({
+  storageKey: 'niffler-error-rules-table-column-widths',
+  columns: errorRuleColumns,
+  defaultMinWidth: 90,
+})
 
 const scopeFilters: Array<{
   value: ScopeFilter

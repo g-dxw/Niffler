@@ -129,23 +129,46 @@
         v-else
         class="hidden xl:block overflow-x-auto"
       >
-        <Table>
+        <Table class="w-full min-w-[1180px] table-fixed">
+          <colgroup>
+            <col :style="{ width: providerTableColumnWidths.info }">
+            <col :style="{ width: providerTableColumnWidths.balance }">
+            <col :style="{ width: providerTableColumnWidths.resources }">
+            <col :style="{ width: providerTableColumnWidths.health }">
+            <col :style="{ width: providerTableColumnWidths.status }">
+            <col :style="{ width: providerTableColumnWidths.actions }">
+          </colgroup>
           <TableHeader>
             <TableRow>
-              <TableHead class="w-[18%] min-w-[140px]">
-                提供商信息
-              </TableHead>
-              <TableHead class="w-[20%] min-w-[180px]">
-                余额监控
-              </TableHead>
               <SortableTableHead
-                class="w-[12%] min-w-[100px] text-center"
+                class="font-semibold"
+                :sortable="false"
+                resize-column-key="info"
+                :resizable="true"
+                @resize-start="handleProviderTableColumnResizeStart"
+              >
+                提供商信息
+              </SortableTableHead>
+              <SortableTableHead
+                class="font-semibold"
+                :sortable="false"
+                resize-column-key="balance"
+                :resizable="true"
+                @resize-start="handleProviderTableColumnResizeStart"
+              >
+                余额监控
+              </SortableTableHead>
+              <SortableTableHead
+                class="text-center"
                 column-key="model"
                 :sortable="false"
                 align="center"
+                resize-column-key="resources"
+                :resizable="true"
                 :filter-active="filterModel !== 'all'"
                 filter-title="筛选模型"
                 filter-content-class="w-64 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                @resize-start="handleProviderTableColumnResizeStart"
               >
                 资源统计
                 <template #filter="{ close }">
@@ -157,12 +180,15 @@
                 </template>
               </SortableTableHead>
               <SortableTableHead
-                class="w-[24%] min-w-[260px]"
+                class="font-semibold"
                 column-key="api_format"
                 :sortable="false"
+                resize-column-key="health"
+                :resizable="true"
                 :filter-active="filterApiFormat !== 'all'"
                 filter-title="筛选 API 格式"
                 filter-content-class="w-72 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                @resize-start="handleProviderTableColumnResizeStart"
               >
                 端点健康
                 <template #filter="{ close }">
@@ -174,13 +200,16 @@
                 </template>
               </SortableTableHead>
               <SortableTableHead
-                class="w-[8%] min-w-[60px] text-center"
+                class="text-center"
                 column-key="status"
                 :sortable="false"
                 align="center"
+                resize-column-key="status"
+                :resizable="true"
                 :filter-active="filterStatus !== 'all'"
                 filter-title="筛选状态"
                 filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
+                @resize-start="handleProviderTableColumnResizeStart"
               >
                 状态
                 <template #filter="{ close }">
@@ -191,9 +220,16 @@
                   />
                 </template>
               </SortableTableHead>
-              <TableHead class="w-[18%] min-w-[120px] text-center">
+              <SortableTableHead
+                class="font-semibold text-center"
+                :sortable="false"
+                align="center"
+                resize-column-key="actions"
+                :resizable="true"
+                @resize-start="handleProviderTableColumnResizeStart"
+              >
                 操作
-              </TableHead>
+              </SortableTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -308,7 +344,6 @@ import Table from '@/components/ui/table.vue'
 import TableHeader from '@/components/ui/table-header.vue'
 import TableBody from '@/components/ui/table-body.vue'
 import TableRow from '@/components/ui/table-row.vue'
-import TableHead from '@/components/ui/table-head.vue'
 import SortableTableHead from '@/components/ui/sortable-table-head.vue'
 import TableFilterMenu from '@/components/ui/table-filter-menu.vue'
 import Pagination from '@/components/ui/pagination.vue'
@@ -320,6 +355,7 @@ import ProviderMobileCard from '@/features/providers/components/ProviderMobileCa
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useRowClick } from '@/composables/useRowClick'
+import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import { useProviderFilters } from '@/features/providers/composables/useProviderFilters'
 import { useProviderBalance } from '@/features/providers/composables/useProviderBalance'
 import {
@@ -358,6 +394,23 @@ const providerDialogOpen = ref(false)
 const providerToEdit = ref<ProviderWithEndpointsSummary | null>(null)
 const priorityDialogOpen = ref(false)
 const priorityMode = ref<'provider' | 'global_key'>('provider')
+type ProviderTableColumnKey = 'info' | 'balance' | 'resources' | 'health' | 'status' | 'actions'
+const providerTableColumns: ResizableTableColumn<ProviderTableColumnKey>[] = [
+  { key: 'info', width: '18%', minWidth: 180 },
+  { key: 'balance', width: '20%', minWidth: 190 },
+  { key: 'resources', width: '12%', minWidth: 120 },
+  { key: 'health', width: '24%', minWidth: 260 },
+  { key: 'status', width: '8%', minWidth: 90 },
+  { key: 'actions', width: '18%', minWidth: 150 },
+]
+const {
+  columnWidths: providerTableColumnWidths,
+  startResize: handleProviderTableColumnResizeStart,
+} = useResizableTableColumns<ProviderTableColumnKey>({
+  storageKey: 'provider-management-table-column-widths',
+  columns: providerTableColumns,
+  defaultMinWidth: 90,
+})
 const providerDrawerOpen = ref(false)
 const selectedProviderId = ref<string | null>(null)
 const selectedProvider = computed<ProviderWithEndpointsSummary | null>(() => {
