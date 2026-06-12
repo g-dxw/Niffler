@@ -305,6 +305,12 @@ fn usage_sql_moves_shared_counter_updates_behind_outbox() {
     assert!(source.contains("apply_provider_api_key_codex_window_usage_delta_in_tx("));
     assert!(source.contains("USAGE_COUNTER_KIND_PROVIDER_MONTHLY"));
     assert!(source.contains("apply_provider_monthly_usage_delta_in_tx("));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("WITH ORDINALITY AS item(window_item, ordinality)"));
+    assert!(!super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("WITH ORDINALITY AS item(window, ordinality)"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("status_snapshot::jsonb"));
 }
 
 #[test]
