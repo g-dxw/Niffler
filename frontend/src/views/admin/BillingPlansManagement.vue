@@ -729,6 +729,18 @@
                   step="0.01"
                 />
               </div>
+              <div class="space-y-1.5">
+                <Label>套餐消耗倍率</Label>
+                <Input
+                  v-model.number="form.quota_multiplier"
+                  type="number"
+                  min="0.0001"
+                  step="0.0001"
+                />
+                <p class="text-xs leading-5 text-muted-foreground">
+                  1 美元基础价消耗多少套餐额度，默认 1。
+                </p>
+              </div>
               <div class="space-y-1.5 md:col-span-2">
                 <Label class="inline-flex items-center gap-1.5">
                   <span>套餐可用模型</span>
@@ -935,6 +947,7 @@ import { log } from '@/utils/logger'
 import {
   hasPackageBillingEntitlement,
   normalizeBillingEntitlements,
+  quotaConsumptionMultiplierLabel,
   type BillingEntitlementsInput,
 } from '@/utils/billingEntitlements'
 
@@ -967,6 +980,7 @@ interface PlanFormState {
   five_hour_quota_usd: number
   weekly_quota_usd: number
   monthly_quota_usd: number
+  quota_multiplier: number
   reset_timezone: string
   carry_over: boolean
   allow_wallet_overage: boolean
@@ -1269,6 +1283,7 @@ function buildDefaultForm(): PlanFormState {
     five_hour_quota_usd: 0,
     weekly_quota_usd: 0,
     monthly_quota_usd: 0,
+    quota_multiplier: 1,
     reset_timezone: 'Asia/Shanghai',
     carry_over: false,
     allow_wallet_overage: false,
@@ -1390,6 +1405,7 @@ function formFromPlan(plan: BillingPlan): PlanFormState {
       next.five_hour_quota_usd = Number(quota.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
       next.weekly_quota_usd = Number(quota.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
       next.monthly_quota_usd = Number(quota.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
+      next.quota_multiplier = Number(quota.quota_multiplier ?? 1)
       next.reset_timezone = quota.reset_timezone || 'Asia/Shanghai'
       next.carry_over = Boolean(quota.carry_over)
       next.allow_wallet_overage = Boolean(quota.allow_wallet_overage)
@@ -1453,6 +1469,7 @@ function buildEntitlements(): BillingEntitlement[] {
       five_hour_quota_usd: Number(form.five_hour_quota_usd),
       weekly_quota_usd: Number(form.weekly_quota_usd),
       monthly_quota_usd: Number(form.monthly_quota_usd),
+      quota_multiplier: Number(form.quota_multiplier),
       reset_timezone: form.reset_timezone.trim() || 'Asia/Shanghai',
       carry_over: false,
       allow_wallet_overage: Boolean(form.allow_wallet_overage),
@@ -1504,6 +1521,9 @@ function validatePlan(entitlements: BillingEntitlement[]): string | null {
   if (!hasPackageEntitlement(entitlements)) return '套餐至少需要包含用量额度或会员分组；钱包充值请使用充值功能'
   if (form.wallet_credit_enabled && Number(form.wallet_credit_amount_usd) <= 0) return '附赠余额金额必须大于 0'
   if (form.daily_quota_enabled && !hasAnyUsageQuota()) return '用量额度至少填写一个大于 0 的金额'
+  if (form.daily_quota_enabled && (!Number.isFinite(Number(form.quota_multiplier)) || Number(form.quota_multiplier) <= 0)) {
+    return '套餐消耗倍率必须大于 0'
+  }
   if (form.daily_quota_enabled && form.allowed_global_model_ids.length === 0) return '请选择套餐支持的模型'
   if (form.membership_group_enabled && form.grant_user_groups.length === 0) return '会员分组权益至少选择一个分组'
   return null
@@ -1692,7 +1712,10 @@ function entitlementBadges(plan: BillingPlan): string[] {
         parts.push(`30天 $${Number(entitlement.monthly_quota_usd || 0).toFixed(2)}`)
       }
       const quotaText = parts.join(' / ') || '用量额度'
-      return `${quotaText} · ${formatAllowedGlobalModels(entitlement.allowed_global_model_ids)}`
+      const labels = [formatAllowedGlobalModels(entitlement.allowed_global_model_ids)]
+      const multiplierLabel = quotaConsumptionMultiplierLabel(entitlement)
+      if (multiplierLabel) labels.push(multiplierLabel)
+      return `${quotaText} · ${labels.join(' · ')}`
     }
     if (entitlement.type === 'membership_group') {
       const groups = entitlement.grant_user_groups.map(groupName).join(', ')

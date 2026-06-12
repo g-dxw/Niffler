@@ -13,6 +13,7 @@ pub(crate) struct UsageQuotaGrant {
     pub entitlement_id: String,
     pub scope: &'static str,
     pub limit_usd: f64,
+    pub quota_multiplier: f64,
     pub window_key: String,
     pub window_started_at: DateTime<Utc>,
     pub window_ends_at: DateTime<Utc>,
@@ -50,11 +51,13 @@ pub(crate) fn usage_quota_grants_from_entitlement(
             .unwrap_or(false);
         let allowed_global_model_ids = parse_allowed_global_model_ids(item);
         let limits = item.get("limits");
+        let quota_multiplier = quota_multiplier_from_item(item);
 
         push_grant(
             &mut grants,
             entitlement_id,
             quota_value(item, limits, "daily_quota_usd", "daily_limit_usd"),
+            quota_multiplier,
             rolling_window(
                 now,
                 entitlement_started_at,
@@ -68,6 +71,7 @@ pub(crate) fn usage_quota_grants_from_entitlement(
             &mut grants,
             entitlement_id,
             quota_value(item, limits, "five_hour_quota_usd", "five_hour_limit_usd"),
+            quota_multiplier,
             five_hour_window(now, stored_five_hour),
             allow_wallet_overage,
             allowed_global_model_ids.as_deref(),
@@ -76,6 +80,7 @@ pub(crate) fn usage_quota_grants_from_entitlement(
             &mut grants,
             entitlement_id,
             quota_value(item, limits, "weekly_quota_usd", "weekly_limit_usd"),
+            quota_multiplier,
             rolling_window(
                 now,
                 entitlement_started_at,
@@ -89,6 +94,7 @@ pub(crate) fn usage_quota_grants_from_entitlement(
             &mut grants,
             entitlement_id,
             quota_value(item, limits, "monthly_quota_usd", "monthly_limit_usd"),
+            quota_multiplier,
             rolling_window(
                 now,
                 entitlement_started_at,
@@ -192,6 +198,42 @@ fn quota_value(item: &Value, limits: Option<&Value>, standard_key: &str, legacy_
     value_as_f64(limits.and_then(|limits| limits.get(legacy_key)))
 }
 
+fn quota_multiplier_from_item(item: &Value) -> f64 {
+    let value = match item.get("quota_multiplier") {
+        Some(_) => value_as_f64(item.get("quota_multiplier")),
+        None => value_as_f64(item.get("package_multiplier")),
+    };
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        1.0
+    }
+}
+
+pub(crate) fn quota_base_amount(quota_amount: f64, quota_multiplier: f64) -> f64 {
+    if quota_amount <= 0.0 || !quota_amount.is_finite() {
+        return 0.0;
+    }
+    let quota_multiplier = if quota_multiplier.is_finite() && quota_multiplier > 0.0 {
+        quota_multiplier
+    } else {
+        1.0
+    };
+    quota_amount / quota_multiplier
+}
+
+pub(crate) fn quota_debit_amount(base_amount: f64, quota_multiplier: f64) -> f64 {
+    if base_amount <= 0.0 || !base_amount.is_finite() {
+        return 0.0;
+    }
+    let quota_multiplier = if quota_multiplier.is_finite() && quota_multiplier > 0.0 {
+        quota_multiplier
+    } else {
+        1.0
+    };
+    base_amount * quota_multiplier
+}
+
 fn value_as_f64(value: Option<&Value>) -> f64 {
     match value {
         Some(Value::Number(number)) => number.as_f64().unwrap_or(0.0),
@@ -204,6 +246,7 @@ fn push_grant(
     grants: &mut Vec<UsageQuotaGrant>,
     entitlement_id: &str,
     limit_usd: f64,
+    quota_multiplier: f64,
     window: UsageQuotaWindow,
     allow_wallet_overage: bool,
     allowed_global_model_ids: Option<&[String]>,
@@ -215,6 +258,7 @@ fn push_grant(
         entitlement_id: entitlement_id.to_string(),
         scope: window.scope,
         limit_usd,
+        quota_multiplier,
         window_key: window.key,
         window_started_at: window.started_at,
         window_ends_at: window.ends_at,

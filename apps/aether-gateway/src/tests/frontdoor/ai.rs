@@ -92,6 +92,7 @@ async fn gateway_handles_ccswitch_usage_without_touching_last_used() {
             total_quota_usd: 10.0,
             used_usd: 4.0,
             remaining_usd: 6.0,
+            base_remaining_usd: 6.0,
             allow_wallet_overage: true,
         },
     });

@@ -1106,6 +1106,42 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         self.find_user_auth_by_id(user_id).await
     }
 
+    async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: DateTime<Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<StoredUserAuthRecord>, DataLayerError> {
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let update_result =
+            sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+                .bind(password_hash)
+                .bind(updated_at.timestamp())
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await
+                .map_sql_err()?;
+        if update_result.rows_affected() == 0 {
+            tx.rollback().await.map_sql_err()?;
+            return Ok(None);
+        }
+
+        sqlx::query(
+            "UPDATE user_sessions SET revoked_at = ?, revoke_reason = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+        )
+        .bind(updated_at.timestamp())
+        .bind(session_revoke_reason.chars().take(100).collect::<String>())
+        .bind(updated_at.timestamp())
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_sql_err()?;
+        tx.commit().await.map_sql_err()?;
+
+        self.find_user_auth_by_id(user_id).await
+    }
+
     async fn update_local_auth_user_admin_fields(
         &self,
         user_id: &str,
@@ -2516,6 +2552,55 @@ INSERT INTO users (
             .await
             .expect("deleted user lookup should run")
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn sqlite_password_reset_rolls_back_password_when_session_revoke_fails() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        sqlx::query(
+            r#"
+INSERT INTO users (
+  id, email, email_verified, username, password_hash, role, auth_source,
+  allowed_providers, allowed_api_formats, allowed_models, model_capability_settings,
+  rate_limit, is_active, is_deleted, created_at, updated_at, last_login_at
+) VALUES (
+  'user-reset', 'reset@example.com', 1, 'reset-user', 'old-hash', 'user', 'local',
+  NULL, NULL, NULL, NULL, NULL, 1, 0, 1, 1, NULL
+)
+"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("seed user should insert");
+        sqlx::query("DROP TABLE user_sessions")
+            .execute(&pool)
+            .await
+            .expect("session table should drop");
+
+        let repository = SqliteUserReadRepository::new(pool);
+        let result = repository
+            .reset_local_auth_user_password(
+                "user-reset",
+                "new-hash".to_string(),
+                chrono::Utc::now(),
+                "password_reset",
+            )
+            .await;
+
+        assert!(result.is_err());
+        let user = repository
+            .find_user_auth_by_id("user-reset")
+            .await
+            .expect("user should still load")
+            .expect("user should exist");
+        assert_eq!(user.password_hash.as_deref(), Some("old-hash"));
     }
 
     #[tokio::test]

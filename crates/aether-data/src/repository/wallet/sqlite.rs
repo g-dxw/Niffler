@@ -251,16 +251,31 @@ WHERE api_key_id IN (
         &self,
         query: &AdminWalletListQuery,
     ) -> Result<StoredAdminWalletListPage, DataLayerError> {
+        let user_search = query
+            .user_search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let total = read_count_row(
             sqlx::query(
                 r#"
 SELECT COUNT(*) AS total
-FROM wallets
-WHERE (? IS NULL OR status = ?)
+FROM wallets w
+LEFT JOIN users ON users.id = w.user_id
+LEFT JOIN api_keys ON api_keys.id = w.api_key_id
+WHERE (? IS NULL OR w.status = ?)
   AND (
     ? IS NULL
-    OR (? = 'user' AND user_id IS NOT NULL)
-    OR (? = 'api_key' AND api_key_id IS NOT NULL)
+    OR (? = 'user' AND w.user_id IS NOT NULL)
+    OR (? = 'api_key' AND w.api_key_id IS NOT NULL)
+  )
+  AND (
+    ? IS NULL
+    OR users.username LIKE '%' || ? || '%'
+    OR users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
+    OR api_keys.name LIKE '%' || ? || '%'
+    OR w.api_key_id LIKE '%' || ? || '%'
   )
 "#,
             )
@@ -269,6 +284,12 @@ WHERE (? IS NULL OR status = ?)
             .bind(query.owner_type.as_deref())
             .bind(query.owner_type.as_deref())
             .bind(query.owner_type.as_deref())
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
             .fetch_one(&self.pool)
             .await
             .map_sql_err()?,
@@ -289,6 +310,14 @@ WHERE (? IS NULL OR w.status = ?)
     OR (? = 'user' AND w.user_id IS NOT NULL)
     OR (? = 'api_key' AND w.api_key_id IS NOT NULL)
   )
+  AND (
+    ? IS NULL
+    OR users.username LIKE '%' || ? || '%'
+    OR users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
+    OR api_keys.name LIKE '%' || ? || '%'
+    OR w.api_key_id LIKE '%' || ? || '%'
+  )
 ORDER BY w.updated_at DESC
 LIMIT ? OFFSET ?
 "#,
@@ -298,6 +327,12 @@ LIMIT ? OFFSET ?
         .bind(query.owner_type.as_deref())
         .bind(query.owner_type.as_deref())
         .bind(query.owner_type.as_deref())
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
         .bind(i64_from_usize(query.limit, "wallet limit")?)
         .bind(i64_from_usize(query.offset, "wallet offset")?)
         .fetch_all(&self.pool)
@@ -314,18 +349,33 @@ LIMIT ? OFFSET ?
         &self,
         query: &AdminWalletLedgerQuery,
     ) -> Result<StoredAdminWalletLedgerPage, DataLayerError> {
+        let user_search = query
+            .user_search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let total = read_count_row(
             sqlx::query(
                 r#"
 SELECT COUNT(*) AS total
 FROM wallet_transactions tx
 JOIN wallets w ON w.id = tx.wallet_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+LEFT JOIN api_keys ON api_keys.id = w.api_key_id
 WHERE (? IS NULL OR tx.category = ?)
   AND (? IS NULL OR tx.reason_code = ?)
   AND (
     ? IS NULL
     OR (? = 'user' AND w.user_id IS NOT NULL)
     OR (? = 'api_key' AND w.api_key_id IS NOT NULL)
+  )
+  AND (
+    ? IS NULL
+    OR wallet_users.username LIKE '%' || ? || '%'
+    OR wallet_users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
+    OR api_keys.name LIKE '%' || ? || '%'
+    OR w.api_key_id LIKE '%' || ? || '%'
   )
 "#,
             )
@@ -336,6 +386,12 @@ WHERE (? IS NULL OR tx.category = ?)
             .bind(query.owner_type.as_deref())
             .bind(query.owner_type.as_deref())
             .bind(query.owner_type.as_deref())
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
             .fetch_one(&self.pool)
             .await
             .map_sql_err()?,
@@ -365,6 +421,14 @@ WHERE (? IS NULL OR tx.category = ?)
     OR (? = 'user' AND w.user_id IS NOT NULL)
     OR (? = 'api_key' AND w.api_key_id IS NOT NULL)
   )
+  AND (
+    ? IS NULL
+    OR wallet_users.username LIKE '%' || ? || '%'
+    OR wallet_users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
+    OR api_keys.name LIKE '%' || ? || '%'
+    OR w.api_key_id LIKE '%' || ? || '%'
+  )
 ORDER BY tx.created_at DESC
 LIMIT ? OFFSET ?
 "#,
@@ -376,6 +440,12 @@ LIMIT ? OFFSET ?
         .bind(query.owner_type.as_deref())
         .bind(query.owner_type.as_deref())
         .bind(query.owner_type.as_deref())
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
         .bind(i64_from_usize(query.limit, "wallet ledger limit")?)
         .bind(i64_from_usize(query.offset, "wallet ledger offset")?)
         .fetch_all(&self.pool)
@@ -392,18 +462,37 @@ LIMIT ? OFFSET ?
         &self,
         query: &AdminWalletRefundRequestListQuery,
     ) -> Result<StoredAdminWalletRefundRequestPage, DataLayerError> {
+        let user_search = query
+            .user_search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let total = read_count_row(
             sqlx::query(
                 r#"
 SELECT COUNT(*) AS total
 FROM refund_requests rr
 JOIN wallets w ON w.id = rr.wallet_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+LEFT JOIN api_keys ON api_keys.id = w.api_key_id
 WHERE (? IS NULL OR rr.status = ?)
   AND w.user_id IS NOT NULL
+  AND (
+    ? IS NULL
+    OR wallet_users.username LIKE '%' || ? || '%'
+    OR wallet_users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
+    OR api_keys.name LIKE '%' || ? || '%'
+  )
 "#,
             )
             .bind(query.status.as_deref())
             .bind(query.status.as_deref())
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
             .fetch_one(&self.pool)
             .await
             .map_sql_err()?,
@@ -427,12 +516,24 @@ LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
 LEFT JOIN api_keys ON api_keys.id = w.api_key_id
 WHERE (? IS NULL OR rr.status = ?)
   AND w.user_id IS NOT NULL
+  AND (
+    ? IS NULL
+    OR wallet_users.username LIKE '%' || ? || '%'
+    OR wallet_users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
+    OR api_keys.name LIKE '%' || ? || '%'
+  )
 ORDER BY rr.created_at DESC
 LIMIT ? OFFSET ?
 "#,
         )
         .bind(query.status.as_deref())
         .bind(query.status.as_deref())
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
         .bind(i64_from_usize(query.limit, "wallet refund request limit")?)
         .bind(i64_from_usize(
             query.offset,
@@ -584,20 +685,37 @@ WHERE wallet_id = ?
         query: &AdminPaymentOrderListQuery,
     ) -> Result<StoredAdminPaymentOrderPage, DataLayerError> {
         let now = current_unix_secs_i64();
+        let user_search = query
+            .user_search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let total = read_count_row(
             sqlx::query(
                 r#"
 SELECT COUNT(*) AS total
-FROM payment_orders
-WHERE (? IS NULL OR payment_method = ?)
+FROM payment_orders po
+LEFT JOIN wallets w ON w.id = po.wallet_id
+LEFT JOIN users order_users ON order_users.id = po.user_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+WHERE (? IS NULL OR po.payment_method = ?)
   AND (
     ? IS NULL
     OR (
       CASE
-        WHEN status = 'pending' AND expires_at IS NOT NULL AND expires_at < ? THEN 'expired'
-        ELSE status
+        WHEN po.status = 'pending' AND po.expires_at IS NOT NULL AND po.expires_at < ? THEN 'expired'
+        ELSE po.status
       END
     ) = ?
+  )
+  AND (
+    ? IS NULL
+    OR order_users.username LIKE '%' || ? || '%'
+    OR order_users.email LIKE '%' || ? || '%'
+    OR po.user_id LIKE '%' || ? || '%'
+    OR wallet_users.username LIKE '%' || ? || '%'
+    OR wallet_users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
   )
 "#,
             )
@@ -606,6 +724,13 @@ WHERE (? IS NULL OR payment_method = ?)
             .bind(query.status.as_deref())
             .bind(now)
             .bind(query.status.as_deref())
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
+            .bind(user_search)
             .fetch_one(&self.pool)
             .await
             .map_sql_err()?,
@@ -613,26 +738,38 @@ WHERE (? IS NULL OR payment_method = ?)
         let rows = sqlx::query(
             r#"
 SELECT
-  id, order_no, wallet_id, user_id, amount_usd, pay_amount, pay_currency,
-  exchange_rate, refunded_amount_usd, refundable_amount_usd, payment_method,
-  payment_provider, payment_channel, order_kind, product_id, product_snapshot,
-  gateway_order_id, gateway_response, status,
-  created_at AS created_at_unix_ms,
-  paid_at AS paid_at_unix_secs,
-  credited_at AS credited_at_unix_secs,
-  expires_at AS expires_at_unix_secs
-FROM payment_orders
-WHERE (? IS NULL OR payment_method = ?)
+  po.id, po.order_no, po.wallet_id, po.user_id, po.amount_usd, po.pay_amount, po.pay_currency,
+  po.exchange_rate, po.refunded_amount_usd, po.refundable_amount_usd, po.payment_method,
+  po.payment_provider, po.payment_channel, po.order_kind, po.product_id, po.product_snapshot,
+  po.gateway_order_id, po.gateway_response, po.status,
+  po.created_at AS created_at_unix_ms,
+  po.paid_at AS paid_at_unix_secs,
+  po.credited_at AS credited_at_unix_secs,
+  po.expires_at AS expires_at_unix_secs
+FROM payment_orders po
+LEFT JOIN wallets w ON w.id = po.wallet_id
+LEFT JOIN users order_users ON order_users.id = po.user_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+WHERE (? IS NULL OR po.payment_method = ?)
   AND (
     ? IS NULL
     OR (
       CASE
-        WHEN status = 'pending' AND expires_at IS NOT NULL AND expires_at < ? THEN 'expired'
-        ELSE status
+        WHEN po.status = 'pending' AND po.expires_at IS NOT NULL AND po.expires_at < ? THEN 'expired'
+        ELSE po.status
       END
     ) = ?
   )
-ORDER BY created_at DESC
+  AND (
+    ? IS NULL
+    OR order_users.username LIKE '%' || ? || '%'
+    OR order_users.email LIKE '%' || ? || '%'
+    OR po.user_id LIKE '%' || ? || '%'
+    OR wallet_users.username LIKE '%' || ? || '%'
+    OR wallet_users.email LIKE '%' || ? || '%'
+    OR w.user_id LIKE '%' || ? || '%'
+  )
+ORDER BY po.created_at DESC
 LIMIT ? OFFSET ?
 "#,
         )
@@ -641,6 +778,13 @@ LIMIT ? OFFSET ?
         .bind(query.status.as_deref())
         .bind(now)
         .bind(query.status.as_deref())
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
+        .bind(user_search)
         .bind(i64_from_usize(query.limit, "payment order limit")?)
         .bind(i64_from_usize(query.offset, "payment order offset")?)
         .fetch_all(&self.pool)
@@ -4654,7 +4798,8 @@ mod tests {
     use crate::lifecycle::migrate::run_sqlite_migrations;
     use crate::repository::wallet::{
         AdjustWalletBalanceInput, AdminPaymentOrderListQuery, AdminRedeemCodeListQuery,
-        AdminWalletListQuery, CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
+        AdminWalletLedgerQuery, AdminWalletListQuery, AdminWalletRefundRequestListQuery,
+        CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
         CreateManualWalletRechargeInput, CreatePlanPurchaseOrderInput,
         CreatePlanPurchaseOrderOutcome, CreateWalletRechargeOrderInput,
         CreateWalletRechargeOrderOutcome, CreateWalletRefundRequestInput,
@@ -4691,6 +4836,7 @@ mod tests {
             .list_admin_wallets(&AdminWalletListQuery {
                 status: Some("active".to_string()),
                 owner_type: Some("user".to_string()),
+                user_search: None,
                 limit: 10,
                 offset: 0,
             })
@@ -4699,10 +4845,38 @@ mod tests {
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].total_adjusted, 3.0);
 
+        let searched_wallets = repository
+            .list_admin_wallets(&AdminWalletListQuery {
+                status: None,
+                owner_type: Some("user".to_string()),
+                user_search: Some("Alice".to_string()),
+                limit: 10,
+                offset: 0,
+            })
+            .await
+            .expect("admin wallets should support user search");
+        assert_eq!(searched_wallets.total, 1);
+        assert_eq!(searched_wallets.items[0].id, "wallet-1");
+
+        let searched_ledger = repository
+            .list_admin_wallet_ledger(&AdminWalletLedgerQuery {
+                category: None,
+                reason_code: None,
+                owner_type: Some("user".to_string()),
+                user_search: Some("alice@example.com".to_string()),
+                limit: 10,
+                offset: 0,
+            })
+            .await
+            .expect("admin wallet ledger should support user search");
+        assert_eq!(searched_ledger.total, 1);
+        assert_eq!(searched_ledger.items[0].wallet_id, "wallet-1");
+
         let orders = repository
             .list_admin_payment_orders(&AdminPaymentOrderListQuery {
                 status: Some("credited".to_string()),
                 payment_method: Some("redeem_code".to_string()),
+                user_search: None,
                 limit: 10,
                 offset: 0,
             })
@@ -4713,6 +4887,31 @@ mod tests {
             orders.items[0].gateway_response.as_ref().unwrap()["ok"],
             true
         );
+
+        let searched_orders = repository
+            .list_admin_payment_orders(&AdminPaymentOrderListQuery {
+                status: None,
+                payment_method: None,
+                user_search: Some("alice@example.com".to_string()),
+                limit: 10,
+                offset: 0,
+            })
+            .await
+            .expect("payment orders should support user search");
+        assert_eq!(searched_orders.total, 1);
+        assert_eq!(searched_orders.items[0].id, "order-1");
+
+        let searched_refunds = repository
+            .list_admin_wallet_refund_requests(&AdminWalletRefundRequestListQuery {
+                status: None,
+                user_search: Some("Alice".to_string()),
+                limit: 10,
+                offset: 0,
+            })
+            .await
+            .expect("refund requests should support user search");
+        assert_eq!(searched_refunds.total, 1);
+        assert_eq!(searched_refunds.items[0].id, "refund-1");
 
         let refunds = repository
             .list_admin_wallet_refunds("wallet-1", 10, 0)

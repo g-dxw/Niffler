@@ -38,7 +38,8 @@ use aether_data::repository::wallet::{
     InMemoryWalletRepository, StoredWalletSnapshot, WalletWriteRepository,
 };
 use aether_data_contracts::repository::background_tasks::{
-    BackgroundTaskKind, BackgroundTaskStatus, StoredBackgroundTaskRun,
+    BackgroundTaskKind, BackgroundTaskListQuery, BackgroundTaskReadRepository,
+    BackgroundTaskStatus, StoredBackgroundTaskRun,
 };
 use aether_data_contracts::repository::global_models::StoredProviderActiveGlobalModel;
 use aether_data_contracts::repository::provider_catalog::ProviderCatalogReadRepository;
@@ -8115,6 +8116,339 @@ async fn gateway_handles_auth_login_locally_without_proxying_upstream() {
         .expect("me request should succeed");
 
     assert_eq!(me_response.status(), StatusCode::OK);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_sends_password_reset_email_for_local_user_without_revealing_account_existence() {
+    let now = Utc::now();
+    let user = sample_auth_user(now);
+    let background_tasks = Arc::new(InMemoryBackgroundTaskRepository::default());
+    let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![user]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(vec![sample_auth_wallet(
+        "user-auth-1",
+        now,
+    )]));
+    let data_state = crate::data::GatewayDataState::with_user_and_wallet_for_tests(
+        user_repository,
+        wallet_repository,
+    )
+    .with_background_task_repository_for_tests(Arc::clone(&background_tasks))
+    .with_system_config_values_for_tests(vec![
+        ("smtp_host".to_string(), json!("smtp.example.com")),
+        ("smtp_user".to_string(), json!("smtp-user")),
+        ("smtp_password".to_string(), json!("smtp-password")),
+        ("smtp_from_email".to_string(), json!("noreply@example.com")),
+        ("site_name".to_string(), json!("Niffler")),
+    ]);
+    let (gateway_url, upstream_hits, gateway_handle, upstream_handle) =
+        start_auth_gateway_with_builder(move || {
+            AppState::new()
+                .expect("gateway should build")
+                .with_data_state_for_tests(data_state)
+                .without_auth_email_delivery_store_for_tests()
+        })
+        .await;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{gateway_url}/api/auth/request-password-reset"))
+        .header("host", "niffler.test")
+        .header("x-forwarded-proto", "https")
+        .json(&json!({ "email": "alice@example.com" }))
+        .send()
+        .await
+        .expect("password reset request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["success"], true);
+    assert_eq!(
+        payload["message"],
+        "如果该邮箱存在，我们会发送一封重置密码邮件"
+    );
+    let runs = background_tasks
+        .list_runs(&BackgroundTaskListQuery {
+            task_key_substring: Some("auth.email.delivery".to_string()),
+            kind: Some(BackgroundTaskKind::FireAndForget),
+            status: Some(BackgroundTaskStatus::Queued),
+            trigger: Some("auth_email".to_string()),
+            offset: 0,
+            limit: 10,
+        })
+        .await
+        .expect("background task list should succeed");
+    assert_eq!(runs.total, 1);
+    let email_payload = runs.items[0]
+        .payload_json
+        .as_ref()
+        .expect("email payload should be stored");
+    assert_eq!(email_payload["message_type"], "password_reset");
+    assert_eq!(email_payload["to_email"], "alice@example.com");
+    assert!(email_payload["html_body"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("https://niffler.test/reset-password?token="));
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    let missing_response = client
+        .post(format!("{gateway_url}/api/auth/request-password-reset"))
+        .json(&json!({ "email": "missing@example.com" }))
+        .send()
+        .await
+        .expect("missing password reset request should succeed");
+    assert_eq!(missing_response.status(), StatusCode::OK);
+    let missing_payload: serde_json::Value = missing_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(
+        missing_payload["message"],
+        "如果该邮箱存在，我们会发送一封重置密码邮件"
+    );
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_throttles_password_reset_requests_per_email_without_queuing_extra_email() {
+    let now = Utc::now();
+    let user = sample_auth_user(now);
+    let background_tasks = Arc::new(InMemoryBackgroundTaskRepository::default());
+    let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![user]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(vec![sample_auth_wallet(
+        "user-auth-1",
+        now,
+    )]));
+    let data_state = crate::data::GatewayDataState::with_user_and_wallet_for_tests(
+        user_repository,
+        wallet_repository,
+    )
+    .with_background_task_repository_for_tests(Arc::clone(&background_tasks))
+    .with_system_config_values_for_tests(vec![
+        ("smtp_host".to_string(), json!("smtp.example.com")),
+        ("smtp_user".to_string(), json!("smtp-user")),
+        ("smtp_password".to_string(), json!("smtp-password")),
+        ("smtp_from_email".to_string(), json!("noreply@example.com")),
+    ]);
+    let (gateway_url, _upstream_hits, gateway_handle, upstream_handle) =
+        start_auth_gateway_with_builder(move || {
+            AppState::new()
+                .expect("gateway should build")
+                .with_data_state_for_tests(data_state)
+                .without_auth_email_delivery_store_for_tests()
+        })
+        .await;
+
+    let client = reqwest::Client::new();
+    let first_response = client
+        .post(format!("{gateway_url}/api/auth/request-password-reset"))
+        .json(&json!({ "email": "alice@example.com" }))
+        .send()
+        .await
+        .expect("first password reset request should succeed");
+    assert_eq!(first_response.status(), StatusCode::OK);
+
+    let second_response = client
+        .post(format!("{gateway_url}/api/auth/request-password-reset"))
+        .json(&json!({ "email": "alice@example.com" }))
+        .send()
+        .await
+        .expect("second password reset request should be throttled");
+    assert_eq!(second_response.status(), StatusCode::BAD_REQUEST);
+    let second_payload: serde_json::Value = second_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert!(second_payload["detail"]
+        .as_str()
+        .unwrap_or_default()
+        .starts_with("请在 "));
+
+    let runs = background_tasks
+        .list_runs(&BackgroundTaskListQuery {
+            task_key_substring: Some("auth.email.delivery".to_string()),
+            kind: Some(BackgroundTaskKind::FireAndForget),
+            status: Some(BackgroundTaskStatus::Queued),
+            trigger: Some("auth_email".to_string()),
+            offset: 0,
+            limit: 10,
+        })
+        .await
+        .expect("background task list should succeed");
+    assert_eq!(runs.total, 1);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_hides_password_reset_delivery_queue_failure_for_existing_accounts() {
+    let now = Utc::now();
+    let user = sample_auth_user(now);
+    let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![user]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(vec![sample_auth_wallet(
+        "user-auth-1",
+        now,
+    )]));
+    let data_state = crate::data::GatewayDataState::with_user_and_wallet_for_tests(
+        user_repository,
+        wallet_repository,
+    )
+    .with_system_config_values_for_tests(vec![
+        ("smtp_host".to_string(), json!("smtp.example.com")),
+        ("smtp_user".to_string(), json!("smtp-user")),
+        ("smtp_password".to_string(), json!("smtp-password")),
+        ("smtp_from_email".to_string(), json!("noreply@example.com")),
+    ]);
+    let (gateway_url, _upstream_hits, gateway_handle, upstream_handle) =
+        start_auth_gateway_with_builder(move || {
+            AppState::new()
+                .expect("gateway should build")
+                .with_data_state_for_tests(data_state)
+                .without_auth_email_delivery_store_for_tests()
+        })
+        .await;
+
+    let client = reqwest::Client::new();
+    for email in ["alice@example.com", "missing@example.com"] {
+        let response = client
+            .post(format!("{gateway_url}/api/auth/request-password-reset"))
+            .json(&json!({ "email": email }))
+            .send()
+            .await
+            .expect("password reset request should not reveal queue availability");
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: serde_json::Value = response.json().await.expect("json body should parse");
+        assert_eq!(
+            payload["message"],
+            "如果该邮箱存在，我们会发送一封重置密码邮件"
+        );
+    }
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_resets_local_password_with_email_token_and_invalidates_old_password() {
+    let now = Utc::now();
+    let user = sample_auth_user(now);
+    let background_tasks = Arc::new(InMemoryBackgroundTaskRepository::default());
+    let user_repository = Arc::new(InMemoryUserReadRepository::seed_auth_users(vec![user]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(vec![sample_auth_wallet(
+        "user-auth-1",
+        now,
+    )]));
+    let data_state = crate::data::GatewayDataState::with_user_and_wallet_for_tests(
+        user_repository,
+        wallet_repository,
+    )
+    .with_background_task_repository_for_tests(Arc::clone(&background_tasks))
+    .with_system_config_values_for_tests(vec![
+        ("smtp_host".to_string(), json!("smtp.example.com")),
+        ("smtp_user".to_string(), json!("smtp-user")),
+        ("smtp_password".to_string(), json!("smtp-password")),
+        ("smtp_from_email".to_string(), json!("noreply@example.com")),
+    ]);
+    let (gateway_url, upstream_hits, gateway_handle, upstream_handle) =
+        start_auth_gateway_with_builder(move || {
+            AppState::new()
+                .expect("gateway should build")
+                .with_data_state_for_tests(data_state)
+                .without_auth_email_delivery_store_for_tests()
+        })
+        .await;
+
+    let client = reqwest::Client::new();
+    let request_response = client
+        .post(format!("{gateway_url}/api/auth/request-password-reset"))
+        .json(&json!({ "email": "alice@example.com" }))
+        .send()
+        .await
+        .expect("password reset request should succeed");
+    assert_eq!(request_response.status(), StatusCode::OK);
+    let runs = background_tasks
+        .list_runs(&BackgroundTaskListQuery {
+            task_key_substring: Some("auth.email.delivery".to_string()),
+            kind: Some(BackgroundTaskKind::FireAndForget),
+            status: Some(BackgroundTaskStatus::Queued),
+            trigger: Some("auth_email".to_string()),
+            offset: 0,
+            limit: 1,
+        })
+        .await
+        .expect("background task list should succeed");
+    let html_body = runs.items[0]
+        .payload_json
+        .as_ref()
+        .and_then(|value| value.get("html_body"))
+        .and_then(serde_json::Value::as_str)
+        .expect("password reset html body should exist");
+    let token = html_body
+        .split("token=")
+        .nth(1)
+        .and_then(|value| value.split(['"', '&']).next())
+        .expect("reset token should exist")
+        .to_string();
+
+    let weak_password_response = client
+        .post(format!("{gateway_url}/api/auth/reset-password"))
+        .json(&json!({
+            "token": token,
+            "password": "123",
+        }))
+        .send()
+        .await
+        .expect("weak password reset request should succeed");
+    assert_eq!(weak_password_response.status(), StatusCode::BAD_REQUEST);
+
+    let reset_response = client
+        .post(format!("{gateway_url}/api/auth/reset-password"))
+        .json(&json!({
+            "token": token,
+            "password": "newSecret123",
+        }))
+        .send()
+        .await
+        .expect("reset password request should succeed");
+    assert_eq!(reset_response.status(), StatusCode::OK);
+    let reset_payload: serde_json::Value =
+        reset_response.json().await.expect("json body should parse");
+    assert_eq!(reset_payload["success"], true);
+    assert_eq!(reset_payload["message"], "密码已重置，请使用新密码登录");
+
+    let old_login_response = client
+        .post(format!("{gateway_url}/api/auth/login"))
+        .header("x-client-device-id", "device-auth-reset-old")
+        .header("user-agent", "AetherTest/1.0")
+        .json(&json!({
+            "email": "alice@example.com",
+            "password": "secret123",
+            "auth_type": "local",
+        }))
+        .send()
+        .await
+        .expect("old login request should succeed");
+    assert_eq!(old_login_response.status(), StatusCode::UNAUTHORIZED);
+
+    let new_login_response = client
+        .post(format!("{gateway_url}/api/auth/login"))
+        .header("x-client-device-id", "device-auth-reset-new")
+        .header("user-agent", "AetherTest/1.0")
+        .json(&json!({
+            "email": "alice@example.com",
+            "password": "newSecret123",
+            "auth_type": "local",
+        }))
+        .send()
+        .await
+        .expect("new login request should succeed");
+    assert_eq!(new_login_response.status(), StatusCode::OK);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();

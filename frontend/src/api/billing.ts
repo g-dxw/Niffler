@@ -64,6 +64,7 @@ export interface DailyQuotaEntitlement {
   five_hour_quota_usd?: number
   weekly_quota_usd?: number
   monthly_quota_usd?: number
+  quota_multiplier?: number
   rpm_limit?: number
   reset_timezone?: string
   carry_over?: boolean

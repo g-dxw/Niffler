@@ -1151,7 +1151,7 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
             });
         }
 
-        let mut grouped_limits: BTreeMap<String, (Option<f64>, Option<f64>)> = BTreeMap::new();
+        let mut grouped_limits: BTreeMap<String, (Option<f64>, Option<f64>, f64)> = BTreeMap::new();
         let mut allow_wallet_overage = true;
         for grant in &grants {
             allow_wallet_overage &= grant.allow_wallet_overage;
@@ -1185,7 +1185,7 @@ SELECT COALESCE(
             let remaining = (grant.limit_usd - used).max(0.0);
             let entry = grouped_limits
                 .entry(grant.entitlement_id.clone())
-                .or_insert((None, None));
+                .or_insert((None, None, grant.quota_multiplier));
             entry.0 = Some(
                 entry
                     .0
@@ -1196,12 +1196,14 @@ SELECT COALESCE(
         let mut total_quota_usd = 0.0;
         let mut used_usd = 0.0;
         let mut remaining_usd = 0.0;
-        for (limit, remaining) in grouped_limits.values() {
+        let mut base_remaining_usd = 0.0;
+        for (limit, remaining, quota_multiplier) in grouped_limits.values() {
             let limit = limit.unwrap_or(0.0);
             let remaining = remaining.unwrap_or(0.0);
             total_quota_usd += limit;
             used_usd += (limit - remaining).max(0.0);
             remaining_usd += remaining;
+            base_remaining_usd += super::quota::quota_base_amount(remaining, *quota_multiplier);
         }
         let has_active_daily_quota = !grants.is_empty();
         Ok(Some(UserDailyQuotaAvailabilityRecord {
@@ -1209,6 +1211,7 @@ SELECT COALESCE(
             total_quota_usd,
             used_usd,
             remaining_usd,
+            base_remaining_usd,
             allow_wallet_overage: has_active_daily_quota && allow_wallet_overage,
         }))
     }

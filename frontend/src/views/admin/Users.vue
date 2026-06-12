@@ -353,7 +353,7 @@
               <TableHead class="w-[170px] h-12 font-semibold">
                 统计/限速
               </TableHead>
-              <TableHead class="w-[110px] h-12 font-semibold">
+              <TableHead class="w-[170px] h-12 font-semibold">
                 创建时间
               </TableHead>
               <SortableTableHead
@@ -498,7 +498,7 @@
                 </div>
               </TableCell>
               <TableCell class="py-4 text-xs text-muted-foreground">
-                {{ formatDate(user.created_at) }}
+                {{ formatDateTime(user.created_at) }}
               </TableCell>
               <TableCell class="py-4">
                 <div class="flex flex-col items-start gap-1.5">
@@ -760,7 +760,7 @@
               <div class="rounded-lg bg-muted/35 p-2.5 text-[11px] text-muted-foreground">
                 <div class="flex items-center justify-between gap-2">
                   <span>创建时间</span>
-                  <span class="font-medium text-foreground">{{ formatDate(user.created_at) }}</span>
+                  <span class="font-medium text-foreground">{{ formatDateTime(user.created_at) }}</span>
                 </div>
               </div>
 
@@ -974,6 +974,7 @@
                   </div>
                 </div>
                 <div class="space-y-2 text-left text-[11px] text-muted-foreground sm:text-right">
+                  <div>获得：{{ formatDateTime(item.created_at) }}</div>
                   <div>开始：{{ formatDateTime(item.starts_at) }}</div>
                   <div>到期：{{ formatDateTime(item.expires_at) }}</div>
                   <div class="flex flex-wrap justify-start gap-2 sm:justify-end">
@@ -1702,6 +1703,7 @@ import { walletStatusBadge, walletStatusLabel } from '@/utils/walletDisplay'
 import {
   hasPackageBillingEntitlement,
   normalizeBillingEntitlements,
+  quotaConsumptionMultiplierLabel,
   type BillingEntitlementsInput,
 } from '@/utils/billingEntitlements'
 
@@ -2124,7 +2126,10 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   if (weekly > 0) parts.push(`每周 $${weekly.toFixed(2)}`)
   if (monthly > 0) parts.push(`每月 $${monthly.toFixed(2)}`)
   const quotaText = parts.join(' / ') || '用量额度'
-  return `${quotaText} · ${quotaModelScopeLabel(item.allowed_global_model_ids)}`
+  const labels = [quotaModelScopeLabel(item.allowed_global_model_ids)]
+  const multiplierLabel = quotaConsumptionMultiplierLabel(item)
+  if (multiplierLabel) labels.push(multiplierLabel)
+  return `${quotaText} · ${labels.join(' · ')}`
 }
 
 function quotaModelScopeLabel(modelIds?: string[]): string {

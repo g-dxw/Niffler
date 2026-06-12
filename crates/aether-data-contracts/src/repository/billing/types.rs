@@ -244,6 +244,8 @@ pub struct UserDailyQuotaAvailabilityRecord {
     pub total_quota_usd: f64,
     pub used_usd: f64,
     pub remaining_usd: f64,
+    #[serde(default)]
+    pub base_remaining_usd: f64,
     pub allow_wallet_overage: bool,
 }
 

@@ -483,6 +483,12 @@ impl WalletReadRepository for InMemoryWalletRepository {
         &self,
         query: &AdminWalletListQuery,
     ) -> Result<StoredAdminWalletListPage, DataLayerError> {
+        let user_search = query
+            .user_search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase);
         let wallets = self.wallets_by_id.read().expect("wallet repo lock");
         let mut items = wallets
             .values()
@@ -496,6 +502,19 @@ impl WalletReadRepository for InMemoryWalletRepository {
                 Some("user") => wallet.user_id.is_some(),
                 Some("api_key") => wallet.api_key_id.is_some(),
                 _ => true,
+            })
+            .filter(|wallet| {
+                user_search.as_deref().is_none_or(|needle| {
+                    wallet
+                        .user_id
+                        .as_deref()
+                        .is_some_and(|value| value.to_ascii_lowercase().contains(needle))
+                        || wallet
+                            .api_key_id
+                            .as_deref()
+                            .is_some_and(|value| value.to_ascii_lowercase().contains(needle))
+                        || wallet.id.to_ascii_lowercase().contains(needle)
+                })
             })
             .map(|wallet| StoredAdminWalletListItem {
                 id: wallet.id.clone(),
@@ -542,6 +561,12 @@ impl WalletReadRepository for InMemoryWalletRepository {
         &self,
         query: &AdminWalletRefundRequestListQuery,
     ) -> Result<StoredAdminWalletRefundRequestPage, DataLayerError> {
+        let user_search = query
+            .user_search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase);
         let wallets = self.wallets_by_id.read().expect("wallet repo lock");
         let mut items = self
             .refunds_by_id
@@ -556,6 +581,15 @@ impl WalletReadRepository for InMemoryWalletRepository {
             })
             .filter_map(|refund| {
                 let wallet = wallets.get(&refund.wallet_id)?;
+                if user_search.as_deref().is_some_and(|needle| {
+                    !wallet
+                        .user_id
+                        .as_deref()
+                        .is_some_and(|value| value.to_ascii_lowercase().contains(needle))
+                        && !wallet.id.to_ascii_lowercase().contains(needle)
+                }) {
+                    return None;
+                }
                 Some(super::types::StoredAdminWalletRefundRequestItem {
                     id: refund.id.clone(),
                     refund_no: refund.refund_no.clone(),
@@ -660,6 +694,12 @@ impl WalletReadRepository for InMemoryWalletRepository {
         query: &AdminPaymentOrderListQuery,
     ) -> Result<StoredAdminPaymentOrderPage, DataLayerError> {
         let now = current_unix_secs();
+        let user_search = query
+            .user_search
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase);
         let mut items = self
             .payment_orders_by_id
             .read()
@@ -679,6 +719,13 @@ impl WalletReadRepository for InMemoryWalletRepository {
                     .payment_method
                     .as_deref()
                     .is_none_or(|expected| order.payment_method == expected)
+                    && user_search.as_deref().is_none_or(|needle| {
+                        order
+                            .user_id
+                            .as_deref()
+                            .is_some_and(|value| value.to_ascii_lowercase().contains(needle))
+                            || order.wallet_id.to_ascii_lowercase().contains(needle)
+                    })
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -1844,6 +1891,7 @@ mod tests {
             .list_admin_wallets(&AdminWalletListQuery {
                 status: Some("active".to_string()),
                 owner_type: Some("api_key".to_string()),
+                user_search: None,
                 limit: 1,
                 offset: 0,
             })

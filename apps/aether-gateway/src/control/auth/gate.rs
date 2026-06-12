@@ -212,7 +212,7 @@ async fn niffler_runtime_product_policy_is_enforced(
 fn quota_allows_plan_bypass(
     quota: Option<&aether_data_contracts::repository::billing::UserDailyQuotaAvailabilityRecord>,
 ) -> bool {
-    quota.is_some_and(|quota| quota.remaining_usd > DAILY_QUOTA_EPSILON_USD)
+    quota.is_some_and(|quota| quota.base_remaining_usd > DAILY_QUOTA_EPSILON_USD)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -255,7 +255,7 @@ async fn load_user_daily_quota_availability(
 
 fn quota_availability_cache_key(user_id: &str, global_model_id: Option<&str>) -> String {
     format!(
-        "billing:daily_quota_availability:v1:{}:{}",
+        "billing:daily_quota_availability:v2:{}:{}",
         cache_key_component(user_id),
         cache_key_component(global_model_id.unwrap_or("__all__"))
     )
@@ -420,22 +420,26 @@ pub(crate) async fn estimate_request_wallet_reservation(
     let sales_multiplier =
         sales_multiplier_for_auth_context(auth_context, requested_global_model_id.as_deref());
     let (needed_usd, available_usd, wallet_reservation_usd) = match quota.as_ref() {
-        Some(quota) if !quota.allow_wallet_overage => {
-            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)), 0.0)
-        }
-        Some(quota) if !pay_as_you_go_allowed => {
-            (estimated_cost_usd, Some(quota.remaining_usd.max(0.0)), 0.0)
-        }
+        Some(quota) if !quota.allow_wallet_overage => (
+            estimated_cost_usd,
+            Some(quota.base_remaining_usd.max(0.0)),
+            0.0,
+        ),
+        Some(quota) if !pay_as_you_go_allowed => (
+            estimated_cost_usd,
+            Some(quota.base_remaining_usd.max(0.0)),
+            0.0,
+        ),
         Some(quota) if wallet_is_unlimited => {
-            let base_overage = (estimated_cost_usd - quota.remaining_usd.max(0.0)).max(0.0);
+            let base_overage = (estimated_cost_usd - quota.base_remaining_usd.max(0.0)).max(0.0);
             if base_overage <= DAILY_QUOTA_EPSILON_USD {
                 return Ok(None);
             }
             return Ok(None);
         }
         Some(quota) => {
-            let wallet_needed =
-                (estimated_cost_usd - quota.remaining_usd.max(0.0)).max(0.0) * sales_multiplier;
+            let wallet_needed = (estimated_cost_usd - quota.base_remaining_usd.max(0.0)).max(0.0)
+                * sales_multiplier;
             (wallet_needed, wallet_available_usd, wallet_needed)
         }
         None if wallet_is_unlimited => return Ok(None),
@@ -1093,6 +1097,7 @@ mod tests {
             total_quota_usd: remaining_usd,
             used_usd: 0.0,
             remaining_usd,
+            base_remaining_usd: remaining_usd,
             allow_wallet_overage,
         }
     }

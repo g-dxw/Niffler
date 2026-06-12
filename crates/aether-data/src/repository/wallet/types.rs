@@ -98,6 +98,7 @@ impl StoredWalletSnapshot {
 pub struct AdminWalletListQuery {
     pub status: Option<String>,
     pub owner_type: Option<String>,
+    pub user_search: Option<String>,
     pub limit: usize,
     pub offset: usize,
 }
@@ -133,6 +134,7 @@ pub struct AdminWalletLedgerQuery {
     pub category: Option<String>,
     pub reason_code: Option<String>,
     pub owner_type: Option<String>,
+    pub user_search: Option<String>,
     pub limit: usize,
     pub offset: usize,
 }
@@ -173,6 +175,7 @@ pub struct StoredAdminWalletLedgerPage {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct AdminWalletRefundRequestListQuery {
     pub status: Option<String>,
+    pub user_search: Option<String>,
     pub limit: usize,
     pub offset: usize,
 }
@@ -349,6 +352,7 @@ pub struct StoredAdminWalletRefundPage {
 pub struct AdminPaymentOrderListQuery {
     pub status: Option<String>,
     pub payment_method: Option<String>,
+    pub user_search: Option<String>,
     pub limit: usize,
     pub offset: usize,
 }

@@ -488,6 +488,8 @@ pub(crate) fn public_support_local_requires_buffered_body(
                             | "send_verification_code"
                             | "verify_email"
                             | "verification_status"
+                            | "request_password_reset"
+                            | "reset_password"
                     ),
                 ) | (
                     Some("users_me"),

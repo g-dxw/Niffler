@@ -1106,6 +1106,42 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         self.find_user_auth_by_id(user_id).await
     }
 
+    async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: DateTime<Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<StoredUserAuthRecord>, DataLayerError> {
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let update_result =
+            sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+                .bind(password_hash)
+                .bind(updated_at.timestamp())
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await
+                .map_sql_err()?;
+        if update_result.rows_affected() == 0 {
+            tx.rollback().await.map_sql_err()?;
+            return Ok(None);
+        }
+
+        sqlx::query(
+            "UPDATE user_sessions SET revoked_at = ?, revoke_reason = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+        )
+        .bind(updated_at.timestamp())
+        .bind(session_revoke_reason.chars().take(100).collect::<String>())
+        .bind(updated_at.timestamp())
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_sql_err()?;
+        tx.commit().await.map_sql_err()?;
+
+        self.find_user_auth_by_id(user_id).await
+    }
+
     async fn update_local_auth_user_admin_fields(
         &self,
         user_id: &str,

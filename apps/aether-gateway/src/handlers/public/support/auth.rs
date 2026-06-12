@@ -1,8 +1,9 @@
 pub(super) use super::{
-    build_unhandled_public_support_response, decrypt_catalog_secret_with_fallbacks,
-    escape_admin_email_template_html, ldap_module_config_is_valid, module_available_from_env,
-    read_admin_email_template_payload, render_admin_email_template_html, system_config_bool,
-    system_config_string, AppState, GatewayError, GatewayPublicRequestContext,
+    base_url_from_request, build_unhandled_public_support_response,
+    decrypt_catalog_secret_with_fallbacks, escape_admin_email_template_html,
+    ldap_module_config_is_valid, module_available_from_env, read_admin_email_template_payload,
+    render_admin_email_template_html, system_config_bool, system_config_string, AppState,
+    GatewayError, GatewayPublicRequestContext,
 };
 pub(super) use axum::{
     body::Body,
@@ -37,6 +38,10 @@ use auth_session::*;
 #[path = "auth_registration.rs"]
 pub(super) mod auth_registration;
 use auth_registration::*;
+
+#[path = "auth_password_reset.rs"]
+mod auth_password_reset;
+use auth_password_reset::*;
 
 #[derive(Debug, Deserialize)]
 struct AuthLoginRequest {
@@ -292,6 +297,17 @@ pub(super) async fn maybe_build_local_auth_response(
             if request_context.request_path == "/api/auth/verification-status" =>
         {
             Some(handle_auth_verification_status(state, request_body).await)
+        }
+        Some("request_password_reset")
+            if request_context.request_path == "/api/auth/request-password-reset" =>
+        {
+            Some(
+                handle_auth_request_password_reset(state, request_context, headers, request_body)
+                    .await,
+            )
+        }
+        Some("reset_password") if request_context.request_path == "/api/auth/reset-password" => {
+            Some(handle_auth_reset_password(state, request_body).await)
         }
         Some("me") if request_context.request_path == "/api/auth/me" => {
             Some(handle_auth_me(state, request_context, headers).await)

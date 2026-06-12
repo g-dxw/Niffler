@@ -1381,6 +1381,36 @@ impl UserReadRepository for InMemoryUserReadRepository {
         Ok(Some(user.clone()))
     }
 
+    async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: chrono::DateTime<chrono::Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<StoredUserAuthRecord>, DataLayerError> {
+        if self.read_only {
+            return Ok(None);
+        }
+
+        let mut auth_by_id = self.auth_by_id.write().expect("user repository lock");
+        let Some(user) = auth_by_id.get_mut(user_id) else {
+            return Ok(None);
+        };
+        user.password_hash = Some(password_hash);
+        let updated = user.clone();
+
+        let mut sessions = self.sessions_by_id.write().expect("user repository lock");
+        for session in sessions.values_mut() {
+            if session.user_id == user_id && session.revoked_at.is_none() {
+                session.revoked_at = Some(updated_at);
+                session.revoke_reason = Some(session_revoke_reason.chars().take(100).collect());
+                session.updated_at = Some(updated_at);
+            }
+        }
+
+        Ok(Some(updated))
+    }
+
     async fn update_local_auth_user_admin_fields(
         &self,
         user_id: &str,

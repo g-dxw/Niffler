@@ -10,8 +10,8 @@ use crate::driver::sqlite::{sqlite_optional_real, sqlite_real, SqlitePool};
 use crate::error::SqlResultExt;
 use crate::repository::billing::quota::{
     entitlement_allows_global_model, entitlements_snapshot_has_usage_quota_for_global_model,
-    usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, UsageQuotaGrant,
-    QUOTA_SCOPE_FIVE_HOUR,
+    quota_base_amount, quota_debit_amount, usage_quota_grants_from_entitlement,
+    StoredUsageQuotaWindow, UsageQuotaGrant, QUOTA_SCOPE_FIVE_HOUR,
 };
 use crate::DataLayerError;
 
@@ -158,7 +158,7 @@ fn now_unix_secs() -> Result<i64, DataLayerError> {
 
 #[derive(Debug, Default)]
 struct DailyQuotaDebitResult {
-    debited_usd: f64,
+    covered_base_usd: f64,
     insufficient: bool,
 }
 
@@ -243,7 +243,7 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
 
     let mut grants_by_entitlement: std::collections::BTreeMap<String, Vec<(UsageQuotaGrant, f64)>> =
         std::collections::BTreeMap::new();
-    let mut total_remaining = 0.0;
+    let mut total_base_remaining = 0.0;
     let mut allow_wallet_overage = true;
     for grant in grants {
         allow_wallet_overage &= grant.allow_wallet_overage;
@@ -262,13 +262,18 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
             .map(|(_, remaining)| *remaining)
             .fold(f64::INFINITY, f64::min);
         if remaining.is_finite() {
-            total_remaining += remaining.max(0.0);
-            entitlement_remaining.push((grants, remaining.max(0.0)));
+            let remaining = remaining.max(0.0);
+            let quota_multiplier = grants
+                .first()
+                .map(|(grant, _)| grant.quota_multiplier)
+                .unwrap_or(1.0);
+            total_base_remaining += quota_base_amount(remaining, quota_multiplier);
+            entitlement_remaining.push((grants, remaining));
         }
     }
-    if !allow_wallet_overage && total_remaining + 0.000_000_01 < input.total_cost_usd {
+    if !allow_wallet_overage && total_base_remaining + 0.000_000_01 < input.total_cost_usd {
         return Ok(DailyQuotaDebitResult {
-            debited_usd: 0.0,
+            covered_base_usd: 0.0,
             insufficient: true,
         });
     }
@@ -276,22 +281,26 @@ ORDER BY expires_at ASC, created_at ASC, id ASC
         && !input.wallet_can_overdraft
         && input.wallet_available_usd.is_some_and(|available| {
             available + SETTLEMENT_EPSILON_USD
-                < (input.total_cost_usd - total_remaining).max(0.0) * input.wallet_charge_multiplier
+                < (input.total_cost_usd - total_base_remaining).max(0.0)
+                    * input.wallet_charge_multiplier
         })
     {
         return Ok(DailyQuotaDebitResult {
-            debited_usd: 0.0,
+            covered_base_usd: 0.0,
             insufficient: true,
         });
     }
 
-    let mut remaining_cost = input.total_cost_usd;
-    let mut debited = 0.0;
+    let mut remaining_base_cost = input.total_cost_usd;
+    let mut covered_base = 0.0;
     for (grants, balance_before) in entitlement_remaining {
-        if remaining_cost <= 0.000_000_01 || balance_before <= 0.0 {
+        if remaining_base_cost <= 0.000_000_01 || balance_before <= 0.0 {
             continue;
         }
-        let amount = remaining_cost.min(balance_before);
+        let quota_multiplier = grants[0].0.quota_multiplier;
+        let coverable_base = quota_base_amount(balance_before, quota_multiplier);
+        let base_amount = remaining_base_cost.min(coverable_base);
+        let amount = quota_debit_amount(base_amount, quota_multiplier).min(balance_before);
         let balance_after = balance_before - amount;
         for (grant, _) in &grants {
             increment_usage_quota_window_sqlite(tx, grant, amount, input.now_unix_secs).await?;
@@ -318,11 +327,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         .execute(&mut **tx)
         .await
         .map_sql_err()?;
-        remaining_cost -= amount;
-        debited += amount;
+        remaining_base_cost -= base_amount;
+        covered_base += base_amount;
     }
     Ok(DailyQuotaDebitResult {
-        debited_usd: debited,
+        covered_base_usd: covered_base,
         insufficient: false,
     })
 }
@@ -636,7 +645,7 @@ LIMIT 1
                         settlement.billing_status = final_billing_status.clone();
                         0.0
                     } else {
-                        (input.base_cost_usd - quota.debited_usd).max(0.0) * sales_multiplier
+                        (input.base_cost_usd - quota.covered_base_usd).max(0.0) * sales_multiplier
                     }
                 } else {
                     input.total_cost_usd
@@ -1158,6 +1167,218 @@ INSERT INTO "usage" (
             .expect("usage should exist");
 
         assert_eq!(settlement.billing_status, "insufficient_quota");
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_applies_package_quota_multiplier() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        seed_quota_covered_settlement_rows(&pool).await;
+        sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET entitlements_snapshot =
+  '[{"type":"daily_quota","daily_quota_usd":10.0,"quota_multiplier":0.5,"reset_timezone":"Asia/Shanghai","allow_wallet_overage":false}]'
+WHERE id = 'entitlement-quota'
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("entitlement should update");
+
+        let repository = SqliteSettlementRepository::new(pool.clone());
+        let settlement = repository
+            .settle_usage(UsageSettlementInput {
+                request_id: "request-quota-covered".to_string(),
+                user_id: Some("user-quota".to_string()),
+                api_key_id: Some("key-quota".to_string()),
+                api_key_is_standalone: false,
+                provider_id: None,
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
+                status: "completed".to_string(),
+                billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
+                total_cost_usd: 3.0,
+                actual_total_cost_usd: 2.0,
+                finalized_at_unix_secs: Some(1_260),
+            })
+            .await
+            .expect("settlement should run")
+            .expect("usage should exist");
+
+        assert_eq!(settlement.billing_status, "settled");
+        let quota_used: f64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(amount_usd), 0) AS REAL) FROM entitlement_usage_ledgers WHERE request_id = 'request-quota-covered'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("quota ledger should load");
+        assert_eq!(quota_used, 1.5);
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_charges_wallet_for_base_cost_not_covered_by_quota_multiplier() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        seed_quota_covered_settlement_rows(&pool).await;
+        sqlx::query("UPDATE wallets SET balance = 10.0 WHERE id = 'wallet-quota'")
+            .execute(&pool)
+            .await
+            .expect("wallet should update");
+        sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET entitlements_snapshot =
+  '[{"type":"daily_quota","daily_quota_usd":2.0,"quota_multiplier":2.0,"reset_timezone":"Asia/Shanghai","allow_wallet_overage":true}]'
+WHERE id = 'entitlement-quota'
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("entitlement should update");
+
+        let repository = SqliteSettlementRepository::new(pool.clone());
+        let settlement = repository
+            .settle_usage(UsageSettlementInput {
+                request_id: "request-quota-covered".to_string(),
+                user_id: Some("user-quota".to_string()),
+                api_key_id: Some("key-quota".to_string()),
+                api_key_is_standalone: false,
+                provider_id: None,
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
+                status: "completed".to_string(),
+                billing_status: "pending".to_string(),
+                base_cost_usd: 3.0,
+                total_cost_usd: 6.0,
+                actual_total_cost_usd: 2.0,
+                finalized_at_unix_secs: Some(1_260),
+            })
+            .await
+            .expect("settlement should run")
+            .expect("usage should exist");
+
+        assert_eq!(settlement.billing_status, "settled");
+        let quota_used: f64 = sqlx::query_scalar(
+            "SELECT CAST(COALESCE(SUM(amount_usd), 0) AS REAL) FROM entitlement_usage_ledgers WHERE request_id = 'request-quota-covered'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("quota ledger should load");
+        assert_eq!(quota_used, 2.0);
+        let wallet_total: f64 = sqlx::query_scalar(
+            "SELECT balance + gift_balance FROM wallets WHERE id = 'wallet-quota'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("wallet should load");
+        assert_eq!(wallet_total, 6.0);
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_combines_multiple_package_quota_multipliers() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        seed_quota_covered_settlement_rows(&pool).await;
+        sqlx::query("UPDATE wallets SET balance = 10.0 WHERE id = 'wallet-quota'")
+            .execute(&pool)
+            .await
+            .expect("wallet should update");
+        sqlx::query(
+            r#"
+UPDATE user_plan_entitlements
+SET entitlements_snapshot =
+  '[{"type":"daily_quota","daily_quota_usd":2.0,"quota_multiplier":0.5,"reset_timezone":"Asia/Shanghai","allow_wallet_overage":true}]'
+WHERE id = 'entitlement-quota';
+
+INSERT INTO payment_orders (
+  id, order_no, wallet_id, user_id, amount_usd, refunded_amount_usd,
+  refundable_amount_usd, payment_method, gateway_response, status, created_at
+) VALUES (
+  'order-quota-2', 'order-quota-2', 'wallet-quota', 'user-quota', 0.0, 0.0,
+  0.0, 'admin_manual', '{}', 'credited', 1
+);
+
+INSERT INTO user_plan_entitlements (
+  id, user_id, plan_id, payment_order_id, status, starts_at, expires_at,
+  entitlements_snapshot, created_at, updated_at
+) VALUES (
+  'entitlement-quota-slow', 'user-quota', 'plan-quota', 'order-quota-2',
+  'active', 1, 9999999999,
+  '[{"type":"daily_quota","daily_quota_usd":2.0,"quota_multiplier":2.0,"reset_timezone":"Asia/Shanghai","allow_wallet_overage":true}]',
+  2, 2
+);
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("second entitlement should seed");
+
+        let repository = SqliteSettlementRepository::new(pool.clone());
+        let settlement = repository
+            .settle_usage(UsageSettlementInput {
+                request_id: "request-quota-covered".to_string(),
+                user_id: Some("user-quota".to_string()),
+                api_key_id: Some("key-quota".to_string()),
+                api_key_is_standalone: false,
+                provider_id: None,
+                global_model_id: None,
+                global_model_name: None,
+                model: None,
+                status: "completed".to_string(),
+                billing_status: "pending".to_string(),
+                base_cost_usd: 6.0,
+                total_cost_usd: 12.0,
+                actual_total_cost_usd: 3.0,
+                finalized_at_unix_secs: Some(1_260),
+            })
+            .await
+            .expect("settlement should run")
+            .expect("usage should exist");
+
+        assert_eq!(settlement.billing_status, "settled");
+        let fast_quota_used: f64 = sqlx::query_scalar(
+            "SELECT amount_usd FROM entitlement_usage_ledgers WHERE request_id = 'request-quota-covered' AND user_entitlement_id = 'entitlement-quota'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("fast quota ledger should load");
+        assert_eq!(fast_quota_used, 2.0);
+        let slow_quota_used: f64 = sqlx::query_scalar(
+            "SELECT amount_usd FROM entitlement_usage_ledgers WHERE request_id = 'request-quota-covered' AND user_entitlement_id = 'entitlement-quota-slow'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("slow quota ledger should load");
+        assert_eq!(slow_quota_used, 2.0);
+        let wallet_total: f64 = sqlx::query_scalar(
+            "SELECT balance + gift_balance FROM wallets WHERE id = 'wallet-quota'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("wallet should load");
+        assert_eq!(wallet_total, 8.0);
     }
 
     #[tokio::test]

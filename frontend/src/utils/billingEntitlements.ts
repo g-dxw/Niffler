@@ -29,3 +29,17 @@ export function hasPackageBillingEntitlement(input: BillingEntitlementsInput): b
     || Boolean((item as DailyQuotaEntitlement).limits)
   )
 }
+
+export function quotaConsumptionMultiplierLabel(
+  item: Pick<DailyQuotaEntitlement, 'quota_multiplier'>,
+): string | null {
+  const multiplier = Number(item.quota_multiplier ?? 1)
+  if (!Number.isFinite(multiplier) || multiplier <= 0 || Math.abs(multiplier - 1) < 0.000001) {
+    return null
+  }
+  return `消耗倍率 ${formatQuotaMultiplier(multiplier)} 倍`
+}
+
+function formatQuotaMultiplier(value: number): string {
+  return value.toFixed(4).replace(/\.?0+$/, '')
+}

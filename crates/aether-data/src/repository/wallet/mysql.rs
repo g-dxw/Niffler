@@ -4205,6 +4205,7 @@ mod tests {
             .list_admin_wallets(&AdminWalletListQuery {
                 status: Some("active".to_string()),
                 owner_type: Some("user".to_string()),
+                user_search: None,
                 limit: 10,
                 offset: 0,
             })
@@ -4222,6 +4223,7 @@ mod tests {
             .list_admin_payment_orders(&AdminPaymentOrderListQuery {
                 status: Some("credited".to_string()),
                 payment_method: Some("redeem_code".to_string()),
+                user_search: None,
                 limit: 10,
                 offset: 0,
             })

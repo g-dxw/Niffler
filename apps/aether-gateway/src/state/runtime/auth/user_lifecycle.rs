@@ -523,6 +523,73 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: chrono::DateTime<chrono::Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<aether_data::repository::users::StoredUserAuthRecord>, GatewayError> {
+        #[cfg(test)]
+        if let Some(store) = self.auth_user_store.as_ref() {
+            let existing = {
+                store
+                    .lock()
+                    .expect("auth user store should lock")
+                    .get(user_id)
+                    .cloned()
+            };
+            let existing = match existing {
+                Some(user) => Some(user),
+                None => self
+                    .data
+                    .find_user_auth_by_id(user_id)
+                    .await
+                    .map_err(|err| GatewayError::Internal(err.to_string()))?,
+            };
+            let Some(mut user) = existing else {
+                return Ok(None);
+            };
+            user.password_hash = Some(password_hash);
+            store
+                .lock()
+                .expect("auth user store should lock")
+                .insert(user.id.clone(), user.clone());
+
+            if let Some(session_store) = self.auth_session_store.as_ref() {
+                let prefix = format!("{user_id}:");
+                let mut guard = session_store
+                    .lock()
+                    .expect("auth session store should lock");
+                for (key, session) in guard.iter_mut() {
+                    if !key.starts_with(&prefix) || session.revoked_at.is_some() {
+                        continue;
+                    }
+                    session.revoked_at = Some(updated_at);
+                    session.revoke_reason = Some(session_revoke_reason.chars().take(100).collect());
+                    session.updated_at = Some(updated_at);
+                }
+            }
+            self.invalidate_auth_context_cache();
+            return Ok(Some(user));
+        }
+
+        let user = self
+            .data
+            .reset_local_auth_user_password(
+                user_id,
+                password_hash,
+                updated_at,
+                session_revoke_reason,
+            )
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))?;
+        if user.is_some() {
+            self.invalidate_auth_context_cache();
+        }
+        Ok(user)
+    }
+
     pub(crate) async fn create_local_auth_user(
         &self,
         email: Option<String>,

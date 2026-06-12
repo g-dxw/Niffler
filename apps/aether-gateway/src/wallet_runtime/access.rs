@@ -35,10 +35,11 @@ pub(crate) async fn resolve_wallet_auth_gate(
             .await?
             .filter(|quota| quota.has_active_daily_quota)
         {
-            let has_remaining_quota = quota.remaining_usd > DAILY_QUOTA_EPSILON_USD;
+            let quota_base_remaining_usd = quota.base_remaining_usd.max(0.0);
+            let has_remaining_quota = quota_base_remaining_usd > DAILY_QUOTA_EPSILON_USD;
             if decision.failure == Some(WalletAccessFailure::BalanceDenied) && has_remaining_quota {
                 return Ok(Some(WalletAccessDecision::allowed(Some(
-                    quota.remaining_usd,
+                    quota_base_remaining_usd,
                 ))));
             }
             if decision.failure.is_none() && !quota.allow_wallet_overage && !has_remaining_quota {
@@ -232,6 +233,26 @@ mod tests {
         assert_eq!(decision.remaining, Some(4.0));
     }
 
+    #[tokio::test]
+    async fn ordinary_user_key_reports_base_remaining_quota() {
+        let state = state_with_wallet_and_quota(
+            empty_user_wallet(),
+            Some(quota_availability_with_base_remaining(
+                10.0, 4.0, 2.0, false,
+            )),
+        );
+        let auth_snapshot = ordinary_user_api_key_snapshot();
+
+        let decision = resolve_wallet_auth_gate(&state, &auth_snapshot)
+            .await
+            .expect("wallet gate should resolve")
+            .expect("wallet gate should return a decision");
+
+        assert!(decision.allowed);
+        assert_eq!(decision.failure, None);
+        assert_eq!(decision.remaining, Some(2.0));
+    }
+
     fn state_with_wallet_and_quota(
         wallet: StoredWalletSnapshot,
         quota: Option<UserDailyQuotaAvailabilityRecord>,
@@ -274,11 +295,26 @@ mod tests {
         remaining_usd: f64,
         allow_wallet_overage: bool,
     ) -> UserDailyQuotaAvailabilityRecord {
+        quota_availability_with_base_remaining(
+            total_quota_usd,
+            remaining_usd,
+            remaining_usd,
+            allow_wallet_overage,
+        )
+    }
+
+    fn quota_availability_with_base_remaining(
+        total_quota_usd: f64,
+        remaining_usd: f64,
+        base_remaining_usd: f64,
+        allow_wallet_overage: bool,
+    ) -> UserDailyQuotaAvailabilityRecord {
         UserDailyQuotaAvailabilityRecord {
             has_active_daily_quota: true,
             total_quota_usd,
             used_usd: total_quota_usd - remaining_usd,
             remaining_usd,
+            base_remaining_usd,
             allow_wallet_overage,
         }
     }

@@ -212,6 +212,8 @@ pub(super) fn classify_public_support_route(
                 | "/api/auth/send-verification-code"
                 | "/api/auth/verify-email"
                 | "/api/auth/verification-status"
+                | "/api/auth/request-password-reset"
+                | "/api/auth/reset-password"
         )
     {
         let route_kind = match normalized_path {
@@ -223,6 +225,8 @@ pub(super) fn classify_public_support_route(
             "/api/auth/send-verification-code" => "send_verification_code",
             "/api/auth/verify-email" => "verify_email",
             "/api/auth/verification-status" => "verification_status",
+            "/api/auth/request-password-reset" => "request_password_reset",
+            "/api/auth/reset-password" => "reset_password",
             _ => "login",
         };
         Some(classified(

@@ -117,6 +117,7 @@ pub(super) const AUTH_REFRESH_TOKEN_EXPIRATION_DAYS: i64 = 7;
 pub(super) const AUTH_EMAIL_VERIFICATION_PREFIX: &str = "email:verification:";
 pub(super) const AUTH_EMAIL_VERIFIED_PREFIX: &str = "email:verified:";
 pub(super) const AUTH_EMAIL_VERIFIED_TTL_SECS: u64 = 3600;
+pub(super) const AUTH_PASSWORD_RESET_PREFIX: &str = "auth:password_reset:";
 pub(super) const AUTH_SMTP_TIMEOUT_SECS: u64 = 30;
 
 pub(crate) fn build_auth_json_response(
@@ -181,12 +182,24 @@ pub(super) fn auth_verification_code_expire_minutes() -> i64 {
         .unwrap_or(5)
 }
 
+pub(super) fn auth_password_reset_expire_minutes() -> i64 {
+    std::env::var("PASSWORD_RESET_EXPIRE_MINUTES")
+        .ok()
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(30)
+}
+
 pub(super) fn auth_verification_send_cooldown_seconds() -> i64 {
     std::env::var("VERIFICATION_SEND_COOLDOWN")
         .ok()
         .and_then(|value| value.trim().parse::<i64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(60)
+}
+
+pub(super) fn auth_password_reset_send_cooldown_seconds() -> i64 {
+    auth_verification_send_cooldown_seconds()
 }
 
 pub(super) fn auth_refresh_cookie_name() -> String {

@@ -29,12 +29,14 @@ pub(in super::super) async fn build_admin_wallet_ledger_response(
     let category = query_param_value(query, "category");
     let reason_code = query_param_value(query, "reason_code");
     let owner_type = parse_admin_wallets_owner_type_filter(query);
+    let user_search = query_param_value(query, "user_search");
 
     let (ledger, total) = state
         .list_admin_wallet_ledger(
             category.as_deref(),
             reason_code.as_deref(),
             owner_type.as_deref(),
+            user_search.as_deref(),
             limit,
             offset,
         )

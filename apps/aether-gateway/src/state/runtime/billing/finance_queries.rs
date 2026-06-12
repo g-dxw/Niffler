@@ -16,6 +16,7 @@ impl AppState {
         &self,
         status: Option<&str>,
         owner_type: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredAdminWalletListItem>, u64), GatewayError> {
@@ -24,6 +25,7 @@ impl AppState {
             .list_admin_wallets(&AdminWalletListQuery {
                 status: status.map(ToOwned::to_owned),
                 owner_type: owner_type.map(ToOwned::to_owned),
+                user_search: user_search.map(ToOwned::to_owned),
                 limit,
                 offset,
             })
@@ -37,6 +39,7 @@ impl AppState {
         category: Option<&str>,
         reason_code: Option<&str>,
         owner_type: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredAdminWalletLedgerItem>, u64), GatewayError> {
@@ -46,6 +49,7 @@ impl AppState {
                 category: category.map(ToOwned::to_owned),
                 reason_code: reason_code.map(ToOwned::to_owned),
                 owner_type: owner_type.map(ToOwned::to_owned),
+                user_search: user_search.map(ToOwned::to_owned),
                 limit,
                 offset,
             })
@@ -58,6 +62,7 @@ impl AppState {
         &self,
         status: Option<&str>,
         payment_method: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<Option<(Vec<AdminWalletPaymentOrderRecord>, u64)>, GatewayError> {
@@ -70,6 +75,14 @@ impl AppState {
                 .values()
                 .filter(|order| {
                     payment_method.is_none_or(|expected| order.payment_method == expected)
+                        && user_search.is_none_or(|expected| {
+                            let needle = expected.trim().to_ascii_lowercase();
+                            needle.is_empty()
+                                || order
+                                    .user_id
+                                    .as_deref()
+                                    .is_some_and(|value| value.to_ascii_lowercase().contains(&needle))
+                        })
                         && status.is_none_or(|expected| {
                             let effective_status = if order.status == "pending"
                                 && order
@@ -105,6 +118,7 @@ impl AppState {
             .list_admin_payment_orders(&AdminPaymentOrderListQuery {
                 status: status.map(ToOwned::to_owned),
                 payment_method: payment_method.map(ToOwned::to_owned),
+                user_search: user_search.map(ToOwned::to_owned),
                 limit,
                 offset,
             })
@@ -271,6 +285,7 @@ impl AppState {
     pub(crate) async fn list_admin_wallet_refund_requests(
         &self,
         status: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredAdminWalletRefundRequestItem>, u64), GatewayError> {
@@ -348,6 +363,7 @@ impl AppState {
             .data
             .list_admin_wallet_refund_requests(&AdminWalletRefundRequestListQuery {
                 status: status.map(ToOwned::to_owned),
+                user_search: user_search.map(ToOwned::to_owned),
                 limit,
                 offset,
             })

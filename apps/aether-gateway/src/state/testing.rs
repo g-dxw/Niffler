@@ -646,6 +646,11 @@ impl AppState {
         self
     }
 
+    pub(crate) fn without_auth_email_delivery_store_for_tests(mut self) -> Self {
+        self.auth_email_delivery_store = None;
+        self
+    }
+
     pub(crate) fn with_auth_user_model_capability_settings_for_tests(
         mut self,
         user_id: &str,

@@ -29,6 +29,7 @@ pub(in super::super) async fn build_admin_wallet_refund_requests_response(
     };
     let status = query_param_value(query, "status");
     let owner_type = parse_admin_wallets_owner_type_filter(query);
+    let user_search = query_param_value(query, "user_search");
     if owner_type.as_deref() == Some("api_key") {
         return Ok(build_admin_wallets_bad_request_response(
             ADMIN_WALLETS_API_KEY_REFUND_DETAIL,
@@ -36,7 +37,7 @@ pub(in super::super) async fn build_admin_wallet_refund_requests_response(
     }
 
     let (refunds, total) = state
-        .list_admin_wallet_refund_requests(status.as_deref(), limit, offset)
+        .list_admin_wallet_refund_requests(status.as_deref(), user_search.as_deref(), limit, offset)
         .await?;
     let mut items = Vec::with_capacity(refunds.len());
     for refund in refunds {

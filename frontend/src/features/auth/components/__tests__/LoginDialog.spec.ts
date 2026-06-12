@@ -20,6 +20,7 @@ const toastMocks = vi.hoisted(() => ({
 const authApiMocks = vi.hoisted(() => ({
   getRegistrationSettings: vi.fn(),
   getAuthSettings: vi.fn(),
+  requestPasswordReset: vi.fn(),
 }))
 
 const oauthApiMocks = vi.hoisted(() => ({
@@ -29,6 +30,10 @@ const oauthApiMocks = vi.hoisted(() => ({
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: routerPushMock,
+  }),
+  useRoute: () => ({
+    path: '/',
+    query: {},
   }),
 }))
 
@@ -133,6 +138,26 @@ vi.mock('@/components/ui/label.vue', async () => {
 
 const mountedApps: Array<{ app: App, root: HTMLElement }> = []
 
+function createMemoryStorage(): Storage {
+  let data = new Map<string, string>()
+  return {
+    get length() {
+      return data.size
+    },
+    clear: vi.fn(() => {
+      data = new Map<string, string>()
+    }),
+    getItem: vi.fn((key: string) => data.get(key) ?? null),
+    key: vi.fn((index: number) => Array.from(data.keys())[index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      data.delete(key)
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      data.set(key, String(value))
+    }),
+  }
+}
+
 function mountLoginDialog() {
   const root = document.createElement('div')
   document.body.appendChild(root)
@@ -153,6 +178,8 @@ async function settle() {
 }
 
 beforeEach(() => {
+  vi.stubGlobal('localStorage', createMemoryStorage())
+  vi.stubGlobal('sessionStorage', createMemoryStorage())
   authStoreMock.loading = false
   authStoreMock.error = ''
   authStoreMock.canAccessAdmin = false
@@ -173,6 +200,10 @@ beforeEach(() => {
     local_enabled: true,
     ldap_enabled: false,
     ldap_exclusive: false,
+  })
+  authApiMocks.requestPasswordReset.mockResolvedValue({
+    success: true,
+    message: '如果该邮箱存在，我们会发送一封重置密码邮件',
   })
   oauthApiMocks.getProviders.mockResolvedValue([])
   sessionStorage.clear()
@@ -236,5 +267,33 @@ describe('LoginDialog password manager contract', () => {
     expect(routerPushMock).toHaveBeenCalledWith('/admin/dashboard')
     expect(sessionStorage.getItem('redirectPath')).toBeNull()
     expect(toastMocks.success).toHaveBeenCalledWith('登录成功，正在跳转...')
+  })
+
+  it('requests password reset from the login dialog', async () => {
+    const root = mountLoginDialog()
+    await settle()
+
+    const username = root.querySelector<HTMLInputElement>('input[name="username"]')
+    expect(username).not.toBeNull()
+    username!.value = 'alice@example.com'
+    username!.dispatchEvent(new Event('input', { bubbles: true }))
+    await settle()
+
+    const forgotButton = Array.from(root.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('忘记密码'))
+    expect(forgotButton).not.toBeUndefined()
+    forgotButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+
+    const resetEmail = root.querySelector<HTMLInputElement>('input[name="email"]')
+    expect(resetEmail?.value).toBe('alice@example.com')
+
+    const resetForm = resetEmail?.closest('form')
+    expect(resetForm).not.toBeNull()
+    resetForm!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await settle()
+
+    expect(authApiMocks.requestPasswordReset).toHaveBeenCalledWith('alice@example.com')
+    expect(root.textContent).toContain('如果该邮箱存在，我们会发送一封重置密码邮件')
   })
 })

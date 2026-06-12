@@ -28,9 +28,16 @@ pub(in super::super) async fn build_admin_wallet_list_response(
     };
     let status = query_param_value(query, "status");
     let owner_type = parse_admin_wallets_owner_type_filter(query);
+    let user_search = query_param_value(query, "user_search");
 
     let (wallets, total) = state
-        .list_admin_wallets(status.as_deref(), owner_type.as_deref(), limit, offset)
+        .list_admin_wallets(
+            status.as_deref(),
+            owner_type.as_deref(),
+            user_search.as_deref(),
+            limit,
+            offset,
+        )
         .await?;
     let mut items = Vec::with_capacity(wallets.len());
     for wallet in wallets {

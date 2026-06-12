@@ -95,6 +95,13 @@
                     </SelectItem>
                   </SelectContent>
                 </Select>
+
+                <Input
+                  v-model="ledgerUserSearch"
+                  type="search"
+                  class="w-[260px]"
+                  placeholder="搜索用户名 / 邮箱 / 用户ID"
+                />
               </div>
 
               <div class="flex items-center justify-between gap-3">
@@ -257,6 +264,13 @@
                     </SelectItem>
                   </SelectContent>
                 </Select>
+
+                <Input
+                  v-model="refundUserSearch"
+                  type="search"
+                  class="w-[260px]"
+                  placeholder="搜索用户名 / 邮箱 / 用户ID"
+                />
               </div>
 
               <div class="flex items-center justify-between gap-3">
@@ -424,6 +438,13 @@
                   </SelectItem>
                 </SelectContent>
               </Select>
+
+              <Input
+                v-model="orderUserSearch"
+                type="search"
+                class="w-[260px]"
+                placeholder="搜索用户名 / 邮箱 / 用户ID"
+              />
 
               <RefreshButton
                 :loading="loadingOrders"
@@ -1338,7 +1359,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Badge,
@@ -1443,6 +1464,7 @@ const ledgerPageSize = ref(20)
 const ledgerCategoryFilter = ref('all')
 const ledgerReasonFilter = ref('all')
 const ledgerOwnerFilter = ref('all')
+const ledgerUserSearch = ref('')
 const ledgerReasonOptions = computed(() => {
   if (ledgerCategoryFilter.value === 'all') {
     return LEDGER_REASON_OPTIONS
@@ -1456,6 +1478,7 @@ const refundPage = ref(1)
 const refundPageSize = ref(20)
 const refundStatusFilter = ref('all')
 const refundOwnerFilter = ref('all')
+const refundUserSearch = ref('')
 
 const orders = ref<PaymentOrder[]>([])
 const orderTotal = ref(0)
@@ -1463,6 +1486,7 @@ const orderPage = ref(1)
 const orderPageSize = ref(20)
 const orderStatusFilter = ref('all')
 const orderMethodFilter = ref('all')
+const orderUserSearch = ref('')
 
 const callbacks = ref<PaymentCallbackRecord[]>([])
 const callbackTotal = ref(0)
@@ -1541,6 +1565,21 @@ watch([ledgerCategoryFilter, ledgerReasonFilter, ledgerOwnerFilter], () => {
   void loadLedger()
 })
 
+let ledgerUserSearchTimer: ReturnType<typeof setTimeout> | null = null
+let refundUserSearchTimer: ReturnType<typeof setTimeout> | null = null
+let orderUserSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(ledgerUserSearch, () => {
+  ledgerPage.value = 1
+  if (ledgerUserSearchTimer) {
+    clearTimeout(ledgerUserSearchTimer)
+  }
+  ledgerUserSearchTimer = setTimeout(() => {
+    ledgerUserSearchTimer = null
+    void loadLedger()
+  }, 300)
+})
+
 watch(ledgerCategoryFilter, () => {
   if (ledgerReasonFilter.value === 'all') {
     return
@@ -1556,9 +1595,31 @@ watch([refundStatusFilter, refundOwnerFilter], () => {
   void loadRefunds()
 })
 
+watch(refundUserSearch, () => {
+  refundPage.value = 1
+  if (refundUserSearchTimer) {
+    clearTimeout(refundUserSearchTimer)
+  }
+  refundUserSearchTimer = setTimeout(() => {
+    refundUserSearchTimer = null
+    void loadRefunds()
+  }, 300)
+})
+
 watch([orderStatusFilter, orderMethodFilter], () => {
   orderPage.value = 1
   void loadOrders()
+})
+
+watch(orderUserSearch, () => {
+  orderPage.value = 1
+  if (orderUserSearchTimer) {
+    clearTimeout(orderUserSearchTimer)
+  }
+  orderUserSearchTimer = setTimeout(() => {
+    orderUserSearchTimer = null
+    void loadOrders()
+  }, 300)
 })
 
 watch(callbackMethodFilter, () => {
@@ -1604,6 +1665,12 @@ onMounted(async () => {
   ])
 })
 
+onBeforeUnmount(() => {
+  if (ledgerUserSearchTimer) clearTimeout(ledgerUserSearchTimer)
+  if (refundUserSearchTimer) clearTimeout(refundUserSearchTimer)
+  if (orderUserSearchTimer) clearTimeout(orderUserSearchTimer)
+})
+
 function isValidTab(tab: unknown): tab is WalletManagementTab {
   return tab === 'ledger' || tab === 'refunds' || tab === 'orders' || tab === 'callbacks' || tab === 'redeem_codes'
 }
@@ -1636,6 +1703,7 @@ async function loadLedger() {
       category: ledgerCategoryFilter.value !== 'all' ? ledgerCategoryFilter.value : undefined,
       reason_code: ledgerReasonFilter.value !== 'all' ? ledgerReasonFilter.value : undefined,
       owner_type: ledgerOwnerFilter.value !== 'all' ? ledgerOwnerFilter.value : undefined,
+      user_search: normalizedSearch(ledgerUserSearch.value),
       limit: ledgerPageSize.value,
       offset,
     })
@@ -1656,6 +1724,7 @@ async function loadRefunds() {
     const resp = await adminWalletApi.listGlobalRefunds({
       status: refundStatusFilter.value !== 'all' ? refundStatusFilter.value : undefined,
       owner_type: refundOwnerFilter.value === 'user' ? 'user' : undefined,
+      user_search: normalizedSearch(refundUserSearch.value),
       limit: refundPageSize.value,
       offset,
     })
@@ -1679,6 +1748,7 @@ async function loadOrders() {
     const resp = await adminPaymentsApi.listOrders({
       status: orderStatusFilter.value !== 'all' ? orderStatusFilter.value : undefined,
       payment_method: orderMethodFilter.value !== 'all' ? orderMethodFilter.value : undefined,
+      user_search: normalizedSearch(orderUserSearch.value),
       limit: orderPageSize.value,
       offset,
     })
@@ -1690,6 +1760,11 @@ async function loadOrders() {
   } finally {
     loadingOrders.value = false
   }
+}
+
+function normalizedSearch(value: string): string | undefined {
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
 }
 
 async function loadCallbacks() {

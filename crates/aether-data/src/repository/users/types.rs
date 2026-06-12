@@ -899,6 +899,14 @@ pub trait UserReadRepository: Send + Sync {
         updated_at: DateTime<Utc>,
     ) -> Result<Option<StoredUserAuthRecord>, crate::DataLayerError>;
 
+    async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: DateTime<Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<StoredUserAuthRecord>, crate::DataLayerError>;
+
     #[allow(clippy::too_many_arguments)]
     async fn update_local_auth_user_admin_fields(
         &self,

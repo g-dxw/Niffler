@@ -845,6 +845,16 @@ fn classifies_auth_routes_as_public_support_route() {
             "/api/auth/verification-status",
             "verification_status",
         ),
+        (
+            http::Method::POST,
+            "/api/auth/request-password-reset",
+            "request_password_reset",
+        ),
+        (
+            http::Method::POST,
+            "/api/auth/reset-password",
+            "reset_password",
+        ),
     ] {
         let headers = headers(&[]);
         let uri: Uri = path.parse().expect("uri should parse");

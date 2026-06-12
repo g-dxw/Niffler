@@ -1384,17 +1384,44 @@ fn admin_usage_charge_breakdown(
             None
         }
     });
+    let package_multiplier = admin_usage_package_multiplier_from_split(
+        official_cost,
+        package_debit,
+        wallet_debit,
+        wallet_multiplier,
+    );
 
     AdminUsageChargeBreakdown {
         payload: json!({
             "official_cost": round_to(official_cost.max(0.0), 6),
             "package_debit": round_to(package_debit, 6),
-            "package_multiplier": if package_debit > ADMIN_USAGE_COST_EPSILON { Some(1.0) } else { None },
+            "package_multiplier": package_multiplier,
             "wallet_debit": round_to(wallet_debit.max(0.0), 6),
             "wallet_multiplier": wallet_multiplier,
             "user_debit": round_to(user_debit, 6),
         }),
         user_debit_usd: user_debit,
+    }
+}
+
+fn admin_usage_package_multiplier_from_split(
+    official_cost: f64,
+    package_debit: f64,
+    wallet_debit: f64,
+    wallet_multiplier: Option<f64>,
+) -> Option<f64> {
+    if package_debit <= ADMIN_USAGE_COST_EPSILON {
+        return None;
+    }
+    let wallet_base = wallet_multiplier
+        .filter(|value| value.is_finite() && *value > ADMIN_USAGE_COST_EPSILON)
+        .map(|multiplier| wallet_debit.max(0.0) / multiplier)
+        .unwrap_or(0.0);
+    let package_base = (official_cost.max(0.0) - wallet_base).max(0.0);
+    if package_base > ADMIN_USAGE_COST_EPSILON {
+        Some(package_debit / package_base)
+    } else {
+        Some(1.0)
     }
 }
 

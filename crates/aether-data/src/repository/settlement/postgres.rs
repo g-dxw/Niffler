@@ -10,8 +10,8 @@ use crate::driver::postgres::PostgresTransactionRunner;
 use crate::error::SqlxResultExt;
 use crate::repository::billing::quota::{
     entitlement_allows_global_model, entitlements_snapshot_has_usage_quota_for_global_model,
-    usage_quota_grants_from_entitlement, StoredUsageQuotaWindow, UsageQuotaGrant,
-    QUOTA_SCOPE_FIVE_HOUR,
+    quota_base_amount, quota_debit_amount, usage_quota_grants_from_entitlement,
+    StoredUsageQuotaWindow, UsageQuotaGrant, QUOTA_SCOPE_FIVE_HOUR,
 };
 use crate::DataLayerError;
 
@@ -248,7 +248,7 @@ where
 
 #[derive(Debug, Default)]
 struct DailyQuotaDebitResult {
-    debited_usd: f64,
+    covered_base_usd: f64,
     insufficient: bool,
 }
 
@@ -323,7 +323,7 @@ FOR UPDATE
 
     let mut grants_by_entitlement: std::collections::BTreeMap<String, Vec<(UsageQuotaGrant, f64)>> =
         std::collections::BTreeMap::new();
-    let mut total_remaining = 0.0;
+    let mut total_base_remaining = 0.0;
     let mut allow_wallet_overage = true;
     for grant in grants {
         allow_wallet_overage &= grant.allow_wallet_overage;
@@ -341,14 +341,19 @@ FOR UPDATE
             .map(|(_, remaining)| *remaining)
             .fold(f64::INFINITY, f64::min);
         if remaining.is_finite() {
-            total_remaining += remaining.max(0.0);
-            entitlement_remaining.push((grants, remaining.max(0.0)));
+            let remaining = remaining.max(0.0);
+            let quota_multiplier = grants
+                .first()
+                .map(|(grant, _)| grant.quota_multiplier)
+                .unwrap_or(1.0);
+            total_base_remaining += quota_base_amount(remaining, quota_multiplier);
+            entitlement_remaining.push((grants, remaining));
         }
     }
 
-    if !allow_wallet_overage && total_remaining + 0.000_000_01 < input.total_cost_usd {
+    if !allow_wallet_overage && total_base_remaining + 0.000_000_01 < input.total_cost_usd {
         return Ok(DailyQuotaDebitResult {
-            debited_usd: 0.0,
+            covered_base_usd: 0.0,
             insufficient: true,
         });
     }
@@ -356,22 +361,26 @@ FOR UPDATE
         && !input.wallet_can_overdraft
         && input.wallet_available_usd.is_some_and(|available| {
             available + SETTLEMENT_EPSILON_USD
-                < (input.total_cost_usd - total_remaining).max(0.0) * input.wallet_charge_multiplier
+                < (input.total_cost_usd - total_base_remaining).max(0.0)
+                    * input.wallet_charge_multiplier
         })
     {
         return Ok(DailyQuotaDebitResult {
-            debited_usd: 0.0,
+            covered_base_usd: 0.0,
             insufficient: true,
         });
     }
 
-    let mut remaining_cost = input.total_cost_usd;
-    let mut debited = 0.0;
+    let mut remaining_base_cost = input.total_cost_usd;
+    let mut covered_base = 0.0;
     for (grants, balance_before) in entitlement_remaining {
-        if remaining_cost <= 0.000_000_01 || balance_before <= 0.0 {
+        if remaining_base_cost <= 0.000_000_01 || balance_before <= 0.0 {
             continue;
         }
-        let amount = remaining_cost.min(balance_before);
+        let quota_multiplier = grants[0].0.quota_multiplier;
+        let coverable_base = quota_base_amount(balance_before, quota_multiplier);
+        let base_amount = remaining_base_cost.min(coverable_base);
+        let amount = quota_debit_amount(base_amount, quota_multiplier).min(balance_before);
         let balance_after = balance_before - amount;
         for (grant, _) in &grants {
             increment_usage_quota_window_postgres(tx, grant, amount).await?;
@@ -398,11 +407,11 @@ ON CONFLICT (user_entitlement_id, request_id) DO NOTHING
         .execute(&mut **tx)
         .await
         .map_postgres_err()?;
-        remaining_cost -= amount;
-        debited += amount;
+        remaining_base_cost -= base_amount;
+        covered_base += base_amount;
     }
     Ok(DailyQuotaDebitResult {
-        debited_usd: debited,
+        covered_base_usd: covered_base,
         insufficient: false,
     })
 }
@@ -701,7 +710,7 @@ LIMIT 1
                                     settlement.billing_status = final_billing_status.clone();
                                     0.0
                                 } else {
-                                    (input.base_cost_usd - quota.debited_usd).max(0.0)
+                                    (input.base_cost_usd - quota.covered_base_usd).max(0.0)
                                         * sales_multiplier
                                 }
                             } else {

@@ -123,6 +123,7 @@ impl<'a> AdminAppState<'a> {
         &self,
         status: Option<&str>,
         owner_type: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<
@@ -133,7 +134,7 @@ impl<'a> AdminAppState<'a> {
         GatewayError,
     > {
         self.app
-            .list_admin_wallets(status, owner_type, limit, offset)
+            .list_admin_wallets(status, owner_type, user_search, limit, offset)
             .await
     }
 
@@ -142,6 +143,7 @@ impl<'a> AdminAppState<'a> {
         category: Option<&str>,
         reason_code: Option<&str>,
         owner_type: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<
@@ -152,13 +154,14 @@ impl<'a> AdminAppState<'a> {
         GatewayError,
     > {
         self.app
-            .list_admin_wallet_ledger(category, reason_code, owner_type, limit, offset)
+            .list_admin_wallet_ledger(category, reason_code, owner_type, user_search, limit, offset)
             .await
     }
 
     pub(crate) async fn list_admin_wallet_refund_requests(
         &self,
         status: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<
@@ -169,7 +172,7 @@ impl<'a> AdminAppState<'a> {
         GatewayError,
     > {
         self.app
-            .list_admin_wallet_refund_requests(status, limit, offset)
+            .list_admin_wallet_refund_requests(status, user_search, limit, offset)
             .await
     }
 
@@ -205,11 +208,12 @@ impl<'a> AdminAppState<'a> {
         &self,
         status: Option<&str>,
         payment_method: Option<&str>,
+        user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<Option<(Vec<crate::AdminWalletPaymentOrderRecord>, u64)>, GatewayError> {
         self.app
-            .list_admin_payment_orders(status, payment_method, limit, offset)
+            .list_admin_payment_orders(status, payment_method, user_search, limit, offset)
             .await
     }
 

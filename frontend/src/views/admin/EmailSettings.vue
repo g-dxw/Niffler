@@ -523,8 +523,9 @@ import { authApi } from '@/api/auth'
 import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
 import EmailDeliveryHistory from '@/features/admin-email/components/EmailDeliveryHistory.vue'
+import { waitForEmailDeliveryResult } from '@/features/admin-email/utils/deliveryPolling'
 
-const { success, error } = useToast()
+const { success, error, warning } = useToast()
 
 interface EmailConfig {
   // SMTP 邮件配置
@@ -926,8 +927,21 @@ async function handleSendTestEmail() {
   try {
     const result = await adminApi.sendTestEmail(toEmail)
     if (result.success) {
-      success(result.message || '测试邮件正在发送')
+      if (!result.delivery_id) {
+        success(result.message || '测试邮件正在发送')
+        await emailDeliveryHistoryRef.value?.refresh()
+        return
+      }
+
+      const deliveryResult = await waitForEmailDeliveryResult(result.delivery_id)
       await emailDeliveryHistoryRef.value?.refresh()
+      if (deliveryResult.status === 'succeeded') {
+        success('测试邮件已发送')
+      } else if (deliveryResult.status === 'failed') {
+        error(deliveryResult.message, '测试邮件发送失败')
+      } else {
+        warning(deliveryResult.message, '测试邮件仍在发送')
+      }
     } else {
       error(result.message || '测试邮件发送失败')
     }

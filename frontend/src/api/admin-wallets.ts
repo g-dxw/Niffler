@@ -96,6 +96,7 @@ export const adminWalletApi = {
   async listWallets(params?: {
     status?: string
     owner_type?: 'user' | 'api_key'
+    user_search?: string
     limit?: number
     offset?: number
   }): Promise<AdminWalletListResponse> {
@@ -106,6 +107,7 @@ export const adminWalletApi = {
   async listAllWallets(params?: {
     status?: string
     owner_type?: 'user' | 'api_key'
+    user_search?: string
   }, options: { cacheTtlMs?: number } = {}): Promise<AdminWallet[]> {
     const cacheKey = buildCacheKey(
       'admin:wallets:list-all',
@@ -162,6 +164,7 @@ export const adminWalletApi = {
     category?: string
     reason_code?: string
     owner_type?: string
+    user_search?: string
     limit?: number
     offset?: number
   }): Promise<AdminLedgerResponse> {
@@ -172,6 +175,7 @@ export const adminWalletApi = {
   async listGlobalRefunds(params?: {
     status?: string
     owner_type?: string
+    user_search?: string
     limit?: number
     offset?: number
   }): Promise<AdminGlobalRefundsListResponse> {

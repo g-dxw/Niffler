@@ -150,6 +150,14 @@ fn validate_entitlements(value: &serde_json::Value) -> Result<(), String> {
                         }
                     }
                 }
+                if let Some(value) = item.get("quota_multiplier") {
+                    let multiplier = value
+                        .as_f64()
+                        .ok_or_else(|| format!("{kind}.quota_multiplier must be a number"))?;
+                    if !multiplier.is_finite() || multiplier <= 0.0 {
+                        return Err(format!("{kind}.quota_multiplier must be positive"));
+                    }
+                }
                 if let Some(reset_timezone) = item.get("reset_timezone") {
                     let reset_timezone = reset_timezone
                         .as_str()
@@ -603,5 +611,23 @@ mod tests {
             input.entitlements_json[0]["allowed_global_model_ids"][0],
             "global-codex"
         );
+    }
+
+    #[test]
+    fn usage_quota_rejects_non_positive_quota_multiplier() {
+        for quota_multiplier in [0.0, -1.0] {
+            let mut request = sample_plan_request(9.9);
+            request.entitlements = json!([{
+                "type": "daily_quota",
+                "daily_quota_usd": 100.0,
+                "quota_multiplier": quota_multiplier,
+                "allowed_global_model_ids": ["global-codex"]
+            }]);
+
+            let error = normalize_plan_input_for_create(request)
+                .expect_err("quota multiplier should be positive");
+
+            assert!(error.contains("quota_multiplier"));
+        }
     }
 }

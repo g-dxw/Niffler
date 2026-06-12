@@ -5,231 +5,137 @@
     no-padding
   >
     <div class="px-6 py-6 sm:px-8 sm:py-8">
-      <!-- Logo 和标题 -->
-      <div class="flex flex-col items-center text-center mb-8">
+      <div class="mb-7 flex flex-col items-center text-center">
         <img
           src="/aether_adaptive.svg"
           :alt="siteName"
-          class="h-16 w-16 mb-4"
+          class="mb-4 h-14 w-14"
         >
         <h2 class="text-2xl font-semibold text-foreground">
-          登录到 {{ siteName }}
+          {{ dialogTitle }}
         </h2>
       </div>
 
-      <!-- Demo 模式提示 -->
       <div
-        v-if="isDemo"
-        class="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-5"
+        v-if="authPanel === 'login'"
+        class="space-y-5"
       >
-        <p class="text-xs font-medium text-foreground mb-2">
-          演示模式
-        </p>
-        <div class="space-y-1.5">
-          <button
-            type="button"
-            class="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-            @click="fillDemoAccount('admin')"
-          >
-            <span class="inline-flex items-center justify-center w-4 h-4 rounded bg-primary/20 text-primary text-[10px] font-bold">A</span>
-            <span>admin@demo.aether.io / demo123</span>
-          </button>
-          <button
-            type="button"
-            class="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-            @click="fillDemoAccount('user')"
-          >
-            <span class="inline-flex items-center justify-center w-4 h-4 rounded bg-muted text-muted-foreground text-[10px] font-bold">U</span>
-            <span>user@demo.aether.io / demo123</span>
-          </button>
-        </div>
-      </div>
+        <AuthDemoAccounts
+          v-if="isDemo"
+          :disabled="authStore.loading"
+          @fill="fillDemoAccount"
+        />
 
-      <!-- OAuth 登录按钮 -->
-      <div
-        v-if="oauthProviders.length > 0"
-        class="mb-5"
-      >
-        <!-- 单个 provider: 完整按钮 -->
+        <OAuthLoginOptions
+          :providers="oauthProviders"
+          :disabled="authStore.loading"
+          @login="handleOAuthLogin"
+        />
+
         <div
-          v-if="oauthProviders.length === 1"
-          class="space-y-2"
+          v-if="oauthProviders.length > 0"
+          class="flex items-center gap-3"
         >
-          <button
-            type="button"
-            class="oauth-btn"
-            @click="handleOAuthLogin(oauthProviders[0].provider_type)"
-          >
-            <!-- eslint-disable vue/no-v-html -->
-            <span
-              class="oauth-icon"
-              v-html="getOAuthIcon(oauthProviders[0].provider_type, oauthProviders[0].icon_url)"
-            />
-            <!-- eslint-enable vue/no-v-html -->
-            <span>使用 {{ oauthProviders[0].display_name }} 登录</span>
-          </button>
+          <div class="h-px flex-1 bg-border" />
+          <span class="text-xs text-muted-foreground">账号密码</span>
+          <div class="h-px flex-1 bg-border" />
         </div>
 
-        <!-- 多个 provider: 图标按钮组 -->
-        <div
-          v-else
-          class="flex flex-col items-center gap-3"
-        >
-          <span class="text-xs text-muted-foreground">使用以下方式登录</span>
-          <div class="flex items-center justify-center gap-3">
-            <button
-              v-for="p in oauthProviders"
-              :key="p.provider_type"
-              type="button"
-              class="oauth-icon-btn"
-              :title="p.display_name"
-              @click="handleOAuthLogin(p.provider_type)"
-            >
-              <!-- eslint-disable vue/no-v-html -->
-              <span
-                class="oauth-icon-lg"
-                v-html="getOAuthIcon(p.provider_type, p.icon_url)"
-              />
-              <!-- eslint-enable vue/no-v-html -->
-            </button>
-          </div>
-        </div>
-      </div>
+        <AuthTypeSwitch
+          v-model="authType"
+          :local-enabled="localEnabled"
+          :ldap-enabled="ldapEnabled"
+          :ldap-exclusive="ldapExclusive"
+          :disabled="authStore.loading"
+        />
 
-      <!-- 分隔线 -->
-      <div
-        v-if="oauthProviders.length > 0"
-        class="flex items-center gap-3 mb-5"
-      >
-        <div class="flex-1 h-px bg-border" />
-        <span class="text-xs text-muted-foreground px-2">或使用账号密码</span>
-        <div class="flex-1 h-px bg-border" />
-      </div>
-
-      <!-- 认证方式切换 -->
-      <div
-        v-if="showAuthTypeTabs"
-        class="auth-type-tabs mb-4"
-      >
-        <button
-          type="button"
-          class="auth-tab"
-          :class="[authType === 'local' && 'active']"
-          @click="authType = 'local'"
+        <form
+          ref="loginFormEl"
+          name="login"
+          action="/api/auth/login"
+          method="post"
+          class="space-y-4"
+          autocomplete="on"
+          data-form-type="login"
+          @submit.prevent="handleLogin"
         >
-          本地登录
-        </button>
-        <button
-          type="button"
-          class="auth-tab"
-          :class="[authType === 'ldap' && 'active']"
-          @click="authType = 'ldap'"
-        >
-          LDAP 登录
-        </button>
-      </div>
-
-      <!-- 登录表单 -->
-      <form
-        ref="loginFormEl"
-        name="login"
-        action="/api/auth/login"
-        method="post"
-        class="space-y-4"
-        autocomplete="on"
-        data-form-type="login"
-        @submit.prevent="handleLogin"
-      >
-        <div class="space-y-1.5">
-          <div class="flex items-center justify-between">
+          <div class="space-y-1.5">
             <Label
               for="username"
               class="text-sm"
             >
               {{ emailLabel }}
             </Label>
-            <button
-              v-if="ldapExclusive && authType === 'ldap'"
-              type="button"
-              class="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-              @click="authType = 'local'"
-            >
-              管理员本地登录
-            </button>
-            <button
-              v-if="ldapExclusive && authType === 'local'"
-              type="button"
-              class="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-              @click="authType = 'ldap'"
-            >
-              返回 LDAP 登录
-            </button>
+            <Input
+              id="username"
+              v-model="form.email"
+              type="text"
+              name="username"
+              required
+              placeholder="用户名或邮箱"
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
+              :disable-autofill="false"
+            />
           </div>
-          <Input
-            id="username"
-            v-model="form.email"
-            type="text"
-            name="username"
-            required
-            placeholder="用户名或邮箱"
-            autocomplete="username"
-            autocapitalize="none"
-            spellcheck="false"
-            :disable-autofill="false"
-          />
-        </div>
 
-        <div class="space-y-1.5">
-          <Label
-            for="password"
-            class="text-sm"
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <Label
+                for="password"
+                class="text-sm"
+              >
+                密码
+              </Label>
+              <button
+                v-if="showPasswordResetLink"
+                type="button"
+                class="text-xs font-medium text-primary transition-colors hover:text-foreground active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
+                :disabled="authStore.loading"
+                :data-state="authStore.loading ? 'disabled' : 'idle'"
+                @click="openPasswordResetPanel"
+              >
+                忘记密码？
+              </button>
+            </div>
+            <Input
+              id="password"
+              v-model="form.password"
+              type="password"
+              name="password"
+              required
+              placeholder="输入密码"
+              autocomplete="current-password"
+              :disable-autofill="false"
+            />
+          </div>
+
+          <Button
+            type="submit"
+            :disabled="authStore.loading"
+            class="h-12 w-full"
           >
-            密码
-          </Label>
-          <Input
-            id="password"
-            v-model="form.password"
-            type="password"
-            name="password"
-            required
-            placeholder="输入密码"
-            autocomplete="current-password"
-            :disable-autofill="false"
-          />
-        </div>
+            {{ authStore.loading ? '登录中...' : '登录' }}
+          </Button>
+        </form>
 
-        <!-- 登录按钮 -->
-        <Button
-          type="submit"
+        <AuthRegisterPrompt
+          :allow-registration="allowRegistration"
+          :show-contact-admin="!isDemo"
           :disabled="authStore.loading"
-          class="w-full h-12"
-        >
-          {{ authStore.loading ? '登录中...' : '登录' }}
-        </Button>
-
-        <!-- 提示信息 -->
-        <p
-          v-if="!isDemo && !allowRegistration"
-          class="text-xs text-muted-foreground text-center"
-        >
-          如需开通账户，请联系管理员
-        </p>
-      </form>
-
-      <!-- 注册链接 -->
-      <div
-        v-if="allowRegistration"
-        class="mt-5 pt-5 border-t border-border text-center text-sm text-muted-foreground"
-      >
-        还没有账户？
-        <button
-          type="button"
-          class="text-primary hover:text-primary/80 font-medium transition-colors"
-          @click="handleSwitchToRegister"
-        >
-          立即注册
-        </button>
+          @register="handleSwitchToRegister"
+        />
       </div>
+
+      <PasswordResetRequestPanel
+        v-else
+        v-model:email="passwordResetEmail"
+        :loading="passwordResetLoading"
+        :notice="passwordResetNotice"
+        @submit="handlePasswordResetRequest"
+        @back="authPanel = 'login'"
+      />
     </div>
   </Dialog>
 
@@ -260,11 +166,16 @@ import { useSiteInfo } from '@/composables/useSiteInfo'
 import { normalizePasswordPolicyLevel, type PasswordPolicyLevel } from '@/utils/passwordPolicy'
 import { isDemoMode, DEMO_ACCOUNTS } from '@/config/demo'
 import RegisterDialog from './RegisterDialog.vue'
+import AuthDemoAccounts from './AuthDemoAccounts.vue'
+import AuthRegisterPrompt from './AuthRegisterPrompt.vue'
+import AuthTypeSwitch from './AuthTypeSwitch.vue'
+import OAuthLoginOptions from './OAuthLoginOptions.vue'
+import PasswordResetRequestPanel from './PasswordResetRequestPanel.vue'
 import { authApi, type RegistrationPrivacyPolicySettings } from '@/api/auth'
 import { oauthApi, type OAuthProviderInfo } from '@/api/oauth'
 import { getClientDeviceId } from '@/utils/deviceId'
 import { getApiUrl } from '@/utils/url'
-import { getOAuthIcon } from '@/utils/oauth-icons'
+import { getErrorMessage } from '@/types/api-error'
 
 const props = defineProps<{
   modelValue: boolean
@@ -282,6 +193,7 @@ const { siteName } = useSiteInfo()
 
 const isOpen = ref(props.modelValue)
 const isDemo = computed(() => isDemoMode())
+const authPanel = ref<'login' | 'passwordReset'>('login')
 const showRegisterDialog = ref(false)
 const requireEmailVerification = ref(false)
 const emailConfigured = ref(true) // 邮箱服务是否已配置
@@ -309,24 +221,35 @@ const ldapExclusive = ref(false)
 
 const oauthProviders = ref<OAuthProviderInfo[]>([])
 const loginFormEl = ref<HTMLFormElement | null>(null)
+const passwordResetEmail = ref('')
+const passwordResetLoading = ref(false)
+const passwordResetNotice = ref('')
+const passwordResetRequestSuccessText = '如果该邮箱存在，会收到重置密码邮件'
 
 // 保存用户的认证类型偏好
 watch(authType, (newType) => {
   localStorage.setItem(PREFERRED_AUTH_TYPE_KEY, newType)
 })
 
-const showAuthTypeTabs = computed(() => {
-  return localEnabled.value && ldapEnabled.value && !ldapExclusive.value
-})
-
 const emailLabel = computed(() => {
   return '用户名/邮箱'
+})
+
+const dialogTitle = computed(() => {
+  return authPanel.value === 'passwordReset' ? '找回密码' : `登录到 ${siteName.value}`
+})
+
+const showPasswordResetLink = computed(() => {
+  return localEnabled.value && authType.value === 'local'
 })
 
 watch(() => props.modelValue, (val) => {
   isOpen.value = val
   // 打开对话框时重置表单
   if (val) {
+    authPanel.value = 'login'
+    passwordResetEmail.value = ''
+    passwordResetNotice.value = ''
     form.value = {
       email: '',
       password: ''
@@ -428,6 +351,32 @@ function handleSwitchToRegister() {
   showRegisterDialog.value = true
 }
 
+function openPasswordResetPanel() {
+  const { email } = readCurrentLoginCredentials()
+  passwordResetEmail.value = email.includes('@') ? email : ''
+  passwordResetNotice.value = ''
+  authPanel.value = 'passwordReset'
+}
+
+async function handlePasswordResetRequest() {
+  const email = passwordResetEmail.value.trim()
+  if (!email) {
+    showWarning('请输入邮箱')
+    return
+  }
+  passwordResetLoading.value = true
+  passwordResetNotice.value = ''
+  try {
+    const response = await authApi.requestPasswordReset(email)
+    passwordResetNotice.value = response.message || passwordResetRequestSuccessText
+    showSuccess('申请已提交，请查看邮箱')
+  } catch (error) {
+    showError(getErrorMessage(error, '发送失败，请稍后重试'))
+  } finally {
+    passwordResetLoading.value = false
+  }
+}
+
 function handleRegisterSuccess() {
   showRegisterDialog.value = false
   showSuccess('注册成功！请登录')
@@ -505,109 +454,3 @@ onMounted(async () => {
   }
 })
 </script>
-
-<style scoped>
-.oauth-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: hsl(var(--foreground));
-  background: hsl(var(--muted) / 0.5);
-  border: 1px solid hsl(var(--border) / 0.6);
-  border-radius: 0.75rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.oauth-btn:hover {
-  background: hsl(var(--muted));
-  border-color: hsl(var(--primary) / 0.5);
-}
-
-.oauth-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-  flex-shrink: 0;
-}
-
-.oauth-icon :deep(svg) {
-  width: 100%;
-  height: 100%;
-}
-
-.oauth-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  background: hsl(var(--muted) / 0.5);
-  border: 1px solid hsl(var(--border) / 0.6);
-  border-radius: 0.75rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.oauth-icon-btn:hover {
-  background: hsl(var(--muted));
-  border-color: hsl(var(--primary) / 0.5);
-  transform: translateY(-1px);
-}
-
-.oauth-icon-lg {
-  width: 1.5rem;
-  height: 1.5rem;
-}
-
-.oauth-icon-lg :deep(svg) {
-  width: 100%;
-  height: 100%;
-}
-
-.auth-type-tabs {
-  display: flex;
-  border-bottom: 1px solid hsl(var(--border));
-}
-
-.auth-tab {
-  flex: 1;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: hsl(var(--muted-foreground));
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: color 0.15s ease;
-  position: relative;
-}
-
-.auth-tab::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: transparent;
-  transition: background 0.15s ease;
-}
-
-.auth-tab:hover:not(.active) {
-  color: hsl(var(--foreground));
-}
-
-.auth-tab.active {
-  color: hsl(var(--primary));
-  font-weight: 600;
-}
-
-.auth-tab.active::after {
-  background: hsl(var(--primary));
-}
-</style>

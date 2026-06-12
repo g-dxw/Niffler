@@ -511,6 +511,26 @@ impl GatewayDataState {
             .await
     }
 
+    pub(crate) async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: chrono::DateTime<chrono::Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<StoredUserAuthRecord>, DataLayerError> {
+        let Some(repository) = self.user_reader.as_ref() else {
+            return Ok(None);
+        };
+        repository
+            .reset_local_auth_user_password(
+                user_id,
+                password_hash,
+                updated_at,
+                session_revoke_reason,
+            )
+            .await
+    }
+
     #[allow(dead_code)]
     pub(crate) async fn create_local_auth_user(
         &self,

@@ -3,7 +3,7 @@ use std::sync::RwLock;
 
 use async_trait::async_trait;
 
-use super::quota::entitlement_allows_global_model;
+use super::quota::{entitlement_allows_global_model, quota_base_amount};
 use super::{
     AdminBillingMutationOutcome, BillingPlanRecord, BillingPlanWriteInput, BillingReadRepository,
     PaymentGatewayConfigRecord, PaymentGatewayConfigWriteInput, StoredBillingModelContext,
@@ -115,6 +115,7 @@ fn daily_quota_availability_from_entitlements(
     let mut total_quota_usd = 0.0;
     let used_usd = 0.0;
     let mut remaining_usd = 0.0;
+    let mut base_remaining_usd = 0.0;
     let mut allow_wallet_overage = true;
     for entitlement in entitlements {
         if entitlement.status != "active"
@@ -161,6 +162,13 @@ fn daily_quota_availability_from_entitlements(
             has_active_daily_quota = true;
             total_quota_usd += daily_quota_usd;
             remaining_usd += daily_quota_usd;
+            let quota_multiplier = item
+                .get("quota_multiplier")
+                .or_else(|| item.get("package_multiplier"))
+                .and_then(serde_json::Value::as_f64)
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .unwrap_or(1.0);
+            base_remaining_usd += quota_base_amount(daily_quota_usd, quota_multiplier);
             allow_wallet_overage &= item
                 .get("allow_wallet_overage")
                 .and_then(serde_json::Value::as_bool)
@@ -172,6 +180,7 @@ fn daily_quota_availability_from_entitlements(
         total_quota_usd,
         used_usd,
         remaining_usd,
+        base_remaining_usd,
         allow_wallet_overage,
     }
 }

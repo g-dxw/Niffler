@@ -481,6 +481,7 @@
                           <TableHead>状态</TableHead>
                           <TableHead>权益</TableHead>
                           <TableHead>价格/额度</TableHead>
+                          <TableHead>获得时间</TableHead>
                           <TableHead>开始</TableHead>
                           <TableHead>到期</TableHead>
                         </TableRow>
@@ -527,6 +528,9 @@
                             </div>
                           </TableCell>
                           <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
+                            {{ formatDateTime(plan.created_at) }}
+                          </TableCell>
+                          <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
                             {{ formatDateTime(plan.starts_at) }}
                           </TableCell>
                           <TableCell class="text-xs text-muted-foreground whitespace-nowrap">
@@ -535,7 +539,7 @@
                         </TableRow>
                         <TableRow v-if="!loadingPlans && planItems.length === 0">
                           <TableCell
-                            colspan="6"
+                            colspan="7"
                             class="py-10"
                           >
                             <EmptyState
@@ -751,7 +755,10 @@ import { usersApi, type AdminUserPlanEntitlement } from '@/api/users'
 import type { BillingEntitlementsInput, BillingPlan, DailyQuotaEntitlement } from '@/api/billing'
 import type { RefundRequest, WalletTransaction } from '@/api/wallet'
 import type { UsageRecord } from '@/features/usage/types'
-import { normalizeBillingEntitlements } from '@/utils/billingEntitlements'
+import {
+  normalizeBillingEntitlements,
+  quotaConsumptionMultiplierLabel,
+} from '@/utils/billingEntitlements'
 import { parseApiError } from '@/utils/errorParser'
 import { parseNumberInput } from '@/utils/form'
 import { formatCurrency } from '@/utils/format'
@@ -1564,7 +1571,10 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   if (monthly > 0) parts.push(`每月 $${monthly.toFixed(2)}`)
   const quotaText = parts.join(' / ') || '用量额度'
   const modelIds = item.allowed_global_model_ids || []
-  return modelIds.length > 0 ? `${quotaText} · ${modelIds.length} 个模型` : `${quotaText} · 全部模型`
+  const labels = [modelIds.length > 0 ? `${modelIds.length} 个模型` : '全部模型']
+  const multiplierLabel = quotaConsumptionMultiplierLabel(item)
+  if (multiplierLabel) labels.push(multiplierLabel)
+  return `${quotaText} · ${labels.join(' · ')}`
 }
 
 function toFiniteNumber(value: unknown, fallback = 0): number {

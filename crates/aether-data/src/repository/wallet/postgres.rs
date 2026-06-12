@@ -137,12 +137,22 @@ WHERE api_key_id = ANY($1)
 
 const COUNT_ADMIN_WALLETS_SQL: &str = r#"
 SELECT COUNT(*) AS total
-FROM wallets
-WHERE ($1::TEXT IS NULL OR status = $1)
+FROM wallets w
+LEFT JOIN users ON users.id = w.user_id
+LEFT JOIN api_keys ON api_keys.id = w.api_key_id
+WHERE ($1::TEXT IS NULL OR w.status = $1)
   AND (
     $2::TEXT IS NULL
-    OR ($2 = 'user' AND user_id IS NOT NULL)
-    OR ($2 = 'api_key' AND api_key_id IS NOT NULL)
+    OR ($2 = 'user' AND w.user_id IS NOT NULL)
+    OR ($2 = 'api_key' AND w.api_key_id IS NOT NULL)
+  )
+  AND (
+    NULLIF(BTRIM($3::TEXT), '') IS NULL
+    OR users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR api_keys.name ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR w.api_key_id ILIKE '%' || BTRIM($3::TEXT) || '%'
   )
 "#;
 
@@ -173,21 +183,39 @@ WHERE ($1::TEXT IS NULL OR w.status = $1)
     OR ($2 = 'user' AND w.user_id IS NOT NULL)
     OR ($2 = 'api_key' AND w.api_key_id IS NOT NULL)
   )
+  AND (
+    NULLIF(BTRIM($3::TEXT), '') IS NULL
+    OR users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR api_keys.name ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR w.api_key_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+  )
 ORDER BY w.updated_at DESC
-OFFSET $3
-LIMIT $4
+OFFSET $4
+LIMIT $5
 "#;
 
 const COUNT_ADMIN_WALLET_LEDGER_SQL: &str = r#"
 SELECT COUNT(*) AS total
 FROM wallet_transactions tx
 JOIN wallets w ON w.id = tx.wallet_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+LEFT JOIN api_keys ON api_keys.id = w.api_key_id
 WHERE ($1::TEXT IS NULL OR tx.category = $1)
   AND ($2::TEXT IS NULL OR tx.reason_code = $2)
   AND (
     $3::TEXT IS NULL
     OR ($3 = 'user' AND w.user_id IS NOT NULL)
     OR ($3 = 'api_key' AND w.api_key_id IS NOT NULL)
+  )
+  AND (
+    NULLIF(BTRIM($4::TEXT), '') IS NULL
+    OR wallet_users.username ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR api_keys.name ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR w.api_key_id ILIKE '%' || BTRIM($4::TEXT) || '%'
   )
 "#;
 
@@ -228,17 +256,34 @@ WHERE ($1::TEXT IS NULL OR tx.category = $1)
     OR ($3 = 'user' AND w.user_id IS NOT NULL)
     OR ($3 = 'api_key' AND w.api_key_id IS NOT NULL)
   )
+  AND (
+    NULLIF(BTRIM($4::TEXT), '') IS NULL
+    OR wallet_users.username ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR api_keys.name ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR w.api_key_id ILIKE '%' || BTRIM($4::TEXT) || '%'
+  )
 ORDER BY tx.created_at DESC
-OFFSET $4
-LIMIT $5
+OFFSET $5
+LIMIT $6
 "#;
 
 const COUNT_ADMIN_WALLET_REFUND_REQUESTS_SQL: &str = r#"
 SELECT COUNT(*) AS total
 FROM refund_requests rr
 JOIN wallets w ON w.id = rr.wallet_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+LEFT JOIN api_keys ON api_keys.id = w.api_key_id
 WHERE ($1::TEXT IS NULL OR rr.status = $1)
   AND w.user_id IS NOT NULL
+  AND (
+    NULLIF(BTRIM($2::TEXT), '') IS NULL
+    OR wallet_users.username ILIKE '%' || BTRIM($2::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($2::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($2::TEXT) || '%'
+    OR api_keys.name ILIKE '%' || BTRIM($2::TEXT) || '%'
+  )
 "#;
 
 const LIST_ADMIN_WALLET_REFUND_REQUESTS_SQL: &str = r#"
@@ -277,9 +322,16 @@ LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
 LEFT JOIN api_keys ON api_keys.id = w.api_key_id
 WHERE ($1::TEXT IS NULL OR rr.status = $1)
   AND w.user_id IS NOT NULL
+  AND (
+    NULLIF(BTRIM($2::TEXT), '') IS NULL
+    OR wallet_users.username ILIKE '%' || BTRIM($2::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($2::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($2::TEXT) || '%'
+    OR api_keys.name ILIKE '%' || BTRIM($2::TEXT) || '%'
+  )
 ORDER BY rr.created_at DESC
-OFFSET $2
-LIMIT $3
+OFFSET $3
+LIMIT $4
 "#;
 
 const COUNT_ADMIN_WALLET_TRANSACTIONS_SQL: &str = r#"
@@ -415,58 +467,82 @@ LIMIT $3
 
 const COUNT_ADMIN_PAYMENT_ORDERS_SQL: &str = r#"
 SELECT COUNT(*) AS total
-FROM payment_orders
-WHERE ($1::TEXT IS NULL OR payment_method = $1)
+FROM payment_orders po
+LEFT JOIN wallets w ON w.id = po.wallet_id
+LEFT JOIN users order_users ON order_users.id = po.user_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+WHERE ($1::TEXT IS NULL OR po.payment_method = $1)
   AND (
     $2::TEXT IS NULL
     OR (
       CASE
-        WHEN status = 'pending' AND expires_at IS NOT NULL AND expires_at < NOW() THEN 'expired'
-        ELSE status
+        WHEN po.status = 'pending' AND po.expires_at IS NOT NULL AND po.expires_at < NOW() THEN 'expired'
+        ELSE po.status
       END
     ) = $2
+  )
+  AND (
+    NULLIF(BTRIM($3::TEXT), '') IS NULL
+    OR order_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR order_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR po.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR wallet_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
   )
 "#;
 
 const LIST_ADMIN_PAYMENT_ORDERS_SQL: &str = r#"
 SELECT
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  payment_provider,
-  payment_channel,
-  order_kind,
-  product_id,
-  product_snapshot,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
-FROM payment_orders
-WHERE ($1::TEXT IS NULL OR payment_method = $1)
+  po.id,
+  po.order_no,
+  po.wallet_id,
+  po.user_id,
+  CAST(po.amount_usd AS DOUBLE PRECISION) AS amount_usd,
+  CAST(po.pay_amount AS DOUBLE PRECISION) AS pay_amount,
+  po.pay_currency,
+  CAST(po.exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
+  CAST(po.refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
+  CAST(po.refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
+  po.payment_method,
+  po.payment_provider,
+  po.payment_channel,
+  po.order_kind,
+  po.product_id,
+  po.product_snapshot,
+  po.gateway_order_id,
+  po.gateway_response,
+  po.status,
+  CAST(EXTRACT(EPOCH FROM po.created_at) AS BIGINT) AS created_at_unix_ms,
+  CAST(EXTRACT(EPOCH FROM po.paid_at) AS BIGINT) AS paid_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM po.credited_at) AS BIGINT) AS credited_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM po.expires_at) AS BIGINT) AS expires_at_unix_secs
+FROM payment_orders po
+LEFT JOIN wallets w ON w.id = po.wallet_id
+LEFT JOIN users order_users ON order_users.id = po.user_id
+LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
+WHERE ($1::TEXT IS NULL OR po.payment_method = $1)
   AND (
     $2::TEXT IS NULL
     OR (
       CASE
-        WHEN status = 'pending' AND expires_at IS NOT NULL AND expires_at < NOW() THEN 'expired'
-        ELSE status
+        WHEN po.status = 'pending' AND po.expires_at IS NOT NULL AND po.expires_at < NOW() THEN 'expired'
+        ELSE po.status
       END
     ) = $2
   )
-ORDER BY created_at DESC
-OFFSET $3
-LIMIT $4
+  AND (
+    NULLIF(BTRIM($3::TEXT), '') IS NULL
+    OR order_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR order_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR po.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR wallet_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+  )
+ORDER BY po.created_at DESC
+OFFSET $4
+LIMIT $5
 "#;
 
 const FIND_ADMIN_PAYMENT_ORDER_SQL: &str = r#"
@@ -852,6 +928,7 @@ impl WalletReadRepository for SqlxWalletRepository {
             sqlx::query(COUNT_ADMIN_WALLETS_SQL)
                 .bind(query.status.as_deref())
                 .bind(query.owner_type.as_deref())
+                .bind(query.user_search.as_deref())
                 .fetch_one(&self.pool)
                 .await
                 .map_postgres_err()?,
@@ -860,6 +937,7 @@ impl WalletReadRepository for SqlxWalletRepository {
             sqlx::query(LIST_ADMIN_WALLETS_SQL)
                 .bind(query.status.as_deref())
                 .bind(query.owner_type.as_deref())
+                .bind(query.user_search.as_deref())
                 .bind(as_i64(query.offset, "wallet offset")?)
                 .bind(as_i64(query.limit, "wallet limit")?)
                 .fetch(&self.pool),
@@ -878,6 +956,7 @@ impl WalletReadRepository for SqlxWalletRepository {
                 .bind(query.category.as_deref())
                 .bind(query.reason_code.as_deref())
                 .bind(query.owner_type.as_deref())
+                .bind(query.user_search.as_deref())
                 .fetch_one(&self.pool)
                 .await
                 .map_postgres_err()?,
@@ -887,6 +966,7 @@ impl WalletReadRepository for SqlxWalletRepository {
                 .bind(query.category.as_deref())
                 .bind(query.reason_code.as_deref())
                 .bind(query.owner_type.as_deref())
+                .bind(query.user_search.as_deref())
                 .bind(as_i64(query.offset, "wallet ledger offset")?)
                 .bind(as_i64(query.limit, "wallet ledger limit")?)
                 .fetch(&self.pool),
@@ -903,6 +983,7 @@ impl WalletReadRepository for SqlxWalletRepository {
         let total = read_count(
             sqlx::query(COUNT_ADMIN_WALLET_REFUND_REQUESTS_SQL)
                 .bind(query.status.as_deref())
+                .bind(query.user_search.as_deref())
                 .fetch_one(&self.pool)
                 .await
                 .map_postgres_err()?,
@@ -910,6 +991,7 @@ impl WalletReadRepository for SqlxWalletRepository {
         let items = collect_query_rows(
             sqlx::query(LIST_ADMIN_WALLET_REFUND_REQUESTS_SQL)
                 .bind(query.status.as_deref())
+                .bind(query.user_search.as_deref())
                 .bind(as_i64(query.offset, "wallet refund request offset")?)
                 .bind(as_i64(query.limit, "wallet refund request limit")?)
                 .fetch(&self.pool),
@@ -1017,6 +1099,7 @@ impl WalletReadRepository for SqlxWalletRepository {
             sqlx::query(COUNT_ADMIN_PAYMENT_ORDERS_SQL)
                 .bind(query.payment_method.as_deref())
                 .bind(query.status.as_deref())
+                .bind(query.user_search.as_deref())
                 .fetch_one(&self.pool)
                 .await
                 .map_postgres_err()?,
@@ -1025,6 +1108,7 @@ impl WalletReadRepository for SqlxWalletRepository {
             sqlx::query(LIST_ADMIN_PAYMENT_ORDERS_SQL)
                 .bind(query.payment_method.as_deref())
                 .bind(query.status.as_deref())
+                .bind(query.user_search.as_deref())
                 .bind(as_i64(query.offset, "payment order offset")?)
                 .bind(as_i64(query.limit, "payment order limit")?)
                 .fetch(&self.pool),

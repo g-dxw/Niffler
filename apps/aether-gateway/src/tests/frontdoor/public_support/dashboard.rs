@@ -247,6 +247,7 @@ async fn gateway_dashboard_stats_user_wallet_card_uses_wallet_center_balance_bre
                 total_quota_usd: 120.0,
                 used_usd: 20.0,
                 remaining_usd: 100.0,
+                base_remaining_usd: 100.0,
                 allow_wallet_overage: true,
             },
         });

@@ -30,6 +30,12 @@ const routes: RouteRecordRaw[] = [
     component: () => importWithRetry(() => import('@/views/public/PrivacyPolicy.vue')),
     meta: { requiresAuth: false }
   },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: () => importWithRetry(() => import('@/views/public/ResetPassword.vue')),
+    meta: { requiresAuth: false }
+  },
 
   {
     path: '/guide',

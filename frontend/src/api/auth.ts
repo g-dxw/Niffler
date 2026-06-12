@@ -53,6 +53,11 @@ export interface VerifyEmailResponse {
   success: boolean
 }
 
+export interface PasswordResetResponse {
+  message: string
+  success: boolean
+}
+
 export interface VerificationStatusRequest {
   email: string
 }
@@ -191,6 +196,22 @@ export const authApi = {
     const response = await apiClient.post<VerifyEmailResponse>(
       '/api/auth/verify-email',
       { email, code }
+    )
+    return response.data
+  },
+
+  async requestPasswordReset(email: string): Promise<PasswordResetResponse> {
+    const response = await apiClient.post<PasswordResetResponse>(
+      '/api/auth/request-password-reset',
+      { email }
+    )
+    return response.data
+  },
+
+  async resetPassword(token: string, password: string): Promise<PasswordResetResponse> {
+    const response = await apiClient.post<PasswordResetResponse>(
+      '/api/auth/reset-password',
+      { token, password }
     )
     return response.data
   },

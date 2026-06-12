@@ -35,6 +35,9 @@
                   <div class="mt-1 text-xs text-muted-foreground">
                     {{ formatDate(item.starts_at) }} - {{ formatDate(item.expires_at) }}
                   </div>
+                  <div class="mt-1 text-xs text-muted-foreground">
+                    获得：{{ formatDate(item.created_at) }}
+                  </div>
                 </div>
                 <Badge variant="success">
                   生效中
@@ -211,6 +214,7 @@ import { log } from '@/utils/logger'
 import {
   hasPackageBillingEntitlement,
   normalizeBillingEntitlements,
+  quotaConsumptionMultiplierLabel,
   type BillingEntitlementsInput,
 } from '@/utils/billingEntitlements'
 
@@ -427,7 +431,10 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   if (weekly > 0) parts.push(`7天 $${weekly.toFixed(2)}`)
   if (monthly > 0) parts.push(`30天 $${monthly.toFixed(2)}`)
   const quotaText = parts.join(' / ') || '用量额度'
-  return `${quotaText} · ${quotaModelScopeLabel(item.allowed_global_model_ids)}`
+  const labels = [quotaModelScopeLabel(item.allowed_global_model_ids)]
+  const multiplierLabel = quotaConsumptionMultiplierLabel(item)
+  if (multiplierLabel) labels.push(multiplierLabel)
+  return `${quotaText} · ${labels.join(' · ')}`
 }
 
 function quotaModelScopeLabel(modelIds?: string[]): string {

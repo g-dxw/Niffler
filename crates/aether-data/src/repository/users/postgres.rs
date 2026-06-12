@@ -1559,6 +1559,45 @@ WHERE id = $1
         self.find_user_auth_by_id(user_id).await
     }
 
+    pub async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: chrono::DateTime<chrono::Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<StoredUserAuthRecord>, DataLayerError> {
+        let mut tx = self.pool.begin().await.map_postgres_err()?;
+        let update_result = sqlx::query(
+            r#"
+UPDATE users
+SET password_hash = $2,
+    updated_at = $3
+WHERE id = $1
+"#,
+        )
+        .bind(user_id)
+        .bind(password_hash)
+        .bind(updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_postgres_err()?;
+        if update_result.rows_affected() == 0 {
+            tx.rollback().await.map_postgres_err()?;
+            return Ok(None);
+        }
+
+        sqlx::query(REVOKE_ALL_USER_SESSIONS_SQL)
+            .bind(user_id)
+            .bind(updated_at)
+            .bind(session_revoke_reason.chars().take(100).collect::<String>())
+            .execute(&mut *tx)
+            .await
+            .map_postgres_err()?;
+        tx.commit().await.map_postgres_err()?;
+
+        self.find_user_auth_by_id(user_id).await
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn update_local_auth_user_admin_fields(
         &self,
@@ -2676,6 +2715,22 @@ impl UserReadRepository for SqlxUserReadRepository {
     ) -> Result<Option<StoredUserAuthRecord>, DataLayerError> {
         self.update_local_auth_user_password_hash(user_id, password_hash, updated_at)
             .await
+    }
+
+    async fn reset_local_auth_user_password(
+        &self,
+        user_id: &str,
+        password_hash: String,
+        updated_at: chrono::DateTime<chrono::Utc>,
+        session_revoke_reason: &str,
+    ) -> Result<Option<StoredUserAuthRecord>, DataLayerError> {
+        self.reset_local_auth_user_password(
+            user_id,
+            password_hash,
+            updated_at,
+            session_revoke_reason,
+        )
+        .await
     }
 
     async fn update_local_auth_user_admin_fields(
