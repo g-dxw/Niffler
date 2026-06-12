@@ -18,8 +18,9 @@ pub(crate) use orchestration::*;
 pub(crate) use outcome::{
     beautify_local_execution_client_error_message, build_local_execution_exhaustion,
     build_local_execution_runtime_miss_context, record_failed_usage_for_exhausted_request,
-    record_failed_usage_for_runtime_miss_request, LocalExecutionExhaustion,
-    LocalExecutionRequestOutcome, LocalExecutionRuntimeMissContext,
+    record_failed_usage_for_runtime_miss_request, record_platform_handled_usage,
+    record_platform_rejection_usage, LocalExecutionExhaustion, LocalExecutionRequestOutcome,
+    LocalExecutionRuntimeMissContext,
 };
 pub(crate) use plan_fallback::{
     maybe_execute_stream_via_plan_fallback, maybe_execute_sync_via_plan_fallback,

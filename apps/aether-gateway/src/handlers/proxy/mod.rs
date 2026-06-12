@@ -33,13 +33,14 @@ use crate::constants::{
 use crate::control::{
     allows_control_execute_emergency, management_token_permission_keys_from_value,
     maybe_execute_via_control, request_model_local_rejection, should_buffer_request_for_local_auth,
-    trusted_auth_local_rejection, GatewayControlDecision, GatewayPublicRequestContext,
+    trusted_auth_local_rejection, GatewayControlDecision, GatewayLocalAuthRejection,
+    GatewayPublicRequestContext,
 };
 use crate::executor::{
     beautify_local_execution_client_error_message, build_local_execution_runtime_miss_context,
     maybe_execute_stream_request, maybe_execute_sync_request,
     record_failed_usage_for_exhausted_request, record_failed_usage_for_runtime_miss_request,
-    LocalExecutionRequestOutcome,
+    record_platform_handled_usage, record_platform_rejection_usage, LocalExecutionRequestOutcome,
 };
 use crate::frontdoor_loop_guard::{
     frontdoor_self_loop_public_ai_path, request_has_execution_runtime_loop_guard,
@@ -162,9 +163,24 @@ async fn finalize_request_body_normalization_rejection(
     remote_addr: &std::net::SocketAddr,
     started_at: &std::time::Instant,
     trace_id: &str,
+    uri: &http::Uri,
+    headers: &http::HeaderMap,
     request_permit: Option<aether_runtime::AdmissionPermit>,
     error: &RequestBodyNormalizationError,
 ) -> Result<Response<Body>, GatewayError> {
+    record_ai_platform_rejection_usage(
+        state,
+        request_context,
+        started_at,
+        uri,
+        headers,
+        None,
+        error.http_status().as_u16(),
+        "request_body_normalization_failed",
+        error.client_message().as_str(),
+        EXECUTION_PATH_LOCAL_INVALID_REQUEST,
+    )
+    .await;
     let response =
         build_request_body_normalization_error_response(state, trace_id, request_context, error)
             .await?;
@@ -177,6 +193,128 @@ async fn finalize_request_body_normalization_rejection(
         started_at,
         request_permit,
     ))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn record_ai_platform_rejection_usage(
+    state: &AppState,
+    request_context: &GatewayPublicRequestContext,
+    started_at: &std::time::Instant,
+    uri: &http::Uri,
+    headers: &http::HeaderMap,
+    request_body: Option<&Bytes>,
+    status_code: u16,
+    reason: &str,
+    message: &str,
+    execution_path: &str,
+) {
+    record_platform_rejection_usage(
+        state,
+        &request_context.trace_id,
+        started_at,
+        request_context.control_decision.as_ref(),
+        uri,
+        headers,
+        request_body,
+        status_code,
+        reason,
+        message,
+        execution_path,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn record_ai_platform_handled_usage(
+    state: &AppState,
+    request_context: &GatewayPublicRequestContext,
+    started_at: &std::time::Instant,
+    uri: &http::Uri,
+    headers: &http::HeaderMap,
+    request_body: Option<&Bytes>,
+    status_code: u16,
+    reason: &str,
+    message: &str,
+    execution_path: &str,
+) {
+    record_platform_handled_usage(
+        state,
+        &request_context.trace_id,
+        started_at,
+        request_context.control_decision.as_ref(),
+        uri,
+        headers,
+        request_body,
+        status_code,
+        reason,
+        message,
+        execution_path,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn record_pre_context_ai_platform_rejection_usage(
+    state: &AppState,
+    request_id: &str,
+    started_at: &std::time::Instant,
+    method: &http::Method,
+    uri: &http::Uri,
+    headers: &http::HeaderMap,
+    status_code: u16,
+    reason: &str,
+    message: &str,
+    execution_path: &str,
+) {
+    let decision = crate::control::classify_control_route(method, uri, headers);
+    record_platform_rejection_usage(
+        state,
+        request_id,
+        started_at,
+        decision.as_ref(),
+        uri,
+        headers,
+        None,
+        status_code,
+        reason,
+        message,
+        execution_path,
+    )
+    .await;
+}
+
+fn auth_rejection_usage_reason(rejection: &GatewayLocalAuthRejection) -> (&'static str, String) {
+    match rejection {
+        GatewayLocalAuthRejection::InvalidApiKey => {
+            ("invalid_api_key", "无效的API密钥".to_string())
+        }
+        GatewayLocalAuthRejection::LockedApiKey => (
+            "locked_api_key",
+            "该密钥已被管理员锁定，请联系管理员".to_string(),
+        ),
+        GatewayLocalAuthRejection::WalletUnavailable => {
+            ("wallet_unavailable", "钱包不可用".to_string())
+        }
+        GatewayLocalAuthRejection::BalanceDenied { remaining } => (
+            "balance_exceeded",
+            match remaining {
+                Some(value) => format!("余额不足（剩余: ${value:.2}）"),
+                None => "余额不足".to_string(),
+            },
+        ),
+        GatewayLocalAuthRejection::ProviderNotAllowed { provider } => (
+            "provider_not_allowed",
+            format!("当前用户、用户组或密钥的访问控制策略不允许访问 {provider} 提供商"),
+        ),
+        GatewayLocalAuthRejection::ApiFormatNotAllowed { api_format } => (
+            "api_format_not_allowed",
+            format!("当前用户、用户组或密钥的访问控制策略不允许访问 {api_format} 格式"),
+        ),
+        GatewayLocalAuthRejection::ModelNotAllowed { model } => (
+            "model_not_allowed",
+            format!("当前用户、用户组或密钥的访问控制策略不允许访问模型 {model}"),
+        ),
+    }
 }
 
 fn local_execution_outcome_label(outcome: &LocalExecutionRequestOutcome) -> &'static str {
@@ -892,6 +1030,19 @@ pub(crate) async fn proxy_request(
         })) => {
             let trace_id = extract_or_generate_trace_id(request.headers());
             let response = build_local_overloaded_response(&trace_id, None, gate, limit)?;
+            record_pre_context_ai_platform_rejection_usage(
+                &state,
+                &trace_id,
+                &started_at,
+                request.method(),
+                request.uri(),
+                request.headers(),
+                response.status().as_u16(),
+                "frontdoor_request_concurrency_limited",
+                "服务繁忙，请稍后重试",
+                EXECUTION_PATH_LOCAL_OVERLOADED,
+            )
+            .await;
             return Ok(finalize_gateway_response(
                 &state,
                 response,
@@ -922,6 +1073,19 @@ pub(crate) async fn proxy_request(
         )) => {
             let trace_id = extract_or_generate_trace_id(request.headers());
             let response = build_local_overloaded_response(&trace_id, None, gate, limit)?;
+            record_pre_context_ai_platform_rejection_usage(
+                &state,
+                &trace_id,
+                &started_at,
+                request.method(),
+                request.uri(),
+                request.headers(),
+                response.status().as_u16(),
+                "frontdoor_distributed_concurrency_limited",
+                "服务繁忙，请稍后重试",
+                EXECUTION_PATH_DISTRIBUTED_OVERLOADED,
+            )
+            .await;
             return Ok(finalize_gateway_response(
                 &state,
                 response,
@@ -993,14 +1157,33 @@ pub(crate) async fn proxy_request(
         ));
     }
     let request_context_started_at = Instant::now();
-    let mut request_context = crate::control::resolve_public_request_context(
+    let mut request_context = match crate::control::resolve_public_request_context(
         &state,
         &parts.method,
         &parts.uri,
         &parts.headers,
         &trace_id,
     )
-    .await?;
+    .await
+    {
+        Ok(request_context) => request_context,
+        Err(err) => {
+            record_pre_context_ai_platform_rejection_usage(
+                &state,
+                &trace_id,
+                &started_at,
+                &parts.method,
+                &parts.uri,
+                &parts.headers,
+                http::StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                "request_context_resolution_failed",
+                "网关解析请求失败",
+                EXECUTION_PATH_LOCAL_INVALID_REQUEST,
+            )
+            .await;
+            return Err(err);
+        }
+    };
     maybe_promote_management_token_admin_principal(
         &state,
         &remote_addr,
@@ -1053,6 +1236,19 @@ pub(crate) async fn proxy_request(
             rejection.scope,
         )
         .await?;
+        record_ai_platform_rejection_usage(
+            &state,
+            &request_context,
+            &started_at,
+            &parts.uri,
+            &parts.headers,
+            None,
+            response.status().as_u16(),
+            "unauthenticated_ai_ip_rate_limited",
+            "请求过于频繁，请稍后重试",
+            EXECUTION_PATH_LOCAL_RATE_LIMITED,
+        )
+        .await;
         return Ok(finalize_gateway_response_with_context(
             &state,
             response,
@@ -1104,6 +1300,8 @@ pub(crate) async fn proxy_request(
                     &remote_addr,
                     &started_at,
                     &trace_id,
+                    &parts.uri,
+                    &parts.headers,
                     request_permit.take(),
                     &err,
                 )
@@ -1285,6 +1483,8 @@ pub(crate) async fn proxy_request(
                     &remote_addr,
                     &started_at,
                     &trace_id,
+                    &parts.uri,
+                    &parts.headers,
                     request_permit.take(),
                     &err,
                 )
@@ -1316,6 +1516,7 @@ pub(crate) async fn proxy_request(
     }
 
     if let Some(rejection) = trusted_auth_local_rejection(control_decision, &parts.headers) {
+        let (reason, message) = auth_rejection_usage_reason(&rejection);
         let response = build_niffler_platform_auth_rejection_response(
             &state,
             &trace_id,
@@ -1323,6 +1524,19 @@ pub(crate) async fn proxy_request(
             &rejection,
         )
         .await?;
+        record_ai_platform_rejection_usage(
+            &state,
+            &request_context,
+            &started_at,
+            &parts.uri,
+            &parts.headers,
+            buffered_body.as_ref(),
+            response.status().as_u16(),
+            reason,
+            message.as_str(),
+            EXECUTION_PATH_LOCAL_AUTH_DENIED,
+        )
+        .await;
         return Ok(finalize_gateway_response_with_context(
             &state,
             response,
@@ -1344,6 +1558,7 @@ pub(crate) async fn proxy_request(
         )
         .await?
         {
+            let (reason, message) = auth_rejection_usage_reason(&rejection);
             let response = build_niffler_platform_auth_rejection_response(
                 &state,
                 &trace_id,
@@ -1351,6 +1566,19 @@ pub(crate) async fn proxy_request(
                 &rejection,
             )
             .await?;
+            record_ai_platform_rejection_usage(
+                &state,
+                &request_context,
+                &started_at,
+                &parts.uri,
+                &parts.headers,
+                Some(buffered_body),
+                response.status().as_u16(),
+                reason,
+                message.as_str(),
+                EXECUTION_PATH_LOCAL_AUTH_DENIED,
+            )
+            .await;
             return Ok(finalize_gateway_response_with_context(
                 &state,
                 response,
@@ -1399,6 +1627,19 @@ pub(crate) async fn proxy_request(
             rejection.scope,
         )
         .await?;
+        record_ai_platform_rejection_usage(
+            &state,
+            &request_context,
+            &started_at,
+            &parts.uri,
+            &parts.headers,
+            buffered_body.as_ref(),
+            response.status().as_u16(),
+            "frontdoor_user_rpm_limited",
+            "请求过于频繁，请稍后重试",
+            EXECUTION_PATH_LOCAL_RATE_LIMITED,
+        )
+        .await;
         return Ok(finalize_gateway_response_with_context(
             &state,
             response,
@@ -1417,6 +1658,29 @@ pub(crate) async fn proxy_request(
     )
     .await
     {
+        let status_code = response.status().as_u16();
+        let failed = status_code >= 400;
+        record_ai_platform_handled_usage(
+            &state,
+            &request_context,
+            &started_at,
+            &parts.uri,
+            &parts.headers,
+            buffered_body.as_ref(),
+            status_code,
+            if failed {
+                "local_ai_public_validation_failed"
+            } else {
+                "local_ai_public_handled"
+            },
+            if failed {
+                "请求没有通过平台入口校验"
+            } else {
+                "平台已处理请求"
+            },
+            EXECUTION_PATH_LOCAL_AI_PUBLIC,
+        )
+        .await;
         return Ok(finalize_gateway_response_with_context(
             &state,
             response,
@@ -1461,6 +1725,7 @@ pub(crate) async fn proxy_request(
         )
         .await?
         {
+            let (reason, message) = auth_rejection_usage_reason(&rejection);
             let response = build_niffler_platform_auth_rejection_response(
                 &state,
                 &trace_id,
@@ -1468,6 +1733,19 @@ pub(crate) async fn proxy_request(
                 &rejection,
             )
             .await?;
+            record_ai_platform_rejection_usage(
+                &state,
+                &request_context,
+                &started_at,
+                &parts.uri,
+                &parts.headers,
+                Some(buffered_body),
+                response.status().as_u16(),
+                reason,
+                message.as_str(),
+                EXECUTION_PATH_LOCAL_AUTH_DENIED,
+            )
+            .await;
             return Ok(finalize_gateway_response_with_context(
                 &state,
                 response,
@@ -1758,6 +2036,7 @@ pub(crate) async fn proxy_request(
                 control_decision,
                 local_execution_runtime_miss_diagnostic.as_ref(),
                 &local_execution_runtime_miss_context,
+                &parts.uri,
                 &parts.headers,
                 Some(client_ip.as_str()),
                 Some(buffered_body),
@@ -1812,6 +2091,19 @@ pub(crate) async fn proxy_request(
         LOCAL_PROXY_PASSTHROUGH_REMOVED_DETAIL,
     )
     .await?;
+    record_ai_platform_rejection_usage(
+        &state,
+        &request_context,
+        &started_at,
+        &parts.uri,
+        &parts.headers,
+        buffered_body.as_ref(),
+        response.status().as_u16(),
+        "local_proxy_passthrough_removed",
+        LOCAL_PROXY_PASSTHROUGH_REMOVED_DETAIL,
+        EXECUTION_PATH_LOCAL_PROXY_PASSTHROUGH_REMOVED,
+    )
+    .await;
     Ok(finalize_gateway_response_with_context(
         &state,
         response,

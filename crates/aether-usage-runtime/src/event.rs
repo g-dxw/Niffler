@@ -127,6 +127,8 @@ pub struct UsageEventData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_response_body_state: Option<UsageBodyCaptureState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub billing_status_override: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_index: Option<u64>,

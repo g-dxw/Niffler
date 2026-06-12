@@ -30,6 +30,9 @@ pub fn build_upsert_usage_record_from_event(
 ) -> Result<UpsertUsageRecord, DataLayerError> {
     let (status, billing_status) = lifecycle_status_and_billing(event.event_type);
     let data = event.data.clone();
+    let billing_status = billing_status_override(&data)
+        .unwrap_or(billing_status)
+        .to_string();
     let now_unix_secs = event.timestamp_ms / 1_000;
 
     Ok(UpsertUsageRecord {
@@ -71,7 +74,7 @@ pub fn build_upsert_usage_record_from_event(
         response_time_ms: data.response_time_ms,
         first_byte_time_ms: data.first_byte_time_ms,
         status: status.to_string(),
-        billing_status: billing_status.to_string(),
+        billing_status,
         request_headers: data.request_headers,
         request_body: data.request_body,
         request_body_ref: empty_to_none(data.request_body_ref)
@@ -128,6 +131,26 @@ pub fn build_upsert_usage_record_from_event(
         created_at_unix_ms: Some(now_unix_secs),
         updated_at_unix_secs: now_unix_secs,
     })
+}
+
+fn billing_status_override(data: &crate::UsageEventData) -> Option<&'static str> {
+    if data.provider_name.trim() != "Niffler 平台" {
+        return None;
+    }
+    let platform_source = data
+        .request_metadata
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .and_then(|value| value.get("source"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| matches!(value.trim(), "platform_handled" | "platform_rejection"));
+    if !platform_source {
+        return None;
+    }
+    match data.billing_status_override.as_deref().map(str::trim) {
+        Some(value) if value.eq_ignore_ascii_case("void") => Some("void"),
+        _ => None,
+    }
 }
 
 fn lifecycle_status_and_billing(event_type: UsageEventType) -> (&'static str, &'static str) {
@@ -211,6 +234,52 @@ mod tests {
         assert_eq!(record.status_code, Some(499));
         assert_eq!(record.response_time_ms, Some(200));
         assert_eq!(record.first_byte_time_ms, Some(50));
+    }
+
+    #[test]
+    fn completed_terminal_record_can_be_marked_void_for_platform_handled_requests() {
+        let record = build_upsert_usage_record_from_event(&UsageEvent {
+            event_type: UsageEventType::Completed,
+            request_id: "req-platform-handled".to_string(),
+            timestamp_ms: 1_700_000_000_000,
+            data: UsageEventData {
+                provider_name: "Niffler 平台".to_string(),
+                model: "count_tokens".to_string(),
+                status_code: Some(200),
+                billing_status_override: Some("void".to_string()),
+                request_metadata: Some(serde_json::json!({
+                    "source": "platform_handled"
+                })),
+                ..UsageEventData::default()
+            },
+        })
+        .expect("record should build");
+
+        assert_eq!(record.status, "completed");
+        assert_eq!(record.billing_status, "void");
+    }
+
+    #[test]
+    fn completed_terminal_record_ignores_void_override_for_non_platform_requests() {
+        let record = build_upsert_usage_record_from_event(&UsageEvent {
+            event_type: UsageEventType::Completed,
+            request_id: "req-normal".to_string(),
+            timestamp_ms: 1_700_000_000_000,
+            data: UsageEventData {
+                provider_name: "OpenAI".to_string(),
+                model: "gpt-5".to_string(),
+                status_code: Some(200),
+                billing_status_override: Some("void".to_string()),
+                request_metadata: Some(serde_json::json!({
+                    "source": "platform_handled"
+                })),
+                ..UsageEventData::default()
+            },
+        })
+        .expect("record should build");
+
+        assert_eq!(record.status, "completed");
+        assert_eq!(record.billing_status, "pending");
     }
 
     #[test]

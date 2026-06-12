@@ -3,17 +3,21 @@ use super::{
     encrypt_python_fernet_plaintext, hash_api_key, json, sample_local_openai_auth_snapshot,
     sample_local_openai_candidate_row, sample_local_openai_endpoint, sample_local_openai_key,
     sample_local_openai_provider, send_request, start_server, strip_sse_keepalive_comments,
-    wait_for_request_candidate_status, Arc, Body, GatewayDataState, HeaderValue,
+    wait_for_request_candidate_status, wait_until, Arc, Body, Bytes, GatewayDataState, HeaderValue,
     InMemoryAuthApiKeySnapshotRepository, InMemoryMinimalCandidateSelectionReadRepository,
     InMemoryProviderCatalogReadRepository, InMemoryRequestCandidateRepository,
-    InMemoryUsageReadRepository, Json, Mutex, Request, RequestCandidateReadRepository,
+    InMemoryUsageReadRepository, Infallible, Json, Mutex, Request, RequestCandidateReadRepository,
     RequestCandidateStatus, Response, Router, StatusCode, StoredAuthApiKeySnapshot,
     StoredMinimalCandidateSelectionRow, StoredProviderCatalogEndpoint, StoredProviderCatalogKey,
     StoredProviderCatalogProvider, StoredProviderModelMapping, UsageReadRepository,
     UsageRuntimeConfig, DEVELOPMENT_ENCRYPTION_KEY, TRACE_ID_HEADER,
 };
-use crate::constants::LOCAL_EXECUTION_RUNTIME_MISS_REASON_HEADER;
+use crate::constants::{
+    EXECUTION_PATH_HEADER, EXECUTION_PATH_LOCAL_OVERLOADED,
+    LOCAL_EXECUTION_RUNTIME_MISS_REASON_HEADER,
+};
 use aether_data_contracts::repository::usage::UsageBodyCaptureState;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn deep_nested_metadata(levels: usize) -> serde_json::Value {
     let mut current = json!({"leaf": "value"});
@@ -86,8 +90,65 @@ where
     stored.expect("usage should be present once the expected status is observed")
 }
 
+fn sample_openai_image_auth_snapshot(api_key_id: &str, user_id: &str) -> StoredAuthApiKeySnapshot {
+    StoredAuthApiKeySnapshot::new(
+        user_id.to_string(),
+        "alice".to_string(),
+        Some("alice@example.com".to_string()),
+        "user".to_string(),
+        "local".to_string(),
+        true,
+        false,
+        Some(serde_json::json!(["openai"])),
+        Some(serde_json::json!(["openai:image"])),
+        Some(serde_json::json!(["gpt-image-2"])),
+        api_key_id.to_string(),
+        Some("default".to_string()),
+        true,
+        false,
+        false,
+        Some(60),
+        Some(5),
+        Some(4_102_444_800),
+        Some(serde_json::json!(["openai"])),
+        Some(serde_json::json!(["openai:image"])),
+        Some(serde_json::json!(["gpt-image-2"])),
+    )
+    .expect("auth snapshot should build")
+}
+
+fn sample_claude_count_tokens_auth_snapshot(
+    api_key_id: &str,
+    user_id: &str,
+) -> StoredAuthApiKeySnapshot {
+    StoredAuthApiKeySnapshot::new(
+        user_id.to_string(),
+        "alice".to_string(),
+        Some("alice@example.com".to_string()),
+        "user".to_string(),
+        "local".to_string(),
+        true,
+        false,
+        Some(serde_json::json!(["claude"])),
+        Some(serde_json::json!(["claude:messages"])),
+        Some(serde_json::json!(["claude-sonnet-4-5"])),
+        api_key_id.to_string(),
+        Some("default".to_string()),
+        true,
+        false,
+        false,
+        Some(60),
+        Some(5),
+        Some(4_102_444_800),
+        Some(serde_json::json!(["claude"])),
+        Some(serde_json::json!(["claude:messages"])),
+        Some(serde_json::json!(["claude-sonnet-4-5"])),
+    )
+    .expect("auth snapshot should build")
+}
+
 #[tokio::test]
-async fn gateway_does_not_record_usage_for_unauthenticated_ai_runtime_miss() {
+async fn gateway_records_usage_for_unauthenticated_ai_runtime_miss() {
     let usage_repository = Arc::new(InMemoryUsageReadRepository::default());
     let execution_runtime = Router::new();
     let (execution_runtime_url, execution_runtime_handle) = start_server(execution_runtime).await;
@@ -112,16 +173,366 @@ async fn gateway_does_not_record_usage_for_unauthenticated_ai_runtime_miss() {
         .expect("request should complete");
 
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let stored_usage = usage_repository
-        .find_by_request_id("trace-unauth-ai-runtime-miss-usage-123")
-        .await
-        .expect("usage lookup should succeed");
-    assert!(
-        stored_usage.is_none(),
-        "unauthenticated AI requests should not appear in usage records"
+    let stored_usage = wait_for_usage_status(
+        usage_repository.as_ref(),
+        "trace-unauth-ai-runtime-miss-usage-123",
+        "failed",
+    )
+    .await;
+    assert_eq!(stored_usage.billing_status, "void");
+    assert_eq!(stored_usage.status_code, Some(503));
+    assert_eq!(stored_usage.provider_name, "Niffler 平台");
+    assert_eq!(stored_usage.model, "sora-2");
+    assert_eq!(stored_usage.total_tokens, 0);
+    assert_eq!(stored_usage.total_cost_usd, 0.0);
+    assert_eq!(stored_usage.user_id, None);
+    assert_eq!(stored_usage.api_key_id, None);
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("source"))
+            .and_then(|value| value.as_str()),
+        Some("platform_rejection")
+    );
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("platform_rejection_reason"))
+            .and_then(|value| value.as_str()),
+        Some("missing_auth_context")
     );
 
+    gateway_handle.abort();
+    execution_runtime_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_records_usage_for_local_ai_public_validation_rejection() {
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::default());
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+        Some(hash_api_key("sk-local-ai-public-validation")),
+        sample_openai_image_auth_snapshot(
+            "api-key-local-ai-public-validation-1",
+            "user-local-ai-public-validation-1",
+        ),
+    )]));
+    let candidate_selection_repository = Arc::new(
+        InMemoryMinimalCandidateSelectionReadRepository::seed(vec![]),
+    );
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![],
+        vec![],
+        vec![],
+    ));
+    let request_candidate_repository = Arc::new(InMemoryRequestCandidateRepository::default());
+    let data_state =
+        GatewayDataState::with_auth_candidate_selection_provider_catalog_request_candidates_and_usage_for_tests(
+            auth_repository,
+            candidate_selection_repository,
+            provider_catalog_repository,
+            request_candidate_repository,
+            Arc::clone(&usage_repository),
+            DEVELOPMENT_ENCRYPTION_KEY,
+        );
+    let gateway_state = build_state_with_execution_runtime_override("http://127.0.0.1:9")
+        .with_data_state_for_tests(data_state)
+        .with_usage_runtime_for_tests(UsageRuntimeConfig {
+            enabled: true,
+            ..UsageRuntimeConfig::default()
+        });
+    let gateway = build_router_with_state(gateway_state);
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{gateway_url}/v1/images/generations"))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(
+            http::header::AUTHORIZATION,
+            "Bearer sk-local-ai-public-validation",
+        )
+        .header(TRACE_ID_HEADER, "trace-local-ai-public-validation-123")
+        .body("{\"model\":\"gpt-image-2\"}")
+        .send()
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body_json: serde_json::Value = response.json().await.expect("body should parse");
+    assert_eq!(body_json["detail"], "图片生成/编辑请求缺少 prompt");
+
+    let stored_usage = wait_for_usage_status(
+        usage_repository.as_ref(),
+        "trace-local-ai-public-validation-123",
+        "failed",
+    )
+    .await;
+    assert_eq!(stored_usage.billing_status, "void");
+    assert_eq!(stored_usage.status_code, Some(400));
+    assert_eq!(stored_usage.provider_name, "Niffler 平台");
+    assert_eq!(stored_usage.model, "gpt-image-2");
+    assert_eq!(stored_usage.total_tokens, 0);
+    assert_eq!(stored_usage.total_cost_usd, 0.0);
+    assert_eq!(
+        stored_usage.user_id.as_deref(),
+        Some("user-local-ai-public-validation-1")
+    );
+    assert_eq!(
+        stored_usage.api_key_id.as_deref(),
+        Some("api-key-local-ai-public-validation-1")
+    );
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("source"))
+            .and_then(|value| value.as_str()),
+        Some("platform_rejection")
+    );
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("platform_rejection_reason"))
+            .and_then(|value| value.as_str()),
+        Some("local_ai_public_validation_failed")
+    );
+
+    gateway_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_records_void_usage_for_local_ai_public_success() {
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::default());
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+        Some(hash_api_key("sk-local-ai-public-success")),
+        sample_claude_count_tokens_auth_snapshot(
+            "api-key-local-ai-public-success-1",
+            "user-local-ai-public-success-1",
+        ),
+    )]));
+    let candidate_selection_repository = Arc::new(
+        InMemoryMinimalCandidateSelectionReadRepository::seed(vec![]),
+    );
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![],
+        vec![],
+        vec![],
+    ));
+    let request_candidate_repository = Arc::new(InMemoryRequestCandidateRepository::default());
+    let data_state =
+        GatewayDataState::with_auth_candidate_selection_provider_catalog_request_candidates_and_usage_for_tests(
+            auth_repository,
+            candidate_selection_repository,
+            provider_catalog_repository,
+            request_candidate_repository,
+            Arc::clone(&usage_repository),
+            DEVELOPMENT_ENCRYPTION_KEY,
+        );
+    let gateway_state = build_state_with_execution_runtime_override("http://127.0.0.1:9")
+        .with_data_state_for_tests(data_state)
+        .with_usage_runtime_for_tests(UsageRuntimeConfig {
+            enabled: true,
+            ..UsageRuntimeConfig::default()
+        });
+    let gateway = build_router_with_state(gateway_state);
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{gateway_url}/v1/messages/count_tokens"))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header("x-api-key", "sk-local-ai-public-success")
+        .header(TRACE_ID_HEADER, "trace-local-ai-public-success-123")
+        .body(
+            serde_json::to_vec(&json!({
+                "model": "claude-sonnet-4-5",
+                "messages": [{"role": "user", "content": "hello"}]
+            }))
+            .expect("request body should encode"),
+        )
+        .send()
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body_json: serde_json::Value = response.json().await.expect("body should parse");
+    assert_eq!(body_json["input_tokens"], 5);
+
+    let stored_usage = wait_for_usage_status(
+        usage_repository.as_ref(),
+        "trace-local-ai-public-success-123",
+        "completed",
+    )
+    .await;
+    assert_eq!(stored_usage.billing_status, "void");
+    assert_eq!(stored_usage.status_code, Some(200));
+    assert_eq!(stored_usage.provider_name, "Niffler 平台");
+    assert_eq!(stored_usage.model, "claude-sonnet-4-5");
+    assert_eq!(stored_usage.total_cost_usd, 0.0);
+    assert_eq!(
+        stored_usage.user_id.as_deref(),
+        Some("user-local-ai-public-success-1")
+    );
+    assert_eq!(
+        stored_usage.api_key_id.as_deref(),
+        Some("api-key-local-ai-public-success-1")
+    );
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("source"))
+            .and_then(|value| value.as_str()),
+        Some("platform_handled")
+    );
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("platform_reason"))
+            .and_then(|value| value.as_str()),
+        Some("local_ai_public_handled")
+    );
+
+    gateway_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_records_usage_for_ai_request_rejected_by_local_request_concurrency() {
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::default());
+    let execution_hits = Arc::new(AtomicUsize::new(0));
+    let execution_hits_clone = Arc::clone(&execution_hits);
+    let execution_runtime = Router::new().route(
+        "/v1/execute/stream",
+        any(move |_request: Request| {
+            let execution_hits = Arc::clone(&execution_hits_clone);
+            async move {
+                execution_hits.fetch_add(1, Ordering::SeqCst);
+                let stream = async_stream::stream! {
+                    yield Ok::<_, Infallible>(Bytes::from_static(
+                        b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":200,\"headers\":{\"content-type\":\"text/event-stream\"}}}\n",
+                    ));
+                    futures_util::future::pending::<()>().await;
+                };
+                let mut response = Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::from_stream(stream))
+                    .expect("response should build");
+                response.headers_mut().insert(
+                    http::header::CONTENT_TYPE,
+                    HeaderValue::from_static("application/x-ndjson"),
+                );
+                response
+            }
+        }),
+    );
+
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+        Some(hash_api_key("sk-client-openai-local-overload")),
+        sample_local_openai_auth_snapshot(
+            "api-key-openai-local-overload-1",
+            "user-openai-local-overload-1",
+        ),
+    )]));
+    let candidate_selection_repository =
+        Arc::new(InMemoryMinimalCandidateSelectionReadRepository::seed(vec![
+            sample_local_openai_candidate_row(),
+        ]));
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![sample_local_openai_provider()],
+        vec![sample_local_openai_endpoint()],
+        vec![sample_local_openai_key()],
+    ));
+    let request_candidate_repository = Arc::new(InMemoryRequestCandidateRepository::default());
+
+    let (execution_runtime_url, execution_runtime_handle) = start_server(execution_runtime).await;
+    let gateway_state = build_state_with_execution_runtime_override(execution_runtime_url)
+        .with_data_state_for_tests(
+            GatewayDataState::with_auth_candidate_selection_provider_catalog_request_candidates_and_usage_for_tests(
+                auth_repository,
+                candidate_selection_repository,
+                provider_catalog_repository,
+                request_candidate_repository,
+                Arc::clone(&usage_repository),
+                DEVELOPMENT_ENCRYPTION_KEY,
+            ),
+        )
+        .with_usage_runtime_for_tests(UsageRuntimeConfig {
+            enabled: true,
+            ..UsageRuntimeConfig::default()
+        })
+        .with_request_concurrency_limit(1);
+    let gateway = build_router_with_state(gateway_state);
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let client = reqwest::Client::new();
+    let first_response = client
+        .post(format!("{gateway_url}/v1/chat/completions"))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(
+            http::header::AUTHORIZATION,
+            "Bearer sk-client-openai-local-overload",
+        )
+        .header(TRACE_ID_HEADER, "trace-local-overload-holder-123")
+        .body("{\"model\":\"gpt-5\",\"messages\":[],\"stream\":true}")
+        .send()
+        .await
+        .expect("first request should start");
+
+    wait_until(500, || execution_hits.load(Ordering::SeqCst) == 1).await;
+
+    let second_response = client
+        .post(format!("{gateway_url}/v1/chat/completions"))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(
+            http::header::AUTHORIZATION,
+            "Bearer sk-client-openai-local-overload",
+        )
+        .header(TRACE_ID_HEADER, "trace-local-overload-usage-123")
+        .body("{\"model\":\"gpt-5\",\"messages\":[],\"stream\":true}")
+        .send()
+        .await
+        .expect("second request should complete");
+
+    assert_eq!(second_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        second_response
+            .headers()
+            .get(EXECUTION_PATH_HEADER)
+            .and_then(|value| value.to_str().ok()),
+        Some(EXECUTION_PATH_LOCAL_OVERLOADED)
+    );
+
+    let stored_usage = wait_for_usage_status(
+        usage_repository.as_ref(),
+        "trace-local-overload-usage-123",
+        "failed",
+    )
+    .await;
+    assert_eq!(stored_usage.billing_status, "void");
+    assert_eq!(stored_usage.status_code, Some(503));
+    assert_eq!(stored_usage.provider_name, "Niffler 平台");
+    assert_eq!(stored_usage.model, "chat");
+    assert_eq!(stored_usage.total_cost_usd, 0.0);
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("source"))
+            .and_then(|value| value.as_str()),
+        Some("platform_rejection")
+    );
+    assert_eq!(
+        stored_usage
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("platform_rejection_reason"))
+            .and_then(|value| value.as_str()),
+        Some("frontdoor_request_concurrency_limited")
+    );
+
+    drop(first_response);
     gateway_handle.abort();
     execution_runtime_handle.abort();
 }

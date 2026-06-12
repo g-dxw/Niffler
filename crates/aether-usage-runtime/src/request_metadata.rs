@@ -70,6 +70,9 @@ pub(crate) fn sanitize_usage_request_metadata_ref(value: Option<&Value>) -> Opti
 
 fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<String, Value>) {
     copy_non_empty_string(source, target, "trace_id");
+    copy_non_empty_string(source, target, "source");
+    copy_non_empty_string(source, target, "platform_reason");
+    copy_non_empty_string(source, target, "platform_rejection_reason");
     copy_non_empty_string(source, target, "client_ip");
     copy_non_empty_string(source, target, "user_agent");
     copy_non_empty_string(source, target, "client_family");
@@ -116,6 +119,9 @@ fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<St
 
 fn move_allowed_metadata_fields(mut source: Map<String, Value>, target: &mut Map<String, Value>) {
     remove_non_empty_string(&mut source, target, "trace_id");
+    remove_non_empty_string(&mut source, target, "source");
+    remove_non_empty_string(&mut source, target, "platform_reason");
+    remove_non_empty_string(&mut source, target, "platform_rejection_reason");
     remove_non_empty_string(&mut source, target, "client_ip");
     remove_non_empty_string(&mut source, target, "user_agent");
     remove_non_empty_string(&mut source, target, "client_family");

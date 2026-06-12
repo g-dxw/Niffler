@@ -323,7 +323,7 @@ fn record_unauthenticated_ai_security_log(
             .unwrap_or("unknown"),
         request_body_bytes = request_body.map(Bytes::len).unwrap_or_default(),
         detail = local_execution_runtime_miss_detail,
-        "blocked unauthenticated AI request without writing usage record"
+        "blocked unauthenticated AI request"
     );
 }
 
@@ -336,11 +336,12 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
     decision: Option<&GatewayControlDecision>,
     diagnostic: Option<&LocalExecutionRuntimeMissDiagnostic>,
     context: &LocalExecutionRuntimeMissContext,
+    uri: &http::Uri,
     request_headers: &HeaderMap,
     client_ip: Option<&str>,
     request_body: Option<&Bytes>,
 ) {
-    if context
+    let missing_auth_context = context
         .auth_user_id
         .as_deref()
         .unwrap_or_default()
@@ -349,8 +350,8 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
             .auth_api_key_id
             .as_deref()
             .unwrap_or_default()
-            .is_empty()
-    {
+            .is_empty();
+    if missing_auth_context {
         record_unauthenticated_ai_security_log(
             request_id,
             decision,
@@ -360,7 +361,6 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
             request_body,
             local_execution_runtime_miss_detail,
         );
-        return;
     }
 
     if !state.usage_runtime.is_enabled() {
@@ -380,8 +380,25 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
     let provider_name = selected_candidate
         .and_then(|value| value.provider_name.clone())
         .or_else(|| selected_candidate.and_then(|value| value.candidate.provider_id.clone()))
-        .unwrap_or_else(|| "unknown".to_string());
+        .unwrap_or_else(|| {
+            if missing_auth_context {
+                "Niffler 平台".to_string()
+            } else {
+                "unknown".to_string()
+            }
+        });
+    let record_as_platform_rejection = missing_auth_context || provider_name == "Niffler 平台";
+    let empty_body = Bytes::new();
+    let requested_model = decision.and_then(|value| {
+        crate::control::extract_requested_model(
+            value,
+            uri,
+            request_headers,
+            request_body.unwrap_or(&empty_body),
+        )
+    });
     let model = trimmed_non_empty(diagnostic.and_then(|value| value.requested_model.as_deref()))
+        .or(requested_model)
         .or_else(|| selected_candidate.and_then(|value| value.global_model_name.clone()))
         .or_else(|| selected_candidate.and_then(|value| value.selected_provider_model_name.clone()))
         .unwrap_or_else(|| "unknown".to_string());
@@ -417,6 +434,24 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
         "trace_id".to_string(),
         Value::String(request_id.to_string()),
     );
+    if record_as_platform_rejection {
+        let reason = diagnostic
+            .map(|value| value.reason.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("missing_auth_context");
+        request_metadata.insert(
+            "source".to_string(),
+            Value::String("platform_rejection".to_string()),
+        );
+        request_metadata.insert(
+            "platform_rejection_reason".to_string(),
+            Value::String(reason.to_string()),
+        );
+        request_metadata.insert(
+            "platform_reason".to_string(),
+            Value::String(reason.to_string()),
+        );
+    }
     let mut data = UsageEventData {
         user_id: context.auth_user_id.clone(),
         api_key_id: context.auth_api_key_id.clone(),
@@ -484,6 +519,206 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
     state.usage_runtime.submit_terminal_event(
         state.data.as_ref(),
         UsageEvent::new(UsageEventType::Failed, request_id, data),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn record_platform_rejection_usage(
+    state: &AppState,
+    request_id: &str,
+    started_at: &Instant,
+    decision: Option<&GatewayControlDecision>,
+    uri: &http::Uri,
+    headers: &HeaderMap,
+    request_body: Option<&Bytes>,
+    status_code: u16,
+    reason: &str,
+    message: &str,
+    execution_path: &str,
+) {
+    record_platform_usage(
+        state,
+        request_id,
+        started_at,
+        decision,
+        uri,
+        headers,
+        request_body,
+        status_code,
+        UsageEventType::Failed,
+        "platform_rejection",
+        reason,
+        message,
+        execution_path,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn record_platform_handled_usage(
+    state: &AppState,
+    request_id: &str,
+    started_at: &Instant,
+    decision: Option<&GatewayControlDecision>,
+    uri: &http::Uri,
+    headers: &HeaderMap,
+    request_body: Option<&Bytes>,
+    status_code: u16,
+    reason: &str,
+    message: &str,
+    execution_path: &str,
+) {
+    let event_type = if status_code >= 400 {
+        UsageEventType::Failed
+    } else {
+        UsageEventType::Completed
+    };
+    let source = if matches!(event_type, UsageEventType::Failed) {
+        "platform_rejection"
+    } else {
+        "platform_handled"
+    };
+    record_platform_usage(
+        state,
+        request_id,
+        started_at,
+        decision,
+        uri,
+        headers,
+        request_body,
+        status_code,
+        event_type,
+        source,
+        reason,
+        message,
+        execution_path,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn record_platform_usage(
+    state: &AppState,
+    request_id: &str,
+    started_at: &Instant,
+    decision: Option<&GatewayControlDecision>,
+    uri: &http::Uri,
+    headers: &HeaderMap,
+    request_body: Option<&Bytes>,
+    status_code: u16,
+    event_type: UsageEventType,
+    source: &str,
+    reason: &str,
+    message: &str,
+    execution_path: &str,
+) {
+    if !state.usage_runtime.is_enabled() {
+        return;
+    }
+    let Some(decision) = decision else {
+        return;
+    };
+    if decision.route_class.as_deref() != Some("ai_public") {
+        return;
+    }
+
+    let auth_context = decision.auth_context.as_ref();
+    let api_format = trimmed_non_empty(decision.auth_endpoint_signature.as_deref());
+    let requested_model = crate::control::extract_requested_model(
+        decision,
+        uri,
+        headers,
+        request_body.unwrap_or(&Bytes::new()),
+    );
+    let model = requested_model
+        .or_else(|| trimmed_non_empty(decision.route_kind.as_deref()))
+        .unwrap_or_else(|| "unknown".to_string());
+    let failed = matches!(event_type, UsageEventType::Failed);
+    let client_body = if failed {
+        json!({
+            "error": {
+                "type": "http_error",
+                "message": message,
+            }
+        })
+    } else {
+        json!({
+            "message": message,
+        })
+    };
+    let mut request_metadata = Map::new();
+    request_metadata.insert("source".to_string(), Value::String(source.to_string()));
+    request_metadata.insert(
+        "trace_id".to_string(),
+        Value::String(request_id.to_string()),
+    );
+    request_metadata.insert(
+        "platform_rejection_reason".to_string(),
+        Value::String(reason.to_string()),
+    );
+    request_metadata.insert(
+        "platform_reason".to_string(),
+        Value::String(reason.to_string()),
+    );
+    request_metadata.insert(
+        "request_path".to_string(),
+        Value::String(
+            uri.path_and_query()
+                .map(|value| value.as_str())
+                .unwrap_or("/")
+                .to_string(),
+        ),
+    );
+
+    let data = UsageEventData {
+        user_id: auth_context.map(|value| value.user_id.clone()),
+        api_key_id: auth_context.map(|value| value.api_key_id.clone()),
+        username: auth_context.and_then(|value| value.username.clone()),
+        api_key_name: auth_context.and_then(|value| value.api_key_name.clone()),
+        provider_name: "Niffler 平台".to_string(),
+        model,
+        request_type: Some(infer_request_type(api_format.as_deref())),
+        api_format: api_format.clone(),
+        api_family: api_format
+            .as_deref()
+            .and_then(infer_api_family)
+            .map(ToOwned::to_owned),
+        endpoint_kind: api_format
+            .as_deref()
+            .and_then(infer_endpoint_kind)
+            .map(ToOwned::to_owned),
+        endpoint_api_format: api_format.clone(),
+        provider_api_family: api_format
+            .as_deref()
+            .and_then(infer_api_family)
+            .map(ToOwned::to_owned),
+        provider_endpoint_kind: api_format
+            .as_deref()
+            .and_then(infer_endpoint_kind)
+            .map(ToOwned::to_owned),
+        has_format_conversion: Some(false),
+        status_code: Some(status_code),
+        error_message: failed.then(|| message.to_string()),
+        error_category: failed
+            .then(|| error_category_for_failed_status(status_code))
+            .flatten(),
+        response_time_ms: Some(started_at.elapsed().as_millis() as u64),
+        request_headers: Some(runtime_miss_original_headers_json(headers)),
+        request_body: runtime_miss_original_request_body_json(headers, request_body),
+        response_headers: Some(json_header_map()),
+        response_body: Some(client_body.clone()),
+        client_response_headers: Some(json_header_map()),
+        client_response_body: Some(client_body),
+        execution_path: Some(execution_path.to_string()),
+        local_execution_runtime_miss_reason: failed.then(|| reason.to_string()),
+        request_metadata: Some(Value::Object(request_metadata)),
+        billing_status_override: Some("void".to_string()),
+        ..UsageEventData::default()
+    };
+
+    state.usage_runtime.submit_terminal_event(
+        state.data.as_ref(),
+        UsageEvent::new(event_type, request_id, data),
     );
 }
 
