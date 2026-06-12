@@ -580,15 +580,15 @@
                       v-if="showCodexStatsModeToggle"
                       type="button"
                       class="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                      :title="poolStatsMode === 'current_cycle' ? '切换为总计统计' : '切换为周期统计'"
-                      :aria-label="poolStatsMode === 'current_cycle' ? '切换为总计统计' : '切换为周期统计'"
+                      :title="poolStatsMode === 'current_cycle' ? '切换为账号总计' : '切换为本地周期用量'"
+                      :aria-label="poolStatsMode === 'current_cycle' ? '切换为账号总计' : '切换为本地周期用量'"
                       :aria-pressed="poolStatsMode === 'current_cycle'"
                       data-testid="pool-stats-mode-control"
                       @click.stop="togglePoolStatsMode"
                     >
                       <Repeat2 class="h-3.5 w-3.5" />
                     </button>
-                    <span>统计</span>
+                    <span>{{ poolStatsMode === 'current_cycle' && selectedProviderType === 'codex' ? '本地用量' : '统计' }}</span>
                   </div>
                 </SortableTableHead>
                 <SortableTableHead

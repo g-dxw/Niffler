@@ -620,7 +620,7 @@ describe('PoolManagement Codex cycle stats mode', () => {
     expect(root.querySelector('[data-testid="pool-stats-mode-switch"]')).toBeNull()
     const modeButton = root.querySelector<HTMLButtonElement>('[data-testid="pool-stats-mode-control"]')
     expect(modeButton).not.toBeNull()
-    expect(modeButton?.getAttribute('title')).toBe('切换为总计统计')
+    expect(modeButton?.getAttribute('title')).toBe('切换为账号总计')
     expect(root.querySelectorAll('[data-testid="pool-stats-cycle-group-5h"]').length).toBeGreaterThan(0)
     expect(root.querySelectorAll('[data-testid="pool-stats-cycle-group-weekly"]').length).toBeGreaterThan(0)
     expect(root.querySelector('[data-testid="pool-stats-5h-request_count"]')?.textContent?.trim()).toBe('7')
@@ -901,7 +901,7 @@ describe('PoolManagement Codex cycle stats mode', () => {
     expect(root.querySelector('[data-testid="pool-stats-cycle-group-5h"]')).toBeNull()
     expect(routeMocks.query.statsMode).toBe('account_total')
     expect(window.sessionStorage.getItem(POOL_MANAGEMENT_VIEW_STORAGE_KEY)).toContain('"statsMode":"account_total"')
-    expect(modeButton?.getAttribute('title')).toBe('切换为周期统计')
+    expect(modeButton?.getAttribute('title')).toBe('切换为本地周期用量')
   })
 
   it('restores stored and query account-total mode for Codex providers', async () => {

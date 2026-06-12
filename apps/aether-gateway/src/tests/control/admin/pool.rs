@@ -4,10 +4,12 @@ use std::time::Duration;
 use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY};
 use aether_data::repository::pool_scores::InMemoryPoolMemberScoreRepository;
 use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
+use aether_data::repository::usage::InMemoryUsageReadRepository;
 use aether_data_contracts::repository::pool_scores::{
     PoolMemberHardState, PoolMemberIdentity, PoolMemberProbeStatus, StoredPoolMemberScore,
 };
 use aether_data_contracts::repository::provider_catalog::ProviderCatalogReadRepository;
+use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
 use axum::body::{to_bytes, Body, Bytes};
 use axum::routing::{any, get, post};
 use axum::{extract::Request, Router};
@@ -104,6 +106,57 @@ fn sample_pool_member_score(provider_id: &str, key_id: &str, score: f64) -> Stor
         probe_status: PoolMemberProbeStatus::Ok,
         updated_at: 1_700_000_050,
     }
+}
+
+fn sample_pool_usage_row(
+    id: &str,
+    request_id: &str,
+    provider_id: &str,
+    provider_api_key_id: &str,
+    input_tokens: i32,
+    output_tokens: i32,
+    total_cost_usd: f64,
+    created_at_unix_secs: i64,
+) -> StoredRequestUsageAudit {
+    StoredRequestUsageAudit::new(
+        id.to_string(),
+        request_id.to_string(),
+        Some("user-1".to_string()),
+        Some("api-key-1".to_string()),
+        Some("测试用户".to_string()),
+        Some("测试 Key".to_string()),
+        "Codex".to_string(),
+        "gpt-5.4".to_string(),
+        None,
+        Some(provider_id.to_string()),
+        Some("endpoint-codex".to_string()),
+        Some(provider_api_key_id.to_string()),
+        Some("responses".to_string()),
+        Some("openai:responses".to_string()),
+        Some("openai".to_string()),
+        Some("responses".to_string()),
+        Some("openai:responses".to_string()),
+        Some("openai".to_string()),
+        Some("responses".to_string()),
+        false,
+        false,
+        input_tokens,
+        output_tokens,
+        input_tokens + output_tokens,
+        total_cost_usd,
+        total_cost_usd,
+        Some(200),
+        None,
+        None,
+        Some(500),
+        Some(120),
+        "completed".to_string(),
+        "settled".to_string(),
+        created_at_unix_secs,
+        created_at_unix_secs + 1,
+        Some(created_at_unix_secs + 2),
+    )
+    .expect("usage row should build")
 }
 
 #[tokio::test]
@@ -1246,6 +1299,146 @@ async fn gateway_pool_list_reads_materialized_codex_cycle_usage_from_quota_windo
     assert!(window_by_code(invalid_key_payload, "weekly")
         .get("usage")
         .is_none());
+}
+
+#[tokio::test]
+async fn gateway_pool_list_overlays_codex_cycle_usage_from_usage_reader() {
+    let now_unix_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time should be after unix epoch")
+        .as_secs();
+    let reset_at = now_unix_secs + 3_600;
+
+    let mut provider = sample_provider("provider-codex", "codex", 10).with_transport_fields(
+        true,
+        false,
+        true,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(json!({
+            "pool_advanced": {
+                "enabled": true
+            }
+        })),
+    );
+    provider.provider_type = "codex".to_string();
+
+    let mut key = sample_key(
+        "key-codex-live-cycle",
+        "provider-codex",
+        "openai:responses",
+        "oauth-placeholder",
+    );
+    key.name = "codex live cycle".to_string();
+    key.auth_type = "oauth".to_string();
+    key.status_snapshot = Some(json!({
+        "quota": {
+            "version": 2,
+            "provider_type": "codex",
+            "code": "ok",
+            "updated_at": now_unix_secs,
+            "exhausted": false,
+            "windows": [
+                {
+                    "code": "weekly",
+                    "label": "周",
+                    "used_ratio": 0.20,
+                    "remaining_ratio": 0.80,
+                    "reset_at": reset_at,
+                    "window_minutes": 10_080
+                },
+                {
+                    "code": "5h",
+                    "label": "5H",
+                    "used_ratio": 0.10,
+                    "remaining_ratio": 0.90,
+                    "reset_at": reset_at,
+                    "window_minutes": 300
+                }
+            ]
+        }
+    }));
+
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![provider],
+        Vec::new(),
+        vec![key],
+    ));
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![
+        sample_pool_usage_row(
+            "usage-codex-5h",
+            "request-codex-5h",
+            "provider-codex",
+            "key-codex-live-cycle",
+            10,
+            20,
+            0.10,
+            i64::try_from(now_unix_secs.saturating_sub(600)).expect("time should fit i64"),
+        ),
+        sample_pool_usage_row(
+            "usage-codex-weekly",
+            "request-codex-weekly",
+            "provider-codex",
+            "key-codex-live-cycle",
+            30,
+            40,
+            0.20,
+            i64::try_from(now_unix_secs.saturating_sub(20_000)).expect("time should fit i64"),
+        ),
+    ]));
+    let state = AppState::new()
+        .expect("gateway should build")
+        .with_data_state_for_tests(
+            GatewayDataState::with_provider_catalog_and_usage_reader_for_tests(
+                provider_catalog_repository,
+                usage_repository,
+            ),
+        );
+
+    let response = local_admin_pool_response(
+        &state,
+        http::Method::GET,
+        "/api/admin/pool/provider-codex/keys?page=1&page_size=50&status=all",
+        None,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body should read"),
+    )
+    .expect("json body should parse");
+    let key_payload = &payload["keys"][0];
+    let windows = key_payload["status_snapshot"]["quota"]["windows"]
+        .as_array()
+        .expect("quota windows should be array");
+    let window_by_code = |code: &str| {
+        windows
+            .iter()
+            .find(|window| window["code"] == json!(code))
+            .expect("quota window should exist")
+    };
+
+    assert_eq!(window_by_code("5h")["usage"]["request_count"], json!(1));
+    assert_eq!(window_by_code("5h")["usage"]["total_tokens"], json!(30));
+    assert_eq!(
+        window_by_code("5h")["usage"]["total_cost_usd"],
+        json!("0.10000000")
+    );
+    assert_eq!(window_by_code("weekly")["usage"]["request_count"], json!(2));
+    assert_eq!(
+        window_by_code("weekly")["usage"]["total_tokens"],
+        json!(100)
+    );
+    assert_eq!(
+        window_by_code("weekly")["usage"]["total_cost_usd"],
+        json!("0.30000000")
+    );
 }
 
 #[tokio::test]

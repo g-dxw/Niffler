@@ -10,12 +10,16 @@ use super::{
 };
 use crate::ai_serving::{provider_key_pool_score_id, provider_key_pool_score_scope};
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::handlers::admin::shared::provider_key_status_snapshot_payload;
 use crate::GatewayError;
 use aether_admin::provider::pool as admin_provider_pool_pure;
 use aether_data_contracts::repository::pool_scores::{
     GetPoolMemberScoresByIdsQuery, PoolMemberIdentity, StoredPoolMemberScore,
 };
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogKey;
+use aether_data_contracts::repository::usage::{
+    ProviderApiKeyWindowUsageRequest, StoredProviderApiKeyWindowUsageSummary,
+};
 use axum::{
     body::Body,
     http,
@@ -117,6 +121,123 @@ fn admin_pool_current_unix_secs() -> u64 {
         .ok()
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
+}
+
+fn admin_pool_json_u64(value: Option<&Value>) -> Option<u64> {
+    value.and_then(|value| {
+        value.as_u64().or_else(|| {
+            value
+                .as_str()
+                .and_then(|text| text.trim().parse::<u64>().ok())
+        })
+    })
+}
+
+fn admin_pool_codex_default_window_minutes(code: &str) -> Option<u64> {
+    if code.eq_ignore_ascii_case("5h") {
+        Some(300)
+    } else if code.eq_ignore_ascii_case("weekly") {
+        Some(10_080)
+    } else {
+        None
+    }
+}
+
+fn admin_pool_codex_cycle_usage_request_for_window(
+    key_id: &str,
+    window: &serde_json::Map<String, Value>,
+    now_unix_secs: u64,
+) -> Option<ProviderApiKeyWindowUsageRequest> {
+    let code = window
+        .get("code")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| value.eq_ignore_ascii_case("5h") || value.eq_ignore_ascii_case("weekly"))?;
+    let reset_at = admin_pool_json_u64(window.get("reset_at"))?;
+    if reset_at <= now_unix_secs {
+        return None;
+    }
+    let window_minutes = admin_pool_json_u64(window.get("window_minutes"))
+        .or_else(|| admin_pool_codex_default_window_minutes(code))?;
+    let window_seconds = window_minutes.checked_mul(60)?;
+    let window_start = reset_at.checked_sub(window_seconds)?;
+    let usage_reset_at = admin_pool_json_u64(window.get("usage_reset_at")).unwrap_or(0);
+    let start_unix_secs = window_start.max(usage_reset_at);
+    if start_unix_secs >= reset_at {
+        return None;
+    }
+
+    Some(ProviderApiKeyWindowUsageRequest {
+        provider_api_key_id: key_id.to_string(),
+        window_code: code.to_ascii_lowercase(),
+        start_unix_secs,
+        end_unix_secs: reset_at,
+    })
+}
+
+fn admin_pool_codex_cycle_usage_requests_for_key(
+    key: &StoredProviderCatalogKey,
+    provider_type: &str,
+    now_unix_secs: u64,
+) -> Vec<ProviderApiKeyWindowUsageRequest> {
+    if !provider_type.trim().eq_ignore_ascii_case("codex") {
+        return Vec::new();
+    }
+
+    let status_snapshot = provider_key_status_snapshot_payload(key, provider_type);
+    status_snapshot
+        .get("quota")
+        .and_then(Value::as_object)
+        .and_then(|quota| quota.get("windows"))
+        .and_then(Value::as_array)
+        .map(|windows| {
+            windows
+                .iter()
+                .filter_map(Value::as_object)
+                .filter_map(|window| {
+                    admin_pool_codex_cycle_usage_request_for_window(
+                        key.id.as_str(),
+                        window,
+                        now_unix_secs,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+async fn admin_pool_codex_cycle_usage_by_key_id(
+    state: &AdminAppState<'_>,
+    provider_type: &str,
+    keys: &[StoredProviderCatalogKey],
+    now_unix_secs: u64,
+) -> Result<BTreeMap<String, BTreeMap<String, StoredProviderApiKeyWindowUsageSummary>>, GatewayError>
+{
+    if !provider_type.trim().eq_ignore_ascii_case("codex") || !state.has_usage_data_reader() {
+        return Ok(BTreeMap::new());
+    }
+
+    let requests = keys
+        .iter()
+        .flat_map(|key| {
+            admin_pool_codex_cycle_usage_requests_for_key(key, provider_type, now_unix_secs)
+        })
+        .collect::<Vec<_>>();
+    if requests.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let summaries = state
+        .summarize_usage_by_provider_api_key_windows(&requests)
+        .await?;
+    let mut by_key_id = BTreeMap::new();
+    for summary in summaries {
+        by_key_id
+            .entry(summary.provider_api_key_id.clone())
+            .or_insert_with(BTreeMap::new)
+            .insert(summary.window_code.to_ascii_lowercase(), summary);
+    }
+    Ok(by_key_id)
 }
 
 async fn read_admin_pool_scores_by_key_id(
@@ -480,6 +601,13 @@ pub(super) async fn build_admin_pool_list_keys_response(
         }
         _ => AdminProviderPoolRuntimeState::default(),
     };
+    let codex_cycle_usage_by_key_id = admin_pool_codex_cycle_usage_by_key_id(
+        state,
+        &provider.provider_type,
+        &keys,
+        now_unix_secs,
+    )
+    .await?;
     let items = keys
         .into_iter()
         .map(|key| {
@@ -491,7 +619,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
                 &runtime,
                 pool_config.clone(),
                 pool_scores_by_key_id.get(&key.id),
-                None,
+                codex_cycle_usage_by_key_id.get(&key.id),
                 now_unix_secs,
             )
         })
