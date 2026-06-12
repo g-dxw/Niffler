@@ -319,7 +319,10 @@
 
       <!-- 桌面端表格 -->
       <div class="hidden xl:block overflow-x-auto">
-        <Table class="w-full min-w-[1280px] table-fixed">
+        <Table
+          class="w-[var(--admin-users-table-width)] table-fixed"
+          :style="{ '--admin-users-table-width': userTableWidth }"
+        >
           <colgroup>
             <col :style="{ width: userTableColumnWidths.select }">
             <col :style="{ width: userTableColumnWidths.user }">
@@ -331,7 +334,7 @@
           </colgroup>
           <TableHeader>
             <TableRow class="border-b border-border/60 hover:bg-transparent">
-              <TableHead class="h-12 px-4">
+              <TableHead class="h-11 px-3">
                 <Checkbox
                   :checked="isCurrentPageFullySelected || isAllFilteredSelected"
                   :indeterminate="isPartiallyFilteredSelected && !isCurrentPageFullySelected"
@@ -340,7 +343,7 @@
                 />
               </TableHead>
               <SortableTableHead
-                class="h-12 font-semibold"
+                class="h-11 px-3 font-semibold"
                 column-key="role"
                 :sortable="false"
                 resize-column-key="user"
@@ -360,7 +363,7 @@
                 </template>
               </SortableTableHead>
               <SortableTableHead
-                class="h-12 font-semibold"
+                class="h-11 px-3 font-semibold"
                 :sortable="false"
                 resize-column-key="wallet"
                 :resizable="true"
@@ -369,7 +372,7 @@
                 钱包
               </SortableTableHead>
               <SortableTableHead
-                class="h-12 font-semibold"
+                class="h-11 px-3 font-semibold"
                 :sortable="false"
                 resize-column-key="stats"
                 :resizable="true"
@@ -378,7 +381,7 @@
                 统计/限速
               </SortableTableHead>
               <SortableTableHead
-                class="h-12 font-semibold"
+                class="h-11 px-3 font-semibold"
                 :sortable="false"
                 resize-column-key="created"
                 :resizable="true"
@@ -387,7 +390,7 @@
                 创建时间
               </SortableTableHead>
               <SortableTableHead
-                class="h-12 font-semibold"
+                class="h-11 px-3 font-semibold"
                 column-key="status"
                 :sortable="false"
                 resize-column-key="status"
@@ -407,7 +410,7 @@
                 </template>
               </SortableTableHead>
               <SortableTableHead
-                class="h-12 font-semibold text-center"
+                class="h-11 px-2 text-center font-semibold"
                 :sortable="false"
                 align="center"
                 resize-column-key="actions"
@@ -424,14 +427,14 @@
               :key="user.id"
               class="border-b border-border/40 hover:bg-muted/30 transition-colors"
             >
-              <TableCell class="px-4 py-4">
+              <TableCell class="px-3 py-3">
                 <Checkbox
                   :checked="selectAllFiltered || selectedIdSet.has(user.id)"
                   :disabled="selectAllFiltered || usersStore.loading"
                   @update:checked="(checked) => toggleOne(user.id, checked === true)"
                 />
               </TableCell>
-              <TableCell class="py-4">
+              <TableCell class="px-3 py-3">
                 <div class="flex items-center gap-3">
                   <Avatar class="h-10 w-10 ring-2 ring-background shadow-md">
                     <AvatarFallback class="bg-primary text-sm font-bold text-white">
@@ -476,7 +479,7 @@
                   </div>
                 </div>
               </TableCell>
-              <TableCell class="py-4">
+              <TableCell class="px-3 py-3">
                 <div class="space-y-1.5">
                   <div class="flex items-center gap-1 text-[11px] text-muted-foreground">
                     <span>总可用：</span>
@@ -510,7 +513,7 @@
                   </div>
                 </div>
               </TableCell>
-              <TableCell class="py-4">
+              <TableCell class="px-3 py-3">
                 <div class="space-y-1 text-xs">
                   <div class="flex items-center text-muted-foreground">
                     <span class="w-14">请求:</span>
@@ -538,10 +541,10 @@
                   </div>
                 </div>
               </TableCell>
-              <TableCell class="py-4 text-xs text-muted-foreground">
+              <TableCell class="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap">
                 {{ formatDateTime(user.created_at) }}
               </TableCell>
-              <TableCell class="py-4">
+              <TableCell class="px-3 py-3">
                 <div class="flex flex-col items-start gap-1.5">
                   <Badge
                     :variant="user.is_active ? 'success' : 'destructive'"
@@ -558,82 +561,77 @@
                   </Badge>
                 </div>
               </TableCell>
-              <TableCell class="py-4">
-                <div class="flex justify-center gap-1">
+              <TableCell class="px-2 py-3">
+                <div class="flex justify-end gap-1">
                   <Button
                     v-if="authStore.canOperateAdmin"
                     variant="ghost"
                     size="icon"
-                    class="h-8 w-8"
+                    class="h-7 w-7"
                     title="编辑用户"
                     @click="editUser(user)"
                   >
-                    <SquarePen class="h-4 w-4" />
+                    <SquarePen class="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     v-if="authStore.canOperateAdmin"
                     variant="ghost"
                     size="icon"
-                    class="h-8 w-8"
+                    class="h-7 w-7"
                     title="资金与套餐"
                     @click="openWalletActionDialog(user)"
                   >
-                    <DollarSign class="h-4 w-4" />
-                  </Button>
-                  <Button
-                    v-if="authStore.canOperateAdmin"
-                    variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
-                    title="套餐"
-                    @click="manageUserPlans(user)"
-                  >
-                    <PackageCheck class="h-4 w-4" />
+                    <DollarSign class="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    class="h-8 w-8"
+                    class="h-7 w-7"
                     title="API Keys"
                     @click="manageApiKeys(user)"
                   >
-                    <Key class="h-4 w-4" />
+                    <Key class="h-3.5 w-3.5" />
                   </Button>
-                  <Button
-                    v-if="authStore.canOperateAdmin"
-                    variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
-                    title="登录设备"
-                    @click="manageUserSessions(user)"
-                  >
-                    <MonitorSmartphone class="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
-                    :title="user.is_active ? '禁用用户' : '启用用户'"
-                    @click="toggleUserStatus(user)"
-                  >
-                    <PauseCircle
-                      v-if="user.is_active"
-                      class="h-4 w-4"
-                    />
-                    <PlayCircle
-                      v-else
-                      class="h-4 w-4"
-                    />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
-                    title="删除用户"
-                    @click="deleteUser(user)"
-                  >
-                    <Trash2 class="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu v-if="authStore.canOperateAdmin">
+                    <DropdownMenuTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="h-7 w-7"
+                        title="更多操作"
+                      >
+                        <MoreHorizontal class="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem @select="manageUserPlans(user)">
+                        <PackageCheck class="mr-2 h-4 w-4" />
+                        套餐
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @select="manageUserSessions(user)">
+                        <MonitorSmartphone class="mr-2 h-4 w-4" />
+                        登录设备
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @select="toggleUserStatus(user)">
+                        <PauseCircle
+                          v-if="user.is_active"
+                          class="mr-2 h-4 w-4"
+                        />
+                        <PlayCircle
+                          v-else
+                          class="mr-2 h-4 w-4"
+                        />
+                        {{ user.is_active ? '禁用用户' : '启用用户' }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        class="text-destructive focus:text-destructive"
+                        @select="deleteUser(user)"
+                      >
+                        <Trash2 class="mr-2 h-4 w-4" />
+                        删除用户
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </TableCell>
             </TableRow>
@@ -817,7 +815,6 @@
                   编辑
                 </Button>
                 <Button
-                  v-if="authStore.canOperateAdmin"
                   variant="outline"
                   size="sm"
                   class="h-8 text-xs"
@@ -837,6 +834,7 @@
                   套餐
                 </Button>
                 <Button
+                  v-if="authStore.canOperateAdmin"
                   variant="outline"
                   size="sm"
                   class="h-8 text-xs"
@@ -856,6 +854,7 @@
                   设备
                 </Button>
                 <Button
+                  v-if="authStore.canOperateAdmin"
                   variant="outline"
                   size="sm"
                   class="h-8 text-xs"
@@ -872,6 +871,7 @@
                   {{ user.is_active ? '禁用' : '启用' }}
                 </Button>
                 <Button
+                  v-if="authStore.canOperateAdmin"
                   variant="outline"
                   size="sm"
                   class="col-span-2 h-8 border-rose-200 text-xs text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:hover:bg-rose-950/40"
@@ -1771,6 +1771,10 @@ import {
   SortableTableHead,
   TableFilterMenu,
   TableCell,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Avatar,
   AvatarFallback,
   Pagination,
@@ -1795,6 +1799,7 @@ import {
   MonitorSmartphone,
   FolderKanban,
   PackageCheck,
+  MoreHorizontal,
 } from 'lucide-vue-next'
 
 // 功能组件
@@ -1903,21 +1908,35 @@ const userStatusFilterOptions = [
 ]
 type UserTableColumnKey = 'select' | 'user' | 'wallet' | 'stats' | 'created' | 'status' | 'actions'
 const userTableColumns: ResizableTableColumn<UserTableColumnKey>[] = [
-  { key: 'select', width: '44px', minWidth: 44 },
-  { key: 'user', width: '260px', minWidth: 220 },
-  { key: 'wallet', width: '240px', minWidth: 190 },
-  { key: 'stats', width: '170px', minWidth: 150 },
-  { key: 'created', width: '170px', minWidth: 150 },
-  { key: 'status', width: '180px', minWidth: 130 },
-  { key: 'actions', width: '260px', minWidth: 220 },
+  { key: 'select', width: '40px', minWidth: 40 },
+  { key: 'user', width: '250px', minWidth: 220 },
+  { key: 'wallet', width: '210px', minWidth: 180 },
+  { key: 'stats', width: '150px', minWidth: 140 },
+  { key: 'created', width: '140px', minWidth: 128 },
+  { key: 'status', width: '100px', minWidth: 92 },
+  { key: 'actions', width: '156px', minWidth: 144 },
 ]
 const {
   columnWidths: userTableColumnWidths,
   startResize: handleUserTableColumnResizeStart,
 } = useResizableTableColumns<UserTableColumnKey>({
-  storageKey: 'admin-users-table-column-widths',
+  storageKey: 'admin-users-table-column-widths-v2',
   columns: userTableColumns,
   defaultMinWidth: 96,
+})
+
+function parsePixelWidth(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
+const userTableWidth = computed(() => {
+  const total = userTableColumns.reduce((sum, column) => {
+    const width = userTableColumnWidths.value[column.key] ?? column.width
+    return sum + parsePixelWidth(width)
+  }, 0)
+
+  return `${Math.max(total, 960)}px`
 })
 const hasActiveUserFilter = computed(() =>
   Boolean(searchQuery.value.trim())
