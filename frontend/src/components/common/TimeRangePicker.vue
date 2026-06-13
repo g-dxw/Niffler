@@ -22,12 +22,26 @@
       class="flex items-center gap-2"
     >
       <Input
+        v-if="showTimePicker"
+        v-model="startTime"
+        type="datetime-local"
+        class="h-8 w-44 text-xs border-border/60"
+      />
+      <Input
+        v-else
         v-model="startDate"
         type="date"
         class="h-8 w-36 text-xs border-border/60"
       />
       <span class="text-xs text-muted-foreground">至</span>
       <Input
+        v-if="showTimePicker"
+        v-model="endTime"
+        type="datetime-local"
+        class="h-8 w-44 text-xs border-border/60"
+      />
+      <Input
+        v-else
         v-model="endDate"
         type="date"
         class="h-8 w-36 text-xs border-border/60"
@@ -90,6 +104,7 @@ const props = withDefaults(defineProps<{
   modelValue: DateRangeParams
   showGranularity?: boolean
   allowHourly?: boolean
+  showTime?: boolean
   presetOptions?: SelectablePreset[]
 }>(), {
   presetOptions: () => ['today', 'yesterday', 'last7days', 'last30days', 'last90days', 'custom']
@@ -115,7 +130,7 @@ function normalizePreset(value: DateRangeParams): SelectablePreset {
   if (value.preset && activePresetOptions.value.includes(value.preset as SelectablePreset)) {
     return value.preset as SelectablePreset
   }
-  if (!value.preset && (value.start_date || value.end_date) && activePresetOptions.value.includes('custom')) {
+  if (!value.preset && (value.start_time || value.end_time || value.start_date || value.end_date) && activePresetOptions.value.includes('custom')) {
     return 'custom'
   }
   return defaultPreset()
@@ -124,13 +139,19 @@ function normalizePreset(value: DateRangeParams): SelectablePreset {
 const selectedPreset = ref<SelectablePreset>(normalizePreset(props.modelValue))
 const startDate = ref(props.modelValue.start_date || '')
 const endDate = ref(props.modelValue.end_date || '')
+const startTime = ref(props.modelValue.start_time || '')
+const endTime = ref(props.modelValue.end_time || '')
 const selectedGranularity = ref(props.modelValue.granularity || 'day')
 
 const showGranularity = computed(() => props.showGranularity !== false)
 const allowHourly = computed(() => props.allowHourly === true)
+const showTimePicker = computed(() => props.showTime === true)
 
 const canUseHourly = computed(() => {
   if (selectedPreset.value === 'today' || selectedPreset.value === 'yesterday') return true
+  if (selectedPreset.value === 'custom' && showTimePicker.value && startTime.value && endTime.value) {
+    return startTime.value.slice(0, 10) === endTime.value.slice(0, 10)
+  }
   if (selectedPreset.value === 'custom' && startDate.value && endDate.value) {
     return startDate.value === endDate.value
   }
@@ -145,6 +166,20 @@ function buildEmitValue(): DateRangeParams {
   const tz_offset_minutes = -new Date().getTimezoneOffset()
 
   if (selectedPreset.value === 'custom') {
+    if (showTimePicker.value) {
+      const start = startTime.value <= endTime.value ? startTime.value : endTime.value
+      const end = endTime.value >= startTime.value ? endTime.value : startTime.value
+      return {
+        start_date: start.slice(0, 10),
+        end_date: end.slice(0, 10),
+        start_time: start,
+        end_time: end,
+        granularity: selectedGranularity.value,
+        timezone,
+        tz_offset_minutes
+      }
+    }
+
     const start = startDate.value <= endDate.value ? startDate.value : endDate.value
     const end = endDate.value >= startDate.value ? endDate.value : startDate.value
     return {
@@ -169,6 +204,9 @@ function getValueKey(value: DateRangeParams): string {
   if (value.preset) {
     return `preset:${value.preset}:${value.granularity}`
   }
+  if (value.start_time || value.end_time) {
+    return `custom-time:${value.start_time}:${value.end_time}:${value.granularity}`
+  }
   return `custom:${value.start_date}:${value.end_date}:${value.granularity}`
 }
 
@@ -176,6 +214,8 @@ watch(() => props.modelValue, (value) => {
   selectedPreset.value = normalizePreset(value)
   if (value.start_date !== undefined) startDate.value = value.start_date || ''
   if (value.end_date !== undefined) endDate.value = value.end_date || ''
+  if (value.start_time !== undefined) startTime.value = value.start_time || ''
+  if (value.end_time !== undefined) endTime.value = value.end_time || ''
   if (value.granularity) selectedGranularity.value = value.granularity
   // 同步更新 lastEmittedValue，避免外部设置值后触发重复 emit
   lastEmittedValue = getValueKey(value)
@@ -187,7 +227,7 @@ watch(activePresetOptions, () => {
   }
 })
 
-watch([selectedPreset, startDate, endDate, selectedGranularity], () => {
+watch([selectedPreset, startDate, endDate, startTime, endTime, selectedGranularity], () => {
   if (!allowHourly.value || !canUseHourly.value) {
     if (selectedGranularity.value === 'hour') {
       selectedGranularity.value = 'day'
@@ -195,7 +235,11 @@ watch([selectedPreset, startDate, endDate, selectedGranularity], () => {
   }
 
   if (selectedPreset.value === 'custom') {
-    if (!startDate.value || !endDate.value) return
+    if (showTimePicker.value) {
+      if (!startTime.value || !endTime.value) return
+    } else if (!startDate.value || !endDate.value) {
+      return
+    }
   }
 
   const newValue = buildEmitValue()

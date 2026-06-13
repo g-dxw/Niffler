@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn recovery_retries_any_error_status_without_custom_rule() {
+    fn recovery_retries_unknown_error_status_without_custom_rule() {
         assert_eq!(
             recover_local_failover_decision(
                 &LocalFailoverPolicy::default(),
@@ -125,6 +125,20 @@ mod tests {
                 )
             ),
             LocalFailoverDecision::RetryNextCandidate
+        );
+    }
+
+    #[test]
+    fn recovery_stops_known_user_request_image_size_errors_without_custom_rule() {
+        assert_eq!(
+            recover_local_failover_decision(
+                &LocalFailoverPolicy::default(),
+                LocalFailoverInput::new(
+                    400,
+                    Some("{\"error\":{\"message\":\"At least one of the image dimensions exceed max allowed size for many-image requests: 2000 pixels\"}}")
+                )
+            ),
+            LocalFailoverDecision::StopLocalFailover
         );
     }
 

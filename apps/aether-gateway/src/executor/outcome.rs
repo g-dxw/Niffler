@@ -42,6 +42,17 @@ pub(crate) struct LocalExecutionExhaustion {
     upstream_status_code: Option<u16>,
     upstream_error_type: Option<String>,
     upstream_error_message: Option<String>,
+    upstream_error_response: Option<LocalExecutionUpstreamErrorResponse>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LocalExecutionUpstreamErrorResponse {
+    pub(crate) status_code: u16,
+    pub(crate) headers: BTreeMap<String, String>,
+    pub(crate) body: Value,
+    pub(crate) body_bytes: Vec<u8>,
+    pub(crate) error_type: Option<String>,
+    pub(crate) message: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,9 +82,21 @@ impl LocalExecutionRequestOutcome {
     }
 }
 
+impl LocalExecutionExhaustion {
+    pub(crate) fn upstream_error_response(&self) -> Option<LocalExecutionUpstreamErrorResponse> {
+        self.upstream_error_response.clone()
+    }
+}
+
 impl LocalExecutionRuntimeMissContext {
     pub(crate) fn persisted_candidate_count(&self) -> usize {
         self.candidate_contexts.len()
+    }
+
+    pub(crate) fn upstream_error_response(&self) -> Option<LocalExecutionUpstreamErrorResponse> {
+        select_last_runtime_miss_executed_candidate(&self.candidate_contexts).and_then(|value| {
+            local_execution_upstream_error_response_from_candidate(&value.candidate)
+        })
     }
 
     pub(crate) fn all_candidates_skipped_for_reason(&self, reason: &str) -> bool {
@@ -149,6 +172,10 @@ pub(crate) async fn build_local_execution_exhaustion(
             .or_else(|| candidate.key_id.clone());
     }
 
+    let upstream_error_response = last_failed_candidate
+        .as_ref()
+        .and_then(local_execution_upstream_error_response_from_candidate);
+
     LocalExecutionExhaustion {
         request_id: plan.request_id.clone(),
         data,
@@ -158,19 +185,35 @@ pub(crate) async fn build_local_execution_exhaustion(
         candidate_index: last_failed_candidate
             .as_ref()
             .map(|candidate| candidate.candidate_index),
-        upstream_status_code: last_failed_candidate
+        upstream_status_code: upstream_error_response
             .as_ref()
-            .and_then(|candidate| candidate.status_code),
+            .map(|value| value.status_code)
+            .or_else(|| {
+                last_failed_candidate
+                    .as_ref()
+                    .and_then(|candidate| candidate.status_code)
+            }),
         upstream_error_type: last_failed_candidate
             .as_ref()
-            .and_then(|candidate| candidate.error_type.clone())
+            .and_then(|candidate| {
+                upstream_error_response
+                    .as_ref()
+                    .and_then(|value| value.error_type.clone())
+                    .or_else(|| candidate.error_type.clone())
+            })
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
         upstream_error_message: last_failed_candidate
             .as_ref()
-            .and_then(|candidate| candidate.error_message.clone())
+            .and_then(|candidate| {
+                upstream_error_response
+                    .as_ref()
+                    .and_then(|value| value.message.clone())
+                    .or_else(|| candidate.error_message.clone())
+            })
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
+        upstream_error_response,
     }
 }
 
@@ -213,9 +256,13 @@ pub(crate) async fn record_failed_usage_for_exhausted_request(
         upstream_status_code,
         upstream_error_type,
         upstream_error_message,
+        upstream_error_response,
     } = exhaustion;
 
-    let status_code = http::StatusCode::SERVICE_UNAVAILABLE.as_u16();
+    let status_code = upstream_error_response
+        .as_ref()
+        .map(|value| value.status_code)
+        .unwrap_or_else(|| http::StatusCode::SERVICE_UNAVAILABLE.as_u16());
     let candidate_status_code = upstream_status_code.unwrap_or(status_code);
     data.status_code = Some(status_code);
     data.error_message = upstream_error_message
@@ -223,25 +270,47 @@ pub(crate) async fn record_failed_usage_for_exhausted_request(
         .or_else(|| Some(local_execution_runtime_miss_detail.to_string()));
     data.error_category = error_category_for_failed_status(status_code);
     data.response_time_ms = Some(started_at.elapsed().as_millis() as u64);
-    data.response_headers = Some(json_header_map());
-    data.response_body = Some(json!({
-        "error": {
-            "type": upstream_error_type
-                .as_deref()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or("upstream_error"),
-            "message": upstream_error_message
-                .as_deref()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or(local_execution_runtime_miss_detail),
-            "code": candidate_status_code,
-        }
-    }));
+    let response_body = upstream_error_response
+        .as_ref()
+        .map(|value| value.body.clone())
+        .unwrap_or_else(|| {
+            json!({
+                "error": {
+                    "type": upstream_error_type
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or("upstream_error"),
+                    "message": upstream_error_message
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or(local_execution_runtime_miss_detail),
+                    "code": candidate_status_code,
+                }
+            })
+        });
+    data.response_headers = Some(
+        upstream_error_response
+            .as_ref()
+            .map(|value| local_execution_header_map_json(&value.headers))
+            .unwrap_or_else(json_header_map),
+    );
+    data.response_body = Some(response_body.clone());
 
-    let mut client_headers = Map::from_iter([(
-        "content-type".to_string(),
-        Value::String("application/json".to_string()),
-    )]);
+    let mut client_headers = upstream_error_response
+        .as_ref()
+        .map(|value| {
+            value
+                .headers
+                .iter()
+                .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+                .collect::<Map<_, _>>()
+        })
+        .unwrap_or_else(|| {
+            Map::from_iter([(
+                "content-type".to_string(),
+                Value::String("application/json".to_string()),
+            )])
+        });
     if let Some(reason) = diagnostic
         .map(|value| value.reason.trim())
         .filter(|value| !value.is_empty())
@@ -252,12 +321,19 @@ pub(crate) async fn record_failed_usage_for_exhausted_request(
         );
     }
     data.client_response_headers = Some(Value::Object(client_headers));
-    data.client_response_body = Some(json!({
-        "error": {
-            "type": "http_error",
-            "message": beautify_local_execution_client_error_message(local_execution_runtime_miss_detail),
-        }
-    }));
+    data.client_response_body = Some(
+        upstream_error_response
+            .as_ref()
+            .map(|_| response_body)
+            .unwrap_or_else(|| {
+                json!({
+                    "error": {
+                        "type": "http_error",
+                        "message": beautify_local_execution_client_error_message(local_execution_runtime_miss_detail),
+                    }
+                })
+            }),
+    );
 
     let mut request_metadata = match data.request_metadata.take() {
         Some(Value::Object(object)) => object,
@@ -406,19 +482,40 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
         .and_then(|value| value.selected_provider_model_name.clone())
         .filter(|value| !value.eq_ignore_ascii_case(model.as_str()));
 
-    let status_code = http::StatusCode::SERVICE_UNAVAILABLE.as_u16();
-    let client_message =
-        beautify_local_execution_client_error_message(local_execution_runtime_miss_detail);
-    let client_body = json!({
-        "error": {
-            "type": "http_error",
-            "message": client_message,
-        }
-    });
-    let mut client_headers = Map::from_iter([(
-        "content-type".to_string(),
-        Value::String("application/json".to_string()),
-    )]);
+    let upstream_error_response = selected_candidate
+        .and_then(|value| local_execution_upstream_error_response_from_candidate(&value.candidate));
+    let status_code = upstream_error_response
+        .as_ref()
+        .map(|value| value.status_code)
+        .unwrap_or_else(|| http::StatusCode::SERVICE_UNAVAILABLE.as_u16());
+    let client_body = upstream_error_response
+        .as_ref()
+        .map(|value| value.body.clone())
+        .unwrap_or_else(|| {
+            let client_message =
+                beautify_local_execution_client_error_message(local_execution_runtime_miss_detail);
+            json!({
+                "error": {
+                    "type": "http_error",
+                    "message": client_message,
+                }
+            })
+        });
+    let mut client_headers = upstream_error_response
+        .as_ref()
+        .map(|value| {
+            value
+                .headers
+                .iter()
+                .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+                .collect::<Map<_, _>>()
+        })
+        .unwrap_or_else(|| {
+            Map::from_iter([(
+                "content-type".to_string(),
+                Value::String("application/json".to_string()),
+            )])
+        });
     if let Some(reason) = diagnostic
         .map(|value| value.reason.trim())
         .filter(|value| !value.is_empty())
@@ -491,12 +588,20 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
                 .map(|(left, right)| !left.eq_ignore_ascii_case(right))
         }),
         status_code: Some(status_code),
-        error_message: Some(local_execution_runtime_miss_detail.to_string()),
+        error_message: upstream_error_response
+            .as_ref()
+            .and_then(|value| value.message.clone())
+            .or_else(|| Some(local_execution_runtime_miss_detail.to_string())),
         error_category: error_category_for_failed_status(status_code),
         response_time_ms: Some(started_at.elapsed().as_millis() as u64),
         request_headers: Some(runtime_miss_original_headers_json(request_headers)),
         request_body: runtime_miss_original_request_body_json(request_headers, request_body),
-        response_headers: Some(json_header_map()),
+        response_headers: Some(
+            upstream_error_response
+                .as_ref()
+                .map(|value| local_execution_header_map_json(&value.headers))
+                .unwrap_or_else(json_header_map),
+        ),
         response_body: Some(client_body.clone()),
         client_response_headers: Some(Value::Object(client_headers)),
         client_response_body: Some(client_body),
@@ -884,6 +989,149 @@ fn json_header_map() -> Value {
         "content-type".to_string(),
         Value::String("application/json".to_string()),
     )]))
+}
+
+fn local_execution_header_map_json(headers: &BTreeMap<String, String>) -> Value {
+    Value::Object(
+        headers
+            .iter()
+            .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+            .collect(),
+    )
+}
+
+fn local_execution_upstream_error_response_from_candidate(
+    candidate: &StoredRequestCandidate,
+) -> Option<LocalExecutionUpstreamErrorResponse> {
+    let upstream_response = candidate.extra_data.as_ref()?.get("upstream_response")?;
+    let status_code = upstream_response
+        .get("status_code")
+        .and_then(Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .or(candidate.status_code)?;
+    if status_code < 400 {
+        return None;
+    }
+
+    let body = upstream_response.get("body")?.clone();
+    let body_bytes = local_execution_upstream_body_bytes(&body)?;
+    let message = local_execution_upstream_error_message_from_body(&body)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if message.is_none() && body.is_null() {
+        return None;
+    }
+    let error_type = local_execution_upstream_error_type_from_body(&body)
+        .or_else(|| candidate.error_type.clone())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let headers =
+        local_execution_upstream_headers_from_value(upstream_response.get("headers"), &body);
+
+    Some(LocalExecutionUpstreamErrorResponse {
+        status_code,
+        headers,
+        body,
+        body_bytes,
+        error_type,
+        message,
+    })
+}
+
+fn local_execution_upstream_headers_from_value(
+    headers: Option<&Value>,
+    body: &Value,
+) -> BTreeMap<String, String> {
+    let mut out = headers
+        .and_then(Value::as_object)
+        .map(|object| {
+            object
+                .iter()
+                .filter_map(|(key, value)| {
+                    let value = value
+                        .as_str()
+                        .map(ToOwned::to_owned)
+                        .or_else(|| (!value.is_null()).then(|| value.to_string()))?;
+                    (!value.trim().is_empty()).then(|| (key.to_ascii_lowercase(), value))
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+
+    out.remove("content-length");
+    out.remove("content-encoding");
+
+    if !out
+        .keys()
+        .any(|key| key.eq_ignore_ascii_case("content-type"))
+    {
+        let content_type = if matches!(body, Value::String(_)) {
+            "text/plain; charset=utf-8"
+        } else {
+            "application/json"
+        };
+        out.insert("content-type".to_string(), content_type.to_string());
+    }
+
+    out
+}
+
+fn local_execution_upstream_body_bytes(body: &Value) -> Option<Vec<u8>> {
+    match body {
+        Value::Null => None,
+        Value::String(text) => Some(text.as_bytes().to_vec()),
+        Value::Object(object) => {
+            let is_base64 = object
+                .get("encoding")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.eq_ignore_ascii_case("base64"));
+            if is_base64 {
+                if let Some(data) = object.get("data").and_then(Value::as_str) {
+                    if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(data) {
+                        return Some(decoded);
+                    }
+                }
+            }
+            serde_json::to_vec(body).ok()
+        }
+        _ => serde_json::to_vec(body).ok(),
+    }
+}
+
+fn local_execution_upstream_error_message_from_body(body: &Value) -> Option<String> {
+    if let Value::String(message) = body {
+        return Some(message.trim().to_string()).filter(|value| !value.is_empty());
+    }
+
+    body.get("error")
+        .and_then(|error| match error {
+            Value::Object(object) => object.get("message").and_then(Value::as_str),
+            Value::String(message) => Some(message.as_str()),
+            _ => None,
+        })
+        .or_else(|| body.get("message").and_then(Value::as_str))
+        .or_else(|| body.get("detail").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn local_execution_upstream_error_type_from_body(body: &Value) -> Option<String> {
+    body.get("error")
+        .and_then(|error| match error {
+            Value::Object(object) => object
+                .get("type")
+                .or_else(|| object.get("status"))
+                .or_else(|| object.get("kind"))
+                .and_then(Value::as_str),
+            _ => None,
+        })
+        .or_else(|| body.get("type").and_then(Value::as_str))
+        .or_else(|| body.get("status").and_then(Value::as_str))
+        .or_else(|| body.get("kind").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn runtime_miss_original_headers_json(headers: &HeaderMap) -> Value {
@@ -1332,8 +1580,10 @@ fn trimmed_non_empty(value: Option<&str>) -> Option<String> {
 mod tests {
     use super::{
         apply_runtime_miss_usage_routing, beautify_local_execution_client_error_message,
+        local_execution_upstream_error_response_from_candidate,
         request_candidate_represents_provider_execution,
-        select_last_runtime_miss_executed_candidate, RuntimeMissCandidateContext,
+        select_last_runtime_miss_executed_candidate, LocalExecutionRuntimeMissContext,
+        RuntimeMissCandidateContext,
     };
     use crate::constants::EXECUTION_PATH_LOCAL_EXECUTION_RUNTIME_MISS;
     use crate::state::LocalExecutionRuntimeMissDiagnostic;
@@ -1457,5 +1707,242 @@ mod tests {
         }];
 
         assert!(select_last_runtime_miss_executed_candidate(&contexts).is_none());
+    }
+
+    #[test]
+    fn runtime_miss_extracts_real_upstream_error_from_failed_candidate() {
+        let candidate = StoredRequestCandidate::new(
+            "cand-failed".to_string(),
+            "req-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            Some("alice".to_string()),
+            Some("default".to_string()),
+            0,
+            0,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            RequestCandidateStatus::Failed,
+            None,
+            false,
+            Some(502),
+            Some("retryable_upstream_status".to_string()),
+            Some("execution runtime stream returned retryable status 502".to_string()),
+            None,
+            None,
+            Some(json!({
+                "upstream_response": {
+                    "status_code": 502,
+                    "headers": {
+                        "content-type": "text/event-stream",
+                        "x-oneapi-request-id": "202606131644039769451708268d9d6iULlPLG3"
+                    },
+                    "body": {
+                        "type": "error",
+                        "error": {
+                            "type": "<nil>",
+                            "message": "Upstream service temporarily unavailable (request id: 202606131644039769451708268d9d6iULlPLG3)"
+                        }
+                    }
+                }
+            })),
+            None,
+            100,
+            Some(101),
+            Some(109),
+        )
+        .expect("candidate should build");
+
+        let upstream_error = local_execution_upstream_error_response_from_candidate(&candidate)
+            .expect("upstream error should be extracted");
+
+        assert_eq!(upstream_error.status_code, 502);
+        assert_eq!(
+            upstream_error.message.as_deref(),
+            Some(
+                "Upstream service temporarily unavailable (request id: 202606131644039769451708268d9d6iULlPLG3)"
+            )
+        );
+        assert_eq!(upstream_error.error_type.as_deref(), Some("<nil>"));
+        assert_eq!(
+            upstream_error.body["error"]["message"],
+            "Upstream service temporarily unavailable (request id: 202606131644039769451708268d9d6iULlPLG3)"
+        );
+        assert_eq!(
+            upstream_error
+                .headers
+                .get("content-type")
+                .map(String::as_str),
+            Some("text/event-stream")
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&upstream_error.body_bytes)
+                .expect("body bytes should stay json"),
+            upstream_error.body
+        );
+    }
+
+    #[test]
+    fn runtime_miss_preserves_plain_text_upstream_error_body() {
+        let candidate = StoredRequestCandidate::new(
+            "cand-failed".to_string(),
+            "req-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            Some("alice".to_string()),
+            Some("default".to_string()),
+            0,
+            0,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            RequestCandidateStatus::Failed,
+            None,
+            false,
+            Some(503),
+            Some("retryable_upstream_status".to_string()),
+            Some("execution runtime stream returned retryable status 503".to_string()),
+            None,
+            None,
+            Some(json!({
+                "upstream_response": {
+                    "status_code": 503,
+                    "headers": {
+                        "content-type": "text/plain; charset=utf-8",
+                        "content-length": "49"
+                    },
+                    "body": "upstream 503: temporarily unavailable"
+                }
+            })),
+            None,
+            100,
+            Some(101),
+            Some(109),
+        )
+        .expect("candidate should build");
+
+        let upstream_error = local_execution_upstream_error_response_from_candidate(&candidate)
+            .expect("upstream error should be extracted");
+
+        assert_eq!(upstream_error.status_code, 503);
+        assert_eq!(
+            upstream_error.message.as_deref(),
+            Some("upstream 503: temporarily unavailable")
+        );
+        assert_eq!(
+            upstream_error.body_bytes,
+            b"upstream 503: temporarily unavailable"
+        );
+        assert_eq!(
+            upstream_error
+                .headers
+                .get("content-type")
+                .map(String::as_str),
+            Some("text/plain; charset=utf-8")
+        );
+        assert!(!upstream_error.headers.contains_key("content-length"));
+    }
+
+    #[test]
+    fn runtime_miss_context_exposes_failed_candidate_upstream_error() {
+        let candidate = StoredRequestCandidate::new(
+            "cand-failed".to_string(),
+            "req-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            Some("alice".to_string()),
+            Some("default".to_string()),
+            0,
+            0,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            RequestCandidateStatus::Failed,
+            None,
+            false,
+            Some(503),
+            Some("retryable_upstream_status".to_string()),
+            Some("execution runtime stream returned retryable status 503".to_string()),
+            None,
+            None,
+            Some(json!({
+                "upstream_response": {
+                    "status_code": 503,
+                    "headers": {
+                        "content-type": "text/plain; charset=utf-8"
+                    },
+                    "body": "upstream 503: temporarily unavailable"
+                }
+            })),
+            None,
+            100,
+            Some(101),
+            Some(109),
+        )
+        .expect("candidate should build");
+        let context = LocalExecutionRuntimeMissContext {
+            candidate_contexts: vec![RuntimeMissCandidateContext {
+                candidate,
+                provider_name: Some("provider".to_string()),
+                key_name: Some("key".to_string()),
+                client_api_format: Some("openai:responses".to_string()),
+                provider_api_format: Some("openai:responses".to_string()),
+                global_model_name: Some("gpt-5".to_string()),
+                selected_provider_model_name: Some("gpt-5".to_string()),
+                endpoint_url: None,
+            }],
+            ..LocalExecutionRuntimeMissContext::default()
+        };
+
+        let upstream_error = context
+            .upstream_error_response()
+            .expect("context should expose upstream error");
+
+        assert_eq!(upstream_error.status_code, 503);
+        assert_eq!(
+            upstream_error.message.as_deref(),
+            Some("upstream 503: temporarily unavailable")
+        );
+    }
+
+    #[test]
+    fn runtime_miss_does_not_expose_synthetic_candidate_error_without_upstream_body() {
+        let candidate = StoredRequestCandidate::new(
+            "cand-failed".to_string(),
+            "req-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            Some("alice".to_string()),
+            Some("default".to_string()),
+            0,
+            0,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            RequestCandidateStatus::Failed,
+            None,
+            false,
+            Some(502),
+            Some("retryable_upstream_status".to_string()),
+            Some("execution runtime stream returned retryable status 502".to_string()),
+            None,
+            None,
+            Some(json!({
+                "upstream_response": {
+                    "status_code": 502,
+                    "headers": {
+                        "content-type": "text/event-stream"
+                    }
+                }
+            })),
+            None,
+            100,
+            Some(101),
+            Some(109),
+        )
+        .expect("candidate should build");
+
+        assert!(local_execution_upstream_error_response_from_candidate(&candidate).is_none());
     }
 }

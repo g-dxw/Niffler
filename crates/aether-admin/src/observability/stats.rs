@@ -39,6 +39,8 @@ pub struct AdminStatsTimeRange {
     pub start_date: chrono::NaiveDate,
     pub end_date: chrono::NaiveDate,
     pub tz_offset_minutes: i32,
+    pub start_time: Option<chrono::NaiveDateTime>,
+    pub end_time: Option<chrono::NaiveDateTime>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -138,6 +140,12 @@ pub fn parse_tz_offset_minutes(query: Option<&str>) -> Result<i32, String> {
 pub fn parse_naive_date(field: &str, value: &str) -> Result<chrono::NaiveDate, String> {
     chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .map_err(|_| format!("{field} must be a valid date in YYYY-MM-DD format"))
+}
+
+pub fn parse_naive_datetime(field: &str, value: &str) -> Result<chrono::NaiveDateTime, String> {
+    chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M"))
+        .map_err(|_| format!("{field} must be a valid local time in YYYY-MM-DDTHH:mm format"))
 }
 
 pub fn parse_bounded_u32(field: &str, value: &str, min: u32, max: u32) -> Result<u32, String> {
@@ -256,6 +264,8 @@ pub fn build_time_range_from_days(
         start_date,
         end_date,
         tz_offset_minutes,
+        start_time: None,
+        end_time: None,
     })
 }
 
@@ -263,6 +273,28 @@ pub fn build_comparison_range(
     current: &AdminStatsTimeRange,
     comparison_type: AdminStatsComparisonType,
 ) -> Result<AdminStatsTimeRange, String> {
+    if let (Some(current_start_time), Some(current_end_time)) =
+        (current.start_time, current.end_time)
+    {
+        let (start_time, end_time) = match comparison_type {
+            AdminStatsComparisonType::Period => {
+                let duration = current_end_time - current_start_time;
+                (current_start_time - duration, current_start_time)
+            }
+            AdminStatsComparisonType::Year => (
+                safe_year_shift(current_start_time.date()).and_time(current_start_time.time()),
+                safe_year_shift(current_end_time.date()).and_time(current_end_time.time()),
+            ),
+        };
+        return Ok(AdminStatsTimeRange {
+            start_date: start_time.date(),
+            end_date: end_time.date(),
+            tz_offset_minutes: current.tz_offset_minutes,
+            start_time: Some(start_time),
+            end_time: Some(end_time),
+        });
+    }
+
     let comparison = match comparison_type {
         AdminStatsComparisonType::Period => {
             let days = (current.end_date - current.start_date).num_days() + 1;
@@ -285,6 +317,8 @@ pub fn build_comparison_range(
         start_date: comparison.0,
         end_date: comparison.1,
         tz_offset_minutes: current.tz_offset_minutes,
+        start_time: None,
+        end_time: None,
     })
 }
 
@@ -428,7 +462,36 @@ impl AdminStatsTimeRange {
         let end_date = query_param_value(query, "end_date")
             .map(|value| parse_naive_date("end_date", &value))
             .transpose()?;
+        let start_time = query_param_value(query, "start_time")
+            .map(|value| parse_naive_datetime("start_time", &value))
+            .transpose()?;
+        let end_time = query_param_value(query, "end_time")
+            .map(|value| parse_naive_datetime("end_time", &value))
+            .transpose()?;
         let preset = query_param_value(query, "preset");
+
+        if start_time.is_some() || end_time.is_some() {
+            if preset.is_some() {
+                return Err("preset cannot be combined with start_time or end_time".to_string());
+            }
+            let (Some(start_time), Some(end_time)) = (start_time, end_time) else {
+                return Err("Both start_time and end_time must be provided".to_string());
+            };
+            if start_time >= end_time {
+                return Err("start_time must be < end_time".to_string());
+            }
+            let days = (end_time.date() - start_time.date()).num_days();
+            if days > 365 {
+                return Err("Query range cannot exceed 365 days".to_string());
+            }
+            return Ok(Some(Self {
+                start_date: start_time.date(),
+                end_date: end_time.date(),
+                tz_offset_minutes,
+                start_time: Some(start_time),
+                end_time: Some(end_time),
+            }));
+        }
 
         if preset.is_none() && start_date.is_none() && end_date.is_none() {
             let default_days = admin_usage_default_days();
@@ -445,6 +508,8 @@ impl AdminStatsTimeRange {
                 start_date,
                 end_date,
                 tz_offset_minutes,
+                start_time: None,
+                end_time: None,
             }));
         }
 
@@ -474,6 +539,8 @@ impl AdminStatsTimeRange {
             start_date,
             end_date,
             tz_offset_minutes,
+            start_time: None,
+            end_time: None,
         }))
     }
 
@@ -498,16 +565,24 @@ impl AdminStatsTimeRange {
             start_date,
             end_date,
             tz_offset_minutes,
+            start_time: None,
+            end_time: None,
         })
     }
 
     pub fn to_unix_bounds(&self) -> Option<(u64, u64)> {
         let offset = chrono::Duration::minutes(i64::from(self.tz_offset_minutes));
-        let start_local = self.start_date.and_hms_opt(0, 0, 0)?;
-        let end_local = self
-            .end_date
-            .checked_add_signed(chrono::Duration::days(1))?
-            .and_hms_opt(0, 0, 0)?;
+        let (start_local, end_local) =
+            if let (Some(start_time), Some(end_time)) = (self.start_time, self.end_time) {
+                (start_time, end_time)
+            } else {
+                (
+                    self.start_date.and_hms_opt(0, 0, 0)?,
+                    self.end_date
+                        .checked_add_signed(chrono::Duration::days(1))?
+                        .and_hms_opt(0, 0, 0)?,
+                )
+            };
         let start_utc =
             chrono::DateTime::<Utc>::from_naive_utc_and_offset(start_local - offset, Utc)
                 .timestamp();
@@ -521,11 +596,17 @@ impl AdminStatsTimeRange {
 
     pub fn to_utc_datetime_bounds(&self) -> Option<(chrono::DateTime<Utc>, chrono::DateTime<Utc>)> {
         let offset = chrono::Duration::minutes(i64::from(self.tz_offset_minutes));
-        let start_local = self.start_date.and_hms_opt(0, 0, 0)?;
-        let end_local = self
-            .end_date
-            .checked_add_signed(chrono::Duration::days(1))?
-            .and_hms_opt(0, 0, 0)?;
+        let (start_local, end_local) =
+            if let (Some(start_time), Some(end_time)) = (self.start_time, self.end_time) {
+                (start_time, end_time)
+            } else {
+                (
+                    self.start_date.and_hms_opt(0, 0, 0)?,
+                    self.end_date
+                        .checked_add_signed(chrono::Duration::days(1))?
+                        .and_hms_opt(0, 0, 0)?,
+                )
+            };
         Some((
             chrono::DateTime::<Utc>::from_naive_utc_and_offset(start_local - offset, Utc),
             chrono::DateTime::<Utc>::from_naive_utc_and_offset(end_local - offset, Utc),
@@ -2050,7 +2131,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        build_api_key_leaderboard_items, build_user_leaderboard_items, AdminStatsUserMetadata,
+        build_api_key_leaderboard_items, build_comparison_range, build_user_leaderboard_items,
+        AdminStatsComparisonType, AdminStatsTimeRange, AdminStatsUserMetadata,
     };
     use aether_data::repository::auth::StoredAuthApiKeySnapshot;
     use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
@@ -2127,6 +2209,46 @@ mod tests {
             api_key_allowed_api_formats: None,
             api_key_allowed_models: None,
         }
+    }
+
+    #[test]
+    fn time_range_resolves_local_time_bounds() {
+        let range = AdminStatsTimeRange::resolve_optional(Some(
+            "start_time=2024-03-21T12:00&end_time=2024-03-21T13:00&tz_offset_minutes=0",
+        ))
+        .expect("time range should parse")
+        .expect("time range should exist");
+
+        assert_eq!(range.start_date.to_string(), "2024-03-21");
+        assert_eq!(range.end_date.to_string(), "2024-03-21");
+        assert_eq!(range.to_unix_bounds(), Some((1_711_022_400, 1_711_026_000)));
+    }
+
+    #[test]
+    fn comparison_range_keeps_local_time_bounds() {
+        let range = AdminStatsTimeRange::resolve_optional(Some(
+            "start_time=2024-03-21T12:00&end_time=2024-03-21T13:00&tz_offset_minutes=0",
+        ))
+        .expect("time range should parse")
+        .expect("time range should exist");
+
+        let comparison = build_comparison_range(&range, AdminStatsComparisonType::Period)
+            .expect("comparison range should build");
+
+        assert_eq!(
+            comparison
+                .start_time
+                .expect("comparison start time should exist")
+                .to_string(),
+            "2024-03-21 11:00:00"
+        );
+        assert_eq!(
+            comparison
+                .end_time
+                .expect("comparison end time should exist")
+                .to_string(),
+            "2024-03-21 12:00:00"
+        );
     }
 
     #[test]

@@ -71,6 +71,14 @@ pub(crate) fn classify_local_failover(
         return LocalFailoverClassification::StopErrorPattern;
     }
 
+    if (400..500).contains(&input.status_code)
+        && input
+            .response_text
+            .is_some_and(response_text_is_non_retryable_user_request_error)
+    {
+        return LocalFailoverClassification::StopErrorPattern;
+    }
+
     if input.status_code == 200
         && input.response_text.is_some_and(|text| {
             policy
@@ -105,6 +113,12 @@ pub(crate) fn local_failover_error_message(response_text: Option<&str>) -> Optio
 
 fn should_failover_local_upstream_status(status_code: u16) -> bool {
     status_code >= 400
+}
+
+fn response_text_is_non_retryable_user_request_error(response_text: &str) -> bool {
+    let lower = response_text.to_ascii_lowercase();
+    lower.contains("image dimensions exceed max allowed size")
+        || lower.contains("max allowed size for many-image requests")
 }
 
 fn parse_local_error_response(response_text: Option<&str>) -> ParsedLocalErrorResponse {
@@ -321,6 +335,22 @@ mod tests {
                     LocalFailoverInput::new(status_code, Some(response_text))
                 ),
                 LocalFailoverClassification::RetryUpstreamFailure
+            );
+        }
+    }
+
+    #[test]
+    fn classifier_stops_known_user_request_image_size_errors_without_custom_rule() {
+        for response_text in [
+            "{\"error\":{\"message\":\"At least one of the image dimensions exceed max allowed size for many-image requests: 2000 pixels\"}}",
+            "{\"error\":{\"message\":\"max allowed size for many-image requests is 2000 pixels\"}}",
+        ] {
+            assert_eq!(
+                classify_local_failover(
+                    &LocalFailoverPolicy::default(),
+                    LocalFailoverInput::new(400, Some(response_text))
+                ),
+                LocalFailoverClassification::StopErrorPattern
             );
         }
     }

@@ -348,6 +348,22 @@ pub fn admin_usage_provider_label_is_reserved(value: &str) -> bool {
     )
 }
 
+fn admin_usage_provider_display_for_record(item: &StoredRequestUsageAudit) -> String {
+    if !admin_usage_provider_label_is_reserved(&item.provider_name) {
+        return item.provider_name.clone();
+    }
+
+    if item.routing_execution_path() != Some("local_execution_runtime_miss") {
+        return item.provider_name.clone();
+    }
+
+    match item.routing_local_execution_runtime_miss_reason() {
+        Some("candidate_list_empty") => "无可用供应商".to_string(),
+        Some("all_candidates_skipped") => "可尝试服务全部不可用".to_string(),
+        _ => "未进入上游".to_string(),
+    }
+}
+
 pub fn admin_usage_apply_provider_route_display(record: &mut Value, provider_route: &[String]) {
     if provider_route.is_empty() {
         return;
@@ -524,6 +540,10 @@ fn admin_usage_error_field<'a>(body: &'a Value, field: &str) -> Option<&'a str> 
 }
 
 fn admin_usage_error_message_from_body(body: &Value) -> Option<String> {
+    if let Value::String(message) = body {
+        return Some(message.trim().to_string()).filter(|value| !value.is_empty());
+    }
+
     body.get("error")
         .and_then(|error| match error {
             Value::Object(object) => object.get("message").and_then(Value::as_str),
@@ -883,6 +903,108 @@ fn admin_usage_error_domains_json(item: &StoredRequestUsageAudit) -> Value {
         "client_error": client_error,
         "failure_summary": failure_summary,
     })
+}
+
+fn admin_usage_final_attempted_candidate<'a>(
+    item: &StoredRequestUsageAudit,
+    candidates: &'a [StoredRequestCandidate],
+) -> Option<&'a StoredRequestCandidate> {
+    if let Some(candidate_id) = item.routing_candidate_id() {
+        if let Some(candidate) = candidates.iter().find(|candidate| {
+            candidate.id == candidate_id
+                && candidate.status.is_attempted(candidate.started_at_unix_ms)
+        }) {
+            return Some(candidate);
+        }
+    }
+
+    if let Some(candidate_index) = item.routing_candidate_index() {
+        if let Some(candidate) = candidates
+            .iter()
+            .filter(|candidate| {
+                u64::from(candidate.candidate_index) == candidate_index
+                    && candidate.status.is_attempted(candidate.started_at_unix_ms)
+            })
+            .max_by(|left, right| left.retry_index.cmp(&right.retry_index))
+        {
+            return Some(candidate);
+        }
+    }
+
+    candidates
+        .iter()
+        .filter(|candidate| candidate.status.is_attempted(candidate.started_at_unix_ms))
+        .max_by(|left, right| {
+            left.candidate_index
+                .cmp(&right.candidate_index)
+                .then(left.retry_index.cmp(&right.retry_index))
+        })
+}
+
+fn admin_usage_candidate_upstream_response_domain(
+    candidate: &StoredRequestCandidate,
+) -> Option<Value> {
+    let upstream_response = candidate.extra_data.as_ref()?.get("upstream_response")?;
+    let status_code = upstream_response
+        .get("status_code")
+        .and_then(Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .or(candidate.status_code);
+    let headers = upstream_response.get("headers");
+    let body = upstream_response.get("body");
+    let domain = admin_usage_error_domain_json(
+        "upstream_response",
+        status_code,
+        headers,
+        body,
+        candidate.error_type.as_deref(),
+        candidate.error_message.as_deref(),
+    );
+    admin_usage_error_domain_message(&domain).map(|_| domain)
+}
+
+pub fn admin_usage_apply_candidate_upstream_error_display(
+    payload: &mut Value,
+    item: &StoredRequestUsageAudit,
+    candidates: &[StoredRequestCandidate],
+) {
+    let Some(candidate) = admin_usage_final_attempted_candidate(item, candidates) else {
+        return;
+    };
+    let Some(upstream_error) = admin_usage_candidate_upstream_response_domain(candidate) else {
+        return;
+    };
+    let Some(message) = admin_usage_error_domain_message(&upstream_error) else {
+        return;
+    };
+
+    let failure_summary = json!({
+        "source": "upstream_response",
+        "status_code": admin_usage_error_domain_status_code(&upstream_error).or(item.status_code.map(u64::from)),
+        "type": admin_usage_error_domain_type(&upstream_error).or_else(|| item.error_category.clone()),
+        "message": message,
+        "category": item.error_category,
+    });
+
+    payload["upstream_error"] = upstream_error.clone();
+    payload["failure_summary"] = failure_summary.clone();
+    if let Some(errors) = payload.get_mut("errors").and_then(Value::as_object_mut) {
+        errors.insert("upstream_error".to_string(), upstream_error.clone());
+        errors.insert("failure_summary".to_string(), failure_summary.clone());
+    }
+
+    let error_domains = json!({
+        "request_error": payload["request_error"].clone(),
+        "upstream_error": upstream_error,
+        "client_error": payload["client_error"].clone(),
+        "failure_summary": failure_summary,
+    });
+    payload["scheduling_failure"] = admin_usage_scheduling_failure_json(
+        item,
+        &error_domains["client_error"],
+        &error_domains["upstream_error"],
+    );
+    payload["error_flow"] = admin_usage_error_flow_json(item, &error_domains);
 }
 
 fn admin_usage_error_domain_search_text(domain: &Value) -> String {
@@ -1549,7 +1671,7 @@ pub fn admin_usage_record_json(
             "name": api_key_name.clone(),
             "display": api_key_name.clone().unwrap_or_else(|| api_key_id.clone()),
         })),
-        "provider": item.provider_name,
+        "provider": admin_usage_provider_display_for_record(item),
         "model": item.model,
         "target_model": item.target_model,
         "input_tokens": item.input_tokens,
@@ -1682,8 +1804,7 @@ pub fn admin_usage_token_cache_hit_rate(total_input_context: u64, cache_read_tok
 }
 
 fn admin_usage_provider_display_name(item: &StoredRequestUsageAudit) -> Option<String> {
-    let provider_name = item.provider_name.trim();
-    if provider_name.is_empty() || matches!(provider_name, "unknown" | "pending") {
+    if admin_usage_provider_label_is_reserved(&item.provider_name) {
         None
     } else {
         Some(item.provider_name.clone())
@@ -2814,7 +2935,10 @@ mod tests {
         admin_usage_upstream_is_stream,
         build_admin_usage_detail_payload as raw_build_admin_usage_detail_payload,
     };
-    use aether_data_contracts::repository::usage::{StoredRequestUsageAudit, UsageBodyField};
+    use aether_data_contracts::repository::{
+        candidates::{RequestCandidateStatus, StoredRequestCandidate},
+        usage::{StoredRequestUsageAudit, UsageBodyField},
+    };
 
     fn admin_usage_active_request_json(
         item: &StoredRequestUsageAudit,
@@ -3007,6 +3131,47 @@ mod tests {
         assert_eq!(record["upstream_is_stream"], true);
         assert_eq!(record["client_requested_stream"], false);
         assert_eq!(record["client_is_stream"], false);
+    }
+
+    #[test]
+    fn admin_usage_record_labels_local_runtime_miss_without_provider() {
+        let item = StoredRequestUsageAudit {
+            provider_name: "unknown".to_string(),
+            provider_id: None,
+            provider_endpoint_id: None,
+            provider_api_key_id: None,
+            candidate_id: None,
+            execution_path: Some("local_execution_runtime_miss".to_string()),
+            local_execution_runtime_miss_reason: Some("candidate_list_empty".to_string()),
+            ..sample_usage(
+                "failed",
+                Some(503),
+                Some("没有可用提供商支持模型 claude-fable-5 的流式请求（原因代码: candidate_list_empty）"),
+            )
+        };
+
+        let record = admin_usage_record_json(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+        );
+        let detail = build_admin_usage_detail_payload(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+            false,
+            None,
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(record["provider"], "无可用供应商");
+        assert_eq!(detail["provider"], "无可用供应商");
     }
 
     #[test]
@@ -3586,6 +3751,308 @@ mod tests {
         assert_eq!(payload["failure_summary"]["source"], "upstream_response");
         assert_eq!(payload["failure_summary"]["message"], "上游返回 HTTP 503");
         assert!(payload["scheduling_failure"].is_null());
+    }
+
+    #[test]
+    fn detail_payload_promotes_failed_candidate_upstream_response_to_failure_summary() {
+        let item = StoredRequestUsageAudit {
+            candidate_id: Some("candidate-1".to_string()),
+            candidate_index: Some(0),
+            execution_path: Some("local_execution_runtime_miss".to_string()),
+            local_execution_runtime_miss_reason: Some("all_candidates_skipped".to_string()),
+            error_category: Some("server_error".to_string()),
+            response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            response_body: None,
+            response_body_ref: Some("usage://request/req-1/response_body".to_string()),
+            client_response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            client_response_body: None,
+            client_response_body_ref: Some(
+                "usage://request/req-1/client_response_body".to_string(),
+            ),
+            ..sample_usage(
+                "failed",
+                Some(503),
+                Some("execution runtime stream returned retryable status 400"),
+            )
+        };
+        let candidate = StoredRequestCandidate::new(
+            "candidate-1".to_string(),
+            "req-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            None,
+            None,
+            0,
+            0,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            RequestCandidateStatus::Failed,
+            None,
+            false,
+            Some(400),
+            Some("retryable_upstream_status".to_string()),
+            Some("execution runtime stream returned retryable status 400".to_string()),
+            None,
+            None,
+            Some(json!({
+                "upstream_response": {
+                    "status_code": 400,
+                    "headers": {
+                        "content-type": "text/event-stream"
+                    },
+                    "body": {
+                        "type": "error",
+                        "error": {
+                            "type": "<nil>",
+                            "message": "image dimension exceeds max allowed size"
+                        }
+                    }
+                }
+            })),
+            None,
+            100,
+            Some(101),
+            Some(109),
+        )
+        .expect("candidate should build");
+
+        let mut payload = build_admin_usage_detail_payload(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+            false,
+            Some(json!({"model": "claude-opus-4-8", "stream": true})),
+            &BTreeMap::new(),
+        );
+
+        super::admin_usage_apply_candidate_upstream_error_display(
+            &mut payload,
+            &item,
+            std::slice::from_ref(&candidate),
+        );
+
+        assert_eq!(payload["upstream_error"]["status_code"], json!(400));
+        assert_eq!(
+            payload["upstream_error"]["message"],
+            "image dimension exceeds max allowed size"
+        );
+        assert_eq!(payload["failure_summary"]["source"], "upstream_response");
+        assert_eq!(payload["failure_summary"]["status_code"], json!(400));
+        assert_eq!(
+            payload["failure_summary"]["message"],
+            "image dimension exceeds max allowed size"
+        );
+        assert_eq!(
+            payload["errors"]["upstream_error"],
+            payload["upstream_error"]
+        );
+        assert_eq!(
+            payload["errors"]["failure_summary"],
+            payload["failure_summary"]
+        );
+    }
+
+    #[test]
+    fn detail_payload_promotes_plain_text_candidate_upstream_response() {
+        let item = StoredRequestUsageAudit {
+            candidate_id: Some("candidate-1".to_string()),
+            candidate_index: Some(0),
+            execution_path: Some("local_execution_runtime_miss".to_string()),
+            local_execution_runtime_miss_reason: Some("all_candidates_skipped".to_string()),
+            error_category: Some("server_error".to_string()),
+            response_headers: Some(json!({
+                "content-type": "text/plain; charset=utf-8"
+            })),
+            response_body: Some(json!("upstream 503: temporarily unavailable")),
+            client_response_headers: Some(json!({
+                "content-type": "text/plain; charset=utf-8"
+            })),
+            client_response_body: Some(json!("upstream 503: temporarily unavailable")),
+            ..sample_usage(
+                "failed",
+                Some(503),
+                Some("execution runtime stream returned retryable status 503"),
+            )
+        };
+        let candidate = StoredRequestCandidate::new(
+            "candidate-1".to_string(),
+            "req-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            None,
+            None,
+            0,
+            0,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            RequestCandidateStatus::Failed,
+            None,
+            false,
+            Some(503),
+            Some("retryable_upstream_status".to_string()),
+            Some("execution runtime stream returned retryable status 503".to_string()),
+            None,
+            None,
+            Some(json!({
+                "upstream_response": {
+                    "status_code": 503,
+                    "headers": {
+                        "content-type": "text/plain; charset=utf-8"
+                    },
+                    "body": "upstream 503: temporarily unavailable"
+                }
+            })),
+            None,
+            100,
+            Some(101),
+            Some(109),
+        )
+        .expect("candidate should build");
+
+        let mut payload = build_admin_usage_detail_payload(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+            false,
+            Some(json!({"model": "claude-opus-4-8", "stream": true})),
+            &BTreeMap::new(),
+        );
+
+        super::admin_usage_apply_candidate_upstream_error_display(
+            &mut payload,
+            &item,
+            std::slice::from_ref(&candidate),
+        );
+
+        assert_eq!(payload["upstream_error"]["status_code"], json!(503));
+        assert_eq!(
+            payload["upstream_error"]["message"],
+            "upstream 503: temporarily unavailable"
+        );
+        assert_eq!(payload["failure_summary"]["source"], "upstream_response");
+        assert_eq!(
+            payload["failure_summary"]["message"],
+            "upstream 503: temporarily unavailable"
+        );
+    }
+
+    #[test]
+    fn detail_payload_promotes_retryable_502_candidate_upstream_message() {
+        let item = StoredRequestUsageAudit {
+            candidate_id: Some("candidate-1".to_string()),
+            candidate_index: Some(0),
+            execution_path: Some("local_execution_runtime_miss".to_string()),
+            local_execution_runtime_miss_reason: Some("all_candidates_skipped".to_string()),
+            error_category: Some("server_error".to_string()),
+            response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            response_body: Some(json!({
+                "error": {
+                    "type": "retryable_upstream_status",
+                    "message": "execution runtime stream returned retryable status 502",
+                    "code": 502
+                }
+            })),
+            client_response_headers: Some(json!({
+                "content-type": "application/json"
+            })),
+            client_response_body: Some(json!({
+                "error": {
+                    "type": "http_error",
+                    "message": "没有可用提供商支持模型 claude-opus-4-8 的流式请求"
+                }
+            })),
+            ..sample_usage(
+                "failed",
+                Some(503),
+                Some("execution runtime stream returned retryable status 502"),
+            )
+        };
+        let candidate = StoredRequestCandidate::new(
+            "candidate-1".to_string(),
+            "req-1".to_string(),
+            Some("user-1".to_string()),
+            Some("api-key-1".to_string()),
+            None,
+            None,
+            0,
+            0,
+            Some("provider-1".to_string()),
+            Some("endpoint-1".to_string()),
+            Some("provider-key-1".to_string()),
+            RequestCandidateStatus::Failed,
+            None,
+            false,
+            Some(502),
+            Some("retryable_upstream_status".to_string()),
+            Some("execution runtime stream returned retryable status 502".to_string()),
+            None,
+            None,
+            Some(json!({
+                "upstream_response": {
+                    "status_code": 502,
+                    "headers": {
+                        "content-type": "text/event-stream",
+                        "x-oneapi-request-id": "202606131644039769451708268d9d6iULlPLG3"
+                    },
+                    "body": {
+                        "type": "error",
+                        "error": {
+                            "type": "<nil>",
+                            "message": "Upstream service temporarily unavailable (request id: 202606131644039769451708268d9d6iULlPLG3)"
+                        }
+                    }
+                }
+            })),
+            None,
+            100,
+            Some(101),
+            Some(109),
+        )
+        .expect("candidate should build");
+
+        let mut payload = build_admin_usage_detail_payload(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            false,
+            None,
+            false,
+            Some(json!({"model": "claude-opus-4-8", "stream": true})),
+            &BTreeMap::new(),
+        );
+
+        super::admin_usage_apply_candidate_upstream_error_display(
+            &mut payload,
+            &item,
+            std::slice::from_ref(&candidate),
+        );
+
+        assert_eq!(payload["upstream_error"]["status_code"], json!(502));
+        assert_eq!(
+            payload["upstream_error"]["message"],
+            "Upstream service temporarily unavailable (request id: 202606131644039769451708268d9d6iULlPLG3)"
+        );
+        assert_eq!(payload["failure_summary"]["source"], "upstream_response");
+        assert_eq!(payload["failure_summary"]["status_code"], json!(502));
+        assert_eq!(
+            payload["failure_summary"]["message"],
+            "Upstream service temporarily unavailable (request id: 202606131644039769451708268d9d6iULlPLG3)"
+        );
     }
 
     #[test]

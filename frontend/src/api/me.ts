@@ -345,6 +345,8 @@ export const meApi = {
   async getUsage(params?: {
     start_date?: string
     end_date?: string
+    start_time?: string
+    end_time?: string
     preset?: string
     timezone?: string
     tz_offset_minutes?: number

@@ -11,10 +11,10 @@ use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::{attach_admin_audit_response, query_param_bool};
 use crate::GatewayError;
 use aether_admin::observability::usage::{
-    admin_usage_apply_provider_route_display, admin_usage_attempt_info_from_candidates,
-    admin_usage_bad_request_response, admin_usage_data_unavailable_response,
-    admin_usage_provider_key_account_label, admin_usage_provider_key_name,
-    ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL,
+    admin_usage_apply_candidate_upstream_error_display, admin_usage_apply_provider_route_display,
+    admin_usage_attempt_info_from_candidates, admin_usage_bad_request_response,
+    admin_usage_data_unavailable_response, admin_usage_provider_key_account_label,
+    admin_usage_provider_key_name, ADMIN_USAGE_DATA_UNAVAILABLE_DETAIL,
 };
 use aether_data_contracts::repository::candidates::StoredRequestCandidate;
 use aether_data_contracts::repository::usage::UsageBodyField;
@@ -240,6 +240,11 @@ pub(super) async fn maybe_build_local_admin_usage_detail_response(
                 );
                 payload["provider_route"] = json!(attempt_info.provider_route);
             }
+            admin_usage_apply_candidate_upstream_error_display(
+                &mut payload,
+                &detail_item,
+                &request_candidates,
+            );
             payload["has_fallback"] = json!(attempt_info.has_fallback);
             payload["has_retry"] = json!(attempt_info.has_retry);
 

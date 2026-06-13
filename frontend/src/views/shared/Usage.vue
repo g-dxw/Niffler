@@ -205,6 +205,15 @@ function getIntervalTimelineHours(dateRange: DateRangeParams): number {
       break
   }
 
+  if (dateRange.start_time && dateRange.end_time) {
+    const start = new Date(dateRange.start_time)
+    const end = new Date(dateRange.end_time)
+    const diffMs = end.getTime() - start.getTime()
+    if (!Number.isNaN(diffMs) && diffMs >= 0) {
+      return clampIntervalTimelineHours(diffMs / (1000 * 60 * 60))
+    }
+  }
+
   if (dateRange.start_date && dateRange.end_date) {
     const start = new Date(`${dateRange.start_date}T00:00:00`)
     const end = new Date(`${dateRange.end_date}T23:59:59`)

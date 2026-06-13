@@ -870,6 +870,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sync_image_size_user_request_error_stops_local_failover() {
+        let result = ExecutionResult {
+            request_id: "req-1".to_string(),
+            candidate_id: None,
+            status_code: 400,
+            headers: Default::default(),
+            body: None,
+            telemetry: None,
+            error: None,
+        };
+        let local_report_context = serde_json::json!({
+            "candidate_index": 0,
+            "retry_index": 0,
+        });
+        let state = build_state_with_provider_config(None);
+        let plan = sample_plan();
+        let response_text = "{\"error\":{\"message\":\"At least one of the image dimensions exceed max allowed size for many-image requests: 2000 pixels\"}}";
+
+        assert!(
+            !should_retry_next_local_candidate_sync(
+                &state,
+                &plan,
+                "openai_responses_sync",
+                Some(&local_report_context),
+                &result,
+                Some(response_text),
+            )
+            .await
+        );
+        assert!(
+            should_stop_local_candidate_failover_sync(
+                &state,
+                &plan,
+                "openai_responses_sync",
+                Some(&local_report_context),
+                &result,
+                Some(response_text),
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_image_size_user_request_error_stops_local_failover() {
+        let local_report_context = serde_json::json!({
+            "candidate_index": 0,
+            "retry_index": 0,
+        });
+        let state = build_state_with_provider_config(None);
+        let plan = sample_plan();
+        let response_text = "{\"error\":{\"message\":\"At least one of the image dimensions exceed max allowed size for many-image requests: 2000 pixels\"}}";
+
+        assert!(
+            !should_retry_next_local_candidate_stream(
+                &state,
+                &plan,
+                "openai_responses_stream",
+                Some(&local_report_context),
+                400,
+                Some(response_text),
+            )
+            .await
+        );
+        assert!(
+            should_stop_local_candidate_failover_stream(
+                &state,
+                &plan,
+                "openai_responses_stream",
+                Some(&local_report_context),
+                400,
+                Some(response_text),
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
     async fn sync_retry_next_candidate_skips_video_follow_up_plan_kinds() {
         let result = ExecutionResult {
             request_id: "req-1".to_string(),

@@ -5,6 +5,7 @@
       <TimeRangePicker
         v-model="timeRangeModel"
         :show-granularity="false"
+        show-time
       />
 
       <!-- 分隔线 -->

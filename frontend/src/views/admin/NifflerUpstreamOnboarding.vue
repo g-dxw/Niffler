@@ -105,18 +105,11 @@
               class="mt-4 rounded-lg border border-dashed border-border/70 p-4"
             >
               <p class="text-sm font-medium">
-                先新增一个上游
+                还没有上游
               </p>
               <p class="mt-1 text-xs text-muted-foreground">
-                例如 Codex OAuth、OpenAI API Key 或第三方兼容接口。
+                用右上角“新增上游”接入第一个服务。
               </p>
-              <Button
-                class="admin-entry-action mt-3 h-8"
-                size="sm"
-                @click="openServiceDialog"
-              >
-                新增上游
-              </Button>
             </div>
 
             <div
@@ -154,18 +147,11 @@
               class="flex min-h-[440px] flex-col justify-center rounded-lg border border-dashed border-border/70 p-6"
             >
               <p class="text-base font-semibold">
-                先新增上游
+                {{ services.length === 0 ? '等待新增上游' : '选择一个上游' }}
               </p>
               <p class="mt-2 max-w-md text-sm text-muted-foreground">
-                选择接入类型后，系统会自动填好协议、默认格式和可配置能力。
+                {{ services.length === 0 ? '用右上角“新增上游”创建服务，创建后在这里配置账号和能力。' : '从左侧选择上游，查看账号和能力配置。' }}
               </p>
-              <Button
-                class="admin-entry-action mt-4 w-fit"
-                @click="openServiceDialog"
-              >
-                <Plus class="mr-2 h-4 w-4" />
-                新增上游
-              </Button>
             </div>
 
             <div

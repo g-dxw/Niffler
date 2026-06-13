@@ -154,7 +154,14 @@ impl<'a> AdminAppState<'a> {
         GatewayError,
     > {
         self.app
-            .list_admin_wallet_ledger(category, reason_code, owner_type, user_search, limit, offset)
+            .list_admin_wallet_ledger(
+                category,
+                reason_code,
+                owner_type,
+                user_search,
+                limit,
+                offset,
+            )
             .await
     }
 

@@ -548,6 +548,26 @@ fn default_account_protection_action() -> NifflerAccountProtectionAction {
     NifflerAccountProtectionAction::RecordOnly
 }
 
+fn niffler_platform_error_rule_status_code(code: &str) -> Option<u16> {
+    match code {
+        "invalid_api_key" => Some(http::StatusCode::UNAUTHORIZED.as_u16()),
+        "locked_api_key"
+        | "wallet_unavailable"
+        | "provider_not_allowed"
+        | "api_format_not_allowed"
+        | "model_not_allowed" => Some(http::StatusCode::FORBIDDEN.as_u16()),
+        "balance_exceeded" | "rate_limit_exceeded" => {
+            Some(http::StatusCode::TOO_MANY_REQUESTS.as_u16())
+        }
+        "request_body_normalization_failed" => Some(http::StatusCode::BAD_REQUEST.as_u16()),
+        "local_execution_runtime_unavailable" => {
+            Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())
+        }
+        "local_proxy_passthrough_removed" => Some(http::StatusCode::NOT_IMPLEMENTED.as_u16()),
+        _ => None,
+    }
+}
+
 async fn build_upstream_services_response(
     state: &AdminAppState<'_>,
     request_context: &AdminRequestContext<'_>,
@@ -1520,6 +1540,7 @@ async fn create_error_return_setting_response(
     {
         return Ok(niffler_bad_request("状态码必须在 100 到 599 之间"));
     }
+    let mut match_status_code = payload.match_status_code;
     if payload.scope == NifflerErrorResponseScope::Upstream && payload.handling_step.is_none() {
         return Ok(niffler_bad_request("上游级规则必须选择处理类型"));
     }
@@ -1527,6 +1548,69 @@ async fn create_error_return_setting_response(
         && payload.account_protection_action != NifflerAccountProtectionAction::RecordOnly
     {
         return Ok(niffler_bad_request("平台级规则不能触发上游账号保护"));
+    }
+    if payload.response_mode == NifflerUserResponseMode::Redact
+        && !matches!(
+            (payload.scope, payload.handling_step),
+            (
+                NifflerErrorResponseScope::Upstream,
+                Some(
+                    NifflerUpstreamErrorHandlingStep::RiskKeyword
+                        | NifflerUpstreamErrorHandlingStep::ContactOrMarketingReplacement
+                )
+            )
+        )
+    {
+        return Ok(niffler_bad_request("只有关键词规则可以只替换命中内容"));
+    }
+    if payload.scope == NifflerErrorResponseScope::Platform {
+        let Some(platform_error_code) = match_text.as_deref() else {
+            return Ok(niffler_bad_request("平台级规则必须选择错误原因"));
+        };
+        let Some(expected_status_code) =
+            niffler_platform_error_rule_status_code(platform_error_code)
+        else {
+            return Ok(niffler_bad_request("未知的平台错误原因"));
+        };
+        if match_status_code.is_some_and(|value| value != expected_status_code) {
+            return Ok(niffler_bad_request(
+                "平台错误状态码由错误原因决定，不能手动覆盖",
+            ));
+        }
+        match_status_code = Some(expected_status_code);
+    }
+    if payload.scope == NifflerErrorResponseScope::Upstream {
+        match payload.handling_step {
+            Some(NifflerUpstreamErrorHandlingStep::RiskKeyword)
+            | Some(NifflerUpstreamErrorHandlingStep::ContactOrMarketingReplacement) => {
+                if match_text.is_none() {
+                    return Ok(niffler_bad_request("关键词规则必须填写匹配内容"));
+                }
+                if match_status_code.is_some() {
+                    return Ok(niffler_bad_request("关键词规则不能同时填写状态码"));
+                }
+            }
+            Some(NifflerUpstreamErrorHandlingStep::StatusCodeMessage) => {
+                if match_status_code.is_none() {
+                    return Ok(niffler_bad_request("状态码文案必须填写上游状态码"));
+                }
+                if match_text.is_some() {
+                    return Ok(niffler_bad_request("状态码文案不能同时填写关键词"));
+                }
+            }
+            Some(NifflerUpstreamErrorHandlingStep::DefaultUpstreamMessage) => {
+                if match_status_code.is_some() || match_text.is_some() {
+                    return Ok(niffler_bad_request("通用上游文案不需要填写状态码或关键词"));
+                }
+            }
+            None => {}
+        }
+    }
+    if payload.scope == NifflerErrorResponseScope::Upstream
+        && payload.handling_step != Some(NifflerUpstreamErrorHandlingStep::RiskKeyword)
+        && payload.account_protection_action != NifflerAccountProtectionAction::RecordOnly
+    {
+        return Ok(niffler_bad_request("只有风控关键词可以触发账号保护"));
     }
     if payload.account_protection_action == NifflerAccountProtectionAction::PauseScheduling
         && payload.pause_duration.is_none()
@@ -1558,7 +1642,7 @@ async fn create_error_return_setting_response(
         id: setting_id.clone(),
         scope: payload.scope,
         upstream_service_id,
-        match_status_code: payload.match_status_code,
+        match_status_code,
         match_text,
         handling_step: if payload.scope == NifflerErrorResponseScope::Upstream {
             payload.handling_step
@@ -3921,7 +4005,8 @@ mod tests {
 
     use super::{
         collect_group_policy_gaps, collect_key_scope_residue, key_scope_residue_detail_text,
-        key_scope_residue_issue_text, normalize_rollback_drill_evidence_request, parse_recent_days,
+        key_scope_residue_issue_text, niffler_platform_error_rule_status_code,
+        normalize_rollback_drill_evidence_request, parse_recent_days,
         rollback_drill_evidence_is_complete, usage_anomaly_diagnosis,
         AdminNifflerRollbackDrillEvidenceRequest,
     };
@@ -3932,6 +4017,26 @@ mod tests {
         assert_eq!(parse_recent_days(Some("recent_days=0")), 7);
         assert_eq!(parse_recent_days(Some("recent_days=91")), 7);
         assert_eq!(parse_recent_days(None), 7);
+    }
+
+    #[test]
+    fn platform_error_rule_status_codes_are_fixed() {
+        assert_eq!(
+            niffler_platform_error_rule_status_code("model_not_allowed"),
+            Some(403)
+        );
+        assert_eq!(
+            niffler_platform_error_rule_status_code("balance_exceeded"),
+            Some(429)
+        );
+        assert_eq!(
+            niffler_platform_error_rule_status_code("local_execution_runtime_unavailable"),
+            Some(503)
+        );
+        assert_eq!(
+            niffler_platform_error_rule_status_code("unknown_code"),
+            None
+        );
     }
 
     #[test]

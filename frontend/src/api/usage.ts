@@ -123,6 +123,8 @@ export interface UsageFilters {
   search?: string
   start_date?: string
   end_date?: string
+  start_time?: string
+  end_time?: string
   preset?: string
   granularity?: 'hour' | 'day' | 'week' | 'month'
   timezone?: string
@@ -242,6 +244,8 @@ function buildCurrentUserUsageParams(filters?: UsageFilters): {
     params: compactParams({
       start_date: filters?.start_date,
       end_date: filters?.end_date,
+      start_time: filters?.start_time,
+      end_time: filters?.end_time,
       preset: filters?.preset,
       timezone: filters?.timezone,
       tz_offset_minutes: filters?.tz_offset_minutes,
@@ -268,6 +272,8 @@ function buildAdminUsageRecordParams(userId: string, filters?: UsageFilters): {
       user_id: userId,
       start_date: filters?.start_date,
       end_date: filters?.end_date,
+      start_time: filters?.start_time,
+      end_time: filters?.end_time,
       preset: filters?.preset,
       timezone: filters?.timezone,
       tz_offset_minutes: filters?.tz_offset_minutes,
@@ -291,6 +297,8 @@ function buildAdminUsageStatsParams(userId: string, filters?: UsageFilters): Rec
     user_id: userId,
     start_date: filters?.start_date,
     end_date: filters?.end_date,
+    start_time: filters?.start_time,
+    end_time: filters?.end_time,
     preset: filters?.preset,
     timezone: filters?.timezone,
     tz_offset_minutes: filters?.tz_offset_minutes,
@@ -449,6 +457,8 @@ export const usageApi = {
   async getAllUsageRecords(params?: {
     start_date?: string
     end_date?: string
+    start_time?: string
+    end_time?: string
     preset?: string
     granularity?: 'hour' | 'day' | 'week' | 'month'
     timezone?: string
@@ -481,7 +491,7 @@ export const usageApi = {
    */
   async getActiveRequests(
     ids?: string[],
-    timeRange?: Pick<UsageFilters, 'start_date' | 'end_date' | 'preset' | 'timezone' | 'tz_offset_minutes'>
+    timeRange?: Pick<UsageFilters, 'start_date' | 'end_date' | 'start_time' | 'end_time' | 'preset' | 'timezone' | 'tz_offset_minutes'>
   ): Promise<{
     requests: Array<{
       id: string
@@ -529,6 +539,12 @@ export const usageApi = {
     }
     if (timeRange?.end_date) {
       params.end_date = timeRange.end_date
+    }
+    if (timeRange?.start_time) {
+      params.start_time = timeRange.start_time
+    }
+    if (timeRange?.end_time) {
+      params.end_time = timeRange.end_time
     }
     if (timeRange?.preset) {
       params.preset = timeRange.preset

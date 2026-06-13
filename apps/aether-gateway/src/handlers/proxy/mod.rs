@@ -2016,6 +2016,10 @@ pub(crate) async fn proxy_request(
                 .unwrap_or_default(),
             local_execution_failure_log
         );
+        let upstream_error_response = local_execution_exhaustion
+            .as_ref()
+            .and_then(|value| value.upstream_error_response())
+            .or_else(|| local_execution_runtime_miss_context.upstream_error_response());
         if let Some(exhaustion) = local_execution_exhaustion {
             record_failed_usage_for_exhausted_request(
                 &state,
@@ -2043,18 +2047,28 @@ pub(crate) async fn proxy_request(
             )
             .await;
         }
-        let mut response = build_niffler_platform_http_error_response(
-            &state,
-            &trace_id,
-            control_decision,
-            http::StatusCode::SERVICE_UNAVAILABLE,
-            "local_execution_runtime_unavailable",
-            local_execution_runtime_miss_client_message(
-                local_execution_runtime_miss_detail.as_str(),
+        let mut response = if let Some(upstream_error_response) = upstream_error_response {
+            build_client_response_from_parts(
+                upstream_error_response.status_code,
+                &upstream_error_response.headers,
+                Body::from(upstream_error_response.body_bytes),
+                &trace_id,
+                control_decision,
+            )?
+        } else {
+            build_niffler_platform_http_error_response(
+                &state,
+                &trace_id,
+                control_decision,
+                http::StatusCode::SERVICE_UNAVAILABLE,
+                "local_execution_runtime_unavailable",
+                local_execution_runtime_miss_client_message(
+                    local_execution_runtime_miss_detail.as_str(),
+                )
+                .as_str(),
             )
-            .as_str(),
-        )
-        .await?;
+            .await?
+        };
         let local_execution_runtime_miss_reason = local_execution_runtime_miss_diagnostic
             .as_ref()
             .map(|diagnostic| diagnostic.reason.trim())

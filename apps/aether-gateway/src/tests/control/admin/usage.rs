@@ -1265,6 +1265,84 @@ async fn gateway_handles_admin_usage_records_locally_with_trusted_admin_principa
 }
 
 #[tokio::test]
+async fn gateway_filters_admin_usage_records_by_local_time_range() {
+    let (_upstream_url, upstream_hits, upstream_handle) =
+        start_usage_upstream("/api/admin/usage/records").await;
+
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![
+        sample_usage_row(
+            "usage-before",
+            "req-before",
+            Some("user-1"),
+            Some("key-1"),
+            Some("primary"),
+            "OpenAI",
+            "gpt-5",
+            "completed",
+            10,
+            5,
+            0.01,
+            0.02,
+            1_711_015_200,
+        ),
+        sample_usage_row(
+            "usage-inside",
+            "req-inside",
+            Some("user-1"),
+            Some("key-1"),
+            Some("primary"),
+            "OpenAI",
+            "gpt-5",
+            "completed",
+            20,
+            10,
+            0.02,
+            0.03,
+            1_711_024_200,
+        ),
+        sample_usage_row(
+            "usage-boundary",
+            "req-boundary",
+            Some("user-1"),
+            Some("key-1"),
+            Some("primary"),
+            "OpenAI",
+            "gpt-5",
+            "completed",
+            30,
+            15,
+            0.03,
+            0.04,
+            1_711_026_000,
+        ),
+    ]));
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(GatewayDataState::with_usage_reader_for_tests(
+                usage_repository,
+            )),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = admin_request(reqwest::Client::new().get(format!(
+        "{gateway_url}/api/admin/usage/records?start_time=2024-03-21T12:00&end_time=2024-03-21T13:00&tz_offset_minutes=0&limit=10&offset=0"
+    )))
+    .send()
+    .await
+    .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["total"], 1);
+    assert_eq!(payload["records"][0]["id"], "usage-inside");
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
 async fn gateway_handles_admin_usage_records_with_provider_key_name_fallback_from_request_metadata()
 {
     let (upstream_url, upstream_hits, upstream_handle) =
@@ -2077,6 +2155,110 @@ async fn gateway_handles_admin_usage_detail_with_ref_backed_bodies() {
 
     gateway_handle.abort();
     upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_usage_detail_promotes_failed_candidate_upstream_error() {
+    let mut usage = sample_usage_row(
+        "usage-candidate-upstream-error",
+        "req-candidate-upstream-error",
+        Some("user-1"),
+        Some("key-1"),
+        Some("primary"),
+        "CC-Max",
+        "claude-opus-4-8",
+        "failed",
+        0,
+        0,
+        0.0,
+        0.0,
+        DAY_1_UNIX_SECS,
+    );
+    usage.status_code = Some(503);
+    usage.error_category = Some("server_error".to_string());
+    usage.error_message =
+        Some("execution runtime stream returned retryable status 400".to_string());
+    usage.candidate_id = Some("candidate-upstream-error".to_string());
+    usage.candidate_index = Some(0);
+    usage.execution_path = Some("local_execution_runtime_miss".to_string());
+    usage.local_execution_runtime_miss_reason = Some("all_candidates_skipped".to_string());
+    usage.response_body = None;
+    usage.response_body_ref =
+        Some("usage://request/req-candidate-upstream-error/response_body".to_string());
+    usage.client_response_body = None;
+    usage.client_response_body_ref =
+        Some("usage://request/req-candidate-upstream-error/client_response_body".to_string());
+    usage.response_headers = Some(json!({
+        "content-type": "application/json"
+    }));
+    usage.client_response_headers = Some(json!({
+        "content-type": "application/json"
+    }));
+
+    let mut candidate = sample_request_candidate(
+        "candidate-upstream-error",
+        "req-candidate-upstream-error",
+        0,
+        0,
+        RequestCandidateStatus::Failed,
+    );
+    candidate.status_code = Some(400);
+    candidate.error_type = Some("retryable_upstream_status".to_string());
+    candidate.error_message =
+        Some("execution runtime stream returned retryable status 400".to_string());
+    candidate.extra_data = Some(json!({
+        "upstream_response": {
+            "status_code": 400,
+            "headers": {
+                "content-type": "text/event-stream"
+            },
+            "body": {
+                "type": "error",
+                "error": {
+                    "type": "<nil>",
+                    "message": "image dimension exceeds max allowed size"
+                }
+            }
+        }
+    }));
+
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![usage]));
+    let request_candidate_repository =
+        Arc::new(InMemoryRequestCandidateRepository::seed(vec![candidate]));
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_request_candidate_and_usage_repository_for_tests(
+                    request_candidate_repository,
+                    usage_repository,
+                ),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = admin_request(reqwest::Client::new().get(format!(
+        "{gateway_url}/api/admin/usage/usage-candidate-upstream-error?include_bodies=false"
+    )))
+    .send()
+    .await
+    .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["status_code"], 503);
+    assert_eq!(payload["upstream_error"]["status_code"], 400);
+    assert_eq!(
+        payload["upstream_error"]["message"],
+        "image dimension exceeds max allowed size"
+    );
+    assert_eq!(payload["failure_summary"]["status_code"], 400);
+    assert_eq!(
+        payload["failure_summary"]["message"],
+        "image dimension exceeds max allowed size"
+    );
+
+    gateway_handle.abort();
 }
 
 #[tokio::test]

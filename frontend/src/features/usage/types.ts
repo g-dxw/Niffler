@@ -144,6 +144,8 @@ export interface UsageRecord {
 export interface DateRangeParams {
   start_date?: string
   end_date?: string
+  start_time?: string
+  end_time?: string
   preset?: string
   granularity?: 'hour' | 'day' | 'week' | 'month'
   timezone?: string

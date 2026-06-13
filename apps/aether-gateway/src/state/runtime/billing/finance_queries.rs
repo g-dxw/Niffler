@@ -78,10 +78,9 @@ impl AppState {
                         && user_search.is_none_or(|expected| {
                             let needle = expected.trim().to_ascii_lowercase();
                             needle.is_empty()
-                                || order
-                                    .user_id
-                                    .as_deref()
-                                    .is_some_and(|value| value.to_ascii_lowercase().contains(&needle))
+                                || order.user_id.as_deref().is_some_and(|value| {
+                                    value.to_ascii_lowercase().contains(&needle)
+                                })
                         })
                         && status.is_none_or(|expected| {
                             let effective_status = if order.status == "pending"
