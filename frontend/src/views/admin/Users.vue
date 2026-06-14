@@ -320,7 +320,7 @@
       <!-- 桌面端表格 -->
       <div class="hidden xl:block overflow-x-auto">
         <Table
-          class="w-[var(--admin-users-table-width)] table-fixed"
+          class="w-full min-w-[var(--admin-users-table-width)] table-fixed"
           :style="{ '--admin-users-table-width': userTableWidth }"
         >
           <colgroup>
@@ -592,46 +592,53 @@
                   >
                     <Key class="h-3.5 w-3.5" />
                   </Button>
-                  <DropdownMenu v-if="authStore.canOperateAdmin">
-                    <DropdownMenuTrigger as-child>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="h-7 w-7"
-                        title="更多操作"
-                      >
-                        <MoreHorizontal class="h-3.5 w-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem @select="manageUserPlans(user)">
-                        <PackageCheck class="mr-2 h-4 w-4" />
-                        套餐
-                      </DropdownMenuItem>
-                      <DropdownMenuItem @select="manageUserSessions(user)">
-                        <MonitorSmartphone class="mr-2 h-4 w-4" />
-                        登录设备
-                      </DropdownMenuItem>
-                      <DropdownMenuItem @select="toggleUserStatus(user)">
-                        <PauseCircle
-                          v-if="user.is_active"
-                          class="mr-2 h-4 w-4"
-                        />
-                        <PlayCircle
-                          v-else
-                          class="mr-2 h-4 w-4"
-                        />
-                        {{ user.is_active ? '禁用用户' : '启用用户' }}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        class="text-destructive focus:text-destructive"
-                        @select="deleteUser(user)"
-                      >
-                        <Trash2 class="mr-2 h-4 w-4" />
-                        删除用户
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button
+                    v-if="authStore.canOperateAdmin"
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7"
+                    title="套餐"
+                    @click="manageUserPlans(user)"
+                  >
+                    <PackageCheck class="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    v-if="authStore.canOperateAdmin"
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7"
+                    title="登录设备"
+                    @click="manageUserSessions(user)"
+                  >
+                    <MonitorSmartphone class="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    v-if="authStore.canOperateAdmin"
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7"
+                    :title="user.is_active ? '禁用用户' : '启用用户'"
+                    @click="toggleUserStatus(user)"
+                  >
+                    <PauseCircle
+                      v-if="user.is_active"
+                      class="h-3.5 w-3.5"
+                    />
+                    <PlayCircle
+                      v-else
+                      class="h-3.5 w-3.5"
+                    />
+                  </Button>
+                  <Button
+                    v-if="authStore.canOperateAdmin"
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7 text-destructive hover:text-destructive"
+                    title="删除用户"
+                    @click="deleteUser(user)"
+                  >
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               </TableCell>
             </TableRow>
@@ -1771,10 +1778,6 @@ import {
   SortableTableHead,
   TableFilterMenu,
   TableCell,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Avatar,
   AvatarFallback,
   Pagination,
@@ -1799,7 +1802,6 @@ import {
   MonitorSmartphone,
   FolderKanban,
   PackageCheck,
-  MoreHorizontal,
 } from 'lucide-vue-next'
 
 // 功能组件
@@ -1909,12 +1911,12 @@ const userStatusFilterOptions = [
 type UserTableColumnKey = 'select' | 'user' | 'wallet' | 'stats' | 'created' | 'status' | 'actions'
 const userTableColumns: ResizableTableColumn<UserTableColumnKey>[] = [
   { key: 'select', width: '40px', minWidth: 40 },
-  { key: 'user', width: '250px', minWidth: 220 },
+  { key: 'user', width: '320px', minWidth: 260 },
   { key: 'wallet', width: '210px', minWidth: 180 },
   { key: 'stats', width: '150px', minWidth: 140 },
   { key: 'created', width: '140px', minWidth: 128 },
   { key: 'status', width: '100px', minWidth: 92 },
-  { key: 'actions', width: '156px', minWidth: 144 },
+  { key: 'actions', width: '260px', minWidth: 224 },
 ]
 const {
   columnWidths: userTableColumnWidths,

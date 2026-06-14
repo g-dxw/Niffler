@@ -34,6 +34,7 @@ pub struct AdminPoolBatchActionRequest {
 pub enum AdminPoolBatchActionKind {
     Enable,
     Disable,
+    ClearCooldown,
     ClearProxy,
     SetProxy,
     RegenerateFingerprint,
@@ -528,6 +529,7 @@ pub fn build_admin_pool_batch_action_plan(
     let (action_kind, action_label) = match action.as_str() {
         "enable" => (AdminPoolBatchActionKind::Enable, "enabled"),
         "disable" => (AdminPoolBatchActionKind::Disable, "disabled"),
+        "clear_cooldown" => (AdminPoolBatchActionKind::ClearCooldown, "cooldown cleared"),
         "clear_proxy" => (AdminPoolBatchActionKind::ClearProxy, "proxy cleared"),
         "set_proxy" => (AdminPoolBatchActionKind::SetProxy, "proxy set"),
         "regenerate_fingerprint" => (
@@ -537,7 +539,7 @@ pub fn build_admin_pool_batch_action_plan(
         "delete" => (AdminPoolBatchActionKind::Delete, "deleted"),
         _ => {
             return Err(format!(
-                "Invalid action: {action}. Supported locally: enable, disable, clear_proxy, set_proxy, regenerate_fingerprint, delete"
+                "Invalid action: {action}. Supported locally: enable, disable, clear_cooldown, clear_proxy, set_proxy, regenerate_fingerprint, delete"
             ));
         }
     };

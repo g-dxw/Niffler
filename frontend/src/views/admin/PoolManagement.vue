@@ -494,6 +494,18 @@
               清空选择
             </Button>
             <Button
+              v-if="showBulkClearCooldownAction"
+              variant="outline"
+              size="sm"
+              class="h-7 px-2.5 text-xs"
+              :disabled="selectedPoolKeyCount === 0 || poolSelectionActionBusy"
+              data-testid="pool-bulk-clear-cooldown-selected"
+              @click="clearCooldownSelectedPoolKeys"
+            >
+              {{ clearingSelectedCooldown ? '清除中...' : `清除冷却 ${selectedPoolKeyCount}` }}
+            </Button>
+            <Button
+              v-if="showBulkEnableAction"
               variant="outline"
               size="sm"
               class="h-7 px-2.5 text-xs"
@@ -2422,6 +2434,7 @@ const scoreDesktopPopoverOpenKeyId = ref<string | null>(null)
 const scoreMobilePopoverOpenKeyId = ref<string | null>(null)
 const deletingKeyId = ref<string | null>(null)
 const deletingSelectedKeys = ref(false)
+const clearingSelectedCooldown = ref(false)
 const updatingSelectedKeyStatus = ref<'enable' | 'disable' | null>(null)
 const selectedPoolKeyIds = ref<string[]>([])
 const allFilteredPoolKeysSelected = ref(false)
@@ -2434,6 +2447,8 @@ const keyPermissionsDialogOpen = ref(false)
 const keyFormDialogOpen = ref(false)
 const oauthKeyEditDialogOpen = ref(false)
 const editingKeyDetail = ref<PoolKeyDetail | null>(null)
+const showBulkClearCooldownAction = computed(() => statusFilter.value === 'temporary_unavailable')
+const showBulkEnableAction = computed(() => statusFilter.value === 'disabled')
 
 function togglePoolStatsMode() {
   poolStatsMode.value = poolStatsMode.value === 'current_cycle'
@@ -3044,7 +3059,9 @@ const editingKey = computed<EndpointAPIKey | null>(() => {
 })
 
 const selectedPoolKeyIdSet = computed(() => new Set(selectedPoolKeyIds.value))
-const poolSelectionActionBusy = computed(() => deletingSelectedKeys.value || updatingSelectedKeyStatus.value !== null)
+const poolSelectionActionBusy = computed(() =>
+  deletingSelectedKeys.value || clearingSelectedCooldown.value || updatingSelectedKeyStatus.value !== null
+)
 const selectedPoolKeyCount = computed(() => allFilteredPoolKeysSelected.value ? keyPage.value.total : selectedPoolKeyIds.value.length)
 const currentPagePoolKeyIds = computed(() => keyPage.value.keys.map(key => key.key_id).filter(Boolean))
 const selectedCurrentPagePoolKeyCount = computed(() => {
@@ -3404,6 +3421,43 @@ async function enableSelectedPoolKeys(): Promise<void> {
 
 async function disableSelectedPoolKeys(): Promise<void> {
   await updateSelectedPoolKeyActiveStatus('disable')
+}
+
+async function clearCooldownSelectedPoolKeys(): Promise<void> {
+  const providerId = selectedProviderId.value
+  const selectedCount = selectedPoolKeyCount.value
+  if (!providerId || selectedCount === 0 || poolSelectionActionBusy.value) return
+
+  const confirmed = await confirm({
+    title: '清除冷却',
+    message: `确定要清除已选 ${selectedCount} 个账号的冷却状态吗？清除后这些账号会重新参与调度。`,
+    confirmText: '确认清除',
+    variant: 'question',
+  })
+  if (!confirmed) return
+
+  clearingSelectedCooldown.value = true
+  try {
+    const keyIds = await resolveSelectedPoolKeyIdsForBatch(providerId)
+    if (keyIds.length === 0) {
+      showWarning('没有找到可清除冷却的账号，请刷新后重试')
+      return
+    }
+    const result = await batchActionPoolKeys(providerId, {
+      key_ids: keyIds,
+      action: 'clear_cooldown',
+    })
+    const affected = Number(result.affected ?? 0)
+    if (selectedProviderId.value !== providerId) return
+    clearPoolKeySelection()
+    await loadKeys()
+    refreshOverviewInBackground()
+    success(affected > 0 ? `已清除 ${affected} 个账号的冷却状态` : '没有账号被更新')
+  } catch (err) {
+    showError(parseApiError(err, '批量清除冷却失败'))
+  } finally {
+    clearingSelectedCooldown.value = false
+  }
 }
 
 async function deleteSelectedPoolKeys(): Promise<void> {

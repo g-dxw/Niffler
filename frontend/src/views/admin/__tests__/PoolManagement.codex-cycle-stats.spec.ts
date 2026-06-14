@@ -761,6 +761,63 @@ describe('PoolManagement Codex cycle stats mode', () => {
     expect(endpointMocks.refreshProviderQuota).not.toHaveBeenCalledWith('codex-provider')
   })
 
+
+  it('shows clear-cooldown bulk action instead of enable on temporary-unavailable tab', async () => {
+    routeMocks.query.providerId = 'codex-provider'
+    routeMocks.query.status = 'temporary_unavailable'
+    const cooledKey = createPoolKey('codex', {
+      key_id: 'codex-cooldown-a',
+      key_name: 'cooldown a',
+      cooldown_reason: 'rate_limited_429',
+      cooldown_ttl_seconds: 180,
+      scheduling_state: 'temporary_unavailable',
+      scheduling_status: 'degraded',
+      scheduling_label: '暂时不可用',
+      scheduling_reason: 'temporary_unavailable',
+    })
+    endpointMocks.getPoolOverview.mockResolvedValue({
+      items: [{ ...createOverview('codex'), total_keys: 1, active_keys: 1 }],
+    })
+    endpointMocks.listPoolKeys.mockResolvedValue({
+      total: 1,
+      page: 1,
+      page_size: 50,
+      keys: [cooledKey],
+      summary: {
+        total: 1,
+        plans: [],
+        statuses: [{ code: 'temporary_unavailable', label: '暂时不可用', count: 1 }],
+      },
+    })
+    endpointMocks.getProvider.mockResolvedValue(createProvider('codex'))
+    endpointMocks.batchActionPoolKeys.mockResolvedValue({
+      affected: 1,
+      message: '1 keys cooldown cleared',
+    })
+
+    const root = mountPoolManagement()
+    await settle()
+
+    expect(root.querySelector('[data-testid="pool-bulk-enable-selected"]')).toBeNull()
+
+    const checkbox = root.querySelector<HTMLInputElement>('[data-testid="pool-key-select-codex-cooldown-a"]')
+    expect(checkbox).not.toBeNull()
+    checkbox?.click()
+    await settle()
+
+    const clearButton = root.querySelector<HTMLButtonElement>('[data-testid="pool-bulk-clear-cooldown-selected"]')
+    expect(clearButton).not.toBeNull()
+    expect(clearButton?.textContent).toContain('清除冷却 1')
+
+    clearButton?.click()
+    await settle()
+
+    expect(endpointMocks.batchActionPoolKeys).toHaveBeenCalledWith('codex-provider', {
+      key_ids: ['codex-cooldown-a'],
+      action: 'clear_cooldown',
+    })
+  })
+
   it('deletes selected pool accounts from the main list', async () => {
     const firstKey = createPoolKey('codex', { key_id: 'codex-key-a', key_name: 'alpha' })
     const secondKey = createPoolKey('codex', { key_id: 'codex-key-b', key_name: 'beta' })

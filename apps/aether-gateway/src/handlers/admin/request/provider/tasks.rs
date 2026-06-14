@@ -438,6 +438,12 @@ impl<'a> AdminAppState<'a> {
             match plan.action {
                 AdminPoolBatchActionKind::Enable => key.is_active = true,
                 AdminPoolBatchActionKind::Disable => key.is_active = false,
+                AdminPoolBatchActionKind::ClearCooldown => {
+                    self.clear_admin_provider_pool_cooldown(&provider.id, &key.id)
+                        .await;
+                    affected = affected.saturating_add(1);
+                    continue;
+                }
                 AdminPoolBatchActionKind::ClearProxy => key.proxy = None,
                 AdminPoolBatchActionKind::SetProxy => key.proxy = plan.proxy_payload.clone(),
                 AdminPoolBatchActionKind::RegenerateFingerprint => {

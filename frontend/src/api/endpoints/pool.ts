@@ -349,6 +349,7 @@ export interface PoolBatchAction {
   action:
     | 'enable'
     | 'disable'
+    | 'clear_cooldown'
     | 'delete'
     | 'clear_proxy'
     | 'set_proxy'
