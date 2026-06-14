@@ -132,7 +132,7 @@ function buildAccountTotalMetrics(key: PoolStatsKeyInput): PoolStatsMetric[] {
   return [
     createMetric('request_count', '请求', formatPoolStatInteger(key.request_count)),
     createMetric('total_tokens', 'Token', formatPoolTokenCount(key.total_tokens)),
-    createMetric('total_cost_usd', '费用', formatPoolStatUsd(key.total_cost_usd)),
+    createMetric('total_cost_usd', '基础费用', formatPoolStatUsd(key.total_cost_usd)),
   ]
 }
 
@@ -140,7 +140,7 @@ function buildCycleMetrics(usage: QuotaWindowUsageSnapshot | null): PoolStatsMet
   return [
     createMetric('request_count', '请求', formatCycleInteger(usage?.request_count)),
     createMetric('total_tokens', 'Token', formatCycleTokenCount(usage?.total_tokens)),
-    createMetric('total_cost_usd', '费用', formatCycleUsd(usage?.total_cost_usd)),
+    createMetric('total_cost_usd', '基础费用', formatCycleUsd(usage?.total_cost_usd)),
   ]
 }
 

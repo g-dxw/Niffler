@@ -19,10 +19,12 @@
 - 后续优化将 5H/周窗口用量从列表页同步查询改为写入时维护：使用记录结算完成后，后台用量队列把窗口专用增量写入 `provider_api_keys.status_snapshot.quota.windows[].usage`。
 - 号池账号列表只读取账号状态快照，不再为了展示 5H/周用量临时聚合 `usage` 和 `usage_settlement_snapshots`。
 - 窗口用量仍按上游基础成本口径统计：优先使用结算快照 `base_cost_usd`，没有时按已有结算成本口径退回；未结算或无成本请求不计入窗口用量。
+- Provider 账号累计统计里的费用与 5H/周窗口统计使用同一口径：只统计已结算请求的基础成本，不使用用户钱包销售金额；历史记录缺少直接基础成本时，按销售金额除以销售倍率反推基础成本。
 
 ## 影响范围
 
 - 管理端号池管理页的 Codex 账号列表。
+- Provider 账号累计统计字段 `provider_api_keys.total_cost_usd`。
 - Postgres 使用记录窗口统计查询。
 - 新建库和现有库的 Postgres 索引结构。
 - Postgres 后台用量队列 `usage_counter_deltas` 新增窗口专用增量列；新增列只用于后续增量写入，不在迁移时回扫历史记录。

@@ -346,6 +346,20 @@ fn usage_sql_rebuild_matches_online_provider_key_usage_semantics() {
         .contains("AND BTRIM(provider_api_key_id) <> ''"));
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
         .contains("AND status NOT IN ('pending', 'streaming')"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("LEFT JOIN \"usage\" AS raw_usage"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("raw_usage.request_metadata ->> 'base_cost_usd'"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("raw_usage.request_metadata ->> 'sales_multiplier'"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier'"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("\"usage\".billing_status = 'settled'"));
 }
 
 #[test]

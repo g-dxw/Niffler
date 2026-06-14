@@ -271,6 +271,7 @@ pub fn preset_models_for_provider(provider_type: &str) -> Option<Vec<Value>> {
             preset_model("gpt-5.4-mini", "openai", "GPT-5.4 Mini", "openai:responses"),
             preset_model("gpt-5.3-codex", "openai", "GPT-5.3 Codex", "openai:responses"),
             preset_model("gpt-5.3-codex-spark", "openai", "GPT-5.3 Codex Spark", "openai:responses"),
+            preset_model("gpt-image-2", "openai", "GPT Image 2", "openai:image"),
         ],
         "grok" => vec![
             preset_model("grok-4.20-0309-non-reasoning", "xai", "Grok 4.20 0309 Non-Reasoning", "openai:chat"),
@@ -922,8 +923,14 @@ mod tests {
                 "gpt-5.4-mini",
                 "gpt-5.3-codex",
                 "gpt-5.3-codex-spark",
+                "gpt-image-2",
             ]
         );
+        let image_model = models
+            .iter()
+            .find(|model| model["id"] == "gpt-image-2")
+            .expect("codex image model should exist");
+        assert_eq!(image_model["api_formats"], json!(["openai:image"]));
     }
 
     #[test]

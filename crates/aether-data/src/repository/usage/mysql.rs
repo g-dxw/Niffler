@@ -367,8 +367,10 @@ SELECT
   status,
   status_code,
   error_message,
+  billing_status,
   total_tokens,
   total_cost_usd,
+  request_metadata,
   response_time_ms,
   updated_at_unix_secs
 FROM `usage`
@@ -386,6 +388,9 @@ WHERE provider_api_key_id IS NOT NULL AND provider_api_key_id <> ''
             let status_code = row.try_get::<Option<i64>, _>("status_code").map_sql_err()?;
             let status_code_u16 = status_code.and_then(|value| u16::try_from(value).ok());
             let error_message: Option<String> = row.try_get("error_message").map_sql_err()?;
+            let billing_status: String = row.try_get("billing_status").map_sql_err()?;
+            let total_cost_usd = row.try_get::<f64, _>("total_cost_usd").map_sql_err()?;
+            let request_metadata: Option<String> = row.try_get("request_metadata").map_sql_err()?;
             let entry = stats.entry(key_id).or_default();
             entry.request_count += 1;
             if provider_api_key_usage_is_success(&status, status_code_u16, error_message.as_deref())
@@ -396,7 +401,11 @@ WHERE provider_api_key_id IS NOT NULL AND provider_api_key_id <> ''
                 entry.error_count += 1;
             }
             entry.total_tokens += row.try_get::<i64, _>("total_tokens").map_sql_err()?;
-            entry.total_cost_usd += row.try_get::<f64, _>("total_cost_usd").map_sql_err()?;
+            entry.total_cost_usd += provider_key_base_cost_usd_mysql(
+                billing_status.as_str(),
+                total_cost_usd,
+                request_metadata.as_deref(),
+            );
             entry.total_response_time_ms += row
                 .try_get::<Option<i64>, _>("response_time_ms")
                 .map_sql_err()?
@@ -613,6 +622,46 @@ struct ProviderKeyStats {
     total_cost_usd: f64,
     total_response_time_ms: i64,
     last_used_at: Option<i64>,
+}
+
+fn provider_key_base_cost_usd_mysql(
+    billing_status: &str,
+    total_cost_usd: f64,
+    request_metadata: Option<&str>,
+) -> f64 {
+    if !billing_status.eq_ignore_ascii_case("settled") {
+        return 0.0;
+    }
+    let direct_base_cost =
+        metadata_number_mysql(request_metadata, &["base_cost_usd"]).or_else(|| {
+            metadata_number_mysql(request_metadata, &["settlement_snapshot", "base_cost_usd"])
+        });
+    let sales_multiplier = metadata_number_mysql(request_metadata, &["sales_multiplier"])
+        .or_else(|| {
+            metadata_number_mysql(
+                request_metadata,
+                &[
+                    "settlement_snapshot",
+                    "pricing_snapshot",
+                    "sales_multiplier",
+                ],
+            )
+        })
+        .filter(|value| *value > 0.0);
+    direct_base_cost
+        .filter(|value| *value > 0.0)
+        .or_else(|| sales_multiplier.map(|multiplier| total_cost_usd / multiplier))
+        .unwrap_or(total_cost_usd)
+        .max(0.0)
+}
+
+fn metadata_number_mysql(raw: Option<&str>, path: &[&str]) -> Option<f64> {
+    let value = serde_json::from_str::<serde_json::Value>(raw?).ok()?;
+    let mut current = &value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    current.as_f64().filter(|value| value.is_finite())
 }
 
 async fn completed_request_ids_mysql<'a>(
@@ -934,7 +983,9 @@ fn row_u64(row: &MySqlRow, field: &str) -> Result<u64, DataLayerError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MysqlUsageReadRepository, MysqlUsageWriteRepository};
+    use super::{
+        provider_key_base_cost_usd_mysql, MysqlUsageReadRepository, MysqlUsageWriteRepository,
+    };
     use crate::lifecycle::migrate::run_mysql_migrations;
     use crate::repository::usage::{
         UpsertUsageRecord, UsageAuditListQuery, UsageDashboardSummaryQuery, UsageReadRepository,
@@ -950,6 +1001,27 @@ mod tests {
         );
 
         let _repository = MysqlUsageWriteRepository::new(pool);
+    }
+
+    #[test]
+    fn provider_key_base_cost_uses_sales_multiplier_when_base_cost_is_missing() {
+        let metadata = serde_json::json!({
+            "settlement_snapshot": {
+                "pricing_snapshot": {
+                    "sales_multiplier": 8.0
+                }
+            }
+        })
+        .to_string();
+
+        assert_eq!(
+            provider_key_base_cost_usd_mysql("settled", 2.0, Some(&metadata)),
+            0.25
+        );
+        assert_eq!(
+            provider_key_base_cost_usd_mysql("pending", 2.0, Some(&metadata)),
+            0.0
+        );
     }
 
     #[tokio::test]

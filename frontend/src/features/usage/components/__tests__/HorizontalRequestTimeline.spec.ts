@@ -468,7 +468,7 @@ describe('HorizontalRequestTimeline', () => {
 
     expect(root.textContent).toContain('错误信息')
     expect(root.textContent).toContain('HTTP 302')
-    expect(root.textContent).not.toContain('上游返回非成功状态 302')
+    expect(root.textContent).toContain('上游返回非成功状态 302')
     expect(root.querySelector('.error-block .error-json')?.textContent).toContain('"status_code":302')
     expect(root.querySelector('.error-block .error-json')?.textContent).toContain('"headers"')
     expect(root.textContent).not.toContain('上游真实响应')
@@ -480,5 +480,41 @@ describe('HorizontalRequestTimeline', () => {
     expect(root.textContent).not.toContain('none')
     expect(root.textContent).not.toContain('不再重试')
     expect(root.textContent).not.toContain('该错误被标记为敏感上游错误')
+  })
+
+  it('shows readable upstream error message above the raw JSON response', async () => {
+    const trace = buildTrace([
+      buildCandidate({
+        id: 'cand-upstream-response-message',
+        provider_id: 'provider-upstream',
+        provider_name: 'Provider Upstream',
+        key_id: 'key-upstream',
+        key_name: 'Upstream Key',
+        candidate_index: 0,
+        status: 'failed',
+        status_code: 502,
+        error_message: 'execution runtime stream returned retryable status 502',
+        extra_data: {
+          upstream_response: {
+            status_code: 502,
+            body: {
+              type: 'error',
+              error: {
+                type: 'upstream_error',
+                message: 'Upstream service temporarily unavailable',
+              },
+            },
+          },
+        },
+      }),
+    ])
+
+    const root = mountTimeline(trace)
+    await nextTick()
+
+    expect(root.textContent).toContain('错误信息')
+    expect(root.textContent).toContain('HTTP 502')
+    expect(root.textContent).toContain('Upstream service temporarily unavailable')
+    expect(root.querySelector('.error-block .error-json')?.textContent).toContain('"status_code":502')
   })
 })

@@ -2593,7 +2593,7 @@ const CODEX_CYCLE_STAT_KEYS: Array<PoolStatsMetric['key']> = ['request_count', '
 const CODEX_CYCLE_STAT_LABELS: Record<PoolStatsMetric['key'], string> = {
   request_count: '请求',
   total_tokens: 'Token',
-  total_cost_usd: '费用',
+  total_cost_usd: '基础费用',
 }
 
 type PoolKeyUiState = {

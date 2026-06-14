@@ -677,7 +677,7 @@ pub(crate) fn provider_api_key_usage_contribution(
         usage.status_code,
         usage.error_message.as_deref(),
     );
-    let window_cost_usd = if usage.billing_status == "settled" {
+    let provider_cost_usd = if usage.billing_status == "settled" {
         usage
             .settlement_base_cost_usd()
             .filter(|value| *value > 0.0)
@@ -686,7 +686,7 @@ pub(crate) fn provider_api_key_usage_contribution(
     } else {
         0.0
     };
-    let has_window_cost = window_cost_usd > 0.0;
+    let has_provider_cost = provider_cost_usd > 0.0;
 
     Some(ProviderApiKeyUsageContribution {
         key_id,
@@ -694,11 +694,7 @@ pub(crate) fn provider_api_key_usage_contribution(
         success_count: i64::from(is_success),
         error_count: i64::from(is_error),
         total_tokens: i64::try_from(usage.total_tokens).unwrap_or(i64::MAX),
-        total_cost_usd: if usage.total_cost_usd.is_finite() {
-            usage.total_cost_usd.max(0.0)
-        } else {
-            0.0
-        },
+        total_cost_usd: provider_cost_usd,
         total_response_time_ms: if is_success {
             usage
                 .response_time_ms
@@ -709,14 +705,14 @@ pub(crate) fn provider_api_key_usage_contribution(
         },
         last_used_at_unix_secs: Some(usage.created_at_unix_ms),
         usage_created_at_unix_secs: Some(usage.created_at_unix_ms),
-        window_request_count: i64::from(has_window_cost),
-        window_total_tokens: if has_window_cost {
+        window_request_count: i64::from(has_provider_cost),
+        window_total_tokens: if has_provider_cost {
             i64::try_from(usage.total_tokens).unwrap_or(i64::MAX)
         } else {
             0
         },
-        window_total_cost_usd: if has_window_cost {
-            window_cost_usd
+        window_total_cost_usd: if has_provider_cost {
+            provider_cost_usd
         } else {
             0.0
         },
@@ -1015,7 +1011,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_key_window_usage_prefers_settlement_base_cost() {
+    fn provider_key_usage_prefers_settlement_base_cost() {
         let mut usage = StoredRequestUsageAudit::new(
             "usage-1".to_string(),
             "request-1".to_string(),
@@ -1067,7 +1063,7 @@ mod tests {
         let contribution =
             provider_api_key_usage_contribution(&usage).expect("contribution should exist");
 
-        assert_eq!(contribution.total_cost_usd, 2.00);
+        assert_eq!(contribution.total_cost_usd, 0.25);
         assert_eq!(contribution.window_total_cost_usd, 0.25);
         assert_eq!(contribution.window_request_count, 1);
         assert_eq!(contribution.window_total_tokens, 20);

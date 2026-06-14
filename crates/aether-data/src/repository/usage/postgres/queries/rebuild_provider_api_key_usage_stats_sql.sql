@@ -32,7 +32,13 @@ WITH aggregated AS (
         0
       )::BIGINT
     ), 0)::BIGINT AS total_tokens,
-    COALESCE(SUM(COALESCE(total_cost_usd, 0)), 0)::NUMERIC(20,8) AS total_cost_usd,
+    COALESCE(SUM(
+      CASE
+        WHEN "usage".billing_status = 'settled'
+        THEN provider_cost.base_cost_usd
+        ELSE 0
+      END
+    ), 0)::NUMERIC(20,8) AS total_cost_usd,
     COALESCE(SUM(
       CASE
         WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
@@ -45,6 +51,56 @@ WITH aggregated AS (
     ), 0)::BIGINT AS total_response_time_ms,
     MAX(created_at) AS last_used_at
   FROM usage_billing_facts AS "usage"
+  LEFT JOIN "usage" AS raw_usage
+    ON raw_usage.request_id = "usage".request_id
+  LEFT JOIN usage_settlement_snapshots AS settlement
+    ON settlement.request_id = "usage".request_id
+  LEFT JOIN LATERAL (
+    SELECT
+      COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END
+      ) AS direct_base_cost_usd,
+      COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+          ELSE NULL
+        END
+      ) AS sales_multiplier
+  ) AS provider_cost_inputs ON TRUE
+  LEFT JOIN LATERAL (
+    SELECT GREATEST(
+      COALESCE(
+        provider_cost_inputs.direct_base_cost_usd,
+        CASE
+          WHEN provider_cost_inputs.sales_multiplier > 0
+          THEN CAST("usage".total_cost_usd AS DOUBLE PRECISION) / provider_cost_inputs.sales_multiplier
+          ELSE NULL
+        END,
+        CAST("usage".total_cost_usd AS DOUBLE PRECISION),
+        0
+      ),
+      0
+    ) AS base_cost_usd
+  ) AS provider_cost ON TRUE
   WHERE provider_api_key_id IS NOT NULL
     AND BTRIM(provider_api_key_id) <> ''
     AND status NOT IN ('pending', 'streaming')

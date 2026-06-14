@@ -1414,6 +1414,37 @@ const formatAttemptErrorMessage = (message: string, statusCode?: number): string
   return normalized
 }
 
+const extractErrorMessageFromValue = (value: unknown): string => {
+  if (typeof value === 'string') return value.trim()
+  const object = extractObject(value)
+  if (!object) return ''
+
+  const directMessage = readStringField(object, 'message')
+    ?? readStringField(object, 'detail')
+    ?? readStringField(object, 'error_description')
+  if (directMessage) return directMessage
+
+  const nestedError = object.error
+  if (typeof nestedError === 'string') return nestedError.trim()
+  const nestedMessage = extractErrorMessageFromValue(nestedError)
+  if (nestedMessage) return nestedMessage
+
+  if (Array.isArray(object.errors)) {
+    for (const item of object.errors) {
+      const itemMessage = extractErrorMessageFromValue(item)
+      if (itemMessage) return itemMessage
+    }
+  }
+
+  return ''
+}
+
+const resolveUpstreamResponseMessage = (upstreamResponse: Record<string, unknown> | null): string => {
+  if (!upstreamResponse) return ''
+  return extractErrorMessageFromValue(upstreamResponse.body)
+    || extractErrorMessageFromValue(upstreamResponse)
+}
+
 const currentAttemptRequestError = computed<{
   message: string
   statusCode?: number
@@ -1439,12 +1470,13 @@ const currentAttemptRequestError = computed<{
   const fallbackType = typeof attempt.error_type === 'string' && attempt.error_type.trim()
     ? attempt.error_type.trim()
     : ''
-  const message = formatAttemptErrorMessage(flowMessage || fallbackMessage, statusCode) || fallbackType
+  const upstreamMessage = resolveUpstreamResponseMessage(upstreamResponse)
+  const message = formatAttemptErrorMessage(upstreamMessage || flowMessage || fallbackMessage, statusCode) || fallbackType
   const upstreamResponseDisplay = normalizeUpstreamResponseDisplay(extra?.upstream_response)
   if (!message && statusCode == null && !upstreamResponseDisplay) return null
 
   return {
-    message: upstreamResponseDisplay ? '' : (message || '未知错误'),
+    message: message || '未知错误',
     statusCode,
     upstreamResponse: upstreamResponseDisplay,
   }
