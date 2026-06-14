@@ -399,7 +399,7 @@ pub(super) async fn handle_dodopay_notify(
     let channel = payload
         .get("channel")
         .and_then(|value| value.as_str())
-        .map(|value| value.trim().to_ascii_lowercase())
+        .map(|value| value.trim().to_ascii_uppercase())
         .filter(|value| !value.is_empty());
     let payload_hash = match payment_callback_payload_hash(&payload) {
         Ok(value) => value,

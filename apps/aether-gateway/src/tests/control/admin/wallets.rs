@@ -143,6 +143,8 @@ fn sample_payment_order_record(
         refunded_amount_usd,
         refundable_amount_usd,
         payment_method: "admin_manual".to_string(),
+        payment_provider: Some("admin".to_string()),
+        payment_channel: Some("manual".to_string()),
         gateway_order_id: None,
         status: "credited".to_string(),
         gateway_response: None,

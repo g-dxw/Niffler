@@ -1354,6 +1354,8 @@ SET gateway_order_id = COALESCE(?, gateway_order_id),
     pay_amount = COALESCE(?, pay_amount),
     pay_currency = COALESCE(?, pay_currency),
     exchange_rate = COALESCE(?, exchange_rate),
+    payment_provider = COALESCE(payment_provider, ?),
+    payment_channel = COALESCE(payment_channel, ?),
     status = 'credited',
     fulfillment_status = 'fulfilled',
     fulfillment_error = NULL,
@@ -1368,6 +1370,8 @@ WHERE id = ?
             .bind(input.pay_amount)
             .bind(input.pay_currency.as_deref())
             .bind(input.exchange_rate)
+            .bind(input.payment_provider.as_deref())
+            .bind(input.payment_channel.as_deref())
             .bind(now)
             .bind(now)
             .bind(&order_id)
@@ -1494,6 +1498,8 @@ SET gateway_order_id = COALESCE(?, gateway_order_id),
     pay_amount = COALESCE(?, pay_amount),
     pay_currency = COALESCE(?, pay_currency),
     exchange_rate = COALESCE(?, exchange_rate),
+    payment_provider = COALESCE(payment_provider, ?),
+    payment_channel = COALESCE(payment_channel, ?),
     status = 'credited',
     paid_at = COALESCE(paid_at, ?),
     credited_at = ?,
@@ -1506,6 +1512,8 @@ WHERE id = ?
         .bind(input.pay_amount)
         .bind(input.pay_currency.as_deref())
         .bind(input.exchange_rate)
+        .bind(input.payment_provider.as_deref())
+        .bind(input.payment_channel.as_deref())
         .bind(now)
         .bind(now)
         .bind(&order_id)
@@ -3897,6 +3905,8 @@ fn map_payment_order_row(row: &MySqlRow) -> Result<StoredAdminPaymentOrder, Data
         refunded_amount_usd: get(row, "refunded_amount_usd")?,
         refundable_amount_usd: get(row, "refundable_amount_usd")?,
         payment_method: get(row, "payment_method")?,
+        payment_provider: get(row, "payment_provider")?,
+        payment_channel: get(row, "payment_channel")?,
         gateway_order_id: get(row, "gateway_order_id")?,
         gateway_response: optional_json(
             get(row, "gateway_response")?,

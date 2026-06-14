@@ -366,6 +366,8 @@ fn stored_admin_payment_order_to_gateway(
         refunded_amount_usd: order.refunded_amount_usd,
         refundable_amount_usd: order.refundable_amount_usd,
         payment_method: order.payment_method,
+        payment_provider: order.payment_provider,
+        payment_channel: order.payment_channel,
         gateway_order_id: order.gateway_order_id,
         status: order.status,
         gateway_response: order.gateway_response,

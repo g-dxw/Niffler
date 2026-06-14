@@ -85,6 +85,8 @@ fn sample_payment_order(
         refunded_amount_usd: 0.0,
         refundable_amount_usd: amount_usd,
         payment_method: payment_method.to_string(),
+        payment_provider: (payment_method == "dodopay").then(|| "dodopay".to_string()),
+        payment_channel: (payment_method == "dodopay").then(|| "WECHAT".to_string()),
         gateway_order_id: None,
         status: status.to_string(),
         gateway_response: None,
@@ -190,7 +192,7 @@ async fn gateway_handles_admin_payments_get_order_locally_with_trusted_admin_pri
                 "wallet-1",
                 "user-1",
                 12.5,
-                "wechat",
+                "dodopay",
                 "pending",
                 1_710_000_000,
                 Some(4_102_444_800),
@@ -208,7 +210,9 @@ async fn gateway_handles_admin_payments_get_order_locally_with_trusted_admin_pri
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
     assert_eq!(payload["order"]["id"], "order-1");
-    assert_eq!(payload["order"]["payment_method"], "wechat");
+    assert_eq!(payload["order"]["payment_method"], "dodopay");
+    assert_eq!(payload["order"]["payment_provider"], "dodopay");
+    assert_eq!(payload["order"]["payment_channel"], "WECHAT");
     assert_eq!(payload["order"]["amount_usd"], 12.5);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 

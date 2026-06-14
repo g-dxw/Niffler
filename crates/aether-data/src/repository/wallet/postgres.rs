@@ -2470,6 +2470,8 @@ SET gateway_order_id = COALESCE($2, gateway_order_id),
     pay_amount = COALESCE($4, pay_amount),
     pay_currency = COALESCE($5, pay_currency),
     exchange_rate = COALESCE($6, exchange_rate),
+    payment_provider = COALESCE(payment_provider, $7),
+    payment_channel = COALESCE(payment_channel, $8),
     status = 'credited',
     fulfillment_status = 'fulfilled',
     fulfillment_error = NULL,
@@ -2509,6 +2511,8 @@ RETURNING
                         .bind(input.pay_amount)
                         .bind(input.pay_currency.as_deref())
                         .bind(input.exchange_rate)
+                        .bind(input.payment_provider.as_deref())
+                        .bind(input.payment_channel.as_deref())
                         .fetch_one(&mut **tx)
                         .await
                         .map_postgres_err()?;
@@ -2659,6 +2663,8 @@ SET gateway_order_id = COALESCE($2, gateway_order_id),
     pay_amount = COALESCE($4, pay_amount),
     pay_currency = COALESCE($5, pay_currency),
     exchange_rate = COALESCE($6, exchange_rate),
+    payment_provider = COALESCE(payment_provider, $7),
+    payment_channel = COALESCE(payment_channel, $8),
     status = 'credited',
     paid_at = COALESCE(paid_at, NOW()),
     credited_at = NOW(),
@@ -2696,6 +2702,8 @@ RETURNING
                     .bind(input.pay_amount)
                     .bind(input.pay_currency.as_deref())
                     .bind(input.exchange_rate)
+                    .bind(input.payment_provider.as_deref())
+                    .bind(input.payment_channel.as_deref())
                     .fetch_one(&mut **tx)
                     .await
                     .map_postgres_err()?;
@@ -6155,6 +6163,8 @@ fn map_admin_payment_order_row(row: &PgRow) -> Result<StoredAdminPaymentOrder, D
         refunded_amount_usd: row_get(row, "refunded_amount_usd")?,
         refundable_amount_usd: row_get(row, "refundable_amount_usd")?,
         payment_method: row_get(row, "payment_method")?,
+        payment_provider: row_get(row, "payment_provider")?,
+        payment_channel: row_get(row, "payment_channel")?,
         gateway_order_id: row_get(row, "gateway_order_id")?,
         gateway_response: row_get(row, "gateway_response")?,
         status: row_get(row, "status")?,

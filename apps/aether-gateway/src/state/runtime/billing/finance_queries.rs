@@ -474,6 +474,8 @@ fn stored_admin_payment_order_to_gateway(
         refunded_amount_usd: record.refunded_amount_usd,
         refundable_amount_usd: record.refundable_amount_usd,
         payment_method: record.payment_method,
+        payment_provider: record.payment_provider,
+        payment_channel: record.payment_channel,
         gateway_order_id: record.gateway_order_id,
         status: record.status,
         gateway_response: record.gateway_response,

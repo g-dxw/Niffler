@@ -141,6 +141,8 @@ impl AppState {
                 refunded_amount_usd: 0.0,
                 refundable_amount_usd: amount_usd,
                 payment_method: payment_method.to_string(),
+                payment_provider: Some("admin".to_string()),
+                payment_channel: Some("manual".to_string()),
                 gateway_order_id: None,
                 status: "credited".to_string(),
                 gateway_response: Some(serde_json::json!({
@@ -212,6 +214,8 @@ fn stored_admin_payment_order_to_gateway(
         refunded_amount_usd: order.refunded_amount_usd,
         refundable_amount_usd: order.refundable_amount_usd,
         payment_method: order.payment_method,
+        payment_provider: order.payment_provider,
+        payment_channel: order.payment_channel,
         gateway_order_id: order.gateway_order_id,
         status: order.status,
         gateway_response: order.gateway_response,

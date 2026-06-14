@@ -541,7 +541,7 @@
                       <TableCell class="tabular-nums">
                         {{ formatCurrency(order.amount_usd) }}
                       </TableCell>
-                      <TableCell>{{ paymentMethodLabel(order.payment_method) }}</TableCell>
+                      <TableCell>{{ paymentOrderMethodLabel(order) }}</TableCell>
                       <TableCell>
                         <Badge :variant="paymentStatusBadge(order.status)">
                           {{ paymentStatusLabel(order.status) }}
@@ -700,7 +700,7 @@ import {
   dailyUsageCategoryLabel,
   formatTokenCount,
   formatWalletCurrency as formatCurrency,
-  paymentMethodLabel,
+  paymentOrderMethodLabel,
   paymentStatusBadge,
   paymentStatusLabel,
   refundModeLabel,

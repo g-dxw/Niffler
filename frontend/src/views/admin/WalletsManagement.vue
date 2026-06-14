@@ -599,7 +599,7 @@
                       <TableCell class="tabular-nums">
                         {{ formatCurrency(order.amount_usd) }}
                       </TableCell>
-                      <TableCell>{{ paymentMethodLabel(order.payment_method) }}</TableCell>
+                      <TableCell>{{ paymentOrderMethodLabel(order) }}</TableCell>
                       <TableCell>
                         <Badge :variant="paymentStatusBadge(order.status)">
                           {{ paymentStatusLabel(order.status) }}
@@ -1271,7 +1271,7 @@
                   </div>
                   <div class="mt-1 text-sm font-medium">
                     <span v-if="loadingLedgerOrderNo">加载中...</span>
-                    <span v-else>{{ ledgerPaymentMethod ? paymentMethodLabel(ledgerPaymentMethod) : '-' }}</span>
+                    <span v-else>{{ ledgerPaymentMethodDisplay }}</span>
                   </div>
                 </div>
                 <div class="rounded-xl border border-border/60 p-3">
@@ -1588,6 +1588,7 @@ import {
   callbackStatusLabel,
   formatWalletCurrency as formatCurrency,
   paymentMethodLabel,
+  paymentOrderMethodLabel,
   paymentStatusBadge,
   paymentStatusLabel,
   refundModeLabel,
@@ -1828,9 +1829,17 @@ const currentRefund = ref<AdminGlobalRefund | null>(null)
 const loadingLedgerOrderNo = ref(false)
 const ledgerPaymentOrderNo = ref<string | null>(null)
 const ledgerPaymentMethod = ref<string | null>(null)
+const ledgerPaymentOrder = ref<PaymentOrder | null>(null)
 
 const showCreditDialog = ref(false)
 const currentOrder = ref<PaymentOrder | null>(null)
+
+const ledgerPaymentMethodDisplay = computed(() => {
+  if (ledgerPaymentOrder.value) {
+    return paymentOrderMethodLabel(ledgerPaymentOrder.value)
+  }
+  return ledgerPaymentMethod.value ? paymentMethodLabel(ledgerPaymentMethod.value) : '-'
+})
 
 const failRefundForm = reactive({
   reason: '',
@@ -2284,6 +2293,7 @@ function openLedgerDrawer(tx: AdminLedgerTransaction) {
   currentLedger.value = tx
   ledgerPaymentOrderNo.value = null
   ledgerPaymentMethod.value = null
+  ledgerPaymentOrder.value = null
   showLedgerDrawer.value = true
   void resolveLedgerRechargeOrderNo(tx)
 }
@@ -2292,22 +2302,26 @@ async function resolveLedgerRechargeOrderNo(tx: AdminLedgerTransaction) {
   if (tx.link_type !== 'payment_order' || !tx.link_id) {
     ledgerPaymentOrderNo.value = null
     ledgerPaymentMethod.value = null
+    ledgerPaymentOrder.value = null
     return
   }
 
   if (tx.link_id.startsWith('po_')) {
     ledgerPaymentOrderNo.value = tx.link_id
     ledgerPaymentMethod.value = null
+    ledgerPaymentOrder.value = null
     return
   }
 
   loadingLedgerOrderNo.value = true
   try {
     const resp = await adminPaymentsApi.getOrder(tx.link_id)
+    ledgerPaymentOrder.value = resp.order
     ledgerPaymentOrderNo.value = resp.order.order_no || null
     ledgerPaymentMethod.value = resp.order.payment_method || null
   } catch (error) {
     log.error('加载关联充值订单失败:', error)
+    ledgerPaymentOrder.value = null
     ledgerPaymentOrderNo.value = null
     ledgerPaymentMethod.value = null
   } finally {

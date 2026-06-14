@@ -1880,6 +1880,8 @@ SET gateway_order_id = COALESCE(?, gateway_order_id),
     pay_amount = COALESCE(?, pay_amount),
     pay_currency = COALESCE(?, pay_currency),
     exchange_rate = COALESCE(?, exchange_rate),
+    payment_provider = COALESCE(payment_provider, ?),
+    payment_channel = COALESCE(payment_channel, ?),
     status = 'credited',
     fulfillment_status = 'fulfilled',
     fulfillment_error = NULL,
@@ -1894,6 +1896,8 @@ WHERE id = ?
             .bind(input.pay_amount)
             .bind(input.pay_currency.as_deref())
             .bind(input.exchange_rate)
+            .bind(input.payment_provider.as_deref())
+            .bind(input.payment_channel.as_deref())
             .bind(now)
             .bind(now)
             .bind(&order_id)
@@ -2019,6 +2023,8 @@ SET gateway_order_id = COALESCE(?, gateway_order_id),
     pay_amount = COALESCE(?, pay_amount),
     pay_currency = COALESCE(?, pay_currency),
     exchange_rate = COALESCE(?, exchange_rate),
+    payment_provider = COALESCE(payment_provider, ?),
+    payment_channel = COALESCE(payment_channel, ?),
     status = 'credited',
     paid_at = COALESCE(paid_at, ?),
     credited_at = ?,
@@ -2031,6 +2037,8 @@ WHERE id = ?
         .bind(input.pay_amount)
         .bind(input.pay_currency.as_deref())
         .bind(input.exchange_rate)
+        .bind(input.payment_provider.as_deref())
+        .bind(input.payment_channel.as_deref())
         .bind(now)
         .bind(now)
         .bind(&order_id)
@@ -4524,6 +4532,8 @@ fn map_payment_order_row(row: &SqliteRow) -> Result<StoredAdminPaymentOrder, Dat
         refunded_amount_usd: sqlite_real(row, "refunded_amount_usd")?,
         refundable_amount_usd: sqlite_real(row, "refundable_amount_usd")?,
         payment_method: get(row, "payment_method")?,
+        payment_provider: get(row, "payment_provider")?,
+        payment_channel: get(row, "payment_channel")?,
         gateway_order_id: get(row, "gateway_order_id")?,
         gateway_response: optional_json(
             get(row, "gateway_response")?,
@@ -4976,8 +4986,8 @@ mod tests {
                 pay_amount: Some(12.5),
                 pay_currency: Some("USD".to_string()),
                 exchange_rate: Some(1.0),
-                payment_method: "alipay".to_string(),
-                payment_provider: None,
+                payment_method: "dodopay".to_string(),
+                payment_provider: Some("dodopay".to_string()),
                 payment_channel: None,
                 gateway_order_id: "gateway-order-write-1".to_string(),
                 gateway_response: json!({ "checkout": true }),
@@ -4996,9 +5006,9 @@ mod tests {
 
         let callback = repository
             .process_payment_callback(ProcessPaymentCallbackInput {
-                payment_method: "alipay".to_string(),
-                payment_provider: None,
-                payment_channel: None,
+                payment_method: "dodopay".to_string(),
+                payment_provider: Some("dodopay".to_string()),
+                payment_channel: Some("WECHAT".to_string()),
                 callback_key: "callback-write-1".to_string(),
                 order_no: Some("order-no-write-1".to_string()),
                 gateway_order_id: Some("gateway-order-write-1".to_string()),
@@ -5020,6 +5030,8 @@ mod tests {
         };
         assert_eq!(wallet_id, "wallet-write-1");
         assert_eq!(order.status, "credited");
+        assert_eq!(order.payment_provider.as_deref(), Some("dodopay"));
+        assert_eq!(order.payment_channel.as_deref(), Some("WECHAT"));
 
         let wallet = repository
             .find(WalletLookupKey::UserId("user-write-1"))

@@ -69,11 +69,13 @@ export function walletTransactionReasonLabel(reasonCode: string | null | undefin
 
 export function paymentMethodLabel(method: string | null | undefined): string {
   const labels: Record<string, string> = {
-    alipay: '支付宝',
+    alipay: '支付宝支付',
     wechat: '微信支付',
+    WECHAT: '微信支付',
     wxpay: '微信支付',
     epay: '易支付',
     dodopay: 'DoDoPay',
+    ALIPAY: '支付宝支付',
     admin_manual: '人工充值',
     card_code: '充值卡',
     gift_code: '礼品卡',
@@ -81,8 +83,24 @@ export function paymentMethodLabel(method: string | null | undefined): string {
     bank_transfer: '银行转账',
     offline: '线下转账',
   }
-  if (!method) return '-'
-  return labels[method] || method
+  const normalized = method?.trim()
+  if (!normalized) return '-'
+  return labels[normalized] || labels[normalized.toLowerCase()] || normalized
+}
+
+export function paymentOrderMethodLabel(order: {
+  payment_method?: string | null
+  payment_provider?: string | null
+  payment_channel?: string | null
+}): string {
+  const channel = order.payment_channel?.trim()
+  const method = order.payment_method?.trim()
+  const provider = order.payment_provider?.trim()
+  const gateway = (provider || method || '').toLowerCase()
+  if (channel && (gateway === 'dodopay' || gateway === 'epay')) {
+    return paymentMethodLabel(channel)
+  }
+  return paymentMethodLabel(method || provider)
 }
 
 export function paymentStatusLabel(status: string | null | undefined): string {

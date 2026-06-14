@@ -20,13 +20,14 @@
 - 支付配置页增加 DoDoPay 配置入口。
 - DoDoPay 配置启用并保存密钥后，用户钱包充值和套餐购买页面会显示 DoDoPay 支付方式。
 - DoDoPay 支付成功回调验签通过后，系统按本地订单号完成订单入账。
+- DoDoPay 回调中的 `channel` 保存为订单的 `payment_channel`，订单列表和详情显示实际支付方式：`WECHAT` 显示为“微信支付”，`ALIPAY` 显示为“支付宝支付”；没有渠道时才显示 DoDoPay。
 
 ## 影响范围
 
 - 请求格式处理：Codex OpenAI Responses / Compact / Image 相关转换。
 - 后台管理：支付配置页和支付网关管理接口。
 - 用户侧：钱包充值、套餐购买、支付成功回调。
-- 数据层：复用已有 `payment_gateway_configs` 表，不新增表结构。
+- 数据层：复用已有 `payment_gateway_configs` 和 `payment_orders.payment_channel` 字段，不新增表结构。
 
 ## 验证方式
 

@@ -209,6 +209,8 @@ pub(super) fn build_admin_payment_order_payload(
         "refunded_amount_usd": record.refunded_amount_usd,
         "refundable_amount_usd": record.refundable_amount_usd,
         "payment_method": record.payment_method,
+        "payment_provider": record.payment_provider,
+        "payment_channel": record.payment_channel,
         "gateway_order_id": record.gateway_order_id,
         "gateway_response": record.gateway_response,
         "status": admin_payment_effective_status(&record.status, record.expires_at_unix_secs),
