@@ -215,12 +215,20 @@ impl<'a> AdminAppState<'a> {
         &self,
         status: Option<&str>,
         payment_method: Option<&str>,
+        order_kind: Option<&str>,
         user_search: Option<&str>,
         limit: usize,
         offset: usize,
     ) -> Result<Option<(Vec<crate::AdminWalletPaymentOrderRecord>, u64)>, GatewayError> {
         self.app
-            .list_admin_payment_orders(status, payment_method, user_search, limit, offset)
+            .list_admin_payment_orders(
+                status,
+                payment_method,
+                order_kind,
+                user_search,
+                limit,
+                offset,
+            )
             .await
     }
 

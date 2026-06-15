@@ -8,7 +8,7 @@ use super::super::shared::{
     ADMIN_WALLETS_API_KEY_RECHARGE_DETAIL,
 };
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
-use crate::handlers::admin::shared::{attach_admin_audit_response, unix_secs_to_rfc3339};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::Body,
@@ -83,17 +83,7 @@ pub(in super::super) async fn build_admin_wallet_recharge_response(
         build_admin_wallet_summary_payload_with_package(state, &wallet, &owner).await?;
     let response = Json(json!({
         "wallet": wallet_payload,
-        "payment_order": build_admin_wallet_payment_order_payload(
-            payment_order.id,
-            payment_order.order_no,
-            payment_order.amount_usd,
-            payment_order.payment_method,
-            payment_order.status,
-            unix_secs_to_rfc3339(payment_order.created_at_unix_ms),
-            payment_order
-                .credited_at_unix_secs
-                .and_then(unix_secs_to_rfc3339),
-        ),
+        "payment_order": build_admin_wallet_payment_order_payload(&payment_order),
     }))
     .into_response();
     Ok(attach_admin_audit_response(

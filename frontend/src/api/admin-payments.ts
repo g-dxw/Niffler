@@ -112,6 +112,7 @@ export const adminPaymentsApi = {
   async listOrders(params?: {
     status?: string
     payment_method?: string
+    order_kind?: string
     user_search?: string
     limit?: number
     offset?: number

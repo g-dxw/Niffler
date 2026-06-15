@@ -111,6 +111,11 @@ const ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS: &str = r#"
   payment_method,
   payment_provider,
   payment_channel,
+  order_kind,
+  product_id,
+  product_snapshot,
+  fulfillment_status,
+  fulfillment_error,
   gateway_order_id,
   gateway_response,
   status,
@@ -495,23 +500,24 @@ LEFT JOIN wallets w ON w.id = po.wallet_id
 LEFT JOIN users order_users ON order_users.id = po.user_id
 LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
 WHERE ($1::TEXT IS NULL OR po.payment_method = $1)
+  AND ($2::TEXT IS NULL OR po.order_kind = $2)
   AND (
-    $2::TEXT IS NULL
+    $3::TEXT IS NULL
     OR (
       CASE
         WHEN po.status = 'pending' AND po.expires_at IS NOT NULL AND po.expires_at < NOW() THEN 'expired'
         ELSE po.status
       END
-    ) = $2
+    ) = $3
   )
   AND (
-    NULLIF(BTRIM($3::TEXT), '') IS NULL
-    OR order_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR order_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR po.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR wallet_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR wallet_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR w.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+    NULLIF(BTRIM($4::TEXT), '') IS NULL
+    OR order_users.username ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR order_users.email ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR po.user_id ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR wallet_users.username ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($4::TEXT) || '%'
   )
 "#;
 
@@ -533,6 +539,8 @@ SELECT
   po.order_kind,
   po.product_id,
   po.product_snapshot,
+  po.fulfillment_status,
+  po.fulfillment_error,
   po.gateway_order_id,
   po.gateway_response,
   po.status,
@@ -545,27 +553,28 @@ LEFT JOIN wallets w ON w.id = po.wallet_id
 LEFT JOIN users order_users ON order_users.id = po.user_id
 LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
 WHERE ($1::TEXT IS NULL OR po.payment_method = $1)
+  AND ($2::TEXT IS NULL OR po.order_kind = $2)
   AND (
-    $2::TEXT IS NULL
+    $3::TEXT IS NULL
     OR (
       CASE
         WHEN po.status = 'pending' AND po.expires_at IS NOT NULL AND po.expires_at < NOW() THEN 'expired'
         ELSE po.status
       END
-    ) = $2
+    ) = $3
   )
   AND (
-    NULLIF(BTRIM($3::TEXT), '') IS NULL
-    OR order_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR order_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR po.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR wallet_users.username ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR wallet_users.email ILIKE '%' || BTRIM($3::TEXT) || '%'
-    OR w.user_id ILIKE '%' || BTRIM($3::TEXT) || '%'
+    NULLIF(BTRIM($4::TEXT), '') IS NULL
+    OR order_users.username ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR order_users.email ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR po.user_id ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR wallet_users.username ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR wallet_users.email ILIKE '%' || BTRIM($4::TEXT) || '%'
+    OR w.user_id ILIKE '%' || BTRIM($4::TEXT) || '%'
   )
 ORDER BY po.created_at DESC
-OFFSET $4
-LIMIT $5
+OFFSET $5
+LIMIT $6
 "#;
 
 const FIND_ADMIN_PAYMENT_ORDER_SQL: &str = r#"
@@ -586,6 +595,8 @@ SELECT
   order_kind,
   product_id,
   product_snapshot,
+  fulfillment_status,
+  fulfillment_error,
   gateway_order_id,
   gateway_response,
   status,
@@ -629,6 +640,8 @@ SELECT
   order_kind,
   product_id,
   product_snapshot,
+  fulfillment_status,
+  fulfillment_error,
   gateway_order_id,
   gateway_response,
   CASE
@@ -664,6 +677,8 @@ SELECT
   order_kind,
   product_id,
   product_snapshot,
+  fulfillment_status,
+  fulfillment_error,
   gateway_order_id,
   gateway_response,
   CASE
@@ -1121,6 +1136,7 @@ impl WalletReadRepository for SqlxWalletRepository {
         let total = read_count(
             sqlx::query(COUNT_ADMIN_PAYMENT_ORDERS_SQL)
                 .bind(query.payment_method.as_deref())
+                .bind(query.order_kind.as_deref())
                 .bind(query.status.as_deref())
                 .bind(query.user_search.as_deref())
                 .fetch_one(&self.pool)
@@ -1130,6 +1146,7 @@ impl WalletReadRepository for SqlxWalletRepository {
         let items = collect_query_rows(
             sqlx::query(LIST_ADMIN_PAYMENT_ORDERS_SQL)
                 .bind(query.payment_method.as_deref())
+                .bind(query.order_kind.as_deref())
                 .bind(query.status.as_deref())
                 .bind(query.user_search.as_deref())
                 .bind(as_i64(query.offset, "payment order offset")?)
@@ -1516,7 +1533,7 @@ RETURNING id, status
                             "wallet recharge expires_at overflow".to_string(),
                         )
                     })?;
-                    let row = sqlx::query(
+                    let sql = format!(
                         r#"
 INSERT INTO payment_orders (
   id,
@@ -1563,48 +1580,27 @@ VALUES (
   to_timestamp($14)
 )
 RETURNING
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  payment_provider,
-  payment_channel,
-  order_kind,
-  product_id,
-  product_snapshot,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
                         "#,
-                    )
-                    .bind(Uuid::new_v4().to_string())
-                    .bind(&input.order_no)
-                    .bind(&wallet_id)
-                    .bind(&input.user_id)
-                    .bind(input.amount_usd)
-                    .bind(input.pay_amount)
-                    .bind(input.pay_currency.as_deref())
-                    .bind(input.exchange_rate)
-                    .bind(&input.payment_method)
-                    .bind(input.payment_provider.as_deref())
-                    .bind(input.payment_channel.as_deref())
-                    .bind(&input.gateway_order_id)
-                    .bind(&input.gateway_response)
-                    .bind(expires_at)
-                    .fetch_one(&mut **tx)
-                    .await
-                    .map_postgres_err()?;
+                    );
+                    let row = sqlx::query(&sql)
+                        .bind(Uuid::new_v4().to_string())
+                        .bind(&input.order_no)
+                        .bind(&wallet_id)
+                        .bind(&input.user_id)
+                        .bind(input.amount_usd)
+                        .bind(input.pay_amount)
+                        .bind(input.pay_currency.as_deref())
+                        .bind(input.exchange_rate)
+                        .bind(&input.payment_method)
+                        .bind(input.payment_provider.as_deref())
+                        .bind(input.payment_channel.as_deref())
+                        .bind(&input.gateway_order_id)
+                        .bind(&input.gateway_response)
+                        .bind(expires_at)
+                        .fetch_one(&mut **tx)
+                        .await
+                        .map_postgres_err()?;
                     Ok(CreateWalletRechargeOrderOutcome::Created(
                         map_admin_payment_order_row(&row)?,
                     ))
@@ -1713,7 +1709,7 @@ WHERE user_id = $1
                             "plan purchase expires_at overflow".to_string(),
                         )
                     })?;
-                    let row = sqlx::query(
+                    let sql = format!(
                         r#"
 INSERT INTO payment_orders (
   id,
@@ -1745,50 +1741,29 @@ VALUES (
   to_timestamp($16)
 )
 RETURNING
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  payment_provider,
-  payment_channel,
-  order_kind,
-  product_id,
-  product_snapshot,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
                         "#,
-                    )
-                    .bind(Uuid::new_v4().to_string())
-                    .bind(&input.order_no)
-                    .bind(&wallet_id)
-                    .bind(&input.user_id)
-                    .bind(input.amount_usd)
-                    .bind(input.pay_amount)
-                    .bind(&input.pay_currency)
-                    .bind(input.exchange_rate)
-                    .bind(&input.payment_method)
-                    .bind(input.payment_provider.as_deref())
-                    .bind(input.payment_channel.as_deref())
-                    .bind(&input.product_id)
-                    .bind(&input.product_snapshot)
-                    .bind(&input.gateway_order_id)
-                    .bind(&input.gateway_response)
-                    .bind(expires_at)
-                    .fetch_one(&mut **tx)
-                    .await
-                    .map_postgres_err()?;
+                    );
+                    let row = sqlx::query(&sql)
+                        .bind(Uuid::new_v4().to_string())
+                        .bind(&input.order_no)
+                        .bind(&wallet_id)
+                        .bind(&input.user_id)
+                        .bind(input.amount_usd)
+                        .bind(input.pay_amount)
+                        .bind(&input.pay_currency)
+                        .bind(input.exchange_rate)
+                        .bind(&input.payment_method)
+                        .bind(input.payment_provider.as_deref())
+                        .bind(input.payment_channel.as_deref())
+                        .bind(&input.product_id)
+                        .bind(&input.product_snapshot)
+                        .bind(&input.gateway_order_id)
+                        .bind(&input.gateway_response)
+                        .bind(expires_at)
+                        .fetch_one(&mut **tx)
+                        .await
+                        .map_postgres_err()?;
                     Ok(CreatePlanPurchaseOrderOutcome::Created(
                         map_admin_payment_order_row(&row)?,
                     ))
@@ -2149,80 +2124,39 @@ VALUES (
                             .and_then(|row| row.try_get("gateway_order_id").ok())
                     });
 
-                    let order_row = if let Some(order_no) = lookup_order_no.as_deref() {
-                        sqlx::query(
-                            r#"
+                    let order_lookup_by_order_no_sql = format!(
+                        r#"
 SELECT
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  payment_provider,
-  payment_channel,
-  order_kind,
-  product_id,
-  product_snapshot,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
 FROM payment_orders
 WHERE order_no = $1
 LIMIT 1
 FOR UPDATE
                             "#,
-                        )
-                        .bind(order_no)
-                        .fetch_optional(&mut **tx)
-                        .await
-                        .map_postgres_err()?
-                    } else if let Some(gateway_order_id) = lookup_gateway_order_id.as_deref() {
-                        sqlx::query(
-                            r#"
+                    );
+                    let order_lookup_by_gateway_order_id_sql = format!(
+                        r#"
 SELECT
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  payment_provider,
-  payment_channel,
-  order_kind,
-  product_id,
-  product_snapshot,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
 FROM payment_orders
 WHERE gateway_order_id = $1
 LIMIT 1
 FOR UPDATE
                             "#,
-                        )
-                        .bind(gateway_order_id)
-                        .fetch_optional(&mut **tx)
-                        .await
-                        .map_postgres_err()?
+                    );
+
+                    let order_row = if let Some(order_no) = lookup_order_no.as_deref() {
+                        sqlx::query(&order_lookup_by_order_no_sql)
+                            .bind(order_no)
+                            .fetch_optional(&mut **tx)
+                            .await
+                            .map_postgres_err()?
+                    } else if let Some(gateway_order_id) = lookup_gateway_order_id.as_deref() {
+                        sqlx::query(&order_lookup_by_gateway_order_id_sql)
+                            .bind(gateway_order_id)
+                            .fetch_optional(&mut **tx)
+                            .await
+                            .map_postgres_err()?
                     } else {
                         None
                     };
@@ -2485,7 +2419,7 @@ VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, NOW(), NOW())
                             )
                             .await?;
                         }
-                        let updated_order_row = sqlx::query(
+                        let sql = format!(
                             r#"
 UPDATE payment_orders
 SET gateway_order_id = COALESCE($2, gateway_order_id),
@@ -2503,42 +2437,21 @@ SET gateway_order_id = COALESCE($2, gateway_order_id),
     refundable_amount_usd = 0
 WHERE id = $1
 RETURNING
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-	  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-	  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-	  payment_method,
-	  payment_provider,
-	  payment_channel,
-	  order_kind,
-	  product_id,
-	  product_snapshot,
-	  gateway_order_id,
-	  gateway_response,
-	  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
                             "#,
-                        )
-                        .bind(&order_id)
-                        .bind(input.gateway_order_id.as_deref())
-                        .bind(&input.payload)
-                        .bind(input.pay_amount)
-                        .bind(input.pay_currency.as_deref())
-                        .bind(input.exchange_rate)
-                        .bind(input.payment_provider.as_deref())
-                        .bind(input.payment_channel.as_deref())
-                        .fetch_one(&mut **tx)
-                        .await
-                        .map_postgres_err()?;
+                        );
+                        let updated_order_row = sqlx::query(&sql)
+                            .bind(&order_id)
+                            .bind(input.gateway_order_id.as_deref())
+                            .bind(&input.payload)
+                            .bind(input.pay_amount)
+                            .bind(input.pay_currency.as_deref())
+                            .bind(input.exchange_rate)
+                            .bind(input.payment_provider.as_deref())
+                            .bind(input.payment_channel.as_deref())
+                            .fetch_one(&mut **tx)
+                            .await
+                            .map_postgres_err()?;
                         mark_payment_callback_processed(
                             tx,
                             &callback_id,
@@ -2678,7 +2591,7 @@ VALUES (
                     .await
                     .map_postgres_err()?;
 
-                    let updated_order_row = sqlx::query(
+                    let sql = format!(
                         r#"
 UPDATE payment_orders
 SET gateway_order_id = COALESCE($2, gateway_order_id),
@@ -2694,42 +2607,21 @@ SET gateway_order_id = COALESCE($2, gateway_order_id),
     refundable_amount_usd = amount_usd
 WHERE id = $1
 RETURNING
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-	  payment_method,
-	  payment_provider,
-	  payment_channel,
-	  order_kind,
-	  product_id,
-	  product_snapshot,
-	  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
                         "#,
-                    )
-                    .bind(&order_id)
-                    .bind(input.gateway_order_id.as_deref())
-                    .bind(&input.payload)
-                    .bind(input.pay_amount)
-                    .bind(input.pay_currency.as_deref())
-                    .bind(input.exchange_rate)
-                    .bind(input.payment_provider.as_deref())
-                    .bind(input.payment_channel.as_deref())
-                    .fetch_one(&mut **tx)
-                    .await
-                    .map_postgres_err()?;
+                    );
+                    let updated_order_row = sqlx::query(&sql)
+                        .bind(&order_id)
+                        .bind(input.gateway_order_id.as_deref())
+                        .bind(&input.payload)
+                        .bind(input.pay_amount)
+                        .bind(input.pay_currency.as_deref())
+                        .bind(input.exchange_rate)
+                        .bind(input.payment_provider.as_deref())
+                        .bind(input.payment_channel.as_deref())
+                        .fetch_one(&mut **tx)
+                        .await
+                        .map_postgres_err()?;
                     mark_payment_callback_processed(tx, &callback_id, &input, &order_id, &order_no)
                         .await?;
                     Ok(ProcessPaymentCallbackOutcome::Applied {
@@ -3133,36 +3025,20 @@ VALUES (
                     .await
                     .map_postgres_err()?;
 
-                    let order_row = sqlx::query(
+                    let sql = format!(
                         r#"
 SELECT
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
 FROM payment_orders
 WHERE id = $1
 LIMIT 1
                         "#,
-                    )
-                    .bind(&order_id)
-                    .fetch_one(&mut **tx)
-                    .await
-                    .map_postgres_err()?;
+                    );
+                    let order_row = sqlx::query(&sql)
+                        .bind(&order_id)
+                        .fetch_one(&mut **tx)
+                        .await
+                        .map_postgres_err()?;
                     Ok(Some((wallet, map_admin_payment_order_row(&order_row)?)))
                 })
             })
@@ -3909,41 +3785,20 @@ RETURNING
         self.tx_runner
             .run_read_write(|tx| {
                 Box::pin(async move {
-                    let Some(row) = sqlx::query(
+                    let sql = format!(
                         r#"
 SELECT
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-	  payment_method,
-	  payment_provider,
-	  payment_channel,
-	  order_kind,
-	  product_id,
-	  product_snapshot,
-	  gateway_order_id,
-	  gateway_response,
-	  status,
-	  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-	  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-	  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-	  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
-	FROM payment_orders
-	WHERE id = $1
-	FOR UPDATE
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
+FROM payment_orders
+WHERE id = $1
+FOR UPDATE
                         "#,
-                    )
-                    .bind(&order_id)
-                    .fetch_optional(&mut **tx)
-                    .await
-                    .map_postgres_err()?
+                    );
+                    let Some(row) = sqlx::query(&sql)
+                        .bind(&order_id)
+                        .fetch_optional(&mut **tx)
+                        .await
+                        .map_postgres_err()?
                     else {
                         return Ok(WalletMutationOutcome::NotFound);
                     };
@@ -4071,41 +3926,20 @@ RETURNING
         self.tx_runner
             .run_read_write(|tx| {
                 Box::pin(async move {
-                    let Some(order_row) = sqlx::query(
+                    let sql = format!(
                         r#"
 SELECT
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  payment_provider,
-  payment_channel,
-  order_kind,
-  product_id,
-  product_snapshot,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
 FROM payment_orders
 WHERE id = $1
 FOR UPDATE
                         "#,
-                    )
-                    .bind(&input.order_id)
-                    .fetch_optional(&mut **tx)
-                    .await
-                    .map_postgres_err()?
+                    );
+                    let Some(order_row) = sqlx::query(&sql)
+                        .bind(&input.order_id)
+                        .fetch_optional(&mut **tx)
+                        .await
+                        .map_postgres_err()?
                     else {
                         return Ok(WalletMutationOutcome::NotFound);
                     };
@@ -5232,7 +5066,7 @@ RETURNING
                         "batch_name": batch_name,
                         "balance_bucket": balance_bucket,
                     });
-                    let order_row = sqlx::query(
+                    let sql = format!(
                         r#"
 INSERT INTO payment_orders (
   id,
@@ -5267,38 +5101,22 @@ VALUES (
   NOW()
 )
 RETURNING
-  id,
-  order_no,
-  wallet_id,
-  user_id,
-  CAST(amount_usd AS DOUBLE PRECISION) AS amount_usd,
-  CAST(pay_amount AS DOUBLE PRECISION) AS pay_amount,
-  pay_currency,
-  CAST(exchange_rate AS DOUBLE PRECISION) AS exchange_rate,
-  CAST(refunded_amount_usd AS DOUBLE PRECISION) AS refunded_amount_usd,
-  CAST(refundable_amount_usd AS DOUBLE PRECISION) AS refundable_amount_usd,
-  payment_method,
-  gateway_order_id,
-  gateway_response,
-  status,
-  CAST(EXTRACT(EPOCH FROM created_at) AS BIGINT) AS created_at_unix_ms,
-  CAST(EXTRACT(EPOCH FROM paid_at) AS BIGINT) AS paid_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM credited_at) AS BIGINT) AS credited_at_unix_secs,
-  CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) AS expires_at_unix_secs
+{ADMIN_PAYMENT_ORDER_RETURNING_COLUMNS}
                         "#,
-                    )
-                    .bind(&order_id)
-                    .bind(&input.order_no)
-                    .bind(&wallet.id)
-                    .bind(&input.user_id)
-                    .bind(amount_usd)
-                    .bind(refundable_amount_usd)
-                    .bind(payment_method)
-                    .bind(&gateway_order_id)
-                    .bind(&gateway_response)
-                    .fetch_one(&mut **tx)
-                    .await
-                    .map_postgres_err()?;
+                    );
+                    let order_row = sqlx::query(&sql)
+                        .bind(&order_id)
+                        .bind(&input.order_no)
+                        .bind(&wallet.id)
+                        .bind(&input.user_id)
+                        .bind(amount_usd)
+                        .bind(refundable_amount_usd)
+                        .bind(payment_method)
+                        .bind(&gateway_order_id)
+                        .bind(&gateway_response)
+                        .fetch_one(&mut **tx)
+                        .await
+                        .map_postgres_err()?;
 
                     sqlx::query(
                         r#"
@@ -6108,6 +5926,11 @@ fn map_admin_payment_order_row(row: &PgRow) -> Result<StoredAdminPaymentOrder, D
         payment_method: row_get(row, "payment_method")?,
         payment_provider: row_get(row, "payment_provider")?,
         payment_channel: row_get(row, "payment_channel")?,
+        order_kind: row_get(row, "order_kind")?,
+        product_id: row_get(row, "product_id")?,
+        product_snapshot: row_get(row, "product_snapshot")?,
+        fulfillment_status: row_get(row, "fulfillment_status")?,
+        fulfillment_error: row_get(row, "fulfillment_error")?,
         gateway_order_id: row_get(row, "gateway_order_id")?,
         gateway_response: row_get(row, "gateway_response")?,
         status: row_get(row, "status")?,
@@ -6312,9 +6135,14 @@ mod tests {
     fn admin_payment_order_mutations_use_shared_returning_columns() {
         let source = include_str!("postgres.rs");
         for function_name in [
+            "create_wallet_recharge_order",
+            "create_plan_purchase_order",
+            "process_payment_callback",
+            "create_manual_wallet_recharge",
             "expire_admin_payment_order",
             "fail_admin_payment_order",
             "credit_admin_payment_order",
+            "redeem_wallet_code",
         ] {
             let marker = format!("async fn {function_name}");
             let function_source = source
@@ -6331,8 +6159,12 @@ mod tests {
                 "{function_name} should use the shared payment order projection"
             );
             assert!(
-                !function_source.contains("payment_method,\n  gateway_order_id"),
+                !function_source.contains("RETURNING\n  id,\n  order_no"),
                 "{function_name} must not hand-write an incomplete payment order projection"
+            );
+            assert!(
+                !function_source.contains("SELECT\n  id,\n  order_no"),
+                "{function_name} must not hand-write an incomplete payment order lookup"
             );
         }
     }
@@ -6353,6 +6185,11 @@ mod tests {
             "payment_method",
             "payment_provider",
             "payment_channel",
+            "order_kind",
+            "product_id",
+            "product_snapshot",
+            "fulfillment_status",
+            "fulfillment_error",
             "gateway_order_id",
             "gateway_response",
             "status",

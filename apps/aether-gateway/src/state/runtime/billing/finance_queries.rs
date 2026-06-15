@@ -62,6 +62,7 @@ impl AppState {
         &self,
         status: Option<&str>,
         payment_method: Option<&str>,
+        order_kind: Option<&str>,
         user_search: Option<&str>,
         limit: usize,
         offset: usize,
@@ -75,6 +76,7 @@ impl AppState {
                 .values()
                 .filter(|order| {
                     payment_method.is_none_or(|expected| order.payment_method == expected)
+                        && order_kind.is_none_or(|expected| order.order_kind == expected)
                         && user_search.is_none_or(|expected| {
                             let needle = expected.trim().to_ascii_lowercase();
                             needle.is_empty()
@@ -117,6 +119,7 @@ impl AppState {
             .list_admin_payment_orders(&AdminPaymentOrderListQuery {
                 status: status.map(ToOwned::to_owned),
                 payment_method: payment_method.map(ToOwned::to_owned),
+                order_kind: order_kind.map(ToOwned::to_owned),
                 user_search: user_search.map(ToOwned::to_owned),
                 limit,
                 offset,
@@ -476,6 +479,11 @@ fn stored_admin_payment_order_to_gateway(
         payment_method: record.payment_method,
         payment_provider: record.payment_provider,
         payment_channel: record.payment_channel,
+        order_kind: record.order_kind,
+        product_id: record.product_id,
+        product_snapshot: record.product_snapshot,
+        fulfillment_status: record.fulfillment_status,
+        fulfillment_error: record.fulfillment_error,
         gateway_order_id: record.gateway_order_id,
         status: record.status,
         gateway_response: record.gateway_response,

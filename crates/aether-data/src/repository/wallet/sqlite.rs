@@ -699,6 +699,7 @@ LEFT JOIN wallets w ON w.id = po.wallet_id
 LEFT JOIN users order_users ON order_users.id = po.user_id
 LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
 WHERE (? IS NULL OR po.payment_method = ?)
+  AND (? IS NULL OR po.order_kind = ?)
   AND (
     ? IS NULL
     OR (
@@ -721,6 +722,8 @@ WHERE (? IS NULL OR po.payment_method = ?)
             )
             .bind(query.payment_method.as_deref())
             .bind(query.payment_method.as_deref())
+            .bind(query.order_kind.as_deref())
+            .bind(query.order_kind.as_deref())
             .bind(query.status.as_deref())
             .bind(now)
             .bind(query.status.as_deref())
@@ -741,6 +744,7 @@ SELECT
   po.id, po.order_no, po.wallet_id, po.user_id, po.amount_usd, po.pay_amount, po.pay_currency,
   po.exchange_rate, po.refunded_amount_usd, po.refundable_amount_usd, po.payment_method,
   po.payment_provider, po.payment_channel, po.order_kind, po.product_id, po.product_snapshot,
+  po.fulfillment_status, po.fulfillment_error,
   po.gateway_order_id, po.gateway_response, po.status,
   po.created_at AS created_at_unix_ms,
   po.paid_at AS paid_at_unix_secs,
@@ -751,6 +755,7 @@ LEFT JOIN wallets w ON w.id = po.wallet_id
 LEFT JOIN users order_users ON order_users.id = po.user_id
 LEFT JOIN users wallet_users ON wallet_users.id = w.user_id
 WHERE (? IS NULL OR po.payment_method = ?)
+  AND (? IS NULL OR po.order_kind = ?)
   AND (
     ? IS NULL
     OR (
@@ -775,6 +780,8 @@ LIMIT ? OFFSET ?
         )
         .bind(query.payment_method.as_deref())
         .bind(query.payment_method.as_deref())
+        .bind(query.order_kind.as_deref())
+        .bind(query.order_kind.as_deref())
         .bind(query.status.as_deref())
         .bind(now)
         .bind(query.status.as_deref())
@@ -830,7 +837,7 @@ SELECT
   id, order_no, wallet_id, user_id, amount_usd, pay_amount, pay_currency,
   exchange_rate, refunded_amount_usd, refundable_amount_usd, payment_method,
   payment_provider, payment_channel, order_kind, product_id, product_snapshot,
-  gateway_order_id, gateway_response,
+  fulfillment_status, fulfillment_error, gateway_order_id, gateway_response,
   CASE
     WHEN status = 'pending' AND expires_at IS NOT NULL AND expires_at < ? THEN 'expired'
     ELSE status
@@ -907,7 +914,7 @@ SELECT
   id, order_no, wallet_id, user_id, amount_usd, pay_amount, pay_currency,
   exchange_rate, refunded_amount_usd, refundable_amount_usd, payment_method,
   payment_provider, payment_channel, order_kind, product_id, product_snapshot,
-  gateway_order_id, gateway_response,
+  fulfillment_status, fulfillment_error, gateway_order_id, gateway_response,
   CASE
     WHEN status = 'pending' AND expires_at IS NOT NULL AND expires_at < ? THEN 'expired'
     ELSE status
@@ -4114,7 +4121,7 @@ SELECT
   id, order_no, wallet_id, user_id, amount_usd, pay_amount, pay_currency,
   exchange_rate, refunded_amount_usd, refundable_amount_usd, payment_method,
   payment_provider, payment_channel, order_kind, product_id, product_snapshot,
-  gateway_order_id, gateway_response, status,
+  fulfillment_status, fulfillment_error, gateway_order_id, gateway_response, status,
   created_at AS created_at_unix_ms,
   paid_at AS paid_at_unix_secs,
   credited_at AS credited_at_unix_secs,
@@ -4534,6 +4541,14 @@ fn map_payment_order_row(row: &SqliteRow) -> Result<StoredAdminPaymentOrder, Dat
         payment_method: get(row, "payment_method")?,
         payment_provider: get(row, "payment_provider")?,
         payment_channel: get(row, "payment_channel")?,
+        order_kind: get(row, "order_kind")?,
+        product_id: get(row, "product_id")?,
+        product_snapshot: optional_json(
+            get(row, "product_snapshot")?,
+            "payment_orders.product_snapshot",
+        )?,
+        fulfillment_status: get(row, "fulfillment_status")?,
+        fulfillment_error: get(row, "fulfillment_error")?,
         gateway_order_id: get(row, "gateway_order_id")?,
         gateway_response: optional_json(
             get(row, "gateway_response")?,
@@ -4886,6 +4901,7 @@ mod tests {
             .list_admin_payment_orders(&AdminPaymentOrderListQuery {
                 status: Some("credited".to_string()),
                 payment_method: Some("redeem_code".to_string()),
+                order_kind: None,
                 user_search: None,
                 limit: 10,
                 offset: 0,
@@ -4902,6 +4918,7 @@ mod tests {
             .list_admin_payment_orders(&AdminPaymentOrderListQuery {
                 status: None,
                 payment_method: None,
+                order_kind: None,
                 user_search: Some("alice@example.com".to_string()),
                 limit: 10,
                 offset: 0,

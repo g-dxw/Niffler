@@ -103,6 +103,45 @@ export function paymentOrderMethodLabel(order: {
   return paymentMethodLabel(method || provider)
 }
 
+export function paymentOrderKindLabel(kind: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    wallet_recharge: '钱包充值',
+    plan_purchase: '套餐购买',
+  }
+  if (!kind) return '钱包充值'
+  return labels[kind] || kind
+}
+
+function stringFromSnapshot(snapshot: Record<string, unknown> | null | undefined, keys: string[]): string | null {
+  if (!snapshot) return null
+  for (const key of keys) {
+    const value = snapshot[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+  return null
+}
+
+export function paymentOrderProductName(order: {
+  product_id?: string | null
+  product_snapshot?: Record<string, unknown> | null
+}): string | null {
+  return stringFromSnapshot(order.product_snapshot, ['title', 'name', 'display_name', 'plan_name']) || order.product_id || null
+}
+
+export function paymentOrderContentLabel(order: {
+  order_kind?: string | null
+  product_id?: string | null
+  product_snapshot?: Record<string, unknown> | null
+}): string {
+  if (order.order_kind === 'plan_purchase') {
+    const productName = paymentOrderProductName(order)
+    return productName ? `套餐购买 · ${productName}` : '套餐购买'
+  }
+  return paymentOrderKindLabel(order.order_kind)
+}
+
 export function paymentStatusLabel(status: string | null | undefined): string {
   const labels: Record<string, string> = {
     pending: '待支付',
@@ -119,7 +158,7 @@ export function paymentStatusLabel(status: string | null | undefined): string {
 
 export function walletLinkTypeLabel(type: string | null | undefined): string {
   const labels: Record<string, string> = {
-    payment_order: '充值订单',
+    payment_order: '支付订单',
     refund_request: '退款申请',
     admin_action: '后台操作',
     system_task: '系统任务',

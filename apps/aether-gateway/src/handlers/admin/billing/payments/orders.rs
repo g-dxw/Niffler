@@ -59,12 +59,14 @@ async fn build_admin_payment_list_orders_response(
     };
     let status = query_param_value(query, "status");
     let payment_method = query_param_value(query, "payment_method");
+    let order_kind = query_param_value(query, "order_kind");
     let user_search = query_param_value(query, "user_search");
 
     let Some((items, total)) = state
         .list_admin_payment_orders(
             status.as_deref(),
             payment_method.as_deref(),
+            order_kind.as_deref(),
             user_search.as_deref(),
             limit,
             offset,

@@ -356,7 +356,7 @@
                 资金与用量
               </TabsTrigger>
               <TabsTrigger value="orders">
-                充值订单
+                支付订单
               </TabsTrigger>
               <TabsTrigger value="refunds">
                 退款记录
@@ -523,6 +523,7 @@
                   <TableHeader>
                     <TableRow>
                       <TableHead>订单号</TableHead>
+                      <TableHead>订单内容</TableHead>
                       <TableHead>金额</TableHead>
                       <TableHead>支付方式</TableHead>
                       <TableHead>状态</TableHead>
@@ -538,6 +539,7 @@
                       <TableCell class="font-mono text-xs">
                         {{ order.order_no }}
                       </TableCell>
+                      <TableCell>{{ paymentOrderContentLabel(order) }}</TableCell>
                       <TableCell class="tabular-nums">
                         {{ formatCurrency(order.amount_usd) }}
                       </TableCell>
@@ -556,12 +558,12 @@
                     </TableRow>
                     <TableRow v-if="!loadingOrders && rechargeOrders.length === 0">
                       <TableCell
-                        colspan="6"
+                        colspan="7"
                         class="py-10"
                       >
                         <EmptyState
-                          title="暂无充值订单"
-                          description="发起充值后会在这里显示"
+                          title="暂无支付订单"
+                          description="充值或购买套餐后会在这里显示"
                         />
                       </TableCell>
                     </TableRow>
@@ -700,6 +702,7 @@ import {
   dailyUsageCategoryLabel,
   formatTokenCount,
   formatWalletCurrency as formatCurrency,
+  paymentOrderContentLabel,
   paymentOrderMethodLabel,
   paymentStatusBadge,
   paymentStatusLabel,
@@ -935,8 +938,8 @@ async function loadOrders() {
     rechargeOrders.value = resp.items
     orderTotal.value = resp.total
   } catch (error) {
-    log.error('加载充值订单失败:', error)
-    showError(parseApiError(error, '加载充值订单失败'))
+    log.error('加载支付订单失败:', error)
+    showError(parseApiError(error, '加载支付订单失败'))
   } finally {
     loadingOrders.value = false
   }

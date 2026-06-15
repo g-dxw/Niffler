@@ -87,6 +87,11 @@ fn sample_payment_order(
         payment_method: payment_method.to_string(),
         payment_provider: (payment_method == "dodopay").then(|| "dodopay".to_string()),
         payment_channel: (payment_method == "dodopay").then(|| "WECHAT".to_string()),
+        order_kind: "wallet_recharge".to_string(),
+        product_id: None,
+        product_snapshot: None,
+        fulfillment_status: Some("pending".to_string()),
+        fulfillment_error: None,
         gateway_order_id: None,
         status: status.to_string(),
         gateway_response: None,
@@ -95,6 +100,36 @@ fn sample_payment_order(
         credited_at_unix_secs: None,
         expires_at_unix_secs,
     }
+}
+
+fn sample_plan_purchase_order(
+    order_id: &str,
+    wallet_id: &str,
+    user_id: &str,
+    amount_usd: f64,
+    plan_name: &str,
+    status: &str,
+    created_at_unix_ms: u64,
+) -> crate::AdminWalletPaymentOrderRecord {
+    let mut order = sample_payment_order(
+        order_id,
+        wallet_id,
+        user_id,
+        amount_usd,
+        "dodopay",
+        status,
+        created_at_unix_ms,
+        None,
+    );
+    order.order_kind = "plan_purchase".to_string();
+    order.product_id = Some(format!("plan-{order_id}"));
+    order.product_snapshot = Some(json!({
+        "name": plan_name,
+        "price_usd": amount_usd
+    }));
+    order.fulfillment_status = Some("pending".to_string());
+    order.fulfillment_error = None;
+    order
 }
 
 fn sample_payment_callback(
@@ -169,10 +204,55 @@ async fn gateway_handles_admin_payments_list_orders_locally_with_trusted_admin_p
     assert_eq!(items[0]["id"], "order-1");
     assert_eq!(items[0]["wallet_id"], "wallet-1");
     assert_eq!(items[0]["payment_method"], "alipay");
+    assert_eq!(items[0]["order_kind"], "wallet_recharge");
     assert_eq!(items[0]["status"], "pending");
     assert_eq!(payload["total"], 1);
     assert_eq!(payload["limit"], 20);
     assert_eq!(payload["offset"], 0);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_admin_payment_orders_include_plan_purchase_metadata() {
+    let (upstream_url, upstream_hits, upstream_handle) =
+        start_payments_upstream("/api/admin/payments/orders").await;
+
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_admin_wallet_payment_orders_for_tests([sample_plan_purchase_order(
+                "order-plan-1",
+                "wallet-1",
+                "user-1",
+                4.9,
+                "Plus 限购套餐",
+                "paid",
+                1_710_000_000,
+            )]),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = admin_request(reqwest::Client::new().get(format!(
+        "{gateway_url}/api/admin/payments/orders?order_kind=plan_purchase&limit=20&offset=0"
+    )))
+    .send()
+    .await
+    .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    let items = payload["items"].as_array().expect("items should be array");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"], "order-plan-1");
+    assert_eq!(items[0]["order_kind"], "plan_purchase");
+    assert_eq!(items[0]["product_id"], "plan-order-plan-1");
+    assert_eq!(items[0]["product_snapshot"]["name"], "Plus 限购套餐");
+    assert_eq!(items[0]["fulfillment_status"], "pending");
+    assert_eq!(items[0]["fulfillment_error"], serde_json::Value::Null);
+    assert_eq!(payload["total"], 1);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();
@@ -213,6 +293,7 @@ async fn gateway_handles_admin_payments_get_order_locally_with_trusted_admin_pri
     assert_eq!(payload["order"]["payment_method"], "dodopay");
     assert_eq!(payload["order"]["payment_provider"], "dodopay");
     assert_eq!(payload["order"]["payment_channel"], "WECHAT");
+    assert_eq!(payload["order"]["order_kind"], "wallet_recharge");
     assert_eq!(payload["order"]["amount_usd"], 12.5);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 

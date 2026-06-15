@@ -7,7 +7,7 @@
             钱包管理
           </h3>
           <p class="text-xs text-muted-foreground mt-1">
-            统一管理资金流水、退款审批、充值订单与支付回调
+            统一管理资金流水、退款审批、支付订单与支付回调
           </p>
         </div>
       </div>
@@ -19,7 +19,7 @@
               资金流水
             </TabsTrigger>
             <TabsTrigger value="orders">
-              充值订单
+              支付订单
             </TabsTrigger>
             <TabsTrigger value="refunds">
               退款审批
@@ -498,6 +498,23 @@
                 </SelectContent>
               </Select>
 
+              <Select v-model="orderKindFilter">
+                <SelectTrigger class="w-[180px]">
+                  <SelectValue placeholder="订单内容" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    全部订单
+                  </SelectItem>
+                  <SelectItem value="wallet_recharge">
+                    钱包充值
+                  </SelectItem>
+                  <SelectItem value="plan_purchase">
+                    套餐购买
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
               <Select v-model="orderMethodFilter">
                 <SelectTrigger class="w-[180px]">
                   <SelectValue placeholder="支付方式" />
@@ -542,10 +559,11 @@
 
             <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
               <div class="overflow-x-auto">
-                <Table class="w-full min-w-[1080px] table-fixed">
+                <Table class="w-full min-w-[1220px] table-fixed">
                   <colgroup>
                     <col :style="{ width: paymentOrderTableColumnWidths.orderNo }">
                     <col :style="{ width: paymentOrderTableColumnWidths.wallet }">
+                    <col :style="{ width: paymentOrderTableColumnWidths.content }">
                     <col :style="{ width: paymentOrderTableColumnWidths.amount }">
                     <col :style="{ width: paymentOrderTableColumnWidths.method }">
                     <col :style="{ width: paymentOrderTableColumnWidths.status }">
@@ -559,6 +577,9 @@
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="wallet" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
                         钱包名称
+                      </SortableTableHead>
+                      <SortableTableHead :sortable="false" resize-column-key="content" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
+                        订单内容
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
                         金额
@@ -596,6 +617,14 @@
                           {{ orderWalletTypeLabel(order.wallet_id) }}
                         </div>
                       </TableCell>
+                      <TableCell>
+                        <div class="text-sm font-medium truncate" :title="paymentOrderContentLabel(order)">
+                          {{ paymentOrderContentLabel(order) }}
+                        </div>
+                        <div v-if="order.order_kind === 'plan_purchase' && order.fulfillment_status" class="text-xs text-muted-foreground mt-1">
+                          {{ paymentOrderFulfillmentLabel(order.fulfillment_status) }}
+                        </div>
+                      </TableCell>
                       <TableCell class="tabular-nums">
                         {{ formatCurrency(order.amount_usd) }}
                       </TableCell>
@@ -615,7 +644,7 @@
                             size="sm"
                             @click="openCreditDialog(order)"
                           >
-                            到账
+                            {{ paymentOrderCreditActionLabel(order) }}
                           </Button>
                           <Button
                             v-if="canExpireOrder(order.status)"
@@ -640,7 +669,7 @@
                     </TableRow>
                     <TableRow v-if="!loadingOrders && orders.length === 0">
                       <TableCell
-                        colspan="7"
+                        colspan="8"
                         class="py-10"
                       >
                         <EmptyState
@@ -1276,7 +1305,7 @@
                 </div>
                 <div class="rounded-xl border border-border/60 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    充值订单号
+                    支付订单号
                   </div>
                   <div class="mt-1 text-sm font-mono break-all">
                     <span v-if="loadingLedgerOrderNo">加载中...</span>
@@ -1480,7 +1509,7 @@
       <template #header>
         <div class="px-6 py-4 border-b border-border">
           <h3 class="text-lg font-semibold">
-            人工到账
+            {{ currentOrder ? paymentOrderCreditDialogTitle(currentOrder) : '处理订单' }}
           </h3>
           <p class="text-xs text-muted-foreground mt-1">
             订单: {{ currentOrder?.order_no || '-' }}
@@ -1528,7 +1557,7 @@
           :disabled="submittingOrderAction"
           @click="submitCreditOrder"
         >
-          {{ submittingOrderAction ? '提交中...' : '确认到账' }}
+          {{ submittingOrderAction ? '提交中...' : (currentOrder ? paymentOrderCreditActionLabel(currentOrder) : '确认') }}
         </Button>
       </template>
     </Dialog>
@@ -1588,6 +1617,7 @@ import {
   callbackStatusLabel,
   formatWalletCurrency as formatCurrency,
   paymentMethodLabel,
+  paymentOrderContentLabel,
   paymentOrderMethodLabel,
   paymentStatusBadge,
   paymentStatusLabel,
@@ -1662,10 +1692,11 @@ const {
   defaultMinWidth: 84,
 })
 
-type PaymentOrderTableColumnKey = 'orderNo' | 'wallet' | 'amount' | 'method' | 'status' | 'created' | 'actions'
+type PaymentOrderTableColumnKey = 'orderNo' | 'wallet' | 'content' | 'amount' | 'method' | 'status' | 'created' | 'actions'
 const paymentOrderTableColumns: ResizableTableColumn<PaymentOrderTableColumnKey>[] = [
   { key: 'orderNo', width: '210px', minWidth: 180 },
   { key: 'wallet', width: '210px', minWidth: 180 },
+  { key: 'content', width: '210px', minWidth: 170 },
   { key: 'amount', width: '120px', minWidth: 110 },
   { key: 'method', width: '120px', minWidth: 110 },
   { key: 'status', width: '120px', minWidth: 110 },
@@ -1774,6 +1805,7 @@ const orderTotal = ref(0)
 const orderPage = ref(1)
 const orderPageSize = ref(20)
 const orderStatusFilter = ref('all')
+const orderKindFilter = ref('all')
 const orderMethodFilter = ref('all')
 const orderUserSearch = ref('')
 
@@ -1903,7 +1935,7 @@ watch(refundUserSearch, () => {
   }, 300)
 })
 
-watch([orderStatusFilter, orderMethodFilter], () => {
+watch([orderStatusFilter, orderKindFilter, orderMethodFilter], () => {
   orderPage.value = 1
   void loadOrders()
 })
@@ -2044,6 +2076,7 @@ async function loadOrders() {
     const offset = (orderPage.value - 1) * orderPageSize.value
     const resp = await adminPaymentsApi.listOrders({
       status: orderStatusFilter.value !== 'all' ? orderStatusFilter.value : undefined,
+      order_kind: orderKindFilter.value !== 'all' ? orderKindFilter.value : undefined,
       payment_method: orderMethodFilter.value !== 'all' ? orderMethodFilter.value : undefined,
       user_search: normalizedSearch(orderUserSearch.value),
       limit: orderPageSize.value,
@@ -2320,7 +2353,7 @@ async function resolveLedgerRechargeOrderNo(tx: AdminLedgerTransaction) {
     ledgerPaymentOrderNo.value = resp.order.order_no || null
     ledgerPaymentMethod.value = resp.order.payment_method || null
   } catch (error) {
-    log.error('加载关联充值订单失败:', error)
+    log.error('加载关联支付订单失败:', error)
     ledgerPaymentOrder.value = null
     ledgerPaymentOrderNo.value = null
     ledgerPaymentMethod.value = null
@@ -2423,18 +2456,20 @@ async function submitCreditOrder() {
   if (!currentOrder.value) return
   submittingOrderAction.value = true
   try {
+    const actionLabel = paymentOrderCreditActionLabel(currentOrder.value)
     await adminPaymentsApi.creditOrder(currentOrder.value.id, {
       gateway_order_id: creditForm.gateway_order_id || undefined,
       pay_amount: creditForm.pay_amount,
       pay_currency: creditForm.pay_currency || undefined,
       exchange_rate: creditForm.exchange_rate,
     })
-    success('订单已手动到账')
+    success(`订单已${actionLabel.replace('确认', '')}`)
     showCreditDialog.value = false
     await Promise.all([loadOrders(), loadLedger(), loadWalletMetaMap()])
   } catch (error) {
-    log.error('手动到账失败:', error)
-    showError(parseApiError(error, '手动到账失败'))
+    const actionLabel = paymentOrderCreditActionLabel(currentOrder.value)
+    log.error(`${actionLabel}失败:`, error)
+    showError(parseApiError(error, `${actionLabel}失败`))
   } finally {
     submittingOrderAction.value = false
   }
@@ -2482,6 +2517,24 @@ function canCompleteRefund(status: string) {
 
 function canCreditOrder(status: string) {
   return status === 'pending' || status === 'paid'
+}
+
+function paymentOrderCreditActionLabel(order: PaymentOrder) {
+  return order.order_kind === 'plan_purchase' ? '确认发放' : '确认到账'
+}
+
+function paymentOrderCreditDialogTitle(order: PaymentOrder) {
+  return order.order_kind === 'plan_purchase' ? '人工发放' : '人工到账'
+}
+
+function paymentOrderFulfillmentLabel(status: string | null | undefined) {
+  const labels: Record<string, string> = {
+    pending: '待发放',
+    fulfilled: '已发放',
+    failed: '发放失败',
+  }
+  if (!status) return ''
+  return labels[status] || status
 }
 
 function canExpireOrder(status: string) {

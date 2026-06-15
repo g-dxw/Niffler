@@ -719,6 +719,10 @@ impl WalletReadRepository for InMemoryWalletRepository {
                     .payment_method
                     .as_deref()
                     .is_none_or(|expected| order.payment_method == expected)
+                    && query
+                        .order_kind
+                        .as_deref()
+                        .is_none_or(|expected| order.order_kind == expected)
                     && user_search.as_deref().is_none_or(|needle| {
                         order
                             .user_id
@@ -981,6 +985,11 @@ impl WalletWriteRepository for InMemoryWalletRepository {
             payment_method: input.payment_method,
             payment_provider: input.payment_provider,
             payment_channel: input.payment_channel,
+            order_kind: "wallet_recharge".to_string(),
+            product_id: None,
+            product_snapshot: None,
+            fulfillment_status: Some("pending".to_string()),
+            fulfillment_error: None,
             gateway_order_id: Some(input.gateway_order_id),
             gateway_response: Some(input.gateway_response),
             status: "pending".to_string(),
@@ -1075,9 +1084,12 @@ impl WalletWriteRepository for InMemoryWalletRepository {
         );
         gateway_response.insert(
             "product_id".to_string(),
-            serde_json::Value::String(input.product_id),
+            serde_json::Value::String(input.product_id.clone()),
         );
-        gateway_response.insert("product_snapshot".to_string(), input.product_snapshot);
+        gateway_response.insert(
+            "product_snapshot".to_string(),
+            input.product_snapshot.clone(),
+        );
         let order = StoredAdminPaymentOrder {
             id: format!("payment-order-{}", uuid::Uuid::new_v4()),
             order_no: input.order_no,
@@ -1092,6 +1104,11 @@ impl WalletWriteRepository for InMemoryWalletRepository {
             payment_method: input.payment_method,
             payment_provider: input.payment_provider,
             payment_channel: input.payment_channel,
+            order_kind: "plan_purchase".to_string(),
+            product_id: Some(input.product_id),
+            product_snapshot: Some(input.product_snapshot),
+            fulfillment_status: Some("pending".to_string()),
+            fulfillment_error: None,
             gateway_order_id: Some(input.gateway_order_id),
             gateway_response: Some(serde_json::Value::Object(gateway_response)),
             status: "pending".to_string(),
@@ -1622,6 +1639,11 @@ impl WalletWriteRepository for InMemoryWalletRepository {
             payment_method: redeem_code_payment_method(&balance_bucket).to_string(),
             payment_provider: Some("redeem_code".to_string()),
             payment_channel: Some(balance_bucket.clone()),
+            order_kind: "wallet_recharge".to_string(),
+            product_id: None,
+            product_snapshot: None,
+            fulfillment_status: Some("fulfilled".to_string()),
+            fulfillment_error: None,
             gateway_order_id: Some(format!("card_{}", uuid::Uuid::new_v4().simple())),
             gateway_response: Some(serde_json::json!({
                 "source": "redeem_code",
@@ -1808,6 +1830,11 @@ mod tests {
             payment_method: "stripe".to_string(),
             payment_provider: None,
             payment_channel: None,
+            order_kind: "wallet_recharge".to_string(),
+            product_id: None,
+            product_snapshot: None,
+            fulfillment_status: Some("pending".to_string()),
+            fulfillment_error: None,
             gateway_order_id: None,
             gateway_response: None,
             status: status.to_string(),

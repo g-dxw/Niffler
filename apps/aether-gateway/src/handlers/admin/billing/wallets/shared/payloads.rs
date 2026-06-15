@@ -11,22 +11,34 @@ pub(in super::super) struct AdminWalletOwnerSummary {
 }
 
 pub(in super::super) fn build_admin_wallet_payment_order_payload(
-    order_id: String,
-    order_no: String,
-    amount_usd: f64,
-    payment_method: String,
-    status: String,
-    created_at: Option<String>,
-    credited_at: Option<String>,
+    order: &crate::AdminWalletPaymentOrderRecord,
 ) -> serde_json::Value {
     json!({
-        "id": order_id,
-        "order_no": order_no,
-        "amount_usd": amount_usd,
-        "payment_method": payment_method,
-        "status": status,
-        "created_at": created_at,
-        "credited_at": credited_at,
+        "id": order.id,
+        "order_no": order.order_no,
+        "wallet_id": order.wallet_id,
+        "user_id": order.user_id,
+        "amount_usd": order.amount_usd,
+        "pay_amount": order.pay_amount,
+        "pay_currency": order.pay_currency,
+        "exchange_rate": order.exchange_rate,
+        "refunded_amount_usd": order.refunded_amount_usd,
+        "refundable_amount_usd": order.refundable_amount_usd,
+        "payment_method": order.payment_method,
+        "payment_provider": order.payment_provider,
+        "payment_channel": order.payment_channel,
+        "order_kind": order.order_kind,
+        "product_id": order.product_id,
+        "product_snapshot": order.product_snapshot,
+        "fulfillment_status": order.fulfillment_status,
+        "fulfillment_error": order.fulfillment_error,
+        "gateway_order_id": order.gateway_order_id,
+        "gateway_response": order.gateway_response,
+        "status": order.status,
+        "created_at": unix_secs_to_rfc3339(order.created_at_unix_ms),
+        "paid_at": order.paid_at_unix_secs.and_then(unix_secs_to_rfc3339),
+        "credited_at": order.credited_at_unix_secs.and_then(unix_secs_to_rfc3339),
+        "expires_at": order.expires_at_unix_secs.and_then(unix_secs_to_rfc3339),
     })
 }
 

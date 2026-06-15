@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { paymentOrderMethodLabel } from '../walletDisplay'
+import { paymentOrderContentLabel, paymentOrderKindLabel, paymentOrderMethodLabel } from '../walletDisplay'
 
 describe('paymentOrderMethodLabel', () => {
   it('shows the real DoDoPay channel when callback records it', () => {
@@ -22,5 +22,32 @@ describe('paymentOrderMethodLabel', () => {
       payment_provider: 'redeem_code',
       payment_channel: 'gift',
     })).toBe('礼品卡')
+  })
+})
+
+describe('paymentOrderKindLabel', () => {
+  it('shows readable order kinds', () => {
+    expect(paymentOrderKindLabel('wallet_recharge')).toBe('钱包充值')
+    expect(paymentOrderKindLabel('plan_purchase')).toBe('套餐购买')
+  })
+})
+
+describe('paymentOrderContentLabel', () => {
+  it('shows plan purchase title from product snapshot', () => {
+    expect(paymentOrderContentLabel({
+      order_kind: 'plan_purchase',
+      product_id: 'plan-4-9',
+      product_snapshot: {
+        title: 'Plus 限购套餐',
+      },
+    })).toBe('套餐购买 · Plus 限购套餐')
+  })
+
+  it('falls back to product id when plan title is missing', () => {
+    expect(paymentOrderContentLabel({
+      order_kind: 'plan_purchase',
+      product_id: 'plan-legacy',
+      product_snapshot: {},
+    })).toBe('套餐购买 · plan-legacy')
   })
 })
