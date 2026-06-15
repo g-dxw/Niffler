@@ -223,7 +223,10 @@ export function useUsageData(options: UseUsageDataOptions) {
       }
 
       // 用户页面
-      const userData = await meApi.getUsage(dateRange)
+      const userData = await meApi.getUsage({
+        ...dateRange,
+        include_records: false
+      })
       if (requestId !== loadStatsRequestId) {
         return false
       }
@@ -271,21 +274,11 @@ export function useUsageData(options: UseUsageDataOptions) {
             : '-'
         }))
 
-      // 用户页面：记录直接从 userData 获取（数量较少）
-      // 使用 mergeRecordStatus 保护已有的活跃状态，避免轮询更新被覆盖
-      const nextRecords = (userData.records || []) as UsageRecord[]
-      currentRecords.value = mergeRecordStatus(currentRecords.value, nextRecords)
-      totalRecords.value = userData.pagination?.total ?? currentRecords.value.length
-
-      // 从记录中提取筛选选项
-      const models = new Set<string>()
-      const providers = new Set<string>()
-      currentRecords.value.forEach(record => {
-        if (record.model) models.add(record.model)
-        if (isUsageProviderVisible(record.provider)) providers.add(record.provider)
-      })
-      availableModels.value = Array.from(models).sort()
-      availableProviders.value = Array.from(providers).sort()
+      availableModels.value = modelStats.value.map(item => item.model).filter(Boolean).sort()
+      availableProviders.value = (userData.summary_by_provider || [])
+        .map(item => item.provider)
+        .filter(isUsageProviderVisible)
+        .sort()
 
       // API 格式统计直接使用后端聚合数据
       apiFormatStats.value = (userData.summary_by_api_format || []).map(item => ({
@@ -314,11 +307,10 @@ export function useUsageData(options: UseUsageDataOptions) {
       }
       stats.value = createDefaultStats()
       modelStats.value = []
-      if (!isAdminPage.value) {
-        // 用户页的 records 依赖 stats 一起加载；管理员页的 records 是独立分页，不应被统计失败清空。
-        currentRecords.value = []
-        totalRecords.value = 0
-      }
+      providerStats.value = []
+      apiFormatStats.value = []
+      availableModels.value = []
+      availableProviders.value = []
       return true
     } finally {
       if (requestId === loadStatsRequestId) {
@@ -385,13 +377,29 @@ export function useUsageData(options: UseUsageDataOptions) {
         totalRecords.value = response.total || 0
       } else {
         // 用户页面：使用用户 API
+        if (filters?.model) {
+          params.model = filters.model
+        }
+        if (filters?.provider) {
+          params.provider = filters.provider
+        }
+        if (filters?.api_format) {
+          params.api_format = filters.api_format
+        }
+        if (filters?.status) {
+          params.status = filters.status
+        }
+        if (filters?.client_family) {
+          params.client_family = filters.client_family
+        }
+
         const userData = await meApi.getUsage(params)
         if (requestId !== loadRecordsRequestId) {
           return
         }
         const nextRecords = (userData.records || []) as UsageRecord[]
         currentRecords.value = mergeRecordStatus(currentRecords.value, nextRecords)
-        totalRecords.value = userData.pagination?.total || currentRecords.value.length
+        totalRecords.value = userData.pagination?.total ?? currentRecords.value.length
       }
     } catch (error) {
       if (requestId !== loadRecordsRequestId) {

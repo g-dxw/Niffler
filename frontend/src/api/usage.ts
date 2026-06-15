@@ -119,7 +119,10 @@ export interface UsageByApiFormat {
 export interface UsageFilters {
   user_id?: string // UUID
   provider_id?: string // UUID
+  provider?: string
   model?: string
+  api_format?: string
+  status?: string
   search?: string
   start_date?: string
   end_date?: string
@@ -234,8 +237,8 @@ function buildCurrentUserUsageParams(filters?: UsageFilters): {
   params: Record<string, unknown>
   pagination: { page: number; pageSize?: number; offset?: number }
 } {
-  if (filters?.user_id || filters?.provider_id || filters?.model || filters?.granularity) {
-    throw new Error('getUsageRecords only supports current-user usage filters; use admin usage APIs for user/model/provider filters')
+  if (filters?.user_id || filters?.provider_id || filters?.granularity) {
+    throw new Error('getUsageRecords only supports current-user usage filters; use admin usage APIs for user filters')
   }
 
   const pagination = offsetPaginationFromPage(filters)
@@ -250,6 +253,11 @@ function buildCurrentUserUsageParams(filters?: UsageFilters): {
       timezone: filters?.timezone,
       tz_offset_minutes: filters?.tz_offset_minutes,
       search: filters?.search,
+      model: filters?.model,
+      provider: filters?.provider,
+      api_format: filters?.api_format,
+      status: filters?.status,
+      client_family: filters?.client_family,
       limit: pagination.pageSize,
       offset: pagination.offset,
     }),
@@ -279,6 +287,10 @@ function buildAdminUsageRecordParams(userId: string, filters?: UsageFilters): {
       tz_offset_minutes: filters?.tz_offset_minutes,
       search: filters?.search,
       model: filters?.model,
+      provider: filters?.provider,
+      api_format: filters?.api_format,
+      status: filters?.status,
+      client_family: filters?.client_family,
       limit: pagination.pageSize,
       offset: pagination.offset,
     }),
@@ -303,6 +315,10 @@ function buildAdminUsageStatsParams(userId: string, filters?: UsageFilters): Rec
     timezone: filters?.timezone,
     tz_offset_minutes: filters?.tz_offset_minutes,
     model: filters?.model,
+    provider: filters?.provider,
+    api_format: filters?.api_format,
+    status: filters?.status,
+    client_family: filters?.client_family,
   })
 }
 
@@ -470,6 +486,7 @@ export const usageApi = {
     provider?: string
     api_format?: string  // API 格式筛选（如 openai:chat, claude:messages）
     status?: string // 'stream' | 'standard' | 'error'
+    client_family?: string
     limit?: number
     offset?: number
   }): Promise<{

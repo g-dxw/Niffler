@@ -268,4 +268,80 @@ describe('useUsageData', () => {
     expect(currentRecords.value[0].has_fallback).toBe(false)
     expect(currentRecords.value[0].charge_breakdown?.wallet_debit).toBe(0.00326455)
   })
+
+  it('loads current-user records with backend pagination and filters', async () => {
+    const isAdminPage = ref(false)
+    const { loadRecords, currentRecords, totalRecords } = useUsageData({ isAdminPage })
+    const dateRange = { preset: 'today', tz_offset_minutes: 480 }
+
+    meGetUsageMock.mockResolvedValueOnce({
+      records: [buildUsageRecord({ id: 'usage-remember-1', model: 'gpt-5.5' })],
+      pagination: {
+        total: 11214,
+        limit: 50,
+        offset: 100,
+        has_more: true,
+      },
+    })
+
+    await loadRecords(
+      { page: 3, pageSize: 50 },
+      {
+        search: ' cc专用 ',
+        model: 'gpt-5.5',
+        api_format: 'openai:responses',
+        status: 'failed',
+        client_family: 'codex',
+      },
+      dateRange
+    )
+
+    expect(meGetUsageMock).toHaveBeenCalledWith({
+      preset: 'today',
+      tz_offset_minutes: 480,
+      limit: 50,
+      offset: 100,
+      search: 'cc专用',
+      model: 'gpt-5.5',
+      api_format: 'openai:responses',
+      status: 'failed',
+      client_family: 'codex',
+    })
+    expect(currentRecords.value).toHaveLength(1)
+    expect(currentRecords.value[0].id).toBe('usage-remember-1')
+    expect(totalRecords.value).toBe(11214)
+  })
+
+  it('loads current-user stats without requesting records', async () => {
+    const isAdminPage = ref(false)
+    const { loadStats, stats, currentRecords, availableModels } = useUsageData({ isAdminPage })
+    const dateRange = { preset: 'today', tz_offset_minutes: 480 }
+
+    meGetUsageMock.mockResolvedValueOnce({
+      total_requests: 3,
+      total_tokens: 300,
+      total_cost: 0.12,
+      avg_response_time: 1.2,
+      summary_by_model: [
+        {
+          model: 'gpt-5.5',
+          requests: 3,
+          total_tokens: 300,
+          total_cost_usd: 0.12,
+        },
+      ],
+      records: [buildUsageRecord({ id: 'should-not-be-used' })],
+    })
+
+    await loadStats(dateRange)
+
+    expect(meGetUsageMock).toHaveBeenCalledWith({
+      preset: 'today',
+      tz_offset_minutes: 480,
+      include_records: false,
+    })
+    expect(stats.value.total_requests).toBe(3)
+    expect(availableModels.value).toEqual(['gpt-5.5'])
+    expect(currentRecords.value).toEqual([])
+  })
 })

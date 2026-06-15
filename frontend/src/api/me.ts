@@ -351,6 +351,12 @@ export const meApi = {
     timezone?: string
     tz_offset_minutes?: number
     search?: string  // 通用搜索：密钥名、模型名
+    model?: string
+    provider?: string
+    api_format?: string
+    status?: string
+    client_family?: string
+    include_records?: boolean
     limit?: number
     offset?: number
   }): Promise<UsageResponse> {

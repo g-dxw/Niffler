@@ -5397,7 +5397,7 @@ async fn gateway_handles_users_me_usage_locally_without_proxying_upstream() {
 
     let response = reqwest::Client::new()
         .get(format!(
-            "{gateway_url}/api/users/me/usage?limit=10&offset=0&search=renamed-key"
+            "{gateway_url}/api/users/me/usage?limit=2&offset=0&search=renamed-key"
         ))
         .header("authorization", format!("Bearer {access_token}"))
         .header("x-client-device-id", "device-users-me-usage-1")
@@ -5411,9 +5411,12 @@ async fn gateway_handles_users_me_usage_locally_without_proxying_upstream() {
     assert_eq!(payload["total_requests"], 2);
     assert_eq!(payload["total_input_tokens"], 240);
     assert_eq!(payload["pagination"]["total"], 3);
+    assert_eq!(payload["pagination"]["limit"], 2);
+    assert_eq!(payload["pagination"]["offset"], 0);
+    assert_eq!(payload["pagination"]["has_more"], true);
     assert_eq!(
         payload["records"].as_array().expect("records array").len(),
-        3
+        2
     );
     assert_eq!(
         payload["records"][0]["cache_creation_ephemeral_5m_input_tokens"],
@@ -5458,6 +5461,32 @@ async fn gateway_handles_users_me_usage_locally_without_proxying_upstream() {
     assert_eq!(payload["summary_by_model"][0]["total_input_context"], 120);
     assert!(payload.get("summary_by_provider").is_none());
     assert_eq!(payload["billing"]["id"], "wallet-auth-1");
+
+    let stats_only_response = reqwest::Client::new()
+        .get(format!(
+            "{gateway_url}/api/users/me/usage?include_records=false"
+        ))
+        .header("authorization", format!("Bearer {access_token}"))
+        .header("x-client-device-id", "device-users-me-usage-1")
+        .header("user-agent", "AetherTest/1.0")
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(stats_only_response.status(), StatusCode::OK);
+    let stats_only_payload: serde_json::Value = stats_only_response
+        .json()
+        .await
+        .expect("json body should parse");
+    assert_eq!(stats_only_payload["total_requests"], 2);
+    assert_eq!(stats_only_payload["pagination"]["total"], 0);
+    assert_eq!(
+        stats_only_payload["records"]
+            .as_array()
+            .expect("records array")
+            .len(),
+        0
+    );
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();

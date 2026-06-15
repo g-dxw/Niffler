@@ -153,9 +153,6 @@ import {
 } from '@/features/usage/composables'
 import { reconcileActiveRequestDiscovery } from '@/features/usage/utils/activeRequestDiscovery'
 import {
-  hasUsageFallback,
-  isUsageRecordFailed,
-  isUsageUpstreamStream,
   resolveDisplayRequestStatus,
 } from '@/features/usage/utils/status'
 import { applyUsageActiveRequestUpdate } from '@/features/usage/utils/activeRequestUpdates'
@@ -346,59 +343,6 @@ async function refreshAdminAnalytics(options: { force?: boolean } = {}) {
     }
   }
 }
-
-// 用户页面需要前端筛选
-const filteredRecords = computed(() => {
-  if (!isAdminPage.value) {
-    let records = [...currentRecords.value]
-
-    if (filterModel.value !== '__all__') {
-      records = records.filter(record => record.model === filterModel.value)
-    }
-
-    if (filterProvider.value !== '__all__') {
-      records = records.filter(record => record.provider === filterProvider.value)
-    }
-
-    if (filterApiFormat.value !== '__all__') {
-      records = records.filter(record =>
-        record.api_format?.toUpperCase() === filterApiFormat.value.toUpperCase()
-      )
-    }
-
-    if (filterStatus.value !== '__all__') {
-      if (filterStatus.value === 'stream') {
-        records = records.filter(record =>
-          isUsageUpstreamStream(record) && !isUsageRecordFailed(record)
-        )
-      } else if (filterStatus.value === 'standard') {
-        records = records.filter(record =>
-          !isUsageUpstreamStream(record) && !isUsageRecordFailed(record)
-        )
-      } else if (filterStatus.value === 'active') {
-        records = records.filter(record =>
-          resolveDisplayRequestStatus(record) === 'pending' ||
-          resolveDisplayRequestStatus(record) === 'streaming'
-        )
-      } else if (filterStatus.value === 'failed') {
-        records = records.filter(record => isUsageRecordFailed(record))
-      } else if (filterStatus.value === 'cancelled') {
-        records = records.filter(record => record.status === 'cancelled')
-      } else if (filterStatus.value === 'has_fallback') {
-        records = records.filter(record => hasUsageFallback(record))
-      } else if (filterStatus.value === 'has_retry') {
-        records = records.filter(record => record.has_retry === true)
-      }
-    }
-
-    if (filterClientFamily.value !== '__all__') {
-      records = records.filter(record => record.client_family === filterClientFamily.value)
-    }
-
-    return records
-  }
-  return currentRecords.value
-})
 
 // 获取活跃请求的 ID 列表
 const activeRequestIds = computed(() => {
@@ -646,26 +590,10 @@ onUnmounted(() => {
   stopGlobalAutoRefresh()
 })
 
-// 用户页面的前端分页（后端一次性返回所有记录，前端分页+筛选）
-const paginatedRecords = computed(() => {
-  if (!isAdminPage.value) {
-    const start = (currentPage.value - 1) * pageSize.value
-    const end = start + pageSize.value
-    return filteredRecords.value.slice(start, end)
-  }
-  return currentRecords.value
-})
-
-// 用户页面使用前端筛选后的总数，管理员页面使用后端返回的总数
-const effectiveTotalRecords = computed(() => {
-  if (!isAdminPage.value) {
-    return filteredRecords.value.length
-  }
-  return totalRecords.value
-})
+const effectiveTotalRecords = computed(() => totalRecords.value)
 
 // 显示的记录
-const displayRecords = computed(() => paginatedRecords.value)
+const displayRecords = computed(() => currentRecords.value)
 
 const availableClientFamilies = computed(() => {
   const families = new Set<string>()
@@ -698,11 +626,18 @@ onMounted(async () => {
       await loadAdminUsers()
     })()
   } else {
-    // 用户页面：loadStats 已包含记录加载，不需要单独调用 loadRecords
     await Promise.allSettled([
       loadStats(timeRange.value).catch(err => {
         log.error('加载统计数据失败:', err)
         warning('统计数据加载失败，请刷新重试')
+      }),
+      loadRecords(
+        { page: currentPage.value, pageSize: pageSize.value },
+        getCurrentFilters(),
+        timeRange.value
+      ).catch(err => {
+        log.error('加载记录失败:', err)
+        warning('使用记录加载失败，请刷新重试')
       }),
       loadHeatmapData().catch(err => {
         log.error('加载热力图数据失败:', err)
@@ -728,27 +663,23 @@ async function handleTimeRangeChange(value: DateRangeParams) {
     await refreshAdminAnalytics({ force: true })
     return
   }
-  await loadStats(timeRange.value)
-  // 用户页面：loadStats 已包含记录加载
+  await Promise.all([
+    loadStats(timeRange.value),
+    loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
+  ])
 }
 
 // 处理分页变化
 async function handlePageChange(page: number) {
   currentPage.value = page
-  if (isAdminPage.value) {
-    await loadRecords({ page, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
-  // 用户页面使用前端分页，无需重新请求
+  await loadRecords({ page, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 // 处理每页大小变化
 async function handlePageSizeChange(size: number) {
   pageSize.value = size
   currentPage.value = 1  // 重置到第一页
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: size }, getCurrentFilters(), timeRange.value)
-  }
-  // 用户页面使用前端分页，无需重新请求
+  await loadRecords({ page: 1, pageSize: size }, getCurrentFilters(), timeRange.value)
 }
 
 // 获取当前筛选参数
@@ -769,65 +700,49 @@ async function handleFilterSearchChange(value: string) {
   filterSearch.value = value
   currentPage.value = 1
 
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
-  // 用户页面：search 需要重新从后端拉取数据（后端支持 search 参数）
-  // 但通过 filteredRecords 做前端过滤已覆盖，无需额外请求
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 async function handleFilterUserChange(value: string) {
   filterUser.value = value
   currentPage.value = 1  // 重置到第一页
 
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 async function handleFilterModelChange(value: string) {
   filterModel.value = value
   currentPage.value = 1  // 重置到第一页
 
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 async function handleFilterProviderChange(value: string) {
   filterProvider.value = value
   currentPage.value = 1
 
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 async function handleFilterApiFormatChange(value: string) {
   filterApiFormat.value = value
   currentPage.value = 1
 
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 async function handleFilterStatusChange(value: string) {
   filterStatus.value = value as FilterStatusValue
   currentPage.value = 1
 
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 async function handleFilterClientFamilyChange(value: string) {
   filterClientFamily.value = value
   currentPage.value = 1
 
-  if (isAdminPage.value) {
-    await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
-  }
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }
 
 // 刷新数据
@@ -847,8 +762,14 @@ async function refreshData() {
       return
     }
 
-    await loadStats(timeRange.value)
-    // 用户页面：loadStats 已包含记录加载
+    await Promise.all([
+      loadStats(timeRange.value),
+      loadRecords(
+        { page: currentPage.value, pageSize: pageSize.value },
+        getCurrentFilters(),
+        timeRange.value
+      )
+    ])
   })()
 
   try {

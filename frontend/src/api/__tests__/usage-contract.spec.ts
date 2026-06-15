@@ -47,6 +47,10 @@ describe('usageApi contract alignment', () => {
       page_size: 10,
       start_date: '2026-05-01',
       end_date: '2026-05-16',
+      model: 'gpt-5.5',
+      api_format: 'openai:responses',
+      status: 'failed',
+      client_family: 'codex',
     })
 
     expect(getMock).toHaveBeenCalledWith('/api/users/me/usage', {
@@ -55,6 +59,10 @@ describe('usageApi contract alignment', () => {
         offset: 10,
         start_date: '2026-05-01',
         end_date: '2026-05-16',
+        model: 'gpt-5.5',
+        api_format: 'openai:responses',
+        status: 'failed',
+        client_family: 'codex',
       },
     })
     expect(result).toEqual({
