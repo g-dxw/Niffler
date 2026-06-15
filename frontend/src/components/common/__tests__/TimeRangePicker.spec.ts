@@ -67,11 +67,18 @@ describe('TimeRangePicker', () => {
   it('emits concrete custom times when time mode is enabled', async () => {
     const updates: unknown[] = []
     const root = mountPicker((value) => updates.push(value))
-    const inputs = root.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')
+    const dateInputs = root.querySelectorAll<HTMLInputElement>('input[type="date"]')
+    const timeInputs = root.querySelectorAll<HTMLInputElement>('input[type="time"]')
 
-    expect(inputs).toHaveLength(2)
-    inputs[1].value = '2026-06-12T12:30'
-    inputs[1].dispatchEvent(new Event('input'))
+    expect(root.querySelector('input[type="datetime-local"]')).toBeNull()
+    expect(dateInputs).toHaveLength(2)
+    expect(timeInputs).toHaveLength(2)
+    expect(dateInputs[0].getAttribute('aria-label')).toBe('开始日期')
+    expect(timeInputs[0].getAttribute('aria-label')).toBe('开始时间')
+    dateInputs[1].value = '2026-06-12'
+    dateInputs[1].dispatchEvent(new Event('input'))
+    timeInputs[1].value = '12:30'
+    timeInputs[1].dispatchEvent(new Event('input'))
     await Promise.resolve()
 
     expect(updates.at(-1)).toMatchObject({
