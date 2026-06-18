@@ -3956,7 +3956,7 @@ mod tests {
 
         let repository = SqliteUsageWriteRepository::new(pool.clone());
         let record = repository
-            .upsert(sample_usage("request-1", "completed", "pending", 1_000))
+            .upsert(sample_usage("request-1", "completed", "settled", 1_000))
             .await
             .expect("usage should upsert");
 

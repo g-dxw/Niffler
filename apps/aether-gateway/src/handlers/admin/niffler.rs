@@ -1598,11 +1598,12 @@ async fn create_error_return_setting_response(
                     return Ok(niffler_bad_request("状态码文案不能同时填写关键词"));
                 }
             }
-            Some(NifflerUpstreamErrorHandlingStep::DefaultUpstreamMessage) => {
-                if match_status_code.is_some() || match_text.is_some() {
-                    return Ok(niffler_bad_request("通用上游文案不需要填写状态码或关键词"));
-                }
+            Some(NifflerUpstreamErrorHandlingStep::DefaultUpstreamMessage)
+                if match_status_code.is_some() || match_text.is_some() =>
+            {
+                return Ok(niffler_bad_request("通用上游文案不需要填写状态码或关键词"));
             }
+            Some(NifflerUpstreamErrorHandlingStep::DefaultUpstreamMessage) => {}
             None => {}
         }
     }
