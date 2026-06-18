@@ -365,7 +365,7 @@ async fn gateway_converts_openai_image_sync_to_gemini_image_provider() {
     execution_runtime_handle.abort();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn gateway_converts_gemini_image_sync_to_openai_image_provider() {
     #[derive(Debug, Clone)]
     struct SeenExecutionRuntimeSyncRequest {
