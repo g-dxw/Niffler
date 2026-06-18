@@ -529,11 +529,6 @@ pub(crate) async fn record_admin_provider_pool_error(
         409 => Some("conflict_409".to_string()),
         423 => Some("locked_423".to_string()),
         425 => Some("too_early_425".to_string()),
-        500 => Some("server_error_500".to_string()),
-        502 => Some("bad_gateway_502".to_string()),
-        503 => Some("service_unavailable_503".to_string()),
-        504 => Some("gateway_timeout_504".to_string()),
-        501 | 505..=599 => Some(format!("server_error_{status_code}")),
         _ => None,
     };
 
@@ -1229,6 +1224,42 @@ mod tests {
             .cooldown_reason_by_key
             .contains_key("key-client-400"));
         assert!(!runtime.cooldown_ttl_by_key.contains_key("key-client-400"));
+    }
+
+    #[tokio::test]
+    async fn error_feedback_ignores_ordinary_upstream_5xx_for_cooldown() {
+        let Some(redis) = start_managed_redis_or_skip().await else {
+            return;
+        };
+        let app = build_runner_app(redis.redis_url(), "pool_runtime_ignore_ordinary_5xx").await;
+        let runtime = app.runtime_state.as_ref();
+        let pool_config = sample_pool_config();
+        let key_ids = vec!["key-upstream-503".to_string()];
+
+        record_admin_provider_pool_error(
+            runtime,
+            "provider-1",
+            "key-upstream-503",
+            &pool_config,
+            503,
+            Some(r#"{"error":{"message":"upstream service unavailable"}}"#),
+            None,
+        )
+        .await;
+
+        let runtime = read_admin_provider_pool_runtime_state(
+            runtime,
+            "provider-1",
+            &key_ids,
+            &pool_config,
+            None,
+        )
+        .await;
+
+        assert!(!runtime
+            .cooldown_reason_by_key
+            .contains_key("key-upstream-503"));
+        assert!(!runtime.cooldown_ttl_by_key.contains_key("key-upstream-503"));
     }
 
     #[tokio::test]

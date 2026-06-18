@@ -1080,9 +1080,7 @@ async fn record_score_probe_results_from_payload(
                 key_id,
                 attempted_at,
                 probe_result_succeeded(item),
-                probe_result_hard_state(item).or_else(|| {
-                    (!probe_result_succeeded(item)).then_some(PoolMemberHardState::Cooldown)
-                }),
+                probe_result_hard_state(item),
                 serde_json::json!({
                     "last_probe": {
                         "source": "pool_quota_probe",
@@ -1209,7 +1207,7 @@ fn probe_result_hard_state(item: &Value) -> Option<PoolMemberHardState> {
         _ => match item.get("status_code").and_then(Value::as_u64) {
             Some(401 | 403) => Some(PoolMemberHardState::AuthInvalid),
             Some(402) => Some(PoolMemberHardState::QuotaExhausted),
-            Some(429 | 500..=599) => Some(PoolMemberHardState::Cooldown),
+            Some(429 | 529) => Some(PoolMemberHardState::Cooldown),
             _ => None,
         },
     }
@@ -1720,6 +1718,31 @@ mod tests {
         let selected = select_pool_quota_probe_key_ids(&keys, "codex", 2_000, 600, &stamps, 2);
 
         assert_eq!(selected, vec!["never".to_string(), "old".to_string()]);
+    }
+
+    #[test]
+    fn ordinary_probe_5xx_does_not_mark_pool_member_cooldown() {
+        assert_eq!(
+            probe_result_hard_state(&json!({
+                "status": "failed",
+                "status_code": 503
+            })),
+            None
+        );
+        assert_eq!(
+            probe_result_hard_state(&json!({
+                "status": "failed",
+                "status_code": 429
+            })),
+            Some(PoolMemberHardState::Cooldown)
+        );
+        assert_eq!(
+            probe_result_hard_state(&json!({
+                "status": "failed",
+                "status_code": 529
+            })),
+            Some(PoolMemberHardState::Cooldown)
+        );
     }
 
     fn score(

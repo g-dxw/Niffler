@@ -902,7 +902,7 @@ fn pool_score_hard_state_for_status(
     match status_code {
         401 | 403 => Some(PoolMemberHardState::AuthInvalid),
         402 => Some(PoolMemberHardState::QuotaExhausted),
-        429 | 500..=599 => Some(PoolMemberHardState::Cooldown),
+        429 | 529 => Some(PoolMemberHardState::Cooldown),
         _ => {
             let body = error_body.unwrap_or_default().to_ascii_lowercase();
             if body.contains("quota") && body.contains("exceed") {
@@ -1795,6 +1795,22 @@ mod tests {
             LocalFailoverClassification::RetryUpstreamFailure,
             429,
         ));
+    }
+
+    #[test]
+    fn ordinary_upstream_5xx_does_not_mark_pool_member_cooldown() {
+        assert_eq!(super::pool_score_hard_state_for_status(500, None), None);
+        assert_eq!(super::pool_score_hard_state_for_status(502, None), None);
+        assert_eq!(super::pool_score_hard_state_for_status(503, None), None);
+        assert_eq!(super::pool_score_hard_state_for_status(504, None), None);
+        assert_eq!(
+            super::pool_score_hard_state_for_status(429, None),
+            Some(PoolMemberHardState::Cooldown)
+        );
+        assert_eq!(
+            super::pool_score_hard_state_for_status(529, None),
+            Some(PoolMemberHardState::Cooldown)
+        );
     }
 
     #[tokio::test]
