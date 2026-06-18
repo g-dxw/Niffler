@@ -30,6 +30,7 @@ export interface ModelStatsItem {
   cache_read_tokens?: number
   cache_creation_tokens?: number
   cache_hit_rate?: number
+  official_cost?: number | null
   total_cost: number
   actual_cost?: number  // 平台成本
 }

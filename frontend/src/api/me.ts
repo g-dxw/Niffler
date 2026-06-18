@@ -114,6 +114,7 @@ export interface ModelSummary {
   cache_creation_tokens?: number
   total_input_context?: number
   cache_hit_rate?: number
+  official_cost?: number | null
   total_cost_usd: number
   actual_total_cost_usd?: number  // 平台成本（仅管理员可见）
 }

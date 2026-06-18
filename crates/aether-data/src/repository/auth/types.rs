@@ -723,6 +723,11 @@ pub trait AuthApiKeyReadRepository: Send + Sync {
         api_key_ids: &[String],
     ) -> Result<Vec<StoredAuthApiKeyExportRecord>, crate::DataLayerError>;
 
+    async fn list_export_api_keys_by_group_id(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<StoredAuthApiKeyExportRecord>, crate::DataLayerError>;
+
     async fn list_export_api_keys_by_name_search(
         &self,
         name_search: &str,

@@ -250,6 +250,7 @@ fn build_admin_usage_records_query(
     created_from_unix_secs: u64,
     created_until_unix_secs: u64,
     query: Option<&str>,
+    api_key_ids: Option<Vec<String>>,
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> UsageAuditListQuery {
@@ -257,6 +258,7 @@ fn build_admin_usage_records_query(
         created_from_unix_secs: Some(created_from_unix_secs),
         created_until_unix_secs: Some(created_until_unix_secs),
         user_id: query_param_value(query, "user_id"),
+        api_key_ids,
         provider_name: query_param_value(query, "provider"),
         model: query_param_value(query, "model"),
         api_format: query_param_value(query, "api_format"),
@@ -381,6 +383,7 @@ fn build_admin_usage_keyword_search_query(
         created_from_unix_secs: base_query.created_from_unix_secs,
         created_until_unix_secs: base_query.created_until_unix_secs,
         user_id: base_query.user_id.clone(),
+        api_key_ids: base_query.api_key_ids.clone(),
         provider_name: base_query.provider_name.clone(),
         model: base_query.model.clone(),
         api_format: base_query.api_format.clone(),
@@ -398,6 +401,28 @@ fn build_admin_usage_keyword_search_query(
         offset,
         newest_first: true,
     }
+}
+
+async fn resolve_admin_usage_api_key_ids_by_group_id(
+    state: &AdminAppState<'_>,
+    query: Option<&str>,
+) -> Result<Option<Vec<String>>, GatewayError> {
+    let Some(group_id) = query_param_value(query, "api_key_group_id")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    let api_keys = state
+        .list_auth_api_key_export_records_by_group_id(&group_id)
+        .await?;
+    Ok(Some(
+        api_keys
+            .into_iter()
+            .map(|record| record.api_key_id)
+            .collect(),
+    ))
 }
 
 pub(super) async fn maybe_build_local_admin_usage_summary_response(
@@ -585,6 +610,7 @@ pub(super) async fn maybe_build_local_admin_usage_summary_response(
                 created_from_unix_secs,
                 created_until_unix_secs,
                 query,
+                resolve_admin_usage_api_key_ids_by_group_id(state, query).await?,
                 None,
                 None,
             );

@@ -324,6 +324,19 @@ fn sample_auth_api_key_snapshot(
     .expect("auth snapshot should build")
 }
 
+fn sample_auth_api_key_snapshot_with_group(
+    user_id: &str,
+    api_key_id: &str,
+    api_key_name: &str,
+    group_id: &str,
+    group_name: &str,
+) -> StoredAuthApiKeySnapshot {
+    let mut snapshot = sample_auth_api_key_snapshot(user_id, api_key_id, api_key_name);
+    snapshot.api_key_group_id = Some(group_id.to_string());
+    snapshot.api_key_group_name = Some(group_name.to_string());
+    snapshot
+}
+
 fn recent_unix_secs(minutes_ago: u64) -> i64 {
     let now = chrono::Utc::now().timestamp();
     now.saturating_sub((minutes_ago * 60) as i64)
@@ -570,6 +583,7 @@ async fn gateway_handles_admin_usage_aggregation_stats_locally_with_trusted_admi
     );
     usage_1.provider_id = Some("provider-openai".to_string());
     usage_1.total_tokens = usage_1.input_tokens;
+    usage_1.request_metadata = Some(json!({ "base_cost_usd": 6.5 }));
 
     let mut usage_2 = sample_usage_row(
         "usage-2",
@@ -588,6 +602,11 @@ async fn gateway_handles_admin_usage_aggregation_stats_locally_with_trusted_admi
     );
     usage_2.provider_id = Some("provider-openai".to_string());
     usage_2.total_tokens = usage_2.input_tokens;
+    usage_2.request_metadata = Some(json!({
+        "settlement_snapshot": {
+            "base_cost_usd": 2.5
+        }
+    }));
 
     let mut usage_3 = sample_usage_row(
         "usage-3",
@@ -610,6 +629,7 @@ async fn gateway_handles_admin_usage_aggregation_stats_locally_with_trusted_admi
     usage_3.api_family = Some("claude".to_string());
     usage_3.endpoint_api_format = Some("claude:messages".to_string());
     usage_3.provider_api_family = Some("claude".to_string());
+    usage_3.request_metadata = Some(json!({ "base_cost_usd": 2.5 }));
 
     let mut unknown_usage = sample_usage_row(
         "usage-unknown",
@@ -665,8 +685,10 @@ async fn gateway_handles_admin_usage_aggregation_stats_locally_with_trusted_admi
     assert_eq!(items[0]["cache_creation_ephemeral_5m_tokens"], 12);
     assert_eq!(items[0]["cache_creation_ephemeral_1h_tokens"], 18);
     assert_eq!(items[0]["cache_hit_rate"], 6.25);
+    assert_eq!(items[0]["official_cost"], 9.0);
     assert_eq!(items[1]["model"], "claude-3-7");
     assert_eq!(items[1]["output_tokens"], 20);
+    assert_eq!(items[1]["official_cost"], 2.5);
 
     let provider_response = admin_request(reqwest::Client::new().get(format!(
         "{gateway_url}/api/admin/usage/aggregation/stats?group_by=provider&limit=10&start_date=2024-03-21&end_date=2024-03-22&tz_offset_minutes=0"
@@ -705,6 +727,104 @@ async fn gateway_handles_admin_usage_aggregation_stats_locally_with_trusted_admi
     assert_eq!(api_format_items[0]["output_tokens"], 40);
     assert_eq!(api_format_items[1]["api_format"], "claude:messages");
     assert_eq!(api_format_items[1]["output_tokens"], 20);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_usage_aggregation_excludes_cancelled_estimates_from_usage_metrics() {
+    let (upstream_url, upstream_hits, upstream_handle) =
+        start_usage_upstream("/api/admin/usage/aggregation/stats").await;
+
+    let mut completed = sample_usage_row(
+        "usage-completed-cache",
+        "req-completed-cache",
+        Some("user-1"),
+        Some("key-1"),
+        Some("primary"),
+        "Anthropic",
+        "claude-opus-4-8",
+        "completed",
+        2,
+        100,
+        0.2,
+        0.12,
+        DAY_1_UNIX_SECS,
+    );
+    completed.provider_id = Some("provider-anthropic".to_string());
+    completed.api_format = Some("claude:messages".to_string());
+    completed.api_family = Some("claude".to_string());
+    completed.endpoint_api_format = Some("claude:messages".to_string());
+    completed.provider_api_family = Some("claude".to_string());
+    completed.cache_creation_input_tokens = 800;
+    completed.cache_creation_ephemeral_5m_input_tokens = 800;
+    completed.cache_creation_ephemeral_1h_input_tokens = 0;
+    completed.cache_read_input_tokens = 3_200;
+    completed.total_tokens = 4_102;
+
+    let mut cancelled = sample_usage_row(
+        "usage-cancelled-estimate",
+        "req-cancelled-estimate",
+        Some("user-1"),
+        Some("key-1"),
+        Some("primary"),
+        "Anthropic",
+        "claude-opus-4-8",
+        "cancelled",
+        9_000_000,
+        0,
+        0.0,
+        0.0,
+        DAY_1_UNIX_SECS + 1,
+    );
+    cancelled.provider_id = Some("provider-anthropic".to_string());
+    cancelled.api_format = Some("claude:messages".to_string());
+    cancelled.api_family = Some("claude".to_string());
+    cancelled.endpoint_api_format = Some("claude:messages".to_string());
+    cancelled.provider_api_family = Some("claude".to_string());
+    cancelled.cache_creation_input_tokens = 0;
+    cancelled.cache_creation_ephemeral_5m_input_tokens = 0;
+    cancelled.cache_creation_ephemeral_1h_input_tokens = 0;
+    cancelled.cache_read_input_tokens = 0;
+    cancelled.total_tokens = 9_000_000;
+    cancelled.status_code = Some(499);
+
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![
+        completed, cancelled,
+    ]));
+
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(GatewayDataState::with_usage_reader_for_tests(
+                usage_repository,
+            )),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = admin_request(reqwest::Client::new().get(format!(
+        "{gateway_url}/api/admin/usage/aggregation/stats?group_by=model&limit=10&start_date=2024-03-21&end_date=2024-03-21&tz_offset_minutes=0"
+    )))
+    .send()
+    .await
+    .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    let items = payload.as_array().expect("array response");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["model"], "claude-opus-4-8");
+    assert_eq!(items[0]["request_count"], 2);
+    assert_eq!(items[0]["total_tokens"], 4_102);
+    assert_eq!(items[0]["effective_input_tokens"], 2);
+    assert_eq!(items[0]["total_input_context"], 4_002);
+    assert_eq!(items[0]["cache_creation_tokens"], 800);
+    assert_eq!(items[0]["cache_read_tokens"], 3_200);
+    assert_eq!(items[0]["cache_hit_rate"], 79.96);
+    assert_eq!(items[0]["total_cost"], 0.2);
+    assert_eq!(items[0]["actual_cost"], 0.12);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();
@@ -1258,6 +1378,93 @@ async fn gateway_handles_admin_usage_records_locally_with_trusted_admin_principa
     );
     assert_eq!(payload["records"][0]["effective_input_tokens"], 35);
     assert_eq!(payload["records"][0]["first_byte_time_ms"], 120);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_filters_admin_usage_records_by_api_key_group() {
+    let (_upstream_url, upstream_hits, upstream_handle) =
+        start_usage_upstream("/api/admin/usage/records").await;
+
+    let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![
+        sample_usage_row(
+            "usage-claude",
+            "req-claude",
+            Some("user-1"),
+            Some("key-claude"),
+            Some("claude-key"),
+            "Anthropic",
+            "claude-sonnet-4-6",
+            "completed",
+            100,
+            20,
+            0.2,
+            0.1,
+            DAY_1_UNIX_SECS,
+        ),
+        sample_usage_row(
+            "usage-codex",
+            "req-codex",
+            Some("user-1"),
+            Some("key-codex"),
+            Some("codex-key"),
+            "OpenAI",
+            "gpt-5.5",
+            "completed",
+            80,
+            10,
+            0.1,
+            0.05,
+            DAY_1_UNIX_SECS + 1,
+        ),
+    ]));
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![
+        (
+            Some("hash-key-claude".to_string()),
+            sample_auth_api_key_snapshot_with_group(
+                "user-1",
+                "key-claude",
+                "claude-key",
+                "group-claude",
+                "Claude 分组",
+            ),
+        ),
+        (
+            Some("hash-key-codex".to_string()),
+            sample_auth_api_key_snapshot_with_group(
+                "user-1",
+                "key-codex",
+                "codex-key",
+                "group-codex",
+                "Codex 分组",
+            ),
+        ),
+    ]));
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_usage_reader_for_tests(usage_repository)
+                    .with_auth_api_key_reader(auth_repository),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = admin_request(reqwest::Client::new().get(format!(
+        "{gateway_url}/api/admin/usage/records?start_date=2024-03-21&end_date=2024-03-22&tz_offset_minutes=0&api_key_group_id=group-claude&limit=10&offset=0"
+    )))
+    .send()
+    .await
+    .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["total"], 1);
+    assert_eq!(payload["records"][0]["id"], "usage-claude");
+    assert_eq!(payload["records"][0]["api_key"]["id"], "key-claude");
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();

@@ -102,6 +102,32 @@ describe('useUsageData', () => {
     expect(totalRecords.value).toBe(1)
   })
 
+  it('passes the api key group filter when loading admin records', async () => {
+    const isAdminPage = ref(true)
+    const { loadRecords } = useUsageData({ isAdminPage })
+    const dateRange = { preset: 'today', tz_offset_minutes: 480 }
+
+    await loadRecords(
+      { page: 2, pageSize: 50 },
+      {
+        user_id: 'user-1',
+        api_key_group_id: 'group-claude',
+        model: 'claude-sonnet-4-6',
+      },
+      dateRange
+    )
+
+    expect(getAllUsageRecordsMock).toHaveBeenCalledWith({
+      preset: 'today',
+      tz_offset_minutes: 480,
+      limit: 50,
+      offset: 50,
+      user_id: 'user-1',
+      api_key_group_id: 'group-claude',
+      model: 'claude-sonnet-4-6',
+    })
+  })
+
   it('continues loading admin breakdowns when the summary request fails', async () => {
     const isAdminPage = ref(true)
     const {
@@ -124,6 +150,7 @@ describe('useUsageData', () => {
         model: 'gpt-5',
         request_count: 3,
         total_tokens: 300,
+        official_cost: 2.34,
         total_cost: 1.23,
       },
     ])
@@ -158,6 +185,7 @@ describe('useUsageData', () => {
       total_cost: 0,
     })
     expect(modelStats.value).toHaveLength(1)
+    expect(modelStats.value[0].official_cost).toBe(2.34)
     expect(providerStats.value).toHaveLength(1)
     expect(apiFormatStats.value).toHaveLength(1)
     expect(availableModels.value).toEqual(['gpt-5'])
@@ -314,7 +342,7 @@ describe('useUsageData', () => {
 
   it('loads current-user stats without requesting records', async () => {
     const isAdminPage = ref(false)
-    const { loadStats, stats, currentRecords, availableModels } = useUsageData({ isAdminPage })
+    const { loadStats, stats, currentRecords, availableModels, modelStats } = useUsageData({ isAdminPage })
     const dateRange = { preset: 'today', tz_offset_minutes: 480 }
 
     meGetUsageMock.mockResolvedValueOnce({
@@ -327,6 +355,7 @@ describe('useUsageData', () => {
           model: 'gpt-5.5',
           requests: 3,
           total_tokens: 300,
+          official_cost: 0.09,
           total_cost_usd: 0.12,
         },
       ],
@@ -342,6 +371,7 @@ describe('useUsageData', () => {
     })
     expect(stats.value.total_requests).toBe(3)
     expect(availableModels.value).toEqual(['gpt-5.5'])
+    expect(modelStats.value[0].official_cost).toBe(0.09)
     expect(currentRecords.value).toEqual([])
   })
 })

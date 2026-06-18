@@ -68,6 +68,7 @@ export interface UsageByModel {
   total_input_context?: number
   output_tokens?: number
   cache_creation_tokens?: number
+  official_cost?: number | null
   total_cost: number
   avg_response_time?: number
   cache_read_tokens?: number
@@ -118,6 +119,7 @@ export interface UsageByApiFormat {
 
 export interface UsageFilters {
   user_id?: string // UUID
+  api_key_group_id?: string
   provider_id?: string // UUID
   provider?: string
   model?: string
@@ -482,6 +484,7 @@ export const usageApi = {
     search?: string  // 通用搜索：用户名、密钥名、模型名、提供商名
     user_id?: string // UUID
     username?: string
+    api_key_group_id?: string
     model?: string
     provider?: string
     api_format?: string  // API 格式筛选（如 openai:chat, claude:messages）

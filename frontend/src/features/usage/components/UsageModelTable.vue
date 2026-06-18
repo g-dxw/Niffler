@@ -22,20 +22,23 @@
               </div>
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              {{ isAdmin ? '用户扣费/平台成本' : '用户扣费' }}
+              官方应扣
+            </TableHead>
+            <TableHead class="h-8 px-2 text-right">
+              {{ isAdmin ? '用户实扣/平台成本' : '用户实扣' }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
               缓存命中率
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              效率
+              平均实扣/M
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           <TableRow v-if="data.length === 0">
             <TableCell
-              :colspan="6"
+              :colspan="7"
               class="text-center py-6 text-muted-foreground px-2"
             >
               暂无模型统计数据
@@ -56,6 +59,11 @@
                 <span>{{ formatTokens(model.effective_input_tokens ?? model.total_input_context ?? 0) }} / {{ formatTokens(model.output_tokens || 0) }}</span>
                 <span class="text-muted-foreground">{{ formatTokens(model.cache_read_tokens || 0) }}</span>
               </div>
+            </TableCell>
+            <TableCell class="text-right py-2 px-2">
+              <span class="text-xs whitespace-nowrap">
+                {{ model.official_cost !== undefined && model.official_cost !== null ? formatCurrency(model.official_cost) : '-' }}
+              </span>
             </TableCell>
             <TableCell class="text-right py-2 px-2">
               <div class="flex flex-col items-end text-xs gap-0.5">

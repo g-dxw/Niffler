@@ -5344,16 +5344,21 @@ async fn gateway_handles_users_me_usage_locally_without_proxying_upstream() {
         "cache_creation_price_per_1m": 3.75,
         "cache_read_price_per_1m": 0.3,
     }));
+    let mut completed_usage = sample_user_usage_audit(
+        "usage-users-me-completed-1",
+        "req-users-me-completed-1",
+        "user-auth-1",
+        "gpt-4.1",
+        "OpenAI",
+        "completed",
+        now - chrono::Duration::minutes(20),
+    );
+    completed_usage.request_metadata = Some(json!({
+        "base_cost_usd": 2.5,
+        "sales_multiplier": 0.5,
+    }));
     let usage_repository = Arc::new(InMemoryUsageReadRepository::seed(vec![
-        sample_user_usage_audit(
-            "usage-users-me-completed-1",
-            "req-users-me-completed-1",
-            "user-auth-1",
-            "gpt-4.1",
-            "OpenAI",
-            "completed",
-            now - chrono::Duration::minutes(20),
-        ),
+        completed_usage,
         sample_user_usage_audit(
             "usage-users-me-failed-1",
             "req-users-me-failed-1",
@@ -5446,19 +5451,17 @@ async fn gateway_handles_users_me_usage_locally_without_proxying_upstream() {
             .len(),
         2
     );
-    assert_eq!(
-        payload["summary_by_model"][0]["cache_creation_ephemeral_5m_tokens"],
-        4
-    );
-    assert_eq!(
-        payload["summary_by_model"][0]["cache_creation_ephemeral_1h_tokens"],
-        6
-    );
-    assert_eq!(
-        payload["summary_by_model"][0]["effective_input_tokens"],
-        105
-    );
-    assert_eq!(payload["summary_by_model"][0]["total_input_context"], 120);
+    let gpt_summary = payload["summary_by_model"]
+        .as_array()
+        .expect("summary array")
+        .iter()
+        .find(|item| item["model"].as_str() == Some("gpt-4.1"))
+        .expect("gpt summary should exist");
+    assert_eq!(gpt_summary["official_cost"], 2.5);
+    assert_eq!(gpt_summary["cache_creation_ephemeral_5m_tokens"], 4);
+    assert_eq!(gpt_summary["cache_creation_ephemeral_1h_tokens"], 6);
+    assert_eq!(gpt_summary["effective_input_tokens"], 105);
+    assert_eq!(gpt_summary["total_input_context"], 120);
     assert!(payload.get("summary_by_provider").is_none());
     assert_eq!(payload["billing"]["id"], "wallet-auth-1");
 

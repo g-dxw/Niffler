@@ -25,7 +25,7 @@
 | `invalid` | 已失效 | 否 | Token、OAuth 或凭证明确失效 |
 | `blocked` | 账号异常 | 否 | 封禁、工作区停用、权限不可恢复 |
 | `quota_exhausted` | 额度耗尽 | 否 | 账号额度明确耗尽 |
-| `temporary_unavailable` | 暂时不可用 | 否，到期自动恢复 | 429、529、5xx、流超时、非硬 403、临时规则命中 |
+| `temporary_unavailable` | 暂时不可用 | 否，到期自动恢复 | 429、529、流超时、非硬 403、临时规则命中 |
 | `available` | 可用 | 是 | 没有阻断条件 |
 
 状态优先级固定为：
@@ -88,8 +88,11 @@
 | 403 非明确硬错误 | `temporary_unavailable` | 是 |
 | 429 | `temporary_unavailable` | 是 |
 | 529 | `temporary_unavailable` | 是 |
-| 408、409、423、425、5xx | `temporary_unavailable` | 是 |
+| 408、409、423、425 | 不改账号状态 | 是 |
+| 普通 5xx | 不改账号状态 | 是 |
 | 流超时达到阈值 | `temporary_unavailable` | 是 |
+
+普通 `5xx` 表示本次上游服务异常，只记录本次尝试失败并继续尝试其他账号或服务，不写入账号冷却、不打开旧熔断、不改变账号主状态。只有管理员明确配置的临时规则、429、529、非硬 403 或达到阈值的流超时，才允许让账号进入 `temporary_unavailable`。
 
 ## 影响范围
 
@@ -186,6 +189,7 @@
 - 账号只有历史 `circuit_breaker_by_format.open=true` 时，`scheduling_state` 仍为 `available`。
 - 账号被调度跳过时，管理页能看到同样状态和原因。
 - Codex 号池前两个账号暂时不可用、第三个账号可用时，请求会继续尝试第三个账号。
-- 401、硬 403、429、529、5xx、流超时都写入正确状态。
+- 401、硬 403、429、529、流超时都写入正确状态。
+- 普通 5xx 只影响当前请求，不写账号冷却、不打开旧熔断，请求会继续尝试其他账号或服务。
 - 号池 tab 数、分页总数、列表 badge、详情 tooltip 和调度行为一致。
 - 使用记录中的 unknown 不再裸露展示，详情能解释为什么没有具体 provider/key。

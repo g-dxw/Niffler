@@ -1335,23 +1335,108 @@ SELECT
 FROM aggregated
 "#;
 pub(super) const UPSERT_STATS_USER_DAILY_SQL: &str = r#"
-WITH aggregated AS (
+WITH usage_billing_facts AS (
+    SELECT
+        id,
+        user_id,
+        username,
+        provider_name,
+        api_format,
+        endpoint_api_format,
+        created_at,
+        status,
+        status_code,
+        error_message,
+        response_time_ms,
+        billing_status,
+        finalized_at,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN 1
+            ELSE 0
+        END AS success_flag,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(input_tokens, 0), 0)
+            ELSE 0
+        END AS input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(output_tokens, 0), 0)
+            ELSE 0
+        END AS output_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_5m, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_5m,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_1h, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_1h,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_read_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_read_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS total_cost_usd,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(cache_creation_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS cache_creation_cost_usd,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(cache_read_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS cache_read_cost_usd,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS actual_total_cost_usd
+    FROM public.usage_billing_facts AS usage
+),
+aggregated AS (
     SELECT
         user_id,
         MAX(username) AS username,
         CAST(COUNT(id) AS BIGINT) AS total_requests,
+        CAST(COALESCE(SUM(success_flag), 0) AS BIGINT) AS success_requests,
         CAST(
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN status_code >= 400
-                             OR lower(COALESCE(status, '')) = 'failed'
-                             OR error_message IS NOT NULL THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
-            ) AS BIGINT
+            GREATEST(COUNT(id) - COALESCE(SUM(success_flag), 0), 0) AS BIGINT
         ) AS error_requests,
         CAST(COALESCE(SUM(input_tokens), 0) AS BIGINT) AS input_tokens,
         CAST(
@@ -1632,7 +1717,7 @@ SELECT
     aggregated.username,
     $1,
     aggregated.total_requests,
-    GREATEST(aggregated.total_requests - aggregated.error_requests, 0),
+    aggregated.success_requests,
     aggregated.error_requests,
     aggregated.input_tokens,
     aggregated.effective_input_tokens,
@@ -1690,7 +1775,87 @@ DO UPDATE SET
     updated_at = EXCLUDED.updated_at
 "#;
 pub(super) const UPSERT_STATS_USER_DAILY_MODEL_SQL: &str = r#"
-WITH aggregated AS (
+WITH usage_billing_facts AS (
+    SELECT
+        id,
+        user_id,
+        username,
+        model,
+        provider_name,
+        api_format,
+        endpoint_api_format,
+        request_id,
+        created_at,
+        status,
+        status_code,
+        error_message,
+        response_time_ms,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(input_tokens, 0), 0)
+            ELSE 0
+        END AS input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(output_tokens, 0), 0)
+            ELSE 0
+        END AS output_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(total_tokens, 0), 0)
+            ELSE 0
+        END AS total_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_5m, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_5m,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_1h, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_1h,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_read_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_read_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS total_cost_usd,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS actual_total_cost_usd
+    FROM public.usage_billing_facts AS usage
+),
+aggregated AS (
     SELECT
         user_id,
         MAX(username) AS username,
@@ -1700,9 +1865,9 @@ WITH aggregated AS (
             COALESCE(
                 SUM(
                     CASE
-                        WHEN status <> 'failed'
+                        WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                              AND (status_code IS NULL OR status_code < 400)
-                             AND error_message IS NULL
+                             AND (error_message IS NULL OR BTRIM(error_message) = '')
                         THEN 1
                         ELSE 0
                     END
@@ -1822,6 +1987,7 @@ WITH aggregated AS (
                 0
             ) AS BIGINT
         ) AS total_input_context,
+        CAST(COALESCE(SUM(official_cost.official_cost_usd), 0) AS DOUBLE PRECISION) AS official_cost,
         CAST(COALESCE(SUM(total_cost_usd), 0) AS DOUBLE PRECISION) AS total_cost,
         CAST(COALESCE(SUM(actual_total_cost_usd), 0) AS DOUBLE PRECISION) AS actual_total_cost,
         COALESCE(
@@ -1849,9 +2015,9 @@ WITH aggregated AS (
         COALESCE(
             SUM(
                 CASE
-                    WHEN status <> 'failed'
+                    WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                          AND (status_code IS NULL OR status_code < 400)
-                         AND error_message IS NULL
+                         AND (error_message IS NULL OR BTRIM(error_message) = '')
                          AND response_time_ms IS NOT NULL
                     THEN GREATEST(COALESCE(response_time_ms, 0), 0)::DOUBLE PRECISION
                     ELSE 0
@@ -1863,9 +2029,9 @@ WITH aggregated AS (
             COALESCE(
                 SUM(
                     CASE
-                        WHEN status <> 'failed'
+                        WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                              AND (status_code IS NULL OR status_code < 400)
-                             AND error_message IS NULL
+                             AND (error_message IS NULL OR BTRIM(error_message) = '')
                              AND response_time_ms IS NOT NULL
                         THEN 1
                         ELSE 0
@@ -1875,6 +2041,74 @@ WITH aggregated AS (
             ) AS BIGINT
         ) AS successful_response_time_samples
     FROM usage_billing_facts AS usage
+    LEFT JOIN "usage" AS raw_usage
+      ON raw_usage.request_id = usage.request_id
+    LEFT JOIN usage_settlement_snapshots AS settlement
+      ON settlement.request_id = usage.request_id
+    LEFT JOIN LATERAL (
+        SELECT
+            COALESCE(
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'base_cost_usd', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata ->> 'base_cost_usd' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END
+            ) AS direct_base_cost_usd,
+            COALESCE(
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END
+            ) AS sales_multiplier
+    ) AS official_cost_inputs ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT CASE
+            WHEN usage.status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (usage.status_code IS NULL OR usage.status_code < 400)
+                 AND (usage.error_message IS NULL OR BTRIM(usage.error_message) = '')
+            THEN GREATEST(
+                COALESCE(
+                    official_cost_inputs.direct_base_cost_usd,
+                    CASE
+                        WHEN official_cost_inputs.sales_multiplier > 0
+                        THEN usage.total_cost_usd / official_cost_inputs.sales_multiplier
+                        ELSE NULL
+                    END,
+                    usage.total_cost_usd,
+                    0
+                ),
+                0
+            )
+            ELSE 0
+        END AS official_cost_usd
+    ) AS official_cost ON TRUE
     WHERE created_at >= $1
       AND created_at < $2
       AND user_id IS NOT NULL
@@ -1901,6 +2135,7 @@ INSERT INTO stats_user_daily_model (
     cache_creation_ephemeral_5m_tokens,
     cache_creation_ephemeral_1h_tokens,
     cache_read_tokens,
+    official_cost,
     total_cost,
     actual_total_cost,
     response_time_sum_ms,
@@ -1927,6 +2162,7 @@ SELECT
     aggregated.cache_creation_ephemeral_5m_tokens,
     aggregated.cache_creation_ephemeral_1h_tokens,
     aggregated.cache_read_tokens,
+    aggregated.official_cost,
     aggregated.total_cost,
     aggregated.actual_total_cost,
     aggregated.response_time_sum_ms,
@@ -1950,6 +2186,7 @@ DO UPDATE SET
     cache_creation_ephemeral_5m_tokens = EXCLUDED.cache_creation_ephemeral_5m_tokens,
     cache_creation_ephemeral_1h_tokens = EXCLUDED.cache_creation_ephemeral_1h_tokens,
     cache_read_tokens = EXCLUDED.cache_read_tokens,
+    official_cost = EXCLUDED.official_cost,
     total_cost = EXCLUDED.total_cost,
     actual_total_cost = EXCLUDED.actual_total_cost,
     response_time_sum_ms = EXCLUDED.response_time_sum_ms,
@@ -1959,7 +2196,87 @@ DO UPDATE SET
     updated_at = EXCLUDED.updated_at
 "#;
 pub(super) const UPSERT_STATS_USER_DAILY_PROVIDER_SQL: &str = r#"
-WITH aggregated AS (
+WITH usage_billing_facts AS (
+    SELECT
+        id,
+        user_id,
+        username,
+        model,
+        provider_name,
+        api_format,
+        endpoint_api_format,
+        request_id,
+        created_at,
+        status,
+        status_code,
+        error_message,
+        response_time_ms,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(input_tokens, 0), 0)
+            ELSE 0
+        END AS input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(output_tokens, 0), 0)
+            ELSE 0
+        END AS output_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(total_tokens, 0), 0)
+            ELSE 0
+        END AS total_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_5m, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_5m,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_1h, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_1h,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_read_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_read_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS total_cost_usd,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS actual_total_cost_usd
+    FROM public.usage_billing_facts AS usage
+),
+aggregated AS (
     SELECT
         user_id,
         MAX(username) AS username,
@@ -1969,9 +2286,9 @@ WITH aggregated AS (
             COALESCE(
                 SUM(
                     CASE
-                        WHEN status <> 'failed'
+                        WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                              AND (status_code IS NULL OR status_code < 400)
-                             AND error_message IS NULL
+                             AND (error_message IS NULL OR BTRIM(error_message) = '')
                         THEN 1
                         ELSE 0
                     END
@@ -2091,6 +2408,7 @@ WITH aggregated AS (
                 0
             ) AS BIGINT
         ) AS total_input_context,
+        CAST(COALESCE(SUM(official_cost.official_cost_usd), 0) AS DOUBLE PRECISION) AS official_cost,
         CAST(COALESCE(SUM(total_cost_usd), 0) AS DOUBLE PRECISION) AS total_cost,
         CAST(COALESCE(SUM(actual_total_cost_usd), 0) AS DOUBLE PRECISION) AS actual_total_cost,
         COALESCE(
@@ -2117,9 +2435,9 @@ WITH aggregated AS (
         COALESCE(
             SUM(
                 CASE
-                    WHEN status <> 'failed'
+                    WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                          AND (status_code IS NULL OR status_code < 400)
-                         AND error_message IS NULL
+                         AND (error_message IS NULL OR BTRIM(error_message) = '')
                          AND response_time_ms IS NOT NULL
                     THEN GREATEST(COALESCE(response_time_ms, 0), 0)::DOUBLE PRECISION
                     ELSE 0
@@ -2131,9 +2449,9 @@ WITH aggregated AS (
             COALESCE(
                 SUM(
                     CASE
-                        WHEN status <> 'failed'
+                        WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                              AND (status_code IS NULL OR status_code < 400)
-                             AND error_message IS NULL
+                             AND (error_message IS NULL OR BTRIM(error_message) = '')
                              AND response_time_ms IS NOT NULL
                         THEN 1
                         ELSE 0
@@ -2143,6 +2461,74 @@ WITH aggregated AS (
             ) AS BIGINT
         ) AS successful_response_time_samples
     FROM usage_billing_facts AS usage
+    LEFT JOIN "usage" AS raw_usage
+      ON raw_usage.request_id = usage.request_id
+    LEFT JOIN usage_settlement_snapshots AS settlement
+      ON settlement.request_id = usage.request_id
+    LEFT JOIN LATERAL (
+        SELECT
+            COALESCE(
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'base_cost_usd', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata ->> 'base_cost_usd' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END
+            ) AS direct_base_cost_usd,
+            COALESCE(
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END
+            ) AS sales_multiplier
+    ) AS official_cost_inputs ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT CASE
+            WHEN usage.status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (usage.status_code IS NULL OR usage.status_code < 400)
+                 AND (usage.error_message IS NULL OR BTRIM(usage.error_message) = '')
+            THEN GREATEST(
+                COALESCE(
+                    official_cost_inputs.direct_base_cost_usd,
+                    CASE
+                        WHEN official_cost_inputs.sales_multiplier > 0
+                        THEN usage.total_cost_usd / official_cost_inputs.sales_multiplier
+                        ELSE NULL
+                    END,
+                    usage.total_cost_usd,
+                    0
+                ),
+                0
+            )
+            ELSE 0
+        END AS official_cost_usd
+    ) AS official_cost ON TRUE
     WHERE created_at >= $1
       AND created_at < $2
       AND user_id IS NOT NULL
@@ -2169,6 +2555,7 @@ INSERT INTO stats_user_daily_provider (
     cache_creation_ephemeral_5m_tokens,
     cache_creation_ephemeral_1h_tokens,
     cache_read_tokens,
+    official_cost,
     total_cost,
     actual_total_cost,
     response_time_sum_ms,
@@ -2195,6 +2582,7 @@ SELECT
     aggregated.cache_creation_ephemeral_5m_tokens,
     aggregated.cache_creation_ephemeral_1h_tokens,
     aggregated.cache_read_tokens,
+    aggregated.official_cost,
     aggregated.total_cost,
     aggregated.actual_total_cost,
     aggregated.response_time_sum_ms,
@@ -2218,6 +2606,7 @@ DO UPDATE SET
     cache_creation_ephemeral_5m_tokens = EXCLUDED.cache_creation_ephemeral_5m_tokens,
     cache_creation_ephemeral_1h_tokens = EXCLUDED.cache_creation_ephemeral_1h_tokens,
     cache_read_tokens = EXCLUDED.cache_read_tokens,
+    official_cost = EXCLUDED.official_cost,
     total_cost = EXCLUDED.total_cost,
     actual_total_cost = EXCLUDED.actual_total_cost,
     response_time_sum_ms = EXCLUDED.response_time_sum_ms,
@@ -2227,7 +2616,87 @@ DO UPDATE SET
     updated_at = EXCLUDED.updated_at
 "#;
 pub(super) const UPSERT_STATS_USER_DAILY_API_FORMAT_SQL: &str = r#"
-WITH aggregated AS (
+WITH usage_billing_facts AS (
+    SELECT
+        id,
+        user_id,
+        username,
+        model,
+        provider_name,
+        api_format,
+        endpoint_api_format,
+        request_id,
+        created_at,
+        status,
+        status_code,
+        error_message,
+        response_time_ms,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(input_tokens, 0), 0)
+            ELSE 0
+        END AS input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(output_tokens, 0), 0)
+            ELSE 0
+        END AS output_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(total_tokens, 0), 0)
+            ELSE 0
+        END AS total_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_5m, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_5m,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_creation_input_tokens_1h, 0), 0)
+            ELSE 0
+        END AS cache_creation_input_tokens_1h,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(cache_read_input_tokens, 0), 0)
+            ELSE 0
+        END AS cache_read_input_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS total_cost_usd,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS actual_total_cost_usd
+    FROM public.usage_billing_facts AS usage
+),
+aggregated AS (
     SELECT
         user_id,
         MAX(username) AS username,
@@ -2237,9 +2706,9 @@ WITH aggregated AS (
             COALESCE(
                 SUM(
                     CASE
-                        WHEN status <> 'failed'
+                        WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                              AND (status_code IS NULL OR status_code < 400)
-                             AND error_message IS NULL
+                             AND (error_message IS NULL OR BTRIM(error_message) = '')
                         THEN 1
                         ELSE 0
                     END
@@ -2359,6 +2828,7 @@ WITH aggregated AS (
                 0
             ) AS BIGINT
         ) AS total_input_context,
+        CAST(COALESCE(SUM(official_cost.official_cost_usd), 0) AS DOUBLE PRECISION) AS official_cost,
         CAST(COALESCE(SUM(total_cost_usd), 0) AS DOUBLE PRECISION) AS total_cost,
         CAST(COALESCE(SUM(actual_total_cost_usd), 0) AS DOUBLE PRECISION) AS actual_total_cost,
         COALESCE(
@@ -2385,9 +2855,9 @@ WITH aggregated AS (
         COALESCE(
             SUM(
                 CASE
-                    WHEN status <> 'failed'
+                    WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                          AND (status_code IS NULL OR status_code < 400)
-                         AND error_message IS NULL
+                         AND (error_message IS NULL OR BTRIM(error_message) = '')
                          AND response_time_ms IS NOT NULL
                     THEN GREATEST(COALESCE(response_time_ms, 0), 0)::DOUBLE PRECISION
                     ELSE 0
@@ -2399,9 +2869,9 @@ WITH aggregated AS (
             COALESCE(
                 SUM(
                     CASE
-                        WHEN status <> 'failed'
+                        WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                              AND (status_code IS NULL OR status_code < 400)
-                             AND error_message IS NULL
+                             AND (error_message IS NULL OR BTRIM(error_message) = '')
                              AND response_time_ms IS NOT NULL
                         THEN 1
                         ELSE 0
@@ -2411,6 +2881,74 @@ WITH aggregated AS (
             ) AS BIGINT
         ) AS successful_response_time_samples
     FROM usage_billing_facts AS usage
+    LEFT JOIN "usage" AS raw_usage
+      ON raw_usage.request_id = usage.request_id
+    LEFT JOIN usage_settlement_snapshots AS settlement
+      ON settlement.request_id = usage.request_id
+    LEFT JOIN LATERAL (
+        SELECT
+            COALESCE(
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'base_cost_usd', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata ->> 'base_cost_usd' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END
+            ) AS direct_base_cost_usd,
+            COALESCE(
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+                         ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+                    THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+                    ELSE NULL
+                END
+            ) AS sales_multiplier
+    ) AS official_cost_inputs ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT CASE
+            WHEN usage.status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (usage.status_code IS NULL OR usage.status_code < 400)
+                 AND (usage.error_message IS NULL OR BTRIM(usage.error_message) = '')
+            THEN GREATEST(
+                COALESCE(
+                    official_cost_inputs.direct_base_cost_usd,
+                    CASE
+                        WHEN official_cost_inputs.sales_multiplier > 0
+                        THEN usage.total_cost_usd / official_cost_inputs.sales_multiplier
+                        ELSE NULL
+                    END,
+                    usage.total_cost_usd,
+                    0
+                ),
+                0
+            )
+            ELSE 0
+        END AS official_cost_usd
+    ) AS official_cost ON TRUE
     WHERE created_at >= $1
       AND created_at < $2
       AND user_id IS NOT NULL
@@ -2436,6 +2974,7 @@ INSERT INTO stats_user_daily_api_format (
     cache_creation_ephemeral_5m_tokens,
     cache_creation_ephemeral_1h_tokens,
     cache_read_tokens,
+    official_cost,
     total_cost,
     actual_total_cost,
     response_time_sum_ms,
@@ -2462,6 +3001,7 @@ SELECT
     aggregated.cache_creation_ephemeral_5m_tokens,
     aggregated.cache_creation_ephemeral_1h_tokens,
     aggregated.cache_read_tokens,
+    aggregated.official_cost,
     aggregated.total_cost,
     aggregated.actual_total_cost,
     aggregated.response_time_sum_ms,
@@ -2485,6 +3025,7 @@ DO UPDATE SET
     cache_creation_ephemeral_5m_tokens = EXCLUDED.cache_creation_ephemeral_5m_tokens,
     cache_creation_ephemeral_1h_tokens = EXCLUDED.cache_creation_ephemeral_1h_tokens,
     cache_read_tokens = EXCLUDED.cache_read_tokens,
+    official_cost = EXCLUDED.official_cost,
     total_cost = EXCLUDED.total_cost,
     actual_total_cost = EXCLUDED.actual_total_cost,
     response_time_sum_ms = EXCLUDED.response_time_sum_ms,
@@ -2494,7 +3035,35 @@ DO UPDATE SET
     updated_at = EXCLUDED.updated_at
 "#;
 pub(super) const UPSERT_STATS_USER_DAILY_MODEL_PROVIDER_SQL: &str = r#"
-WITH aggregated AS (
+WITH usage_billing_facts AS (
+    SELECT
+        id,
+        user_id,
+        username,
+        model,
+        provider_name,
+        created_at,
+        status,
+        status_code,
+        error_message,
+        response_time_ms,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN GREATEST(COALESCE(total_tokens, 0), 0)
+            ELSE 0
+        END AS total_tokens,
+        CASE
+            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
+                 AND (status_code IS NULL OR status_code < 400)
+                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+            ELSE 0
+        END AS total_cost_usd
+    FROM public.usage_billing_facts AS usage
+),
+aggregated AS (
     SELECT
         user_id,
         MAX(username) AS username,

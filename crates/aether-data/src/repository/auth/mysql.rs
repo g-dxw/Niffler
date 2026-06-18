@@ -273,6 +273,23 @@ impl AuthApiKeyReadRepository for MysqlAuthApiKeyReadRepository {
         self.fetch_export_rows(builder).await
     }
 
+    async fn list_export_api_keys_by_group_id(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<StoredAuthApiKeyExportRecord>, DataLayerError> {
+        let group_id = group_id.trim();
+        if group_id.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut builder = QueryBuilder::<MySql>::new(EXPORT_COLUMNS);
+        builder
+            .push(" WHERE api_keys.group_id = ")
+            .push_bind(group_id)
+            .push(" AND api_keys.is_standalone = 0 ORDER BY api_keys.user_id ASC, api_keys.id ASC");
+        self.fetch_export_rows(builder).await
+    }
+
     async fn list_export_api_keys_by_name_search(
         &self,
         name_search: &str,

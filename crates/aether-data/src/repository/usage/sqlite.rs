@@ -328,9 +328,9 @@ const SQLITE_USAGE_CANONICAL_TOTAL_TOKENS_EXPR: &str = r#"
 
 const SQLITE_USAGE_SUCCESS_FLAG_EXPR: &str = r#"
 CASE
-  WHEN status <> 'failed'
+  WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
        AND (status_code IS NULL OR status_code < 400)
-       AND error_message IS NULL
+       AND (error_message IS NULL OR TRIM(error_message) = '')
   THEN 1
   ELSE 0
 END
@@ -404,6 +404,19 @@ fn push_sqlite_usage_list_filters(
         push_sqlite_usage_where(builder, has_where);
         builder.push("user_id = ").push_bind(user_id.to_string());
     }
+    if let Some(api_key_ids) = query.api_key_ids.as_deref() {
+        push_sqlite_usage_where(builder, has_where);
+        if api_key_ids.is_empty() {
+            builder.push("0 = 1");
+        } else {
+            builder.push("api_key_id IN (");
+            let mut separated = builder.separated(", ");
+            for api_key_id in api_key_ids {
+                separated.push_bind(api_key_id.to_string());
+            }
+            separated.push_unseparated(")");
+        }
+    }
     if let Some(provider_name) = query.provider_name.as_deref() {
         push_sqlite_usage_where(builder, has_where);
         builder
@@ -458,6 +471,7 @@ fn push_sqlite_usage_keyword_filters(
             created_from_unix_secs: query.created_from_unix_secs,
             created_until_unix_secs: query.created_until_unix_secs,
             user_id: query.user_id.clone(),
+            api_key_ids: query.api_key_ids.clone(),
             provider_name: query.provider_name.clone(),
             model: query.model.clone(),
             api_format: query.api_format.clone(),
@@ -698,6 +712,7 @@ fn decode_sqlite_usage_aggregation_row(
             "cache_creation_ephemeral_1h_tokens",
         )?,
         cache_read_tokens: sqlite_aggregate_u64(row, "cache_read_tokens")?,
+        official_cost_usd: sqlite_real(row, "official_cost_usd")?,
         total_cost_usd: sqlite_real(row, "total_cost_usd")?,
         actual_total_cost_usd: sqlite_real(row, "actual_total_cost_usd")?,
         avg_response_time_ms: sqlite_optional_real(row, "avg_response_time_ms")?,
@@ -1349,7 +1364,7 @@ FROM "usage"
         };
         let success_count_expr = if matches!(query.group_by, UsageAuditAggregationGroupBy::Provider)
         {
-            "COALESCE(SUM(CASE WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled') AND (status_code IS NULL OR status_code < 400) THEN 1 ELSE 0 END), 0)"
+            "COALESCE(SUM(CASE WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled') AND (status_code IS NULL OR status_code < 400) AND (error_message IS NULL OR TRIM(error_message) = '') THEN 1 ELSE 0 END), 0)"
         } else {
             "NULL"
         };
@@ -1360,18 +1375,19 @@ SELECT
   {group_expr} AS group_key,
   {display_expr} AS display_name,
   COUNT(*) AS request_count,
-  COALESCE(SUM(MAX(COALESCE(total_tokens, 0), 0)), 0) AS total_tokens,
-  COALESCE(SUM(MAX(COALESCE(output_tokens, 0), 0)), 0) AS output_tokens,
-  COALESCE(SUM({effective_input_expr}), 0) AS effective_input_tokens,
-  COALESCE(SUM({total_input_context_expr}), 0) AS total_input_context,
-  COALESCE(SUM({cache_creation_expr}), 0) AS cache_creation_tokens,
-  COALESCE(SUM(MAX(COALESCE(cache_creation_ephemeral_5m_input_tokens, 0), 0)), 0)
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(total_tokens, 0), 0) ELSE 0 END), 0) AS total_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(output_tokens, 0), 0) ELSE 0 END), 0) AS output_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {effective_input_expr} ELSE 0 END), 0) AS effective_input_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {total_input_context_expr} ELSE 0 END), 0) AS total_input_context,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {cache_creation_expr} ELSE 0 END), 0) AS cache_creation_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(cache_creation_ephemeral_5m_input_tokens, 0), 0) ELSE 0 END), 0)
     AS cache_creation_ephemeral_5m_tokens,
-  COALESCE(SUM(MAX(COALESCE(cache_creation_ephemeral_1h_input_tokens, 0), 0)), 0)
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(cache_creation_ephemeral_1h_input_tokens, 0), 0) ELSE 0 END), 0)
     AS cache_creation_ephemeral_1h_tokens,
-  COALESCE(SUM(MAX(COALESCE(cache_read_input_tokens, 0), 0)), 0) AS cache_read_tokens,
-  COALESCE(SUM(COALESCE(CAST(total_cost_usd AS REAL), 0)), 0) AS total_cost_usd,
-  COALESCE(SUM(COALESCE(CAST(actual_total_cost_usd AS REAL), 0)), 0)
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(cache_read_input_tokens, 0), 0) ELSE 0 END), 0) AS cache_read_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {official_cost_expr} ELSE 0 END), 0) AS official_cost_usd,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN COALESCE(CAST(total_cost_usd AS REAL), 0) ELSE 0 END), 0) AS total_cost_usd,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN COALESCE(CAST(actual_total_cost_usd AS REAL), 0) ELSE 0 END), 0)
     AS actual_total_cost_usd,
   {avg_response_expr} AS avg_response_time_ms,
   {success_count_expr} AS success_count
@@ -1379,7 +1395,9 @@ FROM "usage"
 "#,
             effective_input_expr = SQLITE_USAGE_EFFECTIVE_INPUT_TOKENS_EXPR,
             total_input_context_expr = SQLITE_USAGE_TOTAL_INPUT_CONTEXT_EXPR,
-            cache_creation_expr = SQLITE_USAGE_CACHE_CREATION_TOKENS_EXPR
+            cache_creation_expr = SQLITE_USAGE_CACHE_CREATION_TOKENS_EXPR,
+            official_cost_expr = sqlite_provider_api_key_window_cost_expr(),
+            success_flag_expr = SQLITE_USAGE_SUCCESS_FLAG_EXPR
         ));
         let mut has_where = false;
         push_sqlite_usage_where(&mut builder, &mut has_where);
@@ -2033,19 +2051,20 @@ ORDER BY request_count DESC, provider_name ASC
 SELECT
   {group_expr} AS group_key,
   COUNT(*) AS request_count,
-  COALESCE(SUM(MAX(COALESCE(input_tokens, 0), 0)), 0) AS input_tokens,
-  COALESCE(SUM(MAX(COALESCE(total_tokens, 0), 0)), 0) AS total_tokens,
-  COALESCE(SUM(MAX(COALESCE(output_tokens, 0), 0)), 0) AS output_tokens,
-  COALESCE(SUM({effective_input_expr}), 0) AS effective_input_tokens,
-  COALESCE(SUM({total_input_context_expr}), 0) AS total_input_context,
-  COALESCE(SUM({cache_creation_expr}), 0) AS cache_creation_tokens,
-  COALESCE(SUM(MAX(COALESCE(cache_creation_ephemeral_5m_input_tokens, 0), 0)), 0)
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(input_tokens, 0), 0) ELSE 0 END), 0) AS input_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(total_tokens, 0), 0) ELSE 0 END), 0) AS total_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(output_tokens, 0), 0) ELSE 0 END), 0) AS output_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {effective_input_expr} ELSE 0 END), 0) AS effective_input_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {total_input_context_expr} ELSE 0 END), 0) AS total_input_context,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {cache_creation_expr} ELSE 0 END), 0) AS cache_creation_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(cache_creation_ephemeral_5m_input_tokens, 0), 0) ELSE 0 END), 0)
     AS cache_creation_ephemeral_5m_tokens,
-  COALESCE(SUM(MAX(COALESCE(cache_creation_ephemeral_1h_input_tokens, 0), 0)), 0)
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(cache_creation_ephemeral_1h_input_tokens, 0), 0) ELSE 0 END), 0)
     AS cache_creation_ephemeral_1h_tokens,
-  COALESCE(SUM(MAX(COALESCE(cache_read_input_tokens, 0), 0)), 0) AS cache_read_tokens,
-  COALESCE(SUM(COALESCE(CAST(total_cost_usd AS REAL), 0)), 0) AS total_cost_usd,
-  COALESCE(SUM(COALESCE(CAST(actual_total_cost_usd AS REAL), 0)), 0)
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN MAX(COALESCE(cache_read_input_tokens, 0), 0) ELSE 0 END), 0) AS cache_read_tokens,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN {official_cost_expr} ELSE 0 END), 0) AS official_cost_usd,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN COALESCE(CAST(total_cost_usd AS REAL), 0) ELSE 0 END), 0) AS total_cost_usd,
+  COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 THEN COALESCE(CAST(actual_total_cost_usd AS REAL), 0) ELSE 0 END), 0)
     AS actual_total_cost_usd,
   COALESCE(SUM({success_flag_expr}), 0) AS success_count,
   COALESCE(SUM(CASE WHEN {success_flag_expr} = 1 AND response_time_ms IS NOT NULL THEN MAX(COALESCE(response_time_ms, 0), 0) ELSE 0 END), 0)
@@ -2061,6 +2080,7 @@ FROM "usage"
             effective_input_expr = SQLITE_USAGE_EFFECTIVE_INPUT_TOKENS_EXPR,
             total_input_context_expr = SQLITE_USAGE_TOTAL_INPUT_CONTEXT_EXPR,
             cache_creation_expr = SQLITE_USAGE_CACHE_CREATION_TOKENS_EXPR,
+            official_cost_expr = sqlite_provider_api_key_window_cost_expr(),
             success_flag_expr = SQLITE_USAGE_SUCCESS_FLAG_EXPR
         ));
         let mut has_where = false;
@@ -2104,6 +2124,7 @@ FROM "usage"
                         "cache_creation_ephemeral_1h_tokens",
                     )?,
                     cache_read_tokens: sqlite_aggregate_u64(row, "cache_read_tokens")?,
+                    official_cost_usd: sqlite_real(row, "official_cost_usd")?,
                     total_cost_usd: sqlite_real(row, "total_cost_usd")?,
                     actual_total_cost_usd: sqlite_real(row, "actual_total_cost_usd")?,
                     success_count: sqlite_aggregate_u64(row, "success_count")?,

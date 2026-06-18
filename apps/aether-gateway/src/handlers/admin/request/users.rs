@@ -561,6 +561,18 @@ impl<'a> AdminAppState<'a> {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_auth_api_key_export_records_by_group_id(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<aether_data::repository::auth::StoredAuthApiKeyExportRecord>, GatewayError>
+    {
+        self.app
+            .data
+            .list_auth_api_key_export_records_by_group_id(group_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn list_auth_api_key_export_records_by_name_search(
         &self,
         name_search: &str,

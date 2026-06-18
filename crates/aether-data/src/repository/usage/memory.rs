@@ -242,6 +242,14 @@ fn usage_matches_list_query(item: &StoredRequestUsageAudit, query: &UsageAuditLi
             return false;
         }
     }
+    if let Some(api_key_ids) = query.api_key_ids.as_deref() {
+        let Some(api_key_id) = item.api_key_id.as_deref() else {
+            return false;
+        };
+        if !api_key_ids.iter().any(|candidate| candidate == api_key_id) {
+            return false;
+        }
+    }
     if let Some(provider_name) = query.provider_name.as_deref() {
         if item.provider_name != provider_name {
             return false;
@@ -299,6 +307,14 @@ fn usage_matches_keyword_search_query(
     }
     if let Some(user_id) = query.user_id.as_deref() {
         if item.user_id.as_deref() != Some(user_id) {
+            return false;
+        }
+    }
+    if let Some(api_key_ids) = query.api_key_ids.as_deref() {
+        let Some(api_key_id) = item.api_key_id.as_deref() else {
+            return false;
+        };
+        if !api_key_ids.iter().any(|candidate| candidate == api_key_id) {
             return false;
         }
     }
@@ -948,7 +964,7 @@ fn usage_total_tokens(item: &StoredRequestUsageAudit) -> u64 {
         .saturating_add(item.cache_read_input_tokens)
 }
 
-fn provider_api_key_window_cost_usd(item: &StoredRequestUsageAudit) -> f64 {
+fn official_base_cost_usd(item: &StoredRequestUsageAudit) -> f64 {
     item.settlement_base_cost_usd()
         .filter(|value| *value > 0.0)
         .unwrap_or(item.total_cost_usd)
@@ -959,6 +975,10 @@ fn usage_is_success(item: &StoredRequestUsageAudit) -> bool {
         item.status.as_str(),
         "completed" | "success" | "ok" | "billed" | "settled"
     ) && item.status_code.is_none_or(|code| code < 400)
+        && item
+            .error_message
+            .as_deref()
+            .is_none_or(|message| message.trim().is_empty())
 }
 
 fn usage_output_tps_uses_generation_time(item: &StoredRequestUsageAudit) -> bool {
@@ -1163,6 +1183,7 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
             cache_creation_ephemeral_5m_tokens: u64,
             cache_creation_ephemeral_1h_tokens: u64,
             cache_read_tokens: u64,
+            official_cost_usd: f64,
             total_cost_usd: f64,
             actual_total_cost_usd: f64,
             response_time_ms_sum: u64,
@@ -1227,28 +1248,31 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
                 bucket.display_name = provider_display_name;
             }
             bucket.request_count = bucket.request_count.saturating_add(1);
-            bucket.total_tokens = bucket.total_tokens.saturating_add(item.total_tokens);
-            bucket.output_tokens = bucket.output_tokens.saturating_add(item.output_tokens);
-            bucket.effective_input_tokens = bucket
-                .effective_input_tokens
-                .saturating_add(usage_effective_input_tokens(item));
-            bucket.total_input_context = bucket
-                .total_input_context
-                .saturating_add(usage_total_input_context(item));
-            bucket.cache_creation_tokens = bucket
-                .cache_creation_tokens
-                .saturating_add(usage_cache_creation_tokens(item));
-            bucket.cache_creation_ephemeral_5m_tokens = bucket
-                .cache_creation_ephemeral_5m_tokens
-                .saturating_add(item.cache_creation_ephemeral_5m_input_tokens);
-            bucket.cache_creation_ephemeral_1h_tokens = bucket
-                .cache_creation_ephemeral_1h_tokens
-                .saturating_add(item.cache_creation_ephemeral_1h_input_tokens);
-            bucket.cache_read_tokens = bucket
-                .cache_read_tokens
-                .saturating_add(item.cache_read_input_tokens);
-            bucket.total_cost_usd += item.total_cost_usd;
-            bucket.actual_total_cost_usd += item.actual_total_cost_usd;
+            if usage_is_success(item) {
+                bucket.total_tokens = bucket.total_tokens.saturating_add(item.total_tokens);
+                bucket.output_tokens = bucket.output_tokens.saturating_add(item.output_tokens);
+                bucket.effective_input_tokens = bucket
+                    .effective_input_tokens
+                    .saturating_add(usage_effective_input_tokens(item));
+                bucket.total_input_context = bucket
+                    .total_input_context
+                    .saturating_add(usage_total_input_context(item));
+                bucket.cache_creation_tokens = bucket
+                    .cache_creation_tokens
+                    .saturating_add(usage_cache_creation_tokens(item));
+                bucket.cache_creation_ephemeral_5m_tokens = bucket
+                    .cache_creation_ephemeral_5m_tokens
+                    .saturating_add(item.cache_creation_ephemeral_5m_input_tokens);
+                bucket.cache_creation_ephemeral_1h_tokens = bucket
+                    .cache_creation_ephemeral_1h_tokens
+                    .saturating_add(item.cache_creation_ephemeral_1h_input_tokens);
+                bucket.cache_read_tokens = bucket
+                    .cache_read_tokens
+                    .saturating_add(item.cache_read_input_tokens);
+                bucket.official_cost_usd += official_base_cost_usd(item);
+                bucket.total_cost_usd += item.total_cost_usd;
+                bucket.actual_total_cost_usd += item.actual_total_cost_usd;
+            }
             bucket.response_time_ms_sum = bucket
                 .response_time_ms_sum
                 .saturating_add(item.response_time_ms.unwrap_or_default());
@@ -1272,6 +1296,7 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
                 cache_creation_ephemeral_5m_tokens: bucket.cache_creation_ephemeral_5m_tokens,
                 cache_creation_ephemeral_1h_tokens: bucket.cache_creation_ephemeral_1h_tokens,
                 cache_read_tokens: bucket.cache_read_tokens,
+                official_cost_usd: bucket.official_cost_usd,
                 total_cost_usd: bucket.total_cost_usd,
                 actual_total_cost_usd: bucket.actual_total_cost_usd,
                 avg_response_time_ms: match query.group_by {
@@ -1583,6 +1608,7 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
             cache_creation_ephemeral_5m_tokens: u64,
             cache_creation_ephemeral_1h_tokens: u64,
             cache_read_tokens: u64,
+            official_cost_usd: f64,
             total_cost_usd: f64,
             actual_total_cost_usd: f64,
             success_count: u64,
@@ -1608,34 +1634,35 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
                 UsageBreakdownGroupBy::ApiFormat => item.api_format.clone().unwrap_or_default(),
             };
             let bucket = grouped.entry(group_key).or_default();
-            let is_success = item.status != "failed"
-                && item.status_code.is_none_or(|status| status < 400)
-                && item.error_message.is_none();
+            let is_success = usage_is_success(item);
 
             bucket.request_count = bucket.request_count.saturating_add(1);
-            bucket.input_tokens = bucket.input_tokens.saturating_add(item.input_tokens);
-            bucket.total_tokens = bucket.total_tokens.saturating_add(item.total_tokens);
-            bucket.output_tokens = bucket.output_tokens.saturating_add(item.output_tokens);
-            bucket.effective_input_tokens = bucket
-                .effective_input_tokens
-                .saturating_add(usage_effective_input_tokens(item));
-            bucket.total_input_context = bucket
-                .total_input_context
-                .saturating_add(usage_total_input_context(item));
-            bucket.cache_creation_tokens = bucket
-                .cache_creation_tokens
-                .saturating_add(usage_cache_creation_tokens(item));
-            bucket.cache_creation_ephemeral_5m_tokens = bucket
-                .cache_creation_ephemeral_5m_tokens
-                .saturating_add(item.cache_creation_ephemeral_5m_input_tokens);
-            bucket.cache_creation_ephemeral_1h_tokens = bucket
-                .cache_creation_ephemeral_1h_tokens
-                .saturating_add(item.cache_creation_ephemeral_1h_input_tokens);
-            bucket.cache_read_tokens = bucket
-                .cache_read_tokens
-                .saturating_add(item.cache_read_input_tokens);
-            bucket.total_cost_usd += item.total_cost_usd;
-            bucket.actual_total_cost_usd += item.actual_total_cost_usd;
+            if is_success {
+                bucket.input_tokens = bucket.input_tokens.saturating_add(item.input_tokens);
+                bucket.total_tokens = bucket.total_tokens.saturating_add(item.total_tokens);
+                bucket.output_tokens = bucket.output_tokens.saturating_add(item.output_tokens);
+                bucket.effective_input_tokens = bucket
+                    .effective_input_tokens
+                    .saturating_add(usage_effective_input_tokens(item));
+                bucket.total_input_context = bucket
+                    .total_input_context
+                    .saturating_add(usage_total_input_context(item));
+                bucket.cache_creation_tokens = bucket
+                    .cache_creation_tokens
+                    .saturating_add(usage_cache_creation_tokens(item));
+                bucket.cache_creation_ephemeral_5m_tokens = bucket
+                    .cache_creation_ephemeral_5m_tokens
+                    .saturating_add(item.cache_creation_ephemeral_5m_input_tokens);
+                bucket.cache_creation_ephemeral_1h_tokens = bucket
+                    .cache_creation_ephemeral_1h_tokens
+                    .saturating_add(item.cache_creation_ephemeral_1h_input_tokens);
+                bucket.cache_read_tokens = bucket
+                    .cache_read_tokens
+                    .saturating_add(item.cache_read_input_tokens);
+                bucket.official_cost_usd += official_base_cost_usd(item);
+                bucket.total_cost_usd += item.total_cost_usd;
+                bucket.actual_total_cost_usd += item.actual_total_cost_usd;
+            }
             if let Some(response_time_ms) = item.response_time_ms {
                 bucket.overall_response_time_sum_ms += response_time_ms as f64;
                 bucket.overall_response_time_samples =
@@ -1664,6 +1691,7 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
                 cache_creation_ephemeral_5m_tokens: bucket.cache_creation_ephemeral_5m_tokens,
                 cache_creation_ephemeral_1h_tokens: bucket.cache_creation_ephemeral_1h_tokens,
                 cache_read_tokens: bucket.cache_read_tokens,
+                official_cost_usd: bucket.official_cost_usd,
                 total_cost_usd: bucket.total_cost_usd,
                 actual_total_cost_usd: bucket.actual_total_cost_usd,
                 success_count: bucket.success_count,
@@ -2398,7 +2426,7 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
                 {
                     continue;
                 }
-                let window_cost_usd = provider_api_key_window_cost_usd(item);
+                let window_cost_usd = official_base_cost_usd(item);
                 if item.billing_status != "settled" || window_cost_usd <= 0.0 {
                     continue;
                 }

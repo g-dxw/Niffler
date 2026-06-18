@@ -189,6 +189,13 @@ mod tests {
             self.lookup.list_export_api_keys_by_ids(api_key_ids).await
         }
 
+        async fn list_export_api_keys_by_group_id(
+            &self,
+            group_id: &str,
+        ) -> Result<Vec<StoredAuthApiKeyExportRecord>, aether_data::DataLayerError> {
+            self.lookup.list_export_api_keys_by_group_id(group_id).await
+        }
+
         async fn list_export_api_keys_by_name_search(
             &self,
             name_search: &str,

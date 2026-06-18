@@ -86,12 +86,14 @@
       :time-range="timeRange"
       :filter-search="filterSearch"
       :filter-user="filterUser"
+      :filter-api-key-group="filterApiKeyGroup"
       :filter-model="filterModel"
       :filter-provider="filterProvider"
       :filter-api-format="filterApiFormat"
       :filter-status="filterStatus"
       :filter-client-family="filterClientFamily"
       :available-users="availableUsers"
+      :available-api-key-groups="availableApiKeyGroups"
       :available-models="availableModels"
       :available-providers="availableProviders"
       :available-client-families="availableClientFamilies"
@@ -103,6 +105,7 @@
       @update:time-range="handleTimeRangeChange"
       @update:filter-search="handleFilterSearchChange"
       @update:filter-user="handleFilterUserChange"
+      @update:filter-api-key-group="handleFilterApiKeyGroupChange"
       @update:filter-model="handleFilterModelChange"
       @update:filter-provider="handleFilterProviderChange"
       @update:filter-api-format="handleFilterApiFormatChange"
@@ -157,7 +160,7 @@ import {
 } from '@/features/usage/utils/status'
 import { applyUsageActiveRequestUpdate } from '@/features/usage/utils/activeRequestUpdates'
 import type { DateRangeParams, FilterStatusValue, RequestStatus } from '@/features/usage/types'
-import type { UserOption } from '@/features/usage/components/UsageRecordsTable.vue'
+import type { UserGroupOption, UserOption } from '@/features/usage/components/UsageRecordsTable.vue'
 import { log } from '@/utils/logger'
 import type { ActivityHeatmap } from '@/types/activity'
 import { useToast } from '@/composables/useToast'
@@ -232,6 +235,7 @@ function formatIntervalTimelineWindow(hours: number): string {
 // 筛选状态
 const filterSearch = ref('')
 const filterUser = ref('__all__')
+const filterApiKeyGroup = ref('__all__')
 const filterModel = ref('__all__')
 const filterProvider = ref('__all__')
 const filterApiFormat = ref('__all__')
@@ -240,6 +244,7 @@ const filterClientFamily = ref('__all__')
 
 // 用户列表（仅管理员页面使用）
 const availableUsers = ref<UserOption[]>([])
+const availableApiKeyGroups = ref<UserGroupOption[]>([])
 
 // 使用 composables
 const {
@@ -293,6 +298,17 @@ async function loadAdminUsers() {
     availableUsers.value = users.map(u => ({ id: u.id, username: u.username, email: u.email }))
   } catch (error) {
     log.error('加载用户列表失败:', error)
+  }
+}
+
+async function loadAdminApiKeyGroups() {
+  try {
+    const response = await usersApi.listUserGroups()
+    availableApiKeyGroups.value = response.items
+      .map(group => ({ id: group.id, name: group.name }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+  } catch (error) {
+    log.error('加载 Key 分组失败:', error)
   }
 }
 
@@ -624,6 +640,7 @@ onMounted(async () => {
       await refreshAdminAnalytics({ force: true })
       await loadHeatmapData()
       await loadAdminUsers()
+      await loadAdminApiKeyGroups()
     })()
   } else {
     await Promise.allSettled([
@@ -687,6 +704,7 @@ function getCurrentFilters() {
   return {
     search: filterSearch.value.trim() || undefined,
     user_id: filterUser.value !== '__all__' ? filterUser.value : undefined,
+    api_key_group_id: filterApiKeyGroup.value !== '__all__' ? filterApiKeyGroup.value : undefined,
     model: filterModel.value !== '__all__' ? filterModel.value : undefined,
     provider: filterProvider.value !== '__all__' ? filterProvider.value : undefined,
     api_format: filterApiFormat.value !== '__all__' ? filterApiFormat.value : undefined,
@@ -706,6 +724,13 @@ async function handleFilterSearchChange(value: string) {
 async function handleFilterUserChange(value: string) {
   filterUser.value = value
   currentPage.value = 1  // 重置到第一页
+
+  await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
+}
+
+async function handleFilterApiKeyGroupChange(value: string) {
+  filterApiKeyGroup.value = value
+  currentPage.value = 1
 
   await loadRecords({ page: 1, pageSize: pageSize.value }, getCurrentFilters(), timeRange.value)
 }

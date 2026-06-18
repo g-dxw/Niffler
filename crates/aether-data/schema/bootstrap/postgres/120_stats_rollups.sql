@@ -117,6 +117,7 @@ ALTER TABLE public.stats_user_daily_model
     ADD COLUMN IF NOT EXISTS cache_creation_ephemeral_5m_tokens bigint DEFAULT '0'::bigint NOT NULL,
     ADD COLUMN IF NOT EXISTS cache_creation_ephemeral_1h_tokens bigint DEFAULT '0'::bigint NOT NULL,
     ADD COLUMN IF NOT EXISTS cache_read_tokens bigint DEFAULT '0'::bigint NOT NULL,
+    ADD COLUMN IF NOT EXISTS official_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     ADD COLUMN IF NOT EXISTS actual_total_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     ADD COLUMN IF NOT EXISTS successful_response_time_sum_ms double precision DEFAULT '0'::double precision NOT NULL,
     ADD COLUMN IF NOT EXISTS successful_response_time_samples bigint DEFAULT 0 NOT NULL;
@@ -138,6 +139,7 @@ CREATE TABLE IF NOT EXISTS public.stats_user_daily_provider (
     cache_creation_ephemeral_5m_tokens bigint DEFAULT '0'::bigint NOT NULL,
     cache_creation_ephemeral_1h_tokens bigint DEFAULT '0'::bigint NOT NULL,
     cache_read_tokens bigint DEFAULT '0'::bigint NOT NULL,
+    official_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     total_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     actual_total_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     response_time_sum_ms double precision DEFAULT '0'::double precision NOT NULL,
@@ -175,6 +177,7 @@ CREATE TABLE IF NOT EXISTS public.stats_user_daily_api_format (
     cache_creation_ephemeral_5m_tokens bigint DEFAULT '0'::bigint NOT NULL,
     cache_creation_ephemeral_1h_tokens bigint DEFAULT '0'::bigint NOT NULL,
     cache_read_tokens bigint DEFAULT '0'::bigint NOT NULL,
+    official_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     total_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     actual_total_cost numeric(20,8) DEFAULT '0'::double precision NOT NULL,
     response_time_sum_ms double precision DEFAULT '0'::double precision NOT NULL,

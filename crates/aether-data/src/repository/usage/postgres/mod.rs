@@ -373,6 +373,7 @@ fn absorb_usage_breakdown_rows(
         entry.cache_read_tokens = entry
             .cache_read_tokens
             .saturating_add(row.cache_read_tokens);
+        entry.official_cost_usd += row.official_cost_usd;
         entry.total_cost_usd += row.total_cost_usd;
         entry.actual_total_cost_usd += row.actual_total_cost_usd;
         entry.success_count = entry.success_count.saturating_add(row.success_count);
@@ -422,6 +423,7 @@ fn absorb_usage_audit_aggregation_rows(
                     cache_creation_ephemeral_5m_tokens: 0,
                     cache_creation_ephemeral_1h_tokens: 0,
                     cache_read_tokens: 0,
+                    official_cost_usd: 0.0,
                     total_cost_usd: 0.0,
                     actual_total_cost_usd: 0.0,
                     avg_response_time_ms: None,
@@ -458,6 +460,7 @@ fn absorb_usage_audit_aggregation_rows(
         entry.cache_read_tokens = entry
             .cache_read_tokens
             .saturating_add(row.cache_read_tokens);
+        entry.official_cost_usd += row.official_cost_usd;
         entry.total_cost_usd += row.total_cost_usd;
         entry.actual_total_cost_usd += row.actual_total_cost_usd;
         entry.success_count = match (entry.success_count, row.success_count) {
@@ -538,6 +541,9 @@ fn decode_usage_breakdown_summary_row(
             .try_get::<i64, _>("cache_read_tokens")
             .map_postgres_err()?
             .max(0) as u64,
+        official_cost_usd: row
+            .try_get::<f64, _>("official_cost_usd")
+            .map_postgres_err()?,
         total_cost_usd: row.try_get::<f64, _>("total_cost_usd").map_postgres_err()?,
         actual_total_cost_usd: row
             .try_get::<f64, _>("actual_total_cost_usd")
@@ -610,6 +616,9 @@ fn decode_usage_audit_aggregation_row(
             .try_get::<i64, _>("cache_read_tokens")
             .map_postgres_err()?
             .max(0) as u64,
+        official_cost_usd: row
+            .try_get::<f64, _>("official_cost_usd")
+            .map_postgres_err()?,
         total_cost_usd: row.try_get::<f64, _>("total_cost_usd").map_postgres_err()?,
         actual_total_cost_usd: row
             .try_get::<f64, _>("actual_total_cost_usd")
@@ -2356,9 +2365,24 @@ ORDER BY request_count DESC, "usage".provider_name ASC
         }
         if let Some(user_id) = query.user_id.as_deref() {
             builder.push(if has_where { " AND " } else { " WHERE " });
+            has_where = true;
             builder
                 .push("\"usage\".user_id = ")
                 .push_bind(user_id.to_string());
+        }
+        if let Some(api_key_ids) = query.api_key_ids.as_deref() {
+            builder.push(if has_where { " AND " } else { " WHERE " });
+            has_where = true;
+            if api_key_ids.is_empty() {
+                builder.push("FALSE");
+            } else {
+                builder.push("\"usage\".api_key_id IN (");
+                let mut separated = builder.separated(", ");
+                for api_key_id in api_key_ids {
+                    separated.push_bind(api_key_id.to_string());
+                }
+                separated.push_unseparated(")");
+            }
         }
         if let Some(provider_name) = query.provider_name.as_deref() {
             builder.push(if has_where { " AND " } else { " WHERE " });
@@ -2452,9 +2476,24 @@ OR (\"usage\".error_message IS NOT NULL AND BTRIM(\"usage\".error_message) <> ''
         }
         if let Some(user_id) = query.user_id.as_deref() {
             builder.push(if has_where { " AND " } else { " WHERE " });
+            has_where = true;
             builder
                 .push("\"usage\".user_id = ")
                 .push_bind(user_id.to_string());
+        }
+        if let Some(api_key_ids) = query.api_key_ids.as_deref() {
+            builder.push(if has_where { " AND " } else { " WHERE " });
+            has_where = true;
+            if api_key_ids.is_empty() {
+                builder.push("FALSE");
+            } else {
+                builder.push("\"usage\".api_key_id IN (");
+                let mut separated = builder.separated(", ");
+                for api_key_id in api_key_ids {
+                    separated.push_bind(api_key_id.to_string());
+                }
+                separated.push_unseparated(")");
+            }
         }
         if let Some(provider_name) = query.provider_name.as_deref() {
             builder.push(if has_where { " AND " } else { " WHERE " });
@@ -2634,6 +2673,20 @@ OR (\"usage\".error_message IS NOT NULL AND BTRIM(\"usage\".error_message) <> ''
                 .push("\"usage\".user_id = ")
                 .push_bind(user_id.to_string());
         }
+        if let Some(api_key_ids) = query.api_key_ids.as_deref() {
+            builder.push(if has_where { " AND " } else { " WHERE " });
+            has_where = true;
+            if api_key_ids.is_empty() {
+                builder.push("FALSE");
+            } else {
+                builder.push("\"usage\".api_key_id IN (");
+                let mut separated = builder.separated(", ");
+                for api_key_id in api_key_ids {
+                    separated.push_bind(api_key_id.to_string());
+                }
+                separated.push_unseparated(")");
+            }
+        }
         if let Some(provider_name) = query.provider_name.as_deref() {
             builder.push(if has_where { " AND " } else { " WHERE " });
             has_where = true;
@@ -2719,6 +2772,20 @@ OR (\"usage\".error_message IS NOT NULL AND BTRIM(\"usage\".error_message) <> ''
             builder
                 .push("\"usage\".user_id = ")
                 .push_bind(user_id.to_string());
+        }
+        if let Some(api_key_ids) = query.api_key_ids.as_deref() {
+            builder.push(if has_where { " AND " } else { " WHERE " });
+            has_where = true;
+            if api_key_ids.is_empty() {
+                builder.push("FALSE");
+            } else {
+                builder.push("\"usage\".api_key_id IN (");
+                let mut separated = builder.separated(", ");
+                for api_key_id in api_key_ids {
+                    separated.push_bind(api_key_id.to_string());
+                }
+                separated.push_unseparated(")");
+            }
         }
         if let Some(provider_name) = query.provider_name.as_deref() {
             builder.push(if has_where { " AND " } else { " WHERE " });
@@ -4431,6 +4498,11 @@ SELECT
   COALESCE(SUM(cache_creation_ephemeral_1h_tokens), 0)::BIGINT
     AS cache_creation_ephemeral_1h_tokens,
   COALESCE(SUM(cache_read_tokens), 0)::BIGINT AS cache_read_tokens,
+  CASE
+    WHEN COALESCE(SUM(official_cost), 0) > 0
+    THEN COALESCE(SUM(official_cost), 0)
+    ELSE COALESCE(SUM(total_cost), 0)
+  END::DOUBLE PRECISION AS official_cost_usd,
   COALESCE(SUM(total_cost), 0)::DOUBLE PRECISION AS total_cost_usd,
   COALESCE(SUM(actual_total_cost), 0)::DOUBLE PRECISION AS actual_total_cost_usd,
   COALESCE(SUM(success_requests), 0)::BIGINT AS success_count,
@@ -4497,10 +4569,11 @@ WITH filtered_usage AS (
     GREATEST(COALESCE("usage".cache_read_input_tokens, 0), 0) AS cache_read_tokens,
     COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0) AS total_cost_usd,
     COALESCE(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION), 0) AS actual_total_cost_usd,
+    official_cost.official_cost_usd AS official_cost_usd,
     CASE
-      WHEN "usage".status <> 'failed'
+      WHEN "usage".status IN ('completed', 'success', 'ok', 'billed', 'settled')
            AND ("usage".status_code IS NULL OR "usage".status_code < 400)
-           AND "usage".error_message IS NULL
+           AND ("usage".error_message IS NULL OR BTRIM("usage".error_message) = '')
       THEN 1
       ELSE 0
     END AS success_flag,
@@ -4515,23 +4588,97 @@ WITH filtered_usage AS (
       ELSE 0
     END AS response_time_samples,
     CASE
-      WHEN "usage".status <> 'failed'
+      WHEN "usage".status IN ('completed', 'success', 'ok', 'billed', 'settled')
            AND ("usage".status_code IS NULL OR "usage".status_code < 400)
-           AND "usage".error_message IS NULL
+           AND ("usage".error_message IS NULL OR BTRIM("usage".error_message) = '')
            AND "usage".response_time_ms IS NOT NULL
       THEN GREATEST(COALESCE("usage".response_time_ms, 0), 0)::DOUBLE PRECISION
       ELSE 0
     END AS successful_response_time_ms,
     CASE
-      WHEN "usage".status <> 'failed'
+      WHEN "usage".status IN ('completed', 'success', 'ok', 'billed', 'settled')
            AND ("usage".status_code IS NULL OR "usage".status_code < 400)
-           AND "usage".error_message IS NULL
+           AND ("usage".error_message IS NULL OR BTRIM("usage".error_message) = '')
            AND "usage".response_time_ms IS NOT NULL
       THEN 1
       ELSE 0
     END AS successful_response_time_samples,
     COALESCE(COALESCE("usage".endpoint_api_format, "usage".api_format), '') AS normalized_api_format
   FROM usage_billing_facts AS "usage"
+  LEFT JOIN public."usage" AS raw_usage
+    ON raw_usage.request_id = "usage".request_id
+  LEFT JOIN public.usage_settlement_snapshots AS settlement
+    ON settlement.request_id = "usage".request_id
+  LEFT JOIN LATERAL (
+    SELECT GREATEST(
+      COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{{settlement_snapshot,base_cost_usd}}', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata #>> '{{settlement_snapshot,base_cost_usd}}' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN COALESCE(
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END
+          ) > 0
+          THEN CAST("usage".total_cost_usd AS DOUBLE PRECISION) / COALESCE(
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END
+          )
+          ELSE NULL
+        END,
+        CAST("usage".total_cost_usd AS DOUBLE PRECISION),
+        0
+      ),
+      0
+    ) AS official_cost_usd
+  ) AS official_cost ON TRUE
 "#,
         ));
         let mut has_where = false;
@@ -4564,21 +4711,29 @@ WITH filtered_usage AS (
 normalized_usage AS (
   SELECT
     group_key,
-    input_tokens,
-    total_tokens,
-    output_tokens,
-    cache_creation_tokens,
-    cache_creation_ephemeral_5m_tokens,
-    cache_creation_ephemeral_1h_tokens,
-    cache_read_tokens,
-    total_cost_usd,
-    actual_total_cost_usd,
+    CASE WHEN success_flag = 1 THEN input_tokens ELSE 0 END AS input_tokens,
+    CASE WHEN success_flag = 1 THEN total_tokens ELSE 0 END AS total_tokens,
+    CASE WHEN success_flag = 1 THEN output_tokens ELSE 0 END AS output_tokens,
+    CASE WHEN success_flag = 1 THEN cache_creation_tokens ELSE 0 END AS cache_creation_tokens,
+    CASE
+      WHEN success_flag = 1 THEN cache_creation_ephemeral_5m_tokens
+      ELSE 0
+    END AS cache_creation_ephemeral_5m_tokens,
+    CASE
+      WHEN success_flag = 1 THEN cache_creation_ephemeral_1h_tokens
+      ELSE 0
+    END AS cache_creation_ephemeral_1h_tokens,
+    CASE WHEN success_flag = 1 THEN cache_read_tokens ELSE 0 END AS cache_read_tokens,
+    CASE WHEN success_flag = 1 THEN official_cost_usd ELSE 0 END AS official_cost_usd,
+    CASE WHEN success_flag = 1 THEN total_cost_usd ELSE 0 END AS total_cost_usd,
+    CASE WHEN success_flag = 1 THEN actual_total_cost_usd ELSE 0 END AS actual_total_cost_usd,
     success_flag,
     response_time_ms,
     response_time_samples,
     successful_response_time_ms,
     successful_response_time_samples,
     CASE
+      WHEN success_flag <> 1 THEN 0
       WHEN input_tokens <= 0 THEN 0
       WHEN cache_read_tokens <= 0 THEN input_tokens
       WHEN split_part(lower(COALESCE(normalized_api_format, '')), ':', 1)
@@ -4587,6 +4742,7 @@ normalized_usage AS (
       ELSE input_tokens
     END AS effective_input_tokens,
     CASE
+      WHEN success_flag <> 1 THEN 0
       WHEN split_part(lower(COALESCE(normalized_api_format, '')), ':', 1)
            IN ('claude', 'anthropic')
       THEN input_tokens + cache_creation_tokens + cache_read_tokens
@@ -4624,6 +4780,7 @@ SELECT
   COALESCE(SUM(cache_creation_ephemeral_1h_tokens), 0)::BIGINT
     AS cache_creation_ephemeral_1h_tokens,
   COALESCE(SUM(cache_read_tokens), 0)::BIGINT AS cache_read_tokens,
+  COALESCE(SUM(official_cost_usd), 0) AS official_cost_usd,
   COALESCE(SUM(total_cost_usd), 0) AS total_cost_usd,
   COALESCE(SUM(actual_total_cost_usd), 0) AS actual_total_cost_usd,
   COALESCE(SUM(success_flag), 0)::BIGINT AS success_count,
@@ -6674,6 +6831,11 @@ SELECT
   COALESCE(SUM(cache_creation_ephemeral_1h_tokens), 0)::BIGINT
     AS cache_creation_ephemeral_1h_tokens,
   COALESCE(SUM(cache_read_tokens), 0)::BIGINT AS cache_read_tokens,
+  CASE
+    WHEN COALESCE(SUM(official_cost), 0) > 0
+    THEN COALESCE(SUM(official_cost), 0)
+    ELSE COALESCE(SUM(total_cost), 0)
+  END::DOUBLE PRECISION AS official_cost_usd,
   COALESCE(SUM(total_cost), 0)::DOUBLE PRECISION AS total_cost_usd,
   COALESCE(SUM(actual_total_cost), 0)::DOUBLE PRECISION AS actual_total_cost_usd,
   {avg_response_time_expr} AS avg_response_time_ms,
@@ -6747,16 +6909,92 @@ WITH filtered_usage AS (
       AS cache_creation_ephemeral_1h_tokens,
     GREATEST(COALESCE("usage".cache_read_input_tokens, 0), 0) AS cache_read_tokens,
     COALESCE("usage".endpoint_api_format, "usage".api_format) AS normalized_api_format,
+    official_cost.official_cost_usd AS official_cost_usd,
     COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0) AS total_cost_usd,
     COALESCE(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION), 0) AS actual_total_cost_usd,
     GREATEST(COALESCE("usage".response_time_ms, 0), 0) AS response_time_ms,
     CASE
       WHEN "usage".status IN ('completed', 'success', 'ok', 'billed', 'settled')
            AND ("usage".status_code IS NULL OR "usage".status_code < 400)
+           AND ("usage".error_message IS NULL OR BTRIM("usage".error_message) = '')
       THEN 1
       ELSE 0
     END AS success_flag
   FROM usage_billing_facts AS "usage"
+  LEFT JOIN public."usage" AS raw_usage
+    ON raw_usage.request_id = "usage".request_id
+  LEFT JOIN public.usage_settlement_snapshots AS settlement
+    ON settlement.request_id = "usage".request_id
+  LEFT JOIN LATERAL (
+    SELECT GREATEST(
+      COALESCE(
+        CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{{settlement_snapshot,base_cost_usd}}', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata #>> '{{settlement_snapshot,base_cost_usd}}' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN COALESCE(
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END
+          ) > 0
+          THEN CAST("usage".total_cost_usd AS DOUBLE PRECISION) / COALESCE(
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(raw_usage.request_metadata #>> '{{settlement_snapshot,pricing_snapshot,sales_multiplier}}' AS DOUBLE PRECISION)
+              ELSE NULL
+            END,
+            CASE
+              WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
+                   ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+              THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
+              ELSE NULL
+            END
+          )
+          ELSE NULL
+        END,
+        CAST("usage".total_cost_usd AS DOUBLE PRECISION),
+        0
+      ),
+      0
+    ) AS official_cost_usd
+  ) AS official_cost ON TRUE
 {provider_identity_join}
   WHERE "usage".created_at >= TO_TIMESTAMP($1::double precision)
     AND "usage".created_at < TO_TIMESTAMP($2::double precision)
@@ -6769,17 +7007,25 @@ normalized_usage AS (
     {group_key_expr} AS group_key,
     {display_name_expr} AS display_name,
     {secondary_name_expr} AS secondary_name,
-    total_tokens,
-    output_tokens,
-    cache_creation_tokens,
-    cache_creation_ephemeral_5m_tokens,
-    cache_creation_ephemeral_1h_tokens,
-    cache_read_tokens,
-    total_cost_usd,
-    actual_total_cost_usd,
+    CASE WHEN success_flag = 1 THEN total_tokens ELSE 0 END AS total_tokens,
+    CASE WHEN success_flag = 1 THEN output_tokens ELSE 0 END AS output_tokens,
+    CASE WHEN success_flag = 1 THEN cache_creation_tokens ELSE 0 END AS cache_creation_tokens,
+    CASE
+      WHEN success_flag = 1 THEN cache_creation_ephemeral_5m_tokens
+      ELSE 0
+    END AS cache_creation_ephemeral_5m_tokens,
+    CASE
+      WHEN success_flag = 1 THEN cache_creation_ephemeral_1h_tokens
+      ELSE 0
+    END AS cache_creation_ephemeral_1h_tokens,
+    CASE WHEN success_flag = 1 THEN cache_read_tokens ELSE 0 END AS cache_read_tokens,
+    CASE WHEN success_flag = 1 THEN official_cost_usd ELSE 0 END AS official_cost_usd,
+    CASE WHEN success_flag = 1 THEN total_cost_usd ELSE 0 END AS total_cost_usd,
+    CASE WHEN success_flag = 1 THEN actual_total_cost_usd ELSE 0 END AS actual_total_cost_usd,
     response_time_ms,
     success_flag,
     CASE
+      WHEN success_flag <> 1 THEN 0
       WHEN input_tokens <= 0 THEN 0
       WHEN cache_read_tokens <= 0 THEN input_tokens
       WHEN split_part(lower(COALESCE(normalized_api_format, '')), ':', 1)
@@ -6788,6 +7034,7 @@ normalized_usage AS (
       ELSE input_tokens
     END AS effective_input_tokens,
     CASE
+      WHEN success_flag <> 1 THEN 0
       WHEN split_part(lower(COALESCE(normalized_api_format, '')), ':', 1)
            IN ('claude', 'anthropic')
       THEN input_tokens + cache_creation_tokens + cache_read_tokens
@@ -6827,6 +7074,7 @@ aggregated_usage AS (
     COALESCE(SUM(cache_creation_ephemeral_1h_tokens), 0)::BIGINT
       AS cache_creation_ephemeral_1h_tokens,
     COALESCE(SUM(cache_read_tokens), 0)::BIGINT AS cache_read_tokens,
+    COALESCE(SUM(official_cost_usd), 0) AS official_cost_usd,
     COALESCE(SUM(total_cost_usd), 0) AS total_cost_usd,
     COALESCE(SUM(actual_total_cost_usd), 0) AS actual_total_cost_usd,
     {avg_response_time_expr} AS avg_response_time_ms,
@@ -6847,6 +7095,7 @@ SELECT
   cache_creation_ephemeral_5m_tokens,
   cache_creation_ephemeral_1h_tokens,
   cache_read_tokens,
+  official_cost_usd,
   total_cost_usd,
   actual_total_cost_usd,
   avg_response_time_ms,

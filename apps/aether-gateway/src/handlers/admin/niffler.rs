@@ -3333,6 +3333,7 @@ async fn collect_recent_usage_anomalies(
             created_from_unix_secs: Some(from),
             created_until_unix_secs: Some(now_unix_secs),
             user_id: None,
+            api_key_ids: None,
             provider_name: None,
             model: None,
             api_format: None,

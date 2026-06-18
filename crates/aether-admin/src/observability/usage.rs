@@ -1875,13 +1875,27 @@ pub fn admin_usage_aggregation_by_model_json(
     #[allow(clippy::type_complexity)]
     let mut grouped: BTreeMap<
         String,
-        (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, f64, f64),
+        (
+            u64,
+            u64,
+            u64,
+            u64,
+            u64,
+            u64,
+            u64,
+            u64,
+            u64,
+            u64,
+            f64,
+            f64,
+            f64,
+        ),
     > = BTreeMap::new();
     for item in usage {
         let key = item.model.clone();
         let entry = grouped
             .entry(key)
-            .or_insert((0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0));
+            .or_insert((0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, 0.0));
         entry.0 = entry.0.saturating_add(1);
         entry.1 = entry.1.saturating_add(item.total_tokens);
         entry.2 = entry.2.saturating_add(item.input_tokens);
@@ -1902,8 +1916,11 @@ pub fn admin_usage_aggregation_by_model_json(
             .8
             .saturating_add(item.cache_creation_ephemeral_1h_input_tokens);
         entry.9 = entry.9.saturating_add(item.cache_read_input_tokens);
-        entry.10 += item.total_cost_usd;
-        entry.11 += item.actual_total_cost_usd;
+        entry.10 += item
+            .settlement_base_cost_usd()
+            .unwrap_or(item.total_cost_usd);
+        entry.11 += item.total_cost_usd;
+        entry.12 += item.actual_total_cost_usd;
     }
 
     let mut items: Vec<Value> = grouped
@@ -1922,6 +1939,7 @@ pub fn admin_usage_aggregation_by_model_json(
                     cache_creation_ephemeral_5m_tokens,
                     cache_creation_ephemeral_1h_tokens,
                     cache_read_tokens,
+                    official_cost,
                     total_cost,
                     actual_cost,
                 ),
@@ -1933,6 +1951,7 @@ pub fn admin_usage_aggregation_by_model_json(
                     "effective_input_tokens": effective_input_tokens,
                     "total_input_context": total_input_context,
                     "output_tokens": output_tokens,
+                    "official_cost": round_to(official_cost, 6),
                     "total_cost": round_to(total_cost, 6),
                     "actual_cost": round_to(actual_cost, 6),
                     "cache_creation_tokens": cache_creation_tokens,

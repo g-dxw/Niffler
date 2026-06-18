@@ -223,6 +223,39 @@ WHERE api_keys.id = ANY($1::TEXT[])
 ORDER BY api_keys.id ASC
 "#;
 
+const LIST_EXPORT_BY_GROUP_ID_SQL: &str = r#"
+SELECT
+  api_keys.user_id,
+  api_keys.id AS api_key_id,
+  api_keys.key_hash,
+  api_keys.key_encrypted,
+  api_keys.name,
+  api_keys.group_id,
+  user_groups.name AS group_name,
+  api_keys.allowed_providers,
+  api_keys.allowed_api_formats,
+  api_keys.allowed_models,
+  api_keys.rate_limit,
+  api_keys.concurrent_limit,
+  api_keys.force_capabilities,
+  api_keys.feature_settings,
+  api_keys.is_active,
+  CAST(EXTRACT(EPOCH FROM api_keys.expires_at) AS BIGINT) AS expires_at_unix_secs,
+  api_keys.auto_delete_on_expiry,
+  api_keys.total_requests,
+  COALESCE(api_keys.total_tokens, 0)::BIGINT AS total_tokens,
+  COALESCE(CAST(api_keys.total_cost_usd AS DOUBLE PRECISION), 0) AS total_cost_usd,
+  CAST(EXTRACT(EPOCH FROM api_keys.last_used_at) AS BIGINT) AS last_used_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM api_keys.created_at) AS BIGINT) AS created_at_unix_secs,
+  CAST(EXTRACT(EPOCH FROM api_keys.updated_at) AS BIGINT) AS updated_at_unix_secs,
+  api_keys.is_standalone
+FROM api_keys
+LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
+WHERE api_keys.group_id = $1
+  AND api_keys.is_standalone = FALSE
+ORDER BY api_keys.user_id ASC, api_keys.id ASC
+"#;
+
 const LIST_EXPORT_BY_NAME_SEARCH_SQL: &str = r#"
 SELECT
   api_keys.user_id,
@@ -964,6 +997,24 @@ impl SqlxAuthApiKeySnapshotReadRepository {
         .await
     }
 
+    pub async fn list_export_api_keys_by_group_id(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<StoredAuthApiKeyExportRecord>, DataLayerError> {
+        let group_id = group_id.trim();
+        if group_id.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        Self::collect_query_rows(
+            sqlx::query(LIST_EXPORT_BY_GROUP_ID_SQL)
+                .bind(group_id)
+                .fetch(&self.pool),
+            map_auth_api_key_export_row,
+        )
+        .await
+    }
+
     pub async fn list_export_api_keys_by_name_search(
         &self,
         name_search: &str,
@@ -1141,6 +1192,13 @@ impl AuthApiKeyReadRepository for SqlxAuthApiKeySnapshotReadRepository {
         api_key_ids: &[String],
     ) -> Result<Vec<StoredAuthApiKeyExportRecord>, DataLayerError> {
         Self::list_export_api_keys_by_ids(self, api_key_ids).await
+    }
+
+    async fn list_export_api_keys_by_group_id(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<StoredAuthApiKeyExportRecord>, DataLayerError> {
+        Self::list_export_api_keys_by_group_id(self, group_id).await
     }
 
     async fn list_export_api_keys_by_name_search(

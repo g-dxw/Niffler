@@ -145,6 +145,7 @@ fn build_users_me_usage_keyword_search_query(
         created_from_unix_secs: base_query.created_from_unix_secs,
         created_until_unix_secs: base_query.created_until_unix_secs,
         user_id: base_query.user_id.clone(),
+        api_key_ids: base_query.api_key_ids.clone(),
         provider_name: base_query.provider_name.clone(),
         model: base_query.model.clone(),
         api_format: base_query.api_format.clone(),
@@ -756,6 +757,7 @@ fn build_users_me_usage_summary_by_model(
                     row.total_input_context,
                     row.cache_read_tokens,
                 ),
+                "official_cost": round_to(row.official_cost_usd, 6),
                 "total_cost_usd": round_to(row.total_cost_usd, 6),
             });
             if include_actual_cost {
@@ -1436,6 +1438,7 @@ pub(super) async fn handle_users_me_usage_active_get(
                 created_from_unix_secs: Some(Utc::now().timestamp().saturating_sub(3600) as u64),
                 created_until_unix_secs: None,
                 user_id: Some(auth.user.id.clone()),
+                api_key_ids: None,
                 provider_name: None,
                 model: None,
                 api_format: None,

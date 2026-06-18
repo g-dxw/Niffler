@@ -265,6 +265,27 @@ impl AuthApiKeyReadRepository for InMemoryAuthApiKeySnapshotRepository {
             .collect())
     }
 
+    async fn list_export_api_keys_by_group_id(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<StoredAuthApiKeyExportRecord>, DataLayerError> {
+        let group_id = group_id.trim();
+        if group_id.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let index = self
+            .index
+            .read()
+            .expect("auth api key snapshot repository lock");
+        Ok(index
+            .export_by_api_key_id
+            .values()
+            .filter(|record| !record.is_standalone && record.group_id.as_deref() == Some(group_id))
+            .cloned()
+            .collect())
+    }
+
     async fn list_export_api_keys_by_name_search(
         &self,
         name_search: &str,

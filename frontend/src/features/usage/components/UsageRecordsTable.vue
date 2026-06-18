@@ -33,6 +33,29 @@
           @update:model-value="$emit('update:filterUser', $event)"
         />
 
+        <!-- Key 分组筛选（仅管理员可见） -->
+        <Select
+          v-if="isAdmin"
+          :model-value="filterApiKeyGroup"
+          @update:model-value="$emit('update:filterApiKeyGroup', $event)"
+        >
+          <SelectTrigger class="flex-1 min-w-0 sm:flex-none sm:w-36 h-8 text-xs border-border/60">
+            <SelectValue placeholder="Key 分组" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">
+              全部 Key 分组
+            </SelectItem>
+            <SelectItem
+              v-for="group in availableApiKeyGroups"
+              :key="group.id"
+              :value="group.id"
+            >
+              {{ group.name }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+
         <!-- 模型筛选 -->
         <Select
           :model-value="filterModel"
@@ -139,6 +162,35 @@
 
       <!-- 分隔线 -->
       <div class="hidden sm:block h-4 w-px bg-border" />
+
+      <!-- Key 分组筛选（桌面端） -->
+      <Select
+        v-if="isAdmin"
+        :model-value="filterApiKeyGroup"
+        @update:model-value="$emit('update:filterApiKeyGroup', $event)"
+      >
+        <SelectTrigger class="hidden md:flex w-36 h-8 text-xs border-border/60">
+          <SelectValue placeholder="Key 分组" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">
+            全部 Key 分组
+          </SelectItem>
+          <SelectItem
+            v-for="group in availableApiKeyGroups"
+            :key="group.id"
+            :value="group.id"
+          >
+            {{ group.name }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      <!-- 分隔线 -->
+      <div
+        v-if="isAdmin"
+        class="hidden sm:block h-4 w-px bg-border"
+      />
 
       <!-- 列显示配置（桌面端） -->
       <MultiSelect
@@ -1022,6 +1074,11 @@ export interface UserOption {
   email: string
 }
 
+export interface UserGroupOption {
+  id: string
+  name: string
+}
+
 interface FilterOption {
   value: string
   label: string
@@ -1099,12 +1156,14 @@ const props = defineProps<{
   // 筛选
   filterSearch: string
   filterUser: string
+  filterApiKeyGroup: string
   filterModel: string
   filterProvider: string
   filterApiFormat: string
   filterStatus: string
   filterClientFamily: string
   availableUsers: UserOption[]
+  availableApiKeyGroups: UserGroupOption[]
   availableModels: string[]
   availableProviders: string[]
   availableClientFamilies: string[]
@@ -1121,6 +1180,7 @@ const emit = defineEmits<{
   'update:timeRange': [value: DateRangeParams]
   'update:filterSearch': [value: string]
   'update:filterUser': [value: string]
+  'update:filterApiKeyGroup': [value: string]
   'update:filterModel': [value: string]
   'update:filterProvider': [value: string]
   'update:filterApiFormat': [value: string]

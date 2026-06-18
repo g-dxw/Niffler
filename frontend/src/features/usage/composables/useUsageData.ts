@@ -26,6 +26,7 @@ export interface PaginationParams {
 export interface FilterParams {
   search?: string
   user_id?: string
+  api_key_group_id?: string
   model?: string
   provider?: string
   api_format?: string
@@ -144,6 +145,7 @@ export function useUsageData(options: UseUsageDataOptions) {
               cache_read_tokens: typeof raw.cache_read_tokens === 'number' ? raw.cache_read_tokens : 0,
               cache_creation_tokens: typeof raw.cache_creation_tokens === 'number' ? raw.cache_creation_tokens : 0,
               cache_hit_rate: typeof raw.cache_hit_rate === 'number' ? raw.cache_hit_rate : 0,
+              official_cost: typeof raw.official_cost === 'number' ? raw.official_cost : undefined,
               total_cost: item.total_cost || 0,
               actual_cost: typeof raw.actual_cost === 'number' ? raw.actual_cost : undefined
             }
@@ -251,6 +253,7 @@ export function useUsageData(options: UseUsageDataOptions) {
         cache_read_tokens: item.cache_read_tokens || 0,
         cache_creation_tokens: item.cache_creation_tokens || 0,
         cache_hit_rate: item.cache_hit_rate || 0,
+        official_cost: typeof item.official_cost === 'number' ? item.official_cost : undefined,
         total_cost: item.total_cost_usd || 0,
         actual_cost: item.actual_total_cost_usd
       }))
@@ -351,6 +354,9 @@ export function useUsageData(options: UseUsageDataOptions) {
         // 管理员页面：使用管理员 API
         if (filters?.user_id) {
           params.user_id = filters.user_id
+        }
+        if (filters?.api_key_group_id) {
+          params.api_key_group_id = filters.api_key_group_id
         }
         if (filters?.model) {
           params.model = filters.model

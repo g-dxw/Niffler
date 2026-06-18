@@ -1464,6 +1464,16 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_auth_api_key_export_records_by_group_id(
+        &self,
+        group_id: &str,
+    ) -> Result<Vec<StoredAuthApiKeyExportRecord>, DataLayerError> {
+        match &self.auth_api_key_reader {
+            Some(repository) => repository.list_export_api_keys_by_group_id(group_id).await,
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub(crate) async fn read_auth_api_key_feature_settings(
         &self,
         user_id: &str,
