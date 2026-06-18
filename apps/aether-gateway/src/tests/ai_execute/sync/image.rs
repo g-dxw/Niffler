@@ -365,8 +365,24 @@ async fn gateway_converts_openai_image_sync_to_gemini_image_provider() {
     execution_runtime_handle.abort();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn gateway_converts_gemini_image_sync_to_openai_image_provider() {
+#[test]
+fn gateway_converts_gemini_image_sync_to_openai_image_provider() {
+    std::thread::Builder::new()
+        .name("gemini-image-openai-bridge-test".to_string())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime should build")
+                .block_on(gateway_converts_gemini_image_sync_to_openai_image_provider_impl());
+        })
+        .expect("test thread should spawn")
+        .join()
+        .expect("test thread should not panic");
+}
+
+async fn gateway_converts_gemini_image_sync_to_openai_image_provider_impl() {
     #[derive(Debug, Clone)]
     struct SeenExecutionRuntimeSyncRequest {
         trace_id: String,
