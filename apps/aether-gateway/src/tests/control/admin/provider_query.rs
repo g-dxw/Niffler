@@ -447,6 +447,7 @@ async fn gateway_handles_admin_provider_query_models_falls_back_to_codex_preset_
             "gpt-5.4",
             "gpt-5.4-mini",
             "gpt-5.5",
+            "gpt-image-2",
         ]
     );
     assert_eq!(
