@@ -1251,7 +1251,7 @@ async fn gateway_records_failed_usage_when_all_local_openai_chat_candidates_exha
             .expect("body should read"),
     )
     .expect("body should parse");
-    assert_eq!(body_json["error"]["type"], "http_error");
+    assert_eq!(body_json["error"]["message"], "primary unavailable");
 
     let stored_usage = wait_for_usage_status(
         usage_repository.as_ref(),
@@ -1283,18 +1283,18 @@ async fn gateway_records_failed_usage_when_all_local_openai_chat_candidates_exha
             .response_body
             .as_ref()
             .and_then(|value| value.get("error"))
-            .and_then(|value| value.get("type"))
+            .and_then(|value| value.get("message"))
             .and_then(|value| value.as_str()),
-        Some("upstream_error")
+        Some("primary unavailable")
     );
     assert_eq!(
         stored_usage
             .client_response_body
             .as_ref()
             .and_then(|value| value.get("error"))
-            .and_then(|value| value.get("type"))
+            .and_then(|value| value.get("message"))
             .and_then(|value| value.as_str()),
-        Some("http_error")
+        Some("primary unavailable")
     );
 
     let stored_candidates = wait_for_request_candidate_status(
