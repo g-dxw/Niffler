@@ -59,6 +59,41 @@
 
       <!-- FOOTER (Profile) -->
       <div class="p-4 border-t border-[#3d3929]/5 dark:border-white/5">
+        <RouterLink
+          to="/dashboard/wallet"
+          class="mb-3 block rounded-2xl border border-[#3d3929]/10 bg-white/55 p-3 text-[#3d3929] shadow-sm transition hover:border-[#cc785c]/30 hover:bg-white/80 dark:border-white/10 dark:bg-white/[0.04] dark:text-[#d4a27f] dark:hover:bg-white/[0.07]"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">总可用额度</span>
+            <span
+              v-if="billingSummaryStatusLabel"
+              class="text-[10px]"
+              :class="billingSummaryStatusClass"
+            >
+              {{ billingSummaryStatusLabel }}
+            </span>
+          </div>
+          <div class="mt-1 text-lg font-semibold tabular-nums">
+            {{ billingSummaryTotalLabel }}
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2 text-[11px] leading-tight text-muted-foreground">
+            <div>
+              <div>钱包余额</div>
+              <div class="mt-0.5 font-medium text-foreground tabular-nums">
+                {{ billingSummaryWalletLabel }}
+              </div>
+            </div>
+            <div>
+              <div>周期额度</div>
+              <div class="mt-0.5 font-medium text-foreground tabular-nums">
+                {{ billingSummaryPackageLabel }}
+              </div>
+            </div>
+          </div>
+          <div class="mt-2 border-t border-[#3d3929]/10 pt-2 text-[11px] text-muted-foreground dark:border-white/10">
+            套餐到期 <span class="font-medium text-foreground">{{ nearestPlanExpiryLabel }}</span>
+          </div>
+        </RouterLink>
         <div class="flex items-center justify-between p-2 rounded-xl">
           <div class="flex items-center gap-3 min-w-0">
             <div class="w-8 h-8 rounded-full bg-[#f0f0eb] dark:bg-white/10 border border-black/5 flex items-center justify-center text-xs font-bold text-[#3d3929] dark:text-[#d4a27f] shrink-0">
@@ -220,6 +255,42 @@
 
               <!-- User Section -->
               <div class="mt-4 pt-4 border-t border-[#cc785c]/10 dark:border-[rgba(227,224,211,0.12)]">
+                <RouterLink
+                  to="/dashboard/wallet"
+                  class="mb-4 block rounded-2xl border border-[#cc785c]/15 bg-white/70 p-4 text-[#3d3929] shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-[#d4a27f]"
+                  @click="mobileMenuOpen = false"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#91918d] dark:text-muted-foreground">总可用额度</span>
+                    <span
+                      v-if="billingSummaryStatusLabel"
+                      class="text-[10px]"
+                      :class="billingSummaryStatusClass"
+                    >
+                      {{ billingSummaryStatusLabel }}
+                    </span>
+                  </div>
+                  <div class="mt-1 text-xl font-semibold tabular-nums">
+                    {{ billingSummaryTotalLabel }}
+                  </div>
+                  <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                    <div>
+                      <div>钱包余额</div>
+                      <div class="mt-0.5 font-medium text-[#191919] tabular-nums dark:text-white">
+                        {{ billingSummaryWalletLabel }}
+                      </div>
+                    </div>
+                    <div>
+                      <div>周期额度</div>
+                      <div class="mt-0.5 font-medium text-[#191919] tabular-nums dark:text-white">
+                        {{ billingSummaryPackageLabel }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-3 border-t border-[#cc785c]/10 pt-2 text-xs text-muted-foreground dark:border-white/10">
+                    套餐到期 <span class="font-medium text-[#191919] dark:text-white">{{ nearestPlanExpiryLabel }}</span>
+                  </div>
+                </RouterLink>
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3 min-w-0">
                     <div class="w-8 h-8 rounded-full bg-[#f0f0eb] dark:bg-white/10 border border-black/5 flex items-center justify-center text-xs font-bold text-[#3d3929] dark:text-[#d4a27f] shrink-0">
@@ -401,6 +472,8 @@ import { useSiteInfo } from '@/composables/useSiteInfo'
 import { isDemoMode } from '@/config/demo'
 import { adminApi, type CheckUpdateResponse } from '@/api/admin'
 import { announcementApi, type Announcement } from '@/api/announcements'
+import { billingApi, type UserPlanEntitlement } from '@/api/billing'
+import { walletApi, type WalletBalanceResponse } from '@/api/wallet'
 import Button from '@/components/ui/button.vue'
 import { Dialog } from '@/components/ui'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -448,6 +521,9 @@ import {
 import GithubIcon from '@/components/icons/GithubIcon.vue'
 import { BUILTIN_TOOL_BREADCRUMBS } from '@/config/builtin-tools'
 import { prefetchAdminNavigationTarget } from '@/utils/adminNavigationPrefetch'
+import { formatCurrency } from '@/utils/format'
+import { hasPackageBillingEntitlement } from '@/utils/billingEntitlements'
+import { log } from '@/utils/logger'
 import { sanitizeMarkdown } from '@/utils/sanitize'
 
 const router = useRouter()
@@ -463,6 +539,13 @@ const showAuthError = ref(false)
 const mobileMenuOpen = ref(false)
 const requiredAnnouncements = ref<Announcement[]>([])
 const acknowledgingRequiredAnnouncement = ref(false)
+const walletBalance = ref<WalletBalanceResponse | null>(null)
+const planEntitlements = ref<UserPlanEntitlement[]>([])
+const billingSummaryLoading = ref(false)
+const walletBalanceError = ref(false)
+const planEntitlementsError = ref(false)
+let billingSummaryRequestId = 0
+const BILLING_SUMMARY_REFRESH_EVENT = 'aether:billing-summary-refresh'
 const requiredAnnouncementOpen = computed({
   get: () => requiredAnnouncements.value.length > 0,
   set: (value) => {
@@ -470,6 +553,61 @@ const requiredAnnouncementOpen = computed({
   }
 })
 const currentRequiredAnnouncement = computed(() => requiredAnnouncements.value[0] ?? null)
+const hasBillingSummaryError = computed(() => walletBalanceError.value || planEntitlementsError.value)
+const billingSummaryStatusLabel = computed(() => {
+  if (billingSummaryLoading.value) return '加载中'
+  if (walletBalanceError.value && planEntitlementsError.value) return '加载失败'
+  if (walletBalanceError.value) return '余额加载失败'
+  if (planEntitlementsError.value) return '套餐加载失败'
+  return ''
+})
+const billingSummaryStatusClass = computed(() =>
+  hasBillingSummaryError.value ? 'text-rose-500' : 'text-muted-foreground'
+)
+const walletOnlyBalance = computed(() => {
+  const value = walletBalance.value?.wallet_balance ?? walletBalance.value?.balance ?? 0
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+})
+const packageBalance = computed(() => {
+  const value = walletBalance.value?.package_balance ?? 0
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+})
+const totalAvailableBalance = computed(() => {
+  const value = walletBalance.value?.total_available_balance
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  return walletOnlyBalance.value + packageBalance.value
+})
+const billingSummaryTotalLabel = computed(() => {
+  if (!walletBalance.value) return billingSummaryLoading.value ? '加载中' : '-'
+  if (walletBalance.value?.unlimited) return '无限制'
+  return formatCurrency(totalAvailableBalance.value)
+})
+const billingSummaryWalletLabel = computed(() => {
+  if (!walletBalance.value) return '-'
+  return formatCurrency(walletOnlyBalance.value)
+})
+const billingSummaryPackageLabel = computed(() => {
+  if (!walletBalance.value) return '-'
+  return formatCurrency(packageBalance.value)
+})
+const nearestPlanExpiryLabel = computed(() => {
+  if (billingSummaryLoading.value && planEntitlements.value.length === 0) return '加载中'
+  if (planEntitlementsError.value && planEntitlements.value.length === 0) return '-'
+  const activePlans = planEntitlements.value.filter(isActivePackageEntitlement)
+  if (activePlans.length === 0) return '未开通'
+
+  const now = Date.now()
+  const futureExpiries = activePlans
+    .map((item) => item.expires_at)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value))
+    .filter((value) => Number.isFinite(value.getTime()) && value.getTime() > now)
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  if (futureExpiries[0]) return formatPlanExpiry(futureExpiries[0])
+  if (activePlans.some((item) => !item.expires_at)) return '长期有效'
+  return '未开通'
+})
 
 // 更新检查相关
 const showUpdateDialog = ref(false)
@@ -481,6 +619,9 @@ let versionStatusLoadPromise: Promise<CheckUpdateResponse | null> | null = null
 // 路由变化时自动关闭移动端菜单
 watch(() => route.path, () => {
   mobileMenuOpen.value = false
+  if (route.path.startsWith('/dashboard/wallet') || route.path.startsWith('/dashboard/billing')) {
+    void loadBillingSummary()
+  }
 })
 
 // 检查是否应该显示更新提示
@@ -604,7 +745,12 @@ function handleStorageChange(event: StorageEvent) {
 function handleVisibilityChange() {
   if (!document.hidden) {
     syncAuthNotice()
+    void loadBillingSummary()
   }
+}
+
+function handleBillingSummaryRefresh() {
+  void loadBillingSummary()
 }
 
 watch(
@@ -613,8 +759,10 @@ watch(
     showAuthError.value = !!authStore.user && !authStore.token
     if (authStore.user && authStore.token) {
       void loadRequiredAnnouncements()
+      void loadBillingSummary()
     } else {
       requiredAnnouncements.value = []
+      resetBillingSummary()
     }
   },
   { immediate: true }
@@ -628,6 +776,61 @@ async function loadRequiredAnnouncements() {
   } catch {
     requiredAnnouncements.value = []
   }
+}
+
+async function loadBillingSummary() {
+  if (!authStore.user || !authStore.token) return
+  const requestId = ++billingSummaryRequestId
+  billingSummaryLoading.value = true
+
+  const [balanceResult, entitlementResult] = await Promise.allSettled([
+    walletApi.getBalance(),
+    billingApi.listEntitlements(),
+  ])
+  if (requestId !== billingSummaryRequestId) return
+
+  if (balanceResult.status === 'fulfilled') {
+    walletBalance.value = balanceResult.value
+    walletBalanceError.value = false
+  } else {
+    walletBalanceError.value = true
+    log.error('加载侧边栏钱包余额失败:', balanceResult.reason)
+  }
+
+  if (entitlementResult.status === 'fulfilled') {
+    planEntitlements.value = entitlementResult.value.items
+    planEntitlementsError.value = false
+  } else {
+    planEntitlementsError.value = true
+    log.error('加载侧边栏套餐权益失败:', entitlementResult.reason)
+  }
+
+  billingSummaryLoading.value = false
+}
+
+function resetBillingSummary() {
+  billingSummaryRequestId += 1
+  walletBalance.value = null
+  planEntitlements.value = []
+  billingSummaryLoading.value = false
+  walletBalanceError.value = false
+  planEntitlementsError.value = false
+}
+
+function isActivePackageEntitlement(item: UserPlanEntitlement): boolean {
+  return item.active !== false
+    && item.status === 'active'
+    && hasPackageBillingEntitlement(item.entitlements)
+}
+
+function formatPlanExpiry(value: Date): string {
+  return value.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function renderRequiredAnnouncement(content: string): string {
@@ -652,6 +855,7 @@ async function acknowledgeRequiredAnnouncement() {
 
 onMounted(() => {
   window.addEventListener('storage', handleStorageChange)
+  window.addEventListener(BILLING_SUMMARY_REFRESH_EVENT, handleBillingSummaryRefresh)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   syncAuthNotice()
 
@@ -675,6 +879,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('storage', handleStorageChange)
+  window.removeEventListener(BILLING_SUMMARY_REFRESH_EVENT, handleBillingSummaryRefresh)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (import.meta.env.DEV && window.__aetherShowUpdateDialog === showDebugUpdateDialog) {
     delete window.__aetherShowUpdateDialog

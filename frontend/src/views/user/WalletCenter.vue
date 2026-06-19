@@ -17,13 +17,13 @@
             {{ walletBalance?.unlimited ? '无限制' : formatCurrency(totalAvailableBalance) }}
           </div>
           <div class="text-xs text-muted-foreground">
-            套餐额度: {{ formatCurrency(packageBalance) }} · 钱包余额: {{ formatCurrency(walletOnlyBalance) }}
+            周期额度: {{ formatCurrency(packageBalance) }} · 钱包余额: {{ formatCurrency(walletOnlyBalance) }}
           </div>
         </Card>
 
         <Card class="p-5 space-y-3">
           <div class="text-xs uppercase tracking-wider text-muted-foreground">
-            套餐今日额度
+            周期额度
           </div>
           <div class="text-2xl font-bold tabular-nums">
             <template v-if="hasActiveDailyQuota">
@@ -750,6 +750,7 @@ const refundPageSize = ref(20)
 
 const activeTab = ref('transactions')
 let todayCostPollTimer: ReturnType<typeof setInterval> | null = null
+const BILLING_SUMMARY_REFRESH_EVENT = 'aether:billing-summary-refresh'
 
 const rechargeForm = reactive({
   amount_usd: 10,
@@ -864,6 +865,7 @@ watch(activeTab, () => {
 
 async function loadBalance() {
   walletBalance.value = await walletApi.getBalance()
+  window.dispatchEvent(new CustomEvent(BILLING_SUMMARY_REFRESH_EVENT))
 }
 
 async function loadRechargeOptions() {

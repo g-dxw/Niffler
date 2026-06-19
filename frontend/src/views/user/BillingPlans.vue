@@ -227,6 +227,7 @@ const rechargeOptions = ref<WalletRechargeOption[]>([])
 const selectedPaymentOptionKey = ref('')
 const checkoutLoadingPlanId = ref<string | null>(null)
 const latestCheckout = ref<BillingCheckoutResponse | null>(null)
+const BILLING_SUMMARY_REFRESH_EVENT = 'aether:billing-summary-refresh'
 
 const paymentOptions = computed(() =>
   rechargeOptions.value
@@ -295,6 +296,7 @@ async function loadEntitlements() {
   try {
     const response = await billingApi.listEntitlements()
     entitlements.value = response.items
+    window.dispatchEvent(new CustomEvent(BILLING_SUMMARY_REFRESH_EVENT))
   } catch (err) {
     log.error('加载套餐权益失败:', err)
     showError(parseApiError(err, '加载套餐权益失败'))
