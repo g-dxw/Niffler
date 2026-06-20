@@ -12,12 +12,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { cn } from '@/lib/utils'
+import type { ClassValue } from 'clsx'
 
 interface Props {
   variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
   size?: 'default' | 'sm' | 'lg' | 'icon'
   disabled?: boolean
-  class?: string
+  class?: ClassValue
   type?: 'button' | 'submit' | 'reset'
 }
 

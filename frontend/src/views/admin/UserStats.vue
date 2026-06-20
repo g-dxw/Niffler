@@ -160,7 +160,7 @@ const timeRange = ref<DateRangeParams>(getDateRangeFromPeriod('last7days'))
 const metric = ref<'requests' | 'tokens' | 'cost'>('requests')
 
 const users = ref<User[]>([])
-const selectedUserId = ref<string | null>(null)
+const selectedUserId = ref<string | undefined>(undefined)
 const compareUserId = ref<string>('__none__')
 
 const leaderboard = ref<LeaderboardItem[]>([])
@@ -253,7 +253,12 @@ async function loadSummary() {
       user_id: selectedUserId.value
     })
     if (requestId !== summaryRequestId) return
-    userSummary.value = summary
+    userSummary.value = {
+      total_requests: summary.total_requests,
+      total_tokens: summary.total_tokens,
+      total_cost: summary.total_cost,
+      error_rate: 0,
+    }
   } finally {
     if (requestId === summaryRequestId) {
       summaryLoading.value = false
@@ -275,11 +280,11 @@ async function loadSeries() {
       ? adminApi.getTimeSeries({
         ...buildTimeRangeParams(),
         user_id: compareUserId.value
-      })
+      }).then(toTimeSeriesItems)
       : Promise.resolve([])
 
     const [primarySeries, compareSeries] = await Promise.all([
-      adminApi.getTimeSeries(baseParams),
+      adminApi.getTimeSeries(baseParams).then(toTimeSeriesItems),
       comparePromise
     ])
 
@@ -291,6 +296,15 @@ async function loadSeries() {
       seriesLoading.value = false
     }
   }
+}
+
+function toTimeSeriesItems(rows: Array<Record<string, unknown>>): TimeSeriesItem[] {
+  return rows
+    .map(row => ({
+      date: String(row.date ?? row.time ?? row.period ?? ''),
+      total_cost: Number(row.total_cost ?? row.cost ?? 0),
+    }))
+    .filter(item => item.date.length > 0)
 }
 
 async function loadUserPanels() {

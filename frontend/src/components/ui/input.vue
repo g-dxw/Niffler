@@ -64,6 +64,7 @@
 import { computed, useAttrs, ref } from 'vue'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
+import type { ClassValue } from 'clsx'
 
 const props = defineProps<Props>()
 
@@ -72,8 +73,8 @@ const emit = defineEmits<{
 }>()
 
 interface Props {
-  modelValue?: string | number
-  class?: string
+  modelValue?: string | number | null
+  class?: ClassValue
   autocomplete?: string
   /**
    * 输入框尺寸

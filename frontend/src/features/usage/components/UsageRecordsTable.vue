@@ -261,6 +261,14 @@
               {{ line.label }}扣除 {{ formatCurrency(line.amount) }} · {{ formatMultiplier(line.multiplier) }}
             </span>
             <span
+              v-if="hasModerationCost(record)"
+              class="text-[10px] text-muted-foreground"
+            >模型扣费 {{ formatCurrency(getModelCost(record)) }}</span>
+            <span
+              v-if="hasModerationCost(record)"
+              class="text-[10px] text-muted-foreground"
+            >审查成本 {{ formatCurrency(getModerationCost(record)) }}</span>
+            <span
               v-if="showActualCost && hasPlatformCost(record)"
               class="text-[10px] text-muted-foreground"
             >平台 {{ formatCurrency(getPlatformCost(record)) }}</span>
@@ -928,6 +936,18 @@
                 {{ line.label }}扣除 {{ formatCurrency(line.amount) }} · {{ formatMultiplier(line.multiplier) }}
               </span>
               <span
+                v-if="hasModerationCost(record)"
+                class="text-muted-foreground"
+              >
+                模型扣费 {{ formatCurrency(getModelCost(record)) }}
+              </span>
+              <span
+                v-if="hasModerationCost(record)"
+                class="text-muted-foreground"
+              >
+                审查成本 {{ formatCurrency(getModerationCost(record)) }}
+              </span>
+              <span
                 v-if="showActualCost && hasPlatformCost(record)"
                 class="text-muted-foreground"
               >
@@ -1463,6 +1483,30 @@ function getOfficialCost(record: UsageRecord): number {
   return resolveChargeBreakdown(record).officialCost
 }
 
+function getModerationCost(record: UsageRecord): number {
+  return Math.max(toFiniteNumber(record.moderation_cost) ?? 0, 0)
+}
+
+function hasModerationCost(record: UsageRecord): boolean {
+  return getModerationCost(record) > COST_EPSILON
+}
+
+function getModelCost(record: UsageRecord): number {
+  const saved = toFiniteNumber(record.model_cost)
+  if (saved !== null) return Math.max(saved, 0)
+  return Math.max(getUserCharge(record) - getModerationCost(record), 0)
+}
+
+function getActualModelCost(record: UsageRecord): number | null {
+  const saved = toFiniteNumber(record.actual_model_cost)
+  return saved === null ? null : Math.max(saved, 0)
+}
+
+function getActualModerationCost(record: UsageRecord): number | null {
+  const saved = toFiniteNumber(record.actual_moderation_cost)
+  return saved === null ? null : Math.max(saved, 0)
+}
+
 function getChargeLines(record: UsageRecord): ChargeLine[] {
   const breakdown = resolveChargeBreakdown(record)
   const lines: ChargeLine[] = []
@@ -1522,8 +1566,20 @@ function getRecordCostTitle(record: UsageRecord): string {
     ...chargeLines.map(line => `${line.label}扣除: ${formatCurrency(line.amount)} · ${formatMultiplier(line.multiplier)}`),
   ]
   if (chargeLines.length === 0) lines.push('本次没有产生用户扣费')
+  if (hasModerationCost(record)) {
+    lines.push(`模型扣费: ${formatCurrency(getModelCost(record))}`)
+    lines.push(`审查成本: ${formatCurrency(getModerationCost(record))}`)
+  }
   if (props.showActualCost && hasPlatformCost(record)) {
     lines.push(`平台成本: ${formatCurrency(getPlatformCost(record))}`)
+    const actualModelCost = getActualModelCost(record)
+    const actualModerationCost = getActualModerationCost(record)
+    if (actualModelCost !== null) {
+      lines.push(`平台模型成本: ${formatCurrency(actualModelCost)}`)
+    }
+    if (actualModerationCost !== null) {
+      lines.push(`平台审查成本: ${formatCurrency(actualModerationCost)}`)
+    }
     lines.push(`成本倍率: ${formatMultiplier(getCostMultiplier(record))}`)
   }
   return lines.join('\n')

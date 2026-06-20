@@ -463,7 +463,7 @@ import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
 import { getAccountCopyText, getAccountDisplayName } from '@/features/providers/utils/accountDisplay'
 
-const { toast } = useToast()
+const { showToast: toast } = useToast()
 const { copyToClipboard } = useClipboard()
 
 // 状态
@@ -567,8 +567,8 @@ async function fetchStats() {
   } catch (error: unknown) {
     toast({
       title: '获取统计失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive'
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error'
     })
   }
 }
@@ -587,8 +587,8 @@ async function fetchMappings() {
   } catch (error: unknown) {
     toast({
       title: '获取文件列表失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive'
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error'
     })
   } finally {
     loading.value = false
@@ -604,14 +604,14 @@ async function deleteMapping(mapping: FileMappingResponse) {
     await geminiFilesApi.deleteMapping(mapping.id)
     toast({
       title: '删除成功',
-      description: `已删除映射 ${mapping.file_name}`
+      message: `已删除映射 ${mapping.file_name}`
     })
     await fetchData()
   } catch (error: unknown) {
     toast({
       title: '删除失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive'
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error'
     })
   }
 }
@@ -625,14 +625,14 @@ async function cleanupExpired() {
     const result = await geminiFilesApi.cleanupExpired()
     toast({
       title: '清理完成',
-      description: `已清理 ${result.deleted_count} 条过期映射`
+      message: `已清理 ${result.deleted_count} 条过期映射`
     })
     await fetchData()
   } catch (error: unknown) {
     toast({
       title: '清理失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive'
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error'
     })
   }
 }
@@ -642,8 +642,8 @@ async function uploadFile(file: globalThis.File) {
   if (selectedKeyIds.value.length === 0) {
     toast({
       title: '请选择 Key',
-      description: '请至少选择一个 Key 来上传文件',
-      variant: 'destructive'
+      message: '请至少选择一个 Key 来上传文件',
+      variant: 'error'
     })
     return
   }
@@ -655,28 +655,28 @@ async function uploadFile(file: globalThis.File) {
     if (result.fail_count === 0) {
       toast({
         title: '上传成功',
-        description: `文件 ${result.display_name} 已上传到 ${result.success_count} 个 Key`
+        message: `文件 ${result.display_name} 已上传到 ${result.success_count} 个 Key`
       })
       hasSuccess = true
     } else if (result.success_count > 0) {
       toast({
         title: '部分成功',
-        description: `成功 ${result.success_count} 个，失败 ${result.fail_count} 个`
+        message: `成功 ${result.success_count} 个，失败 ${result.fail_count} 个`
       })
       hasSuccess = true
     } else {
       const errors = result.results.map(r => r.error).filter(Boolean).join('; ')
       toast({
         title: '上传失败',
-        description: errors || '所有 Key 上传都失败了',
-        variant: 'destructive'
+        message: errors || '所有 Key 上传都失败了',
+        variant: 'error'
       })
     }
   } catch (error: unknown) {
     toast({
       title: '上传失败',
-      description: parseApiError(error, '上传失败'),
-      variant: 'destructive'
+      message: parseApiError(error, '上传失败'),
+      variant: 'error'
     })
   } finally {
     uploading.value = false

@@ -112,6 +112,16 @@
             @update:sensitive-headers-str="sensitiveHeadersStr = $event"
           />
 
+          <!-- 内容审查 / 账号保护 -->
+          <ContentModerationSection
+            id="section-content-moderation"
+            :config="systemConfig.content_moderation_account_protection"
+            :loading="contentModerationLoading"
+            :has-changes="hasContentModerationChanges"
+            @save="saveContentModerationConfig"
+            @update:config="systemConfig.content_moderation_account_protection = $event"
+          />
+
           <!-- 请求记录清理策略 -->
           <CleanupPolicySection
             id="section-cleanup"
@@ -255,6 +265,7 @@ import DataManagementSection from './system-settings/DataManagementSection.vue'
 import ProxyConfigSection from './system-settings/ProxyConfigSection.vue'
 import BasicConfigSection from './system-settings/BasicConfigSection.vue'
 import RequestLogSection from './system-settings/RequestLogSection.vue'
+import ContentModerationSection from './system-settings/ContentModerationSection.vue'
 import CleanupPolicySection from './system-settings/CleanupPolicySection.vue'
 import ScheduledTasksSection from './system-settings/ScheduledTasksSection.vue'
 import SystemInfoSection from './system-settings/SystemInfoSection.vue'
@@ -273,6 +284,7 @@ const tocItems = [
   { id: 'section-proxy', label: '网络代理' },
   { id: 'section-basic', label: '基础配置' },
   { id: 'section-request-log', label: '请求记录' },
+  { id: 'section-content-moderation', label: '内容审查' },
   { id: 'section-cleanup', label: '记录清理策略' },
   { id: 'section-scheduled', label: '定时任务' },
   { id: 'section-sysinfo', label: '系统信息' },
@@ -333,11 +345,13 @@ const {
   proxyConfigLoading,
   basicConfigLoading,
   logConfigLoading,
+  contentModerationLoading,
   cleanupConfigLoading,
   hasSiteInfoChanges,
   hasProxyConfigChanges,
   hasBasicConfigChanges,
   hasLogConfigChanges,
+  hasContentModerationChanges,
   hasCleanupConfigChanges,
   maxRequestBodySizeKB,
   maxResponseBodySizeKB,
@@ -350,6 +364,7 @@ const {
   saveBasicConfig,
   clearTurnstileSecret,
   saveLogConfig,
+  saveContentModerationConfig,
   saveCleanupConfig,
   handleAutoCleanupToggle,
 } = useSystemConfig()

@@ -669,7 +669,7 @@
 
                   <TabsContent value="request-body">
                     <JsonContent
-                      :data="selectedInspectionAttempt.request_body"
+                      :data="toJsonContentData(selectedInspectionAttempt.request_body)"
                       view-mode="formatted"
                       :expand-depth="inspectionExpandDepth"
                       :is-dark="isDark"
@@ -719,7 +719,7 @@
                       </div>
                     </div>
                     <JsonContent
-                      :data="selectedInspectionAttempt.response_body"
+                      :data="toJsonContentData(selectedInspectionAttempt.response_body)"
                       view-mode="formatted"
                       :expand-depth="inspectionExpandDepth"
                       :is-dark="isDark"
@@ -814,6 +814,8 @@ import {
   formatModelTestDiagnostic,
 } from './model-test-request'
 import type { ModelTestImagePreview } from './model-test-request'
+
+type JsonContentData = Record<string, unknown> | unknown[] | string | number | boolean | null | undefined
 
 type TestEndpointOption = {
   id: string
@@ -1247,6 +1249,10 @@ const selectedInspectionAttempt = computed(() => {
 
   return inspectableAttempts.value[0] ?? resultAttempts.value[0] ?? null
 })
+
+function toJsonContentData(value: unknown): JsonContentData {
+  return value as JsonContentData
+}
 
 const selectedInspectionImagePreviews = computed(() => (
   selectedInspectionAttempt.value

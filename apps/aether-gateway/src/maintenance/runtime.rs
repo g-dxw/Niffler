@@ -132,6 +132,7 @@ pub(super) fn postgres_error(
 }
 
 const AUDIT_LOG_CLEANUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const CONTENT_MODERATION_EVIDENCE_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const GEMINI_FILE_MAPPING_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const PENDING_CLEANUP_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const NIFFLER_BILLING_RESERVATION_EXPIRY_INTERVAL: Duration = Duration::from_secs(60);
@@ -165,7 +166,12 @@ const DB_MAINTENANCE_WEEKDAY: Weekday = Weekday::Sun;
 const DB_MAINTENANCE_HOUR: u32 = 5;
 const DB_MAINTENANCE_MINUTE: u32 = 0;
 const MAINTENANCE_DEFAULT_TIMEZONE: &str = "Asia/Shanghai";
-const DB_MAINTENANCE_TABLES: &[&str] = &["usage", "request_candidates", "audit_logs"];
+const DB_MAINTENANCE_TABLES: &[&str] = &[
+    "usage",
+    "request_candidates",
+    "audit_logs",
+    "content_moderation_evidence",
+];
 const MAX_ADMIN_STATS_REBUILD_BUCKETS: usize = 100_000;
 const NIFFLER_BILLING_RESERVATION_EXPIRY_BATCH_SIZE: usize = 100;
 const NIFFLER_BILLING_RESERVATION_EXPIRY_MAX_BATCHES: usize = 10;
@@ -184,6 +190,7 @@ struct UsageCleanupSettings {
 pub(crate) struct AdminSystemCleanupSummary {
     pub(crate) audit_logs_deleted: usize,
     pub(crate) request_candidates_deleted: usize,
+    pub(crate) content_moderation_evidence_redacted: usize,
     pub(crate) proxy_node_metrics:
         aether_data::repository::proxy_nodes::ProxyNodeMetricsCleanupSummary,
     pub(crate) pending_failed: usize,
@@ -203,6 +210,8 @@ pub(crate) async fn run_admin_system_cleanup_once(
 ) -> Result<AdminSystemCleanupSummary, aether_data::DataLayerError> {
     let audit_logs_deleted = cleanup_audit_logs_once(data).await?;
     let request_candidates_deleted = cleanup_request_candidates_once(data).await?;
+    let content_moderation_evidence_redacted =
+        cleanup_expired_content_moderation_evidence_once(data).await?;
     let proxy_node_metrics = cleanup_proxy_node_metrics_once(data).await?;
     let pending = cleanup_stale_pending_requests_once(data).await?;
     let usage = perform_usage_cleanup_once(data).await?;
@@ -210,6 +219,7 @@ pub(crate) async fn run_admin_system_cleanup_once(
     Ok(AdminSystemCleanupSummary {
         audit_logs_deleted,
         request_candidates_deleted,
+        content_moderation_evidence_redacted,
         proxy_node_metrics,
         pending_failed: pending.failed,
         pending_recovered: pending.recovered,
@@ -258,6 +268,16 @@ pub(crate) async fn cleanup_expired_gemini_file_mappings_once(
     data: &GatewayDataState,
 ) -> Result<usize, aether_data::DataLayerError> {
     data.delete_expired_gemini_file_mappings(now_unix_secs())
+        .await
+}
+
+pub(crate) async fn cleanup_expired_content_moderation_evidence_once(
+    data: &GatewayDataState,
+) -> Result<usize, aether_data::DataLayerError> {
+    let batch_size = config::system_config_usize(data, "cleanup_batch_size", 1_000)
+        .await?
+        .max(1);
+    data.redact_expired_content_moderation_evidence(now_unix_secs(), batch_size)
         .await
 }
 

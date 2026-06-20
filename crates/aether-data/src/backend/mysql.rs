@@ -24,6 +24,10 @@ use crate::repository::candidates::{
     MysqlRequestCandidateRepository, RequestCandidateReadRepository,
     RequestCandidateWriteRepository,
 };
+use crate::repository::content_moderation_evidence::{
+    ContentModerationEvidenceReadRepository, ContentModerationEvidenceWriteRepository,
+    MysqlContentModerationEvidenceRepository,
+};
 use crate::repository::gemini_file_mappings::{
     GeminiFileMappingReadRepository, GeminiFileMappingWriteRepository,
     MysqlGeminiFileMappingRepository,
@@ -149,6 +153,22 @@ impl MysqlBackend {
 
     pub fn background_task_write_repository(&self) -> Arc<dyn BackgroundTaskWriteRepository> {
         Arc::new(MysqlBackgroundTaskRepository::new(self.pool_clone()))
+    }
+
+    pub fn content_moderation_evidence_read_repository(
+        &self,
+    ) -> Arc<dyn ContentModerationEvidenceReadRepository> {
+        Arc::new(MysqlContentModerationEvidenceRepository::new(
+            self.pool_clone(),
+        ))
+    }
+
+    pub fn content_moderation_evidence_write_repository(
+        &self,
+    ) -> Arc<dyn ContentModerationEvidenceWriteRepository> {
+        Arc::new(MysqlContentModerationEvidenceRepository::new(
+            self.pool_clone(),
+        ))
     }
 
     pub fn request_candidate_read_repository(&self) -> Arc<dyn RequestCandidateReadRepository> {

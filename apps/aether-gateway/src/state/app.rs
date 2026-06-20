@@ -77,6 +77,9 @@ pub struct AppState {
     pub(crate) provider_transport_snapshot_cache:
         Arc<StdMutex<HashMap<ProviderTransportSnapshotCacheKey, CachedProviderTransportSnapshot>>>,
     pub(crate) provider_key_rpm_resets: Arc<StdMutex<HashMap<String, u64>>>,
+    pub(crate) content_moderation_cache:
+        Arc<StdMutex<HashMap<String, crate::content_moderation::ContentModerationCacheEntry>>>,
+    pub(crate) content_moderation_key_cursor: Arc<AtomicU64>,
     pub(crate) local_execution_runtime_miss_diagnostics:
         Arc<StdMutex<HashMap<String, LocalExecutionRuntimeMissDiagnostic>>>,
     pub(crate) admin_monitoring_error_stats_reset_at: Arc<StdMutex<Option<u64>>>,

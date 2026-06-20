@@ -191,7 +191,7 @@ async function execute(action: string): Promise<string> {
       },
     })
     widgetId.value = id
-    turnstile.execute(id)
+    turnstile.execute?.(id)
   })
 }
 

@@ -1,7 +1,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use aether_crypto::{encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY};
+use aether_crypto::{
+    decrypt_python_fernet_ciphertext, encrypt_python_fernet_plaintext, DEVELOPMENT_ENCRYPTION_KEY,
+};
 use aether_data::repository::auth::{
     InMemoryAuthApiKeySnapshotRepository, StoredAuthApiKeyExportRecord,
 };
@@ -34,6 +36,7 @@ use crate::constants::{
     GATEWAY_HEADER, TRUSTED_ADMIN_SESSION_ID_HEADER, TRUSTED_ADMIN_USER_ID_HEADER,
     TRUSTED_ADMIN_USER_ROLE_HEADER,
 };
+use crate::content_moderation::CONTENT_MODERATION_CONFIG_KEY;
 use crate::data::GatewayDataState;
 
 #[tokio::test]
@@ -515,6 +518,32 @@ async fn gateway_handles_admin_system_config_export_locally_with_trusted_admin_p
                 ),
             ),
             ("site_name".to_string(), json!("Niffler Test")),
+            (
+                CONTENT_MODERATION_CONFIG_KEY.to_string(),
+                json!({
+                    "enabled": true,
+                    "level": "all_user_inputs",
+                    "api_keys_encrypted": [
+                        encrypt_python_fernet_plaintext(
+                            DEVELOPMENT_ENCRYPTION_KEY,
+                            "sk-moderation-export-a",
+                        )
+                        .expect("moderation key should encrypt"),
+                        encrypt_python_fernet_plaintext(
+                            DEVELOPMENT_ENCRYPTION_KEY,
+                            "sk-moderation-export-b",
+                        )
+                        .expect("moderation key should encrypt")
+                    ],
+                    "base_url": "https://api.openai.com/v1",
+                    "model": "omni-moderation-latest",
+                    "timeout_ms": 3000,
+                    "input_price_per_1m": 1.0,
+                    "output_price_per_1m": 0.0,
+                    "evidence_retention_days": 30,
+                    "targets": []
+                }),
+            ),
         ]);
 
     let (upstream_url, upstream_handle) = start_server(upstream).await;
@@ -579,6 +608,19 @@ async fn gateway_handles_admin_system_config_export_locally_with_trusted_admin_p
         .cloned()
         .expect("smtp_password should exist");
     assert_eq!(smtp_password["value"], "smtp-secret");
+    let moderation_config = payload["system_configs"]
+        .as_array()
+        .expect("system configs should be array")
+        .iter()
+        .find(|entry| entry["key"] == CONTENT_MODERATION_CONFIG_KEY)
+        .cloned()
+        .expect("content moderation config should exist");
+    assert_eq!(
+        moderation_config["value"]["api_keys"],
+        json!(["sk-moderation-export-a", "sk-moderation-export-b"])
+    );
+    assert_eq!(moderation_config["value"].get("api_keys_encrypted"), None);
+    assert_eq!(moderation_config["value"].get("api_key_masks"), None);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();
@@ -1296,6 +1338,168 @@ async fn gateway_handles_admin_system_config_detail_locally_with_trusted_admin_p
 
     gateway_handle.abort();
     upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_encrypts_and_masks_content_moderation_api_keys_in_system_config() {
+    let data_state =
+        GatewayDataState::disabled().with_encryption_key_for_tests(DEVELOPMENT_ENCRYPTION_KEY);
+    let state = AppState::new()
+        .expect("gateway should build")
+        .with_data_state_for_tests(data_state);
+    let gateway = build_router_with_state(state.clone());
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+    let client = reqwest::Client::new();
+    let config_url =
+        format!("{gateway_url}/api/admin/system/configs/content_moderation_account_protection");
+
+    let put_response = client
+        .put(&config_url)
+        .header(crate::constants::GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "value": {
+                "enabled": true,
+                "level": "all_user_inputs",
+                "api_keys": ["sk-moderation-secret-a", "sk-moderation-secret-b"],
+                "base_url": "https://api.openai.com/v1",
+                "model": "omni-moderation-latest",
+                "timeout_ms": 3000,
+                "input_price_per_1m": 1.0,
+                "output_price_per_1m": 0.0,
+                "evidence_retention_days": 30,
+                "targets": []
+            }
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(put_response.status(), StatusCode::OK);
+    let put_payload: serde_json::Value = put_response.json().await.expect("json body should parse");
+    let visible_value = &put_payload["value"];
+    assert_eq!(visible_value["api_keys"], json!([]));
+    assert_eq!(visible_value["api_key_count"], json!(2));
+    assert_eq!(
+        visible_value.to_string().contains("sk-moderation-secret-a"),
+        false
+    );
+    assert_eq!(visible_value.get("api_keys_encrypted"), None);
+
+    let stored = state
+        .read_system_config_json_value("content_moderation_account_protection")
+        .await
+        .expect("config read should succeed")
+        .expect("config should exist");
+    assert_eq!(stored.get("api_keys"), None);
+    let encrypted_keys = stored["api_keys_encrypted"]
+        .as_array()
+        .expect("encrypted keys should be stored");
+    assert_eq!(encrypted_keys.len(), 2);
+    assert_ne!(encrypted_keys[0], json!("sk-moderation-secret-a"));
+    assert_eq!(
+        decrypt_python_fernet_ciphertext(
+            DEVELOPMENT_ENCRYPTION_KEY,
+            encrypted_keys[0]
+                .as_str()
+                .expect("ciphertext should be string"),
+        )
+        .expect("ciphertext should decrypt"),
+        "sk-moderation-secret-a"
+    );
+
+    let get_response = client
+        .get(&config_url)
+        .header(crate::constants::GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(get_response.status(), StatusCode::OK);
+    let get_payload: serde_json::Value = get_response.json().await.expect("json body should parse");
+    assert_eq!(get_payload["value"]["api_key_count"], json!(2));
+    assert_eq!(
+        get_payload.to_string().contains("sk-moderation-secret-a"),
+        false
+    );
+    assert_eq!(get_payload["value"].get("api_keys_encrypted"), None);
+
+    let preserve_response = client
+        .put(&config_url)
+        .header(crate::constants::GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "value": {
+                "enabled": true,
+                "level": "all_user_inputs",
+                "api_keys": [],
+                "base_url": "https://api.openai.com/v1",
+                "model": "omni-moderation-latest",
+                "timeout_ms": 5000,
+                "input_price_per_1m": 1.0,
+                "output_price_per_1m": 0.0,
+                "evidence_retention_days": 30,
+                "targets": []
+            }
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(preserve_response.status(), StatusCode::OK);
+    let preserved = state
+        .read_system_config_json_value("content_moderation_account_protection")
+        .await
+        .expect("config read should succeed")
+        .expect("config should exist");
+    assert_eq!(preserved["timeout_ms"], json!(5000));
+    assert_eq!(
+        preserved["api_keys_encrypted"]
+            .as_array()
+            .expect("encrypted keys should remain")
+            .len(),
+        2
+    );
+
+    let clear_response = client
+        .put(&config_url)
+        .header(crate::constants::GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({
+            "value": {
+                "enabled": true,
+                "level": "all_user_inputs",
+                "api_keys": [],
+                "api_keys_clear": true,
+                "base_url": "https://api.openai.com/v1",
+                "model": "omni-moderation-latest",
+                "timeout_ms": 5000,
+                "input_price_per_1m": 1.0,
+                "output_price_per_1m": 0.0,
+                "evidence_retention_days": 30,
+                "targets": []
+            }
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(clear_response.status(), StatusCode::OK);
+    let cleared = state
+        .read_system_config_json_value("content_moderation_account_protection")
+        .await
+        .expect("config read should succeed")
+        .expect("config should exist");
+    assert_eq!(cleared.get("api_keys_encrypted"), None);
+    assert_eq!(cleared.get("api_keys_clear"), None);
+
+    gateway_handle.abort();
 }
 
 #[tokio::test]

@@ -48,7 +48,7 @@ export function useProviderBalance() {
       const schemas: Record<string, CredentialsSchema> = {}
       for (const arch of archs) {
         if (arch.credentials_schema) {
-          schemas[arch.architecture_id] = arch.credentials_schema as CredentialsSchema
+          schemas[arch.architecture_id] = arch.credentials_schema as unknown as CredentialsSchema
         }
       }
       architectureSchemas.value = schemas
@@ -173,14 +173,14 @@ export function useProviderBalance() {
       return null
     }
     const data = result.data as Record<string, unknown>
-    const extra = data.extra
-    if (!extra || extra.balance === undefined || extra.points === undefined) {
+    const extra = data.extra as Record<string, unknown> | undefined
+    if (!extra || typeof extra.balance !== 'number' || typeof extra.points !== 'number') {
       return null
     }
     return {
       balance: extra.balance,
       points: extra.points,
-      currency: data.currency || 'USD',
+      currency: typeof data.currency === 'string' ? data.currency : 'USD',
     }
   }
 
@@ -224,13 +224,13 @@ export function useProviderBalance() {
       return null
     }
     const data = result.data as Record<string, unknown>
-    const extra = data.extra
+    const extra = data.extra as Record<string, unknown> | undefined
     if (!extra || extra.checkin_success === undefined) {
       return null
     }
     return {
-      success: extra.checkin_success,
-      message: extra.checkin_message || '',
+      success: typeof extra.checkin_success === 'boolean' ? extra.checkin_success : null,
+      message: typeof extra.checkin_message === 'string' ? extra.checkin_message : '',
     }
   }
 
@@ -244,13 +244,13 @@ export function useProviderBalance() {
       return null
     }
     const data = result.data as Record<string, unknown>
-    const extra = data.extra
+    const extra = data.extra as Record<string, unknown> | undefined
     if (!extra || !extra.cookie_expired) {
       return null
     }
     return {
       expired: true,
-      message: extra.cookie_expired_message || 'Cookie 已失效',
+      message: typeof extra.cookie_expired_message === 'string' ? extra.cookie_expired_message : 'Cookie 已失效',
     }
   }
 
@@ -296,7 +296,7 @@ export function useProviderBalance() {
     }
 
     const data = result.data as Record<string, unknown>
-    const extra = data.extra
+    const extra = data.extra as Record<string, unknown> | undefined
     if (!extra) return []
 
     // 从 schema 缓存中获取格式化配置

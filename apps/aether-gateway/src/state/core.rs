@@ -43,6 +43,7 @@ use super::super::{provider_transport, usage};
 
 use crate::maintenance::spawn_account_self_check_worker;
 use crate::maintenance::spawn_audit_cleanup_worker;
+use crate::maintenance::spawn_content_moderation_evidence_cleanup_worker;
 use crate::maintenance::spawn_db_maintenance_worker;
 use crate::maintenance::spawn_gemini_file_mapping_cleanup_worker;
 use crate::maintenance::spawn_niffler_billing_reservation_expiry_worker;
@@ -263,6 +264,8 @@ impl AppState {
             ),
             provider_transport_snapshot_cache: Arc::new(StdMutex::new(HashMap::new())),
             provider_key_rpm_resets: Arc::new(StdMutex::new(HashMap::new())),
+            content_moderation_cache: Arc::new(StdMutex::new(HashMap::new())),
+            content_moderation_key_cursor: Arc::new(AtomicU64::new(0)),
             local_execution_runtime_miss_diagnostics: Arc::new(StdMutex::new(HashMap::new())),
             admin_monitoring_error_stats_reset_at: Arc::new(StdMutex::new(None)),
             provider_delete_tasks: Arc::new(StdMutex::new(HashMap::new())),
@@ -1247,6 +1250,10 @@ impl AppState {
         supervise_worker(
             crate::task_runtime::TASK_KEY_GEMINI_FILES_CLEANUP,
             spawn_gemini_file_mapping_cleanup_worker(self.data.clone()),
+        );
+        supervise_worker(
+            crate::task_runtime::TASK_KEY_CONTENT_MODERATION_EVIDENCE_CLEANUP,
+            spawn_content_moderation_evidence_cleanup_worker(self.data.clone()),
         );
         supervise_worker(
             crate::task_runtime::TASK_KEY_MODEL_FETCH_WORKER,

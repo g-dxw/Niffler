@@ -36,6 +36,8 @@ pub(crate) const TASK_KEY_NIFFLER_STABILITY_OBSERVATION: &str =
     "maintenance.niffler.stability.observation";
 pub(crate) const TASK_KEY_REQUEST_CANDIDATE_CLEANUP: &str = "maintenance.request.candidate.cleanup";
 pub(crate) const TASK_KEY_GEMINI_FILES_CLEANUP: &str = "maintenance.gemini.files.cleanup";
+pub(crate) const TASK_KEY_CONTENT_MODERATION_EVIDENCE_CLEANUP: &str =
+    "maintenance.content_moderation.evidence.cleanup";
 pub(crate) const TASK_KEY_OAUTH_TOKEN_REFRESH: &str = "maintenance.oauth.token.refresh";
 pub(crate) const TASK_KEY_PROXY_NODE_STALE_CLEANUP: &str = "maintenance.proxy.node.stale.cleanup";
 pub(crate) const TASK_KEY_PROXY_NODE_METRICS_CLEANUP: &str =
@@ -191,6 +193,14 @@ const TASK_DEFINITIONS: &[TaskDefinition] = &[
     ),
     TaskDefinition::new(
         TASK_KEY_GEMINI_FILES_CLEANUP,
+        TaskKind::Scheduled,
+        "interval",
+        true,
+        true,
+        RETRY_ONCE,
+    ),
+    TaskDefinition::new(
+        TASK_KEY_CONTENT_MODERATION_EVIDENCE_CLEANUP,
         TaskKind::Scheduled,
         "interval",
         true,

@@ -1,6 +1,7 @@
 mod adaptive;
 mod api_keys;
 mod billing;
+mod content_moderation;
 mod endpoints;
 mod gemini_files;
 mod health_access;

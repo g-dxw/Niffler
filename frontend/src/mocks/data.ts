@@ -435,6 +435,16 @@ export const MOCK_ADMIN_API_KEYS: AdminApiKeysResponse = {
 
 // ========== Provider 数据 ==========
 
+const MOCK_PROVIDER_DEFAULTS = {
+  keep_priority_on_conversion: false,
+  enable_format_conversion: true,
+  global_model_ids: [],
+  ops_configured: false,
+} satisfies Pick<
+  ProviderWithEndpointsSummary,
+  'keep_priority_on_conversion' | 'enable_format_conversion' | 'global_model_ids' | 'ops_configured'
+>
+
 export const MOCK_PROVIDERS: ProviderWithEndpointsSummary[] = [
   {
     id: 'provider-001',
@@ -611,7 +621,10 @@ export const MOCK_PROVIDERS: ProviderWithEndpointsSummary[] = [
     created_at: '2024-12-07T23:00:42.559105+08:00',
     updated_at: new Date().toISOString()
   }
-]
+].map(provider => ({
+  ...MOCK_PROVIDER_DEFAULTS,
+  ...provider,
+})) as ProviderWithEndpointsSummary[]
 
 // ========== GlobalModel 数据 ==========
 

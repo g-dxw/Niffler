@@ -3,7 +3,7 @@
  * 演示模式的 API 请求拦截和模拟响应
  */
 
-import type { AxiosRequestConfig, AxiosResponse } from 'axios'
+import type { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { isDemoMode, DEMO_ACCOUNTS } from '@/config/demo'
 import {
   MOCK_ADMIN_USER,
@@ -40,7 +40,7 @@ function createMockResponse<T>(data: T, status: number = 200): AxiosResponse<T> 
     status,
     statusText: status === 200 ? 'OK' : 'Error',
     headers: {},
-    config: {} as AxiosRequestConfig
+    config: {} as InternalAxiosRequestConfig
   }
 }
 
@@ -582,9 +582,9 @@ const MOCK_ENDPOINT_KEYS = [
 
 // Mock Endpoints
 const MOCK_ENDPOINTS = [
-  { id: 'ep-001', provider_id: 'provider-001', provider_name: 'anthropic', api_format: 'claude:messages', base_url: 'https://api.anthropic.com', max_retries: 2, is_active: true, total_keys: 2, active_keys: 2, created_at: '2024-01-01T00:00:00Z', updated_at: new Date().toISOString(), ...getMockEndpointExtras('claude:messages') },
-  { id: 'ep-002', provider_id: 'provider-002', provider_name: 'openai', api_format: 'openai:chat', base_url: 'https://api.openai.com', max_retries: 2, is_active: true, total_keys: 1, active_keys: 1, created_at: '2024-01-01T00:00:00Z', updated_at: new Date().toISOString(), ...getMockEndpointExtras('openai:chat') },
-  { id: 'ep-003', provider_id: 'provider-003', provider_name: 'google', api_format: 'gemini:generate_content', base_url: 'https://generativelanguage.googleapis.com', max_retries: 2, is_active: true, total_keys: 1, active_keys: 1, created_at: '2024-01-15T00:00:00Z', updated_at: new Date().toISOString(), ...getMockEndpointExtras('gemini:generate_content') }
+  { id: 'ep-001', provider_id: 'provider-001', provider_name: 'anthropic', api_format: 'claude:messages', base_url: 'https://api.anthropic.com', max_retries: 2, health_score: 0.98, is_active: true, total_keys: 2, active_keys: 2, created_at: '2024-01-01T00:00:00Z', updated_at: new Date().toISOString(), ...getMockEndpointExtras('claude:messages') },
+  { id: 'ep-002', provider_id: 'provider-002', provider_name: 'openai', api_format: 'openai:chat', base_url: 'https://api.openai.com', max_retries: 2, health_score: 0.97, is_active: true, total_keys: 1, active_keys: 1, created_at: '2024-01-01T00:00:00Z', updated_at: new Date().toISOString(), ...getMockEndpointExtras('openai:chat') },
+  { id: 'ep-003', provider_id: 'provider-003', provider_name: 'google', api_format: 'gemini:generate_content', base_url: 'https://generativelanguage.googleapis.com', max_retries: 2, health_score: 0.96, is_active: true, total_keys: 1, active_keys: 1, created_at: '2024-01-15T00:00:00Z', updated_at: new Date().toISOString(), ...getMockEndpointExtras('gemini:generate_content') }
 ]
 
 // Mock 能力定义
@@ -1353,7 +1353,7 @@ const mockHandlers: Record<string, (config: AxiosRequestConfig) => Promise<Axios
       models: MOCK_GLOBAL_MODELS.map(m => ({
         name: m.name,
         display_name: m.display_name,
-        description: m.description
+        description: m.config?.description ?? null
       }))
     })
   },
@@ -1553,9 +1553,17 @@ function generateMockEndpointsForProvider(providerId: string) {
   })
 }
 
+interface MockProviderKey extends Record<string, unknown> {
+  id: string
+  provider_id: string
+  api_formats: string[]
+  name?: string
+  global_priority?: number | null
+}
+
 // 为 provider 生成 keys（Key 归属 Provider，通过 api_formats 关联）
-const PROVIDER_KEYS_CACHE: Record<string, Record<string, unknown>[]> = {}
-function generateMockKeysForProvider(providerId: string, count: number = 2) {
+const PROVIDER_KEYS_CACHE: Record<string, MockProviderKey[]> = {}
+function generateMockKeysForProvider(providerId: string, count: number = 2): MockProviderKey[] {
   const provider = MOCK_PROVIDERS.find(p => p.id === providerId)
   const formats = provider?.api_formats || []
   const nowSec = Math.floor(Date.now() / 1000)
@@ -2010,7 +2018,7 @@ registerDynamicRoute('POST', '/api/admin/provider-oauth/providers/:providerId/ba
   requireAdmin()
   const body = JSON.parse(config.data || '{}')
   const raw = typeof body.credentials === 'string' ? body.credentials.trim() : ''
-  const lines = raw ? raw.split('\n').filter(line => line.trim() && !line.trim().startsWith('#')) : []
+  const lines = raw ? raw.split('\n').filter((line: string) => line.trim() && !line.trim().startsWith('#')) : []
   const total = Math.max(Math.min(lines.length, 5), 2)
   const results = []
   for (let index = 0; index < total; index++) {

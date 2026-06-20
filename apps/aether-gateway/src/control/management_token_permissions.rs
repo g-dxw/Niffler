@@ -48,6 +48,11 @@ const PERMISSION_GROUPS: &[PermissionGroup] = &[
         assignable: true,
     },
     PermissionGroup {
+        scope: "content_moderation_evidence",
+        label: "内容审查证据",
+        assignable: false,
+    },
+    PermissionGroup {
         scope: "endpoints_health",
         label: "端点健康",
         assignable: true,
@@ -397,6 +402,9 @@ fn permission_key(scope: &str, access: &str) -> &'static str {
         ("billing", "read") => "admin:billing:read",
         ("billing", "write") => "admin:billing:write",
         ("billing", "admin") => "admin:billing:admin",
+        ("content_moderation_evidence", "read") => "admin:content_moderation_evidence:read",
+        ("content_moderation_evidence", "write") => "admin:content_moderation_evidence:write",
+        ("content_moderation_evidence", "admin") => "admin:content_moderation_evidence:admin",
         ("endpoints_health", "read") => "admin:endpoints_health:read",
         ("endpoints_health", "write") => "admin:endpoints_health:write",
         ("endpoints_health", "admin") => "admin:endpoints_health:admin",

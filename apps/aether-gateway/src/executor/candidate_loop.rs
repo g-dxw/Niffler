@@ -13,6 +13,9 @@ use tracing::{debug, warn, Instrument};
 
 use crate::ai_serving::LocalExecutionAttemptSource;
 use crate::clock::current_unix_ms;
+use crate::content_moderation::{
+    run_content_moderation_precheck, ContentModerationPrecheckOutcome,
+};
 use crate::control::GatewayControlDecision;
 use crate::execution_runtime::{execute_execution_runtime_stream, execute_execution_runtime_sync};
 use crate::executor::{build_local_execution_exhaustion, LocalExecutionRequestOutcome};
@@ -148,22 +151,39 @@ where
     type Error = GatewayError;
 
     async fn execute_attempt(&self, attempt: &T) -> Result<Option<Self::Response>, Self::Error> {
+        let plan = attempt.execution_plan().clone();
+        let report_context = attempt.report_context();
+        let report_context =
+            match run_content_moderation_precheck(self.state, &plan, report_context).await? {
+                ContentModerationPrecheckOutcome::Continue { report_context } => report_context,
+                ContentModerationPrecheckOutcome::Blocked {
+                    response,
+                    report_context,
+                } => {
+                    mark_content_moderation_blocked_candidate(
+                        self.state,
+                        &plan,
+                        report_context.as_ref(),
+                        self.trace_id,
+                        self.plan_kind,
+                    )
+                    .await;
+                    return Ok(Some(response));
+                }
+            };
         let mut response = execute_execution_runtime_sync(
             self.state,
             self.parts.uri.path(),
-            attempt.execution_plan().clone(),
+            plan.clone(),
             self.trace_id,
             self.decision,
             self.plan_kind,
             attempt.report_kind(),
-            attempt.report_context(),
+            report_context,
         )
         .await?;
         if let Some(response) = response.as_mut() {
-            attach_redaction_execution_candidate(
-                response,
-                attempt.execution_plan().candidate_id.as_deref(),
-            );
+            attach_redaction_execution_candidate(response, plan.candidate_id.as_deref());
         }
         Ok(response)
     }
@@ -340,6 +360,24 @@ where
     async fn execute_attempt(&self, attempt: &T) -> Result<Option<Self::Response>, Self::Error> {
         let plan = attempt.execution_plan().clone();
         let report_context = attempt.report_context();
+        let report_context =
+            match run_content_moderation_precheck(self.state, &plan, report_context).await? {
+                ContentModerationPrecheckOutcome::Continue { report_context } => report_context,
+                ContentModerationPrecheckOutcome::Blocked {
+                    response,
+                    report_context,
+                } => {
+                    mark_content_moderation_blocked_candidate(
+                        self.state,
+                        &plan,
+                        report_context.as_ref(),
+                        self.trace_id,
+                        self.plan_kind,
+                    )
+                    .await;
+                    return Ok(Some(response));
+                }
+            };
         let candidate_index = parse_request_candidate_report_context(report_context.as_ref())
             .and_then(|context| context.candidate_index)
             .map(|value| value.to_string())
@@ -458,6 +496,55 @@ where
         )
         .await;
     }
+}
+
+async fn mark_content_moderation_blocked_candidate(
+    state: &AppState,
+    plan: &aether_contracts::ExecutionPlan,
+    report_context: Option<&serde_json::Value>,
+    trace_id: &str,
+    plan_kind: &str,
+) {
+    let metadata = local_execution_candidate_metadata_from_report_context(report_context);
+    if let Some(lease) = metadata.pool_key_lease.as_ref() {
+        if let Err(err) =
+            release_admin_provider_pool_key_lease(state.runtime_state.as_ref(), lease).await
+        {
+            warn!(
+                error = ?err,
+                "gateway candidate loop: failed to release content-moderation-blocked pool key lease"
+            );
+        }
+    }
+    let now = current_unix_ms();
+    submit_local_request_candidate_status(
+        state,
+        plan,
+        report_context,
+        SchedulerRequestCandidateStatusUpdate {
+            status: RequestCandidateStatus::Skipped,
+            status_code: Some(http::StatusCode::FORBIDDEN.as_u16()),
+            error_type: Some("content_moderation_flagged".to_string()),
+            error_message: Some("request content failed pre-upstream moderation".to_string()),
+            latency_ms: Some(0),
+            started_at_unix_ms: Some(now),
+            finished_at_unix_ms: Some(now),
+        },
+    )
+    .await;
+    warn!(
+        event_name = "candidate_loop_content_moderation_blocked",
+        log_type = "security",
+        trace_id = %trace_id,
+        plan_kind,
+        request_id = %short_request_id(plan.request_id.as_str()),
+        candidate_id = ?plan.candidate_id,
+        provider_name = plan.provider_name.as_deref().unwrap_or("-"),
+        endpoint_id = %plan.endpoint_id,
+        key_id = %plan.key_id,
+        model_name = plan.model_name.as_deref().unwrap_or("-"),
+        "content moderation blocked local execution candidate before upstream request"
+    );
 }
 
 fn should_skip_unused_persistence(report_context: Option<&serde_json::Value>) -> bool {

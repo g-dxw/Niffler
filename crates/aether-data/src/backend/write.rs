@@ -7,6 +7,7 @@ use crate::repository::auth::AuthApiKeyWriteRepository;
 use crate::repository::auth_modules::AuthModuleWriteRepository;
 use crate::repository::background_tasks::BackgroundTaskWriteRepository;
 use crate::repository::candidates::RequestCandidateWriteRepository;
+use crate::repository::content_moderation_evidence::ContentModerationEvidenceWriteRepository;
 use crate::repository::gemini_file_mappings::GeminiFileMappingWriteRepository;
 use crate::repository::global_models::GlobalModelWriteRepository;
 use crate::repository::management_tokens::ManagementTokenWriteRepository;
@@ -28,6 +29,7 @@ pub struct DataWriteRepositories {
     auth_api_keys: Option<Arc<dyn AuthApiKeyWriteRepository>>,
     auth_modules: Option<Arc<dyn AuthModuleWriteRepository>>,
     background_tasks: Option<Arc<dyn BackgroundTaskWriteRepository>>,
+    content_moderation_evidence: Option<Arc<dyn ContentModerationEvidenceWriteRepository>>,
     request_candidates: Option<Arc<dyn RequestCandidateWriteRepository>>,
     gemini_file_mappings: Option<Arc<dyn GeminiFileMappingWriteRepository>>,
     global_models: Option<Arc<dyn GlobalModelWriteRepository>>,
@@ -52,6 +54,10 @@ impl fmt::Debug for DataWriteRepositories {
             .field("has_auth_api_keys", &self.auth_api_keys.is_some())
             .field("has_auth_modules", &self.auth_modules.is_some())
             .field("has_background_tasks", &self.background_tasks.is_some())
+            .field(
+                "has_content_moderation_evidence",
+                &self.content_moderation_evidence.is_some(),
+            )
             .field("has_request_candidates", &self.request_candidates.is_some())
             .field(
                 "has_gemini_file_mappings",
@@ -97,6 +103,12 @@ impl DataWriteRepositories {
                 .map(PostgresBackend::background_task_write_repository)
                 .or_else(|| mysql.map(MysqlBackend::background_task_write_repository))
                 .or_else(|| sqlite.map(SqliteBackend::background_task_write_repository)),
+            content_moderation_evidence: postgres
+                .map(PostgresBackend::content_moderation_evidence_write_repository)
+                .or_else(|| mysql.map(MysqlBackend::content_moderation_evidence_write_repository))
+                .or_else(|| {
+                    sqlite.map(SqliteBackend::content_moderation_evidence_write_repository)
+                }),
             request_candidates: postgres
                 .map(PostgresBackend::request_candidate_write_repository)
                 .or_else(|| mysql.map(MysqlBackend::request_candidate_write_repository))
@@ -181,6 +193,12 @@ impl DataWriteRepositories {
         self.background_tasks.clone()
     }
 
+    pub fn content_moderation_evidence(
+        &self,
+    ) -> Option<Arc<dyn ContentModerationEvidenceWriteRepository>> {
+        self.content_moderation_evidence.clone()
+    }
+
     pub fn usage(&self) -> Option<Arc<dyn UsageWriteRepository>> {
         self.usage.clone()
     }
@@ -246,6 +264,7 @@ impl DataWriteRepositories {
             || self.auth_api_keys.is_some()
             || self.auth_modules.is_some()
             || self.background_tasks.is_some()
+            || self.content_moderation_evidence.is_some()
             || self.request_candidates.is_some()
             || self.gemini_file_mappings.is_some()
             || self.global_models.is_some()
@@ -290,6 +309,7 @@ mod tests {
         assert!(write.announcements().is_some());
         assert!(write.auth_api_keys().is_some());
         assert!(write.auth_modules().is_some());
+        assert!(write.content_moderation_evidence().is_some());
         assert!(write.request_candidates().is_some());
         assert!(write.gemini_file_mappings().is_some());
         assert!(write.global_models().is_some());

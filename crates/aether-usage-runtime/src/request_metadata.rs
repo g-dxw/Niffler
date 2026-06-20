@@ -105,6 +105,11 @@ fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<St
     copy_non_null_value(source, target, "dimensions");
     copy_non_null_value(source, target, "billing_rule_snapshot");
     copy_non_null_value(source, target, "scheduling_audit");
+    copy_non_null_value(source, target, "content_moderation");
+    copy_number(source, target, "content_moderation_cost_usd");
+    copy_number(source, target, "content_moderation_actual_cost_usd");
+    copy_number(source, target, "model_cost_usd");
+    copy_number(source, target, "actual_model_cost_usd");
     copy_non_null_value(source, target, "tls_fingerprint");
     copy_number(source, target, "rate_multiplier");
     copy_bool(source, target, "is_free_tier");
@@ -154,6 +159,11 @@ fn move_allowed_metadata_fields(mut source: Map<String, Value>, target: &mut Map
     remove_non_null_value(&mut source, target, "dimensions");
     remove_non_null_value(&mut source, target, "billing_rule_snapshot");
     remove_non_null_value(&mut source, target, "scheduling_audit");
+    remove_non_null_value(&mut source, target, "content_moderation");
+    remove_number(&mut source, target, "content_moderation_cost_usd");
+    remove_number(&mut source, target, "content_moderation_actual_cost_usd");
+    remove_number(&mut source, target, "model_cost_usd");
+    remove_number(&mut source, target, "actual_model_cost_usd");
     remove_non_null_value(&mut source, target, "tls_fingerprint");
     remove_number(&mut source, target, "rate_multiplier");
     remove_bool(&mut source, target, "is_free_tier");

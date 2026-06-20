@@ -326,7 +326,7 @@ const props = defineProps<{
   open: boolean
   providerId: string
   providerWebsite?: string
-  currentConfig?: Record<string, unknown> | null
+  currentConfig?: Record<string, any> | null
 }>()
 
 const emit = defineEmits<{
@@ -374,7 +374,7 @@ const architecturesLoaded = ref(false)
 // 当前选择
 const selectedArchitectureId = ref('new_api')
 const selectedAuthType = ref('')
-const formData = ref<Record<string, unknown>>({})
+const formData = ref<Record<string, any>>({})
 
 // 当前架构支持的认证方式
 const currentAuthTypes = computed(() => {
@@ -391,11 +391,11 @@ const currentSchema = computed<CredentialsSchema | null>(() => {
   if (selectedAuthType.value && arch.supported_auth_types.length > 1) {
     const authType = arch.supported_auth_types.find((t) => t.type === selectedAuthType.value)
     if (authType?.credentials_schema) {
-      return authType.credentials_schema as CredentialsSchema
+      return authType.credentials_schema as unknown as CredentialsSchema
     }
   }
 
-  return (arch?.credentials_schema as CredentialsSchema) ?? null
+  return (arch?.credentials_schema as unknown as CredentialsSchema) ?? null
 })
 
 // 表单是否可以验证（必填字段已填写）
@@ -416,7 +416,7 @@ const canVerify = computed(() => {
   const error = validateFromSchema(schema, dataToValidate)
   if (error) return false
 
-  const effectiveBaseUrl = formData.value.base_url || props.providerWebsite
+  const effectiveBaseUrl = String(formData.value.base_url || props.providerWebsite || '')
   return !!effectiveBaseUrl
 })
 
@@ -478,7 +478,7 @@ function resetFormData() {
   // 初始化表单数据
   const data: Record<string, unknown> = {}
   for (const [key, prop] of Object.entries(schema.properties)) {
-    data[key] = (prop as Record<string, unknown>)['x-default-value'] ?? ''
+    data[key] = (prop as unknown as Record<string, unknown>)['x-default-value'] ?? ''
   }
   // 代理相关默认值
   data.proxy_enabled = false
@@ -565,7 +565,7 @@ async function handleVerify() {
         const displayName = result.data?.display_name || result.data?.username
         const extra = result.data?.extra
         let balanceText = `余额: ${formatQuota(quota)}`
-        if (extra && extra.balance !== undefined && extra.points !== undefined) {
+        if (extra && typeof extra.balance === 'number' && typeof extra.points === 'number') {
           balanceText = `余额: ${formatQuota(extra.balance)} | 积分: ${formatQuota(extra.points)}`
         }
         showSuccess(`用户: ${displayName} | ${balanceText}`, '验证成功')
@@ -610,7 +610,7 @@ async function handleSave() {
     return
   }
 
-  const effectiveBaseUrl = formData.value.base_url || props.providerWebsite
+  const effectiveBaseUrl = String(formData.value.base_url || props.providerWebsite || '')
   if (!effectiveBaseUrl) {
     showError('请填写 API 地址')
     return
@@ -673,13 +673,13 @@ async function handleClear() {
   }
 }
 
-function loadFromConfig(config: Record<string, unknown>) {
+function loadFromConfig(config: Record<string, any>) {
   if (!config?.connector) return
 
   hasExistingConfig.value = true
 
   // 根据已保存的 architecture_id 选择对应架构
-  const architectureId = config.architecture_id || 'new_api'
+  const architectureId = String(config.architecture_id || 'new_api')
   const archExists = architectures.value.some((a) => a.architecture_id === architectureId)
   selectedArchitectureId.value = archExists ? architectureId : 'new_api'
 

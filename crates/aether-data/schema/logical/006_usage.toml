@@ -760,3 +760,101 @@ columns = ["billing_status"]
 [[table.usage_settlement_snapshots.indexes]]
 name = "usage_settlement_snapshots_wallet_id_idx"
 columns = ["wallet_id"]
+
+[table.content_moderation_evidence]
+domain = "usage"
+order = 30
+primary_key = ["id"]
+
+[[table.content_moderation_evidence.columns]]
+name = "id"
+type = "text"
+length = 128
+
+[[table.content_moderation_evidence.columns]]
+name = "request_id"
+type = "text"
+length = 128
+
+[[table.content_moderation_evidence.columns]]
+name = "user_id"
+type = "text_id"
+length = 64
+nullable = true
+
+[[table.content_moderation_evidence.columns]]
+name = "api_key_id"
+type = "text_id"
+length = 64
+nullable = true
+
+[[table.content_moderation_evidence.columns]]
+name = "provider_id"
+type = "text_id"
+length = 64
+nullable = true
+
+[[table.content_moderation_evidence.columns]]
+name = "upstream_service_id"
+type = "text_id"
+length = 64
+nullable = true
+
+[[table.content_moderation_evidence.columns]]
+name = "upstream_account_id"
+type = "text_id"
+length = 64
+nullable = true
+
+[[table.content_moderation_evidence.columns]]
+name = "moderation_model"
+type = "text"
+length = 255
+
+[[table.content_moderation_evidence.columns]]
+name = "input_sha256"
+type = "text"
+length = 64
+
+[[table.content_moderation_evidence.columns]]
+name = "input_text"
+type = "long_text"
+nullable = true
+
+[[table.content_moderation_evidence.columns]]
+name = "categories"
+type = "json"
+
+[[table.content_moderation_evidence.columns]]
+name = "category_scores"
+type = "json"
+
+[[table.content_moderation_evidence.columns]]
+name = "flagged"
+type = "bool"
+default = false
+
+[[table.content_moderation_evidence.columns]]
+name = "created_at_unix_secs"
+type = "unix_seconds"
+
+[[table.content_moderation_evidence.columns]]
+name = "expires_at_unix_secs"
+type = "unix_seconds"
+
+[[table.content_moderation_evidence.columns]]
+name = "redacted_at_unix_secs"
+type = "unix_seconds"
+nullable = true
+
+[[table.content_moderation_evidence.indexes]]
+name = "idx_content_moderation_evidence_request"
+columns = ["request_id"]
+
+[[table.content_moderation_evidence.indexes]]
+name = "idx_content_moderation_evidence_expiry"
+columns = ["expires_at_unix_secs", "id"]
+
+[[table.content_moderation_evidence.indexes]]
+name = "idx_content_moderation_evidence_actor"
+columns = ["user_id", "api_key_id", "created_at_unix_secs"]

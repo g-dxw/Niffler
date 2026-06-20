@@ -1145,6 +1145,11 @@ const traceRequestMetadata = computed<Record<string, unknown> | null>(() => {
   return meta as Record<string, unknown>
 })
 
+function toRecordOrNull(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
 const metadataPanelData = computed<Record<string, unknown> | null>(() => {
   if (!detail.value) return null
 
@@ -1348,19 +1353,19 @@ const currentResponseBodyApiFormat = computed(() => {
 })
 
 // 获取当前数据源的请求头数据
-const currentHeaderData = computed(() => {
+const currentHeaderData = computed<Record<string, unknown> | null>(() => {
   if (!detail.value) return null
   if (dataSource.value === 'client' && hasContent(detail.value.request_headers)) {
-    return detail.value.request_headers
+    return toRecordOrNull(detail.value.request_headers)
   }
   if (dataSource.value === 'provider' && hasContent(detail.value.provider_request_headers)) {
-    return detail.value.provider_request_headers
+    return toRecordOrNull(detail.value.provider_request_headers)
   }
   // 回退：优先 client，再 provider
   if (hasContent(detail.value.request_headers)) {
-    return detail.value.request_headers
+    return toRecordOrNull(detail.value.request_headers)
   }
-  return detail.value.provider_request_headers
+  return toRecordOrNull(detail.value.provider_request_headers)
 })
 
 const activeJsonPanelData = computed(() => {
@@ -1503,12 +1508,12 @@ const effectiveOutputCost = computed(() =>
   ?? 0,
 )
 
-const effectiveCacheCreationCost = computed(() => {
+const effectiveCacheCreationCost = computed<number>(() => {
   const snapshotCost = [
     getNestedNumber(billingCostBreakdown.value, 'cache_creation_uncategorized_cost'),
     getNestedNumber(billingCostBreakdown.value, 'cache_creation_ephemeral_5m_cost'),
     getNestedNumber(billingCostBreakdown.value, 'cache_creation_ephemeral_1h_cost'),
-  ].reduce((sum, value) => sum + (value ?? 0), 0)
+  ].reduce<number>((sum, value) => sum + (value ?? 0), 0)
   if (snapshotCost > 0) return snapshotCost
   return toNumber(detail.value?.cache_creation_cost) ?? 0
 })
@@ -1996,19 +2001,19 @@ function getDefaultDataSourceForTab(tab: string): 'client' | 'provider' {
 }
 
 // 获取当前数据源的响应头数据
-const currentResponseHeaderData = computed(() => {
+const currentResponseHeaderData = computed<Record<string, unknown> | null>(() => {
   if (!detail.value) return null
   if (dataSource.value === 'client' && hasContent(detail.value.client_response_headers)) {
-    return detail.value.client_response_headers
+    return toRecordOrNull(detail.value.client_response_headers)
   }
   if (dataSource.value === 'provider' && hasContent(detail.value.response_headers)) {
-    return detail.value.response_headers
+    return toRecordOrNull(detail.value.response_headers)
   }
   // 回退：优先 client，再 provider
   if (hasContent(detail.value.client_response_headers)) {
-    return detail.value.client_response_headers
+    return toRecordOrNull(detail.value.client_response_headers)
   }
-  return detail.value.response_headers
+  return toRecordOrNull(detail.value.response_headers)
 })
 
 // 根据实际数据决定显示哪些 Tab

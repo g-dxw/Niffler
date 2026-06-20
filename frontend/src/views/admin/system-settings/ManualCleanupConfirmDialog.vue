@@ -470,6 +470,11 @@ async function handleConfirm() {
       emit('running-change', false)
       return
     }
+    if (!('task' in response)) {
+      taskError.value = '清理任务启动失败'
+      emit('running-change', false)
+      return
+    }
     activeTask.value = response.task
     emit('running-change', response.task.status === 'processing')
     if (response.task.status === 'processing') {

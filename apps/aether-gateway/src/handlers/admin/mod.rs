@@ -1,6 +1,7 @@
 mod announcements;
 pub(super) mod auth;
 mod billing;
+mod content_moderation;
 pub(super) mod endpoint;
 pub(super) mod features;
 mod model;

@@ -903,7 +903,7 @@ import { log } from '@/utils/logger'
 
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.canAccessAdmin)
-const { toast } = useToast()
+const { showToast: toast } = useToast()
 const { copyToClipboard } = useClipboard()
 
 // 状态
@@ -983,8 +983,8 @@ async function fetchTasks() {
   } catch (error: unknown) {
     toast({
       title: '获取任务列表失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive',
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error',
     })
   } finally {
     loading.value = false
@@ -1018,8 +1018,8 @@ async function openTaskDetail(task: AsyncTaskItem) {
   } catch (error: unknown) {
     toast({
       title: '获取任务详情失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive',
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error',
     })
   }
 }
@@ -1032,8 +1032,8 @@ async function refreshTaskDetail() {
   } catch (error: unknown) {
     toast({
       title: '刷新失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive',
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error',
     })
   }
 }
@@ -1093,15 +1093,15 @@ async function openUsageRecord(task: AsyncTaskItem) {
     } else {
       toast({
         title: '无法打开使用记录',
-        description: '该任务没有关联的请求ID',
-        variant: 'destructive',
+        message: '该任务没有关联的请求ID',
+        variant: 'error',
       })
     }
   } catch (error: unknown) {
     toast({
       title: '获取任务信息失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive',
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error',
     })
   }
 }
@@ -1121,8 +1121,8 @@ async function cancelTask(task: AsyncTaskItem | AsyncTaskDetail) {
   } catch (error: unknown) {
     toast({
       title: '取消任务失败',
-      description: error instanceof Error ? error.message : String(error),
-      variant: 'destructive',
+      message: error instanceof Error ? error.message : String(error),
+      variant: 'error',
     })
   }
 }

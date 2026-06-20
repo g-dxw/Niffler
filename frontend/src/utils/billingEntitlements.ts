@@ -26,7 +26,7 @@ export function hasPackageBillingEntitlement(input: BillingEntitlementsInput): b
   return normalizeBillingEntitlements(input).some((item) =>
     item.type === 'daily_quota'
     || item.type === 'membership_group'
-    || Boolean((item as DailyQuotaEntitlement).limits)
+    || Boolean((item as unknown as DailyQuotaEntitlement).limits)
   )
 }
 

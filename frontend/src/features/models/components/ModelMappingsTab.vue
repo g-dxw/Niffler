@@ -500,12 +500,12 @@ async function saveMappings() {
     const currentModel = await getGlobalModel(props.globalModelId)
     const currentConfig = currentModel.config || {}
 
-    const updatedConfig = {
+    const updatedConfig: Record<string, unknown> = {
       ...currentConfig,
       model_mappings: cleanedMappings.length > 0 ? cleanedMappings : undefined,
     }
 
-    if (!updatedConfig.model_mappings || updatedConfig.model_mappings.length === 0) {
+    if (cleanedMappings.length === 0) {
       delete updatedConfig.model_mappings
     }
 

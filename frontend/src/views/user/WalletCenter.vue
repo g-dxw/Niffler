@@ -112,7 +112,7 @@
           </div>
           <RefreshButton
             :loading="loadingOrders || loadingTransactions"
-            @click="() => Promise.all([loadBalance(), loadOrders(), loadTransactions()])"
+            @click="refreshRedeemSection"
           />
         </div>
 
@@ -960,6 +960,10 @@ async function loadRefunds() {
   } finally {
     loadingRefunds.value = false
   }
+}
+
+async function refreshRedeemSection() {
+  await Promise.all([loadBalance(), loadOrders(), loadTransactions()])
 }
 
 async function submitRedeem() {

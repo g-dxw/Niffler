@@ -515,7 +515,7 @@
                 ref="modelMappingsTabRef"
                 :global-model-id="model.id"
                 :model-name="model.name"
-                :mappings="model.config?.model_mappings || []"
+                :mappings="displayModelMappings"
                 :routing-data="routingData"
                 :loading-preview="routingLoading"
                 @update="handleMappingsUpdate"
@@ -574,9 +574,9 @@ const emit = defineEmits<{
   'editModel': [model: GlobalModelResponse]
   'toggleModelStatus': [model: GlobalModelResponse]
   'addProvider': []
-  'editProvider': [provider: Record<string, unknown>]
-  'deleteProvider': [provider: Record<string, unknown>]
-  'toggleProviderStatus': [provider: Record<string, unknown>]
+  'editProvider': [provider: RoutingProviderLegacyPayload]
+  'deleteProvider': [provider: RoutingProviderLegacyPayload]
+  'toggleProviderStatus': [provider: RoutingProviderLegacyPayload]
   'refreshModel': []
   'linkProvider': [providerId: string]
   'linkProviders': [providerIds: string[]]
@@ -589,10 +589,25 @@ interface Props {
   hasBlockingDialogOpen?: boolean
 }
 
+interface RoutingProviderLegacyPayload {
+  id: string
+  model_id?: string | null
+  name: string
+  provider_type: string
+  target_model: string
+  is_active: boolean
+}
+
 // RoutingTab 引用
 const routingTabRef = ref<InstanceType<typeof RoutingTab> | null>(null)
 // ModelMappingsTab 引用
 const modelMappingsTabRef = ref<InstanceType<typeof ModelMappingsTab> | null>(null)
+
+const displayModelMappings = computed<string[]>(() => {
+  const mappings = props.model?.config?.model_mappings
+  if (!Array.isArray(mappings)) return []
+  return mappings.filter((item): item is string => typeof item === 'string')
+})
 
 // 统一管理 routing 数据，避免子组件重复请求
 const routingData = ref<ModelRoutingPreviewResponse | null>(null)
@@ -616,11 +631,13 @@ async function loadRoutingData() {
 }
 
 // 将 RoutingProviderInfo 转换为父组件期望的格式
-function convertRoutingProviderToLegacyFormat(provider: RoutingProviderInfo) {
+function convertRoutingProviderToLegacyFormat(provider: RoutingProviderInfo): RoutingProviderLegacyPayload {
   return {
     id: provider.id,
     model_id: provider.model_id,
     name: provider.name,
+    provider_type: 'API',
+    target_model: provider.provider_model_name || '',
     is_active: provider.model_is_active
   }
 }

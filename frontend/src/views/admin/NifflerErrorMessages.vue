@@ -568,6 +568,7 @@ const platformErrorOptions = [
   },
 ] as const
 type PlatformErrorOption = typeof platformErrorOptions[number]
+type PlatformErrorCode = PlatformErrorOption['value']
 
 const responseModeOptionGroups: Record<'basic' | 'keyword', Array<{
   value: NifflerUserResponseMode
@@ -651,8 +652,13 @@ const platformErrorOptionByCode = computed(() =>
   new Map(platformErrorOptions.map(option => [option.value, option]))
 )
 
+function getPlatformErrorOption(code: string | null | undefined): PlatformErrorOption | null {
+  if (!code) return null
+  return platformErrorOptionByCode.value.get(code as PlatformErrorCode) ?? null
+}
+
 const selectedPlatformErrorOption = computed<PlatformErrorOption | null>(() =>
-  platformErrorOptionByCode.value.get(errorReturnSettingForm.value.platform_error_code) ?? null
+  getPlatformErrorOption(errorReturnSettingForm.value.platform_error_code)
 )
 
 const showUpstreamKeywordField = computed(() =>
@@ -813,7 +819,7 @@ function normalizeErrorReturnSettingPayload(
   let pauseDuration: NifflerPauseDuration | null = null
 
   if (form.scope === 'platform') {
-    const platformOption = platformErrorOptionByCode.value.get(form.platform_error_code)
+    const platformOption = getPlatformErrorOption(form.platform_error_code)
     if (!platformOption) {
       showError('请选择平台错误原因')
       return null
@@ -908,7 +914,7 @@ function upstreamServiceLabel(serviceId?: string | null): string {
 function matchLabel(rule: NifflerErrorReturnSetting): string {
   if (rule.scope === 'platform') {
     const option = rule.match_text
-      ? platformErrorOptionByCode.value.get(rule.match_text)
+      ? getPlatformErrorOption(rule.match_text)
       : null
     const label = option?.label ?? rule.match_text ?? '平台错误'
     return rule.match_status_code ? `${label} · HTTP ${rule.match_status_code}` : label

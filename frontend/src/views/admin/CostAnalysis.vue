@@ -256,7 +256,23 @@ async function loadProviderStats() {
     limit: 8
   })
   if (requestId !== providerStatsRequestId) return
-  providerStats.value = stats
+  providerStats.value = stats.map(item => ({
+    provider: item.provider,
+    requests: item.request_count,
+    totalTokens: item.total_tokens || 0,
+    effectiveInputTokens: item.effective_input_tokens || 0,
+    totalInputContext: item.total_input_context || 0,
+    outputTokens: item.output_tokens || 0,
+    cacheReadTokens: item.cache_read_tokens || 0,
+    cacheCreationTokens: item.cache_creation_tokens || 0,
+    cacheHitRate: item.cache_hit_rate || 0,
+    totalCost: item.total_cost,
+    actualCost: item.actual_cost,
+    successRate: item.success_rate,
+    avgResponseTime: item.avg_response_time_ms > 0
+      ? `${(item.avg_response_time_ms / 1000).toFixed(2)}s`
+      : '-',
+  }))
 }
 
 async function loadApiKeyLeaderboard() {

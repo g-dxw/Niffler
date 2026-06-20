@@ -1397,8 +1397,8 @@ function formFromPlan(plan: BillingPlan): PlanFormState {
       next.wallet_credit_enabled = true
       next.wallet_credit_amount_usd = Number(wallet.amount_usd || next.wallet_credit_amount_usd)
       next.wallet_credit_balance_bucket = wallet.balance_bucket || 'recharge'
-    } else if (entitlement.type === 'daily_quota' || (entitlement as DailyQuotaEntitlement).limits) {
-      const quota = entitlement as DailyQuotaEntitlement
+    } else if (isDailyQuotaEntitlement(entitlement)) {
+      const quota = entitlement
       const limits = quota.limits || {}
       next.daily_quota_enabled = true
       next.daily_quota_usd = Number(quota.daily_quota_usd ?? limits.daily_limit_usd ?? 0)
@@ -1648,7 +1648,7 @@ function formatPlanPeriod(plan: BillingPlan): string {
 function resolvePlanModeFromEntitlements(entitlements: BillingEntitlementsInput): PlanMode {
   const items = normalizeBillingEntitlements(entitlements)
   const hasWallet = items.some((entitlement) => entitlement.type === 'wallet_credit')
-  const hasDaily = items.some((entitlement) => entitlement.type === 'daily_quota' || Boolean((entitlement as DailyQuotaEntitlement).limits))
+  const hasDaily = items.some(isDailyQuotaEntitlement)
   const hasMembership = items.some((entitlement) => entitlement.type === 'membership_group')
   const enabledCount = [hasWallet, hasDaily, hasMembership].filter(Boolean).length
 
@@ -1721,8 +1721,13 @@ function entitlementBadges(plan: BillingPlan): string[] {
       const groups = entitlement.grant_user_groups.map(groupName).join(', ')
       return `会员组 ${groups}`
     }
-    return entitlement.type
+    return '未知权益'
   })
+}
+
+function isDailyQuotaEntitlement(entitlement: BillingEntitlement): entitlement is DailyQuotaEntitlement {
+  return entitlement.type === 'daily_quota'
+    || Boolean((entitlement as unknown as DailyQuotaEntitlement).limits)
 }
 
 function hasPackageEntitlement(entitlements: BillingEntitlementsInput): boolean {

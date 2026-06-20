@@ -75,6 +75,7 @@ fn builds_public_request_context_from_request_parts() {
 mod admin_adaptive;
 mod admin_api_keys;
 mod admin_billing;
+mod admin_content_moderation;
 mod admin_core;
 mod admin_endpoints;
 mod admin_monitoring;

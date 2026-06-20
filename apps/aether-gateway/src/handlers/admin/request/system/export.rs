@@ -1,6 +1,9 @@
 use super::ADMIN_SYSTEM_DATA_EXPORT_VERSION;
+use crate::content_moderation::CONTENT_MODERATION_CONFIG_KEY;
 use crate::handlers::admin::request::AdminAppState;
-use crate::handlers::admin::system::shared::configs::is_sensitive_admin_system_config_key;
+use crate::handlers::admin::system::shared::configs::{
+    content_moderation_admin_export_value, is_sensitive_admin_system_config_key,
+};
 use crate::handlers::admin::system::shared::export::{
     build_admin_system_export_providers_payload, decrypt_admin_system_export_secret,
     ADMIN_SYSTEM_EXPORT_PAGE_LIMIT,
@@ -86,7 +89,12 @@ impl<'a> AdminAppState<'a> {
         let system_configs_data = system_configs
             .iter()
             .map(|entry| {
-                let value = if is_sensitive_admin_system_config_key(&entry.key) {
+                let value = if entry
+                    .key
+                    .eq_ignore_ascii_case(CONTENT_MODERATION_CONFIG_KEY)
+                {
+                    content_moderation_admin_export_value(self, &entry.value)
+                } else if is_sensitive_admin_system_config_key(&entry.key) {
                     entry
                         .value
                         .as_str()

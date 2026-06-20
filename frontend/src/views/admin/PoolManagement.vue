@@ -1656,7 +1656,7 @@
       v-if="selectedProviderId"
       :open="keyFormDialogOpen"
       :endpoint="null"
-      :provider-type="selectedProviderData?.provider_type || selectedProviderType"
+      :provider-type="selectedProviderData?.provider_type || selectedProviderType || null"
       :editing-key="editingKey"
       :provider-id="selectedProviderId"
       :available-api-formats="selectedProviderData?.api_formats || []"
@@ -1770,6 +1770,7 @@ import type {
   EndpointAPIKey,
   ProviderEndpoint,
   PoolAdvancedConfig,
+  ProviderType,
   ProviderWithEndpointsSummary,
 } from '@/api/endpoints/types/provider'
 import type { QuotaStatusSnapshot, QuotaWindowSnapshot } from '@/api/endpoints/types'
@@ -1842,6 +1843,24 @@ const { copyToClipboard } = useClipboard()
 const { tick: countdownTick, start: startCountdownTimer } = useCountdownTimer()
 const proxyNodesStore = useProxyNodesStore()
 const { getQueryValue, patchQuery } = useRouteQuery()
+
+const PROVIDER_TYPES = new Set<ProviderType>([
+  'custom',
+  'claude_code',
+  'claude_code_api',
+  'codex',
+  'chatgpt_web',
+  'gemini_cli',
+  'antigravity',
+  'kiro',
+  'grok',
+  'vertex_ai',
+])
+
+function normalizeProviderType(value: unknown): ProviderType | '' {
+  const normalized = String(value || '').trim().toLowerCase()
+  return PROVIDER_TYPES.has(normalized as ProviderType) ? normalized as ProviderType : ''
+}
 
 const poolManagementViewStorage = typeof window === 'undefined' ? undefined : window.sessionStorage
 const restoredViewState = readPoolManagementViewState(
@@ -2206,11 +2225,10 @@ const poolSchedulingLabel = computed(() => {
   return '随机'
 })
 
-const selectedProviderType = computed(() => {
-  const fromDetail = String(selectedProviderData.value?.provider_type || '').trim().toLowerCase()
+const selectedProviderType = computed<ProviderType | ''>(() => {
+  const fromDetail = normalizeProviderType(selectedProviderData.value?.provider_type)
   if (fromDetail) return fromDetail
-  const fromOverview = selectedProviderOverview.value?.provider_type
-  return String(fromOverview || '').trim().toLowerCase()
+  return normalizeProviderType(selectedProviderOverview.value?.provider_type)
 })
 
 const showCodexStatsModeToggle = computed(() => selectedProviderType.value === 'codex')
@@ -2733,9 +2751,9 @@ function getPoolKeyCycleStatsRows(key: PoolKeyDetail): PoolCodexCycleStatsRow[] 
 
 function getPoolKeyAccountStatsMetrics(key: PoolKeyDetail): PoolStatsMetric[] {
   const display = getPoolKeyStatsDisplay(key)
-  return display.kind === 'account_total'
-    ? display.metrics
-    : buildPoolStatsDisplay(key, selectedProviderType.value, 'account_total').metrics
+  if (display.kind === 'account_total') return display.metrics
+  const accountDisplay = buildPoolStatsDisplay(key, selectedProviderType.value, 'account_total')
+  return accountDisplay.kind === 'account_total' ? accountDisplay.metrics : []
 }
 
 const quotaRefreshSupported = computed(() => {
@@ -2776,8 +2794,28 @@ function applyQuotaRefreshResultToCurrentPage(result: Awaited<ReturnType<typeof 
       ...key,
       quota_updated_at: quotaSnapshot.updated_at ?? quotaSnapshot.observed_at ?? key.quota_updated_at ?? null,
       status_snapshot: {
-        ...(key.status_snapshot ?? {}),
-        quota: quotaSnapshot,
+        oauth: key.status_snapshot?.oauth ?? {
+          code: 'none',
+          label: null,
+          reason: null,
+          expires_at: null,
+          invalid_at: null,
+          source: null,
+          requires_reauth: false,
+          expiring_soon: false,
+        },
+        account: key.status_snapshot?.account ?? {
+          code: 'ok',
+          label: null,
+          reason: null,
+          blocked: false,
+          source: null,
+          recoverable: false,
+        },
+        quota: {
+          ...(key.status_snapshot?.quota ?? { code: 'unknown', exhausted: false }),
+          ...quotaSnapshot,
+        },
       },
     }
   })

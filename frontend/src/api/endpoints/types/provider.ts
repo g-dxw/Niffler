@@ -368,7 +368,7 @@ export interface CodexUpstreamMetadata {
   credits_balance?: number  // 积分余额
 }
 
-export interface AntigravityModelQuota {
+export interface AntigravityModelQuota extends Record<string, unknown> {
   remaining_fraction: number  // 剩余比例 (0.0-1.0)
   used_percent: number  // 已用百分比 (0.0-100.0)
   reset_time?: string  // RFC3339

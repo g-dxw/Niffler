@@ -1,6 +1,10 @@
 import type { UsageRecord } from '../types'
 
-export type UsageActiveRequestUpdate = Partial<UsageRecord> & {
+type NullableUsageRecordUpdate = {
+  [K in keyof Omit<UsageRecord, 'id'>]?: UsageRecord[K] | null
+}
+
+export type UsageActiveRequestUpdate = NullableUsageRecordUpdate & {
   id: string
 }
 

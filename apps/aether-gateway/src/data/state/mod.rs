@@ -27,6 +27,9 @@ use aether_data::repository::auth_modules::{
     AuthModuleReadRepository, AuthModuleWriteRepository, StoredLdapModuleConfig,
     StoredOAuthProviderModuleConfig,
 };
+use aether_data::repository::content_moderation_evidence::{
+    InsertContentModerationEvidenceRecord, StoredContentModerationEvidence,
+};
 use aether_data::repository::gemini_file_mappings::{
     GeminiFileMappingListQuery, GeminiFileMappingReadRepository, GeminiFileMappingStats,
     GeminiFileMappingWriteRepository, StoredGeminiFileMapping, StoredGeminiFileMappingListPage,

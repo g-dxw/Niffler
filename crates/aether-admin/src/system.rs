@@ -667,6 +667,7 @@ struct AdminApiFormatDefinition {
 
 const REQUEST_RECORD_LEVEL_KEY: &str = "request_record_level";
 const LEGACY_REQUEST_LOG_LEVEL_KEY: &str = "request_log_level";
+const CONTENT_MODERATION_CONFIG_KEY: &str = "content_moderation_account_protection";
 const SENSITIVE_SYSTEM_CONFIG_KEYS: &[&str] = &["smtp_password", "turnstile_secret_key"];
 const ADMIN_API_FORMAT_DEFINITIONS: &[AdminApiFormatDefinition] = &[
     AdminApiFormatDefinition {
@@ -1626,7 +1627,7 @@ pub fn build_admin_system_config_detail_payload(
     }
     Ok(json!({
         "key": requested_key,
-        "value": value,
+        "value": admin_system_config_visible_value(&normalized_key, &value),
     }))
 }
 
@@ -2492,17 +2493,59 @@ fn system_config_is_set(value: &serde_json::Value) -> bool {
     }
 }
 
+pub fn build_content_moderation_config_admin_value(value: &serde_json::Value) -> serde_json::Value {
+    let serde_json::Value::Object(object) = value else {
+        return value.clone();
+    };
+    let mut visible = object.clone();
+    let plaintext_count = visible
+        .get("api_keys")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| items.iter().filter(|item| item.as_str().is_some()).count())
+        .unwrap_or(0);
+    let encrypted_count = visible
+        .get("api_keys_encrypted")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| items.iter().filter(|item| item.as_str().is_some()).count())
+        .unwrap_or(0);
+    let display_count = visible
+        .get("api_key_count")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+        .unwrap_or(0);
+    let count = encrypted_count.max(plaintext_count).max(display_count);
+    visible.remove("api_keys");
+    visible.remove("api_keys_encrypted");
+    visible.remove("api_keys_clear");
+    visible.insert("api_keys".to_string(), json!([]));
+    visible.insert("api_key_count".to_string(), json!(count));
+    visible
+        .entry("api_key_masks".to_string())
+        .or_insert_with(|| {
+            json!((0..count)
+                .map(|index| format!("已保存 Key {}", index + 1))
+                .collect::<Vec<_>>())
+        });
+    serde_json::Value::Object(visible)
+}
+
+fn admin_system_config_visible_value(key: &str, value: &serde_json::Value) -> serde_json::Value {
+    if key.eq_ignore_ascii_case(CONTENT_MODERATION_CONFIG_KEY) {
+        build_content_moderation_config_admin_value(value)
+    } else if is_sensitive_admin_system_config_key(key) {
+        serde_json::Value::Null
+    } else {
+        value.clone()
+    }
+}
+
 fn build_admin_system_config_list_item(
     key: &str,
     value: &serde_json::Value,
     description: Option<&str>,
     updated_at_unix_secs: Option<u64>,
 ) -> serde_json::Value {
-    let masked_value = if is_sensitive_admin_system_config_key(key) {
-        serde_json::Value::Null
-    } else {
-        value.clone()
-    };
+    let masked_value = admin_system_config_visible_value(key, value);
     let is_set = is_sensitive_admin_system_config_key(key).then(|| system_config_is_set(value));
     let mut payload = json!({
         "key": key,
@@ -2871,5 +2914,26 @@ mod tests {
         assert_eq!(payload["key"], "turnstile_secret_key");
         assert_eq!(payload["value"], serde_json::Value::Null);
         assert_eq!(payload["is_set"], json!(true));
+    }
+
+    #[test]
+    fn build_admin_system_config_detail_masks_content_moderation_api_keys() {
+        let payload = build_admin_system_config_detail_payload(
+            CONTENT_MODERATION_CONFIG_KEY,
+            Some(json!({
+                "enabled": true,
+                "api_keys": ["sk-plain-secret"],
+                "api_keys_encrypted": ["encrypted-secret"],
+                "model": "omni-moderation-latest"
+            })),
+        )
+        .expect("content moderation detail should build");
+
+        assert_eq!(payload["key"], CONTENT_MODERATION_CONFIG_KEY);
+        assert_eq!(payload["value"]["api_keys"], json!([]));
+        assert_eq!(payload["value"]["api_key_count"], json!(1));
+        assert_eq!(payload["value"].get("api_keys_encrypted"), None);
+        assert_eq!(payload.to_string().contains("sk-plain-secret"), false);
+        assert_eq!(payload.to_string().contains("encrypted-secret"), false);
     }
 }

@@ -2,7 +2,7 @@
   <button
     type="button"
     role="switch"
-    :aria-checked="modelValue"
+    :aria-checked="Boolean(modelValue)"
     :disabled="disabled"
     class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50"
     :class="[
@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 defineProps<{
-  modelValue: boolean
+  modelValue?: boolean | null
   disabled?: boolean
 }>()
 

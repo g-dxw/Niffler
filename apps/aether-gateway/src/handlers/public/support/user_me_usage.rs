@@ -438,6 +438,16 @@ fn users_me_usage_metadata_string<'a>(
         .filter(|value| !value.is_empty())
 }
 
+fn users_me_usage_metadata_number(item: &StoredRequestUsageAudit, key: &str) -> Option<f64> {
+    item.request_metadata
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .and_then(|metadata| metadata.get(key))
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| value.is_finite())
+        .map(|value| round_to(value, 6))
+}
+
 fn infer_client_family_from_user_agent(user_agent: &str) -> Option<&'static str> {
     let normalized = user_agent.trim().to_ascii_lowercase();
     if normalized.is_empty() {
@@ -602,6 +612,8 @@ fn build_users_me_usage_record_payload(
         "cost": round_to(charge_breakdown.user_debit_usd, 6),
         "sales_multiplier": sales_multiplier,
         "charge_breakdown": charge_breakdown.payload,
+        "model_cost": users_me_usage_metadata_number(item, "model_cost_usd"),
+        "moderation_cost": users_me_usage_metadata_number(item, "content_moderation_cost_usd"),
         "response_time_ms": item.response_time_ms,
         "first_byte_time_ms": item.first_byte_time_ms,
         "is_stream": item.is_stream,
@@ -638,6 +650,14 @@ fn build_users_me_usage_record_payload(
     }
     if include_actual_cost {
         payload["actual_cost"] = json!(round_to(item.actual_total_cost_usd, 6));
+        payload["actual_model_cost"] = json!(users_me_usage_metadata_number(
+            item,
+            "actual_model_cost_usd"
+        ));
+        payload["actual_moderation_cost"] = json!(users_me_usage_metadata_number(
+            item,
+            "content_moderation_actual_cost_usd"
+        ));
         payload["rate_multiplier"] = json!(rate_multiplier);
     }
     payload
@@ -675,6 +695,8 @@ fn build_users_me_usage_active_payload(
         "cost": round_to(charge_breakdown.user_debit_usd, 6),
         "sales_multiplier": sales_multiplier,
         "charge_breakdown": charge_breakdown.payload,
+        "model_cost": users_me_usage_metadata_number(item, "model_cost_usd"),
+        "moderation_cost": users_me_usage_metadata_number(item, "content_moderation_cost_usd"),
         "response_time_ms": item.response_time_ms,
         "first_byte_time_ms": item.first_byte_time_ms,
         "status_code": item.status_code,
@@ -694,6 +716,14 @@ fn build_users_me_usage_active_payload(
     });
     if include_actual_cost {
         payload["actual_cost"] = json!(round_to(item.actual_total_cost_usd, 6));
+        payload["actual_model_cost"] = json!(users_me_usage_metadata_number(
+            item,
+            "actual_model_cost_usd"
+        ));
+        payload["actual_moderation_cost"] = json!(users_me_usage_metadata_number(
+            item,
+            "content_moderation_actual_cost_usd"
+        ));
         payload["rate_multiplier"] = json!(item.settlement_rate_multiplier());
     }
     if item.api_format.is_none() {
@@ -1831,6 +1861,54 @@ mod tests {
         assert_eq!(record_payload["client_ip"], "192.168.0.28");
         assert_eq!(active_payload["client_family"], "codex_vscode");
         assert_eq!(active_payload["client_ip"], "192.168.0.28");
+    }
+
+    #[test]
+    fn user_usage_payloads_include_moderation_cost_without_actual_cost_for_regular_users() {
+        let item = StoredRequestUsageAudit {
+            request_metadata: Some(json!({
+                "model_cost_usd": 0.15,
+                "actual_model_cost_usd": 0.8,
+                "content_moderation_cost_usd": 0.0001,
+                "content_moderation_actual_cost_usd": 0.00008
+            })),
+            ..sample_usage("completed")
+        };
+
+        let record_payload =
+            build_users_me_usage_record_payload(&item, false, &BTreeMap::new(), false);
+        let active_payload = build_users_me_usage_active_payload(&item, false);
+
+        assert_eq!(record_payload["model_cost"], json!(0.15));
+        assert_eq!(record_payload["moderation_cost"], json!(0.0001));
+        assert!(record_payload.get("actual_model_cost").is_none());
+        assert!(record_payload.get("actual_moderation_cost").is_none());
+        assert_eq!(active_payload["model_cost"], json!(0.15));
+        assert_eq!(active_payload["moderation_cost"], json!(0.0001));
+        assert!(active_payload.get("actual_model_cost").is_none());
+        assert!(active_payload.get("actual_moderation_cost").is_none());
+    }
+
+    #[test]
+    fn user_usage_payloads_include_actual_moderation_cost_for_admin_users() {
+        let item = StoredRequestUsageAudit {
+            request_metadata: Some(json!({
+                "model_cost_usd": 0.15,
+                "actual_model_cost_usd": 0.8,
+                "content_moderation_cost_usd": 0.0001,
+                "content_moderation_actual_cost_usd": 0.00008
+            })),
+            ..sample_usage("completed")
+        };
+
+        let record_payload =
+            build_users_me_usage_record_payload(&item, true, &BTreeMap::new(), false);
+        let active_payload = build_users_me_usage_active_payload(&item, true);
+
+        assert_eq!(record_payload["actual_model_cost"], json!(0.8));
+        assert_eq!(record_payload["actual_moderation_cost"], json!(0.00008));
+        assert_eq!(active_payload["actual_model_cost"], json!(0.8));
+        assert_eq!(active_payload["actual_moderation_cost"], json!(0.00008));
     }
 
     #[test]

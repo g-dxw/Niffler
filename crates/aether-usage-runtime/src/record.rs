@@ -134,16 +134,24 @@ pub fn build_upsert_usage_record_from_event(
 }
 
 fn billing_status_override(data: &crate::UsageEventData) -> Option<&'static str> {
-    if data.provider_name.trim() != "Niffler 平台" {
-        return None;
-    }
-    let platform_source = data
+    let source = data
         .request_metadata
         .as_ref()
         .and_then(serde_json::Value::as_object)
         .and_then(|value| value.get("source"))
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|value| matches!(value.trim(), "platform_handled" | "platform_rejection"));
+        .map(str::trim);
+    if source.is_some_and(|value| value == "content_moderation") {
+        return match data.billing_status_override.as_deref().map(str::trim) {
+            Some(value) if value.eq_ignore_ascii_case("pending") => Some("pending"),
+            _ => None,
+        };
+    }
+    if data.provider_name.trim() != "Niffler 平台" {
+        return None;
+    }
+    let platform_source =
+        source.is_some_and(|value| matches!(value, "platform_handled" | "platform_rejection"));
     if !platform_source {
         return None;
     }
@@ -280,6 +288,33 @@ mod tests {
 
         assert_eq!(record.status, "completed");
         assert_eq!(record.billing_status, "pending");
+    }
+
+    #[test]
+    fn failed_content_moderation_record_can_stay_pending_for_settlement() {
+        let record = build_upsert_usage_record_from_event(&UsageEvent {
+            event_type: UsageEventType::Failed,
+            request_id: "req-content-moderation".to_string(),
+            timestamp_ms: 1_700_000_000_000,
+            data: UsageEventData {
+                provider_name: "Niffler 内容审查".to_string(),
+                model: "omni-moderation-latest".to_string(),
+                status_code: Some(403),
+                total_cost_usd: Some(0.0001),
+                actual_total_cost_usd: Some(0.0001),
+                billing_status_override: Some("pending".to_string()),
+                request_metadata: Some(serde_json::json!({
+                    "source": "content_moderation",
+                    "content_moderation_cost_usd": 0.0001
+                })),
+                ..UsageEventData::default()
+            },
+        })
+        .expect("record should build");
+
+        assert_eq!(record.status, "failed");
+        assert_eq!(record.billing_status, "pending");
+        assert_eq!(record.total_cost_usd, Some(0.0001));
     }
 
     #[test]

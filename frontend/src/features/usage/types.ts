@@ -119,7 +119,11 @@ export interface UsageRecord {
   total_tokens: number
   official_cost?: number | null
   cost: number
+  model_cost?: number | null
+  moderation_cost?: number | null
   actual_cost?: number | null
+  actual_model_cost?: number | null
+  actual_moderation_cost?: number | null
   charge_breakdown?: UsageChargeBreakdown | null
   response_time_ms?: number | null
   first_byte_time_ms?: number | null  // 首字时间 (TTFB)

@@ -522,7 +522,7 @@ const VIDEO_RESOLUTION_PRICE_PRESETS: Record<
   ],
 }
 
-const embeddingApiFormats = [...EMBEDDING_API_FORMATS]
+const embeddingApiFormats: readonly string[] = EMBEDDING_API_FORMATS
 
 interface FormData {
   name: string
@@ -904,8 +904,8 @@ async function handleSubmit() {
   // Auto-infer supported_capabilities from tiered pricing config
   const caps = new Set(form.value.supported_capabilities || [])
   const has1hPricing = finalTieredPricing?.tiers?.some(
-    (t: Record<string, unknown>) => Array.isArray(t.cache_ttl_pricing)
-      && (t.cache_ttl_pricing as Array<Record<string, unknown>>).some(c => c.ttl_minutes === 60)
+    (t) => Array.isArray(t.cache_ttl_pricing)
+      && t.cache_ttl_pricing.some(c => c.ttl_minutes === 60)
   )
   if (has1hPricing) {
     caps.add('cache_1h')
@@ -956,7 +956,7 @@ function tieredPricingHasImageOutputPricing(pricing: TieredPricingConfig | null 
     if (!range || typeof range !== 'object') return false
     const prices = range.prices && typeof range.prices === 'object'
       ? range.prices
-      : range as Record<string, unknown>
+      : range as unknown as Record<string, unknown>
     return Object.values(prices).some((price) => toFinitePrice(price) !== null)
   })
 }

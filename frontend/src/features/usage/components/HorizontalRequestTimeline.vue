@@ -539,7 +539,14 @@ import Badge from '@/components/ui/badge.vue'
 import Skeleton from '@/components/ui/skeleton.vue'
 import JsonContentPanel from './JsonContentPanel.vue'
 import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-vue-next'
-import { requestTraceApi, type RequestTrace, type CandidateRecord, type ImageProgress } from '@/api/requestTrace'
+import {
+  requestTraceApi,
+  type RequestTrace,
+  type CandidateRecord,
+  type CandidateProxyInfo,
+  type CandidateProxyTiming,
+  type ImageProgress,
+} from '@/api/requestTrace'
 import { log } from '@/utils/logger'
 import { parseApiError } from '@/utils/errorParser'
 import { formatApiFormat } from '@/api/endpoints/types/api-format'
@@ -628,7 +635,8 @@ const emit = defineEmits<{
 const usageData = computed(() => props.usageData)
 
 // 格式化数字
-const formatNumber = (num: number): string => {
+const formatNumber = (num: number | null | undefined): string => {
+  if (typeof num !== 'number' || !Number.isFinite(num)) return '-'
   return num.toLocaleString('zh-CN')
 }
 
@@ -688,8 +696,8 @@ const formatSize = (bytes: number): string => {
 }
 
 // 代理 timing 分阶段展示
-const proxyTimingBreakdown = (proxy: Record<string, unknown>): string => {
-  const t = proxy.timing as Record<string, number | null | undefined> | undefined
+const proxyTimingBreakdown = (proxy: CandidateProxyInfo): string => {
+  const t = proxy.timing as CandidateProxyTiming | undefined | null
   if (!t) return ''
 
   const parts: string[] = []
@@ -1047,9 +1055,9 @@ const totalTraceLatency = computed(() => {
 })
 
 // 计算选中的组
-const selectedGroup = computed(() => {
+const selectedGroup = computed<NodeGroup | null>(() => {
   if (!groupedTimeline.value || groupedTimeline.value.length === 0) return null
-  return groupedTimeline.value[selectedGroupIndex.value]
+  return groupedTimeline.value[selectedGroupIndex.value] ?? null
 })
 
 // 计算当前查看的尝试
@@ -1528,22 +1536,24 @@ const formatAuthTypeWithPlan = (authType: string, planType?: string): string => 
   return typeName
 }
 
-const poolSelectionLabel = (reason: string): string => {
+const poolSelectionLabel = (reason?: string | null): string => {
   const labels: Record<string, string> = {
     sticky: '粘性会话',
     lru: 'LRU',
     random: '随机',
     tiebreak: '随机 (平分)',
   }
+  if (!reason) return '未知'
   return labels[reason] || reason
 }
 
-const poolSkipLabel = (type: string): string => {
+const poolSkipLabel = (type?: string | null): string => {
   const labels: Record<string, string> = {
     cooldown: '冷却中',
     cost_exhausted: '额度耗尽',
     upstream: '上游跳过',
   }
+  if (!type) return '未知'
   return labels[type] || type
 }
 
@@ -1613,6 +1623,7 @@ const navigateGroup = (direction: number) => {
   if (newIndex >= 0 && newIndex < groupedTimeline.value.length) {
     selectedGroupIndex.value = newIndex
     const group = groupedTimeline.value[newIndex]
+    if (!group) return
     // 默认选中成功的尝试，或最后一个尝试
     const successIdx = group.allAttempts.findIndex(a => a.status === 'success')
     selectedAttemptIndex.value = successIdx >= 0 ? successIdx : group.allAttempts.length - 1
@@ -1631,7 +1642,8 @@ const navigateAttempt = (direction: number) => {
 // 加载请求追踪数据
 const isSilentRefresh = ref(false)
 const loadTrace = async (silent = false) => {
-  if (!props.requestId || props.traceData) return
+  const requestId = props.requestId
+  if (!requestId || props.traceData) return
   if (traceLoadInFlight) return traceLoadInFlight
 
   traceLoadInFlight = (async () => {
@@ -1644,7 +1656,7 @@ const loadTrace = async (silent = false) => {
     error.value = null
 
     try {
-      internalTrace.value = await requestTraceApi.getRequestTrace(props.requestId)
+      internalTrace.value = await requestTraceApi.getRequestTrace(requestId)
     } catch (err: unknown) {
       if (isAxiosError(err) && err.response?.status === 404) {
         internalTrace.value = null

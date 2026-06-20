@@ -9,16 +9,17 @@ use crate::{AppState, GatewayError};
 
 use super::{
     advance_proxy_upgrade_rollout_once, cleanup_audit_logs_once,
-    cleanup_expired_gemini_file_mappings_once, cleanup_proxy_node_metrics_once,
-    cleanup_request_candidates_once, cleanup_stale_pending_requests_once,
-    cleanup_stale_proxy_nodes_once, collect_proxy_upgrade_rollout_probes, now_unix_secs,
-    perform_db_maintenance_once, perform_manual_usage_cleanup_once,
-    perform_niffler_billing_reservation_expiry_once, perform_niffler_stability_observation_once,
-    perform_provider_checkin_once, perform_stats_aggregation_once,
-    perform_stats_hourly_aggregation_once, perform_usage_cleanup_once,
-    perform_wallet_daily_usage_aggregation_once, record_admin_cleanup_run,
-    record_completed_cleanup_run, record_failed_cleanup_run, record_proxy_upgrade_traffic_success,
-    summarize_database_pool, AdminCleanupRunRecord, ManualUsageCleanupOptions,
+    cleanup_expired_content_moderation_evidence_once, cleanup_expired_gemini_file_mappings_once,
+    cleanup_proxy_node_metrics_once, cleanup_request_candidates_once,
+    cleanup_stale_pending_requests_once, cleanup_stale_proxy_nodes_once,
+    collect_proxy_upgrade_rollout_probes, now_unix_secs, perform_db_maintenance_once,
+    perform_manual_usage_cleanup_once, perform_niffler_billing_reservation_expiry_once,
+    perform_niffler_stability_observation_once, perform_provider_checkin_once,
+    perform_stats_aggregation_once, perform_stats_hourly_aggregation_once,
+    perform_usage_cleanup_once, perform_wallet_daily_usage_aggregation_once,
+    record_admin_cleanup_run, record_completed_cleanup_run, record_failed_cleanup_run,
+    record_proxy_upgrade_traffic_success, summarize_database_pool, AdminCleanupRunRecord,
+    ManualUsageCleanupOptions,
 };
 
 pub(super) async fn run_audit_cleanup_once(data: &GatewayDataState) -> Result<(), DataLayerError> {
@@ -72,6 +73,22 @@ pub(super) async fn run_gemini_file_mapping_cleanup_once(
             worker = "gemini_file_mapping_cleanup",
             deleted,
             "gateway deleted expired gemini file mappings"
+        );
+    }
+    Ok(())
+}
+
+pub(super) async fn run_content_moderation_evidence_cleanup_once(
+    data: &GatewayDataState,
+) -> Result<(), DataLayerError> {
+    let redacted = cleanup_expired_content_moderation_evidence_once(data).await?;
+    if redacted > 0 {
+        info!(
+            event_name = "content_moderation_evidence_cleanup_completed",
+            log_type = "ops",
+            worker = "content_moderation_evidence_cleanup",
+            redacted,
+            "gateway redacted expired content moderation evidence input text"
         );
     }
     Ok(())

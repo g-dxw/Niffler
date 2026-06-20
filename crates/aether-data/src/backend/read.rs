@@ -10,6 +10,7 @@ use crate::repository::background_tasks::BackgroundTaskReadRepository;
 use crate::repository::billing::BillingReadRepository;
 use crate::repository::candidate_selection::MinimalCandidateSelectionReadRepository;
 use crate::repository::candidates::RequestCandidateReadRepository;
+use crate::repository::content_moderation_evidence::ContentModerationEvidenceReadRepository;
 use crate::repository::gemini_file_mappings::GeminiFileMappingReadRepository;
 use crate::repository::global_models::GlobalModelReadRepository;
 use crate::repository::management_tokens::ManagementTokenReadRepository;
@@ -33,6 +34,7 @@ pub struct DataReadRepositories {
     auth_modules: Option<Arc<dyn AuthModuleReadRepository>>,
     background_tasks: Option<Arc<dyn BackgroundTaskReadRepository>>,
     billing: Option<Arc<dyn BillingReadRepository>>,
+    content_moderation_evidence: Option<Arc<dyn ContentModerationEvidenceReadRepository>>,
     gemini_file_mappings: Option<Arc<dyn GeminiFileMappingReadRepository>>,
     global_models: Option<Arc<dyn GlobalModelReadRepository>>,
     management_tokens: Option<Arc<dyn ManagementTokenReadRepository>>,
@@ -60,6 +62,10 @@ impl fmt::Debug for DataReadRepositories {
             .field("has_auth_modules", &self.auth_modules.is_some())
             .field("has_background_tasks", &self.background_tasks.is_some())
             .field("has_billing", &self.billing.is_some())
+            .field(
+                "has_content_moderation_evidence",
+                &self.content_moderation_evidence.is_some(),
+            )
             .field(
                 "has_gemini_file_mappings",
                 &self.gemini_file_mappings.is_some(),
@@ -117,6 +123,10 @@ impl DataReadRepositories {
                 .map(PostgresBackend::billing_read_repository)
                 .or_else(|| mysql.map(MysqlBackend::billing_read_repository))
                 .or_else(|| sqlite.map(SqliteBackend::billing_read_repository)),
+            content_moderation_evidence: postgres
+                .map(PostgresBackend::content_moderation_evidence_read_repository)
+                .or_else(|| mysql.map(MysqlBackend::content_moderation_evidence_read_repository))
+                .or_else(|| sqlite.map(SqliteBackend::content_moderation_evidence_read_repository)),
             gemini_file_mappings: postgres
                 .map(PostgresBackend::gemini_file_mapping_read_repository)
                 .or_else(|| mysql.map(MysqlBackend::gemini_file_mapping_read_repository))
@@ -213,6 +223,12 @@ impl DataReadRepositories {
         self.billing.clone()
     }
 
+    pub fn content_moderation_evidence(
+        &self,
+    ) -> Option<Arc<dyn ContentModerationEvidenceReadRepository>> {
+        self.content_moderation_evidence.clone()
+    }
+
     pub fn gemini_file_mappings(&self) -> Option<Arc<dyn GeminiFileMappingReadRepository>> {
         self.gemini_file_mappings.clone()
     }
@@ -286,6 +302,7 @@ impl DataReadRepositories {
             || self.auth_modules.is_some()
             || self.background_tasks.is_some()
             || self.billing.is_some()
+            || self.content_moderation_evidence.is_some()
             || self.gemini_file_mappings.is_some()
             || self.global_models.is_some()
             || self.management_tokens.is_some()
@@ -333,6 +350,7 @@ mod tests {
         assert!(read.auth_api_keys().is_some());
         assert!(read.auth_modules().is_some());
         assert!(read.billing().is_some());
+        assert!(read.content_moderation_evidence().is_some());
         assert!(read.gemini_file_mappings().is_some());
         assert!(read.global_models().is_some());
         assert!(read.management_tokens().is_some());

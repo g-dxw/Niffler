@@ -2187,7 +2187,7 @@ function entitlementLabels(items: BillingEntitlementsInput): string[] {
     if (item.type === 'membership_group') {
       return '会员权益'
     }
-    return item.type
+    return '未知权益'
   })
 }
 
@@ -2417,7 +2417,7 @@ async function handleUserFormSubmit(data: UserFormData & { password?: string; un
       const newUser = await usersStore.createUser({
         username: data.username,
         password: data.password ?? '',
-        email: data.email || undefined,
+        email: data.email || '',
         initial_gift_usd: data.initial_gift_usd,
         unlimited: data.unlimited,
         role: data.role,
@@ -2834,6 +2834,9 @@ async function closeNewApiKeyDialog() {
 }
 
 async function deleteApiKey(apiKey: ApiKey) {
+  const user = selectedUser.value
+  if (!user) return
+
   const confirmed = await confirmDanger(
     `确定要删除这个API Key吗？\n\n${apiKey.key_display || '****'}\n\n此操作无法撤销。`,
     '删除 API Key'
@@ -2842,8 +2845,8 @@ async function deleteApiKey(apiKey: ApiKey) {
   if (!confirmed) return
 
   try {
-    await usersStore.deleteApiKey(selectedUser.value.id, apiKey.id)
-    await loadUserApiKeys(selectedUser.value.id)
+    await usersStore.deleteApiKey(user.id, apiKey.id)
+    await loadUserApiKeys(user.id)
     success('API Key已删除')
   } catch (err: unknown) {
     error(parseApiError(err, '未知错误'), '删除 API Key 失败')

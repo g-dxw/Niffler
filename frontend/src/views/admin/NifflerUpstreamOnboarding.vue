@@ -560,7 +560,7 @@
               :key="item.key"
               class="flex items-start gap-3 rounded-lg border border-border/50 p-3"
             >
-              <Checkbox v-model:checked="serviceForm.capabilities[item.key]" />
+              <Checkbox v-model:checked="serviceCapabilities[item.key]" />
               <span>
                 <span class="block text-sm font-medium">{{ item.label }}</span>
                 <span class="block text-xs text-muted-foreground">{{ item.description }}</span>
@@ -815,7 +815,7 @@ const capabilityOptions: Array<{
 ]
 
 const services = ref<NifflerUpstreamService[]>([])
-const serviceCapabilities = ref<NifflerUpstreamServiceCapability[]>([])
+const loadedServiceCapabilities = ref<NifflerUpstreamServiceCapability[]>([])
 const accounts = ref<NifflerUpstreamAccount[]>([])
 const serviceLoading = ref(false)
 const serviceCapabilityLoading = ref(false)
@@ -847,6 +847,19 @@ const defaultAccountForm = (): CreateNifflerUpstreamAccountPayload => ({
 })
 
 const serviceForm = ref<CreateNifflerUpstreamServicePayload>(defaultServiceForm())
+type ServiceCapabilityFlags = NonNullable<CreateNifflerUpstreamServicePayload['capabilities']>
+
+const serviceCapabilities = computed<ServiceCapabilityFlags>({
+  get() {
+    if (!serviceForm.value.capabilities) {
+      serviceForm.value.capabilities = {}
+    }
+    return serviceForm.value.capabilities
+  },
+  set(value) {
+    serviceForm.value.capabilities = value
+  },
+})
 const serviceCapabilityForm = ref<NifflerServiceCapabilityForm>(
   buildNifflerServiceCapabilityForm(null)
 )
@@ -983,7 +996,7 @@ async function loadServices() {
     } else if (selectedServiceId.value && !services.value.some(item => item.id === selectedServiceId.value)) {
       selectedServiceId.value = services.value[0]?.id ?? null
       accounts.value = []
-      serviceCapabilities.value = []
+      loadedServiceCapabilities.value = []
       if (selectedServiceId.value) {
         await selectService(selectedServiceId.value)
       }
@@ -1032,7 +1045,7 @@ async function loadServiceCapabilities(serviceId: string) {
   try {
     const response = await listNifflerUpstreamServiceCapabilities(serviceId)
     if (seq !== serviceCapabilityLoadSeq) return
-    serviceCapabilities.value = response.items
+    loadedServiceCapabilities.value = response.items
     serviceCapabilityForm.value = buildNifflerServiceCapabilityForm(service, response.items)
   } catch (err) {
     if (seq !== serviceCapabilityLoadSeq) return
@@ -1078,7 +1091,7 @@ async function submitServiceCapabilities() {
   savingServiceCapabilities.value = true
   try {
     const response = await updateNifflerUpstreamServiceCapabilities(selectedServiceId.value, payload)
-    serviceCapabilities.value = response.items
+    loadedServiceCapabilities.value = response.items
     serviceCapabilityForm.value = buildNifflerServiceCapabilityForm(selectedService.value, response.items)
     success('能力已保存')
   } catch (err) {

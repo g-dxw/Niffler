@@ -7,9 +7,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { cn } from '@/lib/utils'
+import type { ClassValue } from 'clsx'
 
 interface Props {
-  class?: string
+  class?: ClassValue
 }
 
 const props = defineProps<Props>()

@@ -33,7 +33,11 @@ export interface UsageRecord {
   official_cost?: number | null
   cost?: number
   sales_multiplier?: number | null
+  model_cost?: number | null
+  moderation_cost?: number | null
   actual_cost?: number | null
+  actual_model_cost?: number | null
+  actual_moderation_cost?: number | null
   rate_multiplier?: number | null
   charge_breakdown?: UsageChargeBreakdown | null
   response_time?: number

@@ -60,11 +60,12 @@ export function useEscapeKey(
     // 如果配置了在输入框获得焦点时禁用，则检查当前焦点元素
     if (disableOnInput) {
       const activeElement = document.activeElement
+      const activeHTMLElement = activeElement instanceof HTMLElement ? activeElement : null
       const isInputElement = activeElement && (
         activeElement.tagName === 'INPUT' ||
         activeElement.tagName === 'TEXTAREA' ||
         activeElement.tagName === 'SELECT' ||
-        activeElement.contentEditable === 'true' ||
+        activeHTMLElement?.contentEditable === 'true' ||
         activeElement.getAttribute('role') === 'textbox' ||
         activeElement.getAttribute('role') === 'combobox'
       )

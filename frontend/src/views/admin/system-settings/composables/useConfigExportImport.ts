@@ -11,7 +11,6 @@ import {
 } from '@/api/admin'
 import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
-import type { SystemConfig } from './useSystemConfig'
 
 // 文件大小限制：导出文件可能包含大量 Provider Key、模型和用户数据。
 const BYTES_PER_MB = 1024 * 1024
@@ -68,7 +67,7 @@ function downloadJson(data: unknown, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function useConfigExportImport(systemConfig: { value: SystemConfig }) {
+export function useConfigExportImport(systemConfig: { value: { site_name: string } }) {
   const { success, error } = useToast()
 
   // 配置导出/导入相关

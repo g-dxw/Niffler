@@ -35,7 +35,7 @@ export function buildProductPlanModelPriceRows(
   multiplier: number
 ): ProductPlanModelPriceRow[] {
   if (!model) return []
-  return [
+  const rows: ProductPlanModelPriceRow[] = [
     buildTokenPriceRow('input', '输入', getFirstTierPrice(model, 'input_price_per_1m'), multiplier),
     buildTokenPriceRow('output', '输出', getFirstTierPrice(model, 'output_price_per_1m'), multiplier),
     buildTokenPriceRow(
@@ -52,7 +52,8 @@ export function buildProductPlanModelPriceRows(
       salesPrice: multiplyPrice(toNonNegativeFiniteNumber(model.default_price_per_request), multiplier),
       unit: '/次',
     },
-  ].filter(row => row.basePrice !== null)
+  ]
+  return rows.filter(row => row.basePrice !== null)
 }
 
 export function formatProductPlanModelPrice(value: number | null, unit: string): string {

@@ -496,15 +496,15 @@
 
                   <RoutingPriorityPolicyEditor
                     :config="activeConfigForReading"
-                    :model="activePerModelPolicy.model"
-                    :priority-mode="modelPriorityMode(activePerModelPolicy.model)"
-                    :scheduling-mode="modelSchedulingMode(activePerModelPolicy.model)"
+                    :model="activePerModelName"
+                    :priority-mode="modelPriorityMode(activePerModelName)"
+                    :scheduling-mode="modelSchedulingMode(activePerModelName)"
                     :show-priority-mode="false"
                     :show-scheduling-mode="false"
-                    :subtitle="`仅作用于 ${activePerModelPolicy.model}`"
+                    :subtitle="`仅作用于 ${activePerModelName}`"
                     @update:config="updateEditingConfig"
-                    @update:priority-mode="mode => updateModelPriorityMode(activePerModelPolicy.model, mode)"
-                    @update:scheduling-mode="mode => updateModelSchedulingMode(activePerModelPolicy.model, mode)"
+                    @update:priority-mode="mode => updateModelPriorityMode(activePerModelName, mode)"
+                    @update:scheduling-mode="mode => updateModelSchedulingMode(activePerModelName, mode)"
                   />
                 </template>
                 <div
@@ -655,6 +655,7 @@ const activePerModelPolicy = computed(() => {
   if (existing) return existing
   return createEmptyModelPolicy(selectedPerModelName.value)
 })
+const activePerModelName = computed(() => activePerModelPolicy.value?.model ?? '')
 const firstStepPriorityMode = computed<RoutingPriorityMode>(() => {
   if (sortingScope.value === 'per_model' && activePerModelPolicy.value) {
     return modelPriorityMode(activePerModelPolicy.value.model)

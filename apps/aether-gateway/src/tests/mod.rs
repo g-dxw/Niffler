@@ -14,6 +14,7 @@ mod architecture;
 mod async_task;
 mod audit;
 mod concurrency;
+mod content_moderation;
 mod control;
 mod files;
 mod frontdoor;

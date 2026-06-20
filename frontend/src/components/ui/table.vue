@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { cn } from '@/lib/utils'
 import { computed } from 'vue'
+import type { ClassValue } from 'clsx'
 
 interface Props {
-  class?: string
+  class?: ClassValue
 }
 
 const props = defineProps<Props>()

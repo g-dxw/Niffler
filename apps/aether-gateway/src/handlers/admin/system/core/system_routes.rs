@@ -361,7 +361,7 @@ pub(super) async fn maybe_build_local_admin_core_system_response(
     {
         let entries = state.list_system_config_entries().await?;
         return Ok(Some(
-            Json(build_admin_system_configs_payload(&entries)).into_response(),
+            Json(build_admin_system_configs_payload(state, &entries)).into_response(),
         ));
     }
 
@@ -664,6 +664,7 @@ async fn build_admin_system_cleanup_payload(
     let cleaned = json!({
         "audit_logs": summary.audit_logs_deleted,
         "request_candidates": summary.request_candidates_deleted,
+        "content_moderation_evidence_redacted": summary.content_moderation_evidence_redacted,
         "proxy_node_metrics_1m": summary.proxy_node_metrics.deleted_1m_rows,
         "proxy_node_metrics_1h": summary.proxy_node_metrics.deleted_1h_rows,
         "pending_failed": summary.pending_failed,
@@ -678,6 +679,7 @@ async fn build_admin_system_cleanup_payload(
     let total = summary
         .audit_logs_deleted
         .saturating_add(summary.request_candidates_deleted)
+        .saturating_add(summary.content_moderation_evidence_redacted)
         .saturating_add(summary.proxy_node_metrics.deleted_1m_rows)
         .saturating_add(summary.proxy_node_metrics.deleted_1h_rows)
         .saturating_add(summary.pending_failed)

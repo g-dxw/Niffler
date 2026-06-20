@@ -34,6 +34,7 @@ mod cache;
 mod client_session_affinity;
 mod clock;
 mod constants;
+mod content_moderation;
 mod control;
 mod data;
 mod dispatch;

@@ -1,4 +1,4 @@
-import type { BodyRuleCondition, BodyRuleConditionOp } from '@/api/endpoints'
+import type { BodyRuleCondition, BodyRuleConditionLeaf, BodyRuleConditionOp } from '@/api/endpoints'
 
 export type ConditionSource = 'body' | 'original' | 'request_headers'
 export type ConditionGroupMode = 'all' | 'any'
@@ -74,17 +74,20 @@ export function cloneEditableCondition(node: EditableConditionNode): EditableCon
 
 export function conditionToEditable(condition?: BodyRuleCondition | null): EditableConditionNode | null {
   if (!condition) return null
-  if ('all' in condition) {
+  if ('all' in condition && Array.isArray(condition.all)) {
     return createConditionGroup(
       'all',
       condition.all.map(child => conditionToEditable(child) || createEmptyConditionLeaf()),
     )
   }
-  if ('any' in condition) {
+  if ('any' in condition && Array.isArray(condition.any)) {
     return createConditionGroup(
       'any',
       condition.any.map(child => conditionToEditable(child) || createEmptyConditionLeaf()),
     )
+  }
+  if (!isBodyRuleConditionLeaf(condition)) {
+    return null
   }
   const source = (condition as { source?: unknown }).source
   return {
@@ -98,8 +101,12 @@ export function conditionToEditable(condition?: BodyRuleCondition | null): Edita
         ? 'request_headers'
         : source === 'original'
           ? 'original'
-        : 'body',
+      : 'body',
   }
+}
+
+function isBodyRuleConditionLeaf(condition: BodyRuleCondition): condition is BodyRuleConditionLeaf {
+  return 'path' in condition && 'op' in condition
 }
 
 export function editableConditionToApi(node: EditableConditionNode | null): BodyRuleCondition | undefined {

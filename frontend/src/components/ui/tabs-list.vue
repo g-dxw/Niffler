@@ -15,9 +15,10 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, inject, type Ref } from 'vue'
 import { cn } from '@/lib/utils'
+import type { ClassValue } from 'clsx'
 
 interface Props {
-  class?: string
+  class?: ClassValue
 }
 
 const props = defineProps<Props>()
@@ -39,7 +40,7 @@ const activeTab = inject<Ref<string>>('activeTab')
 
 // 检查是否有 grid 类（由外部传入）
 const hasGridClass = computed(() => {
-  return props.class?.includes('grid')
+  return typeof props.class === 'string' && props.class.includes('grid')
 })
 
 const listClass = computed(() => {

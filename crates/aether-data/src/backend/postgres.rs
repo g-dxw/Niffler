@@ -26,6 +26,10 @@ use crate::repository::candidates::{
     RequestCandidateReadRepository, RequestCandidateWriteRepository,
     SqlxRequestCandidateReadRepository,
 };
+use crate::repository::content_moderation_evidence::{
+    ContentModerationEvidenceReadRepository, ContentModerationEvidenceWriteRepository,
+    SqlxContentModerationEvidenceRepository,
+};
 use crate::repository::gemini_file_mappings::{
     GeminiFileMappingReadRepository, GeminiFileMappingWriteRepository,
     SqlxGeminiFileMappingRepository,
@@ -136,6 +140,22 @@ impl PostgresBackend {
 
     pub fn background_task_write_repository(&self) -> Arc<dyn BackgroundTaskWriteRepository> {
         Arc::new(SqlxBackgroundTaskRepository::new(self.pool_clone()))
+    }
+
+    pub fn content_moderation_evidence_read_repository(
+        &self,
+    ) -> Arc<dyn ContentModerationEvidenceReadRepository> {
+        Arc::new(SqlxContentModerationEvidenceRepository::new(
+            self.pool_clone(),
+        ))
+    }
+
+    pub fn content_moderation_evidence_write_repository(
+        &self,
+    ) -> Arc<dyn ContentModerationEvidenceWriteRepository> {
+        Arc::new(SqlxContentModerationEvidenceRepository::new(
+            self.pool_clone(),
+        ))
     }
 
     pub fn minimal_candidate_selection_read_repository(

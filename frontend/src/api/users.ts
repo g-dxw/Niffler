@@ -3,7 +3,7 @@ import { cachedRequest } from '@/utils/cache'
 import type { UserSession as SessionRecord } from '@/types/session'
 import type { BillingPlan, UserPlanEntitlement } from './billing'
 
-export type UserRole = 'admin' | 'user'
+export type UserRole = 'admin' | 'audit_admin' | 'user'
 export type ListPolicyMode = 'inherit' | 'unrestricted' | 'specific' | 'deny_all'
 export type RateLimitPolicyMode = 'inherit' | 'system' | 'custom'
 export type FeatureSettings = Record<string, unknown>

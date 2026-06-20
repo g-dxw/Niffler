@@ -796,7 +796,7 @@ function hasTieredPricing(model: GlobalModelResponse): boolean {
 // 检测是否有视频分辨率计费配置
 function hasVideoPricing(model: GlobalModelResponse): boolean {
   const priceByResolution = model.config?.billing?.video?.price_per_second_by_resolution
-  return priceByResolution && typeof priceByResolution === 'object' && Object.keys(priceByResolution).length > 0
+  return Boolean(priceByResolution && typeof priceByResolution === 'object' && Object.keys(priceByResolution).length > 0)
 }
 
 // 获取视频分辨率计费的数量

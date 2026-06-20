@@ -59,7 +59,8 @@ import Card from '@/components/ui/card.vue'
 import ScatterChart from '@/components/charts/ScatterChart.vue'
 import { cacheAnalysisApi, type IntervalTimelineResponse } from '@/api/cache'
 import { meApi } from '@/api/me'
-import type { ChartData, ChartOptions } from 'chart.js'
+import type { ChartOptions } from 'chart.js'
+import type { TimeScatterData } from '@/components/charts/scatter-types'
 import { log } from '@/utils/logger'
 
 const props = withDefaults(defineProps<{
@@ -186,7 +187,7 @@ function formatModelName(model: string): string {
 }
 
 // 构建图表数据
-const chartData = computed<ChartData<'scatter'>>(() => {
+const chartData = computed<TimeScatterData>(() => {
   if (!timelineData.value?.points) {
     return { datasets: [] }
   }

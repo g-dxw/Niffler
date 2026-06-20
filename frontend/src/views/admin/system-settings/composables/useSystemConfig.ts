@@ -4,6 +4,30 @@ import { adminApi } from '@/api/admin'
 import { log } from '@/utils/logger'
 import { useSiteInfo } from '@/composables/useSiteInfo'
 
+export type ContentModerationLevel = 'off' | 'latest_user_input' | 'all_user_inputs' | 'full_request'
+export type ContentModerationTargetKind = 'provider' | 'upstream_service' | 'upstream_account'
+
+export interface ContentModerationTargetConfig {
+  kind: ContentModerationTargetKind
+  id: string
+}
+
+export interface ContentModerationAccountProtectionConfig {
+  enabled: boolean
+  level: ContentModerationLevel
+  api_keys: string[]
+  api_keys_clear: boolean
+  api_key_count: number
+  api_key_masks: string[]
+  base_url: string
+  model: string
+  timeout_ms: number
+  input_price_per_1m: number
+  output_price_per_1m: number
+  evidence_retention_days: number
+  targets: ContentModerationTargetConfig[]
+}
+
 export interface SystemConfig {
   // 站点信息
   site_name: string
@@ -40,6 +64,8 @@ export interface SystemConfig {
   max_request_body_size: number
   max_response_body_size: number
   sensitive_headers: string[]
+  // 内容审查 / 账号保护
+  content_moderation_account_protection: ContentModerationAccountProtectionConfig
   // 请求记录清理
   enable_auto_cleanup: boolean
   detail_log_retention_days: number
@@ -94,6 +120,8 @@ const CONFIG_KEYS = [
   'max_request_body_size',
   'max_response_body_size',
   'sensitive_headers',
+  // 内容审查 / 账号保护
+  'content_moderation_account_protection',
   // 请求记录清理
   'enable_auto_cleanup',
   'detail_log_retention_days',
@@ -112,6 +140,111 @@ const CONFIG_KEYS = [
   'provider_checkin_time',
   'enable_oauth_token_refresh',
 ]
+
+function createDefaultContentModerationConfig(): ContentModerationAccountProtectionConfig {
+  return {
+    enabled: false,
+    level: 'all_user_inputs',
+    api_keys: [],
+    api_keys_clear: false,
+    api_key_count: 0,
+    api_key_masks: [],
+    base_url: 'https://api.openai.com/v1',
+    model: 'omni-moderation-latest',
+    timeout_ms: 3000,
+    input_price_per_1m: 0,
+    output_price_per_1m: 0,
+    evidence_retention_days: 30,
+    targets: [],
+  }
+}
+
+function numberOrDefault(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function stringOrDefault(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function normalizeContentModerationLevel(value: unknown): ContentModerationLevel {
+  if (
+    value === 'off' ||
+    value === 'latest_user_input' ||
+    value === 'all_user_inputs' ||
+    value === 'full_request'
+  ) {
+    return value
+  }
+  return 'all_user_inputs'
+}
+
+function normalizeContentModerationTargets(value: unknown): ContentModerationTargetConfig[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const record = item as Record<string, unknown>
+    const kind = record.kind
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    if (
+      !id ||
+      (kind !== 'provider' && kind !== 'upstream_service' && kind !== 'upstream_account')
+    ) {
+      return []
+    }
+    return [{ kind, id }]
+  })
+}
+
+function normalizeContentModerationApiKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.flatMap((item) => {
+    if (typeof item !== 'string') return []
+    const key = item.trim()
+    if (!key || seen.has(key)) return []
+    seen.add(key)
+    return [key]
+  })
+}
+
+function normalizeContentModerationApiKeyMasks(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (typeof item !== 'string') return []
+    const mask = item.trim()
+    return mask ? [mask] : []
+  })
+}
+
+function normalizeContentModerationConfig(value: unknown): ContentModerationAccountProtectionConfig {
+  const defaults = createDefaultContentModerationConfig()
+  if (!value || typeof value !== 'object') return defaults
+  const record = value as Record<string, unknown>
+  const apiKeys = normalizeContentModerationApiKeys(record.api_keys)
+  const apiKeyMasks = normalizeContentModerationApiKeyMasks(record.api_key_masks)
+  return {
+    enabled: typeof record.enabled === 'boolean' ? record.enabled : defaults.enabled,
+    level: normalizeContentModerationLevel(record.level),
+    api_keys: apiKeys,
+    api_keys_clear: typeof record.api_keys_clear === 'boolean' ? record.api_keys_clear : false,
+    api_key_count: Math.max(
+      apiKeys.length,
+      Math.max(0, Math.round(numberOrDefault(record.api_key_count, defaults.api_key_count))),
+    ),
+    api_key_masks: apiKeyMasks,
+    base_url: stringOrDefault(record.base_url, defaults.base_url),
+    model: stringOrDefault(record.model, defaults.model),
+    timeout_ms: Math.max(500, Math.min(60000, Math.round(numberOrDefault(record.timeout_ms, defaults.timeout_ms)))),
+    input_price_per_1m: Math.max(0, numberOrDefault(record.input_price_per_1m, defaults.input_price_per_1m)),
+    output_price_per_1m: Math.max(0, numberOrDefault(record.output_price_per_1m, defaults.output_price_per_1m)),
+    evidence_retention_days: Math.max(
+      1,
+      Math.min(365, Math.round(numberOrDefault(record.evidence_retention_days, defaults.evidence_retention_days))),
+    ),
+    targets: normalizeContentModerationTargets(record.targets),
+  }
+}
 
 function createDefaultConfig(): SystemConfig {
   return {
@@ -150,6 +283,8 @@ function createDefaultConfig(): SystemConfig {
     max_request_body_size: 262144,
     max_response_body_size: 262144,
     sensitive_headers: ['authorization', 'x-api-key', 'api-key', 'cookie', 'set-cookie'],
+    // 内容审查 / 账号保护
+    content_moderation_account_protection: createDefaultContentModerationConfig(),
     // 请求记录清理
     enable_auto_cleanup: true,
     detail_log_retention_days: 1,
@@ -183,6 +318,7 @@ export function useSystemConfig() {
   const proxyConfigLoading = ref(false)
   const basicConfigLoading = ref(false)
   const logConfigLoading = ref(false)
+  const contentModerationLoading = ref(false)
   const cleanupConfigLoading = ref(false)
 
   // 变动检测
@@ -238,6 +374,14 @@ export function useSystemConfig() {
       systemConfig.value.max_response_body_size !== originalConfig.value.max_response_body_size ||
       JSON.stringify(systemConfig.value.sensitive_headers) !==
       JSON.stringify(originalConfig.value.sensitive_headers)
+    )
+  })
+
+  const hasContentModerationChanges = computed(() => {
+    if (!originalConfig.value) return false
+    return (
+      JSON.stringify(systemConfig.value.content_moderation_account_protection) !==
+      JSON.stringify(originalConfig.value.content_moderation_account_protection)
     )
   })
 
@@ -316,7 +460,10 @@ export function useSystemConfig() {
             continue
           }
           if (response.value !== null && response.value !== undefined) {
-            ; (systemConfig.value as Record<string, unknown>)[key] = response.value
+            ; (systemConfig.value as Record<string, unknown>)[key] =
+              key === 'content_moderation_account_protection'
+                ? normalizeContentModerationConfig(response.value)
+                : response.value
           }
         } catch {
           // 单个配置项加载失败时忽略，使用默认值
@@ -619,6 +766,31 @@ export function useSystemConfig() {
     }
   }
 
+  async function saveContentModerationConfig() {
+    contentModerationLoading.value = true
+    try {
+      const value = normalizeContentModerationConfig(
+        systemConfig.value.content_moderation_account_protection,
+      )
+      const response = await adminApi.updateSystemConfig(
+        'content_moderation_account_protection',
+        value,
+        '内容审查 / 账号保护配置',
+      )
+      const savedValue = normalizeContentModerationConfig(response.value ?? value)
+      systemConfig.value.content_moderation_account_protection = savedValue
+      if (originalConfig.value) {
+        originalConfig.value.content_moderation_account_protection = JSON.parse(JSON.stringify(savedValue))
+      }
+      success('内容审查配置已保存')
+    } catch (err) {
+      error('保存内容审查配置失败')
+      log.error('保存内容审查配置失败:', err)
+    } finally {
+      contentModerationLoading.value = false
+    }
+  }
+
   async function saveCleanupConfig() {
     cleanupConfigLoading.value = true
     try {
@@ -741,12 +913,14 @@ export function useSystemConfig() {
     proxyConfigLoading,
     basicConfigLoading,
     logConfigLoading,
+    contentModerationLoading,
     cleanupConfigLoading,
     // 变动检测
     hasSiteInfoChanges,
     hasProxyConfigChanges,
     hasBasicConfigChanges,
     hasLogConfigChanges,
+    hasContentModerationChanges,
     hasCleanupConfigChanges,
     // 计算属性
     maxRequestBodySizeKB,
@@ -762,6 +936,7 @@ export function useSystemConfig() {
     saveBasicConfig,
     clearTurnstileSecret,
     saveLogConfig,
+    saveContentModerationConfig,
     saveCleanupConfig,
     handleAutoCleanupToggle,
   }

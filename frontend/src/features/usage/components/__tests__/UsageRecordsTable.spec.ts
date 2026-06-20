@@ -293,6 +293,27 @@ describe('UsageRecordsTable', () => {
     expect(root.textContent).toContain('0.15x')
   })
 
+  it('shows moderation cost as part of the existing cost column', () => {
+    const root = mountUsageRecordsTable([
+      buildRecord({
+        official_cost: 1,
+        cost: 0.1501,
+        model_cost: 0.15,
+        moderation_cost: 0.0001,
+        actual_cost: 0.80008,
+        actual_model_cost: 0.8,
+        actual_moderation_cost: 0.00008,
+        rate_multiplier: 0.80008,
+      }),
+    ], { showActualCost: true })
+
+    expect(root.textContent).toContain('钱包扣除 $0.1501')
+    expect(root.textContent).toContain('模型扣费 $0.15')
+    expect(root.textContent).toContain('审查成本 $0.00010')
+    const titles = [...root.querySelectorAll<HTMLElement>('[title]')].map((element) => element.title)
+    expect(titles.some(title => title.includes('平台审查成本: $0.000080'))).toBe(true)
+  })
+
   it('hides platform cost in the user usage table', () => {
     const root = mountUsageRecordsTable([
       buildRecord({

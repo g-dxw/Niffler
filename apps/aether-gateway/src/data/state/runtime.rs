@@ -13,26 +13,26 @@ use super::{
     CreateWalletRefundRequestOutcome, CreditAdminPaymentOrderInput, DataLayerError,
     DatabaseMaintenanceSummary, DecisionTrace, DeleteAdminRedeemCodeBatchInput,
     DisableAdminRedeemCodeBatchInput, DisableAdminRedeemCodeInput, FailAdminWalletRefundInput,
-    GatewayDataState, GatewayProviderTransportSnapshot, LocalVideoTaskReadResponse,
-    PaymentGatewayConfigRecord, PaymentGatewayConfigWriteInput, ProcessAdminWalletRefundInput,
-    ProcessPaymentCallbackInput, ProcessPaymentCallbackOutcome, RedeemWalletCodeInput,
-    RedeemWalletCodeOutcome, RequestAuditBundle, RequestCandidateTrace, StoredAdminAuditLogPage,
-    StoredAdminPaymentCallbackPage, StoredAdminPaymentOrder, StoredAdminPaymentOrderPage,
-    StoredAdminRedeemCodeBatch, StoredAdminRedeemCodeBatchPage, StoredAdminRedeemCodePage,
-    StoredAdminWalletLedgerPage, StoredAdminWalletListPage, StoredAdminWalletRefund,
-    StoredAdminWalletRefundPage, StoredAdminWalletRefundRequestPage, StoredAdminWalletTransaction,
-    StoredAdminWalletTransactionPage, StoredAnnouncement, StoredAnnouncementPage,
-    StoredBackgroundTaskEvent, StoredBackgroundTaskRun, StoredBackgroundTaskRunPage,
-    StoredBillingModelContext, StoredProviderQuotaSnapshot, StoredProviderUsageSummary,
-    StoredRequestUsageAudit, StoredSuspiciousActivity, StoredUsageSettlement,
-    StoredUserAuditLogPage, StoredUserAuthRecord, StoredUserExportRow, StoredUserSummary,
-    StoredVideoTask, StoredWalletDailyUsageLedger, StoredWalletDailyUsageLedgerPage,
-    StoredWalletSnapshot, UpdateAnnouncementRecord, UpsertBackgroundTaskEvent,
-    UpsertBackgroundTaskRun, UpsertUsageRecord, UpsertVideoTask, UsageSettlementInput,
-    UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput,
-    VideoTaskLookupKey, VideoTaskModelCount, VideoTaskQueryFilter, VideoTaskStatusCount,
-    WalletDailyUsageAggregationInput, WalletDailyUsageAggregationResult, WalletLookupKey,
-    WalletMutationOutcome,
+    GatewayDataState, GatewayProviderTransportSnapshot, InsertContentModerationEvidenceRecord,
+    LocalVideoTaskReadResponse, PaymentGatewayConfigRecord, PaymentGatewayConfigWriteInput,
+    ProcessAdminWalletRefundInput, ProcessPaymentCallbackInput, ProcessPaymentCallbackOutcome,
+    RedeemWalletCodeInput, RedeemWalletCodeOutcome, RequestAuditBundle, RequestCandidateTrace,
+    StoredAdminAuditLogPage, StoredAdminPaymentCallbackPage, StoredAdminPaymentOrder,
+    StoredAdminPaymentOrderPage, StoredAdminRedeemCodeBatch, StoredAdminRedeemCodeBatchPage,
+    StoredAdminRedeemCodePage, StoredAdminWalletLedgerPage, StoredAdminWalletListPage,
+    StoredAdminWalletRefund, StoredAdminWalletRefundPage, StoredAdminWalletRefundRequestPage,
+    StoredAdminWalletTransaction, StoredAdminWalletTransactionPage, StoredAnnouncement,
+    StoredAnnouncementPage, StoredBackgroundTaskEvent, StoredBackgroundTaskRun,
+    StoredBackgroundTaskRunPage, StoredBillingModelContext, StoredContentModerationEvidence,
+    StoredProviderQuotaSnapshot, StoredProviderUsageSummary, StoredRequestUsageAudit,
+    StoredSuspiciousActivity, StoredUsageSettlement, StoredUserAuditLogPage, StoredUserAuthRecord,
+    StoredUserExportRow, StoredUserSummary, StoredVideoTask, StoredWalletDailyUsageLedger,
+    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, UpdateAnnouncementRecord,
+    UpsertBackgroundTaskEvent, UpsertBackgroundTaskRun, UpsertUsageRecord, UpsertVideoTask,
+    UsageSettlementInput, UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord,
+    UserPlanEntitlementUpdateInput, VideoTaskLookupKey, VideoTaskModelCount, VideoTaskQueryFilter,
+    VideoTaskStatusCount, WalletDailyUsageAggregationInput, WalletDailyUsageAggregationResult,
+    WalletLookupKey, WalletMutationOutcome,
 };
 use aether_data_contracts::repository::usage::{
     PendingUsageCleanupSummary, ProviderApiKeyWindowUsageRequest,
@@ -250,6 +250,63 @@ impl GatewayDataState {
         };
         repository
             .delete_audit_logs_before(cutoff_unix_secs, limit)
+            .await
+    }
+
+    pub(crate) fn has_content_moderation_evidence_reader(&self) -> bool {
+        self.backends
+            .as_ref()
+            .is_some_and(|backends| backends.read().content_moderation_evidence().is_some())
+    }
+
+    pub(crate) fn has_content_moderation_evidence_writer(&self) -> bool {
+        self.backends
+            .as_ref()
+            .is_some_and(|backends| backends.write().content_moderation_evidence().is_some())
+    }
+
+    pub(crate) async fn insert_content_moderation_evidence(
+        &self,
+        record: InsertContentModerationEvidenceRecord,
+    ) -> Result<Option<StoredContentModerationEvidence>, DataLayerError> {
+        let Some(repository) = self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().content_moderation_evidence())
+        else {
+            return Ok(None);
+        };
+        repository.insert(record).await.map(Some)
+    }
+
+    pub(crate) async fn find_content_moderation_evidence_by_id(
+        &self,
+        evidence_id: &str,
+    ) -> Result<Option<StoredContentModerationEvidence>, DataLayerError> {
+        let Some(repository) = self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.read().content_moderation_evidence())
+        else {
+            return Ok(None);
+        };
+        repository.find_by_id(evidence_id).await
+    }
+
+    pub(crate) async fn redact_expired_content_moderation_evidence(
+        &self,
+        now_unix_secs: u64,
+        limit: usize,
+    ) -> Result<usize, DataLayerError> {
+        let Some(repository) = self
+            .backends
+            .as_ref()
+            .and_then(|backends| backends.write().content_moderation_evidence())
+        else {
+            return Ok(0);
+        };
+        repository
+            .redact_expired_input_text(now_unix_secs, limit)
             .await
     }
 

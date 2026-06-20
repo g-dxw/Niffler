@@ -275,7 +275,7 @@ export function buildNifflerServiceCapabilityForm(
   capabilities: NifflerUpstreamServiceCapability[] = []
 ): NifflerServiceCapabilityForm {
   const protocolKind = inferNifflerServiceProtocolKind(service, capabilities)
-  const form = { ...textModelCapabilities }
+  const form: CapabilityDefaults = { ...textModelCapabilities }
   for (const capability of capabilities) {
     form[capability.capability_kind] = capability.is_enabled
   }

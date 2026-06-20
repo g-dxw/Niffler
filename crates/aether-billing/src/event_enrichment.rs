@@ -39,8 +39,11 @@ pub async fn enrich_usage_event_with_billing(
         event.event_type,
         UsageEventType::Completed | UsageEventType::Cancelled
     ) {
-        event.data.total_cost_usd = Some(0.0);
-        event.data.actual_total_cost_usd = Some(0.0);
+        event.data.total_cost_usd.get_or_insert(0.0);
+        event
+            .data
+            .actual_total_cost_usd
+            .get_or_insert(event.data.total_cost_usd.unwrap_or(0.0));
         return Ok(());
     }
 
@@ -265,15 +268,34 @@ fn apply_billing_computation(
 ) -> Result<(), DataLayerError> {
     let base_cost_usd = computation.cost_result.cost;
     let sales_multiplier = resolve_sales_multiplier(event, pricing).unwrap_or(1.0);
-    let user_total_cost_usd = quantize_cost(base_cost_usd * sales_multiplier);
+    let model_cost_usd = quantize_cost(base_cost_usd * sales_multiplier);
+    let actual_model_cost_usd = computation.actual_total_cost;
+    let moderation_cost_usd = metadata_number_from_value(
+        event.data.request_metadata.as_ref(),
+        "content_moderation_cost_usd",
+    )
+    .unwrap_or(0.0)
+    .max(0.0);
+    let moderation_actual_cost_usd = metadata_number_from_value(
+        event.data.request_metadata.as_ref(),
+        "content_moderation_actual_cost_usd",
+    )
+    .unwrap_or(moderation_cost_usd)
+    .max(0.0);
+    let user_total_cost_usd = quantize_cost(model_cost_usd + moderation_cost_usd);
+    let actual_total_cost_usd = quantize_cost(actual_model_cost_usd + moderation_actual_cost_usd);
     event.data.total_cost_usd = Some(user_total_cost_usd);
-    event.data.actual_total_cost_usd = Some(computation.actual_total_cost);
+    event.data.actual_total_cost_usd = Some(actual_total_cost_usd);
     let metadata_input = BillingSnapshotMetadataInput {
         pricing,
         snapshot: &computation.cost_result.snapshot,
         base_cost_usd,
+        model_cost_usd,
+        actual_model_cost_usd,
+        moderation_cost_usd,
+        moderation_actual_cost_usd,
         user_total_cost_usd,
-        actual_total_cost: computation.actual_total_cost,
+        actual_total_cost: actual_total_cost_usd,
         sales_multiplier,
         rate_multiplier: computation.rate_multiplier,
         is_free_tier: computation.is_free_tier,
@@ -311,6 +333,14 @@ fn metadata_number(metadata: &Map<String, Value>, key: &str) -> Option<f64> {
     metadata.get(key).and_then(Value::as_f64)
 }
 
+fn metadata_number_from_value(metadata: Option<&Value>, key: &str) -> Option<f64> {
+    metadata
+        .and_then(Value::as_object)
+        .and_then(|object| object.get(key))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
+}
+
 fn normalize_sales_multiplier(value: f64) -> f64 {
     if value.is_finite() && value >= 0.0 {
         value
@@ -344,6 +374,10 @@ struct BillingSnapshotMetadataInput<'a> {
     pricing: &'a BillingModelPricingSnapshot,
     snapshot: &'a crate::BillingSnapshot,
     base_cost_usd: f64,
+    model_cost_usd: f64,
+    actual_model_cost_usd: f64,
+    moderation_cost_usd: f64,
+    moderation_actual_cost_usd: f64,
     user_total_cost_usd: f64,
     actual_total_cost: f64,
     sales_multiplier: f64,
@@ -369,6 +403,24 @@ fn merge_billing_snapshot_metadata(
         "base_cost_usd".to_string(),
         Value::from(input.base_cost_usd),
     );
+    metadata.insert(
+        "model_cost_usd".to_string(),
+        Value::from(input.model_cost_usd),
+    );
+    metadata.insert(
+        "actual_model_cost_usd".to_string(),
+        Value::from(input.actual_model_cost_usd),
+    );
+    if input.moderation_cost_usd > 0.0 {
+        metadata.insert(
+            "content_moderation_cost_usd".to_string(),
+            Value::from(input.moderation_cost_usd),
+        );
+        metadata.insert(
+            "content_moderation_actual_cost_usd".to_string(),
+            Value::from(input.moderation_actual_cost_usd),
+        );
+    }
     metadata.insert(
         "user_total_cost_usd".to_string(),
         Value::from(input.user_total_cost_usd),
@@ -538,6 +590,68 @@ mod tests {
                 .and_then(Value::as_str),
             Some("complete")
         );
+    }
+
+    #[tokio::test]
+    async fn completed_usage_adds_content_moderation_cost_to_total_cost() {
+        let lookup = TestLookup {
+            name_context: Some(
+                StoredBillingModelContext::new(
+                    "provider-1".to_string(),
+                    Some("pay_as_you_go".to_string()),
+                    None,
+                    Some("key-1".to_string()),
+                    None,
+                    None,
+                    "global-model-1".to_string(),
+                    "gpt-5".to_string(),
+                    None,
+                    Some(0.02),
+                    None,
+                    Some("model-1".to_string()),
+                    Some("gpt-5-upstream".to_string()),
+                    None,
+                    None,
+                    None,
+                )
+                .expect("billing context should build"),
+            ),
+            model_id_context: None,
+        };
+        let mut event = UsageEvent::new(
+            UsageEventType::Completed,
+            "req-billing-moderation-1",
+            UsageEventData {
+                provider_name: "OpenAI".to_string(),
+                model: "gpt-5".to_string(),
+                provider_id: Some("provider-1".to_string()),
+                provider_api_key_id: Some("key-1".to_string()),
+                request_type: Some("chat".to_string()),
+                api_format: Some("openai:chat".to_string()),
+                endpoint_api_format: Some("openai:chat".to_string()),
+                status_code: Some(200),
+                request_metadata: Some(json!({
+                    "content_moderation_cost_usd": 0.0001,
+                    "content_moderation_actual_cost_usd": 0.0001,
+                    "content_moderation": {
+                        "result": "passed",
+                        "model": "omni-moderation-latest"
+                    }
+                })),
+                ..UsageEventData::default()
+            },
+        );
+
+        enrich_usage_event_with_billing(&lookup, &mut event)
+            .await
+            .expect("billing should succeed");
+
+        assert_eq!(event.data.total_cost_usd, Some(0.0201));
+        assert_eq!(event.data.actual_total_cost_usd, Some(0.0201));
+        let metadata = event.data.request_metadata.as_ref().expect("metadata");
+        assert_eq!(metadata["model_cost_usd"], json!(0.02));
+        assert_eq!(metadata["content_moderation_cost_usd"], json!(0.0001));
+        assert_eq!(metadata["user_total_cost_usd"], json!(0.0201));
     }
 
     #[tokio::test]
@@ -842,6 +956,37 @@ mod tests {
         assert_eq!(event.data.total_cost_usd, Some(0.0));
         assert_eq!(event.data.actual_total_cost_usd, Some(0.0));
         assert!(event.data.request_metadata.is_none());
+    }
+
+    #[tokio::test]
+    async fn failed_moderation_usage_preserves_explicit_cost() {
+        let lookup = TestLookup {
+            name_context: None,
+            model_id_context: None,
+        };
+        let mut event = UsageEvent::new(
+            UsageEventType::Failed,
+            "req-moderation-blocked",
+            UsageEventData {
+                provider_name: "Niffler 内容审查".to_string(),
+                model: "omni-moderation-latest".to_string(),
+                input_tokens: Some(100),
+                total_cost_usd: Some(0.0001),
+                actual_total_cost_usd: Some(0.0001),
+                request_metadata: Some(json!({
+                    "source": "content_moderation",
+                    "platform_rejection_reason": "content_moderation_flagged"
+                })),
+                ..UsageEventData::default()
+            },
+        );
+
+        enrich_usage_event_with_billing(&lookup, &mut event)
+            .await
+            .expect("billing should succeed");
+
+        assert_eq!(event.data.total_cost_usd, Some(0.0001));
+        assert_eq!(event.data.actual_total_cost_usd, Some(0.0001));
     }
 
     #[tokio::test]

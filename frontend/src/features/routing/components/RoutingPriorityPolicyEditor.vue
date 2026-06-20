@@ -316,6 +316,7 @@ import {
 
 interface ProviderPriorityRow {
   id: string
+  kind: 'provider' | 'pool'
   name: string
   is_active: boolean
   api_formats: string[]
@@ -335,6 +336,13 @@ interface KeyPriorityRow {
   provider_name: string
   pool_key_count?: number
   pool_active_key_count?: number
+}
+
+interface PrioritySortableRow {
+  id: string
+  name: string
+  is_active: boolean
+  priority: number
 }
 
 interface GlobalKeySource {
@@ -429,6 +437,7 @@ const providerRows = computed<ProviderPriorityRow[]>(() => {
   return providers.value
     .map(provider => ({
       id: provider.id,
+      kind: 'provider' as const,
       name: provider.name,
       is_active: provider.is_active,
       api_formats: provider.api_formats ?? [],
@@ -875,7 +884,7 @@ function toNumberOrNull(value: unknown): number | null {
   return Number.isFinite(numberValue) ? Math.trunc(numberValue) : null
 }
 
-function comparePriorityRows(left: ProviderPriorityRow | KeyPriorityRow, right: ProviderPriorityRow | KeyPriorityRow): number {
+function comparePriorityRows(left: PrioritySortableRow, right: PrioritySortableRow): number {
   return left.priority - right.priority
     || Number(right.is_active) - Number(left.is_active)
     || left.name.localeCompare(right.name)

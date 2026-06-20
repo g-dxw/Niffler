@@ -835,12 +835,13 @@ import {
 } from '@/api/admin-wallets'
 import { usageApi } from '@/api/usage'
 import { usersApi, type AdminUserPlanEntitlement } from '@/api/users'
-import type { BillingEntitlementsInput, BillingPlan, DailyQuotaEntitlement } from '@/api/billing'
+import type { BillingPlan, DailyQuotaEntitlement } from '@/api/billing'
 import type { RefundRequest, WalletTransaction } from '@/api/wallet'
 import type { UsageRecord } from '@/features/usage/types'
 import {
   normalizeBillingEntitlements,
   quotaConsumptionMultiplierLabel,
+  type BillingEntitlementsInput,
 } from '@/utils/billingEntitlements'
 import { parseApiError } from '@/utils/errorParser'
 import { parseNumberInput } from '@/utils/form'
@@ -1139,7 +1140,7 @@ async function loadUsageRecords() {
       offset,
       ...usageDateRangeParams(),
     })
-    usageItems.value = (resp.records || []) as UsageRecord[]
+    usageItems.value = (resp.records || []) as unknown as UsageRecord[]
     usageTotal.value = resp.total || 0
   } catch (err) {
     log.error('加载消费记录失败:', err)
@@ -1713,7 +1714,7 @@ function entitlementLabels(items: BillingEntitlementsInput): string[] {
     if (item.type === 'membership_group') {
       return '会员权益'
     }
-    return item.type
+    return '未知权益'
   })
 }
 

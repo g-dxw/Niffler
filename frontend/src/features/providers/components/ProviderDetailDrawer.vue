@@ -1154,7 +1154,7 @@
     v-if="open && provider"
     :open="oauthAccountDialogOpen"
     :provider-id="provider.id"
-    :provider-type="provider.provider_type"
+    :provider-type="provider.provider_type ?? null"
     @close="oauthAccountDialogOpen = false"
     @saved="handleKeyChanged"
   />
@@ -1227,10 +1227,10 @@
   <AntigravityQuotaDialog
     v-if="antigravityQuotaDialogKey"
     :open="antigravityQuotaDialogOpen"
-    :metadata="antigravityQuotaDialogKey.upstream_metadata"
+    :metadata="antigravityQuotaDialogKey.upstream_metadata ?? null"
     :quota-snapshot="antigravityQuotaDialogKey.status_snapshot?.quota ?? null"
     :key-name="getProviderAccountDisplayName(antigravityQuotaDialogKey)"
-    :provider-id="providerId"
+    :provider-id="providerId ?? undefined"
     :key-id="antigravityQuotaDialogKey.id"
     @update:open="antigravityQuotaDialogOpen = $event"
   />
@@ -1913,7 +1913,8 @@ async function downloadRefreshToken(key: EndpointAPIKey) {
   try {
     const data = await exportKey(key.id)
     const providerType = provider.value?.provider_type || 'unknown'
-    const safeName = (data.email || key.name || key.id.slice(0, 8)).replace(/[^a-zA-Z0-9_\-@.]/g, '_')
+    const exportedEmail = typeof data.email === 'string' ? data.email : ''
+    const safeName = (exportedEmail || key.name || key.id.slice(0, 8)).replace(/[^a-zA-Z0-9_\-@.]/g, '_')
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -2056,7 +2057,7 @@ async function handleClearOAuthInvalid(key: EndpointAPIKey) {
     title: '清除账号异常标记',
     message: `确认账号 "${getProviderAccountDisplayName(key)}" 已手动完成验证？清除后系统会按当前手动开关和调度状态重新评估该 Key。`,
     confirmText: '确认清除',
-    variant: 'default',
+    variant: 'info',
   })
   if (!confirmed) return
 
@@ -2513,7 +2514,7 @@ function formatKiroUsage(value: number | undefined): string {
 }
 
 // 格式化 Kiro 重置时间
-function formatKiroResetTime(timestamp: number | undefined): string {
+function formatKiroResetTime(timestamp: number | null | undefined): string {
   if (!timestamp) return ''
   // timestamp 可能是毫秒或秒，需要判断
   const ts = timestamp > 1e12 ? timestamp : timestamp * 1000
@@ -2836,7 +2837,9 @@ async function openAntigravityQuotaDialog(key: EndpointAPIKey) {
     if (refreshingQuota.value) return
     refreshingQuota.value = true
     try {
-      const result = await refreshProviderQuota(props.providerId)
+      const providerId = props.providerId
+      if (!providerId) return
+      const result = await refreshProviderQuota(providerId)
       applyQuotaResults(result.results)
       // 更新弹窗引用的 key 数据
       const updated = allKeys.value.find(({ key: k }) => k.id === key.id)
@@ -3334,7 +3337,8 @@ function getKeyRateMultiplier(key: EndpointAPIKey, format: string): number {
 }
 
 // OAuth 订阅类型格式化
-function formatOAuthPlanType(planType: string): string {
+function formatOAuthPlanType(planType?: string | null): string {
+  if (!planType) return ''
   const labels: Record<string, string> = {
     plus: 'Plus',
     pro: 'Pro',

@@ -623,7 +623,7 @@ const checkAndRestoreVerificationStatus = async (email: string) => {
         clearInterval(cooldownTimer.value)
         cooldownTimer.value = null
       }
-      error(status.delivery_error || '验证码邮件发送失败，请重新发送验证码')
+      showError(status.delivery_error || '验证码邮件发送失败，请重新发送验证码')
       return
     }
 

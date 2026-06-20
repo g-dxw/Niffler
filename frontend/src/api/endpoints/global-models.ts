@@ -12,6 +12,7 @@ import type {
 
 // 重新导出路由相关类型供外部使用
 export type {
+  GlobalModelResponse,
   RoutingKeyInfo,
   RoutingEndpointInfo,
   RoutingModelMapping,

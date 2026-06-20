@@ -5,6 +5,7 @@ import { cachedRequest, buildCacheKey } from '@/utils/cache'
 import type { BillingSummary } from './auth'
 import type { UserSession } from '@/types/session'
 import type { FeatureSettingsMap } from '@/utils/featureSettings'
+import type { ImageProgress } from './requestTrace'
 
 const ACTIVITY_HEATMAP_CACHE_TTL_MS = 30 * 60 * 1000
 
@@ -61,7 +62,11 @@ export interface UsageRecordDetail {
   official_cost?: number | null  // 模型官方价格
   cost: number  // 用户实际扣费
   sales_multiplier?: number | null  // 用户侧倍率
+  model_cost?: number | null  // 原模型扣费
+  moderation_cost?: number | null  // 审查成本
   actual_cost?: number  // 平台成本（仅管理员可见）
+  actual_model_cost?: number | null  // 平台模型成本（仅管理员可见）
+  actual_moderation_cost?: number | null  // 平台审查成本（仅管理员可见）
   rate_multiplier?: number  // 成本倍率（仅管理员可见）
   charge_breakdown?: {
     official_cost?: number | null
@@ -396,6 +401,7 @@ export const meApi = {
       has_format_conversion?: boolean | null
       has_fallback?: boolean | null
       target_model?: string | null
+      image_progress?: ImageProgress | null
     }>
   }> {
     const params = ids ? { ids } : {}

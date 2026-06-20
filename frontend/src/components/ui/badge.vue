@@ -2,6 +2,9 @@
 import { cva } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import { computed } from 'vue'
+import type { ClassValue } from 'clsx'
+
+type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'dark'
 
 const props = withDefaults(defineProps<Props>(), {
   variant: 'default',
@@ -35,12 +38,12 @@ const badgeVariants = cva(
 )
 
 interface Props {
-  variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'dark'
-  class?: string
+  variant?: BadgeVariant | (string & {})
+  class?: ClassValue
 }
 
 const badgeClass = computed(() =>
-  cn(badgeVariants({ variant: props.variant }), props.class)
+  cn(badgeVariants({ variant: props.variant as BadgeVariant }), props.class)
 )
 </script>
 

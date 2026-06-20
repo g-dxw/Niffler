@@ -317,6 +317,18 @@ pub(super) fn classify_admin_route(
             "admin:system",
             false,
         ))
+    } else if method == http::Method::GET
+        && normalized_path_no_trailing
+            .strip_prefix("/api/admin/content-moderation/evidence/")
+            .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+    {
+        Some(classified(
+            "admin_proxy",
+            "content_moderation_manage",
+            "view_evidence",
+            "admin:content_moderation_evidence",
+            false,
+        ))
     } else if let Some(route) =
         classify_admin_basic_family_route(method, normalized_path, normalized_path_no_trailing)
     {
