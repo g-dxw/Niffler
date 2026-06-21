@@ -1186,8 +1186,8 @@ async fn db_maintenance_continues_across_table_failures() {
     assert_eq!(
         summary,
         DbMaintenanceRunSummary {
-            attempted: 3,
-            succeeded: 2,
+            attempted: 4,
+            succeeded: 3,
         }
     );
     assert_eq!(
@@ -1196,6 +1196,7 @@ async fn db_maintenance_continues_across_table_failures() {
             "usage".to_string(),
             "request_candidates".to_string(),
             "audit_logs".to_string(),
+            "content_moderation_evidence".to_string(),
         ]
     );
 }
