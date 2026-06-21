@@ -162,3 +162,27 @@ CREATE TABLE IF NOT EXISTS public.usage_settlement_snapshots (
 ALTER TABLE ONLY public.usage_settlement_snapshots ADD CONSTRAINT usage_settlement_snapshots_pkey PRIMARY KEY (request_id);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_billing_status_idx ON public.usage_settlement_snapshots USING btree (billing_status);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_wallet_id_idx ON public.usage_settlement_snapshots USING btree (wallet_id);
+
+CREATE TABLE IF NOT EXISTS public.content_moderation_evidence (
+    id character varying(128) NOT NULL,
+    request_id character varying(128) NOT NULL,
+    user_id character varying(64),
+    api_key_id character varying(64),
+    provider_id character varying(64),
+    upstream_service_id character varying(64),
+    upstream_account_id character varying(64),
+    moderation_model character varying(255) NOT NULL,
+    input_sha256 character varying(64) NOT NULL,
+    input_text text,
+    categories jsonb NOT NULL,
+    category_scores jsonb NOT NULL,
+    flagged boolean DEFAULT false NOT NULL,
+    created_at_unix_secs bigint NOT NULL,
+    expires_at_unix_secs bigint NOT NULL,
+    redacted_at_unix_secs bigint
+);
+
+ALTER TABLE ONLY public.content_moderation_evidence ADD CONSTRAINT content_moderation_evidence_pkey PRIMARY KEY (id);
+CREATE INDEX IF NOT EXISTS idx_content_moderation_evidence_request ON public.content_moderation_evidence USING btree (request_id);
+CREATE INDEX IF NOT EXISTS idx_content_moderation_evidence_expiry ON public.content_moderation_evidence USING btree (expires_at_unix_secs, id);
+CREATE INDEX IF NOT EXISTS idx_content_moderation_evidence_actor ON public.content_moderation_evidence USING btree (user_id, api_key_id, created_at_unix_secs);

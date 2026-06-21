@@ -1061,7 +1061,7 @@ mod tests {
                 &provider_id,
                 &provider_key_id,
                 "completed",
-                "pending",
+                "settled",
                 1_000,
             ))
             .await

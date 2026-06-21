@@ -159,3 +159,26 @@ CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (
     KEY usage_settlement_snapshots_billing_status_idx (`billing_status`),
     KEY usage_settlement_snapshots_wallet_id_idx (`wallet_id`)
 );
+
+CREATE TABLE IF NOT EXISTS content_moderation_evidence (
+    `id` VARCHAR(128) NOT NULL,
+    `request_id` VARCHAR(128) NOT NULL,
+    `user_id` VARCHAR(64),
+    `api_key_id` VARCHAR(64),
+    `provider_id` VARCHAR(64),
+    `upstream_service_id` VARCHAR(64),
+    `upstream_account_id` VARCHAR(64),
+    `moderation_model` VARCHAR(255) NOT NULL,
+    `input_sha256` VARCHAR(64) NOT NULL,
+    `input_text` LONGTEXT,
+    `categories` JSON NOT NULL,
+    `category_scores` JSON NOT NULL,
+    `flagged` TINYINT(1) NOT NULL DEFAULT 0,
+    `created_at_unix_secs` BIGINT NOT NULL,
+    `expires_at_unix_secs` BIGINT NOT NULL,
+    `redacted_at_unix_secs` BIGINT,
+    PRIMARY KEY (`id`),
+    KEY idx_content_moderation_evidence_request (`request_id`),
+    KEY idx_content_moderation_evidence_expiry (`expires_at_unix_secs`, `id`),
+    KEY idx_content_moderation_evidence_actor (`user_id`, `api_key_id`, `created_at_unix_secs`)
+);

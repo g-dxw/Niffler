@@ -945,15 +945,14 @@ fn collect_role_items(value: Option<&Value>, out: &mut Vec<String>) {
                 }
             }
         }
-        Some(Value::Object(object)) => {
+        Some(value @ Value::Object(object))
             if object
                 .get("role")
                 .and_then(Value::as_str)
-                .is_some_and(|role| role.eq_ignore_ascii_case("user"))
-            {
-                if let Some(text) = extract_text_from_content(value.unwrap()) {
-                    out.push(text);
-                }
+                .is_some_and(|role| role.eq_ignore_ascii_case("user")) =>
+        {
+            if let Some(text) = extract_text_from_content(value) {
+                out.push(text);
             }
         }
         _ => {}

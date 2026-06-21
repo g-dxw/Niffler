@@ -2933,7 +2933,7 @@ mod tests {
         assert_eq!(payload["value"]["api_keys"], json!([]));
         assert_eq!(payload["value"]["api_key_count"], json!(1));
         assert_eq!(payload["value"].get("api_keys_encrypted"), None);
-        assert_eq!(payload.to_string().contains("sk-plain-secret"), false);
-        assert_eq!(payload.to_string().contains("encrypted-secret"), false);
+        assert!(!payload.to_string().contains("sk-plain-secret"));
+        assert!(!payload.to_string().contains("encrypted-secret"));
     }
 }

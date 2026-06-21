@@ -156,3 +156,25 @@ CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (
 );
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_billing_status_idx ON usage_settlement_snapshots (billing_status);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_wallet_id_idx ON usage_settlement_snapshots (wallet_id);
+
+CREATE TABLE IF NOT EXISTS content_moderation_evidence (
+    id TEXT PRIMARY KEY NOT NULL,
+    request_id TEXT NOT NULL,
+    user_id TEXT,
+    api_key_id TEXT,
+    provider_id TEXT,
+    upstream_service_id TEXT,
+    upstream_account_id TEXT,
+    moderation_model TEXT NOT NULL,
+    input_sha256 TEXT NOT NULL,
+    input_text TEXT,
+    categories TEXT NOT NULL,
+    category_scores TEXT NOT NULL,
+    flagged INTEGER NOT NULL DEFAULT 0,
+    created_at_unix_secs INTEGER NOT NULL,
+    expires_at_unix_secs INTEGER NOT NULL,
+    redacted_at_unix_secs INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_content_moderation_evidence_request ON content_moderation_evidence (request_id);
+CREATE INDEX IF NOT EXISTS idx_content_moderation_evidence_expiry ON content_moderation_evidence (expires_at_unix_secs, id);
+CREATE INDEX IF NOT EXISTS idx_content_moderation_evidence_actor ON content_moderation_evidence (user_id, api_key_id, created_at_unix_secs);
