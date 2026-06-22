@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { paymentOrderContentLabel, paymentOrderKindLabel, paymentOrderMethodLabel } from '../walletDisplay'
+import { paymentOrderContentLabel, paymentOrderKindLabel, paymentOrderMethodLabel, paymentStatusLabel } from '../walletDisplay'
 
 describe('paymentOrderMethodLabel', () => {
   it('shows the real DoDoPay channel when callback records it', () => {
@@ -14,6 +14,16 @@ describe('paymentOrderMethodLabel', () => {
       payment_provider: 'dodopay',
       payment_channel: 'ALIPAY',
     })).toBe('支付宝支付')
+    expect(paymentOrderMethodLabel({
+      payment_method: 'dodopay',
+      payment_provider: 'dodopay',
+      payment_channel: 'we_chat_pay',
+    })).toBe('微信支付')
+    expect(paymentOrderMethodLabel({
+      payment_method: 'dodopay',
+      payment_provider: 'dodopay',
+      payment_channel: 'ali_pay',
+    })).toBe('支付宝支付')
   })
 
   it('does not treat non-gateway channel as payment channel', () => {
@@ -22,6 +32,12 @@ describe('paymentOrderMethodLabel', () => {
       payment_provider: 'redeem_code',
       payment_channel: 'gift',
     })).toBe('礼品卡')
+  })
+})
+
+describe('paymentStatusLabel', () => {
+  it('shows cancelled payment orders as cancelled', () => {
+    expect(paymentStatusLabel('cancelled')).toBe('已取消')
   })
 })
 

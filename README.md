@@ -107,9 +107,9 @@ Niffler Tunnel 是配套的正向代理节点，部署在海外 VPS 上，为墙
 
 ### DoDoPay 支付
 
-管理员在后台 `支付配置` 中启用 DoDoPay，并保存服务地址、应用 ID、应用密钥、回调站点根地址、汇率和最低充值金额后，钱包充值和套餐购买会出现 DoDoPay 支付方式。
+管理员在后台 `支付配置` 中启用 DoDoPay，并保存服务地址、产品 ID、API Key、Webhook Secret、回调站点根地址、汇率和最低充值金额后，钱包充值和套餐购买会出现支付宝和微信两个 DoDoPay 支付入口。
 
-DoDoPay 应用密钥使用系统加密密钥保存到数据库，不应写入代码仓库。
+API Key 用于创建 DoDoPay 收银台，Webhook Secret 用于验证 DoDoPay 回调；两者都会使用系统加密密钥保存到数据库，不应写入代码仓库。
 
 ---
 

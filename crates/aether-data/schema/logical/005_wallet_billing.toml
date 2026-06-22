@@ -744,6 +744,11 @@ type = "long_text"
 nullable = true
 
 [[table.payment_gateway_configs.columns]]
+name = "webhook_secret_encrypted"
+type = "long_text"
+nullable = true
+
+[[table.payment_gateway_configs.columns]]
 name = "pay_currency"
 type = "text"
 length = 16

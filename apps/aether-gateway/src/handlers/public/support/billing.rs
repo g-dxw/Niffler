@@ -1,6 +1,6 @@
 use super::support_payment::payment_dodopay::{
-    create_dodopay_checkout, dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
-    DodopayCheckoutInput,
+    create_dodopay_checkout, dodopay_callback_base_url, dodopay_cancel_url, dodopay_return_url,
+    load_dodopay_config, normalize_dodopay_payment_channel, DodopayCheckoutInput,
 };
 use super::support_payment::payment_epay::{
     build_epay_checkout_url, epay_callback_base_url, load_epay_config, resolve_epay_channel,
@@ -9,6 +9,9 @@ use super::support_payment::payment_epay::{
 use super::{
     build_auth_error_response, build_auth_json_response, resolve_authenticated_local_user,
     sanitize_wallet_gateway_response, unix_secs_to_rfc3339, AppState, GatewayPublicRequestContext,
+};
+use aether_data::repository::wallet::{
+    CancelPaymentOrderInput, UpdatePendingPaymentOrderGatewayInput, WalletMutationOutcome,
 };
 use axum::{
     body::{Body, Bytes},
@@ -219,23 +222,10 @@ fn compute_plan_payment_amounts(
 
 fn compute_dodopay_plan_payment_amounts(
     plan: &aether_data_contracts::repository::billing::BillingPlanRecord,
+    pay_currency: &str,
     usd_exchange_rate: f64,
 ) -> Result<(f64, f64), &'static str> {
-    if !plan.price_amount.is_finite() || plan.price_amount <= 0.0 || usd_exchange_rate <= 0.0 {
-        return Err("套餐价格配置无效");
-    }
-    if plan.price_currency.eq_ignore_ascii_case("USD") {
-        let amount_usd = (plan.price_amount * 100_000_000.0).round() / 100_000_000.0;
-        let pay_amount = (plan.price_amount * usd_exchange_rate * 100.0).round() / 100.0;
-        return Ok((amount_usd, pay_amount));
-    }
-    if plan.price_currency.eq_ignore_ascii_case("CNY") {
-        let amount_usd =
-            (plan.price_amount / usd_exchange_rate * 100_000_000.0).round() / 100_000_000.0;
-        let pay_amount = (plan.price_amount * 100.0).round() / 100.0;
-        return Ok((amount_usd, pay_amount));
-    }
-    Err("套餐币种与支付网关币种不匹配")
+    compute_plan_payment_amounts(plan, pay_currency, usd_exchange_rate)
 }
 
 pub(super) async fn handle_billing_plans_list(state: &AppState) -> Response<Body> {
@@ -356,26 +346,28 @@ pub(super) async fn handle_billing_plan_checkout(
     let now = Utc::now();
     let order_no = billing_order_no(now);
     let expires_at = now + chrono::Duration::minutes(30);
-    let (
-        amount_usd,
-        pay_amount,
-        pay_currency,
-        exchange_rate,
-        payment_channel,
-        gateway_order_id,
-        checkout,
-    ) = if checkout_request.payment_provider == "dodopay" {
+    if checkout_request.payment_provider == "dodopay" {
         let config = match load_dodopay_config(state).await {
             Ok(value) => value,
             Err(detail) => {
                 return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
             }
         };
-        let (amount_usd, pay_amount) =
-            match compute_dodopay_plan_payment_amounts(&plan, config.usd_exchange_rate) {
+        let (amount_usd, pay_amount) = match compute_dodopay_plan_payment_amounts(
+            &plan,
+            &config.pay_currency,
+            config.usd_exchange_rate,
+        ) {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
+            }
+        };
+        let payment_channel =
+            match normalize_dodopay_payment_channel(checkout_request.payment_channel.as_deref()) {
                 Ok(value) => value,
                 Err(detail) => {
-                    return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
+                    return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
                 }
             };
         let Some(callback_base_url) = dodopay_callback_base_url(
@@ -385,9 +377,62 @@ pub(super) async fn handle_billing_plan_checkout(
         ) else {
             return build_auth_error_response(
                 http::StatusCode::BAD_REQUEST,
-                "DODOPAY_CALLBACK_BASE_URL is required",
+                "DoDoPay 回调站点根地址不可用",
                 false,
             );
+        };
+        let pending_gateway_response = json!({
+            "gateway": "dodopay",
+            "provider_order_status": "pending_checkout",
+        });
+        let outcome = match state
+            .create_plan_purchase_order(
+                aether_data::repository::wallet::CreatePlanPurchaseOrderInput {
+                    preferred_wallet_id: None,
+                    user_id: auth.user.id.clone(),
+                    amount_usd,
+                    pay_amount,
+                    pay_currency: config.pay_currency.clone(),
+                    exchange_rate: config.usd_exchange_rate,
+                    payment_method: checkout_request.payment_method.clone(),
+                    payment_provider: Some(checkout_request.payment_provider.clone()),
+                    payment_channel: Some(payment_channel.clone()),
+                    gateway_order_id: order_no.clone(),
+                    gateway_response: pending_gateway_response,
+                    order_no: order_no.clone(),
+                    product_id: plan.id.clone(),
+                    product_snapshot: billing_plan_snapshot(&plan),
+                    expires_at_unix_secs: expires_at.timestamp().max(0) as u64,
+                },
+            )
+            .await
+        {
+            Ok(Some(value)) => value,
+            Ok(None) => return billing_storage_unavailable_response(),
+            Err(err) => {
+                return build_auth_error_response(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("billing checkout create failed: {err:?}"),
+                    false,
+                )
+            }
+        };
+        let pending_order = match outcome {
+            aether_data::repository::wallet::CreatePlanPurchaseOrderOutcome::Created(order) => order,
+            aether_data::repository::wallet::CreatePlanPurchaseOrderOutcome::WalletInactive => {
+                return build_auth_error_response(
+                    http::StatusCode::BAD_REQUEST,
+                    "wallet is not active",
+                    false,
+                )
+            }
+            aether_data::repository::wallet::CreatePlanPurchaseOrderOutcome::ActivePlanLimitReached => {
+                return build_auth_error_response(
+                    http::StatusCode::CONFLICT,
+                    "套餐购买限制已达到上限",
+                    false,
+                )
+            }
         };
         let checkout = match create_dodopay_checkout(
             &config,
@@ -395,8 +440,9 @@ pub(super) async fn handle_billing_plan_checkout(
                 order_no: order_no.clone(),
                 subject: plan.title.clone(),
                 pay_amount,
-                notify_url: format!("{callback_base_url}/api/payment/dodopay/notify"),
                 return_url: dodopay_return_url(&config, &callback_base_url),
+                cancel_url: dodopay_cancel_url(&callback_base_url, &order_no, &config.api_key),
+                payment_channel: payment_channel.clone(),
                 metadata: json!({
                     "kind": "plan_purchase",
                     "plan_id": plan.id.clone(),
@@ -408,74 +454,120 @@ pub(super) async fn handle_billing_plan_checkout(
         {
             Ok(value) => value,
             Err(detail) => {
-                return build_auth_error_response(http::StatusCode::BAD_GATEWAY, detail, false)
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_create_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return build_auth_error_response(http::StatusCode::BAD_GATEWAY, detail, false);
             }
         };
-        (
-            amount_usd,
-            checkout.pay_amount,
-            config.pay_currency,
-            config.usd_exchange_rate,
+        let updated_order = match state
+            .update_pending_payment_order_gateway(UpdatePendingPaymentOrderGatewayInput {
+                order_id: pending_order.id.clone(),
+                gateway_order_id: checkout.gateway_order_id.clone(),
+                gateway_response: checkout.payment_instructions.clone(),
+            })
+            .await
+        {
+            Ok(Some(WalletMutationOutcome::Applied(order))) => order,
+            Ok(Some(WalletMutationOutcome::NotFound)) | Ok(None) => {
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_attach_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return billing_storage_unavailable_response();
+            }
+            Ok(Some(WalletMutationOutcome::Invalid(detail))) => {
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_attach_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return build_auth_error_response(http::StatusCode::CONFLICT, detail, false);
+            }
+            Err(err) => {
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_attach_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return build_auth_error_response(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("billing checkout attach failed: {err:?}"),
+                    false,
+                );
+            }
+        };
+        return build_auth_json_response(
+            http::StatusCode::OK,
+            json!({
+                "order": payment_order_payload(&updated_order, &plan),
+                "payment_instructions": sanitize_wallet_gateway_response(Some(checkout.payment_instructions)),
+            }),
             None,
-            checkout.gateway_order_id,
-            checkout.payment_instructions,
-        )
-    } else {
-        let config = match load_epay_config(state).await {
-            Ok(value) => value,
-            Err(detail) => {
-                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
-            }
-        };
-        let payment_channel =
-            match resolve_epay_channel(&config, checkout_request.payment_channel.as_deref()) {
-                Ok(value) => value,
-                Err(detail) => {
-                    return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
-                }
-            };
-        let (amount_usd, pay_amount) = match compute_plan_payment_amounts(
-            &plan,
-            &config.pay_currency,
-            config.usd_exchange_rate,
-        ) {
-            Ok(value) => value,
-            Err(detail) => {
-                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
-            }
-        };
-        let Some(callback_base_url) = epay_callback_base_url(
-            config.callback_base_url.as_deref(),
-            headers,
-            request_context,
-        ) else {
-            return build_auth_error_response(
-                http::StatusCode::BAD_REQUEST,
-                "epay callback_base_url is required",
-                false,
-            );
-        };
-        let checkout = build_epay_checkout_url(
-            &config,
-            &EpayCheckoutInput {
-                order_no: order_no.clone(),
-                channel: payment_channel.clone(),
-                subject: plan.title.clone(),
-                pay_amount,
-                notify_url: format!("{callback_base_url}/api/payment/epay/notify"),
-                return_url: format!("{callback_base_url}/api/payment/epay/return"),
-            },
         );
-        (
-            amount_usd,
-            pay_amount,
-            config.pay_currency,
-            config.usd_exchange_rate,
-            Some(payment_channel),
-            order_no.clone(),
-            checkout,
-        )
+    }
+
+    let config = match load_epay_config(state).await {
+        Ok(value) => value,
+        Err(detail) => {
+            return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
+        }
     };
+    let payment_channel =
+        match resolve_epay_channel(&config, checkout_request.payment_channel.as_deref()) {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
+            }
+        };
+    let (amount_usd, pay_amount) =
+        match compute_plan_payment_amounts(&plan, &config.pay_currency, config.usd_exchange_rate) {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
+            }
+        };
+    let Some(callback_base_url) = epay_callback_base_url(
+        config.callback_base_url.as_deref(),
+        headers,
+        request_context,
+    ) else {
+        return build_auth_error_response(
+            http::StatusCode::BAD_REQUEST,
+            "epay callback_base_url is required",
+            false,
+        );
+    };
+    let checkout = build_epay_checkout_url(
+        &config,
+        &EpayCheckoutInput {
+            order_no: order_no.clone(),
+            channel: payment_channel.clone(),
+            subject: plan.title.clone(),
+            pay_amount,
+            notify_url: format!("{callback_base_url}/api/payment/epay/notify"),
+            return_url: format!("{callback_base_url}/api/payment/epay/return"),
+        },
+    );
+    let pay_currency = config.pay_currency;
+    let exchange_rate = config.usd_exchange_rate;
+    let gateway_order_id = order_no.clone();
+    let payment_channel = Some(payment_channel);
     let outcome = match state
         .create_plan_purchase_order(
             aether_data::repository::wallet::CreatePlanPurchaseOrderInput {
@@ -558,5 +650,54 @@ pub(super) async fn maybe_build_local_billing_response(
             Some(handle_billing_entitlements(state, request_context, headers).await)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aether_data_contracts::repository::billing::BillingPlanRecord;
+    use serde_json::json;
+
+    fn billing_plan(price_amount: f64, price_currency: &str) -> BillingPlanRecord {
+        BillingPlanRecord {
+            id: "plan-test".to_string(),
+            title: "测试套餐".to_string(),
+            description: None,
+            price_amount,
+            price_currency: price_currency.to_string(),
+            duration_unit: "month".to_string(),
+            duration_value: 1,
+            enabled: true,
+            sort_order: 0,
+            max_active_per_user: 1,
+            purchase_limit_scope: "active_period".to_string(),
+            entitlements_json: json!([
+                {
+                    "type": "daily_quota",
+                    "daily_quota_usd": 1
+                }
+            ]),
+            created_at_unix_secs: 0,
+            updated_at_unix_secs: 0,
+        }
+    }
+
+    #[test]
+    fn dodopay_plan_amounts_respect_configured_pay_currency() {
+        let usd_plan = billing_plan(10.0, "USD");
+        assert_eq!(
+            super::compute_dodopay_plan_payment_amounts(&usd_plan, "CNY", 7.2),
+            Ok((10.0, 72.0))
+        );
+
+        let cny_plan = billing_plan(72.0, "CNY");
+        assert_eq!(
+            super::compute_dodopay_plan_payment_amounts(&cny_plan, "CNY", 7.2),
+            Ok((10.0, 72.0))
+        );
+        assert_eq!(
+            super::compute_dodopay_plan_payment_amounts(&cny_plan, "USD", 7.2),
+            Err("套餐币种与支付网关币种不匹配")
+        );
     }
 }

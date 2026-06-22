@@ -659,6 +659,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Badge,
   Button,
@@ -715,7 +716,9 @@ import {
   walletTransactionReasonLabel,
 } from '@/utils/walletDisplay'
 
-const { success, error: showError } = useToast()
+const route = useRoute()
+const router = useRouter()
+const { success, error: showError, warning } = useToast()
 
 const ENABLE_WALLET_ACTION_FORMS = true
 
@@ -839,6 +842,7 @@ const dailyQuotaRemainingPercent = computed(() => {
 
 onMounted(async () => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  showPaymentCancelledNotice()
   try {
     await Promise.all([
       loadBalance(),
@@ -853,6 +857,14 @@ onMounted(async () => {
     loadingInitial.value = false
   }
 })
+
+function showPaymentCancelledNotice() {
+  if (route.query.payment_cancelled !== '1') return
+  warning('支付已取消')
+  const nextQuery = { ...route.query }
+  delete nextQuery.payment_cancelled
+  void router.replace({ query: nextQuery })
+}
 
 onBeforeUnmount(() => {
   stopTodayCostPolling()
@@ -1033,7 +1045,10 @@ function submitPaymentInstructions(instructions: Record<string, unknown> | null 
     submitPaymentForm(paymentUrl, paymentParams as Record<string, unknown>)
     return
   }
-  window.open(paymentUrl, '_blank', 'noopener,noreferrer')
+  const opened = window.open(paymentUrl, '_blank', 'noopener,noreferrer')
+  if (!opened) {
+    window.location.href = paymentUrl
+  }
 }
 
 function submitPaymentForm(url: string, params: Record<string, unknown>) {

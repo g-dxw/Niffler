@@ -564,6 +564,11 @@ fn classifies_dodopay_callback_routes_as_public_support_route() {
             "/api/payment/dodopay/return",
             "dodopay_return",
         ),
+        (
+            http::Method::GET,
+            "/api/payment/dodopay/cancel",
+            "dodopay_cancel",
+        ),
     ] {
         let uri: Uri = uri.parse().expect("uri should parse");
         let decision =

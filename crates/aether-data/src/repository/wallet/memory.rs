@@ -7,12 +7,13 @@ use super::types::{
     redeem_code_credits_recharge_balance, redeem_code_payment_method,
     redeem_code_refundable_amount, AdjustWalletBalanceInput, AdminPaymentOrderListQuery,
     AdminRedeemCodeBatchListQuery, AdminRedeemCodeListQuery, AdminWalletLedgerQuery,
-    AdminWalletListQuery, AdminWalletRefundRequestListQuery, CompleteAdminWalletRefundInput,
-    CreateAdminRedeemCodeBatchInput, CreateAdminRedeemCodeBatchResult,
-    CreateManualWalletRechargeInput, CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome,
-    CreateWalletRechargeOrderInput, CreateWalletRechargeOrderOutcome,
-    CreateWalletRefundRequestInput, CreateWalletRefundRequestOutcome,
-    CreatedAdminRedeemCodePlaintext, CreditAdminPaymentOrderInput, DeleteAdminRedeemCodeBatchInput,
+    AdminWalletListQuery, AdminWalletRefundRequestListQuery, CancelPaymentOrderInput,
+    CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
+    CreateAdminRedeemCodeBatchResult, CreateManualWalletRechargeInput,
+    CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome, CreateWalletRechargeOrderInput,
+    CreateWalletRechargeOrderOutcome, CreateWalletRefundRequestInput,
+    CreateWalletRefundRequestOutcome, CreatedAdminRedeemCodePlaintext,
+    CreditAdminPaymentOrderInput, DeleteAdminRedeemCodeBatchInput,
     DisableAdminRedeemCodeBatchInput, DisableAdminRedeemCodeInput, FailAdminWalletRefundInput,
     ProcessAdminWalletRefundInput, ProcessPaymentCallbackInput, ProcessPaymentCallbackOutcome,
     RedeemWalletCodeInput, RedeemWalletCodeOutcome, StoredAdminPaymentCallback,
@@ -22,8 +23,8 @@ use super::types::{
     StoredAdminWalletListPage, StoredAdminWalletRefund, StoredAdminWalletRefundPage,
     StoredAdminWalletRefundRequestPage, StoredAdminWalletTransaction,
     StoredAdminWalletTransactionPage, StoredWalletDailyUsageLedger,
-    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, WalletLookupKey, WalletMutationOutcome,
-    WalletReadRepository, WalletWriteRepository,
+    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, UpdatePendingPaymentOrderGatewayInput,
+    WalletLookupKey, WalletMutationOutcome, WalletReadRepository, WalletWriteRepository,
 };
 use crate::DataLayerError;
 
@@ -1289,6 +1290,85 @@ impl WalletWriteRepository for InMemoryWalletRepository {
         _order_id: &str,
     ) -> Result<WalletMutationOutcome<StoredAdminPaymentOrder>, DataLayerError> {
         Ok(WalletMutationOutcome::NotFound)
+    }
+
+    async fn cancel_payment_order(
+        &self,
+        input: CancelPaymentOrderInput,
+    ) -> Result<WalletMutationOutcome<(StoredAdminPaymentOrder, bool)>, DataLayerError> {
+        let mut orders = self.payment_orders_by_id.write().expect("wallet repo lock");
+        let Some((_, order)) = orders
+            .iter_mut()
+            .find(|(_, order)| order.order_no == input.order_no)
+        else {
+            return Ok(WalletMutationOutcome::NotFound);
+        };
+        if let Some(expected_provider) = input.expected_payment_provider.as_deref() {
+            if !order
+                .payment_provider
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(expected_provider))
+            {
+                return Ok(WalletMutationOutcome::Invalid(format!(
+                    "payment provider is not cancellable: {}",
+                    order.payment_provider.as_deref().unwrap_or_default()
+                )));
+            }
+        }
+        if order.status == "cancelled" {
+            return Ok(WalletMutationOutcome::Applied((order.clone(), false)));
+        }
+        if order.status != "pending" {
+            return Ok(WalletMutationOutcome::Invalid(format!(
+                "payment order is not cancellable: {}",
+                order.status
+            )));
+        }
+        let mut gateway_response = match order.gateway_response.take() {
+            Some(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        gateway_response.insert(
+            "cancel_reason".to_string(),
+            serde_json::Value::String(input.cancel_reason),
+        );
+        gateway_response.insert(
+            "cancel_source".to_string(),
+            serde_json::Value::String(input.cancel_source),
+        );
+        gateway_response.insert(
+            "cancelled_at".to_string(),
+            serde_json::Value::String(chrono::Utc::now().to_rfc3339()),
+        );
+        order.status = "cancelled".to_string();
+        order.fulfillment_status = Some("cancelled".to_string());
+        order.gateway_response = Some(serde_json::Value::Object(gateway_response));
+        Ok(WalletMutationOutcome::Applied((order.clone(), true)))
+    }
+
+    async fn update_pending_payment_order_gateway(
+        &self,
+        input: UpdatePendingPaymentOrderGatewayInput,
+    ) -> Result<WalletMutationOutcome<StoredAdminPaymentOrder>, DataLayerError> {
+        let gateway_order_id = input.gateway_order_id.trim();
+        if gateway_order_id.is_empty() {
+            return Err(DataLayerError::InvalidInput(
+                "gateway_order_id is required".to_string(),
+            ));
+        }
+        let mut orders = self.payment_orders_by_id.write().expect("wallet repo lock");
+        let Some(order) = orders.get_mut(&input.order_id) else {
+            return Ok(WalletMutationOutcome::NotFound);
+        };
+        if order.status != "pending" {
+            return Ok(WalletMutationOutcome::Invalid(format!(
+                "payment order is not pending: {}",
+                order.status
+            )));
+        }
+        order.gateway_order_id = Some(gateway_order_id.to_string());
+        order.gateway_response = Some(input.gateway_response);
+        Ok(WalletMutationOutcome::Applied(order.clone()))
     }
 
     async fn credit_admin_payment_order(

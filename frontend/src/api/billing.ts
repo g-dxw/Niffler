@@ -20,6 +20,7 @@ export interface PaymentGatewayConfig {
   callback_base_url?: string | null
   merchant_id?: string | null
   has_secret: boolean
+  has_webhook_secret?: boolean
   pay_currency?: string | null
   usd_exchange_rate?: number | null
   min_recharge_usd?: number | null
@@ -37,6 +38,7 @@ export interface UpdatePaymentGatewayConfigRequest {
   callback_base_url?: string | null
   merchant_id: string
   merchant_key?: string
+  webhook_secret?: string
   pay_currency: string
   usd_exchange_rate: number
   min_recharge_usd: number
@@ -184,6 +186,7 @@ function normalizeGatewayConfig(
     callback_base_url: config.callback_base_url ?? '',
     merchant_id: config.merchant_id ?? '',
     has_secret: Boolean(config.has_secret),
+    has_webhook_secret: Boolean(config.has_webhook_secret),
     pay_currency: config.pay_currency ?? 'CNY',
     usd_exchange_rate: Number(config.usd_exchange_rate ?? 7.2),
     min_recharge_usd: Number(config.min_recharge_usd ?? 1),

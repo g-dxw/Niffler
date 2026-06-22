@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS payment_gateway_configs (
     `callback_base_url` VARCHAR(512),
     `merchant_id` VARCHAR(128) NOT NULL,
     `merchant_key_encrypted` LONGTEXT,
+    `webhook_secret_encrypted` LONGTEXT,
     `pay_currency` VARCHAR(16) NOT NULL DEFAULT 'CNY',
     `usd_exchange_rate` DOUBLE NOT NULL DEFAULT 7.2,
     `min_recharge_usd` DOUBLE NOT NULL DEFAULT 1,

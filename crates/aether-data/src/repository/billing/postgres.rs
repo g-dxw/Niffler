@@ -706,7 +706,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
             r#"
 SELECT
   provider, enabled, endpoint_url, callback_base_url, merchant_id,
-  merchant_key_encrypted, pay_currency,
+  merchant_key_encrypted, webhook_secret_encrypted, pay_currency,
   CAST(usd_exchange_rate AS DOUBLE PRECISION) AS usd_exchange_rate,
   CAST(min_recharge_usd AS DOUBLE PRECISION) AS min_recharge_usd,
   channels_json,
@@ -733,10 +733,10 @@ LIMIT 1
             r#"
 INSERT INTO payment_gateway_configs (
   provider, enabled, endpoint_url, callback_base_url, merchant_id,
-  merchant_key_encrypted, pay_currency, usd_exchange_rate, min_recharge_usd,
-  channels_json, created_at, updated_at
+  merchant_key_encrypted, webhook_secret_encrypted, pay_currency, usd_exchange_rate,
+  min_recharge_usd, channels_json, created_at, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
 ON CONFLICT (provider)
 DO UPDATE SET
   enabled = EXCLUDED.enabled,
@@ -744,8 +744,12 @@ DO UPDATE SET
   callback_base_url = EXCLUDED.callback_base_url,
   merchant_id = EXCLUDED.merchant_id,
   merchant_key_encrypted = CASE
-    WHEN $11::BOOL THEN payment_gateway_configs.merchant_key_encrypted
+    WHEN $12::BOOL THEN payment_gateway_configs.merchant_key_encrypted
     ELSE EXCLUDED.merchant_key_encrypted
+  END,
+  webhook_secret_encrypted = CASE
+    WHEN $13::BOOL THEN payment_gateway_configs.webhook_secret_encrypted
+    ELSE EXCLUDED.webhook_secret_encrypted
   END,
   pay_currency = EXCLUDED.pay_currency,
   usd_exchange_rate = EXCLUDED.usd_exchange_rate,
@@ -754,7 +758,7 @@ DO UPDATE SET
   updated_at = NOW()
 RETURNING
   provider, enabled, endpoint_url, callback_base_url, merchant_id,
-  merchant_key_encrypted, pay_currency,
+  merchant_key_encrypted, webhook_secret_encrypted, pay_currency,
   CAST(usd_exchange_rate AS DOUBLE PRECISION) AS usd_exchange_rate,
   CAST(min_recharge_usd AS DOUBLE PRECISION) AS min_recharge_usd,
   channels_json,
@@ -768,11 +772,13 @@ RETURNING
         .bind(input.callback_base_url.as_deref())
         .bind(&input.merchant_id)
         .bind(input.merchant_key_encrypted.as_deref())
+        .bind(input.webhook_secret_encrypted.as_deref())
         .bind(&input.pay_currency)
         .bind(input.usd_exchange_rate)
         .bind(input.min_recharge_usd)
         .bind(&input.channels_json)
         .bind(input.preserve_existing_secret)
+        .bind(input.preserve_existing_webhook_secret)
         .fetch_one(&self.pool)
         .await
         .map_postgres_err()?;
@@ -1334,6 +1340,7 @@ fn map_payment_gateway_config_row(
         callback_base_url: row.try_get("callback_base_url").map_postgres_err()?,
         merchant_id: row.try_get("merchant_id").map_postgres_err()?,
         merchant_key_encrypted: row.try_get("merchant_key_encrypted").map_postgres_err()?,
+        webhook_secret_encrypted: row.try_get("webhook_secret_encrypted").map_postgres_err()?,
         pay_currency: row.try_get("pay_currency").map_postgres_err()?,
         usd_exchange_rate: row.try_get("usd_exchange_rate").map_postgres_err()?,
         min_recharge_usd: row.try_get("min_recharge_usd").map_postgres_err()?,

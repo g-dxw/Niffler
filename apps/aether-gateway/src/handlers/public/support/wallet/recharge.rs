@@ -1,5 +1,6 @@
 use super::super::support_payment::payment_dodopay::{
-    create_dodopay_checkout, dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
+    configured_dodopay_channels, create_dodopay_checkout, dodopay_callback_base_url,
+    dodopay_cancel_url, dodopay_return_url, load_dodopay_config, normalize_dodopay_payment_channel,
     DodopayCheckoutInput,
 };
 use super::super::support_payment::payment_epay::{
@@ -20,6 +21,9 @@ use super::{
 use super::{
     record_wallet_test_recharge, wallet_test_recharge_order_by_id,
     wallet_test_recharge_orders_for_user,
+};
+use aether_data::repository::wallet::{
+    CancelPaymentOrderInput, UpdatePendingPaymentOrderGatewayInput, WalletMutationOutcome,
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -463,6 +467,15 @@ pub(super) async fn handle_wallet_create_recharge(
                 false,
             );
         }
+        let requested_channel = payload.payment_channel.as_deref().or_else(|| {
+            (payload.payment_method != "dodopay").then_some(payload.payment_method.as_str())
+        });
+        let payment_channel = match normalize_dodopay_payment_channel(requested_channel) {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
+            }
+        };
         let pay_amount = (payload.amount_usd * config.usd_exchange_rate * 100.0).round() / 100.0;
         let Some(callback_base_url) = dodopay_callback_base_url(
             config.callback_base_url.as_deref(),
@@ -471,30 +484,9 @@ pub(super) async fn handle_wallet_create_recharge(
         ) else {
             return build_auth_error_response(
                 http::StatusCode::BAD_REQUEST,
-                "DODOPAY_CALLBACK_BASE_URL is required",
+                "DoDoPay 回调站点根地址不可用",
                 false,
             );
-        };
-        let checkout = match create_dodopay_checkout(
-            &config,
-            &DodopayCheckoutInput {
-                order_no: order_no.clone(),
-                subject: "钱包充值".to_string(),
-                pay_amount,
-                notify_url: format!("{callback_base_url}/api/payment/dodopay/notify"),
-                return_url: dodopay_return_url(&config, &callback_base_url),
-                metadata: json!({
-                    "kind": "wallet_recharge",
-                    "user_id": auth.user.id.clone(),
-                }),
-            },
-        )
-        .await
-        {
-            Ok(value) => value,
-            Err(detail) => {
-                return build_auth_error_response(http::StatusCode::BAD_GATEWAY, detail, false)
-            }
         };
         let outcome = match state
             .create_wallet_recharge_order(
@@ -502,15 +494,18 @@ pub(super) async fn handle_wallet_create_recharge(
                     preferred_wallet_id: wallet.as_ref().map(|value| value.id.clone()),
                     user_id: auth.user.id.clone(),
                     amount_usd: payload.amount_usd,
-                    pay_amount: Some(checkout.pay_amount),
+                    pay_amount: Some(pay_amount),
                     pay_currency: Some(config.pay_currency.clone()),
                     exchange_rate: Some(config.usd_exchange_rate),
                     payment_method: "dodopay".to_string(),
                     payment_provider: Some("dodopay".to_string()),
-                    payment_channel: None,
-                    gateway_order_id: checkout.gateway_order_id,
-                    gateway_response: checkout.payment_instructions.clone(),
-                    order_no,
+                    payment_channel: Some(payment_channel.clone()),
+                    gateway_order_id: order_no.clone(),
+                    gateway_response: json!({
+                        "gateway": "dodopay",
+                        "provider_order_status": "pending_checkout",
+                    }),
+                    order_no: order_no.clone(),
                     expires_at_unix_secs: expires_at.timestamp().max(0) as u64,
                 },
             )
@@ -526,9 +521,9 @@ pub(super) async fn handle_wallet_create_recharge(
                 )
             }
         };
-        let order_payload = match outcome {
+        let pending_order = match outcome {
             aether_data::repository::wallet::CreateWalletRechargeOrderOutcome::Created(order) => {
-                wallet_payment_order_payload_from_record(&order)
+                order
             }
             aether_data::repository::wallet::CreateWalletRechargeOrderOutcome::WalletInactive => {
                 return build_auth_error_response(
@@ -538,6 +533,84 @@ pub(super) async fn handle_wallet_create_recharge(
                 )
             }
         };
+        let checkout = match create_dodopay_checkout(
+            &config,
+            &DodopayCheckoutInput {
+                order_no: order_no.clone(),
+                subject: "钱包充值".to_string(),
+                pay_amount,
+                return_url: dodopay_return_url(&config, &callback_base_url),
+                cancel_url: dodopay_cancel_url(&callback_base_url, &order_no, &config.api_key),
+                payment_channel: payment_channel.clone(),
+                metadata: json!({
+                    "kind": "wallet_recharge",
+                    "user_id": auth.user.id.clone(),
+                }),
+            },
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(detail) => {
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_create_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return build_auth_error_response(http::StatusCode::BAD_GATEWAY, detail, false);
+            }
+        };
+        let updated_order = match state
+            .update_pending_payment_order_gateway(UpdatePendingPaymentOrderGatewayInput {
+                order_id: pending_order.id.clone(),
+                gateway_order_id: checkout.gateway_order_id.clone(),
+                gateway_response: checkout.payment_instructions.clone(),
+            })
+            .await
+        {
+            Ok(Some(WalletMutationOutcome::Applied(order))) => order,
+            Ok(Some(WalletMutationOutcome::NotFound)) | Ok(None) => {
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_attach_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return build_wallet_recharge_storage_unavailable_response();
+            }
+            Ok(Some(WalletMutationOutcome::Invalid(detail))) => {
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_attach_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return build_auth_error_response(http::StatusCode::CONFLICT, detail, false);
+            }
+            Err(err) => {
+                let _ = state
+                    .cancel_payment_order(CancelPaymentOrderInput {
+                        order_no: pending_order.order_no.clone(),
+                        expected_payment_provider: None,
+                        cancel_reason: "dodopay_checkout_attach_failed".to_string(),
+                        cancel_source: "server".to_string(),
+                    })
+                    .await;
+                return build_auth_error_response(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("wallet recharge checkout attach failed: {err:?}"),
+                    false,
+                );
+            }
+        };
+        let order_payload = wallet_payment_order_payload_from_record(&updated_order);
         return build_auth_json_response(
             http::StatusCode::OK,
             json!({
@@ -577,15 +650,17 @@ pub(super) async fn handle_wallet_recharge_options(
         }
     }
     if let Ok(config) = load_dodopay_config(state).await {
-        methods.push(json!({
-            "payment_method": "dodopay",
-            "payment_provider": "dodopay",
-            "payment_channel": serde_json::Value::Null,
-            "display_name": "DoDoPay",
-            "pay_currency": config.pay_currency,
-            "usd_exchange_rate": config.usd_exchange_rate,
-            "min_recharge_usd": config.min_recharge_usd,
-        }));
+        for channel in configured_dodopay_channels() {
+            methods.push(json!({
+                "payment_method": "dodopay",
+                "payment_provider": "dodopay",
+                "payment_channel": channel.channel,
+                "display_name": format!("DoDoPay · {}", channel.display_name),
+                "pay_currency": config.pay_currency,
+                "usd_exchange_rate": config.usd_exchange_rate,
+                "min_recharge_usd": config.min_recharge_usd,
+            }));
+        }
     }
     build_auth_json_response(http::StatusCode::OK, json!({ "items": methods }), None)
 }

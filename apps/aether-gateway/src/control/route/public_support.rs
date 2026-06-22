@@ -503,6 +503,19 @@ pub(super) fn classify_public_support_route(
     } else if method == http::Method::GET
         && matches!(
             normalized_path,
+            "/api/payment/dodopay/cancel" | "/api/payment/dodopay/cancel/"
+        )
+    {
+        Some(classified(
+            "public_support",
+            "payment_callback",
+            "dodopay_cancel",
+            "public:payment",
+            false,
+        ))
+    } else if method == http::Method::GET
+        && matches!(
+            normalized_path,
             "/api/users/me"
                 | "/api/users/me/sessions"
                 | "/api/users/me/api-keys"

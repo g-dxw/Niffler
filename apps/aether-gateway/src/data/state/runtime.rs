@@ -6,7 +6,7 @@ use super::{
     AdminRedeemCodeListQuery, AdminWalletLedgerQuery, AdminWalletListQuery,
     AdminWalletRefundRequestListQuery, AnnouncementListQuery, AuditLogListQuery,
     BackgroundTaskListQuery, BackgroundTaskSummary, BillingPlanRecord, BillingPlanWriteInput,
-    CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
+    CancelPaymentOrderInput, CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
     CreateAdminRedeemCodeBatchResult, CreateAnnouncementRecord, CreateManualWalletRechargeInput,
     CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome, CreateWalletRechargeOrderInput,
     CreateWalletRechargeOrderOutcome, CreateWalletRefundRequestInput,
@@ -28,11 +28,12 @@ use super::{
     StoredSuspiciousActivity, StoredUsageSettlement, StoredUserAuditLogPage, StoredUserAuthRecord,
     StoredUserExportRow, StoredUserSummary, StoredVideoTask, StoredWalletDailyUsageLedger,
     StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, UpdateAnnouncementRecord,
-    UpsertBackgroundTaskEvent, UpsertBackgroundTaskRun, UpsertUsageRecord, UpsertVideoTask,
-    UsageSettlementInput, UserDailyQuotaAvailabilityRecord, UserPlanEntitlementRecord,
-    UserPlanEntitlementUpdateInput, VideoTaskLookupKey, VideoTaskModelCount, VideoTaskQueryFilter,
-    VideoTaskStatusCount, WalletDailyUsageAggregationInput, WalletDailyUsageAggregationResult,
-    WalletLookupKey, WalletMutationOutcome,
+    UpdatePendingPaymentOrderGatewayInput, UpsertBackgroundTaskEvent, UpsertBackgroundTaskRun,
+    UpsertUsageRecord, UpsertVideoTask, UsageSettlementInput, UserDailyQuotaAvailabilityRecord,
+    UserPlanEntitlementRecord, UserPlanEntitlementUpdateInput, VideoTaskLookupKey,
+    VideoTaskModelCount, VideoTaskQueryFilter, VideoTaskStatusCount,
+    WalletDailyUsageAggregationInput, WalletDailyUsageAggregationResult, WalletLookupKey,
+    WalletMutationOutcome,
 };
 use aether_data_contracts::repository::usage::{
     PendingUsageCleanupSummary, ProviderApiKeyWindowUsageRequest,
@@ -886,6 +887,30 @@ impl GatewayDataState {
         match &self.wallet_writer {
             Some(repository) => repository
                 .fail_admin_payment_order(order_id)
+                .await
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn cancel_payment_order(
+        &self,
+        input: CancelPaymentOrderInput,
+    ) -> Result<Option<WalletMutationOutcome<(StoredAdminPaymentOrder, bool)>>, DataLayerError>
+    {
+        match &self.wallet_writer {
+            Some(repository) => repository.cancel_payment_order(input).await.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn update_pending_payment_order_gateway(
+        &self,
+        input: UpdatePendingPaymentOrderGatewayInput,
+    ) -> Result<Option<WalletMutationOutcome<StoredAdminPaymentOrder>>, DataLayerError> {
+        match &self.wallet_writer {
+            Some(repository) => repository
+                .update_pending_payment_order_gateway(input)
                 .await
                 .map(Some),
             None => Ok(None),

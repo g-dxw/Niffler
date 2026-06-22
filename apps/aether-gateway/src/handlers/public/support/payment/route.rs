@@ -31,11 +31,17 @@ pub(super) async fn maybe_build_local_payment_callback_route_response(
     }
 
     if decision.route_kind.as_deref() == Some("dodopay_notify") {
-        return Some(super::payment_dodopay::handle_dodopay_notify(state, request_body).await);
+        return Some(
+            super::payment_dodopay::handle_dodopay_notify(state, headers, request_body).await,
+        );
     }
 
     if decision.route_kind.as_deref() == Some("dodopay_return") {
         return Some(super::payment_dodopay::handle_dodopay_return(request_context).await);
+    }
+
+    if decision.route_kind.as_deref() == Some("dodopay_cancel") {
+        return Some(super::payment_dodopay::handle_dodopay_cancel(state, request_context).await);
     }
 
     if decision.route_kind.as_deref() != Some("callback") {

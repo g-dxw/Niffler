@@ -796,6 +796,21 @@ pub struct CreditAdminPaymentOrderInput {
     pub operator_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CancelPaymentOrderInput {
+    pub order_no: String,
+    pub expected_payment_provider: Option<String>,
+    pub cancel_reason: String,
+    pub cancel_source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UpdatePendingPaymentOrderGatewayInput {
+    pub order_id: String,
+    pub gateway_order_id: String,
+    pub gateway_response: serde_json::Value,
+}
+
 #[async_trait]
 pub trait WalletReadRepository: Send + Sync {
     async fn find(
@@ -1049,6 +1064,16 @@ pub trait WalletWriteRepository: Send + Sync {
     async fn fail_admin_payment_order(
         &self,
         order_id: &str,
+    ) -> Result<WalletMutationOutcome<StoredAdminPaymentOrder>, crate::DataLayerError>;
+
+    async fn cancel_payment_order(
+        &self,
+        input: CancelPaymentOrderInput,
+    ) -> Result<WalletMutationOutcome<(StoredAdminPaymentOrder, bool)>, crate::DataLayerError>;
+
+    async fn update_pending_payment_order_gateway(
+        &self,
+        input: UpdatePendingPaymentOrderGatewayInput,
     ) -> Result<WalletMutationOutcome<StoredAdminPaymentOrder>, crate::DataLayerError>;
 
     async fn credit_admin_payment_order(

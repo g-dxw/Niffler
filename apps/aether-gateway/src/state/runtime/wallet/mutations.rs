@@ -1,10 +1,10 @@
 use aether_data::repository::wallet::{
-    AdjustWalletBalanceInput, CompleteAdminWalletRefundInput, CreateManualWalletRechargeInput,
-    CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome, CreateWalletRechargeOrderInput,
-    CreateWalletRechargeOrderOutcome, CreateWalletRefundRequestInput,
-    CreateWalletRefundRequestOutcome, CreditAdminPaymentOrderInput, FailAdminWalletRefundInput,
-    ProcessAdminWalletRefundInput, ProcessPaymentCallbackInput, ProcessPaymentCallbackOutcome,
-    WalletMutationOutcome,
+    AdjustWalletBalanceInput, CancelPaymentOrderInput, CompleteAdminWalletRefundInput,
+    CreateManualWalletRechargeInput, CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome,
+    CreateWalletRechargeOrderInput, CreateWalletRechargeOrderOutcome,
+    CreateWalletRefundRequestInput, CreateWalletRefundRequestOutcome, CreditAdminPaymentOrderInput,
+    FailAdminWalletRefundInput, ProcessAdminWalletRefundInput, ProcessPaymentCallbackInput,
+    ProcessPaymentCallbackOutcome, UpdatePendingPaymentOrderGatewayInput, WalletMutationOutcome,
 };
 
 use crate::{AppState, GatewayError};
@@ -160,6 +160,37 @@ impl AppState {
     > {
         self.data
             .fail_admin_payment_order(order_id)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn cancel_payment_order(
+        &self,
+        input: CancelPaymentOrderInput,
+    ) -> Result<
+        Option<
+            WalletMutationOutcome<(
+                aether_data::repository::wallet::StoredAdminPaymentOrder,
+                bool,
+            )>,
+        >,
+        GatewayError,
+    > {
+        self.data
+            .cancel_payment_order(input)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
+    pub(crate) async fn update_pending_payment_order_gateway(
+        &self,
+        input: UpdatePendingPaymentOrderGatewayInput,
+    ) -> Result<
+        Option<WalletMutationOutcome<aether_data::repository::wallet::StoredAdminPaymentOrder>>,
+        GatewayError,
+    > {
+        self.data
+            .update_pending_payment_order_gateway(input)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

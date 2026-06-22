@@ -166,6 +166,7 @@ CREATE TABLE IF NOT EXISTS payment_gateway_configs (
     callback_base_url TEXT,
     merchant_id TEXT NOT NULL,
     merchant_key_encrypted TEXT,
+    webhook_secret_encrypted TEXT,
     pay_currency TEXT NOT NULL DEFAULT 'CNY',
     usd_exchange_rate REAL NOT NULL DEFAULT 7.2,
     min_recharge_usd REAL NOT NULL DEFAULT 1,

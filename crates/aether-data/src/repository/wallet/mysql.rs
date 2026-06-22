@@ -13,7 +13,7 @@ use super::types::{
 use super::{
     AdjustWalletBalanceInput, AdminPaymentOrderListQuery, AdminRedeemCodeBatchListQuery,
     AdminRedeemCodeListQuery, AdminWalletLedgerQuery, AdminWalletListQuery,
-    AdminWalletRefundRequestListQuery, CompleteAdminWalletRefundInput,
+    AdminWalletRefundRequestListQuery, CancelPaymentOrderInput, CompleteAdminWalletRefundInput,
     CreateAdminRedeemCodeBatchInput, CreateAdminRedeemCodeBatchResult,
     CreateManualWalletRechargeInput, CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome,
     CreateWalletRechargeOrderInput, CreateWalletRechargeOrderOutcome,
@@ -28,8 +28,8 @@ use super::{
     StoredAdminWalletListPage, StoredAdminWalletRefund, StoredAdminWalletRefundPage,
     StoredAdminWalletRefundRequestPage, StoredAdminWalletTransaction,
     StoredAdminWalletTransactionPage, StoredWalletDailyUsageLedger,
-    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, WalletLookupKey, WalletMutationOutcome,
-    WalletReadRepository, WalletWriteRepository,
+    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, UpdatePendingPaymentOrderGatewayInput,
+    WalletLookupKey, WalletMutationOutcome, WalletReadRepository, WalletWriteRepository,
 };
 use crate::driver::mysql::MysqlPool;
 use crate::error::SqlResultExt;
@@ -1202,7 +1202,10 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
                 wallet_id: order_wallet_id,
             });
         }
-        if matches!(order_status.as_str(), "failed" | "expired" | "refunded") {
+        if matches!(
+            order_status.as_str(),
+            "failed" | "expired" | "refunded" | "cancelled"
+        ) {
             let error = format!("payment order is not creditable: {order_status}");
             update_mysql_payment_callback_failure(&mut tx, &callback_id, &input, &payload, &error)
                 .await?;
@@ -2251,6 +2254,113 @@ WHERE id = ? AND wallet_id = ?
         Ok(WalletMutationOutcome::Applied(updated))
     }
 
+    async fn cancel_payment_order(
+        &self,
+        input: CancelPaymentOrderInput,
+    ) -> Result<WalletMutationOutcome<(StoredAdminPaymentOrder, bool)>, DataLayerError> {
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let Some(row) =
+            mysql_payment_order_by_order_no_for_update(&mut tx, &input.order_no).await?
+        else {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::NotFound);
+        };
+        let order = map_payment_order_row(&row)?;
+        if let Some(expected_provider) = input.expected_payment_provider.as_deref() {
+            if !order
+                .payment_provider
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(expected_provider))
+            {
+                tx.commit().await.map_sql_err()?;
+                return Ok(WalletMutationOutcome::Invalid(format!(
+                    "payment provider is not cancellable: {}",
+                    order.payment_provider.as_deref().unwrap_or_default()
+                )));
+            }
+        }
+        if order.status == "cancelled" {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::Applied((order, false)));
+        }
+        if order.status != "pending" {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::Invalid(format!(
+                "payment order is not cancellable: {}",
+                order.status
+            )));
+        }
+        let mut gateway_response = payment_gateway_response_map(order.gateway_response.clone());
+        gateway_response.insert(
+            "cancel_reason".to_string(),
+            serde_json::Value::String(input.cancel_reason),
+        );
+        gateway_response.insert(
+            "cancel_source".to_string(),
+            serde_json::Value::String(input.cancel_source),
+        );
+        gateway_response.insert(
+            "cancelled_at".to_string(),
+            serde_json::Value::String(Utc::now().to_rfc3339()),
+        );
+        let gateway_response = json_string(
+            &serde_json::Value::Object(gateway_response),
+            "payment_orders.gateway_response",
+        )?;
+        sqlx::query(
+            "UPDATE payment_orders SET status = 'cancelled', fulfillment_status = 'cancelled', gateway_response = ? WHERE order_no = ?",
+        )
+        .bind(gateway_response)
+        .bind(&input.order_no)
+        .execute(&mut *tx)
+        .await
+        .map_sql_err()?;
+        let updated = map_payment_order_row(&mysql_payment_order_by_id(&mut tx, &order.id).await?)?;
+        tx.commit().await.map_sql_err()?;
+        Ok(WalletMutationOutcome::Applied((updated, true)))
+    }
+
+    async fn update_pending_payment_order_gateway(
+        &self,
+        input: UpdatePendingPaymentOrderGatewayInput,
+    ) -> Result<WalletMutationOutcome<StoredAdminPaymentOrder>, DataLayerError> {
+        let gateway_order_id = input.gateway_order_id.trim();
+        if gateway_order_id.is_empty() {
+            return Err(DataLayerError::InvalidInput(
+                "gateway_order_id is required".to_string(),
+            ));
+        }
+        let gateway_response =
+            json_string(&input.gateway_response, "payment_orders.gateway_response")?;
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let Some(row) = mysql_payment_order_by_id_for_update(&mut tx, &input.order_id).await?
+        else {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::NotFound);
+        };
+        let order = map_payment_order_row(&row)?;
+        if order.status != "pending" {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::Invalid(format!(
+                "payment order is not pending: {}",
+                order.status
+            )));
+        }
+        sqlx::query(
+            "UPDATE payment_orders SET gateway_order_id = ?, gateway_response = ? WHERE id = ?",
+        )
+        .bind(gateway_order_id)
+        .bind(gateway_response)
+        .bind(&input.order_id)
+        .execute(&mut *tx)
+        .await
+        .map_sql_err()?;
+        let updated =
+            map_payment_order_row(&mysql_payment_order_by_id(&mut tx, &input.order_id).await?)?;
+        tx.commit().await.map_sql_err()?;
+        Ok(WalletMutationOutcome::Applied(updated))
+    }
+
     async fn credit_admin_payment_order(
         &self,
         input: CreditAdminPaymentOrderInput,
@@ -2268,7 +2378,10 @@ WHERE id = ? AND wallet_id = ?
             tx.commit().await.map_sql_err()?;
             return Ok(WalletMutationOutcome::Applied((order, false)));
         }
-        if matches!(order.status.as_str(), "failed" | "expired" | "refunded") {
+        if matches!(
+            order.status.as_str(),
+            "failed" | "expired" | "refunded" | "cancelled"
+        ) {
             tx.commit().await.map_sql_err()?;
             return Ok(WalletMutationOutcome::Invalid(format!(
                 "payment order is not creditable: {}",

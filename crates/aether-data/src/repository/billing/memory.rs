@@ -284,6 +284,13 @@ impl BillingReadRepository for InMemoryBillingReadRepository {
         } else {
             input.merchant_key_encrypted.clone()
         };
+        let webhook_secret_encrypted = if input.preserve_existing_webhook_secret {
+            configs
+                .get(&provider)
+                .and_then(|value| value.webhook_secret_encrypted.clone())
+        } else {
+            input.webhook_secret_encrypted.clone()
+        };
         let record = PaymentGatewayConfigRecord {
             provider: provider.clone(),
             enabled: input.enabled,
@@ -291,6 +298,7 @@ impl BillingReadRepository for InMemoryBillingReadRepository {
             callback_base_url: input.callback_base_url.clone(),
             merchant_id: input.merchant_id.clone(),
             merchant_key_encrypted,
+            webhook_secret_encrypted,
             pay_currency: input.pay_currency.clone(),
             usd_exchange_rate: input.usd_exchange_rate,
             min_recharge_usd: input.min_recharge_usd,

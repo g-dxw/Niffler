@@ -63,7 +63,7 @@ pub(crate) use aether_data::repository::users::{
 use aether_data::repository::wallet::{
     AdjustWalletBalanceInput, AdminPaymentOrderListQuery, AdminRedeemCodeBatchListQuery,
     AdminRedeemCodeListQuery, AdminWalletLedgerQuery, AdminWalletListQuery,
-    AdminWalletRefundRequestListQuery, CompleteAdminWalletRefundInput,
+    AdminWalletRefundRequestListQuery, CancelPaymentOrderInput, CompleteAdminWalletRefundInput,
     CreateAdminRedeemCodeBatchInput, CreateAdminRedeemCodeBatchResult,
     CreateManualWalletRechargeInput, CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome,
     CreateWalletRechargeOrderInput, CreateWalletRechargeOrderOutcome,
@@ -77,8 +77,8 @@ use aether_data::repository::wallet::{
     StoredAdminWalletListPage, StoredAdminWalletRefund, StoredAdminWalletRefundPage,
     StoredAdminWalletRefundRequestPage, StoredAdminWalletTransaction,
     StoredAdminWalletTransactionPage, StoredWalletDailyUsageLedger,
-    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, WalletLookupKey, WalletMutationOutcome,
-    WalletReadRepository, WalletWriteRepository,
+    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, UpdatePendingPaymentOrderGatewayInput,
+    WalletLookupKey, WalletMutationOutcome, WalletReadRepository, WalletWriteRepository,
 };
 use aether_data::{
     DataBackends, DataLayerError, DatabaseMaintenanceSummary, WalletDailyUsageAggregationInput,

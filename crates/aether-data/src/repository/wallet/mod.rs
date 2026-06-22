@@ -13,7 +13,7 @@ pub use types::{
     AdjustWalletBalanceInput, AdminPaymentCallbackRecord, AdminPaymentOrderListQuery,
     AdminRedeemCodeBatchListQuery, AdminRedeemCodeListQuery, AdminWalletLedgerQuery,
     AdminWalletListQuery, AdminWalletPaymentOrderRecord, AdminWalletRefundRecord,
-    AdminWalletRefundRequestListQuery, AdminWalletTransactionRecord,
+    AdminWalletRefundRequestListQuery, AdminWalletTransactionRecord, CancelPaymentOrderInput,
     CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
     CreateAdminRedeemCodeBatchResult, CreateManualWalletRechargeInput,
     CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome, CreateWalletRechargeOrderInput,
@@ -30,6 +30,7 @@ pub use types::{
     StoredAdminWalletRefundPage, StoredAdminWalletRefundRequestItem,
     StoredAdminWalletRefundRequestPage, StoredAdminWalletTransaction,
     StoredAdminWalletTransactionPage, StoredWalletDailyUsageLedger,
-    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, WalletLookupKey, WalletMutationOutcome,
-    WalletReadRepository, WalletRepository, WalletWriteRepository,
+    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, UpdatePendingPaymentOrderGatewayInput,
+    WalletLookupKey, WalletMutationOutcome, WalletReadRepository, WalletRepository,
+    WalletWriteRepository,
 };

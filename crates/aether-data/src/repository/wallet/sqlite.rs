@@ -8,7 +8,7 @@ use super::types::{
 use super::{
     AdjustWalletBalanceInput, AdminPaymentOrderListQuery, AdminRedeemCodeBatchListQuery,
     AdminRedeemCodeListQuery, AdminWalletLedgerQuery, AdminWalletListQuery,
-    AdminWalletRefundRequestListQuery, CompleteAdminWalletRefundInput,
+    AdminWalletRefundRequestListQuery, CancelPaymentOrderInput, CompleteAdminWalletRefundInput,
     CreateAdminRedeemCodeBatchInput, CreateAdminRedeemCodeBatchResult,
     CreateManualWalletRechargeInput, CreatePlanPurchaseOrderInput, CreatePlanPurchaseOrderOutcome,
     CreateWalletRechargeOrderInput, CreateWalletRechargeOrderOutcome,
@@ -24,8 +24,8 @@ use super::{
     StoredAdminWalletRefundPage, StoredAdminWalletRefundRequestItem,
     StoredAdminWalletRefundRequestPage, StoredAdminWalletTransaction,
     StoredAdminWalletTransactionPage, StoredWalletDailyUsageLedger,
-    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, WalletLookupKey, WalletMutationOutcome,
-    WalletReadRepository, WalletWriteRepository,
+    StoredWalletDailyUsageLedgerPage, StoredWalletSnapshot, UpdatePendingPaymentOrderGatewayInput,
+    WalletLookupKey, WalletMutationOutcome, WalletReadRepository, WalletWriteRepository,
 };
 use crate::driver::sqlite::{sqlite_optional_real, sqlite_real, SqlitePool};
 use crate::error::SqlResultExt;
@@ -1736,7 +1736,10 @@ VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'received', ?, NULL, ?, NULL)
                 wallet_id: order_wallet_id,
             });
         }
-        if matches!(order_status.as_str(), "failed" | "expired" | "refunded") {
+        if matches!(
+            order_status.as_str(),
+            "failed" | "expired" | "refunded" | "cancelled"
+        ) {
             let error = format!("payment order is not creditable: {order_status}");
             update_sqlite_payment_callback_failure(&mut tx, &callback_id, &input, &payload, &error)
                 .await?;
@@ -2780,6 +2783,111 @@ WHERE id = ? AND wallet_id = ?
         Ok(WalletMutationOutcome::Applied(updated))
     }
 
+    async fn cancel_payment_order(
+        &self,
+        input: CancelPaymentOrderInput,
+    ) -> Result<WalletMutationOutcome<(StoredAdminPaymentOrder, bool)>, DataLayerError> {
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let Some(row) = sqlite_payment_order_by_order_no(&mut tx, &input.order_no).await? else {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::NotFound);
+        };
+        let order = map_payment_order_row(&row)?;
+        if let Some(expected_provider) = input.expected_payment_provider.as_deref() {
+            if !order
+                .payment_provider
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(expected_provider))
+            {
+                tx.commit().await.map_sql_err()?;
+                return Ok(WalletMutationOutcome::Invalid(format!(
+                    "payment provider is not cancellable: {}",
+                    order.payment_provider.as_deref().unwrap_or_default()
+                )));
+            }
+        }
+        if order.status == "cancelled" {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::Applied((order, false)));
+        }
+        if order.status != "pending" {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::Invalid(format!(
+                "payment order is not cancellable: {}",
+                order.status
+            )));
+        }
+        let mut gateway_response = payment_gateway_response_map(order.gateway_response.clone());
+        gateway_response.insert(
+            "cancel_reason".to_string(),
+            serde_json::Value::String(input.cancel_reason),
+        );
+        gateway_response.insert(
+            "cancel_source".to_string(),
+            serde_json::Value::String(input.cancel_source),
+        );
+        gateway_response.insert(
+            "cancelled_at".to_string(),
+            serde_json::Value::String(Utc::now().to_rfc3339()),
+        );
+        let gateway_response = json_string(
+            &serde_json::Value::Object(gateway_response),
+            "payment_orders.gateway_response",
+        )?;
+        sqlx::query(
+            "UPDATE payment_orders SET status = 'cancelled', fulfillment_status = 'cancelled', gateway_response = ? WHERE order_no = ?",
+        )
+        .bind(gateway_response)
+        .bind(&input.order_no)
+        .execute(&mut *tx)
+        .await
+        .map_sql_err()?;
+        let updated =
+            map_payment_order_row(&sqlite_payment_order_by_id(&mut tx, &order.id).await?)?;
+        tx.commit().await.map_sql_err()?;
+        Ok(WalletMutationOutcome::Applied((updated, true)))
+    }
+
+    async fn update_pending_payment_order_gateway(
+        &self,
+        input: UpdatePendingPaymentOrderGatewayInput,
+    ) -> Result<WalletMutationOutcome<StoredAdminPaymentOrder>, DataLayerError> {
+        let gateway_order_id = input.gateway_order_id.trim();
+        if gateway_order_id.is_empty() {
+            return Err(DataLayerError::InvalidInput(
+                "gateway_order_id is required".to_string(),
+            ));
+        }
+        let gateway_response =
+            json_string(&input.gateway_response, "payment_orders.gateway_response")?;
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let Some(row) = sqlite_payment_order_by_id_optional(&mut tx, &input.order_id).await? else {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::NotFound);
+        };
+        let order = map_payment_order_row(&row)?;
+        if order.status != "pending" {
+            tx.commit().await.map_sql_err()?;
+            return Ok(WalletMutationOutcome::Invalid(format!(
+                "payment order is not pending: {}",
+                order.status
+            )));
+        }
+        sqlx::query(
+            "UPDATE payment_orders SET gateway_order_id = ?, gateway_response = ? WHERE id = ?",
+        )
+        .bind(gateway_order_id)
+        .bind(gateway_response)
+        .bind(&input.order_id)
+        .execute(&mut *tx)
+        .await
+        .map_sql_err()?;
+        let updated =
+            map_payment_order_row(&sqlite_payment_order_by_id(&mut tx, &input.order_id).await?)?;
+        tx.commit().await.map_sql_err()?;
+        Ok(WalletMutationOutcome::Applied(updated))
+    }
+
     async fn credit_admin_payment_order(
         &self,
         input: CreditAdminPaymentOrderInput,
@@ -2796,7 +2904,10 @@ WHERE id = ? AND wallet_id = ?
             tx.commit().await.map_sql_err()?;
             return Ok(WalletMutationOutcome::Applied((order, false)));
         }
-        if matches!(order.status.as_str(), "failed" | "expired" | "refunded") {
+        if matches!(
+            order.status.as_str(),
+            "failed" | "expired" | "refunded" | "cancelled"
+        ) {
             tx.commit().await.map_sql_err()?;
             return Ok(WalletMutationOutcome::Invalid(format!(
                 "payment order is not creditable: {}",
@@ -4824,7 +4935,7 @@ mod tests {
     use crate::repository::wallet::{
         AdjustWalletBalanceInput, AdminPaymentOrderListQuery, AdminRedeemCodeListQuery,
         AdminWalletLedgerQuery, AdminWalletListQuery, AdminWalletRefundRequestListQuery,
-        CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
+        CancelPaymentOrderInput, CompleteAdminWalletRefundInput, CreateAdminRedeemCodeBatchInput,
         CreateManualWalletRechargeInput, CreatePlanPurchaseOrderInput,
         CreatePlanPurchaseOrderOutcome, CreateWalletRechargeOrderInput,
         CreateWalletRechargeOrderOutcome, CreateWalletRefundRequestInput,
@@ -4832,8 +4943,8 @@ mod tests {
         DeleteAdminRedeemCodeBatchInput, DisableAdminRedeemCodeBatchInput,
         DisableAdminRedeemCodeInput, FailAdminWalletRefundInput, ProcessAdminWalletRefundInput,
         ProcessPaymentCallbackInput, ProcessPaymentCallbackOutcome, RedeemWalletCodeInput,
-        RedeemWalletCodeOutcome, WalletLookupKey, WalletMutationOutcome, WalletReadRepository,
-        WalletWriteRepository,
+        RedeemWalletCodeOutcome, UpdatePendingPaymentOrderGatewayInput, WalletLookupKey,
+        WalletMutationOutcome, WalletReadRepository, WalletWriteRepository,
     };
     use serde_json::json;
 
@@ -5400,6 +5511,132 @@ mod tests {
             WalletMutationOutcome::Applied((_, false))
         ));
 
+        let epay_order = match repository
+            .create_wallet_recharge_order(CreateWalletRechargeOrderInput {
+                preferred_wallet_id: Some("wallet-epay-cancel-guard-1".to_string()),
+                user_id: "user-epay-cancel-guard-1".to_string(),
+                amount_usd: 1.0,
+                pay_amount: None,
+                pay_currency: None,
+                exchange_rate: None,
+                payment_method: "epay".to_string(),
+                payment_provider: Some("epay".to_string()),
+                payment_channel: Some("alipay".to_string()),
+                gateway_order_id: "gateway-order-epay-cancel-guard-1".to_string(),
+                gateway_response: json!({ "checkout": true }),
+                order_no: "order-no-epay-cancel-guard-1".to_string(),
+                expires_at_unix_secs: 4_102_444_800,
+            })
+            .await
+            .expect("epay order should be created")
+        {
+            CreateWalletRechargeOrderOutcome::Created(order) => order,
+            CreateWalletRechargeOrderOutcome::WalletInactive => {
+                panic!("new epay cancel guard wallet should be active")
+            }
+        };
+        let epay_cancelled_by_dodopay = repository
+            .cancel_payment_order(CancelPaymentOrderInput {
+                order_no: epay_order.order_no.clone(),
+                expected_payment_provider: Some("dodopay".to_string()),
+                cancel_reason: "user_cancelled_at_gateway".to_string(),
+                cancel_source: "dodopay_cancel_url".to_string(),
+            })
+            .await
+            .expect("provider mismatch cancel should run");
+        assert!(matches!(
+            epay_cancelled_by_dodopay,
+            WalletMutationOutcome::Invalid(_)
+        ));
+        let epay_credit_after_rejected_cancel = repository
+            .credit_admin_payment_order(CreditAdminPaymentOrderInput {
+                order_id: epay_order.id,
+                gateway_order_id: None,
+                pay_amount: None,
+                pay_currency: None,
+                exchange_rate: None,
+                gateway_response_patch: None,
+                operator_id: Some("admin-1".to_string()),
+            })
+            .await
+            .expect("epay order should still be creditable");
+        assert!(matches!(
+            epay_credit_after_rejected_cancel,
+            WalletMutationOutcome::Applied((_, true))
+        ));
+
+        let cancelling_order = match repository
+            .create_wallet_recharge_order(CreateWalletRechargeOrderInput {
+                preferred_wallet_id: Some("wallet-cancel-1".to_string()),
+                user_id: "user-cancel-1".to_string(),
+                amount_usd: 1.0,
+                pay_amount: None,
+                pay_currency: None,
+                exchange_rate: None,
+                payment_method: "dodopay".to_string(),
+                payment_provider: Some("dodopay".to_string()),
+                payment_channel: Some("ali_pay".to_string()),
+                gateway_order_id: "gateway-order-cancel-1".to_string(),
+                gateway_response: json!({ "checkout": true }),
+                order_no: "order-no-cancel-1".to_string(),
+                expires_at_unix_secs: 4_102_444_800,
+            })
+            .await
+            .expect("cancelling order should be created")
+        {
+            CreateWalletRechargeOrderOutcome::Created(order) => order,
+            CreateWalletRechargeOrderOutcome::WalletInactive => {
+                panic!("new cancel wallet should be active")
+            }
+        };
+        let cancelled = repository
+            .cancel_payment_order(CancelPaymentOrderInput {
+                order_no: cancelling_order.order_no.clone(),
+                expected_payment_provider: None,
+                cancel_reason: "user_cancelled_at_gateway".to_string(),
+                cancel_source: "dodopay_cancel_url".to_string(),
+            })
+            .await
+            .expect("cancel should run");
+        let WalletMutationOutcome::Applied((cancelled_order, changed)) = cancelled else {
+            panic!("payment order should be cancelled");
+        };
+        assert!(changed);
+        assert_eq!(cancelled_order.status, "cancelled");
+        assert_eq!(
+            cancelled_order.gateway_response.as_ref().unwrap()["cancel_source"],
+            "dodopay_cancel_url"
+        );
+        let cancelled_again = repository
+            .cancel_payment_order(CancelPaymentOrderInput {
+                order_no: cancelling_order.order_no.clone(),
+                expected_payment_provider: None,
+                cancel_reason: "user_cancelled_at_gateway".to_string(),
+                cancel_source: "dodopay_cancel_url".to_string(),
+            })
+            .await
+            .expect("cancel should be idempotent");
+        assert!(matches!(
+            cancelled_again,
+            WalletMutationOutcome::Applied((_, false))
+        ));
+        let cancelled_credit = repository
+            .credit_admin_payment_order(CreditAdminPaymentOrderInput {
+                order_id: cancelling_order.id,
+                gateway_order_id: None,
+                pay_amount: None,
+                pay_currency: None,
+                exchange_rate: None,
+                gateway_response_patch: None,
+                operator_id: Some("admin-1".to_string()),
+            })
+            .await
+            .expect("credit cancelled order should return invalid outcome");
+        assert!(matches!(
+            cancelled_credit,
+            WalletMutationOutcome::Invalid(_)
+        ));
+
         let failing_order = match repository
             .create_wallet_recharge_order(CreateWalletRechargeOrderInput {
                 preferred_wallet_id: Some("wallet-fail-1".to_string()),
@@ -5432,6 +5669,101 @@ mod tests {
             panic!("payment order should fail");
         };
         assert_eq!(failed_order.status, "failed");
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_updates_pending_payment_order_gateway_details() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        let repository = SqliteWalletReadRepository::new(pool);
+
+        let order = match repository
+            .create_wallet_recharge_order(CreateWalletRechargeOrderInput {
+                preferred_wallet_id: Some("wallet-gateway-update-1".to_string()),
+                user_id: "user-gateway-update-1".to_string(),
+                amount_usd: 10.0,
+                pay_amount: Some(72.0),
+                pay_currency: Some("CNY".to_string()),
+                exchange_rate: Some(7.2),
+                payment_method: "dodopay".to_string(),
+                payment_provider: Some("dodopay".to_string()),
+                payment_channel: Some("ali_pay".to_string()),
+                gateway_order_id: "pending-checkout-order-1".to_string(),
+                gateway_response: json!({ "provider_order_status": "pending_checkout" }),
+                order_no: "order-gateway-update-1".to_string(),
+                expires_at_unix_secs: 4_102_444_800,
+            })
+            .await
+            .expect("order should create")
+        {
+            CreateWalletRechargeOrderOutcome::Created(order) => order,
+            CreateWalletRechargeOrderOutcome::WalletInactive => {
+                panic!("new wallet should be active")
+            }
+        };
+
+        let updated = repository
+            .update_pending_payment_order_gateway(UpdatePendingPaymentOrderGatewayInput {
+                order_id: order.id.clone(),
+                gateway_order_id: "cs_gateway_update_1".to_string(),
+                gateway_response: json!({
+                    "gateway": "dodopay",
+                    "checkout_session_id": "cs_gateway_update_1",
+                    "payment_url": "https://checkout.example.com/pay"
+                }),
+            })
+            .await
+            .expect("gateway details should update");
+        let WalletMutationOutcome::Applied(updated) = updated else {
+            panic!("pending order gateway details should update");
+        };
+        assert_eq!(
+            updated.gateway_order_id.as_deref(),
+            Some("cs_gateway_update_1")
+        );
+        assert_eq!(
+            updated.gateway_response.as_ref().unwrap()["payment_url"],
+            "https://checkout.example.com/pay"
+        );
+
+        let callback = repository
+            .process_payment_callback(ProcessPaymentCallbackInput {
+                payment_method: "dodopay".to_string(),
+                payment_provider: Some("dodopay".to_string()),
+                payment_channel: Some("ali_pay".to_string()),
+                callback_key: "dodopay-gateway-update-callback-1".to_string(),
+                order_no: None,
+                gateway_order_id: Some("cs_gateway_update_1".to_string()),
+                amount_usd: 10.0,
+                pay_amount: Some(72.0),
+                pay_currency: Some("CNY".to_string()),
+                exchange_rate: Some(7.2),
+                payload_hash: "hash-gateway-update-callback-1".to_string(),
+                payload: json!({ "checkout_session_id": "cs_gateway_update_1" }),
+                signature_valid: true,
+            })
+            .await
+            .expect("callback should process by gateway order id");
+        assert!(matches!(
+            callback,
+            ProcessPaymentCallbackOutcome::Applied { .. }
+        ));
+
+        let credited_update = repository
+            .update_pending_payment_order_gateway(UpdatePendingPaymentOrderGatewayInput {
+                order_id: order.id,
+                gateway_order_id: "cs_should_not_apply".to_string(),
+                gateway_response: json!({ "payment_url": "https://checkout.example.com/late" }),
+            })
+            .await
+            .expect("credited order update should return invalid");
+        assert!(matches!(credited_update, WalletMutationOutcome::Invalid(_)));
     }
 
     #[tokio::test]

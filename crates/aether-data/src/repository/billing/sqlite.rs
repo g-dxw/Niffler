@@ -627,7 +627,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             r#"
 SELECT
   provider, enabled, endpoint_url, callback_base_url, merchant_id,
-  merchant_key_encrypted, pay_currency, usd_exchange_rate, min_recharge_usd,
+  merchant_key_encrypted, webhook_secret_encrypted, pay_currency, usd_exchange_rate, min_recharge_usd,
   channels_json, created_at AS created_at_unix_secs, updated_at AS updated_at_unix_secs
 FROM payment_gateway_configs
 WHERE provider = ?
@@ -649,13 +649,26 @@ LIMIT 1
     ) -> Result<AdminBillingMutationOutcome<PaymentGatewayConfigRecord>, DataLayerError> {
         let provider = input.provider.trim().to_ascii_lowercase();
         let existing_secret = if input.preserve_existing_secret {
-            sqlx::query_scalar::<_, String>(
+            sqlx::query_scalar::<_, Option<String>>(
                 "SELECT merchant_key_encrypted FROM payment_gateway_configs WHERE provider = ?",
             )
             .bind(&provider)
             .fetch_optional(&self.pool)
             .await
             .map_sql_err()?
+            .flatten()
+        } else {
+            None
+        };
+        let existing_webhook_secret = if input.preserve_existing_webhook_secret {
+            sqlx::query_scalar::<_, Option<String>>(
+                "SELECT webhook_secret_encrypted FROM payment_gateway_configs WHERE provider = ?",
+            )
+            .bind(&provider)
+            .fetch_optional(&self.pool)
+            .await
+            .map_sql_err()?
+            .flatten()
         } else {
             None
         };
@@ -664,21 +677,27 @@ LIMIT 1
         } else {
             input.merchant_key_encrypted.clone()
         };
+        let webhook_secret = if input.preserve_existing_webhook_secret {
+            existing_webhook_secret
+        } else {
+            input.webhook_secret_encrypted.clone()
+        };
         let now = current_unix_secs_i64();
         sqlx::query(
             r#"
 INSERT INTO payment_gateway_configs (
   provider, enabled, endpoint_url, callback_base_url, merchant_id,
-  merchant_key_encrypted, pay_currency, usd_exchange_rate, min_recharge_usd,
-  channels_json, created_at, updated_at
+  merchant_key_encrypted, webhook_secret_encrypted, pay_currency, usd_exchange_rate,
+  min_recharge_usd, channels_json, created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(provider) DO UPDATE SET
   enabled = excluded.enabled,
   endpoint_url = excluded.endpoint_url,
   callback_base_url = excluded.callback_base_url,
   merchant_id = excluded.merchant_id,
   merchant_key_encrypted = excluded.merchant_key_encrypted,
+  webhook_secret_encrypted = excluded.webhook_secret_encrypted,
   pay_currency = excluded.pay_currency,
   usd_exchange_rate = excluded.usd_exchange_rate,
   min_recharge_usd = excluded.min_recharge_usd,
@@ -692,6 +711,7 @@ ON CONFLICT(provider) DO UPDATE SET
         .bind(input.callback_base_url.as_deref())
         .bind(&input.merchant_id)
         .bind(secret.as_deref())
+        .bind(webhook_secret.as_deref())
         .bind(&input.pay_currency)
         .bind(input.usd_exchange_rate)
         .bind(input.min_recharge_usd)
@@ -1388,6 +1408,7 @@ fn map_payment_gateway_config_sqlite(
         callback_base_url: row.try_get("callback_base_url").map_sql_err()?,
         merchant_id: row.try_get("merchant_id").map_sql_err()?,
         merchant_key_encrypted: row.try_get("merchant_key_encrypted").map_sql_err()?,
+        webhook_secret_encrypted: row.try_get("webhook_secret_encrypted").map_sql_err()?,
         pay_currency: row.try_get("pay_currency").map_sql_err()?,
         usd_exchange_rate: sqlite_optional_real(row, "usd_exchange_rate")?.unwrap_or(0.0),
         min_recharge_usd: sqlite_optional_real(row, "min_recharge_usd")?.unwrap_or(0.0),
@@ -1571,7 +1592,7 @@ mod tests {
     use crate::lifecycle::migrate::run_sqlite_migrations;
     use crate::repository::billing::{
         AdminBillingCollectorWriteInput, AdminBillingMutationOutcome, AdminBillingRuleWriteInput,
-        BillingPlanWriteInput, BillingReadRepository,
+        BillingPlanWriteInput, BillingReadRepository, PaymentGatewayConfigWriteInput,
     };
 
     #[tokio::test]
@@ -1722,6 +1743,71 @@ mod tests {
         };
         assert_eq!(preset.updated, 1);
         assert_eq!(preset.errors, Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn sqlite_repository_preserves_payment_gateway_webhook_secret() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        let repository = SqliteBillingReadRepository::new(pool);
+
+        let base_input = PaymentGatewayConfigWriteInput {
+            provider: "dodopay".to_string(),
+            enabled: true,
+            endpoint_url: "https://test.dodopayments.com".to_string(),
+            callback_base_url: Some("https://aether.example.com".to_string()),
+            merchant_id: "pdt_1".to_string(),
+            merchant_key_encrypted: Some("api-key-v1".to_string()),
+            preserve_existing_secret: false,
+            webhook_secret_encrypted: Some("webhook-secret-v1".to_string()),
+            preserve_existing_webhook_secret: false,
+            pay_currency: "CNY".to_string(),
+            usd_exchange_rate: 7.2,
+            min_recharge_usd: 1.0,
+            channels_json: json!([]),
+        };
+        match repository
+            .upsert_payment_gateway_config(&base_input)
+            .await
+            .expect("gateway config create should run")
+        {
+            AdminBillingMutationOutcome::Applied(record) => {
+                assert_eq!(record.merchant_key_encrypted.as_deref(), Some("api-key-v1"));
+                assert_eq!(
+                    record.webhook_secret_encrypted.as_deref(),
+                    Some("webhook-secret-v1")
+                );
+            }
+            other => panic!("unexpected gateway config create outcome: {other:?}"),
+        }
+
+        let updated_input = PaymentGatewayConfigWriteInput {
+            merchant_key_encrypted: Some("api-key-v2".to_string()),
+            preserve_existing_secret: false,
+            webhook_secret_encrypted: None,
+            preserve_existing_webhook_secret: true,
+            ..base_input
+        };
+        match repository
+            .upsert_payment_gateway_config(&updated_input)
+            .await
+            .expect("gateway config update should run")
+        {
+            AdminBillingMutationOutcome::Applied(record) => {
+                assert_eq!(record.merchant_key_encrypted.as_deref(), Some("api-key-v2"));
+                assert_eq!(
+                    record.webhook_secret_encrypted.as_deref(),
+                    Some("webhook-secret-v1")
+                );
+            }
+            other => panic!("unexpected gateway config update outcome: {other:?}"),
+        }
     }
 
     #[tokio::test]

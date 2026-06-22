@@ -70,7 +70,9 @@ export function walletTransactionReasonLabel(reasonCode: string | null | undefin
 export function paymentMethodLabel(method: string | null | undefined): string {
   const labels: Record<string, string> = {
     alipay: '支付宝支付',
+    ali_pay: '支付宝支付',
     wechat: '微信支付',
+    we_chat_pay: '微信支付',
     WECHAT: '微信支付',
     wxpay: '微信支付',
     epay: '易支付',
@@ -149,6 +151,7 @@ export function paymentStatusLabel(status: string | null | undefined): string {
     credited: '已到账',
     failed: '支付失败',
     expired: '已过期',
+    cancelled: '已取消',
     refunding: '退款中',
     refunded: '已退款',
   }
@@ -174,7 +177,7 @@ export function paymentStatusBadge(status: string | null | undefined): string {
   if (status === 'paid' || status === 'refunding') return 'outline'
   if (status === 'pending') return 'secondary'
   if (status === 'expired') return 'warning'
-  if (status === 'failed') return 'destructive'
+  if (status === 'failed' || status === 'cancelled') return 'destructive'
   return 'secondary'
 }
 
