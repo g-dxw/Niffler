@@ -1068,7 +1068,7 @@ function submitPaymentInstructions(instructions: Record<string, unknown> | null 
   }
   const opened = window.open(paymentUrl, '_blank', 'noopener,noreferrer')
   if (!opened) {
-    window.location.href = paymentUrl
+    showError('浏览器拦截了支付窗口，请点击“打开支付链接”手动打开')
   }
 }
 
@@ -1083,9 +1083,7 @@ function submitPaymentForm(url: string, params: Record<string, unknown>) {
   const form = document.createElement('form')
   form.action = url
   form.method = 'POST'
-  if (!isSafariBrowser()) {
-    form.target = '_blank'
-  }
+  form.target = '_blank'
   Object.entries(params).forEach(([key, value]) => {
     if (value === null || value === undefined) return
     const input = document.createElement('input')
@@ -1097,10 +1095,6 @@ function submitPaymentForm(url: string, params: Record<string, unknown>) {
   document.body.appendChild(form)
   form.submit()
   document.body.removeChild(form)
-}
-
-function isSafariBrowser(): boolean {
-  return navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')
 }
 
 async function submitRefund() {
