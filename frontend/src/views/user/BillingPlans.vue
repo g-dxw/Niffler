@@ -170,13 +170,22 @@
                 应付 {{ latestCheckout.order.pay_amount ?? '-' }} {{ latestCheckout.order.pay_currency || '' }}
               </div>
             </div>
-            <Button
-              v-if="latestPaymentUrl"
-              variant="outline"
-              @click="openPaymentUrl(latestPaymentUrl)"
-            >
-              打开支付链接
-            </Button>
+            <div class="flex flex-wrap gap-2">
+              <Button
+                v-if="latestPaymentUrl"
+                variant="outline"
+                @click="openPaymentUrl(latestPaymentUrl)"
+              >
+                打开支付链接
+              </Button>
+              <Button
+                v-if="latestCancelUrl"
+                variant="ghost"
+                @click="cancelLatestCheckout"
+              >
+                取消这笔支付
+              </Button>
+            </div>
           </div>
         </Card>
       </template>
@@ -263,6 +272,11 @@ const purchaseablePlans = computed(() =>
 
 const latestPaymentUrl = computed(() => {
   const value = latestCheckout.value?.payment_instructions?.payment_url
+  return typeof value === 'string' && value ? value : ''
+})
+
+const latestCancelUrl = computed(() => {
+  const value = latestCheckout.value?.payment_instructions?.local_cancel_url
   return typeof value === 'string' && value ? value : ''
 })
 
@@ -361,6 +375,13 @@ function submitPaymentInstructions(instructions: Record<string, unknown> | null 
   if (!opened) {
     window.location.href = paymentUrl
   }
+}
+
+function cancelLatestCheckout() {
+  if (!latestCancelUrl.value) return
+  const confirmed = window.confirm('确定取消这笔支付吗？取消后需要重新创建订单。')
+  if (!confirmed) return
+  window.location.href = latestCancelUrl.value
 }
 
 function submitPaymentForm(url: string, params: Record<string, unknown>) {

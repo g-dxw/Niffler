@@ -243,16 +243,27 @@
                 {{ paymentStatusLabel(latestRecharge.order.status) }}
               </Badge>
             </div>
-            <a
-              v-if="latestRecharge.payment_instructions?.payment_url"
-              class="inline-flex text-xs text-primary hover:underline"
-              :href="String(latestRecharge.payment_instructions.payment_url)"
-              target="_blank"
-              rel="noopener noreferrer"
-              @click.prevent="submitPaymentInstructions(latestRecharge.payment_instructions)"
-            >
-              打开支付链接
-            </a>
+            <div class="flex flex-wrap items-center gap-2">
+              <a
+                v-if="latestRecharge.payment_instructions?.payment_url"
+                class="inline-flex text-xs text-primary hover:underline"
+                :href="String(latestRecharge.payment_instructions.payment_url)"
+                target="_blank"
+                rel="noopener noreferrer"
+                @click.prevent="submitPaymentInstructions(latestRecharge.payment_instructions)"
+              >
+                打开支付链接
+              </a>
+              <Button
+                v-if="latestRechargeCancelUrl"
+                variant="ghost"
+                size="sm"
+                class="h-auto px-0 py-0 text-xs text-destructive hover:bg-transparent hover:text-destructive/80"
+                @click="cancelLatestRecharge"
+              >
+                取消这笔支付
+              </Button>
+            </div>
             <div
               v-if="latestRecharge.payment_instructions?.qr_code"
               class="text-xs text-muted-foreground break-all"
@@ -746,6 +757,11 @@ const orderTotal = ref(0)
 const orderPage = ref(1)
 const orderPageSize = ref(20)
 
+const latestRechargeCancelUrl = computed(() => {
+  const value = latestRecharge.value?.payment_instructions?.local_cancel_url
+  return typeof value === 'string' && value ? value : ''
+})
+
 const refunds = ref<RefundRequest[]>([])
 const refundTotal = ref(0)
 const refundPage = ref(1)
@@ -859,10 +875,15 @@ onMounted(async () => {
 })
 
 function showPaymentCancelledNotice() {
-  if (route.query.payment_cancelled !== '1') return
-  warning('支付已取消')
+  if (route.query.payment_cancelled !== '1' && route.query.payment_cancel_failed !== '1') return
+  if (route.query.payment_cancelled === '1') {
+    warning('支付已取消')
+  } else {
+    showError('支付取消失败，请刷新订单状态后再确认')
+  }
   const nextQuery = { ...route.query }
   delete nextQuery.payment_cancelled
+  delete nextQuery.payment_cancel_failed
   void router.replace({ query: nextQuery })
 }
 
@@ -1049,6 +1070,13 @@ function submitPaymentInstructions(instructions: Record<string, unknown> | null 
   if (!opened) {
     window.location.href = paymentUrl
   }
+}
+
+function cancelLatestRecharge() {
+  if (!latestRechargeCancelUrl.value) return
+  const confirmed = window.confirm('确定取消这笔支付吗？取消后需要重新创建订单。')
+  if (!confirmed) return
+  window.location.href = latestRechargeCancelUrl.value
 }
 
 function submitPaymentForm(url: string, params: Record<string, unknown>) {

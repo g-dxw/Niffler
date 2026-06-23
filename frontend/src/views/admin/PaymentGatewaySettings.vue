@@ -69,12 +69,6 @@
               <Badge :variant="hasSecret ? 'success' : 'warning'">
                 {{ activeProviderMeta.secretLabel }}：{{ hasSecret ? '已保存' : '未设置' }}
               </Badge>
-              <Badge
-                v-if="activeProvider === 'dodopay'"
-                :variant="hasWebhookSecret ? 'success' : 'warning'"
-              >
-                Webhook Secret：{{ hasWebhookSecret ? '已保存' : '未设置' }}
-              </Badge>
             </div>
           </Card>
           <Card class="p-5">
@@ -136,27 +130,6 @@
                 masked
                 :placeholder="hasSecret ? '已设置，输入新密钥后覆盖' : activeProviderMeta.secretPlaceholder"
               />
-            </div>
-
-            <div
-              v-if="activeProvider === 'dodopay'"
-              class="space-y-1.5"
-            >
-              <Label for="gateway-webhook-secret">
-                Webhook Secret
-                <span class="text-xs font-normal text-muted-foreground">
-                  {{ hasWebhookSecret ? '（留空保持不变）' : '' }}
-                </span>
-              </Label>
-              <Input
-                id="gateway-webhook-secret"
-                v-model="form.webhook_secret"
-                masked
-                :placeholder="hasWebhookSecret ? '已设置，输入新密钥后覆盖' : '请输入 DoDoPay Webhook Secret'"
-              />
-              <p class="text-xs text-muted-foreground">
-                API Key 用于创建收银台，Webhook Secret 用于验证 DoDoPay 回调。
-              </p>
             </div>
           </div>
         </CardSection>
@@ -292,7 +265,6 @@ const loading = ref(true)
 const saving = ref(false)
 const testing = ref(false)
 const hasSecret = ref(false)
-const hasWebhookSecret = ref(false)
 const updatedAt = ref<number | null>(null)
 const activeProvider = ref<PaymentGatewayProvider>('epay')
 
@@ -322,12 +294,12 @@ const providerTabs: Array<{
     id: 'dodopay',
     name: 'DoDoPay',
     endpointLabel: 'DoDoPay 服务地址',
-    endpointPlaceholder: 'https://test.dodopayments.com',
-    merchantIdLabel: '产品 ID',
-    merchantIdPlaceholder: 'pdt_xxxxx',
-    secretLabel: 'API Key',
-    secretPlaceholder: '请输入 DoDoPay API Key',
-    description: 'API Key 用于创建收银台，Webhook Secret 用于验证回调；配置后用户可以选择支付宝或微信支付钱包充值和套餐订单',
+    endpointPlaceholder: 'https://pay.dodododo.org',
+    merchantIdLabel: 'App ID',
+    merchantIdPlaceholder: 'app_xxxxx',
+    secretLabel: 'App Secret',
+    secretPlaceholder: '请输入 DoDoPay App Secret',
+    description: 'App Secret 用于创建订单、取消订单和验证支付成功回调；配置后用户可以选择支付宝或微信支付钱包充值和套餐订单',
   },
 ]
 
@@ -341,7 +313,6 @@ const form = reactive({
   callback_base_url: '',
   merchant_id: '',
   merchant_key: '',
-  webhook_secret: '',
   pay_currency: 'CNY',
   usd_exchange_rate: 7.2,
   min_recharge_usd: 1,
@@ -384,7 +355,6 @@ async function loadConfig() {
     form.callback_base_url = config.callback_base_url || ''
     form.merchant_id = config.merchant_id || ''
     form.merchant_key = ''
-    form.webhook_secret = ''
     form.pay_currency = config.pay_currency || 'CNY'
     form.usd_exchange_rate = Number(config.usd_exchange_rate || 7.2)
     form.min_recharge_usd = Number(config.min_recharge_usd || 1)
@@ -397,7 +367,6 @@ async function loadConfig() {
           ]
         : []
     hasSecret.value = config.has_secret
-    hasWebhookSecret.value = Boolean(config.has_webhook_secret)
     updatedAt.value = config.updated_at ?? null
   } catch (err) {
     log.error(`加载${activeProviderMeta.value.name}配置失败:`, err)
@@ -421,9 +390,6 @@ function validateForm(): string | null {
   if (!form.merchant_id.trim()) return `请输入${activeProviderMeta.value.merchantIdLabel}`
   if (!hasSecret.value && !form.merchant_key.trim()) {
     return `首次配置需要填写${activeProviderMeta.value.secretLabel}`
-  }
-  if (activeProvider.value === 'dodopay' && !hasWebhookSecret.value && !form.webhook_secret.trim()) {
-    return '首次配置 DoDoPay 需要填写 Webhook Secret'
   }
   if (!form.pay_currency.trim()) return '请输入支付币种'
   if (!Number.isFinite(Number(form.usd_exchange_rate)) || Number(form.usd_exchange_rate) <= 0) {
@@ -456,17 +422,12 @@ async function saveConfig() {
       min_recharge_usd: Number(form.min_recharge_usd),
       channels: activeProvider.value === 'epay' ? normalizeChannels() : [],
       ...(form.merchant_key.trim() ? { merchant_key: form.merchant_key.trim() } : {}),
-      ...(activeProvider.value === 'dodopay' && form.webhook_secret.trim()
-        ? { webhook_secret: form.webhook_secret.trim() }
-        : {}),
     }
     const config = await activeGatewayApi().update(payload)
     hasSecret.value = config.has_secret
-    hasWebhookSecret.value = Boolean(config.has_webhook_secret)
     updatedAt.value = config.updated_at ?? null
     form.callback_base_url = config.callback_base_url || ''
     form.merchant_key = ''
-    form.webhook_secret = ''
     success(`${activeProviderMeta.value.name}配置已保存`)
   } catch (err) {
     log.error(`保存${activeProviderMeta.value.name}配置失败:`, err)

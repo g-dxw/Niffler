@@ -1,8 +1,5 @@
 use axum::{body::Body, http, response::Response};
-use base64::{
-    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
-    Engine as _,
-};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
@@ -16,9 +13,8 @@ use super::{payment_shared::payment_callback_payload_hash, AppState, GatewayPubl
 #[derive(Debug, Clone)]
 pub(crate) struct DodopayConfig {
     pub(crate) base_url: String,
-    pub(crate) product_id: String,
-    pub(crate) api_key: String,
-    pub(crate) webhook_secret: Option<String>,
+    pub(crate) app_id: String,
+    pub(crate) app_secret: String,
     pub(crate) callback_base_url: Option<String>,
     pub(crate) return_path: String,
     pub(crate) pay_currency: String,
@@ -31,8 +27,9 @@ pub(crate) struct DodopayCheckoutInput {
     pub(crate) order_no: String,
     pub(crate) subject: String,
     pub(crate) pay_amount: f64,
+    pub(crate) notify_url: String,
     pub(crate) return_url: String,
-    pub(crate) cancel_url: String,
+    pub(crate) cancel_base_url: String,
     pub(crate) payment_channel: String,
     pub(crate) metadata: serde_json::Value,
 }
@@ -45,11 +42,19 @@ pub(crate) struct DodopayCheckoutOutput {
 }
 
 #[derive(Debug, Deserialize)]
-struct DodopayCreateCheckoutResponse {
-    session_id: String,
+struct DodopayCreateOrderResponse {
+    order_id: String,
+    #[serde(default)]
+    payable_amount: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    expires_at: Option<String>,
     checkout_url: String,
     #[serde(default)]
-    payment_id: Option<String>,
+    selected_channel: Option<String>,
+    #[serde(default)]
+    confirmed_channel: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -88,34 +93,17 @@ pub(crate) async fn load_dodopay_config(state: &AppState) -> Result<DodopayConfi
         return Err("DoDoPay 未启用".to_string());
     }
     let Some(encrypted_secret) = record.merchant_key_encrypted.as_deref() else {
-        return Err("DoDoPay API Key 未配置".to_string());
+        return Err("DoDoPay App Secret 未配置".to_string());
     };
-    let Some(api_key) = crate::handlers::shared::decrypt_catalog_secret_with_fallbacks(
+    let Some(app_secret) = crate::handlers::shared::decrypt_catalog_secret_with_fallbacks(
         state.encryption_key(),
         encrypted_secret,
     ) else {
-        return Err("DoDoPay API Key 解密失败".to_string());
+        return Err("DoDoPay App Secret 解密失败".to_string());
     };
-    let webhook_secret = record
-        .webhook_secret_encrypted
-        .as_deref()
-        .map(|encrypted| {
-            crate::handlers::shared::decrypt_catalog_secret_with_fallbacks(
-                state.encryption_key(),
-                encrypted,
-            )
-            .ok_or_else(|| "DoDoPay Webhook Secret 解密失败".to_string())
-        })
-        .transpose()?;
-    let Some(webhook_secret) = webhook_secret
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    else {
-        return Err("DoDoPay Webhook Secret 未配置".to_string());
-    };
-    let product_id = record.merchant_id.trim();
-    if product_id.is_empty() {
-        return Err("DoDoPay 产品 ID 未配置".to_string());
+    let app_id = record.merchant_id.trim();
+    if app_id.is_empty() {
+        return Err("DoDoPay App ID 未配置".to_string());
     }
     let Some(base_url) = normalize_base_url(&record.endpoint_url) else {
         return Err("DoDoPay 服务地址必须是 http(s) 绝对地址".to_string());
@@ -128,9 +116,8 @@ pub(crate) async fn load_dodopay_config(state: &AppState) -> Result<DodopayConfi
     }
     Ok(DodopayConfig {
         base_url,
-        product_id: product_id.to_string(),
-        api_key,
-        webhook_secret: Some(webhook_secret),
+        app_id: app_id.to_string(),
+        app_secret,
         callback_base_url,
         return_path: "/dashboard/wallet".to_string(),
         pay_currency: record.pay_currency,
@@ -192,32 +179,55 @@ pub(crate) fn dodopay_return_url(config: &DodopayConfig, callback_base_url: &str
     )
 }
 
-fn dodopay_cancel_token(secret: &str, order_no: &str) -> String {
+fn dodopay_cancel_token(secret: &str, order_no: &str, gateway_order_id: Option<&str>) -> String {
     let mut mac =
         Hmac::<Sha256>::new_from_slice(secret.trim().as_bytes()).expect("hmac key should work");
     mac.update(b"dodopay.cancel.");
     mac.update(order_no.as_bytes());
+    if let Some(gateway_order_id) = gateway_order_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        mac.update(b".");
+        mac.update(gateway_order_id.as_bytes());
+    }
     URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
 }
 
-fn dodopay_verify_cancel_token(secret: &str, order_no: &str, token: &str) -> bool {
-    let expected = dodopay_cancel_token(secret, order_no);
+fn dodopay_verify_cancel_token(
+    secret: &str,
+    order_no: &str,
+    gateway_order_id: Option<&str>,
+    token: &str,
+) -> bool {
+    let expected = dodopay_cancel_token(secret, order_no, gateway_order_id);
     dodopay_timing_safe_equal(token.trim(), &expected)
 }
 
 pub(crate) fn dodopay_cancel_url(
     callback_base_url: &str,
     order_no: &str,
+    gateway_order_id: Option<&str>,
     signing_secret: &str,
 ) -> String {
     let encoded_order_no =
         url::form_urlencoded::byte_serialize(order_no.as_bytes()).collect::<String>();
-    let token = dodopay_cancel_token(signing_secret, order_no);
+    let gateway_order_id = gateway_order_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let token = dodopay_cancel_token(signing_secret, order_no, gateway_order_id);
     let encoded_token = url::form_urlencoded::byte_serialize(token.as_bytes()).collect::<String>();
-    format!(
+    let mut url = format!(
         "{}/api/payment/dodopay/cancel?order_no={encoded_order_no}&token={encoded_token}",
         callback_base_url.trim_end_matches('/')
-    )
+    );
+    if let Some(gateway_order_id) = gateway_order_id {
+        let encoded_gateway_order_id =
+            url::form_urlencoded::byte_serialize(gateway_order_id.as_bytes()).collect::<String>();
+        url.push_str("&gateway_order_id=");
+        url.push_str(&encoded_gateway_order_id);
+    }
+    url
 }
 
 pub(crate) fn configured_dodopay_channels() -> [DodopayPaymentChannel; 2] {
@@ -325,85 +335,118 @@ pub(crate) fn dodopay_verify_payload_signature(
     Ok(dodopay_timing_safe_equal(&provided, &expected))
 }
 
-fn dodopay_has_standard_webhook_headers(headers: &http::HeaderMap) -> bool {
-    crate::headers::header_value_str(headers, "webhook-id").is_some()
-        || crate::headers::header_value_str(headers, "webhook-timestamp").is_some()
-        || crate::headers::header_value_str(headers, "webhook-signature").is_some()
+fn dodopay_checkout_url(config: &DodopayConfig) -> String {
+    format!("{}/api/v1/orders", config.base_url.trim_end_matches('/'))
 }
 
-fn dodopay_standard_webhook_id(headers: &http::HeaderMap) -> Option<String> {
-    crate::headers::header_value_str(headers, "webhook-id")
-}
-
-fn dodopay_standard_webhook_secret_key(secret: &str) -> Vec<u8> {
-    let trimmed = secret.trim();
-    let Some(encoded) = trimmed.strip_prefix("whsec_") else {
-        return trimmed.as_bytes().to_vec();
-    };
-    STANDARD
-        .decode(encoded)
-        .ok()
-        .filter(|bytes| !bytes.is_empty())
-        .or_else(|| {
-            URL_SAFE_NO_PAD
-                .decode(encoded)
-                .ok()
-                .filter(|bytes| !bytes.is_empty())
-        })
-        .unwrap_or_else(|| trimmed.as_bytes().to_vec())
-}
-
-fn dodopay_standard_webhook_signature_candidates(header: &str) -> Vec<String> {
-    header
-        .split_whitespace()
-        .filter_map(|item| {
-            let trimmed = item.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            if let Some((version, signature)) = trimmed.split_once(',') {
-                if version.eq_ignore_ascii_case("v1") {
-                    return Some(signature.trim().to_string());
-                }
-            }
-            Some(trimmed.to_string())
-        })
-        .filter(|value| !value.is_empty())
-        .collect()
-}
-
-pub(crate) fn dodopay_verify_standard_webhook_signature(
-    webhook_secret: &str,
-    headers: &http::HeaderMap,
-    raw_body: &[u8],
-) -> Result<bool, String> {
-    let webhook_id = crate::headers::header_value_str(headers, "webhook-id")
-        .ok_or_else(|| "missing webhook-id".to_string())?;
-    let webhook_timestamp = crate::headers::header_value_str(headers, "webhook-timestamp")
-        .ok_or_else(|| "missing webhook-timestamp".to_string())?;
-    let webhook_signature = crate::headers::header_value_str(headers, "webhook-signature")
-        .ok_or_else(|| "missing webhook-signature".to_string())?;
-    let key = dodopay_standard_webhook_secret_key(webhook_secret);
-    if key.is_empty() {
-        return Err("empty webhook secret".to_string());
-    }
-    let mut mac = Hmac::<Sha256>::new_from_slice(&key)
-        .map_err(|err| format!("dodopay webhook hmac init failed: {err}"))?;
-    mac.update(webhook_id.as_bytes());
-    mac.update(b".");
-    mac.update(webhook_timestamp.as_bytes());
-    mac.update(b".");
-    mac.update(raw_body);
-    let expected = STANDARD.encode(mac.finalize().into_bytes());
-    Ok(
-        dodopay_standard_webhook_signature_candidates(&webhook_signature)
-            .iter()
-            .any(|candidate| dodopay_timing_safe_equal(candidate, &expected)),
+fn dodopay_channel_url(config: &DodopayConfig, order_id: &str) -> String {
+    let encoded_order_id =
+        url::form_urlencoded::byte_serialize(order_id.as_bytes()).collect::<String>();
+    format!(
+        "{}/api/v1/orders/{encoded_order_id}/channel",
+        config.base_url.trim_end_matches('/')
     )
 }
 
-fn dodopay_checkout_url(config: &DodopayConfig) -> String {
-    format!("{}/checkouts", config.base_url.trim_end_matches('/'))
+fn dodopay_cancel_order_url(config: &DodopayConfig, order_id: &str) -> String {
+    let encoded_order_id =
+        url::form_urlencoded::byte_serialize(order_id.as_bytes()).collect::<String>();
+    format!(
+        "{}/api/v1/orders/{encoded_order_id}/cancel",
+        config.base_url.trim_end_matches('/')
+    )
+}
+
+fn dodopay_provider_channel(channel: &str) -> Result<&'static str, String> {
+    match normalize_dodopay_payment_channel(Some(channel))?.as_str() {
+        "ali_pay" => Ok("ALIPAY"),
+        "we_chat_pay" => Ok("WECHAT"),
+        _ => Err("DoDoPay 只支持选择支付宝或微信支付".to_string()),
+    }
+}
+
+fn dodopay_format_amount(amount: f64) -> String {
+    format!("{:.2}", (amount * 100.0).round() / 100.0)
+}
+
+fn dodopay_parse_decimal_amount(value: Option<&str>) -> Option<f64> {
+    let amount = value?.trim().parse::<f64>().ok()?;
+    amount
+        .is_finite()
+        .then_some(amount)
+        .filter(|value| *value > 0.0)
+}
+
+fn dodopay_signed_body(
+    app_id: &str,
+    app_secret: &str,
+    mut body: serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    body.insert(
+        "app_id".to_string(),
+        serde_json::Value::String(app_id.to_string()),
+    );
+    body.insert(
+        "nonce".to_string(),
+        serde_json::Value::String(Uuid::new_v4().simple().to_string()),
+    );
+    body.insert(
+        "timestamp".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(Utc::now().timestamp())),
+    );
+    let mut value = serde_json::Value::Object(body);
+    let signature = dodopay_sign_payload(app_secret, &value)?;
+    if let serde_json::Value::Object(map) = &mut value {
+        map.insert(
+            "signature".to_string(),
+            serde_json::Value::String(signature),
+        );
+    }
+    Ok(value)
+}
+
+pub(crate) async fn cancel_dodopay_remote_order(
+    config: &DodopayConfig,
+    order_id: &str,
+) -> Result<(), String> {
+    let order_id = order_id.trim();
+    if order_id.is_empty() {
+        return Ok(());
+    }
+    let mut unsigned = serde_json::Map::new();
+    unsigned.insert(
+        "order_id".to_string(),
+        serde_json::Value::String(order_id.to_string()),
+    );
+    let body = dodopay_signed_body(&config.app_id, &config.app_secret, unsigned)?;
+    let response = reqwest::Client::new()
+        .post(dodopay_cancel_order_url(config, order_id))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|err| format!("dodopay cancel order failed: {err}"))?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let response_text = response.text().await.unwrap_or_else(|_| String::new());
+    Err(format!(
+        "dodopay cancel order returned {status}: {response_text}"
+    ))
+}
+
+pub(crate) async fn cancel_dodopay_checkout_after_local_failure(
+    config: &DodopayConfig,
+    checkout: &DodopayCheckoutOutput,
+    reason: &str,
+) {
+    if let Err(err) = cancel_dodopay_remote_order(config, &checkout.gateway_order_id).await {
+        warn!(
+            error = %err,
+            reason,
+            "failed to cancel dodopay order after local checkout failure"
+        );
+    }
 }
 
 pub(crate) async fn create_dodopay_checkout(
@@ -413,10 +456,7 @@ pub(crate) async fn create_dodopay_checkout(
     if !input.pay_amount.is_finite() || input.pay_amount <= 0.0 {
         return Err("dodopay amount is invalid".to_string());
     }
-    let amount_minor_units = (input.pay_amount * 100.0).round() as i64;
-    if amount_minor_units <= 0 {
-        return Err("dodopay amount is invalid".to_string());
-    }
+    let provider_channel = dodopay_provider_channel(&input.payment_channel)?;
     let mut metadata = match input.metadata.clone() {
         serde_json::Value::Object(map) => map,
         value if value.is_null() => serde_json::Map::new(),
@@ -434,26 +474,37 @@ pub(crate) async fn create_dodopay_checkout(
         "subject".to_string(),
         serde_json::Value::String(input.subject.clone()),
     );
-    let body = json!({
-        "product_cart": [{
-            "product_id": config.product_id,
-            "quantity": 1,
-            "amount": amount_minor_units,
-        }],
-        "allowed_payment_method_types": [input.payment_channel],
-        "billing_currency": config.pay_currency,
-        "return_url": input.return_url,
-        "cancel_url": input.cancel_url,
-        "metadata": serde_json::Value::Object(metadata),
-    });
+    let mut unsigned = serde_json::Map::new();
+    unsigned.insert(
+        "merchant_order_id".to_string(),
+        serde_json::Value::String(input.order_no.clone()),
+    );
+    unsigned.insert(
+        "amount".to_string(),
+        serde_json::Value::String(dodopay_format_amount(input.pay_amount)),
+    );
+    unsigned.insert(
+        "subject".to_string(),
+        serde_json::Value::String(input.subject.clone()),
+    );
+    unsigned.insert(
+        "notify_url".to_string(),
+        serde_json::Value::String(input.notify_url.clone()),
+    );
+    unsigned.insert(
+        "return_url".to_string(),
+        serde_json::Value::String(input.return_url.clone()),
+    );
+    unsigned.insert("metadata".to_string(), serde_json::Value::Object(metadata));
+    let body = dodopay_signed_body(&config.app_id, &config.app_secret, unsigned)?;
 
-    let response = reqwest::Client::new()
+    let client = reqwest::Client::new();
+    let response = client
         .post(dodopay_checkout_url(config))
-        .bearer_auth(&config.api_key)
         .json(&body)
         .send()
         .await
-        .map_err(|err| format!("dodopay create checkout failed: {err}"))?;
+        .map_err(|err| format!("dodopay create order failed: {err}"))?;
     let status = response.status();
     let response_text = response
         .text()
@@ -461,38 +512,69 @@ pub(crate) async fn create_dodopay_checkout(
         .map_err(|err| format!("dodopay response read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!(
-            "dodopay create checkout returned {status}: {response_text}"
+            "dodopay create order returned {status}: {response_text}"
         ));
     }
-    let checkout: DodopayCreateCheckoutResponse = serde_json::from_str(&response_text)
+    let checkout: DodopayCreateOrderResponse = serde_json::from_str(&response_text)
         .map_err(|err| format!("dodopay response parse failed: {err}"))?;
     let checkout_url = checkout.checkout_url.trim().to_string();
     if checkout_url.is_empty() {
         return Err("dodopay checkout_url is empty".to_string());
     }
-    let gateway_order_id = checkout
-        .payment_id
-        .clone()
-        .unwrap_or_else(|| checkout.session_id.clone());
+    let gateway_order_id = checkout.order_id.trim().to_string();
+    if gateway_order_id.is_empty() {
+        return Err("dodopay order_id is empty".to_string());
+    }
+    let channel_response = client
+        .post(dodopay_channel_url(config, &gateway_order_id))
+        .json(&json!({ "channel": provider_channel }))
+        .send()
+        .await
+        .map_err(|err| format!("dodopay save payment channel failed: {err}"))?;
+    let channel_status = channel_response.status();
+    let channel_response_text = channel_response
+        .text()
+        .await
+        .unwrap_or_else(|_| String::new());
+    if !channel_status.is_success() {
+        if let Err(err) = cancel_dodopay_remote_order(config, &gateway_order_id).await {
+            warn!(error = %err, "failed to cancel dodopay order after channel save failure");
+        }
+        return Err(format!(
+            "dodopay save payment channel returned {channel_status}: {channel_response_text}"
+        ));
+    }
+    let payable_amount = dodopay_parse_decimal_amount(checkout.payable_amount.as_deref())
+        .unwrap_or(input.pay_amount);
+    let provider_order_status = checkout.status.unwrap_or_else(|| "pending".to_string());
+    let local_cancel_url = dodopay_cancel_url(
+        &input.cancel_base_url,
+        &input.order_no,
+        Some(&gateway_order_id),
+        &config.app_secret,
+    );
     let payment_instructions = json!({
         "gateway": "dodopay",
         "display_name": dodopay_payment_channel_display_name(&input.payment_channel),
         "gateway_order_id": gateway_order_id,
-        "checkout_session_id": checkout.session_id,
-        "payment_id": checkout.payment_id,
+        "provider_order_id": checkout.order_id,
         "payment_url": checkout_url,
+        "local_cancel_url": local_cancel_url,
         "submit_method": "GET",
         "qr_code": serde_json::Value::Null,
-        "pay_amount": input.pay_amount,
+        "pay_amount": payable_amount,
         "pay_currency": config.pay_currency,
         "payment_channel": input.payment_channel,
-        "provider_order_status": "checkout_created",
-        "expires_at": serde_json::Value::Null,
+        "provider_channel": provider_channel,
+        "provider_order_status": provider_order_status,
+        "selected_channel": checkout.selected_channel,
+        "confirmed_channel": checkout.confirmed_channel,
+        "expires_at": checkout.expires_at,
     });
 
     Ok(DodopayCheckoutOutput {
         gateway_order_id,
-        pay_amount: input.pay_amount,
+        pay_amount: payable_amount,
         payment_instructions,
     })
 }
@@ -539,6 +621,10 @@ fn dodopay_query_param(query: Option<&str>, key: &str) -> Option<String> {
 
 fn dodopay_cancel_location() -> String {
     "/dashboard/wallet?payment_cancelled=1".to_string()
+}
+
+fn dodopay_cancel_failed_location() -> String {
+    "/dashboard/wallet?payment_cancel_failed=1".to_string()
 }
 
 fn dodopay_value_at<'a>(
@@ -710,11 +796,11 @@ fn dodopay_callback_pay_amount(payload: &serde_json::Value) -> Option<f64> {
     let object = dodopay_callback_object(payload);
     dodopay_amount_at(object, &["payment_amount"], true)
         .or_else(|| dodopay_amount_at(payload, &["payment_amount"], true))
+        .or_else(|| dodopay_amount_at(object, &["amount"], true))
+        .or_else(|| dodopay_amount_at(payload, &["amount"], true))
         .or_else(|| dodopay_amount_at(object, &["payable_amount"], false))
         .or_else(|| dodopay_amount_at(payload, &["payable_amount"], false))
         .or_else(|| dodopay_total_amount_excluding_tax(payload))
-        .or_else(|| dodopay_amount_at(object, &["amount"], true))
-        .or_else(|| dodopay_amount_at(payload, &["amount"], true))
 }
 
 pub(super) async fn handle_dodopay_cancel(
@@ -727,7 +813,24 @@ pub(super) async fn handle_dodopay_cancel(
         dodopay_query_param(query, "token"),
     ) {
         match load_dodopay_config(state).await {
-            Ok(config) if dodopay_verify_cancel_token(&config.api_key, &order_no, &token) => {
+            Ok(config) => {
+                let gateway_order_id = dodopay_query_param(query, "gateway_order_id")
+                    .or_else(|| dodopay_query_param(query, "order_id"));
+                if !dodopay_verify_cancel_token(
+                    &config.app_secret,
+                    &order_no,
+                    gateway_order_id.as_deref(),
+                    &token,
+                ) {
+                    warn!("rejected dodopay cancel callback with invalid token");
+                    return dodopay_redirect(dodopay_cancel_failed_location());
+                }
+                if let Some(gateway_order_id) = gateway_order_id.as_deref() {
+                    if let Err(err) = cancel_dodopay_remote_order(&config, gateway_order_id).await {
+                        warn!(error = %err, "failed to cancel dodopay remote order");
+                        return dodopay_redirect(dodopay_cancel_failed_location());
+                    }
+                }
                 let outcome = state
                     .cancel_payment_order(
                         aether_data::repository::wallet::CancelPaymentOrderInput {
@@ -738,24 +841,34 @@ pub(super) async fn handle_dodopay_cancel(
                         },
                     )
                     .await;
-                if let Err(err) = outcome {
-                    warn!(error = ?err, "failed to mark dodopay order as cancelled");
+                match outcome {
+                    Ok(Some(aether_data::repository::wallet::WalletMutationOutcome::Applied(
+                        _,
+                    ))) => {}
+                    Ok(other) => {
+                        warn!(outcome = ?other, "dodopay local cancel did not apply");
+                        return dodopay_redirect(dodopay_cancel_failed_location());
+                    }
+                    Err(err) => {
+                        warn!(error = ?err, "failed to mark dodopay order as cancelled");
+                        return dodopay_redirect(dodopay_cancel_failed_location());
+                    }
                 }
-            }
-            Ok(_) => {
-                warn!("rejected dodopay cancel callback with invalid token");
             }
             Err(err) => {
                 warn!(error = %err, "failed to load dodopay config for cancel callback");
+                return dodopay_redirect(dodopay_cancel_failed_location());
             }
         }
+    } else {
+        return dodopay_redirect(dodopay_cancel_failed_location());
     }
     dodopay_redirect(dodopay_cancel_location())
 }
 
 pub(super) async fn handle_dodopay_notify(
     state: &AppState,
-    headers: &http::HeaderMap,
+    _headers: &http::HeaderMap,
     request_body: Option<&axum::body::Bytes>,
 ) -> Response<Body> {
     let config = match load_dodopay_config(state).await {
@@ -769,23 +882,15 @@ pub(super) async fn handle_dodopay_notify(
         Ok(value) => value,
         Err(_) => return dodopay_plain(http::StatusCode::BAD_REQUEST, "fail"),
     };
-    let has_standard_headers = dodopay_has_standard_webhook_headers(headers);
-    let signature_valid = if has_standard_headers {
-        let Some(webhook_secret) = config.webhook_secret.as_deref() else {
-            return dodopay_plain(http::StatusCode::SERVICE_UNAVAILABLE, "fail");
-        };
-        dodopay_verify_standard_webhook_signature(webhook_secret, headers, request_body)
-            .unwrap_or_default()
-    } else {
-        dodopay_verify_payload_signature(&config.api_key, &payload).unwrap_or_default()
-    };
+    let signature_valid =
+        dodopay_verify_payload_signature(&config.app_secret, &payload).unwrap_or_default();
     if !signature_valid {
         return dodopay_plain(http::StatusCode::BAD_REQUEST, "fail");
     }
     if !dodopay_is_success_event(&payload) {
         return dodopay_plain(http::StatusCode::BAD_REQUEST, "fail");
     }
-    if !dodopay_product_matches(&payload, &config.product_id) {
+    if !dodopay_product_matches(&payload, &config.app_id) {
         return dodopay_plain(http::StatusCode::BAD_REQUEST, "fail");
     }
     if dodopay_callback_currency(&payload)
@@ -812,12 +917,7 @@ pub(super) async fn handle_dodopay_notify(
         Ok(value) => value,
         Err(_) => return dodopay_plain(http::StatusCode::BAD_REQUEST, "fail"),
     };
-    let callback_key = if has_standard_headers {
-        dodopay_standard_webhook_id(headers)
-    } else {
-        dodopay_string_at(&payload, &["event_id"])
-    }
-    .unwrap_or_else(|| {
+    let callback_key = dodopay_string_at(&payload, &["event_id"]).unwrap_or_else(|| {
         gateway_order_id
             .as_deref()
             .or(order_no.as_deref())
@@ -880,13 +980,11 @@ mod tests {
         CreateWalletRechargeOrderInput, CreateWalletRechargeOrderOutcome, StoredAdminPaymentOrder,
     };
     use aether_data_contracts::repository::billing::PaymentGatewayConfigWriteInput;
-    use base64::Engine as _;
-    use hmac::Mac;
     use serde_json::json;
 
-    async fn dodopay_test_state_with_webhook(
-        api_key: &str,
-        webhook_secret: Option<&str>,
+    async fn dodopay_test_state_with_endpoint(
+        endpoint_url: &str,
+        app_secret: &str,
     ) -> crate::AppState {
         let auth_repository = std::sync::Arc::new(
             aether_data::repository::auth::InMemoryAuthApiKeySnapshotRepository::default(),
@@ -909,24 +1007,19 @@ mod tests {
                 ),
             );
         let merchant_key_encrypted =
-            crate::handlers::shared::encrypt_catalog_secret_with_fallbacks(&state, api_key)
-                .expect("api key should encrypt");
-        let webhook_secret_encrypted = webhook_secret.map(|secret| {
-            crate::handlers::shared::encrypt_catalog_secret_with_fallbacks(&state, secret)
-                .expect("webhook secret should encrypt")
-        });
-        let preserve_existing_webhook_secret = webhook_secret_encrypted.is_none();
+            crate::handlers::shared::encrypt_catalog_secret_with_fallbacks(&state, app_secret)
+                .expect("app secret should encrypt");
         let outcome = state
             .upsert_payment_gateway_config(&PaymentGatewayConfigWriteInput {
                 provider: "dodopay".to_string(),
                 enabled: true,
-                endpoint_url: "https://test.dodopayments.com".to_string(),
+                endpoint_url: endpoint_url.to_string(),
                 callback_base_url: Some("https://aether.example.com".to_string()),
-                merchant_id: "product_123".to_string(),
+                merchant_id: "app_123".to_string(),
                 merchant_key_encrypted: Some(merchant_key_encrypted),
                 preserve_existing_secret: false,
-                webhook_secret_encrypted,
-                preserve_existing_webhook_secret,
+                webhook_secret_encrypted: None,
+                preserve_existing_webhook_secret: true,
                 pay_currency: "USD".to_string(),
                 usd_exchange_rate: 1.0,
                 min_recharge_usd: 1.0,
@@ -938,8 +1031,80 @@ mod tests {
         state
     }
 
-    async fn dodopay_test_state(api_key: &str) -> crate::AppState {
-        dodopay_test_state_with_webhook(api_key, Some("dodopay-webhook-secret")).await
+    async fn dodopay_test_state_with_app_secret(app_secret: &str) -> crate::AppState {
+        dodopay_test_state_with_endpoint("https://pay.dodododo.org", app_secret).await
+    }
+
+    async fn dodopay_test_state(app_secret: &str) -> crate::AppState {
+        dodopay_test_state_with_app_secret(app_secret).await
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedDodopayRequests {
+        create_order: std::sync::Arc<std::sync::Mutex<Option<serde_json::Value>>>,
+        save_channel: std::sync::Arc<std::sync::Mutex<Option<serde_json::Value>>>,
+    }
+
+    async fn start_dodopay_orders_test_server(
+        captured: CapturedDodopayRequests,
+    ) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = crate::test_support::bind_loopback_listener()
+            .await
+            .expect("listener should bind");
+        let addr = listener.local_addr().expect("local addr should resolve");
+        let base_url = format!("http://{addr}");
+        let checkout_url = format!("{base_url}/pay/order_remote_123");
+        let create_capture = captured.create_order.clone();
+        let channel_capture = captured.save_channel.clone();
+        let app = axum::Router::new()
+            .route(
+                "/api/v1/orders",
+                axum::routing::post(move |body: axum::body::Bytes| {
+                    let create_capture = create_capture.clone();
+                    let checkout_url = checkout_url.clone();
+                    async move {
+                        let payload: serde_json::Value =
+                            serde_json::from_slice(&body).expect("request should be json");
+                        *create_capture.lock().expect("capture lock") = Some(payload.clone());
+                        (
+                            axum::http::StatusCode::OK,
+                            axum::Json(json!({
+                                "order_id": "order_remote_123",
+                                "merchant_order_id": payload["merchant_order_id"],
+                                "amount": payload["amount"],
+                                "payable_amount": payload["amount"],
+                                "status": "pending",
+                                "expires_at": "2026-06-23T12:30:00.000Z",
+                                "paid_at": serde_json::Value::Null,
+                                "selected_channel": serde_json::Value::Null,
+                                "confirmed_channel": serde_json::Value::Null,
+                                "payer_name": serde_json::Value::Null,
+                                "payer_contact": serde_json::Value::Null,
+                                "payer_message": serde_json::Value::Null,
+                                "checkout_return_url": serde_json::Value::Null,
+                                "checkout_return_label": serde_json::Value::Null,
+                                "checkout_url": checkout_url,
+                            })),
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/api/v1/orders/order_remote_123/channel",
+                axum::routing::post(move |body: axum::body::Bytes| {
+                    let channel_capture = channel_capture.clone();
+                    async move {
+                        let payload: serde_json::Value =
+                            serde_json::from_slice(&body).expect("request should be json");
+                        *channel_capture.lock().expect("capture lock") = Some(payload);
+                        (axum::http::StatusCode::OK, axum::Json(json!({"ok": true})))
+                    }
+                }),
+            );
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("server should run");
+        });
+        (base_url, handle)
     }
 
     async fn create_cancel_test_order(
@@ -1000,36 +1165,6 @@ mod tests {
             .expect("order should exist")
     }
 
-    fn dodopay_standard_webhook_headers(
-        secret: &[u8],
-        webhook_id: &str,
-        timestamp: &str,
-        raw_body: &[u8],
-    ) -> axum::http::HeaderMap {
-        let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(secret).expect("hmac");
-        mac.update(webhook_id.as_bytes());
-        mac.update(b".");
-        mac.update(timestamp.as_bytes());
-        mac.update(b".");
-        mac.update(raw_body);
-        let signature =
-            base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            "webhook-id",
-            axum::http::HeaderValue::from_str(webhook_id).expect("header"),
-        );
-        headers.insert(
-            "webhook-timestamp",
-            axum::http::HeaderValue::from_str(timestamp).expect("header"),
-        );
-        headers.insert(
-            "webhook-signature",
-            axum::http::HeaderValue::from_str(&format!("v1,wrong v1,{signature}")).expect("header"),
-        );
-        headers
-    }
-
     #[test]
     fn dodopay_signs_stable_json_without_signature() {
         let mut payload = json!({
@@ -1084,42 +1219,88 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dodopay_config_requires_webhook_secret() {
-        let state = dodopay_test_state_with_webhook("dodopay-api-key", None).await;
+    async fn dodopay_config_uses_app_secret_without_webhook_secret() {
+        let state = dodopay_test_state_with_app_secret("dodopay-api-key").await;
 
-        let error = super::load_dodopay_config(&state)
+        let config = super::load_dodopay_config(&state)
             .await
-            .expect_err("webhook secret should be required");
+            .expect("app secret should be enough for pay.dodododo.org");
 
-        assert_eq!(error, "DoDoPay Webhook Secret 未配置");
+        assert_eq!(config.app_id, "app_123");
+        assert_eq!(config.app_secret, "dodopay-api-key");
     }
 
-    #[test]
-    fn dodopay_standard_webhook_signature_uses_raw_body_and_whsec_secret() {
-        let raw_body = br#"{"type":"payment.succeeded","data":{"object":{"id":"pay_1"}}}"#;
-        let changed_body = br#"{"data":{"object":{"id":"pay_1"}},"type":"payment.succeeded"}"#;
-        let webhook_secret = format!(
-            "whsec_{}",
-            base64::engine::general_purpose::STANDARD.encode(b"secret")
-        );
-        let headers = dodopay_standard_webhook_headers(b"secret", "evt_1", "1710000000", raw_body);
+    #[tokio::test]
+    async fn dodopay_checkout_uses_signed_orders_api_and_selected_channel() {
+        let captured = CapturedDodopayRequests::default();
+        let (base_url, handle) = start_dodopay_orders_test_server(captured.clone()).await;
+        let config = super::DodopayConfig {
+            base_url,
+            app_id: "app_test".to_string(),
+            app_secret: "dodopay-app-secret".to_string(),
+            callback_base_url: Some("https://aether.example.com".to_string()),
+            return_path: "/dashboard/wallet".to_string(),
+            pay_currency: "CNY".to_string(),
+            usd_exchange_rate: 7.2,
+            min_recharge_usd: 1.0,
+        };
 
-        assert!(super::dodopay_verify_standard_webhook_signature(
-            &webhook_secret,
-            &headers,
-            raw_body
+        let checkout = super::create_dodopay_checkout(
+            &config,
+            &super::DodopayCheckoutInput {
+                order_no: "po_test_123".to_string(),
+                subject: "钱包充值".to_string(),
+                pay_amount: 12.34,
+                notify_url: "https://aether.example.com/api/payment/dodopay/notify".to_string(),
+                return_url: "https://aether.example.com/dashboard/wallet".to_string(),
+                cancel_base_url: "https://aether.example.com".to_string(),
+                payment_channel: "we_chat_pay".to_string(),
+                metadata: json!({"kind": "wallet_recharge"}),
+            },
         )
-        .expect("verification should work"));
-        assert!(
-            super::dodopay_verify_standard_webhook_signature("secret", &headers, raw_body)
-                .expect("verification should work")
+        .await
+        .expect("checkout should be created");
+        handle.abort();
+
+        assert_eq!(checkout.gateway_order_id, "order_remote_123");
+        assert!(checkout.payment_instructions["payment_url"]
+            .as_str()
+            .is_some_and(|value| value.ends_with("/pay/order_remote_123")));
+        assert!(checkout.payment_instructions["local_cancel_url"]
+            .as_str()
+            .is_some_and(|value| value.contains("gateway_order_id=order_remote_123")));
+
+        let create_payload = captured
+            .create_order
+            .lock()
+            .expect("capture lock")
+            .clone()
+            .expect("create request should be captured");
+        assert_eq!(create_payload["app_id"], "app_test");
+        assert_eq!(create_payload["merchant_order_id"], "po_test_123");
+        assert_eq!(create_payload["amount"], "12.34");
+        assert_eq!(
+            create_payload["notify_url"],
+            "https://aether.example.com/api/payment/dodopay/notify"
         );
-        assert!(!super::dodopay_verify_standard_webhook_signature(
-            &webhook_secret,
-            &headers,
-            changed_body
-        )
-        .expect("verification should work"));
+        assert_eq!(
+            create_payload["return_url"],
+            "https://aether.example.com/dashboard/wallet"
+        );
+        assert!(create_payload.get("product_cart").is_none());
+        assert!(create_payload.get("allowed_payment_method_types").is_none());
+        assert!(
+            super::dodopay_verify_payload_signature("dodopay-app-secret", &create_payload)
+                .expect("signature should verify")
+        );
+
+        let channel_payload = captured
+            .save_channel
+            .lock()
+            .expect("capture lock")
+            .clone()
+            .expect("channel request should be captured");
+        assert_eq!(channel_payload, json!({"channel": "WECHAT"}));
     }
 
     #[test]
@@ -1145,29 +1326,53 @@ mod tests {
 
     #[test]
     fn dodopay_cancel_url_points_to_local_cancel_route() {
-        let cancel_url =
-            super::dodopay_cancel_url("https://aether.example.com/", "po_1 2", "secret");
+        let cancel_url = super::dodopay_cancel_url(
+            "https://aether.example.com/",
+            "po_1 2",
+            Some("order_1"),
+            "secret",
+        );
 
         assert!(cancel_url.starts_with(
             "https://aether.example.com/api/payment/dodopay/cancel?order_no=po_1+2&token="
         ));
+        assert!(cancel_url.contains("&gateway_order_id=order_1"));
         assert!(super::dodopay_verify_cancel_token(
             "secret",
             "po_1 2",
+            Some("order_1"),
             cancel_url
                 .split_once("token=")
                 .map(|(_, token)| token)
+                .and_then(|token| token
+                    .split_once('&')
+                    .map(|(token, _)| token)
+                    .or(Some(token)))
                 .expect("token should exist")
         ));
     }
 
     #[test]
     fn dodopay_cancel_token_is_bound_to_order_no() {
-        let token = super::dodopay_cancel_token("secret", "po_1");
+        let token = super::dodopay_cancel_token("secret", "po_1", Some("order_1"));
 
-        assert!(super::dodopay_verify_cancel_token("secret", "po_1", &token));
+        assert!(super::dodopay_verify_cancel_token(
+            "secret",
+            "po_1",
+            Some("order_1"),
+            &token
+        ));
         assert!(!super::dodopay_verify_cancel_token(
-            "secret", "po_2", &token
+            "secret",
+            "po_2",
+            Some("order_1"),
+            &token
+        ));
+        assert!(!super::dodopay_verify_cancel_token(
+            "secret",
+            "po_1",
+            Some("order_2"),
+            &token
         ));
     }
 
@@ -1180,6 +1385,7 @@ mod tests {
         let signed_url = super::dodopay_cancel_url(
             "https://aether.example.com",
             &signed_order.order_no,
+            None,
             api_key,
         );
         let signed_query = signed_url
@@ -1206,8 +1412,12 @@ mod tests {
         assert_eq!(unsigned_after_cancel.status, "pending");
 
         let epay_order = create_cancel_test_order(&state, "po-cancel-epay", "epay").await;
-        let epay_signed_url =
-            super::dodopay_cancel_url("https://aether.example.com", &epay_order.order_no, api_key);
+        let epay_signed_url = super::dodopay_cancel_url(
+            "https://aether.example.com",
+            &epay_order.order_no,
+            None,
+            api_key,
+        );
         let epay_signed_query = epay_signed_url
             .split_once('?')
             .map(|(_, query)| query)
@@ -1285,6 +1495,18 @@ mod tests {
         });
 
         assert_eq!(super::dodopay_callback_pay_amount(&payload), Some(9.99));
+    }
+
+    #[test]
+    fn dodopay_callback_pay_amount_prefers_business_amount_over_payable_amount() {
+        let payload = json!({
+            "event_type": "payment.succeeded",
+            "amount": "9.90",
+            "payable_amount": "9.91",
+            "received_amount": "9.91"
+        });
+
+        assert_eq!(super::dodopay_callback_pay_amount(&payload), Some(9.90));
     }
 
     #[tokio::test]

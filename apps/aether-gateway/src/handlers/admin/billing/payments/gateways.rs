@@ -30,7 +30,7 @@ impl PaymentGatewayProvider {
     fn default_endpoint_url(self) -> &'static str {
         match self {
             Self::Epay => "",
-            Self::Dodopay => "https://test.dodopayments.com",
+            Self::Dodopay => "https://pay.dodododo.org",
         }
     }
 
@@ -52,8 +52,6 @@ struct PaymentGatewayConfigRequest {
     merchant_id: String,
     #[serde(default)]
     merchant_key: Option<String>,
-    #[serde(default)]
-    webhook_secret: Option<String>,
     #[serde(default = "default_pay_currency")]
     pay_currency: String,
     #[serde(default = "default_usd_exchange_rate")]
@@ -122,7 +120,6 @@ fn gateway_config_payload(
         "callback_base_url": record.callback_base_url,
         "merchant_id": record.merchant_id,
         "has_secret": record.merchant_key_encrypted.as_deref().is_some_and(|value| !value.trim().is_empty()),
-        "has_webhook_secret": record.webhook_secret_encrypted.as_deref().is_some_and(|value| !value.trim().is_empty()),
         "pay_currency": record.pay_currency,
         "usd_exchange_rate": record.usd_exchange_rate,
         "min_recharge_usd": record.min_recharge_usd,
@@ -140,7 +137,6 @@ fn default_gateway_config_payload(provider: PaymentGatewayProvider) -> serde_jso
         "callback_base_url": serde_json::Value::Null,
         "merchant_id": "",
         "has_secret": false,
-        "has_webhook_secret": false,
         "pay_currency": default_pay_currency(),
         "usd_exchange_rate": default_usd_exchange_rate(),
         "min_recharge_usd": default_min_recharge_usd(),
@@ -222,22 +218,6 @@ pub(super) async fn maybe_build_local_admin_payment_gateways_response(
                 },
                 None => None,
             };
-            let webhook_secret_encrypted = match payload
-                .webhook_secret
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                Some(secret) => match state.encrypt_catalog_secret_with_fallbacks(secret) {
-                    Some(value) => Some(value),
-                    None => {
-                        return Ok(Some(build_admin_payments_backend_unavailable_response(
-                            "encryption key is not configured",
-                        )))
-                    }
-                },
-                None => None,
-            };
             let endpoint_url = match normalize_text(payload.endpoint_url, "endpoint_url", 512) {
                 Ok(value) => value,
                 Err(detail) => return Ok(Some(build_admin_payments_bad_request_response(detail))),
@@ -262,8 +242,8 @@ pub(super) async fn maybe_build_local_admin_payment_gateways_response(
                 merchant_id,
                 preserve_existing_secret: merchant_key_encrypted.is_none(),
                 merchant_key_encrypted,
-                preserve_existing_webhook_secret: webhook_secret_encrypted.is_none(),
-                webhook_secret_encrypted,
+                preserve_existing_webhook_secret: true,
+                webhook_secret_encrypted: None,
                 pay_currency,
                 usd_exchange_rate: payload.usd_exchange_rate,
                 min_recharge_usd: payload.min_recharge_usd,
@@ -291,12 +271,9 @@ pub(super) async fn maybe_build_local_admin_payment_gateways_response(
                 .app()
                 .find_payment_gateway_config(provider.id())
                 .await?;
-            let ok = status.as_ref().is_some_and(|record| {
-                record.enabled
-                    && record.merchant_key_encrypted.is_some()
-                    && (provider != PaymentGatewayProvider::Dodopay
-                        || record.webhook_secret_encrypted.is_some())
-            });
+            let ok = status
+                .as_ref()
+                .is_some_and(|record| record.enabled && record.merchant_key_encrypted.is_some());
             Ok(Some(
                 (
                     if ok {

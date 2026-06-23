@@ -1,6 +1,7 @@
 use super::support_payment::payment_dodopay::{
-    create_dodopay_checkout, dodopay_callback_base_url, dodopay_cancel_url, dodopay_return_url,
-    load_dodopay_config, normalize_dodopay_payment_channel, DodopayCheckoutInput,
+    cancel_dodopay_checkout_after_local_failure, create_dodopay_checkout,
+    dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
+    normalize_dodopay_payment_channel, DodopayCheckoutInput,
 };
 use super::support_payment::payment_epay::{
     build_epay_checkout_url, epay_callback_base_url, load_epay_config, resolve_epay_channel,
@@ -440,8 +441,9 @@ pub(super) async fn handle_billing_plan_checkout(
                 order_no: order_no.clone(),
                 subject: plan.title.clone(),
                 pay_amount,
+                notify_url: format!("{callback_base_url}/api/payment/dodopay/notify"),
                 return_url: dodopay_return_url(&config, &callback_base_url),
-                cancel_url: dodopay_cancel_url(&callback_base_url, &order_no, &config.api_key),
+                cancel_base_url: callback_base_url.clone(),
                 payment_channel: payment_channel.clone(),
                 metadata: json!({
                     "kind": "plan_purchase",
@@ -475,6 +477,12 @@ pub(super) async fn handle_billing_plan_checkout(
         {
             Ok(Some(WalletMutationOutcome::Applied(order))) => order,
             Ok(Some(WalletMutationOutcome::NotFound)) | Ok(None) => {
+                cancel_dodopay_checkout_after_local_failure(
+                    &config,
+                    &checkout,
+                    "billing_order_not_found",
+                )
+                .await;
                 let _ = state
                     .cancel_payment_order(CancelPaymentOrderInput {
                         order_no: pending_order.order_no.clone(),
@@ -486,6 +494,12 @@ pub(super) async fn handle_billing_plan_checkout(
                 return billing_storage_unavailable_response();
             }
             Ok(Some(WalletMutationOutcome::Invalid(detail))) => {
+                cancel_dodopay_checkout_after_local_failure(
+                    &config,
+                    &checkout,
+                    "billing_order_invalid",
+                )
+                .await;
                 let _ = state
                     .cancel_payment_order(CancelPaymentOrderInput {
                         order_no: pending_order.order_no.clone(),
@@ -497,6 +511,12 @@ pub(super) async fn handle_billing_plan_checkout(
                 return build_auth_error_response(http::StatusCode::CONFLICT, detail, false);
             }
             Err(err) => {
+                cancel_dodopay_checkout_after_local_failure(
+                    &config,
+                    &checkout,
+                    "billing_checkout_attach_error",
+                )
+                .await;
                 let _ = state
                     .cancel_payment_order(CancelPaymentOrderInput {
                         order_no: pending_order.order_no.clone(),

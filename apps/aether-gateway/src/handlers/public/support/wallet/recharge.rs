@@ -1,7 +1,7 @@
 use super::super::support_payment::payment_dodopay::{
-    configured_dodopay_channels, create_dodopay_checkout, dodopay_callback_base_url,
-    dodopay_cancel_url, dodopay_return_url, load_dodopay_config, normalize_dodopay_payment_channel,
-    DodopayCheckoutInput,
+    cancel_dodopay_checkout_after_local_failure, configured_dodopay_channels,
+    create_dodopay_checkout, dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
+    normalize_dodopay_payment_channel, DodopayCheckoutInput,
 };
 use super::super::support_payment::payment_epay::{
     build_epay_checkout_url, configured_epay_channels, epay_callback_base_url, load_epay_config,
@@ -539,8 +539,9 @@ pub(super) async fn handle_wallet_create_recharge(
                 order_no: order_no.clone(),
                 subject: "钱包充值".to_string(),
                 pay_amount,
+                notify_url: format!("{callback_base_url}/api/payment/dodopay/notify"),
                 return_url: dodopay_return_url(&config, &callback_base_url),
-                cancel_url: dodopay_cancel_url(&callback_base_url, &order_no, &config.api_key),
+                cancel_base_url: callback_base_url.clone(),
                 payment_channel: payment_channel.clone(),
                 metadata: json!({
                     "kind": "wallet_recharge",
@@ -573,6 +574,12 @@ pub(super) async fn handle_wallet_create_recharge(
         {
             Ok(Some(WalletMutationOutcome::Applied(order))) => order,
             Ok(Some(WalletMutationOutcome::NotFound)) | Ok(None) => {
+                cancel_dodopay_checkout_after_local_failure(
+                    &config,
+                    &checkout,
+                    "wallet_recharge_order_not_found",
+                )
+                .await;
                 let _ = state
                     .cancel_payment_order(CancelPaymentOrderInput {
                         order_no: pending_order.order_no.clone(),
@@ -584,6 +591,12 @@ pub(super) async fn handle_wallet_create_recharge(
                 return build_wallet_recharge_storage_unavailable_response();
             }
             Ok(Some(WalletMutationOutcome::Invalid(detail))) => {
+                cancel_dodopay_checkout_after_local_failure(
+                    &config,
+                    &checkout,
+                    "wallet_recharge_order_invalid",
+                )
+                .await;
                 let _ = state
                     .cancel_payment_order(CancelPaymentOrderInput {
                         order_no: pending_order.order_no.clone(),
@@ -595,6 +608,12 @@ pub(super) async fn handle_wallet_create_recharge(
                 return build_auth_error_response(http::StatusCode::CONFLICT, detail, false);
             }
             Err(err) => {
+                cancel_dodopay_checkout_after_local_failure(
+                    &config,
+                    &checkout,
+                    "wallet_recharge_attach_error",
+                )
+                .await;
                 let _ = state
                     .cancel_payment_order(CancelPaymentOrderInput {
                         order_no: pending_order.order_no.clone(),

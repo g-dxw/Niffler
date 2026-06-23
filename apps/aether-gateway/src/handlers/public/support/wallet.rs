@@ -56,6 +56,7 @@ const WALLET_SAFE_GATEWAY_RESPONSE_KEYS: &[&str] = &[
     "display_name",
     "gateway_order_id",
     "payment_url",
+    "local_cancel_url",
     "payment_params",
     "submit_method",
     "qr_code",
