@@ -6,6 +6,7 @@ use crate::{handlers::proxy::proxy_request, state::AppState};
 pub(crate) fn mount_public_support_routes(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/v1/models", get(proxy_request))
+        .route("/user/balance", get(proxy_request))
         .route("/v1beta/models", get(proxy_request))
         .route("/v1/health", get(proxy_request))
         .route("/health", get(proxy_request))

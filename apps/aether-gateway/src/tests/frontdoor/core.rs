@@ -190,6 +190,26 @@ async fn gateway_serves_frontend_routes_and_assets_without_shadowing_public_api(
     assert_eq!(payload["site_subtitle"], "AI Gateway");
 
     let response = client
+        .get(format!("{gateway_url}/user/balance"))
+        .bearer_auth("invalid-static-bypass-test-key")
+        .send()
+        .await
+        .expect("ccswitch balance request should succeed");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        content_type.starts_with("application/json"),
+        "ccswitch balance route must not be served as frontend HTML"
+    );
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert!(payload.is_object());
+
+    let response = client
         .get(format!("{gateway_url}/install/4b143b471afa4d9ebc652d95"))
         .send()
         .await
