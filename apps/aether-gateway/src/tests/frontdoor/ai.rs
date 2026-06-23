@@ -133,6 +133,220 @@ async fn gateway_handles_ccswitch_usage_without_touching_last_used() {
     gateway_handle.abort();
 }
 
+#[tokio::test]
+async fn gateway_handles_ccswitch_user_balance_with_api_key_without_proxying_upstream() {
+    let upstream_hits = Arc::new(Mutex::new(0usize));
+    let upstream_hits_clone = Arc::clone(&upstream_hits);
+    let upstream = Router::new().route(
+        "/{*path}",
+        any(move |_request: Request| {
+            let upstream_hits_inner = Arc::clone(&upstream_hits_clone);
+            async move {
+                *upstream_hits_inner.lock().expect("mutex should lock") += 1;
+                (StatusCode::OK, Body::from("proxied"))
+            }
+        }),
+    );
+    let (_upstream_url, upstream_handle) = start_server(upstream).await;
+
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+        Some(hash_api_key("sk-ccswitch-balance")),
+        unrestricted_models_snapshot("api-key-ccswitch-balance", "user-ccswitch-balance"),
+    )]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(vec![
+        StoredWalletSnapshot::new(
+            "wallet-ccswitch-balance".to_string(),
+            Some("user-ccswitch-balance".to_string()),
+            None,
+            12.5,
+            3.0,
+            "finite".to_string(),
+            "USD".to_string(),
+            "active".to_string(),
+            20.0,
+            4.5,
+            0.0,
+            0.0,
+            1_711_000_000,
+        )
+        .expect("wallet should build"),
+    ]));
+    let billing_repository = Arc::new(StaticDailyQuotaBillingRepository {
+        user_id: "user-ccswitch-balance".to_string(),
+        quota: UserDailyQuotaAvailabilityRecord {
+            has_active_daily_quota: true,
+            total_quota_usd: 10.0,
+            used_usd: 4.0,
+            remaining_usd: 6.0,
+            base_remaining_usd: 6.0,
+            allow_wallet_overage: true,
+        },
+    });
+
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                crate::data::GatewayDataState::with_auth_billing_and_wallet_for_tests(
+                    auth_repository.clone(),
+                    billing_repository,
+                    wallet_repository,
+                ),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("{gateway_url}/user/balance"))
+        .header("authorization", "Bearer sk-ccswitch-balance")
+        .header("user-agent", "cc-switch/1.0")
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["is_active"], true);
+    assert_eq!(payload["isValid"], true);
+    assert_eq!(payload["unit"], "USD");
+    assert_eq!(payload["wallet_balance"], 15.5);
+    assert_eq!(payload["package_balance"], 6.0);
+    assert_eq!(payload["total_available_balance"], 21.5);
+    assert_eq!(payload["remaining"], 21.5);
+    assert_eq!(payload["balance"], 21.5);
+    assert_eq!(payload["api_key"]["id"], "api-key-ccswitch-balance");
+    assert_eq!(payload["api_key"]["name"], "default");
+    assert_eq!(auth_repository.touch_count("api-key-ccswitch-balance"), 0);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
+    gateway_handle.abort();
+    upstream_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_reports_ccswitch_user_balance_as_null_for_unlimited_wallet() {
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
+        Some(hash_api_key("sk-ccswitch-unlimited-balance")),
+        unrestricted_models_snapshot(
+            "api-key-ccswitch-unlimited-balance",
+            "user-ccswitch-unlimited-balance",
+        ),
+    )]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(vec![
+        StoredWalletSnapshot::new(
+            "wallet-ccswitch-unlimited-balance".to_string(),
+            Some("user-ccswitch-unlimited-balance".to_string()),
+            None,
+            0.0,
+            0.0,
+            "unlimited".to_string(),
+            "USD".to_string(),
+            "active".to_string(),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1_711_000_000,
+        )
+        .expect("wallet should build"),
+    ]));
+    let billing_repository = Arc::new(StaticDailyQuotaBillingRepository {
+        user_id: "user-ccswitch-unlimited-balance".to_string(),
+        quota: UserDailyQuotaAvailabilityRecord {
+            has_active_daily_quota: false,
+            total_quota_usd: 0.0,
+            used_usd: 0.0,
+            remaining_usd: 0.0,
+            base_remaining_usd: 0.0,
+            allow_wallet_overage: true,
+        },
+    });
+
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                crate::data::GatewayDataState::with_auth_billing_and_wallet_for_tests(
+                    auth_repository.clone(),
+                    billing_repository,
+                    wallet_repository,
+                ),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("{gateway_url}/user/balance"))
+        .header("authorization", "Bearer sk-ccswitch-unlimited-balance")
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["is_active"], true);
+    assert_eq!(payload["unlimited"], true);
+    assert!(payload["total_available_balance"].is_null());
+    assert!(payload["remaining"].is_null());
+    assert!(payload["balance"].is_null());
+    assert!(payload["quota"]["remaining"].is_null());
+    assert_eq!(
+        auth_repository.touch_count("api-key-ccswitch-unlimited-balance"),
+        0
+    );
+
+    gateway_handle.abort();
+}
+
+#[tokio::test]
+async fn gateway_reports_ccswitch_user_balance_as_inactive_for_unknown_api_key() {
+    let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![]));
+    let wallet_repository = Arc::new(InMemoryWalletRepository::seed(
+        Vec::<StoredWalletSnapshot>::new(),
+    ));
+    let billing_repository = Arc::new(StaticDailyQuotaBillingRepository {
+        user_id: "unknown".to_string(),
+        quota: UserDailyQuotaAvailabilityRecord {
+            has_active_daily_quota: false,
+            total_quota_usd: 0.0,
+            used_usd: 0.0,
+            remaining_usd: 0.0,
+            base_remaining_usd: 0.0,
+            allow_wallet_overage: true,
+        },
+    });
+
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                crate::data::GatewayDataState::with_auth_billing_and_wallet_for_tests(
+                    auth_repository,
+                    billing_repository,
+                    wallet_repository,
+                ),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("{gateway_url}/user/balance"))
+        .header("authorization", "Bearer sk-unknown-ccswitch-balance")
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["is_active"], false);
+    assert_eq!(payload["isValid"], false);
+    assert_eq!(payload["unit"], "USD");
+    assert_eq!(payload["remaining"], 0.0);
+    assert_eq!(payload["balance"], 0.0);
+
+    gateway_handle.abort();
+}
+
 fn sample_gemini_video_task(
     id: &str,
     short_id: &str,

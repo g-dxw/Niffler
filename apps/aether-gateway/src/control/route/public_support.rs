@@ -32,6 +32,14 @@ pub(super) fn classify_public_support_route(
             "key:usage",
             false,
         ))
+    } else if method == http::Method::GET && normalized_path == "/user/balance" {
+        Some(classified(
+            "public_support",
+            "ccswitch",
+            "balance",
+            "key:usage",
+            false,
+        ))
     } else if method == http::Method::GET && normalized_path == "/v1/models" {
         Some(classified(
             "public_support",

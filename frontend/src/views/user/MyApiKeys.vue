@@ -913,7 +913,7 @@
         </div>
 
         <p class="text-xs text-muted-foreground">
-          导入时会读取完整 API Key，并通过本机协议交给 CC Switch；余额检查会访问 /v1/usage。
+          导入时会读取完整 API Key，并通过本机协议交给 CC Switch；余额检查会访问 /user/balance。
         </p>
       </div>
 

@@ -35,8 +35,8 @@ describe('ccswitchImport', () => {
     expect(params.get('usageBaseUrl')).toBe('https://niffler.example.com')
 
     const usageScript = decodeBase64(params.get('usageScript') ?? '')
-    expect(usageScript).toContain('{{baseUrl}}/v1/usage?model=gpt-5.4')
-    expect(usageScript).not.toContain('{{baseUrl}}/v1/v1/usage')
+    expect(usageScript).toContain('{{baseUrl}}/user/balance?model=gpt-5.4')
+    expect(usageScript).not.toContain('{{baseUrl}}/v1/user/balance')
   })
 
   it('builds a Claude provider import link with usage check script', () => {
@@ -53,7 +53,7 @@ describe('ccswitchImport', () => {
     expect(params.get('usageBaseUrl')).toBe('https://niffler.example.com')
 
     const usageScript = decodeBase64(params.get('usageScript') ?? '')
-    expect(usageScript).toContain('{{baseUrl}}/v1/usage')
+    expect(usageScript).toContain('{{baseUrl}}/user/balance')
     expect(usageScript).toContain('Authorization')
     expect(usageScript).toContain('Bearer {{apiKey}}')
   })

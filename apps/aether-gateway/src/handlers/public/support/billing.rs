@@ -445,6 +445,7 @@ pub(super) async fn handle_billing_plan_checkout(
                 return_url: dodopay_return_url(&config, &callback_base_url),
                 cancel_base_url: callback_base_url.clone(),
                 payment_channel: payment_channel.clone(),
+                payer_name: Some(auth.user.username.clone()),
                 metadata: json!({
                     "kind": "plan_purchase",
                     "plan_id": plan.id.clone(),

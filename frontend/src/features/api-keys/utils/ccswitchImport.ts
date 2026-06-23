@@ -24,7 +24,7 @@ export function buildCcSwitchUsageScript(model?: string): string {
 
   return `({
     request: {
-      url: "{{baseUrl}}/v1/usage${modelQuery}",
+      url: "{{baseUrl}}/user/balance${modelQuery}",
       method: "GET",
       headers: { "Authorization": "Bearer {{apiKey}}" }
     },

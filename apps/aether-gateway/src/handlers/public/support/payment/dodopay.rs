@@ -31,6 +31,7 @@ pub(crate) struct DodopayCheckoutInput {
     pub(crate) return_url: String,
     pub(crate) cancel_base_url: String,
     pub(crate) payment_channel: String,
+    pub(crate) payer_name: Option<String>,
     pub(crate) metadata: serde_json::Value,
 }
 
@@ -369,6 +370,11 @@ fn dodopay_format_amount(amount: f64) -> String {
     format!("{:.2}", (amount * 100.0).round() / 100.0)
 }
 
+fn dodopay_optional_text(value: Option<&str>, max_chars: usize) -> Option<String> {
+    let normalized = value?.trim().chars().take(max_chars).collect::<String>();
+    (!normalized.is_empty()).then_some(normalized)
+}
+
 fn dodopay_parse_decimal_amount(value: Option<&str>) -> Option<f64> {
     let amount = value?.trim().parse::<f64>().ok()?;
     amount
@@ -495,6 +501,12 @@ pub(crate) async fn create_dodopay_checkout(
         "return_url".to_string(),
         serde_json::Value::String(input.return_url.clone()),
     );
+    if let Some(payer_name) = dodopay_optional_text(input.payer_name.as_deref(), 80) {
+        unsigned.insert(
+            "payer_name".to_string(),
+            serde_json::Value::String(payer_name),
+        );
+    }
     unsigned.insert("metadata".to_string(), serde_json::Value::Object(metadata));
     let body = dodopay_signed_body(&config.app_id, &config.app_secret, unsigned)?;
 
@@ -1255,6 +1267,7 @@ mod tests {
                 return_url: "https://aether.example.com/dashboard/wallet".to_string(),
                 cancel_base_url: "https://aether.example.com".to_string(),
                 payment_channel: "we_chat_pay".to_string(),
+                payer_name: Some("alice".to_string()),
                 metadata: json!({"kind": "wallet_recharge"}),
             },
         )
@@ -1287,6 +1300,7 @@ mod tests {
             create_payload["return_url"],
             "https://aether.example.com/dashboard/wallet"
         );
+        assert_eq!(create_payload["payer_name"], "alice");
         assert!(create_payload.get("product_cart").is_none());
         assert!(create_payload.get("allowed_payment_method_types").is_none());
         assert!(

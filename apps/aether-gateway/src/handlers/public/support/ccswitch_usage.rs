@@ -11,25 +11,37 @@ pub(super) async fn maybe_build_local_ccswitch_usage_response(
     request_context: &GatewayPublicRequestContext,
 ) -> Option<Response<Body>> {
     let decision = request_context.control_decision.as_ref()?;
-    if decision.route_family.as_deref() != Some("ccswitch")
-        || decision.route_kind.as_deref() != Some("usage")
-        || request_context.request_path != "/v1/usage"
-    {
+    if decision.route_family.as_deref() != Some("ccswitch") {
         return None;
     }
 
-    Some(handle_ccswitch_usage(state, request_context).await)
+    match (
+        decision.route_kind.as_deref(),
+        request_context.request_path.as_str(),
+    ) {
+        (Some("usage"), "/v1/usage") | (Some("balance"), "/user/balance") => {
+            Some(handle_ccswitch_usage(state, request_context).await)
+        }
+        _ => None,
+    }
 }
 
 async fn handle_ccswitch_usage(
     state: &AppState,
     request_context: &GatewayPublicRequestContext,
 ) -> Response<Body> {
-    let Some(auth_context) = request_context
-        .control_decision
-        .as_ref()
-        .and_then(|decision| decision.auth_context.as_ref())
-    else {
+    let Some(decision) = request_context.control_decision.as_ref() else {
+        return build_auth_error_response(http::StatusCode::UNAUTHORIZED, "Invalid API key", false);
+    };
+    let Some(auth_context) = decision.auth_context.as_ref() else {
+        if matches!(
+            decision.local_auth_rejection.as_ref(),
+            Some(
+                GatewayLocalAuthRejection::InvalidApiKey | GatewayLocalAuthRejection::LockedApiKey
+            )
+        ) {
+            return build_ccswitch_inactive_response("", None);
+        }
         return build_auth_error_response(http::StatusCode::UNAUTHORIZED, "Invalid API key", false);
     };
 
@@ -37,20 +49,9 @@ async fn handle_ccswitch_usage(
         auth_context.local_rejection.as_ref(),
         Some(GatewayLocalAuthRejection::InvalidApiKey | GatewayLocalAuthRejection::LockedApiKey)
     ) {
-        return build_auth_json_response(
-            http::StatusCode::OK,
-            json!({
-                "is_active": false,
-                "isValid": false,
-                "unit": "USD",
-                "remaining": 0.0,
-                "balance": 0.0,
-                "api_key": {
-                    "id": auth_context.api_key_id,
-                    "name": auth_context.api_key_name,
-                },
-            }),
-            None,
+        return build_ccswitch_inactive_response(
+            &auth_context.api_key_id,
+            auth_context.api_key_name.clone(),
         );
     }
 
@@ -84,10 +85,15 @@ async fn handle_ccswitch_usage(
         .get("total_available_balance")
         .cloned()
         .unwrap_or_else(|| json!(null));
-    let remaining = total_available_balance
-        .as_f64()
-        .or(auth_context.balance_remaining)
-        .unwrap_or(wallet_balance + package_balance);
+    let remaining = if total_available_balance.is_null() {
+        serde_json::Value::Null
+    } else if let Some(value) = total_available_balance.as_f64() {
+        json!(value)
+    } else if let Some(value) = auth_context.balance_remaining {
+        json!(value)
+    } else {
+        json!(wallet_balance + package_balance)
+    };
 
     build_auth_json_response(
         http::StatusCode::OK,
@@ -95,8 +101,8 @@ async fn handle_ccswitch_usage(
             "is_active": true,
             "isValid": true,
             "unit": currency,
-            "remaining": remaining,
-            "balance": remaining,
+            "remaining": remaining.clone(),
+            "balance": remaining.clone(),
             "wallet_balance": wallet_balance,
             "package_balance": package_balance,
             "total_available_balance": total_available_balance,
@@ -128,4 +134,25 @@ async fn handle_ccswitch_usage(
 
 fn number_value(payload: &Value, key: &str) -> Option<f64> {
     payload.get(key).and_then(Value::as_f64)
+}
+
+fn build_ccswitch_inactive_response(
+    api_key_id: &str,
+    api_key_name: Option<String>,
+) -> Response<Body> {
+    build_auth_json_response(
+        http::StatusCode::OK,
+        json!({
+            "is_active": false,
+            "isValid": false,
+            "unit": "USD",
+            "remaining": 0.0,
+            "balance": 0.0,
+            "api_key": {
+                "id": api_key_id,
+                "name": api_key_name,
+            },
+        }),
+        None,
+    )
 }

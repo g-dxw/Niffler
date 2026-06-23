@@ -22,6 +22,7 @@
 - 当前接入使用 `https://pay.dodododo.org` 的应用协议：`payment_gateway_configs.merchant_id` 保存 DoDoPay App ID，`merchant_key_encrypted` 保存 DoDoPay App Secret。DoDoPay 没有单独的 Webhook Secret，当前配置校验也不要求它。
 - 发起 DoDoPay 支付时，后端先创建本地 `pending` 订单，再用 App Secret 签名调用 `POST /api/v1/orders` 创建 DoDoPay 订单，最后把 DoDoPay 返回的 `order_id` 回填到本地订单；这样即使数据库写入失败，也不会把可支付链接发给用户。
 - 创建 DoDoPay 订单后，后端按用户选择调用 `POST /api/v1/orders/{order_id}/channel` 保存支付方式：支付宝为 `ALIPAY`，微信为 `WECHAT`。
+- 创建 DoDoPay 钱包充值和套餐购买订单时，后端会把当前 Niffler 用户名作为 `payer_name` 传给 DoDoPay，用于 DoDoPay 后台付款人展示；不传邮箱、联系方式或其他个人信息。
 - DoDoPay 订单创建失败、支付方式保存失败或本地订单回填失败时，本系统会把仍处于 `pending` 的本地订单标记为 `cancelled`，并且不会向用户返回支付链接。
 - DoDoPay 返回的支付指令包含本系统签名后的 `local_cancel_url`。用户在钱包充值或套餐购买页点击“取消这笔支付”时，本系统先调用 DoDoPay `POST /api/v1/orders/{order_id}/cancel` 取消上游订单，再把本地仍处于 `pending` 的订单标记为 `cancelled`，并记录取消时间和来源。
 - 关闭新窗口、页面隐藏或普通返回业务站点不会被自动当成取消，避免用户已经扫码付款但到账确认尚未完成时被误取消。
