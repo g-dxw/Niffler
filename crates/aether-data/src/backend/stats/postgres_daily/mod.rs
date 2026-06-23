@@ -669,6 +669,9 @@ mod tests {
                 "LEFT JOIN (\n        SELECT request_id, request_metadata\n        FROM \"usage\"\n    ) AS raw_usage"
             ));
             assert!(!sql.contains("LEFT JOIN \"usage\" AS raw_usage"));
+            assert!(sql.contains("WHERE usage.created_at >= $1"));
+            assert!(sql.contains("AND usage.created_at < $2"));
+            assert!(!sql.contains("WHERE created_at >= $1"));
         }
     }
 }

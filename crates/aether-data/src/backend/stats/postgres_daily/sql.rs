@@ -2112,13 +2112,13 @@ aggregated AS (
             ELSE 0
         END AS official_cost_usd
     ) AS official_cost ON TRUE
-    WHERE created_at >= $1
-      AND created_at < $2
-      AND user_id IS NOT NULL
-      AND model IS NOT NULL
-      AND model <> ''
-      AND status NOT IN ('pending', 'streaming')
-      AND provider_name NOT IN ('unknown', 'pending')
+    WHERE usage.created_at >= $1
+      AND usage.created_at < $2
+      AND usage.user_id IS NOT NULL
+      AND usage.model IS NOT NULL
+      AND usage.model <> ''
+      AND usage.status NOT IN ('pending', 'streaming')
+      AND usage.provider_name NOT IN ('unknown', 'pending')
     GROUP BY user_id, model
 )
 INSERT INTO stats_user_daily_model (
@@ -2535,13 +2535,13 @@ aggregated AS (
             ELSE 0
         END AS official_cost_usd
     ) AS official_cost ON TRUE
-    WHERE created_at >= $1
-      AND created_at < $2
-      AND user_id IS NOT NULL
-      AND provider_name IS NOT NULL
-      AND provider_name <> ''
-      AND status NOT IN ('pending', 'streaming')
-      AND provider_name NOT IN ('unknown', 'pending')
+    WHERE usage.created_at >= $1
+      AND usage.created_at < $2
+      AND usage.user_id IS NOT NULL
+      AND usage.provider_name IS NOT NULL
+      AND usage.provider_name <> ''
+      AND usage.status NOT IN ('pending', 'streaming')
+      AND usage.provider_name NOT IN ('unknown', 'pending')
     GROUP BY user_id, provider_name
 )
 INSERT INTO stats_user_daily_provider (
@@ -2958,12 +2958,12 @@ aggregated AS (
             ELSE 0
         END AS official_cost_usd
     ) AS official_cost ON TRUE
-    WHERE created_at >= $1
-      AND created_at < $2
-      AND user_id IS NOT NULL
-      AND api_format IS NOT NULL
-      AND status NOT IN ('pending', 'streaming')
-      AND provider_name NOT IN ('unknown', 'pending')
+    WHERE usage.created_at >= $1
+      AND usage.created_at < $2
+      AND usage.user_id IS NOT NULL
+      AND usage.api_format IS NOT NULL
+      AND usage.status NOT IN ('pending', 'streaming')
+      AND usage.provider_name NOT IN ('unknown', 'pending')
     GROUP BY user_id, api_format
 )
 INSERT INTO stats_user_daily_api_format (
