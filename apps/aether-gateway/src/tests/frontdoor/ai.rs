@@ -219,6 +219,24 @@ async fn gateway_handles_ccswitch_user_balance_with_api_key_without_proxying_ups
     assert_eq!(auth_repository.touch_count("api-key-ccswitch-balance"), 0);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
+    let response = reqwest::Client::new()
+        .get(format!("{gateway_url}/v1/user/balance"))
+        .header("authorization", "Bearer sk-ccswitch-balance")
+        .header("user-agent", "cc-switch/1.0")
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(payload["is_active"], true);
+    assert_eq!(payload["isValid"], true);
+    assert_eq!(payload["remaining"], 21.5);
+    assert_eq!(payload["balance"], 21.5);
+    assert_eq!(payload["api_key"]["id"], "api-key-ccswitch-balance");
+    assert_eq!(auth_repository.touch_count("api-key-ccswitch-balance"), 0);
+    assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
+
     gateway_handle.abort();
     upstream_handle.abort();
 }

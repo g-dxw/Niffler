@@ -16,6 +16,7 @@
 ## 行为变化
 
 - CC Switch 导入会单独传入余额检查地址，避免 Codex 端点是 `/v1` 时把余额接口拼成 `/v1/v1/usage`。
+- 后端同时接受 `/user/balance` 和 `/v1/user/balance`，兼容客户端刷新用量时继续使用 OpenAI v1 服务地址作为 `baseUrl` 的情况。
 - CC Switch 导入如果填写了模型，余额检查会把模型传给 Niffler，Niffler 按该模型查询套餐额度。
 - 前端优先向后端获取公开 API 地址，不再只用浏览器当前域名推断。
 - 一键配置生成公开地址时，公网默认使用 HTTPS；本机地址仍允许 HTTP。
@@ -24,7 +25,7 @@
 ## 影响范围
 
 - 用户 API Key 页面的一键配置、导入 CC Switch。
-- `/v1/usage` 余额检查接口。
+- `/v1/usage`、`/user/balance` 和 `/v1/user/balance` 余额检查接口。
 - `/api/users/me/public-base-url` 用户侧公开 API 地址接口。
 
 ## 验证方式

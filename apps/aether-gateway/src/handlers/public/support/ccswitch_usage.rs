@@ -19,7 +19,7 @@ pub(super) async fn maybe_build_local_ccswitch_usage_response(
         decision.route_kind.as_deref(),
         request_context.request_path.as_str(),
     ) {
-        (Some("usage"), "/v1/usage") | (Some("balance"), "/user/balance") => {
+        (Some("usage"), "/v1/usage") | (Some("balance"), "/user/balance" | "/v1/user/balance") => {
             Some(handle_ccswitch_usage(state, request_context).await)
         }
         _ => None,
