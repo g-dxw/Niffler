@@ -9,6 +9,7 @@ use aether_runtime::task::spawn_named;
 pub(crate) use aether_task_runtime::TaskSupervisor;
 use aether_task_runtime::{RetryPolicy, TaskDefinition, TaskKind};
 use serde_json::Value;
+use sha2::Digest as _;
 use tokio::task::JoinHandle;
 use tracing::warn;
 use uuid::Uuid;
@@ -53,6 +54,7 @@ pub(crate) const TASK_KEY_PROVIDER_OAUTH_ACCOUNT_REFRESH: &str = "provider.oauth
 pub(crate) const TASK_KEY_PROVIDER_BALANCE_REFRESH: &str = "provider.ops.balance.refresh";
 
 const RETRY_ONCE: RetryPolicy = RetryPolicy { max_attempts: 1 };
+const BACKGROUND_TASK_RUN_ID_MAX_LEN: usize = 64;
 
 const TASK_DEFINITIONS: &[TaskDefinition] = &[
     TaskDefinition::new(
@@ -340,6 +342,19 @@ pub(crate) fn build_task_run_id() -> String {
     Uuid::new_v4().to_string()
 }
 
+fn build_worker_boot_run_id(task_key: &str, instance_id: &str) -> String {
+    let full = format!("boot:{task_key}:{instance_id}");
+    if full.len() <= BACKGROUND_TASK_RUN_ID_MAX_LEN {
+        return full;
+    }
+
+    let digest = format!("{:x}", sha2::Sha256::digest(full.as_bytes()));
+    let hash = &digest[..16];
+    let prefix_budget = BACKGROUND_TASK_RUN_ID_MAX_LEN - "boot:".len() - ":".len() - hash.len();
+    let task_prefix: String = task_key.chars().take(prefix_budget).collect();
+    format!("boot:{task_prefix}:{hash}")
+}
+
 pub(crate) fn spawn_fire_and_forget<F>(task_name: &'static str, future: F) -> JoinHandle<()>
 where
     F: Future<Output = ()> + Send + 'static,
@@ -449,7 +464,7 @@ pub(crate) fn spawn_record_worker_boot(
 ) -> JoinHandle<()> {
     spawn_named("task-runtime-record-worker-boot", async move {
         let now = now_unix_secs();
-        let run_id = format!("boot:{}:{}", task_key, app.tunnel.local_instance_id());
+        let run_id = build_worker_boot_run_id(task_key, app.tunnel.local_instance_id());
         let run = UpsertBackgroundTaskRun {
             id: run_id.clone(),
             task_key: task_key.to_string(),
@@ -702,4 +717,33 @@ pub(crate) async fn submit_provider_delete_task(
     });
 
     Ok(Some(task_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_worker_boot_run_id, BACKGROUND_TASK_RUN_ID_MAX_LEN,
+        TASK_KEY_CONTENT_MODERATION_EVIDENCE_CLEANUP,
+    };
+
+    #[test]
+    fn worker_boot_run_id_preserves_short_readable_ids() {
+        assert_eq!(
+            build_worker_boot_run_id("usage.queue.worker", "node-a"),
+            "boot:usage.queue.worker:node-a"
+        );
+    }
+
+    #[test]
+    fn worker_boot_run_id_caps_long_ids_for_storage() {
+        let run_id =
+            build_worker_boot_run_id(TASK_KEY_CONTENT_MODERATION_EVIDENCE_CLEANUP, "d86b8ee0dee0");
+
+        assert!(run_id.len() <= BACKGROUND_TASK_RUN_ID_MAX_LEN);
+        assert!(run_id.starts_with("boot:maintenance.content_moderation.evidence"));
+        assert_ne!(
+            run_id,
+            "boot:maintenance.content_moderation.evidence.cleanup:d86b8ee0dee0"
+        );
+    }
 }

@@ -2041,7 +2041,10 @@ aggregated AS (
             ) AS BIGINT
         ) AS successful_response_time_samples
     FROM usage_billing_facts AS usage
-    LEFT JOIN "usage" AS raw_usage
+    LEFT JOIN (
+        SELECT request_id, request_metadata
+        FROM "usage"
+    ) AS raw_usage
       ON raw_usage.request_id = usage.request_id
     LEFT JOIN usage_settlement_snapshots AS settlement
       ON settlement.request_id = usage.request_id
@@ -2461,7 +2464,10 @@ aggregated AS (
             ) AS BIGINT
         ) AS successful_response_time_samples
     FROM usage_billing_facts AS usage
-    LEFT JOIN "usage" AS raw_usage
+    LEFT JOIN (
+        SELECT request_id, request_metadata
+        FROM "usage"
+    ) AS raw_usage
       ON raw_usage.request_id = usage.request_id
     LEFT JOIN usage_settlement_snapshots AS settlement
       ON settlement.request_id = usage.request_id
@@ -2881,7 +2887,10 @@ aggregated AS (
             ) AS BIGINT
         ) AS successful_response_time_samples
     FROM usage_billing_facts AS usage
-    LEFT JOIN "usage" AS raw_usage
+    LEFT JOIN (
+        SELECT request_id, request_metadata
+        FROM "usage"
+    ) AS raw_usage
       ON raw_usage.request_id = usage.request_id
     LEFT JOIN usage_settlement_snapshots AS settlement
       ON settlement.request_id = usage.request_id

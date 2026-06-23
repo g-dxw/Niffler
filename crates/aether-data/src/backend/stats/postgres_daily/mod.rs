@@ -645,7 +645,10 @@ async fn refresh_stats_user_summary_rows(
 
 #[cfg(test)]
 mod tests {
-    use super::POSTGRES_STATS_DAILY_LOW_PRESSURE_SETUP_SQL;
+    use super::{
+        POSTGRES_STATS_DAILY_LOW_PRESSURE_SETUP_SQL, UPSERT_STATS_USER_DAILY_API_FORMAT_SQL,
+        UPSERT_STATS_USER_DAILY_MODEL_SQL, UPSERT_STATS_USER_DAILY_PROVIDER_SQL,
+    };
 
     #[test]
     fn postgres_stats_daily_low_pressure_setup_disables_parallel_query() {
@@ -653,5 +656,19 @@ mod tests {
             POSTGRES_STATS_DAILY_LOW_PRESSURE_SETUP_SQL,
             "SET LOCAL max_parallel_workers_per_gather = 0"
         );
+    }
+
+    #[test]
+    fn postgres_stats_daily_raw_usage_join_limits_columns() {
+        for sql in [
+            UPSERT_STATS_USER_DAILY_MODEL_SQL,
+            UPSERT_STATS_USER_DAILY_PROVIDER_SQL,
+            UPSERT_STATS_USER_DAILY_API_FORMAT_SQL,
+        ] {
+            assert!(sql.contains(
+                "LEFT JOIN (\n        SELECT request_id, request_metadata\n        FROM \"usage\"\n    ) AS raw_usage"
+            ));
+            assert!(!sql.contains("LEFT JOIN \"usage\" AS raw_usage"));
+        }
     }
 }
