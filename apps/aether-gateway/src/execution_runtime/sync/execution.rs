@@ -1812,6 +1812,7 @@ async fn execute_execution_runtime_sync_impl(
                 status_code: result.status_code,
                 classification: local_failover_analysis.classification,
                 headers: Some(&headers),
+                error_body: local_failover_response_text.as_deref(),
             }),
         )
         .await;
@@ -1824,6 +1825,7 @@ async fn execute_execution_runtime_sync_impl(
             LocalExecutionEffect::HealthFailure(LocalHealthFailureEffect {
                 status_code: result.status_code,
                 classification: local_failover_analysis.classification,
+                error_body: local_failover_response_text.as_deref(),
             }),
         )
         .await;

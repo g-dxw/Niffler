@@ -23,6 +23,14 @@ const OBSERVATION_CONSISTENCY_THRESHOLD: f64 = 0.3;
 const HEALTH_DEGRADED_THRESHOLD: f64 = 0.8;
 const HEALTH_LOW_THRESHOLD: f64 = 0.5;
 
+pub fn is_claude_code_client_restriction_error_message(message: &str) -> bool {
+    let message = message.trim().to_ascii_lowercase();
+    !message.is_empty()
+        && (message.contains("only allows claude code clients")
+            || message.contains("restricted to claude code clients")
+            || message.contains("only claude code clients allowed"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ProviderKeyHealthBucket {
     Low,
@@ -72,6 +80,13 @@ pub fn is_candidate_in_recent_failure_cooldown(
         match candidate.status {
             RequestCandidateStatus::Success => return false,
             RequestCandidateStatus::Failed | RequestCandidateStatus::Cancelled => {
+                if candidate
+                    .error_message
+                    .as_deref()
+                    .is_some_and(is_claude_code_client_restriction_error_message)
+                {
+                    continue;
+                }
                 recent_failures += 1;
                 if recent_failures >= FAILURE_COOLDOWN_THRESHOLD {
                     return true;
@@ -718,6 +733,31 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(is_candidate_in_recent_failure_cooldown(
+            &recent_candidates,
+            "provider-a",
+            "endpoint-a",
+            "key-a",
+            100,
+        ));
+    }
+
+    #[test]
+    fn cooldown_ignores_claude_code_client_restriction_failures() {
+        let recent_candidates = (0..8)
+            .map(|index| {
+                let mut candidate = stored_candidate(
+                    &format!("failed-{index}"),
+                    RequestCandidateStatus::Failed,
+                    92 + index,
+                );
+                candidate.error_message = Some(
+                    "No available accounts: this group only allows Claude Code clients".into(),
+                );
+                candidate
+            })
+            .collect::<Vec<_>>();
+
+        assert!(!is_candidate_in_recent_failure_cooldown(
             &recent_candidates,
             "provider-a",
             "endpoint-a",

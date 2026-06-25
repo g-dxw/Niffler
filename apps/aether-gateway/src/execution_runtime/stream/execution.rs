@@ -1622,6 +1622,7 @@ async fn execute_stream_from_frame_stream(
                 status_code,
                 classification: failover_analysis.classification,
                 headers: Some(&headers),
+                error_body: error_response_text.as_deref(),
             }),
         )
         .await;
@@ -1634,6 +1635,7 @@ async fn execute_stream_from_frame_stream(
             LocalExecutionEffect::HealthFailure(LocalHealthFailureEffect {
                 status_code,
                 classification: failover_analysis.classification,
+                error_body: error_response_text.as_deref(),
             }),
         )
         .await;

@@ -1,5 +1,8 @@
 export type CcSwitchApp = 'claude' | 'codex' | 'gemini'
 
+export const DEFAULT_CCSWITCH_CODEX_MODEL = 'gpt-5.5'
+export const DEFAULT_CCSWITCH_CODEX_REASONING_EFFORT = 'high'
+
 interface BuildCcSwitchImportUrlInput {
   app: CcSwitchApp
   baseUrl: string
@@ -42,26 +45,34 @@ export function buildCcSwitchUsageScript(model?: string): string {
 
 export function buildCcSwitchImportUrl(input: BuildCcSwitchImportUrlInput): string {
   const baseUrl = normalizeCcSwitchBaseUrl(input.baseUrl)
+  const endpoint = ccSwitchEndpoint(input.app, baseUrl)
+  const model = ccSwitchModelForImport(input.app, input.model)
   const entries: [string, string][] = [
     ['resource', 'provider'],
     ['app', input.app],
     ['name', input.providerName.trim() || 'Niffler'],
     ['homepage', baseUrl],
-    ['endpoint', ccSwitchEndpoint(input.app, baseUrl)],
+    ['endpoint', endpoint],
     ['apiKey', input.apiKey],
     ['enabled', 'true'],
     ['configFormat', 'json'],
     ['usageEnabled', 'true'],
     ['usageBaseUrl', baseUrl],
-    ['usageScript', encodeBase64(buildCcSwitchUsageScript(input.model))],
+    ['usageScript', encodeBase64(buildCcSwitchUsageScript(model))],
     ['usageAutoInterval', '30'],
   ]
 
-  if (input.model?.trim()) {
-    entries.splice(2, 0, ['model', input.model.trim()])
+  if (model) {
+    entries.splice(2, 0, ['model', model])
   }
 
   return `ccswitch://v1/import?${new URLSearchParams(entries).toString()}`
+}
+
+function ccSwitchModelForImport(app: CcSwitchApp, model?: string): string {
+  const normalized = model?.trim() ?? ''
+  if (normalized) return normalized
+  return app === 'codex' ? DEFAULT_CCSWITCH_CODEX_MODEL : ''
 }
 
 function encodeBase64(value: string): string {

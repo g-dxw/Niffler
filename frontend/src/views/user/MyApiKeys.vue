@@ -900,7 +900,16 @@
             class="h-11 border-border/60"
             autocomplete="off"
           />
-          <p class="text-xs text-muted-foreground">
+          <p
+            v-if="ccSwitchApp === 'codex'"
+            class="text-xs text-muted-foreground"
+          >
+            Codex 默认使用 {{ DEFAULT_CCSWITCH_CODEX_MODEL }}，思考等级 {{ DEFAULT_CCSWITCH_CODEX_REASONING_EFFORT }}。
+          </p>
+          <p
+            v-else
+            class="text-xs text-muted-foreground"
+          >
             填写后，CC Switch 余额检查会按这个模型计算套餐额度；不填则显示账户总可用额度。
           </p>
         </div>
@@ -984,6 +993,8 @@ import { getErrorStatus } from '@/types/api-error'
 import {
   buildCcSwitchImportUrl,
   ccSwitchEndpoint,
+  DEFAULT_CCSWITCH_CODEX_MODEL,
+  DEFAULT_CCSWITCH_CODEX_REASONING_EFFORT,
   type CcSwitchApp,
 } from '@/features/api-keys/utils/ccswitchImport'
 import {
@@ -1258,7 +1269,9 @@ function openCcSwitchDialog(apiKey: ApiKey) {
 
 function selectCcSwitchApp(value: CcSwitchApp) {
   ccSwitchApp.value = value
-  if (value !== 'codex') {
+  if (value === 'codex') {
+    ccSwitchModel.value = ccSwitchModel.value.trim() || DEFAULT_CCSWITCH_CODEX_MODEL
+  } else {
     ccSwitchModel.value = ''
   }
 }

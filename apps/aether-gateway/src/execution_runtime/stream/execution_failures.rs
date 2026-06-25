@@ -230,6 +230,7 @@ async fn record_stream_sync_failure(
             status_code: payload.status_code,
             classification: failure_analysis.classification,
             headers: Some(&payload.headers),
+            error_body: error_body.as_deref(),
         }),
     )
     .await;
@@ -242,6 +243,7 @@ async fn record_stream_sync_failure(
         LocalExecutionEffect::HealthFailure(LocalHealthFailureEffect {
             status_code: payload.status_code,
             classification: failure_analysis.classification,
+            error_body: error_body.as_deref(),
         }),
     )
     .await;

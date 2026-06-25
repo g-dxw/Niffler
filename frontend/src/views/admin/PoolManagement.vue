@@ -2051,6 +2051,7 @@ const DEFAULT_PRESET_LABELS: Record<string, string> = {
   plus_first: 'Plus',
   pro_first: 'Pro',
   recent_refresh: '刷新优先',
+  priority_first: '优先级',
   quota_balanced: '额度均衡',
   single_account: '单号优先',
 }

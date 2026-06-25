@@ -85,9 +85,7 @@ async fn handle_ccswitch_usage(
         .get("total_available_balance")
         .cloned()
         .unwrap_or_else(|| json!(null));
-    let remaining = if total_available_balance.is_null() {
-        serde_json::Value::Null
-    } else if let Some(value) = total_available_balance.as_f64() {
+    let remaining = if let Some(value) = total_available_balance.as_f64() {
         json!(value)
     } else if let Some(value) = auth_context.balance_remaining {
         json!(value)

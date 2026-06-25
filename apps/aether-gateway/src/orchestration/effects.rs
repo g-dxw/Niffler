@@ -8,7 +8,8 @@ use aether_data_contracts::repository::pool_scores::{
 use aether_provider_pool::provider_pool_key_account_quota_exhausted;
 use aether_scheduler_core::{
     build_scheduler_affinity_cache_key_for_api_key_id_with_client_session,
-    count_recent_rpm_requests_for_provider_key, ClientSessionAffinity, SchedulerAffinityTarget,
+    count_recent_rpm_requests_for_provider_key, is_claude_code_client_restriction_error_message,
+    ClientSessionAffinity, SchedulerAffinityTarget,
 };
 use aether_usage_runtime::{
     build_stream_terminal_usage_outcome, build_sync_terminal_usage_outcome,
@@ -63,12 +64,14 @@ pub(crate) struct LocalAdaptiveRateLimitEffect<'a> {
     pub(crate) status_code: u16,
     pub(crate) classification: LocalFailoverClassification,
     pub(crate) headers: Option<&'a BTreeMap<String, String>>,
+    pub(crate) error_body: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LocalHealthFailureEffect {
+pub(crate) struct LocalHealthFailureEffect<'a> {
     pub(crate) status_code: u16,
     pub(crate) classification: LocalFailoverClassification,
+    pub(crate) error_body: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -87,7 +90,7 @@ pub(crate) struct LocalOAuthInvalidationEffect<'a> {
 pub(crate) enum LocalExecutionEffect<'a> {
     AttemptFailure(LocalAttemptFailureEffect),
     AdaptiveRateLimit(LocalAdaptiveRateLimitEffect<'a>),
-    HealthFailure(LocalHealthFailureEffect),
+    HealthFailure(LocalHealthFailureEffect<'a>),
     HealthSuccess(LocalHealthSuccessEffect),
     AdaptiveSuccess(LocalAdaptiveSuccessEffect),
     OauthInvalidation(LocalOAuthInvalidationEffect<'a>),
@@ -435,6 +438,13 @@ async fn record_adaptive_rate_limit_effect(
     context: LocalExecutionEffectContext<'_>,
     effect: LocalAdaptiveRateLimitEffect<'_>,
 ) {
+    if effect
+        .error_body
+        .is_some_and(is_claude_code_client_restriction_error_message)
+    {
+        return;
+    }
+
     let observed_at_unix_secs = current_unix_secs();
     let Some(current_key) = state
         .read_provider_catalog_keys_by_ids(std::slice::from_ref(&context.plan.key_id))
@@ -537,8 +547,15 @@ async fn record_adaptive_success_effect(
 async fn record_health_failure_effect(
     state: &AppState,
     context: LocalExecutionEffectContext<'_>,
-    effect: LocalHealthFailureEffect,
+    effect: LocalHealthFailureEffect<'_>,
 ) {
+    if effect
+        .error_body
+        .is_some_and(is_claude_code_client_restriction_error_message)
+    {
+        return;
+    }
+
     let api_format = context.plan.provider_api_format.trim();
     if api_format.is_empty() {
         return;
@@ -670,6 +687,13 @@ async fn record_pool_error_effect(
     context: LocalExecutionEffectContext<'_>,
     effect: LocalPoolErrorEffect<'_>,
 ) {
+    if effect
+        .error_body
+        .is_some_and(is_claude_code_client_restriction_error_message)
+    {
+        return;
+    }
+
     let hard_error_reason =
         admin_provider_pool_key_hard_error_reason(effect.status_code, effect.error_body);
     if hard_error_reason.is_none()
@@ -1874,6 +1898,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pool_error_ignores_claude_code_client_restriction_for_score_cooldown() {
+        let state = codex_state_with_pool_score(PoolMemberHardState::Unknown);
+        let plan = sample_codex_plan();
+
+        apply_local_execution_effect(
+            &state,
+            LocalExecutionEffectContext {
+                plan: &plan,
+                report_context: None,
+            },
+            LocalExecutionEffect::PoolError(LocalPoolErrorEffect {
+                status_code: 429,
+                classification: LocalFailoverClassification::RetryStatusCode,
+                headers: &BTreeMap::new(),
+                error_body: Some(
+                    r#"{"error":{"message":"No available accounts: this group only allows Claude Code clients"}}"#,
+                ),
+            }),
+        )
+        .await;
+
+        assert_eq!(
+            read_codex_pool_score_state(&state).await,
+            PoolMemberHardState::Unknown
+        );
+    }
+
+    #[tokio::test]
     async fn sync_pool_success_keeps_quota_exhausted_key_out_of_available_state() {
         let state = codex_state_with_quota_exhausted_key_and_pool_score();
         let plan = sample_codex_plan();
@@ -1991,6 +2043,7 @@ mod tests {
             LocalExecutionEffect::HealthFailure(LocalHealthFailureEffect {
                 status_code: 503,
                 classification: LocalFailoverClassification::RetryUpstreamFailure,
+                error_body: None,
             }),
         )
         .await;
@@ -2021,6 +2074,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn health_failure_ignores_claude_code_client_restriction() {
+        let state = health_state();
+        let plan = sample_plan();
+        let original_key = state
+            .read_provider_catalog_keys_by_ids(std::slice::from_ref(&plan.key_id))
+            .await
+            .expect("provider catalog keys should load")
+            .into_iter()
+            .next()
+            .expect("stored key should exist");
+
+        apply_local_execution_effect(
+            &state,
+            LocalExecutionEffectContext {
+                plan: &plan,
+                report_context: None,
+            },
+            LocalExecutionEffect::HealthFailure(LocalHealthFailureEffect {
+                status_code: 429,
+                classification: LocalFailoverClassification::RetryStatusCode,
+                error_body: Some(
+                    r#"{"error":{"message":"No available accounts: this group only allows Claude Code clients"}}"#,
+                ),
+            }),
+        )
+        .await;
+
+        let stored_key = state
+            .read_provider_catalog_keys_by_ids(std::slice::from_ref(&plan.key_id))
+            .await
+            .expect("provider catalog keys should load")
+            .into_iter()
+            .next()
+            .expect("stored key should exist");
+        assert_eq!(stored_key.health_by_format, original_key.health_by_format);
+    }
+
+    #[tokio::test]
     async fn health_failure_keeps_legacy_circuit_closed_after_eight_consecutive_failures() {
         let state = health_state();
         let plan = sample_plan();
@@ -2035,6 +2126,7 @@ mod tests {
                 LocalExecutionEffect::HealthFailure(LocalHealthFailureEffect {
                     status_code: 503,
                     classification: LocalFailoverClassification::RetryUpstreamFailure,
+                    error_body: None,
                 }),
             )
             .await;
@@ -2074,6 +2166,7 @@ mod tests {
             LocalExecutionEffect::HealthFailure(LocalHealthFailureEffect {
                 status_code: 503,
                 classification: LocalFailoverClassification::RetryUpstreamFailure,
+                error_body: None,
             }),
         )
         .await;
@@ -2164,6 +2257,7 @@ mod tests {
                     "x-ratelimit-limit-requests".to_string(),
                     "42".to_string(),
                 )])),
+                error_body: None,
             }),
         )
         .await;
@@ -2216,6 +2310,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn adaptive_rate_limit_effect_ignores_claude_code_client_restriction() {
+        let state = adaptive_state();
+        let plan = sample_plan();
+        let original_key = state
+            .read_provider_catalog_keys_by_ids(std::slice::from_ref(&plan.key_id))
+            .await
+            .expect("provider catalog keys should load")
+            .into_iter()
+            .next()
+            .expect("stored key should exist");
+
+        apply_local_execution_effect(
+            &state,
+            LocalExecutionEffectContext {
+                plan: &plan,
+                report_context: None,
+            },
+            LocalExecutionEffect::AdaptiveRateLimit(LocalAdaptiveRateLimitEffect {
+                status_code: 429,
+                classification: LocalFailoverClassification::RetryStatusCode,
+                headers: None,
+                error_body: Some(
+                    r#"{"error":{"message":"No available accounts: this group only allows Claude Code clients"}}"#,
+                ),
+            }),
+        )
+        .await;
+
+        let stored_key = state
+            .read_provider_catalog_keys_by_ids(std::slice::from_ref(&plan.key_id))
+            .await
+            .expect("provider catalog keys should load")
+            .into_iter()
+            .next()
+            .expect("stored key should exist");
+        assert_eq!(stored_key.rpm_429_count, original_key.rpm_429_count);
+        assert_eq!(
+            stored_key.last_429_at_unix_secs,
+            original_key.last_429_at_unix_secs
+        );
+        assert_eq!(stored_key.last_429_type, original_key.last_429_type);
+        assert_eq!(
+            stored_key.adjustment_history,
+            original_key.adjustment_history
+        );
+    }
+
+    #[tokio::test]
     async fn adaptive_rate_limit_effect_ignores_fixed_limit_key() {
         let state = fixed_limit_state();
         let plan = sample_plan();
@@ -2233,6 +2375,7 @@ mod tests {
                     "x-ratelimit-limit-requests".to_string(),
                     "42".to_string(),
                 )])),
+                error_body: None,
             }),
         )
         .await;
@@ -2267,6 +2410,7 @@ mod tests {
                 status_code: 429,
                 classification: LocalFailoverClassification::RetryStatusCode,
                 headers: None,
+                error_body: None,
             }),
         )
         .await;

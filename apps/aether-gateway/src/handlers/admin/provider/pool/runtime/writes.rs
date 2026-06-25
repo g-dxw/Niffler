@@ -8,6 +8,7 @@ use crate::handlers::admin::provider::shared::support::{
     AdminProviderPoolUnschedulableRule,
 };
 use aether_runtime_state::RuntimeState;
+use aether_scheduler_core::is_claude_code_client_restriction_error_message;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -442,6 +443,9 @@ pub(crate) async fn record_admin_provider_pool_error(
     }
 
     let error_message = extract_error_message(error_body).to_ascii_lowercase();
+    if is_claude_code_client_restriction_error_message(&error_message) {
+        return;
+    }
 
     if status_code == 401 {
         invalidate_pool_oauth_cache(runtime, key_id).await;
@@ -1260,6 +1264,42 @@ mod tests {
             .cooldown_reason_by_key
             .contains_key("key-upstream-503"));
         assert!(!runtime.cooldown_ttl_by_key.contains_key("key-upstream-503"));
+    }
+
+    #[tokio::test]
+    async fn error_feedback_ignores_claude_code_client_restriction_for_cooldown() {
+        let Some(redis) = start_managed_redis_or_skip().await else {
+            return;
+        };
+        let app = build_runner_app(redis.redis_url(), "pool_runtime_ignore_cc_only").await;
+        let runtime = app.runtime_state.as_ref();
+        let pool_config = sample_pool_config();
+        let key_ids = vec!["key-cc-only".to_string()];
+
+        record_admin_provider_pool_error(
+            runtime,
+            "provider-1",
+            "key-cc-only",
+            &pool_config,
+            429,
+            Some(
+                r#"{"error":{"message":"No available accounts: this group only allows Claude Code clients"}}"#,
+            ),
+            None,
+        )
+        .await;
+
+        let runtime = read_admin_provider_pool_runtime_state(
+            runtime,
+            "provider-1",
+            &key_ids,
+            &pool_config,
+            None,
+        )
+        .await;
+
+        assert!(!runtime.cooldown_reason_by_key.contains_key("key-cc-only"));
+        assert!(!runtime.cooldown_ttl_by_key.contains_key("key-cc-only"));
     }
 
     #[tokio::test]

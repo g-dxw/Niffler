@@ -357,6 +357,7 @@ pub(crate) fn admin_provider_pool_cache_affinity_enabled(
     pool_config: &AdminProviderPoolConfig,
 ) -> bool {
     let mut seen = std::collections::BTreeSet::new();
+    let mut selected_distribution_preset = None::<String>;
     for item in &pool_config.scheduling_presets {
         let preset = item.preset.trim().to_ascii_lowercase();
         if preset.is_empty() || !seen.insert(preset.clone()) {
@@ -367,12 +368,17 @@ pub(crate) fn admin_provider_pool_cache_affinity_enabled(
         }
         if matches!(
             preset.as_str(),
-            "lru" | "cache_affinity" | "load_balance" | "single_account"
+            "lru" | "cache_affinity" | "load_balance" | "single_account" | "priority_first"
         ) {
-            return preset == "cache_affinity";
+            if preset == "priority_first" {
+                return false;
+            }
+            if selected_distribution_preset.is_none() {
+                selected_distribution_preset = Some(preset);
+            }
         }
     }
-    false
+    selected_distribution_preset.as_deref() == Some("cache_affinity")
 }
 
 pub(crate) fn admin_provider_pool_config(
@@ -816,12 +822,11 @@ mod tests {
     }
 
     #[test]
-    fn cache_affinity_enabled_only_when_it_is_distribution_mode() {
+    fn cache_affinity_enabled_only_when_it_is_selected_distribution_mode() {
         let cache_affinity = admin_provider_pool_config_from_config_value(Some(&json!({
             "pool_advanced": {
                 "scheduling_presets": [
-                    {"preset": "cache_affinity", "enabled": true},
-                    {"preset": "priority_first", "enabled": true}
+                    {"preset": "cache_affinity", "enabled": true}
                 ]
             }
         })))
@@ -838,5 +843,16 @@ mod tests {
         })))
         .expect("pool config should parse");
         assert!(!admin_provider_pool_cache_affinity_enabled(&load_balance));
+
+        let priority_first = admin_provider_pool_config_from_config_value(Some(&json!({
+            "pool_advanced": {
+                "scheduling_presets": [
+                    {"preset": "cache_affinity", "enabled": true},
+                    {"preset": "priority_first", "enabled": true}
+                ]
+            }
+        })))
+        .expect("pool config should parse");
+        assert!(!admin_provider_pool_cache_affinity_enabled(&priority_first));
     }
 }

@@ -14,23 +14,25 @@ function buildItems(): TestPresetItem[] {
     { preset: 'lru', mutexGroup: 'distribution_mode', enabled: true },
     { preset: 'single_account', mutexGroup: 'distribution_mode', enabled: false },
     { preset: 'load_balance', mutexGroup: 'distribution_mode', enabled: false },
+    { preset: 'priority_first', mutexGroup: 'distribution_mode', enabled: false },
     { preset: 'recent_refresh', mutexGroup: null, enabled: true },
     { preset: 'quota_balanced', mutexGroup: null, enabled: false },
-    { preset: 'priority_first', mutexGroup: null, enabled: true },
+    { preset: 'health_first', mutexGroup: null, enabled: true },
   ]
 }
 
 describe('poolSchedulingDialog', () => {
   it('moves only strategy items upward without disturbing distribution presets', () => {
-    const moved = moveStrategyItem(buildItems(), 6, -1)
+    const moved = moveStrategyItem(buildItems(), 7, -1)
 
     expect(moved.map(item => item.preset)).toEqual([
       'cache_affinity',
       'lru',
       'single_account',
       'load_balance',
-      'recent_refresh',
       'priority_first',
+      'recent_refresh',
+      'health_first',
       'quota_balanced',
     ])
   })
@@ -43,22 +45,23 @@ describe('poolSchedulingDialog', () => {
   })
 
   it('moves a strategy item downward within the strategy group', () => {
-    const moved = moveStrategyItem(buildItems(), 4, 1)
+    const moved = moveStrategyItem(buildItems(), 5, 1)
 
     expect(moved.map(item => item.preset)).toEqual([
       'cache_affinity',
       'lru',
       'single_account',
       'load_balance',
+      'priority_first',
       'quota_balanced',
       'recent_refresh',
-      'priority_first',
+      'health_first',
     ])
   })
 
   it('keeps the original order when a strategy item is already at the bottom boundary', () => {
     const original = buildItems()
-    const moved = moveStrategyItem(original, 6, 1)
+    const moved = moveStrategyItem(original, 7, 1)
 
     expect(moved.map(item => item.preset)).toEqual(original.map(item => item.preset))
   })

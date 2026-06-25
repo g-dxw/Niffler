@@ -18,6 +18,7 @@
 - CC Switch 导入会单独传入余额检查地址，避免 Codex 端点是 `/v1` 时把余额接口拼成 `/v1/v1/usage`。
 - 后端同时接受 `/user/balance` 和 `/v1/user/balance`，兼容客户端刷新用量时继续使用 OpenAI v1 服务地址作为 `baseUrl` 的情况。
 - CC Switch 导入如果填写了模型，余额检查会把模型传给 Niffler，Niffler 按该模型查询套餐额度。
+- Codex 导入不再传非标准的 TOML `config` 参数，只传 CC Switch 源码确认会读取的顶层 `model`、`endpoint` 和 `apiKey`；未填写模型时默认使用 `gpt-5.5`，CC Switch 生成的 Codex 配置会写入 `model_reasoning_effort = "high"`。
 - 前端优先向后端获取公开 API 地址，不再只用浏览器当前域名推断。
 - 一键配置生成公开地址时，公网默认使用 HTTPS；本机地址仍允许 HTTP。
 - Windows 一键配置脚本避免依赖 PowerShell 7 专属的 `ConvertFrom-Json -AsHashtable`。
@@ -33,4 +34,4 @@
 - 前端单测覆盖 CC Switch 深链接参数。
 - 后端路由测试覆盖公开 API 地址接口。
 - 后端脚本单测覆盖 PowerShell 兼容写法。
-- 手动检查生成的 Codex CC Switch 链接中 `endpoint` 为 `/v1`，`usageBaseUrl` 为根地址。
+- 手动检查生成的 Codex CC Switch 链接中 `endpoint` 为 `/v1`，`usageBaseUrl` 为根地址，且不包含非标准 TOML `config` 参数。

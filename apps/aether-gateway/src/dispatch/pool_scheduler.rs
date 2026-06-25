@@ -1472,6 +1472,7 @@ fn pool_key_candidate_order_for_group(
                 seed: pool_sort_seed(),
             },
             "single_account" => StoredPoolKeyCandidateOrder::SingleAccount,
+            "priority_first" => StoredPoolKeyCandidateOrder::InternalPriority,
             _ => StoredPoolKeyCandidateOrder::InternalPriority,
         };
     }
@@ -1482,7 +1483,10 @@ fn pool_key_candidate_order_for_group(
 }
 
 fn pool_distribution_mode_preset(preset: &str) -> bool {
-    matches!(preset, "cache_affinity" | "load_balance" | "single_account")
+    matches!(
+        preset,
+        "cache_affinity" | "load_balance" | "single_account" | "priority_first"
+    )
 }
 
 fn pool_sort_seed() -> String {
@@ -2244,7 +2248,7 @@ mod tests {
     }
 
     #[test]
-    fn pool_scheduler_applies_distribution_mode_before_strategy_presets() {
+    fn pool_scheduler_priority_first_overrides_cache_affinity() {
         let key_a = sample_eligible_candidate(
             "provider-pool",
             "endpoint-1",
@@ -2278,6 +2282,7 @@ mod tests {
         runtime_by_provider.insert(
             "provider-pool".to_string(),
             AdminProviderPoolRuntimeState {
+                sticky_bound_key_id: Some("key-a".to_string()),
                 lru_score_by_key: BTreeMap::from([
                     ("key-a".to_string(), 100.0),
                     ("key-b".to_string(), 5.0),
@@ -2298,7 +2303,7 @@ mod tests {
                 .iter()
                 .map(|item| item.candidate.key_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["key-a", "key-b"]
+            vec!["key-b", "key-a"]
         );
     }
 
@@ -2560,7 +2565,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_distribution_mode_before_strategy_presets() {
+    fn priority_first_wins_over_other_distribution_modes() {
         let presets = ProviderPoolService::with_builtin_adapters()
             .normalize_scheduling_presets(
                 "openai",
@@ -2591,7 +2596,7 @@ mod tests {
             .map(|preset| preset.preset)
             .collect::<Vec<_>>();
 
-        assert_eq!(presets, ["single_account", "priority_first"]);
+        assert_eq!(presets, ["priority_first"]);
     }
 
     #[test]
@@ -2605,8 +2610,7 @@ mod tests {
             Some(json!({
                 "pool_advanced": {
                     "scheduling_presets": [
-                        {"preset": "load_balance", "enabled": true},
-                        {"preset": "priority_first", "enabled": true}
+                        {"preset": "load_balance", "enabled": true}
                     ]
                 }
             })),
@@ -2622,6 +2626,32 @@ mod tests {
             load_balance_cursor.pool_key_order,
             StoredPoolKeyCandidateOrder::LoadBalance { ref seed } if !seed.is_empty()
         ));
+
+        let priority_first_group = sample_eligible_candidate(
+            "provider-pool",
+            "endpoint-1",
+            "pool-group",
+            10,
+            Some(json!({
+                "pool_advanced": {
+                    "scheduling_presets": [
+                        {"preset": "cache_affinity", "enabled": true},
+                        {"preset": "priority_first", "enabled": true}
+                    ]
+                }
+            })),
+        );
+        let priority_first_cursor = PoolKeyCursor::new(
+            PlannerAppState::new(&app),
+            priority_first_group,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            priority_first_cursor.pool_key_order,
+            StoredPoolKeyCandidateOrder::InternalPriority
+        );
 
         let lru_group = sample_eligible_candidate(
             "provider-pool",

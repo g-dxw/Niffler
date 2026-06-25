@@ -242,7 +242,7 @@ async fn gateway_handles_ccswitch_user_balance_with_api_key_without_proxying_ups
 }
 
 #[tokio::test]
-async fn gateway_reports_ccswitch_user_balance_as_null_for_unlimited_wallet() {
+async fn gateway_reports_ccswitch_user_balance_as_number_for_unlimited_wallet() {
     let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
         Some(hash_api_key("sk-ccswitch-unlimited-balance")),
         unrestricted_models_snapshot(
@@ -255,8 +255,8 @@ async fn gateway_reports_ccswitch_user_balance_as_null_for_unlimited_wallet() {
             "wallet-ccswitch-unlimited-balance".to_string(),
             Some("user-ccswitch-unlimited-balance".to_string()),
             None,
-            0.0,
-            0.0,
+            12.5,
+            3.0,
             "unlimited".to_string(),
             "USD".to_string(),
             "active".to_string(),
@@ -304,10 +304,12 @@ async fn gateway_reports_ccswitch_user_balance_as_null_for_unlimited_wallet() {
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
     assert_eq!(payload["is_active"], true);
     assert_eq!(payload["unlimited"], true);
+    assert_eq!(payload["wallet_balance"], 15.5);
+    assert_eq!(payload["package_balance"], 0.0);
     assert!(payload["total_available_balance"].is_null());
-    assert!(payload["remaining"].is_null());
-    assert!(payload["balance"].is_null());
-    assert!(payload["quota"]["remaining"].is_null());
+    assert_eq!(payload["remaining"], 15.5);
+    assert_eq!(payload["balance"], 15.5);
+    assert_eq!(payload["quota"]["remaining"], 15.5);
     assert_eq!(
         auth_repository.touch_count("api-key-ccswitch-unlimited-balance"),
         0

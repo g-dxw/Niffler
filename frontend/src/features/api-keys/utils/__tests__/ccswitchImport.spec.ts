@@ -31,12 +31,30 @@ describe('ccswitchImport', () => {
     expect(params.get('endpoint')).toBe('https://niffler.example.com/v1')
     expect(params.get('apiKey')).toBe('sk-test')
     expect(params.get('model')).toBe('gpt-5.4')
+    expect(params.get('configFormat')).toBe('json')
+    expect(params.has('config')).toBe(false)
     expect(params.get('usageEnabled')).toBe('true')
     expect(params.get('usageBaseUrl')).toBe('https://niffler.example.com')
 
     const usageScript = decodeBase64(params.get('usageScript') ?? '')
     expect(usageScript).toContain('{{baseUrl}}/user/balance?model=gpt-5.4')
     expect(usageScript).not.toContain('{{baseUrl}}/v1/user/balance')
+  })
+
+  it('defaults Codex imports to gpt-5.5 without a custom config payload', () => {
+    const deeplink = buildCcSwitchImportUrl({
+      app: 'codex',
+      baseUrl: 'https://niffler.example.com',
+      providerName: 'Niffler',
+      apiKey: 'sk-test',
+    })
+
+    const params = paramsFromDeeplink(deeplink)
+    expect(params.get('model')).toBe('gpt-5.5')
+    expect(params.has('config')).toBe(false)
+
+    const usageScript = decodeBase64(params.get('usageScript') ?? '')
+    expect(usageScript).toContain('{{baseUrl}}/user/balance?model=gpt-5.5')
   })
 
   it('builds a Claude provider import link with usage check script', () => {

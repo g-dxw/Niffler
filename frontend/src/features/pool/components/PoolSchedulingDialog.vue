@@ -7,7 +7,7 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="max-h-[calc(100dvh-13rem)] space-y-5 overflow-y-auto overscroll-contain pr-1 sm:max-h-[min(72vh,42rem)] sm:space-y-6 sm:pr-2">
-      <!-- Section 1: 分配模式 (distribution_mode 互斥组, 四选一) -->
+      <!-- Section 1: 分配模式 (distribution_mode 互斥组，选择一种) -->
       <div class="space-y-4 rounded-2xl border border-border/60 bg-card/70 p-4">
         <div class="space-y-1">
           <h3 class="text-sm font-medium">
@@ -18,7 +18,7 @@
           </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <button
             v-for="{ index, item } in distributionItems"
             :key="item.preset"
@@ -358,6 +358,7 @@ const FALLBACK_PRESET_DEFS: PoolPresetMeta[] = [
     name: 'priority_first',
     label: '优先级优先',
     description: '按账号优先级顺序调度（数字越小越优先）',
+    mutex_group: DISTRIBUTION_GROUP,
     evidence_hint: '依据 internal_priority（支持拖拽/手工编辑）',
     providers: [],
     modes: null,

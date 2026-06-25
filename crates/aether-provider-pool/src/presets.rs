@@ -62,9 +62,11 @@ pub fn normalize_provider_scheduling_presets(
         }
         if let Some(mutex_group) = provider_pool_preset_mutex_group(&preset.preset) {
             if mutex_group == "distribution_mode"
-                && distribution_mode
-                    .as_ref()
-                    .is_none_or(|current| index < current.0)
+                && provider_pool_distribution_mode_should_replace(
+                    distribution_mode.as_ref(),
+                    index,
+                    &preset.preset,
+                )
             {
                 distribution_mode = Some((index, preset));
             }
@@ -238,7 +240,22 @@ fn provider_pool_supports_preset(adapter: &dyn ProviderPoolAdapter, preset: &str
 
 fn provider_pool_preset_mutex_group(preset: &str) -> Option<&'static str> {
     match preset {
-        "lru" | "cache_affinity" | "load_balance" | "single_account" => Some("distribution_mode"),
+        "lru" | "cache_affinity" | "load_balance" | "single_account" | "priority_first" => {
+            Some("distribution_mode")
+        }
         _ => None,
     }
+}
+
+fn provider_pool_distribution_mode_should_replace(
+    current: Option<&(usize, PoolSchedulingPreset)>,
+    index: usize,
+    preset: &str,
+) -> bool {
+    if preset == "priority_first" {
+        return true;
+    }
+    current
+        .as_ref()
+        .is_none_or(|current| current.1.preset != "priority_first" && index < current.0)
 }

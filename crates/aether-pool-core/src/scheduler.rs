@@ -773,9 +773,7 @@ fn normalize_enabled_pool_preset_entries(
         };
 
         if mutex_group == "distribution_mode"
-            && distribution_mode
-                .as_ref()
-                .is_none_or(|current| index < current.0)
+            && pool_distribution_mode_should_replace(distribution_mode.as_ref(), index, &preset)
         {
             distribution_mode = Some((index, preset, mode));
         }
@@ -799,9 +797,24 @@ fn normalize_enabled_pool_preset_entries(
 
 fn pool_preset_mutex_group(preset: &str) -> Option<&'static str> {
     match preset {
-        "lru" | "cache_affinity" | "load_balance" | "single_account" => Some("distribution_mode"),
+        "lru" | "cache_affinity" | "load_balance" | "single_account" | "priority_first" => {
+            Some("distribution_mode")
+        }
         _ => None,
     }
+}
+
+fn pool_distribution_mode_should_replace(
+    current: Option<&(usize, String, Option<String>)>,
+    index: usize,
+    preset: &str,
+) -> bool {
+    if preset == "priority_first" {
+        return true;
+    }
+    current
+        .as_ref()
+        .is_none_or(|current| current.1 != "priority_first" && index < current.0)
 }
 
 fn runtime_lru_score(runtime: &PoolRuntimeState, key_id: &str) -> Option<f64> {
@@ -1017,7 +1030,7 @@ mod tests {
     }
 
     #[test]
-    fn pool_scheduler_applies_distribution_mode_before_strategy_presets() {
+    fn pool_scheduler_priority_first_overrides_cache_affinity() {
         let key_cache_hit =
             sample_candidate("provider-pool", "endpoint-1", "key-cache-hit", 50, true)
                 .with_presets(vec![
@@ -1050,6 +1063,7 @@ mod tests {
         let runtime_by_provider = BTreeMap::from([(
             "provider-pool".to_string(),
             PoolRuntimeState {
+                sticky_bound_key_id: Some("key-cache-hit".to_string()),
                 lru_score_by_key: BTreeMap::from([
                     ("key-cache-hit".to_string(), 200.0),
                     ("key-high-priority".to_string(), 10.0),
@@ -1071,12 +1085,12 @@ mod tests {
                 .iter()
                 .map(|item| item.candidate.as_str())
                 .collect::<Vec<_>>(),
-            vec!["key-cache-hit", "key-high-priority"]
+            vec!["key-high-priority", "key-cache-hit"]
         );
     }
 
     #[test]
-    fn load_balance_distribution_is_not_overridden_by_priority_strategy() {
+    fn priority_first_overrides_load_balance_distribution() {
         let key_random_first =
             sample_candidate("provider-pool", "endpoint-1", "key-random-first", 50, true)
                 .with_presets(vec![
@@ -1127,7 +1141,7 @@ mod tests {
                 .iter()
                 .map(|item| item.candidate.as_str())
                 .collect::<Vec<_>>(),
-            vec!["key-random-first", "key-high-priority"]
+            vec!["key-high-priority", "key-random-first"]
         );
     }
 
@@ -1203,7 +1217,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_distribution_mode_before_strategy_presets() {
+    fn priority_first_wins_over_other_distribution_modes() {
         let presets = normalize_enabled_pool_presets(&[
             PoolSchedulingPreset {
                 preset: "lru".to_string(),
@@ -1227,7 +1241,7 @@ mod tests {
             },
         ]);
 
-        assert_eq!(presets, ["single_account", "priority_first"]);
+        assert_eq!(presets, ["priority_first"]);
     }
 
     #[test]
