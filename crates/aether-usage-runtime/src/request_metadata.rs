@@ -91,6 +91,11 @@ fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<St
     copy_number(source, target, "provider_response_body_base64_bytes");
     copy_number(source, target, "client_response_body_base64_bytes");
     copy_number(source, target, "client_response_status_code");
+    copy_bool(
+        source,
+        target,
+        "usage_estimated_due_to_missing_upstream_usage",
+    );
     copy_non_null_value(source, target, "billing_snapshot");
     copy_number(source, target, "base_cost_usd");
     copy_number(source, target, "user_total_cost_usd");
@@ -145,6 +150,11 @@ fn move_allowed_metadata_fields(mut source: Map<String, Value>, target: &mut Map
     remove_number(&mut source, target, "provider_response_body_base64_bytes");
     remove_number(&mut source, target, "client_response_body_base64_bytes");
     remove_number(&mut source, target, "client_response_status_code");
+    remove_bool(
+        &mut source,
+        target,
+        "usage_estimated_due_to_missing_upstream_usage",
+    );
     remove_non_null_value(&mut source, target, "billing_snapshot");
     remove_number(&mut source, target, "base_cost_usd");
     remove_number(&mut source, target, "user_total_cost_usd");

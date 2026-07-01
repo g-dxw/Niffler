@@ -1,7 +1,7 @@
 use super::support_payment::payment_dodopay::{
     cancel_dodopay_checkout_after_local_failure, create_dodopay_checkout,
     dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
-    normalize_dodopay_payment_channel, DodopayCheckoutInput,
+    normalize_dodopay_checkout_payment_channel, DodopayCheckoutInput,
 };
 use super::support_payment::payment_epay::{
     build_epay_checkout_url, epay_callback_base_url, load_epay_config, resolve_epay_channel,
@@ -364,13 +364,14 @@ pub(super) async fn handle_billing_plan_checkout(
                 return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false)
             }
         };
-        let payment_channel =
-            match normalize_dodopay_payment_channel(checkout_request.payment_channel.as_deref()) {
-                Ok(value) => value,
-                Err(detail) => {
-                    return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
-                }
-            };
+        let payment_channel = match normalize_dodopay_checkout_payment_channel(
+            checkout_request.payment_channel.as_deref(),
+        ) {
+            Ok(value) => value,
+            Err(detail) => {
+                return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
+            }
+        };
         let Some(callback_base_url) = dodopay_callback_base_url(
             config.callback_base_url.as_deref(),
             headers,

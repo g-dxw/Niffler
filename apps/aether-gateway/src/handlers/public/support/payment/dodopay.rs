@@ -231,17 +231,11 @@ pub(crate) fn dodopay_cancel_url(
     url
 }
 
-pub(crate) fn configured_dodopay_channels() -> [DodopayPaymentChannel; 2] {
-    [
-        DodopayPaymentChannel {
-            channel: "ali_pay",
-            display_name: "支付宝",
-        },
-        DodopayPaymentChannel {
-            channel: "we_chat_pay",
-            display_name: "微信支付",
-        },
-    ]
+pub(crate) fn configured_dodopay_channels() -> [DodopayPaymentChannel; 1] {
+    [DodopayPaymentChannel {
+        channel: "we_chat_pay",
+        display_name: "微信支付",
+    }]
 }
 
 pub(crate) fn normalize_dodopay_payment_channel(value: Option<&str>) -> Result<String, String> {
@@ -258,6 +252,16 @@ pub(crate) fn normalize_dodopay_payment_channel(value: Option<&str>) -> Result<S
         "wechatpay" | "wechat" | "weixin" | "wxpay" | "wx" => Ok("we_chat_pay".to_string()),
         _ => Err("DoDoPay 只支持选择支付宝或微信支付".to_string()),
     }
+}
+
+pub(crate) fn normalize_dodopay_checkout_payment_channel(
+    value: Option<&str>,
+) -> Result<String, String> {
+    let channel = normalize_dodopay_payment_channel(value)?;
+    if channel == "we_chat_pay" {
+        return Ok(channel);
+    }
+    Err("DoDoPay 当前只支持微信支付".to_string())
 }
 
 fn dodopay_payment_channel_display_name(channel: &str) -> &'static str {
@@ -359,10 +363,9 @@ fn dodopay_cancel_order_url(config: &DodopayConfig, order_id: &str) -> String {
 }
 
 fn dodopay_provider_channel(channel: &str) -> Result<&'static str, String> {
-    match normalize_dodopay_payment_channel(Some(channel))?.as_str() {
-        "ali_pay" => Ok("ALIPAY"),
+    match normalize_dodopay_checkout_payment_channel(Some(channel))?.as_str() {
         "we_chat_pay" => Ok("WECHAT"),
-        _ => Err("DoDoPay 只支持选择支付宝或微信支付".to_string()),
+        _ => Err("DoDoPay 当前只支持微信支付".to_string()),
     }
 }
 
@@ -1336,6 +1339,31 @@ mod tests {
             "we_chat_pay"
         );
         assert!(super::normalize_dodopay_payment_channel(Some("card")).is_err());
+    }
+
+    #[test]
+    fn dodopay_configured_channels_only_exposes_wechat() {
+        let channels = super::configured_dodopay_channels();
+
+        assert_eq!(channels.len(), 1);
+        assert_eq!(channels[0].channel, "we_chat_pay");
+        assert_eq!(channels[0].display_name, "微信支付");
+    }
+
+    #[test]
+    fn dodopay_checkout_payment_channel_only_accepts_wechat() {
+        assert_eq!(
+            super::normalize_dodopay_checkout_payment_channel(Some("we_chat_pay"))
+                .expect("wechat should be accepted"),
+            "we_chat_pay"
+        );
+        assert_eq!(
+            super::normalize_dodopay_checkout_payment_channel(Some("wxpay"))
+                .expect("wechat alias should be accepted"),
+            "we_chat_pay"
+        );
+        assert!(super::normalize_dodopay_checkout_payment_channel(Some("ali_pay")).is_err());
+        assert!(super::normalize_dodopay_checkout_payment_channel(Some("ALIPAY")).is_err());
     }
 
     #[test]

@@ -127,6 +127,7 @@ pub struct TerminalUsageContextSeed {
     body_refs: UsageBodyRefsSeed,
     body_states: UsageBodyStatesSeed,
     routing: UsageRoutingSeed,
+    request_usage_estimate: Option<EstimatedRequestUsage>,
     pub request_metadata: Option<Value>,
 }
 
@@ -196,6 +197,7 @@ pub struct TerminalUsageSeed {
     pub client_response_headers: Option<Value>,
     pub client_response: Option<Value>,
     routing: UsageRoutingSeed,
+    request_usage_estimate: Option<EstimatedRequestUsage>,
     pub request_metadata: Option<Value>,
     pub audit_payload: Option<Value>,
     pub standardized_usage: Option<StandardizedUsage>,
@@ -519,6 +521,7 @@ fn build_terminal_usage_event_from_seed_impl(
         client_response_headers,
         client_response,
         routing,
+        request_usage_estimate,
         request_metadata,
         audit_payload,
         standardized_usage,
@@ -621,6 +624,7 @@ fn build_terminal_usage_event_from_seed_impl(
 
     if matches!(event_type, UsageEventType::Completed) {
         apply_completed_image_usage_estimate(&mut data);
+        apply_completed_text_missing_usage_estimate(&mut data, request_usage_estimate.as_ref());
     }
 
     if matches!(event_type, UsageEventType::Cancelled) {
@@ -704,6 +708,7 @@ pub fn build_terminal_usage_context_seed(
             client_response_body_ref: context_string(context, "client_response_body_ref"),
         },
         body_states: request_capture.body_states,
+        request_usage_estimate: estimate_plan_request_usage(plan),
         request_metadata: merge_usage_request_metadata_owned(
             build_usage_request_metadata_seed(plan, context),
             build_plan_body_capture_metadata(plan.body.body_bytes_b64.as_deref()),
@@ -873,6 +878,7 @@ pub fn build_sync_terminal_usage_seed(
         client_response,
         request_metadata: context_seed.request_metadata,
         audit_payload: capture_metadata,
+        request_usage_estimate: context_seed.request_usage_estimate,
         standardized_usage,
     }
 }
@@ -944,6 +950,7 @@ pub fn build_stream_terminal_usage_seed(
         client_response,
         request_metadata: context_seed.request_metadata,
         audit_payload: capture_metadata,
+        request_usage_estimate: context_seed.request_usage_estimate,
         standardized_usage,
     }
 }
@@ -1764,6 +1771,26 @@ fn plan_json_body_capture_for_usage(plan: &ExecutionPlan) -> Option<Value> {
     clone_usage_body_value(plan.body.json_body.as_ref())
 }
 
+fn estimate_plan_request_usage(plan: &ExecutionPlan) -> Option<EstimatedRequestUsage> {
+    if let Some(json_body) = plan.body.json_body.as_ref() {
+        return estimate_request_usage(json_body);
+    }
+
+    let body_bytes_b64 = plan.body.body_bytes_b64.as_deref()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(body_bytes_b64)
+        .ok()?;
+    if let Ok(json_body) = serde_json::from_slice::<Value>(&bytes) {
+        return estimate_request_usage(&json_body);
+    }
+    let text = std::str::from_utf8(&bytes).ok()?;
+    let input_tokens = estimate_text_tokens(text);
+    (input_tokens > 0).then_some(EstimatedRequestUsage {
+        input_tokens,
+        ..EstimatedRequestUsage::default()
+    })
+}
+
 fn clone_usage_capture_value(value: Option<&Value>) -> Option<Value> {
     value.cloned().map(capture_usage_storage_value)
 }
@@ -2355,6 +2382,97 @@ fn apply_completed_image_usage_estimate(data: &mut UsageEventData) {
             data.total_tokens = Some(total_tokens);
         }
     }
+}
+
+fn apply_completed_text_missing_usage_estimate(
+    data: &mut UsageEventData,
+    request_usage: Option<&EstimatedRequestUsage>,
+) {
+    if !usage_event_data_allows_missing_usage_text_estimate(data)
+        || usage_event_data_has_positive_usage(data)
+    {
+        return;
+    }
+
+    let provider_usage_available = data
+        .response_body
+        .as_ref()
+        .and_then(extract_token_counts_from_value)
+        .is_some();
+    if provider_usage_available {
+        return;
+    }
+
+    if let Some(usage) = request_usage {
+        data.input_tokens = Some(usage.input_tokens);
+        apply_cancelled_request_cache_estimate(data, Some(usage));
+    }
+
+    if positive_tokens(data.output_tokens) == 0 {
+        if let Some(output_tokens) = data
+            .response_body
+            .as_ref()
+            .or(data.client_response_body.as_ref())
+            .and_then(estimate_response_output_tokens)
+        {
+            data.output_tokens = Some(output_tokens);
+        }
+    }
+
+    let total_tokens =
+        positive_tokens(data.input_tokens).saturating_add(positive_tokens(data.output_tokens));
+    if total_tokens == 0 {
+        return;
+    }
+
+    data.total_tokens = Some(total_tokens);
+    mark_usage_estimated_due_to_missing_upstream_usage(data);
+}
+
+fn usage_event_data_allows_missing_usage_text_estimate(data: &UsageEventData) -> bool {
+    [
+        data.endpoint_kind.as_deref(),
+        data.provider_endpoint_kind.as_deref(),
+        data.api_format.as_deref().and_then(infer_endpoint_kind),
+        data.endpoint_api_format
+            .as_deref()
+            .and_then(infer_endpoint_kind),
+    ]
+    .into_iter()
+    .flatten()
+    .any(is_text_generation_endpoint_kind)
+}
+
+fn is_text_generation_endpoint_kind(value: &str) -> bool {
+    ["chat", "messages", "responses", "generate_content"]
+        .into_iter()
+        .any(|kind| value.eq_ignore_ascii_case(kind))
+}
+
+fn usage_event_data_has_positive_usage(data: &UsageEventData) -> bool {
+    [
+        data.input_tokens,
+        data.output_tokens,
+        data.cache_creation_input_tokens,
+        data.cache_creation_ephemeral_5m_input_tokens,
+        data.cache_creation_ephemeral_1h_input_tokens,
+        data.cache_read_input_tokens,
+        data.total_tokens,
+    ]
+    .into_iter()
+    .any(|value| positive_tokens(value) > 0)
+}
+
+fn mark_usage_estimated_due_to_missing_upstream_usage(data: &mut UsageEventData) {
+    let mut metadata = match data.request_metadata.take() {
+        Some(Value::Object(object)) => object,
+        _ => Map::new(),
+    };
+    metadata.insert(
+        "usage_estimated_due_to_missing_upstream_usage".to_string(),
+        Value::Bool(true),
+    );
+    data.request_metadata = Some(Value::Object(metadata));
 }
 
 fn apply_completed_image_dimensions(data: &mut UsageEventData) {
@@ -4307,6 +4425,159 @@ mod tests {
     }
 
     #[test]
+    fn completed_text_usage_estimates_request_tokens_when_provider_usage_is_missing() {
+        let request_body = json!({
+            "model": "claude-sonnet-4-6",
+            "stream": true,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Explain why upstream usage can be missing in a streaming response"
+                }
+            ]
+        });
+        let plan = ExecutionPlan {
+            request_id: "req-stream-missing-usage-estimate-1".to_string(),
+            candidate_id: Some("cand-stream-missing-usage-estimate-1".to_string()),
+            provider_name: Some("Claude".to_string()),
+            provider_id: "provider-claude-usage-local-1".to_string(),
+            endpoint_id: "endpoint-claude-usage-local-1".to_string(),
+            key_id: "key-claude-usage-local-1".to_string(),
+            method: "POST".to_string(),
+            url: "https://example.com/v1/messages".to_string(),
+            headers: BTreeMap::new(),
+            content_type: Some("application/json".to_string()),
+            content_encoding: None,
+            body: RequestBody {
+                json_body: None,
+                body_bytes_b64: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(serde_json::to_vec(&request_body).expect("json should encode")),
+                ),
+                body_ref: None,
+            },
+            stream: true,
+            client_api_format: "claude:messages".to_string(),
+            provider_api_format: "claude:messages".to_string(),
+            model_name: Some("claude-sonnet-4-6".to_string()),
+            proxy: None,
+            transport_profile: None,
+            timeouts: None,
+        };
+        let payload = GatewayStreamReportRequest {
+            trace_id: "trace-stream-missing-usage-estimate-1".to_string(),
+            report_kind: "claude_chat_stream_success".to_string(),
+            report_context: Some(json!({
+                "client_api_format": "claude:messages",
+                "provider_api_format": "claude:messages",
+            })),
+            status_code: 200,
+            headers: BTreeMap::new(),
+            provider_body_base64: None,
+            provider_body_state: Some(UsageBodyCaptureState::None),
+            client_body_base64: None,
+            client_body_state: Some(UsageBodyCaptureState::None),
+            terminal_summary: None,
+            telemetry: None,
+        };
+
+        let event =
+            build_stream_terminal_usage_event(&plan, payload.report_context.as_ref(), &payload)
+                .expect("usage event should build");
+
+        assert!(event.data.input_tokens.unwrap_or_default() > 0);
+        assert_eq!(event.data.output_tokens, None);
+        assert_eq!(event.data.total_tokens, event.data.input_tokens);
+        assert_eq!(
+            event
+                .data
+                .request_metadata
+                .as_ref()
+                .and_then(|value| value.get("usage_estimated_due_to_missing_upstream_usage"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let record = build_upsert_usage_record_from_event(&event)
+            .expect("usage record should preserve estimated usage marker");
+        assert_eq!(
+            record
+                .request_metadata
+                .as_ref()
+                .and_then(|value| value.get("usage_estimated_due_to_missing_upstream_usage"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn completed_embedding_usage_does_not_use_text_missing_usage_estimate() {
+        let request_body = json!({
+            "model": "text-embedding-3-small",
+            "input": "semantic search document"
+        });
+        let plan = ExecutionPlan {
+            request_id: "req-embedding-missing-usage-estimate-1".to_string(),
+            candidate_id: Some("cand-embedding-missing-usage-estimate-1".to_string()),
+            provider_name: Some("OpenAI".to_string()),
+            provider_id: "provider-openai-embedding-local-1".to_string(),
+            endpoint_id: "endpoint-openai-embedding-local-1".to_string(),
+            key_id: "key-openai-embedding-local-1".to_string(),
+            method: "POST".to_string(),
+            url: "https://example.com/v1/embeddings".to_string(),
+            headers: BTreeMap::new(),
+            content_type: Some("application/json".to_string()),
+            content_encoding: None,
+            body: RequestBody {
+                json_body: Some(request_body),
+                body_bytes_b64: None,
+                body_ref: None,
+            },
+            stream: false,
+            client_api_format: "openai:embedding".to_string(),
+            provider_api_format: "openai:embedding".to_string(),
+            model_name: Some("text-embedding-3-small".to_string()),
+            proxy: None,
+            transport_profile: None,
+            timeouts: None,
+        };
+        let payload = GatewaySyncReportRequest {
+            trace_id: "trace-embedding-missing-usage-estimate-1".to_string(),
+            report_kind: "openai_embedding_sync_success".to_string(),
+            report_context: Some(json!({
+                "client_api_format": "openai:embedding",
+                "provider_api_format": "openai:embedding",
+            })),
+            status_code: 200,
+            headers: BTreeMap::new(),
+            body_json: Some(json!({
+                "object": "list",
+                "data": []
+            })),
+            client_body_json: None,
+            body_base64: None,
+            telemetry: None,
+        };
+
+        let event =
+            build_sync_terminal_usage_event(&plan, payload.report_context.as_ref(), &payload)
+                .expect("usage event should build");
+
+        assert_eq!(event.data.input_tokens, None);
+        assert_eq!(event.data.output_tokens, None);
+        assert_eq!(event.data.total_tokens, None);
+        assert_eq!(
+            event
+                .data
+                .request_metadata
+                .as_ref()
+                .and_then(|value| value.get("usage_estimated_due_to_missing_upstream_usage"))
+                .and_then(Value::as_bool),
+            None
+        );
+    }
+
+    #[test]
     fn builds_sync_terminal_usage_from_provider_body_and_preserves_client_body() {
         let plan = ExecutionPlan {
             request_id: "req-sync-usage-1".to_string(),
@@ -4993,6 +5264,7 @@ mod tests {
                 }
             })),
             audit_payload: None,
+            request_usage_estimate: None,
             standardized_usage: None,
         })
         .expect("usage event should build");

@@ -1,7 +1,7 @@
 use super::super::support_payment::payment_dodopay::{
     cancel_dodopay_checkout_after_local_failure, configured_dodopay_channels,
     create_dodopay_checkout, dodopay_callback_base_url, dodopay_return_url, load_dodopay_config,
-    normalize_dodopay_payment_channel, DodopayCheckoutInput,
+    normalize_dodopay_checkout_payment_channel, DodopayCheckoutInput,
 };
 use super::super::support_payment::payment_epay::{
     build_epay_checkout_url, configured_epay_channels, epay_callback_base_url, load_epay_config,
@@ -470,7 +470,7 @@ pub(super) async fn handle_wallet_create_recharge(
         let requested_channel = payload.payment_channel.as_deref().or_else(|| {
             (payload.payment_method != "dodopay").then_some(payload.payment_method.as_str())
         });
-        let payment_channel = match normalize_dodopay_payment_channel(requested_channel) {
+        let payment_channel = match normalize_dodopay_checkout_payment_channel(requested_channel) {
             Ok(value) => value,
             Err(detail) => {
                 return build_auth_error_response(http::StatusCode::BAD_REQUEST, detail, false);
