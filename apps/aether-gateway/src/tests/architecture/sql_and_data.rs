@@ -125,8 +125,10 @@ fn referral_postgres_queries_cast_numeric_amount_columns_before_f64_decoding() {
 
 #[test]
 fn usage_cost_statistics_use_settled_billing_instead_of_success_state() {
-    let daily_stats_sql = read_workspace_file("crates/aether-data/src/backend/stats/postgres_daily/sql.rs");
-    let usage_postgres = read_workspace_file("crates/aether-data/src/repository/usage/postgres/mod.rs");
+    let daily_stats_sql =
+        read_workspace_file("crates/aether-data/src/backend/stats/postgres_daily/sql.rs");
+    let usage_postgres =
+        read_workspace_file("crates/aether-data/src/repository/usage/postgres/mod.rs");
 
     for source in [&daily_stats_sql, &usage_postgres] {
         assert!(
