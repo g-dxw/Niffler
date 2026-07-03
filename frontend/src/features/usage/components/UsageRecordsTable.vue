@@ -657,11 +657,11 @@
           <TableCell
             v-if="isAdmin && isColumnVisible('user')"
             class="py-4 align-top"
-            :title="record.username || record.user_email || (record.user_id ? `User ${record.user_id}` : '已删除用户')"
+            :title="getUsageRecordUserDisplay(record)"
           >
             <div class="flex flex-col text-xs gap-0.5">
               <span class="break-words leading-4">
-                {{ record.username || record.user_email || (record.user_id ? `User ${record.user_id}` : '已删除用户') }}
+                {{ getUsageRecordUserDisplay(record) }}
               </span>
               <span
                 v-if="record.api_key?.name"
@@ -1252,6 +1252,13 @@ function getProviderAccountDisplay(record: UsageRecord): string {
     return ''
   }
   return accountDisplay
+}
+
+function getUsageRecordUserDisplay(record: UsageRecord): string {
+  if (record.username) return record.username
+  if (record.user_email) return record.user_email
+  if (record.user_id) return '已删除用户'
+  return '未认证请求'
 }
 
 async function copyProviderAccountDisplay(record: UsageRecord): Promise<void> {

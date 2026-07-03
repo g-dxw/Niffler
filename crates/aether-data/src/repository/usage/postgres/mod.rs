@@ -1834,7 +1834,7 @@ SELECT
   COALESCE(SUM(total_input_context), 0)::BIGINT AS total_input_context,
   COALESCE(SUM(cache_creation_cost), 0)::DOUBLE PRECISION AS cache_creation_cost_usd,
   COALESCE(SUM(cache_read_cost), 0)::DOUBLE PRECISION AS cache_read_cost_usd,
-  COALESCE(SUM(total_cost), 0)::DOUBLE PRECISION AS total_cost_usd,
+  COALESCE(SUM(settled_total_cost), 0)::DOUBLE PRECISION AS total_cost_usd,
   COALESCE(SUM(actual_total_cost), 0)::DOUBLE PRECISION AS actual_total_cost_usd,
   COALESCE(SUM(error_requests), 0)::BIGINT AS error_requests,
   COALESCE(SUM(response_time_sum_ms), 0)::DOUBLE PRECISION AS response_time_sum_ms,
@@ -1865,7 +1865,7 @@ SELECT
   COALESCE(SUM(total_input_context), 0)::BIGINT AS total_input_context,
   COALESCE(SUM(cache_creation_cost), 0)::DOUBLE PRECISION AS cache_creation_cost_usd,
   COALESCE(SUM(cache_read_cost), 0)::DOUBLE PRECISION AS cache_read_cost_usd,
-  COALESCE(SUM(total_cost), 0)::DOUBLE PRECISION AS total_cost_usd,
+  COALESCE(SUM(settled_total_cost), 0)::DOUBLE PRECISION AS total_cost_usd,
   COALESCE(SUM(actual_total_cost), 0)::DOUBLE PRECISION AS actual_total_cost_usd,
   COALESCE(SUM(error_requests), 0)::BIGINT AS error_requests,
   COALESCE(SUM(response_time_sum_ms), 0)::DOUBLE PRECISION AS response_time_sum_ms,
@@ -2023,8 +2023,13 @@ SELECT
     AS cache_creation_cost_usd,
   COALESCE(SUM(COALESCE(CAST("usage".cache_read_cost_usd AS DOUBLE PRECISION), 0)), 0)
     AS cache_read_cost_usd,
-  COALESCE(SUM(COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)), 0)
-    AS total_cost_usd,
+  COALESCE(SUM(
+    CASE
+      WHEN COALESCE("usage".billing_status, '') = 'settled'
+      THEN COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)
+      ELSE 0
+    END
+  ), 0) AS total_cost_usd,
   COALESCE(SUM(COALESCE(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION), 0)), 0)
     AS actual_total_cost_usd,
   COALESCE(SUM(
@@ -3036,8 +3041,13 @@ SELECT
     AS cache_creation_ephemeral_1h_tokens,
   COALESCE(SUM(GREATEST(COALESCE("usage".cache_read_input_tokens, 0), 0)), 0)::BIGINT
     AS cache_read_tokens,
-  COALESCE(SUM(COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)), 0)
-    AS total_cost_usd,
+  COALESCE(SUM(
+    CASE
+      WHEN COALESCE("usage".billing_status, '') = 'settled'
+      THEN COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)
+      ELSE 0
+    END
+  ), 0) AS total_cost_usd,
   COALESCE(SUM(COALESCE(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION), 0)), 0)
     AS actual_total_cost_usd,
   COALESCE(SUM(COALESCE(CAST("usage".cache_creation_cost_usd AS DOUBLE PRECISION), 0)), 0)
@@ -3394,8 +3404,13 @@ WHERE hour_utc >= $1
         let mut builder = QueryBuilder::<Postgres>::new(
             r#"
 SELECT
-  COALESCE(SUM(COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)), 0)
-    AS total_cost_usd,
+  COALESCE(SUM(
+    CASE
+      WHEN COALESCE("usage".billing_status, '') = 'settled'
+      THEN COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)
+      ELSE 0
+    END
+  ), 0) AS total_cost_usd,
   COUNT(*)::BIGINT AS total_requests,
   COALESCE(SUM(GREATEST(COALESCE("usage".input_tokens, 0), 0)), 0)::BIGINT AS input_tokens,
   COALESCE(SUM(GREATEST(COALESCE("usage".output_tokens, 0), 0)), 0)::BIGINT AS output_tokens,
@@ -4285,8 +4300,13 @@ SELECT
       END
     + GREATEST(COALESCE("usage".cache_read_input_tokens, 0), 0)
   ), 0)::BIGINT AS total_tokens,
-  COALESCE(SUM(COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)), 0)
-    AS total_cost_usd,
+  COALESCE(SUM(
+    CASE
+      WHEN COALESCE("usage".billing_status, '') = 'settled'
+      THEN COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)
+      ELSE 0
+    END
+  ), 0) AS total_cost_usd,
   COALESCE(SUM(
     CASE
       WHEN "usage".response_time_ms IS NOT NULL
@@ -4570,6 +4590,7 @@ WITH filtered_usage AS (
     COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0) AS total_cost_usd,
     COALESCE(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION), 0) AS actual_total_cost_usd,
     official_cost.official_cost_usd AS official_cost_usd,
+    COALESCE("usage".billing_status, '') AS billing_status,
     CASE
       WHEN "usage".status IN ('completed', 'success', 'ok', 'billed', 'settled')
            AND ("usage".status_code IS NULL OR "usage".status_code < 400)
@@ -4724,9 +4745,9 @@ normalized_usage AS (
       ELSE 0
     END AS cache_creation_ephemeral_1h_tokens,
     CASE WHEN success_flag = 1 THEN cache_read_tokens ELSE 0 END AS cache_read_tokens,
-    CASE WHEN success_flag = 1 THEN official_cost_usd ELSE 0 END AS official_cost_usd,
-    CASE WHEN success_flag = 1 THEN total_cost_usd ELSE 0 END AS total_cost_usd,
-    CASE WHEN success_flag = 1 THEN actual_total_cost_usd ELSE 0 END AS actual_total_cost_usd,
+    CASE WHEN billing_status = 'settled' THEN official_cost_usd ELSE 0 END AS official_cost_usd,
+    CASE WHEN billing_status = 'settled' THEN total_cost_usd ELSE 0 END AS total_cost_usd,
+    actual_total_cost_usd,
     success_flag,
     response_time_ms,
     response_time_samples,
@@ -6036,8 +6057,13 @@ WHERE user_id = $1
     AS cache_creation_tokens,
   COALESCE(SUM(GREATEST(COALESCE("usage".cache_read_input_tokens, 0), 0)), 0)::BIGINT
     AS cache_read_tokens,
-  COALESCE(SUM(COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)), 0)
-    AS total_cost_usd,
+  COALESCE(SUM(
+    CASE
+      WHEN COALESCE("usage".billing_status, '') = 'settled'
+      THEN COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)
+      ELSE 0
+    END
+  ), 0) AS total_cost_usd,
   COALESCE(SUM(GREATEST(COALESCE("usage".response_time_ms, 0), 0)::DOUBLE PRECISION), 0)
     AS total_response_time_ms
 FROM usage_billing_facts AS "usage"
@@ -6414,8 +6440,13 @@ SELECT
       END
     + GREATEST(COALESCE("usage".cache_read_input_tokens, 0), 0)
   ), 0)::BIGINT AS total_tokens,
-  COALESCE(SUM(COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)), 0)
-    AS total_cost_usd
+  COALESCE(SUM(
+    CASE
+      WHEN COALESCE("usage".billing_status, '') = 'settled'
+      THEN COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)
+      ELSE 0
+    END
+  ), 0) AS total_cost_usd
 FROM usage_billing_facts AS "usage"
 WHERE "usage".created_at >= TO_TIMESTAMP($1::double precision)
   AND "usage".created_at < TO_TIMESTAMP($2::double precision)
@@ -6912,6 +6943,7 @@ WITH filtered_usage AS (
     official_cost.official_cost_usd AS official_cost_usd,
     COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0) AS total_cost_usd,
     COALESCE(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION), 0) AS actual_total_cost_usd,
+    COALESCE("usage".billing_status, '') AS billing_status,
     GREATEST(COALESCE("usage".response_time_ms, 0), 0) AS response_time_ms,
     CASE
       WHEN "usage".status IN ('completed', 'success', 'ok', 'billed', 'settled')
@@ -7019,9 +7051,9 @@ normalized_usage AS (
       ELSE 0
     END AS cache_creation_ephemeral_1h_tokens,
     CASE WHEN success_flag = 1 THEN cache_read_tokens ELSE 0 END AS cache_read_tokens,
-    CASE WHEN success_flag = 1 THEN official_cost_usd ELSE 0 END AS official_cost_usd,
-    CASE WHEN success_flag = 1 THEN total_cost_usd ELSE 0 END AS total_cost_usd,
-    CASE WHEN success_flag = 1 THEN actual_total_cost_usd ELSE 0 END AS actual_total_cost_usd,
+    CASE WHEN billing_status = 'settled' THEN official_cost_usd ELSE 0 END AS official_cost_usd,
+    CASE WHEN billing_status = 'settled' THEN total_cost_usd ELSE 0 END AS total_cost_usd,
+    actual_total_cost_usd,
     response_time_ms,
     success_flag,
     CASE
@@ -7224,8 +7256,15 @@ LIMIT $3
         ELSE COALESCE("usage".cache_creation_input_tokens, 0)
       END
     + COALESCE("usage".cache_read_input_tokens, 0)), 0)::BIGINT AS total_tokens,
-  COALESCE(SUM(CAST("usage".total_cost_usd AS DOUBLE PRECISION)), 0) AS total_cost_usd,
-  COALESCE(SUM(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION)), 0) AS actual_total_cost_usd
+  COALESCE(SUM(
+    CASE
+      WHEN COALESCE("usage".billing_status, '') = 'settled'
+      THEN COALESCE(CAST("usage".total_cost_usd AS DOUBLE PRECISION), 0)
+      ELSE 0
+    END
+  ), 0) AS total_cost_usd,
+  COALESCE(SUM(COALESCE(CAST("usage".actual_total_cost_usd AS DOUBLE PRECISION), 0)), 0)
+    AS actual_total_cost_usd
 FROM usage_billing_facts AS "usage"
 WHERE "usage".created_at >= $1
   AND "usage".created_at < $2

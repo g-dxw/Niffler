@@ -26,6 +26,7 @@ export interface ProviderModelCreatePayloadInput {
 
 export interface ProviderModelUpdatePayloadInput {
   finalTieredPricing: TieredPricingConfig | null
+  tieredPricingModified: boolean
   pricePerRequest?: number
   costMultiplier?: number
   cleanConfig?: Record<string, unknown>
@@ -70,7 +71,7 @@ export function buildProviderModelCreatePayload(input: ProviderModelCreatePayloa
 
 export function buildProviderModelUpdatePayload(input: ProviderModelUpdatePayloadInput): ModelUpdate {
   return {
-    tiered_pricing: input.finalTieredPricing,
+    tiered_pricing: input.tieredPricingModified ? input.finalTieredPricing : undefined,
     price_per_request: input.pricePerRequest ?? null,
     cost_multiplier: input.costMultiplier ?? null,
     config: input.configTouched ? (input.cleanConfig || null) : undefined,

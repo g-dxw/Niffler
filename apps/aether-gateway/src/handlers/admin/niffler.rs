@@ -550,15 +550,16 @@ fn default_account_protection_action() -> NifflerAccountProtectionAction {
 
 fn niffler_platform_error_rule_status_code(code: &str) -> Option<u16> {
     match code {
-        "invalid_api_key" => Some(http::StatusCode::UNAUTHORIZED.as_u16()),
+        "missing_api_key" | "invalid_api_key" => Some(http::StatusCode::UNAUTHORIZED.as_u16()),
         "locked_api_key"
         | "wallet_unavailable"
         | "provider_not_allowed"
         | "api_format_not_allowed"
         | "model_not_allowed" => Some(http::StatusCode::FORBIDDEN.as_u16()),
-        "balance_exceeded" | "rate_limit_exceeded" => {
-            Some(http::StatusCode::TOO_MANY_REQUESTS.as_u16())
+        "insufficient_balance" | "balance_exceeded" => {
+            Some(http::StatusCode::PAYMENT_REQUIRED.as_u16())
         }
+        "rate_limit_exceeded" => Some(http::StatusCode::TOO_MANY_REQUESTS.as_u16()),
         "request_body_normalization_failed" => Some(http::StatusCode::BAD_REQUEST.as_u16()),
         "local_execution_runtime_unavailable" => {
             Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())
@@ -4028,8 +4029,16 @@ mod tests {
             Some(403)
         );
         assert_eq!(
+            niffler_platform_error_rule_status_code("missing_api_key"),
+            Some(401)
+        );
+        assert_eq!(
+            niffler_platform_error_rule_status_code("insufficient_balance"),
+            Some(402)
+        );
+        assert_eq!(
             niffler_platform_error_rule_status_code("balance_exceeded"),
-            Some(429)
+            Some(402)
         );
         assert_eq!(
             niffler_platform_error_rule_status_code("local_execution_runtime_unavailable"),

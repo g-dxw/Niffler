@@ -88,6 +88,10 @@ pub(crate) async fn build_niffler_platform_auth_rejection_response(
             "type".to_string(),
             Value::String(platform_error.error_type.to_string()),
         ),
+        (
+            "code".to_string(),
+            Value::String(platform_error.code.to_string()),
+        ),
         ("message".to_string(), Value::String(message)),
     ]);
     if !platform_error.details.is_null() {
@@ -125,6 +129,7 @@ pub(crate) async fn build_niffler_platform_rate_limited_response(
     let payload = json!({
         "error": {
             "type": "rate_limit_exceeded",
+            "code": "rate_limit_exceeded",
             "message": message,
         }
     });
@@ -160,9 +165,15 @@ pub(crate) async fn build_niffler_platform_http_error_response(
     )
     .await
     .unwrap_or_else(|| default_message.to_string());
+    let error_type = if status_code == StatusCode::UNAUTHORIZED {
+        "authentication_error"
+    } else {
+        "http_error"
+    };
     let payload = json!({
         "error": {
-            "type": "http_error",
+            "type": error_type,
+            "code": code,
             "message": message,
         }
     });
@@ -266,7 +277,7 @@ async fn resolve_platform_error_message(
 
     let settings =
         load_error_return_settings(state, NifflerErrorResponseScope::Platform, None).await?;
-    let match_text = format!("{code}\n{default_message}");
+    let match_text = platform_error_match_text(code, default_message);
     let setting = select_platform_setting(&settings, status_code, match_text.as_str())?;
     Some(apply_response_mode(
         setting.response_mode,
@@ -335,8 +346,37 @@ fn select_platform_setting<'a>(
     settings
         .iter()
         .filter(|setting| setting.is_active && setting.scope == NifflerErrorResponseScope::Platform)
-        .filter(|setting| setting_matches(setting, status_code, Some(text)))
+        .filter(|setting| platform_setting_matches(setting, status_code, Some(text)))
         .max_by_key(|setting| (match_specificity(setting), setting.created_at_unix_ms))
+}
+
+fn platform_error_match_text(code: &str, default_message: &str) -> String {
+    match code {
+        "insufficient_balance" => {
+            format!("{code}\nbalance_exceeded\n{default_message}")
+        }
+        _ => format!("{code}\n{default_message}"),
+    }
+}
+
+fn platform_setting_matches(
+    setting: &StoredNifflerErrorReturnSetting,
+    status_code: u16,
+    text: Option<&str>,
+) -> bool {
+    platform_status_matches(setting.match_status_code, status_code, text)
+        && text_matches(setting.match_text.as_deref(), text)
+}
+
+fn platform_status_matches(expected: Option<u16>, actual: u16, text: Option<&str>) -> bool {
+    if status_matches(expected, actual) {
+        return true;
+    }
+    expected == Some(StatusCode::TOO_MANY_REQUESTS.as_u16())
+        && actual == StatusCode::PAYMENT_REQUIRED.as_u16()
+        && text.is_some_and(|value| {
+            text_contains(value, "insufficient_balance") || text_contains(value, "balance_exceeded")
+        })
 }
 
 fn select_upstream_setting<'a>(
@@ -594,25 +634,25 @@ impl PlatformError {
             GatewayLocalAuthRejection::InvalidApiKey => Self::simple(
                 StatusCode::UNAUTHORIZED,
                 "invalid_api_key",
-                "http_error",
+                "authentication_error",
                 "无效的API密钥",
             ),
             GatewayLocalAuthRejection::LockedApiKey => Self::simple(
                 StatusCode::FORBIDDEN,
                 "locked_api_key",
-                "http_error",
+                "access_denied",
                 "该密钥已被管理员锁定，请联系管理员",
             ),
             GatewayLocalAuthRejection::WalletUnavailable => Self::simple(
                 StatusCode::FORBIDDEN,
                 "wallet_unavailable",
-                "http_error",
+                "wallet_unavailable",
                 "钱包不可用",
             ),
             GatewayLocalAuthRejection::BalanceDenied { remaining } => Self {
-                status_code: StatusCode::TOO_MANY_REQUESTS.as_u16(),
-                code: "balance_exceeded",
-                error_type: "balance_exceeded",
+                status_code: StatusCode::PAYMENT_REQUIRED.as_u16(),
+                code: "insufficient_balance",
+                error_type: "insufficient_balance",
                 default_message: match remaining {
                     Some(value) => format!("余额不足（剩余: ${value:.2}）"),
                     None => "余额不足".to_string(),
@@ -625,19 +665,19 @@ impl PlatformError {
             GatewayLocalAuthRejection::ProviderNotAllowed { provider } => Self::simple(
                 StatusCode::FORBIDDEN,
                 "provider_not_allowed",
-                "http_error",
+                "access_denied",
                 format!("当前用户、用户组或密钥的访问控制策略不允许访问 {provider} 提供商"),
             ),
             GatewayLocalAuthRejection::ApiFormatNotAllowed { api_format } => Self::simple(
                 StatusCode::FORBIDDEN,
                 "api_format_not_allowed",
-                "http_error",
+                "access_denied",
                 format!("当前用户、用户组或密钥的访问控制策略不允许访问 {api_format} 格式"),
             ),
             GatewayLocalAuthRejection::ModelNotAllowed { model } => Self::simple(
                 StatusCode::FORBIDDEN,
                 "model_not_allowed",
-                "http_error",
+                "access_denied",
                 format!("当前用户、用户组或密钥的访问控制策略不允许访问模型 {model}"),
             ),
         }
@@ -714,6 +754,28 @@ mod tests {
         let selected = select_platform_setting(&settings, 403, "model_not_allowed\n模型不可用")
             .expect("setting should match");
         assert_eq!(selected.id, "text");
+    }
+
+    #[test]
+    fn platform_setting_keeps_legacy_balance_exceeded_rule_matching_payment_required() {
+        let settings = vec![setting(
+            "legacy-balance",
+            NifflerErrorResponseScope::Platform,
+            Some(StatusCode::TOO_MANY_REQUESTS.as_u16()),
+            Some("balance_exceeded"),
+            None,
+            "legacy balance message",
+            10,
+        )];
+
+        let selected = select_platform_setting(
+            &settings,
+            StatusCode::PAYMENT_REQUIRED.as_u16(),
+            platform_error_match_text("insufficient_balance", "余额不足").as_str(),
+        )
+        .expect("legacy setting should match");
+
+        assert_eq!(selected.id, "legacy-balance");
     }
 
     #[test]

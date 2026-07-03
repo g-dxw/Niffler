@@ -81,7 +81,7 @@ async fn gateway_locally_denies_explicit_trusted_balance_failure_without_hitting
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
     assert_eq!(
         response
             .headers()
@@ -97,7 +97,8 @@ async fn gateway_locally_denies_explicit_trusted_balance_failure_without_hitting
         Some("ai_public")
     );
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "balance_exceeded");
+    assert_eq!(payload["error"]["type"], "insufficient_balance");
+    assert_eq!(payload["error"]["code"], "insufficient_balance");
     assert_eq!(payload["error"]["message"], "余额不足（剩余: $0.00）");
     assert_eq!(payload["error"]["details"]["balance_type"], "USD");
     assert_eq!(payload["error"]["details"]["remaining"], 0.0);
@@ -177,7 +178,8 @@ async fn gateway_locally_denies_invalid_trusted_snapshot_without_hitting_control
         Some(EXECUTION_PATH_LOCAL_AUTH_DENIED)
     );
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "authentication_error");
+    assert_eq!(payload["error"]["code"], "invalid_api_key");
     assert_eq!(payload["error"]["message"], "无效的API密钥");
 
     assert_eq!(*auth_context_hits.lock().expect("mutex should lock"), 0);
@@ -252,7 +254,8 @@ async fn gateway_locally_denies_missing_wallet_without_hitting_control_or_upstre
         Some(EXECUTION_PATH_LOCAL_AUTH_DENIED)
     );
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "wallet_unavailable");
+    assert_eq!(payload["error"]["code"], "wallet_unavailable");
     assert_eq!(payload["error"]["message"], "钱包不可用");
 
     assert_eq!(*auth_context_hits.lock().expect("mutex should lock"), 0);
@@ -322,7 +325,8 @@ async fn gateway_locally_denies_invalid_bearer_api_key_without_hitting_control_o
         Some(EXECUTION_PATH_LOCAL_AUTH_DENIED)
     );
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "authentication_error");
+    assert_eq!(payload["error"]["code"], "invalid_api_key");
     assert_eq!(payload["error"]["message"], "无效的API密钥");
     assert_eq!(*auth_context_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
@@ -500,7 +504,8 @@ async fn gateway_locally_denies_disallowed_claude_api_format_without_hitting_con
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "access_denied");
+    assert_eq!(payload["error"]["code"], "api_format_not_allowed");
     assert_eq!(
         payload["error"]["message"],
         "当前用户、用户组或密钥的访问控制策略不允许访问 claude:messages 格式"
@@ -585,7 +590,8 @@ async fn gateway_locally_denies_disallowed_provider_without_hitting_control_or_u
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "access_denied");
+    assert_eq!(payload["error"]["code"], "provider_not_allowed");
     assert_eq!(
         payload["error"]["message"],
         "当前用户、用户组或密钥的访问控制策略不允许访问 claude 提供商"
@@ -658,7 +664,8 @@ async fn gateway_locally_denies_disallowed_gemini_model_without_hitting_control_
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "access_denied");
+    assert_eq!(payload["error"]["code"], "model_not_allowed");
     assert_eq!(
         payload["error"]["message"],
         "当前用户、用户组或密钥的访问控制策略不允许访问模型 gemini-2.5-pro"
@@ -732,7 +739,8 @@ async fn gateway_locally_denies_locked_trusted_snapshot_without_hitting_control_
         Some(EXECUTION_PATH_LOCAL_AUTH_DENIED)
     );
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "access_denied");
+    assert_eq!(payload["error"]["code"], "locked_api_key");
     assert_eq!(
         payload["error"]["message"],
         "该密钥已被管理员锁定，请联系管理员"
@@ -810,7 +818,8 @@ async fn gateway_locally_denies_disallowed_openai_model_without_hitting_control_
         Some(EXECUTION_PATH_LOCAL_AUTH_DENIED)
     );
     let payload: serde_json::Value = response.json().await.expect("response json should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "access_denied");
+    assert_eq!(payload["error"]["code"], "model_not_allowed");
     assert_eq!(
         payload["error"]["message"],
         "当前用户、用户组或密钥的访问控制策略不允许访问模型 gpt-5"

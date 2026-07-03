@@ -193,7 +193,8 @@ pub(crate) fn build_local_balance_denied_response(
     };
     let payload = json!({
         "error": {
-            "type": "balance_exceeded",
+            "type": "insufficient_balance",
+            "code": "insufficient_balance",
             "message": message,
             "details": {
                 "balance_type": "USD",
@@ -205,7 +206,7 @@ pub(crate) fn build_local_balance_denied_response(
         serde_json::to_vec(&payload).map_err(|err| GatewayError::Internal(err.to_string()))?;
     let headers = BTreeMap::from([("content-type".to_string(), "application/json".to_string())]);
     build_client_response_from_parts(
-        StatusCode::TOO_MANY_REQUESTS.as_u16(),
+        StatusCode::PAYMENT_REQUIRED.as_u16(),
         &headers,
         Body::from(body),
         trace_id,
@@ -248,11 +249,33 @@ pub(crate) fn build_local_http_error_response(
     status_code: StatusCode,
     message: &str,
 ) -> Result<Response<Body>, GatewayError> {
+    build_local_typed_error_response(
+        trace_id,
+        control_decision,
+        status_code,
+        "http_error",
+        None,
+        message,
+    )
+}
+
+pub(crate) fn build_local_typed_error_response(
+    trace_id: &str,
+    control_decision: Option<&GatewayControlDecision>,
+    status_code: StatusCode,
+    error_type: &str,
+    code: Option<&str>,
+    message: &str,
+) -> Result<Response<Body>, GatewayError> {
+    let mut error = serde_json::Map::from_iter([
+        ("type".to_string(), json!(error_type)),
+        ("message".to_string(), json!(message)),
+    ]);
+    if let Some(code) = code {
+        error.insert("code".to_string(), json!(code));
+    }
     let payload = json!({
-        "error": {
-            "type": "http_error",
-            "message": message,
-        }
+        "error": error
     });
     let body =
         serde_json::to_vec(&payload).map_err(|err| GatewayError::Internal(err.to_string()))?;
@@ -274,47 +297,59 @@ pub(crate) fn build_local_auth_rejection_response(
     const ACCESS_POLICY_SUBJECT: &str = "当前用户、用户组或密钥的访问控制策略";
 
     match rejection {
-        GatewayLocalAuthRejection::InvalidApiKey => build_local_http_error_response(
+        GatewayLocalAuthRejection::InvalidApiKey => build_local_typed_error_response(
             trace_id,
             control_decision,
             StatusCode::UNAUTHORIZED,
+            "authentication_error",
+            Some("invalid_api_key"),
             "无效的API密钥",
         ),
-        GatewayLocalAuthRejection::LockedApiKey => build_local_http_error_response(
+        GatewayLocalAuthRejection::LockedApiKey => build_local_typed_error_response(
             trace_id,
             control_decision,
             StatusCode::FORBIDDEN,
+            "access_denied",
+            Some("locked_api_key"),
             "该密钥已被管理员锁定，请联系管理员",
         ),
-        GatewayLocalAuthRejection::WalletUnavailable => build_local_http_error_response(
+        GatewayLocalAuthRejection::WalletUnavailable => build_local_typed_error_response(
             trace_id,
             control_decision,
             StatusCode::FORBIDDEN,
+            "wallet_unavailable",
+            Some("wallet_unavailable"),
             "钱包不可用",
         ),
         GatewayLocalAuthRejection::BalanceDenied { remaining } => {
             build_local_balance_denied_response(trace_id, control_decision, *remaining)
         }
         GatewayLocalAuthRejection::ProviderNotAllowed { provider } => {
-            build_local_http_error_response(
+            build_local_typed_error_response(
                 trace_id,
                 control_decision,
                 StatusCode::FORBIDDEN,
+                "access_denied",
+                Some("provider_not_allowed"),
                 &format!("{ACCESS_POLICY_SUBJECT}不允许访问 {provider} 提供商"),
             )
         }
         GatewayLocalAuthRejection::ApiFormatNotAllowed { api_format } => {
-            build_local_http_error_response(
+            build_local_typed_error_response(
                 trace_id,
                 control_decision,
                 StatusCode::FORBIDDEN,
+                "access_denied",
+                Some("api_format_not_allowed"),
                 &format!("{ACCESS_POLICY_SUBJECT}不允许访问 {api_format} 格式"),
             )
         }
-        GatewayLocalAuthRejection::ModelNotAllowed { model } => build_local_http_error_response(
+        GatewayLocalAuthRejection::ModelNotAllowed { model } => build_local_typed_error_response(
             trace_id,
             control_decision,
             StatusCode::FORBIDDEN,
+            "access_denied",
+            Some("model_not_allowed"),
             &format!("{ACCESS_POLICY_SUBJECT}不允许访问模型 {model}"),
         ),
     }

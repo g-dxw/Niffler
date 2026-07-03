@@ -101,7 +101,7 @@ async fn gateway_locally_denies_sync_ai_control_execute_when_opted_in_and_execut
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     let execution_path = response
         .headers()
         .get(EXECUTION_PATH_HEADER)
@@ -120,7 +120,7 @@ async fn gateway_locally_denies_sync_ai_control_execute_when_opted_in_and_execut
     );
     assert_eq!(
         payload["error"]["message"],
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商"
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Chat Completions）"
     );
     assert_eq!(*execute_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
@@ -236,7 +236,7 @@ async fn gateway_locally_denies_stream_ai_control_execute_when_opted_in_and_exec
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     let execution_path = response
         .headers()
         .get(EXECUTION_PATH_HEADER)
@@ -255,7 +255,7 @@ async fn gateway_locally_denies_stream_ai_control_execute_when_opted_in_and_exec
     );
     assert_eq!(
         payload["error"]["message"],
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商"
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Chat Completions）"
     );
     assert_eq!(*execute_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
@@ -375,7 +375,7 @@ async fn gateway_does_not_proxy_control_execute_over_http_when_opted_in_and_exec
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         response
             .headers()
@@ -393,7 +393,7 @@ async fn gateway_does_not_proxy_control_execute_over_http_when_opted_in_and_exec
     let payload: serde_json::Value = response.json().await.expect("body should parse");
     assert_eq!(
         payload["error"]["message"],
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商"
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Chat Completions）"
     );
     assert_eq!(*plan_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*execute_hits.lock().expect("mutex should lock"), 0);
@@ -508,7 +508,7 @@ async fn gateway_does_not_proxy_control_execute_over_http_when_opted_in_and_exec
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         response
             .headers()
@@ -526,7 +526,7 @@ async fn gateway_does_not_proxy_control_execute_over_http_when_opted_in_and_exec
     let payload: serde_json::Value = response.json().await.expect("body should parse");
     assert_eq!(
         payload["error"]["message"],
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商"
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Chat Completions）"
     );
     assert_eq!(*plan_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*execute_hits.lock().expect("mutex should lock"), 0);

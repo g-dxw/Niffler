@@ -96,7 +96,7 @@ async fn gateway_locally_denies_openai_chat_after_repeated_execution_runtime_mis
             .send()
             .await
             .expect("request should succeed");
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
             response
                 .headers()
@@ -119,10 +119,10 @@ async fn gateway_locally_denies_openai_chat_after_repeated_execution_runtime_mis
             Some("missing_auth_context")
         );
         let payload: serde_json::Value = response.json().await.expect("body should parse");
-        assert_eq!(payload["error"]["type"], "http_error");
+        assert_eq!(payload["error"]["type"], "authentication_error");
         assert_eq!(
             payload["error"]["message"],
-            "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商"
+            "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Chat Completions）"
         );
     }
 
@@ -270,7 +270,7 @@ async fn gateway_locally_denies_openai_chat_when_control_api_is_configured_witho
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         response
             .headers()
@@ -293,10 +293,10 @@ async fn gateway_locally_denies_openai_chat_when_control_api_is_configured_witho
         Some("missing_auth_context")
     );
     let payload: serde_json::Value = response.json().await.expect("body should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "authentication_error");
     assert_eq!(
         payload["error"]["message"],
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商"
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Chat Completions）"
     );
     assert_eq!(*execute_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
@@ -381,7 +381,7 @@ async fn gateway_locally_denies_openai_chat_stream_after_execution_runtime_miss_
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         response
             .headers()
@@ -404,10 +404,10 @@ async fn gateway_locally_denies_openai_chat_stream_after_execution_runtime_miss_
         Some("missing_auth_context")
     );
     let payload: serde_json::Value = response.json().await.expect("body should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], "authentication_error");
     assert_eq!(
         payload["error"]["message"],
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商"
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Chat Completions）"
     );
     assert_eq!(*execute_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
@@ -430,6 +430,8 @@ async fn assert_ai_route_locally_denied_after_execution_runtime_miss(
     route_kind: &'static str,
     endpoint_signature: &'static str,
     request_body: &'static str,
+    expected_status: StatusCode,
+    expected_error_type: &'static str,
     expected_message: &'static str,
 ) {
     assert_ai_route_locally_denied_after_execution_runtime_miss_with_request(
@@ -440,6 +442,8 @@ async fn assert_ai_route_locally_denied_after_execution_runtime_miss(
         route_kind,
         endpoint_signature,
         Some(request_body),
+        expected_status,
+        expected_error_type,
         expected_message,
     )
     .await;
@@ -453,6 +457,8 @@ async fn assert_ai_route_locally_denied_after_execution_runtime_miss_with_reques
     route_kind: &'static str,
     endpoint_signature: &'static str,
     request_body: Option<&'static str>,
+    expected_status: StatusCode,
+    expected_error_type: &'static str,
     expected_message: &'static str,
 ) {
     let control_execute_hits = Arc::new(Mutex::new(0usize));
@@ -543,7 +549,7 @@ async fn assert_ai_route_locally_denied_after_execution_runtime_miss_with_reques
     }
     let response = request.send().await.expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.status(), expected_status);
     assert_eq!(
         response
             .headers()
@@ -559,7 +565,7 @@ async fn assert_ai_route_locally_denied_after_execution_runtime_miss_with_reques
         None
     );
     let payload: serde_json::Value = response.json().await.expect("body should parse");
-    assert_eq!(payload["error"]["type"], "http_error");
+    assert_eq!(payload["error"]["type"], expected_error_type);
     assert_eq!(payload["error"]["message"], expected_message);
     assert_eq!(*control_execute_hits.lock().expect("mutex should lock"), 0);
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
@@ -585,7 +591,9 @@ async fn gateway_locally_denies_openai_responses_after_execution_runtime_miss_wi
         "responses",
         "openai:responses",
         "{\"model\":\"gpt-5\",\"input\":\"hello\"}",
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商",
+        StatusCode::UNAUTHORIZED,
+        "authentication_error",
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Responses）",
     )
     .await;
 }
@@ -599,6 +607,8 @@ async fn gateway_locally_denies_claude_messages_after_execution_runtime_miss_wit
         "chat",
         "claude:messages",
         "{\"model\":\"claude-sonnet-4-5\",\"messages\":[]}",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "请求缺少本地执行所需的认证、模型或配置上下文，无法选择上游提供商",
     )
     .await;
@@ -613,7 +623,9 @@ async fn gateway_locally_denies_openai_responses_stream_after_execution_runtime_
         "responses",
         "openai:responses",
         "{\"model\":\"gpt-5\",\"input\":\"hello\",\"stream\":true}",
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商",
+        StatusCode::UNAUTHORIZED,
+        "authentication_error",
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Responses）",
     )
     .await;
 }
@@ -627,6 +639,8 @@ async fn gateway_locally_denies_claude_messages_stream_after_execution_runtime_m
         "chat",
         "claude:messages",
         "{\"model\":\"claude-sonnet-4-5\",\"messages\":[],\"stream\":true}",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "请求缺少本地执行所需的认证、模型或配置上下文，无法选择上游提供商",
     )
     .await;
@@ -641,7 +655,9 @@ async fn gateway_locally_denies_openai_responses_compact_after_execution_runtime
         "responses:compact",
         "openai:responses:compact",
         "{\"model\":\"gpt-5\",\"input\":\"hello\"}",
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商",
+        StatusCode::UNAUTHORIZED,
+        "authentication_error",
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Responses Compact）",
     )
     .await;
 }
@@ -655,7 +671,9 @@ async fn gateway_locally_denies_openai_responses_compact_stream_after_execution_
         "responses:compact",
         "openai:responses:compact",
         "{\"model\":\"gpt-5\",\"input\":\"hello\",\"stream\":true}",
-        "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商",
+        StatusCode::UNAUTHORIZED,
+        "authentication_error",
+        "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（OpenAI Responses Compact）",
     )
     .await;
 }
@@ -669,6 +687,8 @@ async fn gateway_locally_denies_gemini_generate_after_execution_runtime_miss_wit
         "chat",
         "gemini:generate_content",
         "{\"contents\":[]}",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "请求缺少本地执行所需的认证、模型或配置上下文，无法选择上游提供商",
     )
     .await;
@@ -683,6 +703,8 @@ async fn gateway_locally_denies_gemini_v1_generate_after_execution_runtime_miss_
         "chat",
         "gemini:generate_content",
         "{\"contents\":[]}",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "请求缺少本地执行所需的认证、模型或配置上下文，无法选择上游提供商",
     )
     .await;
@@ -697,6 +719,8 @@ async fn gateway_locally_denies_gemini_stream_after_execution_runtime_miss_witho
         "chat",
         "gemini:generate_content",
         "{\"contents\":[]}",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "请求缺少本地执行所需的认证、模型或配置上下文，无法选择上游提供商",
     )
     .await;
@@ -711,6 +735,8 @@ async fn gateway_locally_denies_openai_video_after_execution_runtime_miss_withou
         "video",
         "openai:video",
         "{\"model\":\"sora-2\"}",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "当前 OpenAI Video 请求无法在本地执行：没有匹配到可用的执行路径",
     )
     .await;
@@ -725,6 +751,8 @@ async fn gateway_locally_denies_gemini_video_after_execution_runtime_miss_withou
         "video",
         "gemini:video",
         "{\"instances\":[]}",
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "当前 Gemini Public 请求无法在本地执行：没有匹配到可用的执行路径",
     )
     .await;
@@ -741,6 +769,8 @@ async fn gateway_locally_denies_gemini_files_root_after_execution_runtime_miss_w
         "files",
         "gemini:generate_content",
         None,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "当前 Gemini Files 请求无法在本地执行：没有匹配到可用的执行路径",
     )
     .await;
@@ -757,6 +787,8 @@ async fn gateway_locally_denies_gemini_files_download_after_execution_runtime_mi
         "files",
         "gemini:generate_content",
         None,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "当前 Gemini Files 请求无法在本地执行：没有匹配到可用的执行路径",
     )
     .await;
@@ -773,6 +805,8 @@ async fn gateway_locally_denies_gemini_files_upload_after_execution_runtime_miss
         "files",
         "gemini:generate_content",
         Some("{\"file\":{}}"),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "http_error",
         "当前 Gemini Files 请求无法在本地执行：没有匹配到可用的执行路径",
     )
     .await;

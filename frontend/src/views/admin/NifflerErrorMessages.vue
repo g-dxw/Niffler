@@ -501,6 +501,12 @@ type ErrorReturnSettingForm = {
 const { success, error: showError } = useToast()
 const platformErrorOptions = [
   {
+    value: 'missing_api_key',
+    label: '未收到密钥',
+    statusCode: 401,
+    description: '请求没有带可识别的 API Key，常见于客户端配置过旧或导入错误。',
+  },
+  {
     value: 'invalid_api_key',
     label: '密钥不可用',
     statusCode: 401,
@@ -519,9 +525,9 @@ const platformErrorOptions = [
     description: '用户钱包状态异常，不能继续扣费。',
   },
   {
-    value: 'balance_exceeded',
+    value: 'insufficient_balance',
     label: '余额不足',
-    statusCode: 429,
+    statusCode: 402,
     description: '余额或可用额度不足，平台未请求上游。',
   },
   {
@@ -654,6 +660,9 @@ const platformErrorOptionByCode = computed(() =>
 
 function getPlatformErrorOption(code: string | null | undefined): PlatformErrorOption | null {
   if (!code) return null
+  if (code === 'balance_exceeded') {
+    return platformErrorOptionByCode.value.get('insufficient_balance') ?? null
+  }
   return platformErrorOptionByCode.value.get(code as PlatformErrorCode) ?? null
 }
 

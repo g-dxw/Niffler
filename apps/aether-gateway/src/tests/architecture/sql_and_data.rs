@@ -124,6 +124,44 @@ fn referral_postgres_queries_cast_numeric_amount_columns_before_f64_decoding() {
 }
 
 #[test]
+fn usage_cost_statistics_use_settled_billing_instead_of_success_state() {
+    let daily_stats_sql = read_workspace_file("crates/aether-data/src/backend/stats/postgres_daily/sql.rs");
+    let usage_postgres = read_workspace_file("crates/aether-data/src/repository/usage/postgres/mod.rs");
+
+    for source in [&daily_stats_sql, &usage_postgres] {
+        assert!(
+            source.contains("WHEN billing_status = 'settled'"),
+            "usage cost statistics should key user charges off settled billing status"
+        );
+        assert!(
+            !source.contains("CASE WHEN success_flag = 1 THEN total_cost_usd ELSE 0 END"),
+            "usage cost statistics must not drop settled charges only because the request was not technically successful"
+        );
+        assert!(
+            !source.contains("CASE WHEN success_flag = 1 THEN actual_total_cost_usd ELSE 0 END"),
+            "actual cost statistics must not be tied to technical success in usage cost aggregation"
+        );
+        assert!(
+            !source.contains("CASE WHEN billing_status = 'settled' THEN actual_total_cost_usd ELSE 0 END"),
+            "actual cost statistics must keep upstream cost even when the user charge is not settled"
+        );
+    }
+
+    assert!(
+        !daily_stats_sql.contains(
+            "WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')\n                 AND (status_code IS NULL OR status_code < 400)\n                 AND (error_message IS NULL OR BTRIM(error_message) = '')\n            THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)"
+        ),
+        "daily stats should not calculate user charges from technical success state"
+    );
+    assert!(
+        !daily_stats_sql.contains(
+            "WHEN billing_status = 'settled'\n            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)"
+        ),
+        "daily stats should not hide upstream cost only because the user charge is not settled"
+    );
+}
+
+#[test]
 fn testkit_does_not_copy_aether_business_schema_sql() {
     let owner_relay_baseline =
         read_workspace_file("crates/aether-testkit/src/bin/multi_instance_owner_relay_baseline.rs");

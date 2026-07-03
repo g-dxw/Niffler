@@ -271,6 +271,28 @@ describe('UsageRecordsTable', () => {
     expect(root.textContent).not.toContain('钱包扣除 $0.15')
   })
 
+  it('labels admin records without user id as unauthenticated requests', () => {
+    const root = mountUsageRecordsTable([buildRecord({
+      user_id: undefined,
+      username: undefined,
+      user_email: undefined,
+    })])
+
+    expect(root.textContent).toContain('未认证请求')
+    expect(root.textContent).not.toContain('已删除用户')
+  })
+
+  it('labels admin records with missing joined user as deleted users', () => {
+    const root = mountUsageRecordsTable([buildRecord({
+      user_id: 'user-deleted',
+      username: undefined,
+      user_email: undefined,
+    })])
+
+    expect(root.textContent).toContain('已删除用户')
+    expect(root.textContent).not.toContain('User user-deleted')
+  })
+
   it('shows package and wallet split when quota only covers part of the request', () => {
     const root = mountUsageRecordsTable([
       buildRecord({

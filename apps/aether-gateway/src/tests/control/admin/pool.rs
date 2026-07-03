@@ -1302,7 +1302,7 @@ async fn gateway_pool_list_reads_materialized_codex_cycle_usage_from_quota_windo
 }
 
 #[tokio::test]
-async fn gateway_pool_list_overlays_codex_cycle_usage_from_usage_reader() {
+async fn gateway_pool_list_uses_snapshot_codex_cycle_usage_without_live_usage_reader_overlay() {
     let now_unix_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time should be after unix epoch")
@@ -1424,21 +1424,8 @@ async fn gateway_pool_list_overlays_codex_cycle_usage_from_usage_reader() {
             .expect("quota window should exist")
     };
 
-    assert_eq!(window_by_code("5h")["usage"]["request_count"], json!(1));
-    assert_eq!(window_by_code("5h")["usage"]["total_tokens"], json!(30));
-    assert_eq!(
-        window_by_code("5h")["usage"]["total_cost_usd"],
-        json!("0.10000000")
-    );
-    assert_eq!(window_by_code("weekly")["usage"]["request_count"], json!(2));
-    assert_eq!(
-        window_by_code("weekly")["usage"]["total_tokens"],
-        json!(100)
-    );
-    assert_eq!(
-        window_by_code("weekly")["usage"]["total_cost_usd"],
-        json!("0.30000000")
-    );
+    assert!(window_by_code("5h").get("usage").is_none());
+    assert!(window_by_code("weekly").get("usage").is_none());
 }
 
 #[tokio::test]

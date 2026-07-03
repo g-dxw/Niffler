@@ -1665,11 +1665,21 @@ pub fn admin_usage_record_json(
         .as_ref()
         .and_then(|user_id| users_by_id.get(user_id));
     let username = admin_usage_username(item, users_by_id, auth_user_reader_available)
-        .unwrap_or_else(|| "已删除用户".to_string());
+        .unwrap_or_else(|| {
+            if item.user_id.is_some() {
+                "已删除用户".to_string()
+            } else {
+                "未认证请求".to_string()
+            }
+        });
     let api_key_name = admin_usage_api_key_name(item, api_key_names, auth_api_key_reader_available);
-    let user_email = user
-        .and_then(|value| value.email.clone())
-        .unwrap_or_else(|| "已删除用户".to_string());
+    let user_email = user.and_then(|value| value.email.clone()).or_else(|| {
+        if item.user_id.is_some() {
+            Some("已删除用户".to_string())
+        } else {
+            None
+        }
+    });
     let client_is_stream = admin_usage_client_is_stream(item);
     let upstream_is_stream = admin_usage_upstream_is_stream(item);
     let user_debit_usd = charge_breakdown.user_debit_usd;
@@ -4714,6 +4724,30 @@ mod tests {
             &BTreeMap::new(),
             true
         ));
+    }
+
+    #[test]
+    fn admin_usage_record_labels_missing_auth_context_as_unauthenticated_request() {
+        let item = StoredRequestUsageAudit {
+            user_id: None,
+            api_key_id: None,
+            username: None,
+            api_key_name: None,
+            ..sample_usage("failed", Some(503), Some("missing auth context"))
+        };
+
+        let payload = admin_usage_record_json(
+            &item,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            true,
+            true,
+            Some("primary"),
+        );
+
+        assert_eq!(payload["username"], "未认证请求");
+        assert!(payload["user_email"].is_null());
+        assert!(payload["api_key"].is_null());
     }
 
     #[test]

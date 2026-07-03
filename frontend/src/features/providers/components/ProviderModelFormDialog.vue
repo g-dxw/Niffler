@@ -181,7 +181,7 @@
             min="0"
             class="w-32"
             placeholder="留空使用默认值"
-            @update:model-value="(v) => form.price_per_request = parseNumberInput(v, { allowFloat: true })"
+            @update:model-value="updatePricePerRequest"
           />
           <span class="text-xs text-muted-foreground">每次请求固定费用，留空使用全局模型默认值</span>
         </div>
@@ -408,6 +408,7 @@ const tieredPricing = ref<TieredPricingConfig | null>(null)
 const tieredPricingModified = ref(false)
 // 保存原始配置用于比较
 const originalTieredPricing = ref<string>('')
+const pricePerRequestModified = ref(false)
 
 type VideoResolutionPriceRow = { resolution: string; price_per_second: number | undefined }
 
@@ -478,8 +479,7 @@ watch(() => props.open, async (newOpen) => {
         provider_model_name: props.editingModel.provider_model_name || '',
         manual_global_model_name: '',
         manual_global_model_display_name: '',
-        // 显示有效的按次计费价格（继承自全局模型）
-        price_per_request: props.editingModel.effective_price_per_request ?? props.editingModel.price_per_request ?? undefined,
+        price_per_request: props.editingModel.price_per_request ?? undefined,
         cost_multiplier: props.editingModel.cost_multiplier ?? undefined,
         config: effectiveConfig ? JSON.parse(JSON.stringify(effectiveConfig)) : {},
         supports_vision: props.editingModel.supports_vision ?? undefined,
@@ -495,6 +495,9 @@ watch(() => props.open, async (newOpen) => {
       const pricing = props.editingModel.tiered_pricing || props.editingModel.effective_tiered_pricing
       if (pricing) {
         tieredPricing.value = JSON.parse(JSON.stringify(pricing))
+        originalTieredPricing.value = JSON.stringify(pricing)
+      } else {
+        originalTieredPricing.value = ''
       }
     } else {
       // 添加模式：加载可用全局模型
@@ -524,14 +527,17 @@ watch(() => form.value.global_model_id, (newId) => {
     tieredPricingModified.value = false
     // 同时继承按次计费（仅供预览）
     form.value.price_per_request = selectedModel?.default_price_per_request ?? undefined
+    pricePerRequestModified.value = false
   }
 })
 
 // 监听阶梯配置变化，标记为已修改
 watch(tieredPricing, (newValue) => {
-  if (!isEditing.value && originalTieredPricing.value) {
+  if (originalTieredPricing.value) {
     const newJson = JSON.stringify(newValue)
     tieredPricingModified.value = newJson !== originalTieredPricing.value
+  } else {
+    tieredPricingModified.value = newValue != null
   }
 }, { deep: true })
 
@@ -558,8 +564,14 @@ function resetForm() {
   tieredPricing.value = null
   tieredPricingModified.value = false
   originalTieredPricing.value = ''
+  pricePerRequestModified.value = false
   availableGlobalModels.value = []
   manualGlobalModelMode.value = false
+}
+
+function updatePricePerRequest(value: string | number) {
+  form.value.price_per_request = parseNumberInput(value, { allowFloat: true })
+  pricePerRequestModified.value = true
 }
 
 function handleGlobalModelSelect(value: string) {
@@ -850,6 +862,7 @@ async function handleSubmit() {
       // 注意：使用 null 而不是 undefined 来显式清空字段（undefined 会被 JSON 序列化忽略）
       await updateModel(props.providerId, props.editingModel.id, buildProviderModelUpdatePayload({
         finalTieredPricing,
+        tieredPricingModified: tieredPricingModified.value,
         pricePerRequest: form.value.price_per_request,
         costMultiplier: form.value.cost_multiplier,
         cleanConfig,
@@ -876,7 +889,9 @@ async function handleSubmit() {
         providerModelName: form.value.provider_model_name.trim(),
         finalTieredPricing,
         tieredPricingModified: manualGlobalModelMode.value ? false : tieredPricingModified.value,
-        pricePerRequest: manualGlobalModelMode.value ? undefined : form.value.price_per_request,
+        pricePerRequest: !manualGlobalModelMode.value && pricePerRequestModified.value
+          ? form.value.price_per_request
+          : undefined,
         costMultiplier: form.value.cost_multiplier,
         cleanConfig,
         configTouched: manualGlobalModelMode.value ? false : configTouched.value,

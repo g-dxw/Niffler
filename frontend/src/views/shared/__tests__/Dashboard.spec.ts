@@ -141,6 +141,23 @@ afterEach(() => {
 })
 
 describe('Dashboard ordinary user wallet card', () => {
+  it('loads daily stats with timezone offset so cards and daily table share date boundaries', async () => {
+    dashboardApiMocks.getStats.mockResolvedValue({
+      stats: [],
+      today: { requests: 0, tokens: 0, cost: 0 },
+    })
+
+    mountDashboard()
+    await settle()
+
+    expect(dashboardApiMocks.getDailyStats).toHaveBeenCalled()
+    const params = dashboardApiMocks.getDailyStats.mock.calls[0]?.[0]
+    expect(params).toMatchObject({ preset: 'last7days' })
+    expect(params).toHaveProperty('timezone')
+    expect(params).toHaveProperty('tz_offset_minutes')
+    expect(typeof params?.tz_offset_minutes).toBe('number')
+  })
+
   it('renders package and wallet balance split from mocked stats', async () => {
     dashboardApiMocks.getStats.mockResolvedValue({
       stats: [

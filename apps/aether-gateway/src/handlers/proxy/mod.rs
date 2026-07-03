@@ -296,7 +296,7 @@ fn auth_rejection_usage_reason(rejection: &GatewayLocalAuthRejection) -> (&'stat
             ("wallet_unavailable", "钱包不可用".to_string())
         }
         GatewayLocalAuthRejection::BalanceDenied { remaining } => (
-            "balance_exceeded",
+            "insufficient_balance",
             match remaining {
                 Some(value) => format!("余额不足（剩余: ${value:.2}）"),
                 None => "余额不足".to_string(),
@@ -2020,6 +2020,11 @@ pub(crate) async fn proxy_request(
             .as_ref()
             .and_then(|value| value.upstream_error_response())
             .or_else(|| local_execution_runtime_miss_context.upstream_error_response());
+        let missing_auth_context = local_execution_runtime_miss_is_missing_auth_context(
+            local_execution_runtime_miss_diagnostic.as_ref(),
+        );
+        let response_status = local_execution_runtime_miss_status_code(missing_auth_context);
+        let response_error_code = local_execution_runtime_miss_error_code(missing_auth_context);
         if let Some(exhaustion) = local_execution_exhaustion {
             record_failed_usage_for_exhausted_request(
                 &state,
@@ -2060,8 +2065,8 @@ pub(crate) async fn proxy_request(
                 &state,
                 &trace_id,
                 control_decision,
-                http::StatusCode::SERVICE_UNAVAILABLE,
-                "local_execution_runtime_unavailable",
+                response_status,
+                response_error_code,
                 local_execution_runtime_miss_client_message(
                     local_execution_runtime_miss_detail.as_str(),
                 )
@@ -2154,6 +2159,30 @@ fn local_execution_runtime_miss_client_message(detail: &str) -> String {
     beautify_local_execution_client_error_message(detail)
 }
 
+fn local_execution_runtime_miss_is_missing_auth_context(
+    diagnostic: Option<&LocalExecutionRuntimeMissDiagnostic>,
+) -> bool {
+    diagnostic
+        .map(|value| value.reason.trim() == "missing_auth_context")
+        .unwrap_or(false)
+}
+
+fn local_execution_runtime_miss_status_code(missing_auth_context: bool) -> http::StatusCode {
+    if missing_auth_context {
+        http::StatusCode::UNAUTHORIZED
+    } else {
+        http::StatusCode::SERVICE_UNAVAILABLE
+    }
+}
+
+fn local_execution_runtime_miss_error_code(missing_auth_context: bool) -> &'static str {
+    if missing_auth_context {
+        "missing_api_key"
+    } else {
+        "local_execution_runtime_unavailable"
+    }
+}
+
 fn local_execution_runtime_miss_diagnostic_detail(
     decision: Option<&GatewayControlDecision>,
     diagnostic: Option<&LocalExecutionRuntimeMissDiagnostic>,
@@ -2178,7 +2207,7 @@ fn local_execution_runtime_miss_diagnostic_detail(
         }
         "missing_auth_context" => {
             return Some(format!(
-                "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商（{route_label}，原因代码: missing_auth_context）"
+                "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（{route_label}）"
             ));
         }
         "missing_requested_model" => {
@@ -2589,7 +2618,7 @@ mod tests {
         assert_eq!(
             detail.as_deref(),
             Some(
-                "请求缺少有效的用户或 API Key 认证上下文，无法选择上游提供商（Claude Messages，原因代码: missing_auth_context）"
+                "Niffler 未收到可识别的 API Key；如果通过 cc-switch 调用，请升级 cc-switch 或重新导入配置，并确认请求头包含 Authorization: Bearer、x-api-key 或 api-key（Claude Messages）"
             )
         );
     }

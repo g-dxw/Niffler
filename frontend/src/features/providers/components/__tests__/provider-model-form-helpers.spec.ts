@@ -74,6 +74,7 @@ describe('provider model form embedding helpers', () => {
   it('preserves edited provider embedding config without posting unsupported embedding controls', () => {
     const payload = buildProviderModelUpdatePayload({
       finalTieredPricing: pricing,
+      tieredPricingModified: true,
       pricePerRequest: undefined,
       configTouched: true,
       cleanConfig: {
@@ -99,6 +100,7 @@ describe('provider model form embedding helpers', () => {
   it('does not post inherited config when editing pricing only', () => {
     const payload = buildProviderModelUpdatePayload({
       finalTieredPricing: pricing,
+      tieredPricingModified: false,
       pricePerRequest: undefined,
       costMultiplier: 0.4,
       configTouched: false,
@@ -110,6 +112,27 @@ describe('provider model form embedding helpers', () => {
     })
 
     expect(payload.config).toBeUndefined()
+    expect(payload.tiered_pricing).toBeUndefined()
     expect(payload.cost_multiplier).toBe(0.4)
+  })
+
+  it('posts provider pricing only after the admin changes it', () => {
+    const inheritedPayload = buildProviderModelUpdatePayload({
+      finalTieredPricing: pricing,
+      tieredPricingModified: false,
+      pricePerRequest: undefined,
+      configTouched: false,
+      isActive: true,
+    })
+    const overriddenPayload = buildProviderModelUpdatePayload({
+      finalTieredPricing: pricing,
+      tieredPricingModified: true,
+      pricePerRequest: undefined,
+      configTouched: false,
+      isActive: true,
+    })
+
+    expect(inheritedPayload.tiered_pricing).toBeUndefined()
+    expect(overriddenPayload.tiered_pricing).toEqual(pricing)
   })
 })

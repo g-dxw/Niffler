@@ -624,24 +624,6 @@ watch(() => route.path, () => {
   }
 })
 
-// 检查是否应该显示更新提示
-function shouldShowUpdatePrompt(latestVersion: string): boolean {
-  const ignoreKey = 'aether_update_ignore'
-  const ignoreData = localStorage.getItem(ignoreKey)
-  if (!ignoreData) return true
-
-  try {
-    const { version, until } = JSON.parse(ignoreData)
-    // 如果忽略的是同一版本且未过期，则不显示
-    if (version === latestVersion && Date.now() < until) {
-      return false
-    }
-  } catch {
-    // 解析失败，显示提示
-  }
-  return true
-}
-
 async function loadVersionStatus() {
   if (!isAdmin.value) return null
   if (versionStatusLoadPromise) return versionStatusLoadPromise
@@ -709,25 +691,6 @@ function showDebugVersionStatus(hasUpdate = true) {
       : null,
     published_at: hasUpdate ? new Date().toISOString() : null,
     error: null,
-  }
-}
-
-// 检查更新
-async function checkForUpdate() {
-  // 只有管理员才检查更新
-  if (!authStore.canOperateAdmin) return
-
-  // 同一会话内只检查一次
-  const sessionKey = 'aether_update_checked'
-  if (sessionStorage.getItem(sessionKey)) return
-  sessionStorage.setItem(sessionKey, '1')
-
-  const result = versionStatus.value ?? await loadVersionStatus()
-  if (result?.has_update && result.latest_version) {
-    if (shouldShowUpdatePrompt(result.latest_version)) {
-      updateInfo.value = result
-      showUpdateDialog.value = true
-    }
   }
 }
 
@@ -863,13 +826,7 @@ onMounted(() => {
   if (authStore.canAccessAdmin && !moduleStore.loaded && !moduleStore.loading) {
     moduleStore.fetchModules()
   }
-  void loadVersionStatus()
   void loadRequiredAnnouncements()
-
-  // 延迟检查更新，避免影响页面加载
-  setTimeout(() => {
-    void checkForUpdate()
-  }, 2000)
 
   if (import.meta.env.DEV) {
     window.__aetherShowUpdateDialog = showDebugUpdateDialog

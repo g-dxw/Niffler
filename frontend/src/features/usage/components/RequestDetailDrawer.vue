@@ -283,7 +283,7 @@
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground/70">{{ priceSourceLabel }}</span>
                     <span class="text-foreground">|</span>
                     <span class="font-mono text-foreground">
-                      总费用 = Token费用 <span class="font-medium">${{ tokenCostTotal.toFixed(6) }}</span>
+                      本次扣费 = Token费用 <span class="font-medium">${{ tokenCostTotal.toFixed(6) }}</span>
                       <template v-if="perRequestCost > 0">
                         + 按次费用 <span class="font-medium">${{ perRequestCost.toFixed(6) }}</span>
                       </template>
@@ -1432,20 +1432,8 @@ const hasValidConversation = computed(() => {
   return false
 })
 
-// 价格来源标签
-// tiered_pricing.source 表示定价来源: 'provider' 或 'global'
 const priceSourceLabel = computed(() => {
-  if (!detail.value) return '历史定价'
-
-  const source = detail.value.tiered_pricing?.source
-  if (source === 'provider') {
-    return '提供商定价'
-  } else if (source === 'global') {
-    return '全局定价'
-  }
-
-  // 没有 tiered_pricing 时，使用历史价格
-  return '历史定价'
+  return detail.value?.tiered_pricing ? '本次请求生效价' : '历史价格快照'
 })
 
 const cacheCreationInputTokens5m = computed(() => {

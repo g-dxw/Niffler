@@ -417,7 +417,7 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
     client_ip: Option<&str>,
     request_body: Option<&Bytes>,
 ) {
-    let missing_auth_context = context
+    let unauthenticated_context = context
         .auth_user_id
         .as_deref()
         .unwrap_or_default()
@@ -427,7 +427,10 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
             .as_deref()
             .unwrap_or_default()
             .is_empty();
-    if missing_auth_context {
+    let missing_auth_context = diagnostic
+        .map(|value| value.reason.trim() == "missing_auth_context")
+        .unwrap_or(false);
+    if unauthenticated_context {
         record_unauthenticated_ai_security_log(
             request_id,
             decision,
@@ -457,13 +460,13 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
         .and_then(|value| value.provider_name.clone())
         .or_else(|| selected_candidate.and_then(|value| value.candidate.provider_id.clone()))
         .unwrap_or_else(|| {
-            if missing_auth_context {
+            if unauthenticated_context {
                 "Niffler 平台".to_string()
             } else {
                 "unknown".to_string()
             }
         });
-    let record_as_platform_rejection = missing_auth_context || provider_name == "Niffler 平台";
+    let record_as_platform_rejection = unauthenticated_context || provider_name == "Niffler 平台";
     let empty_body = Bytes::new();
     let requested_model = decision.and_then(|value| {
         crate::control::extract_requested_model(
@@ -484,19 +487,29 @@ pub(crate) async fn record_failed_usage_for_runtime_miss_request(
 
     let upstream_error_response = selected_candidate
         .and_then(|value| local_execution_upstream_error_response_from_candidate(&value.candidate));
+    let default_status_code = if missing_auth_context {
+        http::StatusCode::UNAUTHORIZED.as_u16()
+    } else {
+        http::StatusCode::SERVICE_UNAVAILABLE.as_u16()
+    };
     let status_code = upstream_error_response
         .as_ref()
         .map(|value| value.status_code)
-        .unwrap_or_else(|| http::StatusCode::SERVICE_UNAVAILABLE.as_u16());
+        .unwrap_or(default_status_code);
     let client_body = upstream_error_response
         .as_ref()
         .map(|value| value.body.clone())
         .unwrap_or_else(|| {
             let client_message =
                 beautify_local_execution_client_error_message(local_execution_runtime_miss_detail);
+            let error_type = if missing_auth_context {
+                "authentication_error"
+            } else {
+                "http_error"
+            };
             json!({
                 "error": {
-                    "type": "http_error",
+                    "type": error_type,
                     "message": client_message,
                 }
             })

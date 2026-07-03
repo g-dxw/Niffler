@@ -1287,6 +1287,10 @@ const dailyUsageTrendChartOptions = computed<ChartOptions<'line'>>(() => {
   }
 })
 
+function dailyStatsAggregateParams(): DateRangeParams {
+  return dailyTimeRange.value
+}
+
 onMounted(async () => {
   checkScreenSize()
   setupResizeObserver()
@@ -1361,7 +1365,7 @@ async function loadDailyStats() {
   loadingDaily.value = true
   dailyStatsLoadPromise = (async () => {
     try {
-      const response = await dashboardApi.getDailyStats(dailyTimeRange.value)
+      const response = await dashboardApi.getDailyStats(dailyStatsAggregateParams())
       if (requestId !== dailyStatsRequestId) return
       dailyStats.value = response.daily_stats
       providerSummary.value = response.provider_summary || []

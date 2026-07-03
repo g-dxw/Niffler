@@ -674,7 +674,18 @@ WITH aggregated AS (
         CAST(COALESCE(SUM(cache_creation_input_tokens_1h), 0) AS BIGINT)
             AS cache_creation_ephemeral_1h_tokens,
         CAST(COALESCE(SUM(cache_read_input_tokens), 0) AS BIGINT) AS cache_read_tokens,
-        CAST(COALESCE(SUM(total_cost_usd), 0) AS DOUBLE PRECISION) AS total_cost,
+        CAST(
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN billing_status = 'settled'
+                        THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS DOUBLE PRECISION
+        ) AS total_cost,
         COALESCE(
             SUM(
                 CASE
@@ -766,7 +777,18 @@ WITH aggregated AS (
         CAST(COALESCE(SUM(output_tokens), 0) AS BIGINT) AS output_tokens,
         CAST(COALESCE(SUM(cache_creation_input_tokens), 0) AS BIGINT) AS cache_creation_tokens,
         CAST(COALESCE(SUM(cache_read_input_tokens), 0) AS BIGINT) AS cache_read_tokens,
-        CAST(COALESCE(SUM(total_cost_usd), 0) AS DOUBLE PRECISION) AS total_cost
+        CAST(
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN billing_status = 'settled'
+                        THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS DOUBLE PRECISION
+        ) AS total_cost
     FROM usage_billing_facts AS usage
     WHERE created_at >= $1
       AND created_at < $2
@@ -817,7 +839,18 @@ WITH aggregated AS (
         provider_name,
         CAST(COUNT(id) AS BIGINT) AS total_requests,
         CAST(COALESCE(SUM(total_tokens), 0) AS BIGINT) AS total_tokens,
-        CAST(COALESCE(SUM(total_cost_usd), 0) AS DOUBLE PRECISION) AS total_cost,
+        CAST(
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN billing_status = 'settled'
+                        THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS DOUBLE PRECISION
+        ) AS total_cost,
         COALESCE(
             SUM(
                 CASE
@@ -1400,32 +1433,23 @@ WITH usage_billing_facts AS (
             ELSE 0
         END AS cache_read_input_tokens,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            WHEN billing_status = 'settled'
             THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
             ELSE 0
         END AS total_cost_usd,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            WHEN billing_status = 'settled'
             THEN COALESCE(CAST(cache_creation_cost_usd AS DOUBLE PRECISION), 0)
             ELSE 0
         END AS cache_creation_cost_usd,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            WHEN billing_status = 'settled'
             THEN COALESCE(CAST(cache_read_cost_usd AS DOUBLE PRECISION), 0)
             ELSE 0
         END AS cache_read_cost_usd,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
-            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
-            ELSE 0
+            WHEN actual_total_cost_usd IS NULL THEN 0
+            ELSE COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
         END AS actual_total_cost_usd
     FROM public.usage_billing_facts AS usage
 ),
@@ -1790,6 +1814,7 @@ WITH usage_billing_facts AS (
         status_code,
         error_message,
         response_time_ms,
+        billing_status,
         CASE
             WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                  AND (status_code IS NULL OR status_code < 400)
@@ -1840,18 +1865,13 @@ WITH usage_billing_facts AS (
             ELSE 0
         END AS cache_read_input_tokens,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            WHEN billing_status = 'settled'
             THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
             ELSE 0
         END AS total_cost_usd,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
-            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
-            ELSE 0
+            WHEN actual_total_cost_usd IS NULL THEN 0
+            ELSE COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
         END AS actual_total_cost_usd
     FROM public.usage_billing_facts AS usage
 ),
@@ -2214,6 +2234,7 @@ WITH usage_billing_facts AS (
         status_code,
         error_message,
         response_time_ms,
+        billing_status,
         CASE
             WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                  AND (status_code IS NULL OR status_code < 400)
@@ -2264,18 +2285,13 @@ WITH usage_billing_facts AS (
             ELSE 0
         END AS cache_read_input_tokens,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            WHEN billing_status = 'settled'
             THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
             ELSE 0
         END AS total_cost_usd,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
-            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
-            ELSE 0
+            WHEN actual_total_cost_usd IS NULL THEN 0
+            ELSE COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
         END AS actual_total_cost_usd
     FROM public.usage_billing_facts AS usage
 ),
@@ -2637,6 +2653,7 @@ WITH usage_billing_facts AS (
         status_code,
         error_message,
         response_time_ms,
+        billing_status,
         CASE
             WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                  AND (status_code IS NULL OR status_code < 400)
@@ -2687,18 +2704,13 @@ WITH usage_billing_facts AS (
             ELSE 0
         END AS cache_read_input_tokens,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            WHEN billing_status = 'settled'
             THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
             ELSE 0
         END AS total_cost_usd,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
-            THEN COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
-            ELSE 0
+            WHEN actual_total_cost_usd IS NULL THEN 0
+            ELSE COALESCE(CAST(actual_total_cost_usd AS DOUBLE PRECISION), 0)
         END AS actual_total_cost_usd
     FROM public.usage_billing_facts AS usage
 ),
@@ -3056,6 +3068,7 @@ WITH usage_billing_facts AS (
         status_code,
         error_message,
         response_time_ms,
+        billing_status,
         CASE
             WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
                  AND (status_code IS NULL OR status_code < 400)
@@ -3064,9 +3077,7 @@ WITH usage_billing_facts AS (
             ELSE 0
         END AS total_tokens,
         CASE
-            WHEN status IN ('completed', 'success', 'ok', 'billed', 'settled')
-                 AND (status_code IS NULL OR status_code < 400)
-                 AND (error_message IS NULL OR BTRIM(error_message) = '')
+            WHEN billing_status = 'settled'
             THEN COALESCE(CAST(total_cost_usd AS DOUBLE PRECISION), 0)
             ELSE 0
         END AS total_cost_usd
