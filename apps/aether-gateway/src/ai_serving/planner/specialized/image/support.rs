@@ -19,6 +19,7 @@ use crate::ai_serving::planner::decision_input::{
 use crate::ai_serving::planner::materialization_policy::{
     build_local_candidate_persistence_policy, LocalCandidatePersistencePolicyKind,
 };
+use crate::ai_serving::planner::runtime_miss::set_local_runtime_miss_diagnostic_reason;
 use crate::ai_serving::planner::spec_metadata::local_openai_image_spec_metadata;
 use crate::ai_serving::{
     extract_pool_sticky_session_token, request_candidate_api_formats,
@@ -43,32 +44,84 @@ pub(super) async fn resolve_local_openai_image_decision_input(
     body_base64: Option<&str>,
     trace_id: &str,
     decision: &GatewayControlDecision,
+    plan_kind: &str,
 ) -> Result<Option<LocalOpenAiImageDecisionInput>, GatewayError> {
     let Some(auth_context) = resolve_local_openai_image_auth_context(decision) else {
+        warn!(
+            trace_id = %trace_id,
+            route_class = ?decision.route_class,
+            route_family = ?decision.route_family,
+            route_kind = ?decision.route_kind,
+            "gateway local openai image decision skipped: missing_auth_context"
+        );
+        set_local_runtime_miss_diagnostic_reason(
+            state,
+            trace_id,
+            decision,
+            plan_kind,
+            resolve_requested_image_model_for_request(parts, body_json, body_base64).as_deref(),
+            "missing_auth_context",
+        );
         return Ok(None);
     };
 
     let Some(requested_model) =
         resolve_requested_image_model_for_request(parts, body_json, body_base64)
     else {
+        warn!(
+            trace_id = %trace_id,
+            "gateway local openai image decision skipped: image_request_parse_failed"
+        );
+        set_local_runtime_miss_diagnostic_reason(
+            state,
+            trace_id,
+            decision,
+            plan_kind,
+            None,
+            "image_request_parse_failed",
+        );
         return Ok(None);
     };
 
     let resolved_input = match resolve_local_authenticated_decision_input(
         state,
-        auth_context,
+        auth_context.clone(),
         Some(requested_model.as_str()),
         None,
     )
     .await
     {
         Ok(Some(resolved_input)) => resolved_input,
-        Ok(None) => return Ok(None),
+        Ok(None) => {
+            warn!(
+                trace_id = %trace_id,
+                user_id = %auth_context.user_id,
+                api_key_id = %auth_context.api_key_id,
+                "gateway local openai image decision skipped: auth_snapshot_missing"
+            );
+            set_local_runtime_miss_diagnostic_reason(
+                state,
+                trace_id,
+                decision,
+                plan_kind,
+                Some(requested_model.as_str()),
+                "auth_snapshot_missing",
+            );
+            return Ok(None);
+        }
         Err(err) => {
             warn!(
                 trace_id = %trace_id,
                 error = ?err,
                 "gateway local openai image decision auth snapshot read failed"
+            );
+            set_local_runtime_miss_diagnostic_reason(
+                state,
+                trace_id,
+                decision,
+                plan_kind,
+                Some(requested_model.as_str()),
+                "auth_snapshot_read_failed",
             );
             return Err(err);
         }

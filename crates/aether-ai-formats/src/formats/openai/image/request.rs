@@ -1042,10 +1042,17 @@ fn parse_multipart_fields_from_base64(
         .headers
         .get(http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())?;
-    let boundary = multipart_boundary(content_type)?;
+    if !content_type
+        .to_ascii_lowercase()
+        .contains("multipart/form-data")
+    {
+        return None;
+    }
     let body_bytes = base64::engine::general_purpose::STANDARD
         .decode(body_base64)
         .ok()?;
+    let boundary = multipart_boundary(content_type)
+        .or_else(|| infer_multipart_boundary_from_body(&body_bytes))?;
     Some(parse_multipart_fields(&body_bytes, boundary.as_str()))
 }
 
@@ -1086,6 +1093,23 @@ fn multipart_boundary(content_type: &str) -> Option<String> {
         let boundary = value.trim().trim_matches('"').trim();
         (!boundary.is_empty()).then(|| boundary.to_string())
     })
+}
+
+fn infer_multipart_boundary_from_body(body: &[u8]) -> Option<String> {
+    let body = body.strip_prefix(b"\r\n").unwrap_or(body);
+    let body = body.strip_prefix(b"\n").unwrap_or(body);
+    let first_line_end = body.iter().position(|byte| *byte == b'\n')?;
+    let first_line = body[..first_line_end]
+        .strip_suffix(b"\r")
+        .unwrap_or(&body[..first_line_end]);
+    let boundary = first_line.strip_prefix(b"--")?;
+    if boundary.is_empty() || boundary == b"--" || boundary.ends_with(b"--") {
+        return None;
+    }
+    if boundary.iter().any(|byte| !matches!(*byte, b'!'..=b'~')) {
+        return None;
+    }
+    String::from_utf8(boundary.to_vec()).ok()
 }
 
 fn parse_multipart_field(raw: &[u8]) -> Option<MultipartField> {
@@ -1268,6 +1292,55 @@ mod tests {
             request.tool.get("action").and_then(|value| value.as_str()),
             Some("edit")
         );
+    }
+
+    #[test]
+    fn normalize_edit_multipart_request_infers_missing_boundary_header() {
+        let boundary = "------------------------inferredImageBoundary";
+        let body = format!(
+            concat!(
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"model\"\r\n\r\n",
+                "gpt-image-2\r\n",
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"prompt\"\r\n\r\n",
+                "edit this image\r\n",
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"image\"; filename=\"image.jpg\"\r\n",
+                "Content-Type: image/jpeg\r\n\r\n",
+                "image-bytes\r\n",
+                "--{boundary}--\r\n"
+            ),
+            boundary = boundary,
+        );
+        let body_base64 = base64::engine::general_purpose::STANDARD.encode(body.as_bytes());
+        let parts = request_parts("/v1/images/edits", Some("multipart/form-data"));
+
+        let request = normalize_openai_image_request(&parts, &json!({}), Some(&body_base64))
+            .expect("edit request should normalize from body boundary");
+
+        assert_eq!(request.operation, OpenAiImageOperation::Edit);
+        assert_eq!(request.requested_model.as_deref(), Some("gpt-image-2"));
+        assert_eq!(request.prompt.as_deref(), Some("edit this image"));
+        assert_eq!(request.images.len(), 1);
+    }
+
+    #[test]
+    fn normalize_multipart_request_does_not_infer_boundary_for_json_content_type() {
+        let boundary = "------------------------notJsonBoundary";
+        let body = format!(
+            concat!(
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"model\"\r\n\r\n",
+                "gpt-image-2\r\n",
+                "--{boundary}--\r\n"
+            ),
+            boundary = boundary,
+        );
+        let body_base64 = base64::engine::general_purpose::STANDARD.encode(body.as_bytes());
+        let parts = request_parts("/v1/images/edits", Some("application/json"));
+
+        assert!(normalize_openai_image_request(&parts, &json!({}), Some(&body_base64)).is_none());
     }
 
     #[test]

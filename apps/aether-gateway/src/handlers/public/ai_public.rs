@@ -539,10 +539,10 @@ fn parse_openai_image_validation_input(
     }
 
     let content_type = content_type.unwrap_or_default();
-    if content_type
+    let is_multipart = content_type
         .to_ascii_lowercase()
-        .contains("multipart/form-data")
-    {
+        .contains("multipart/form-data");
+    if is_multipart {
         parse_openai_image_validation_input_from_multipart(request_body, content_type)
     } else {
         parse_openai_image_validation_input_from_json(request_body)
@@ -626,7 +626,9 @@ fn parse_openai_image_validation_input_from_multipart(
     request_body: &Bytes,
     content_type: &str,
 ) -> Result<OpenAiImageValidationInput, &'static str> {
-    let boundary = multipart_boundary(content_type).ok_or(OPENAI_IMAGE_INVALID_MULTIPART_DETAIL)?;
+    let boundary = multipart_boundary(content_type)
+        .or_else(|| infer_multipart_boundary_from_body(request_body))
+        .ok_or(OPENAI_IMAGE_INVALID_MULTIPART_DETAIL)?;
     let fields = parse_multipart_fields(request_body, &boundary);
     if fields.is_empty() {
         return Err(OPENAI_IMAGE_INVALID_MULTIPART_DETAIL);
@@ -764,6 +766,23 @@ fn multipart_boundary(content_type: &str) -> Option<String> {
         let boundary = value.trim().trim_matches('"').trim();
         (!boundary.is_empty()).then(|| boundary.to_string())
     })
+}
+
+fn infer_multipart_boundary_from_body(body: &[u8]) -> Option<String> {
+    let body = body.strip_prefix(b"\r\n").unwrap_or(body);
+    let body = body.strip_prefix(b"\n").unwrap_or(body);
+    let first_line_end = body.iter().position(|byte| *byte == b'\n')?;
+    let first_line = body[..first_line_end]
+        .strip_suffix(b"\r")
+        .unwrap_or(&body[..first_line_end]);
+    let boundary = first_line.strip_prefix(b"--")?;
+    if boundary.is_empty() || boundary == b"--" || boundary.ends_with(b"--") {
+        return None;
+    }
+    if boundary.iter().any(|byte| !matches!(*byte, b'!'..=b'~')) {
+        return None;
+    }
+    String::from_utf8(boundary.to_vec()).ok()
 }
 
 fn parse_multipart_field(raw: &[u8]) -> Option<MultipartField> {
@@ -1343,6 +1362,52 @@ mod tests {
         assert_eq!(validation.model.as_deref(), Some("gpt-image-2"));
         assert_eq!(validation.prompt.as_deref(), Some("edit this image"));
         assert_eq!(validation.image_count, 1);
+    }
+
+    #[test]
+    fn image_validation_accepts_multipart_with_missing_boundary_header() {
+        let boundary = "------------------------inferredImageBoundary";
+        let body = Bytes::from(format!(
+            concat!(
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"model\"\r\n\r\n",
+                "gpt-image-2\r\n",
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"prompt\"\r\n\r\n",
+                "edit this image\r\n",
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"image\"; filename=\"image.jpg\"\r\n",
+                "Content-Type: image/jpeg\r\n\r\n",
+                "image-bytes\r\n",
+                "--{boundary}--\r\n"
+            ),
+            boundary = boundary,
+        ));
+
+        let validation = parse_openai_image_validation_input(
+            OpenAiImageOperation::Edit,
+            Some("multipart/form-data"),
+            &body,
+        )
+        .expect("multipart image edit should validate from body boundary");
+
+        assert_eq!(validation.model.as_deref(), Some("gpt-image-2"));
+        assert_eq!(validation.prompt.as_deref(), Some("edit this image"));
+        assert_eq!(validation.image_count, 1);
+    }
+
+    #[test]
+    fn image_validation_does_not_infer_boundary_for_json_content_type() {
+        let body = Bytes::from_static(b"--not-json\r\nnot json\r\n--not-json--\r\n");
+
+        assert!(matches!(
+            parse_openai_image_validation_input(
+                OpenAiImageOperation::Edit,
+                Some("application/json"),
+                &body,
+            ),
+            Err(super::OPENAI_IMAGE_INVALID_JSON_DETAIL)
+        ));
     }
 
     #[test]
