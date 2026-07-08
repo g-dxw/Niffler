@@ -177,7 +177,7 @@
                               >
                                 {{ getRoutingAccountDisplayName(keyEntry.key) }}
                               </button>
-                              <!-- 第二行：提供商名 · sk · 模型映射 -->
+                              <!-- 第二行：提供商名 · sk · 上游模型名 -->
                               <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
                                 <span>{{ keyEntry.provider.name }}</span>
                                 <span>·</span>
@@ -190,7 +190,7 @@
                                     :title="getKeyMatchedModels(keyEntry.key).join(', ')"
                                   >{{ formatMatchedModels(getKeyMatchedModels(keyEntry.key)) }}</span>
                                 </template>
-                                <!-- Provider 模型映射显示 -->
+                                <!-- 上游模型名显示 -->
                                 <template v-else-if="hasModelMapping(keyEntry.provider)">
                                   <span>·</span>
                                   <span class="text-primary/70">{{ keyEntry.provider.provider_model_name }}</span>
@@ -334,14 +334,14 @@
 
                               <!-- 第三列：名称(第一行) + URL(第二行) -->
                               <div class="min-w-0 flex-1">
-                                <!-- 第一行：提供商名称 + 模型映射 -->
+                                <!-- 第一行：提供商名称 + 上游模型名 -->
                                 <div class="flex items-center gap-1">
                                   <span class="text-sm font-medium truncate">{{ providerEntry.provider.name }}</span>
                                   <span
                                     v-if="hasModelMapping(providerEntry.provider)"
                                     class="text-[10px] text-muted-foreground shrink-0"
                                   >
-                                    ({{ providerEntry.provider.provider_model_name }})
+                                    (上游 {{ providerEntry.provider.provider_model_name }})
                                   </span>
                                 </div>
                                 <!-- 第二行：Endpoint URL -->
@@ -391,12 +391,12 @@
                               v-if="isProviderInFormatExpanded(formatGroup.api_format, providerEntry.provider.id, providerEntry.endpoint?.id)"
                               class="border-t border-border/30 p-2.5"
                             >
-                              <!-- 模型映射显示 -->
+                              <!-- 上游模型名显示 -->
                               <div
                                 v-if="hasModelMapping(providerEntry.provider)"
                                 class="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 px-1"
                               >
-                                <span class="text-muted-foreground/60">映射:</span>
+                                <span class="text-muted-foreground/60">上游模型:</span>
                                 <span class="text-primary/70 font-medium">{{ providerEntry.provider.provider_model_name }}</span>
                               </div>
                               <!-- Keys 列表 -->
@@ -1055,7 +1055,7 @@ function getPriorityModeLabel(mode: string): string {
   return labels[mode] || mode
 }
 
-// 判断是否存在模型映射（始终显示 provider_model_name）
+// 判断是否存在上游模型名（始终显示 provider_model_name）
 function hasModelMapping(provider: RoutingProviderInfo): boolean {
   return !!provider.provider_model_name
 }

@@ -157,9 +157,17 @@
                   </div>
                 </TableCell>
                 <TableCell class="text-center">
-                  <Badge variant="secondary">
-                    {{ model.active_provider_count || 0 }}/{{ model.provider_count || 0 }}
-                  </Badge>
+                  <button
+                    type="button"
+                    class="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title="查看具体提供商"
+                    @mousedown.stop
+                    @click.stop="selectModel(model, 'routing')"
+                  >
+                    <Badge variant="secondary">
+                      {{ model.active_provider_count || 0 }}/{{ model.provider_count || 0 }}
+                    </Badge>
+                  </button>
                 </TableCell>
                 <TableCell class="text-center">
                   <span class="text-sm font-mono">{{ formatUsageCount(model.usage_count || 0) }}</span>
@@ -280,7 +288,14 @@
 
             <!-- 第二行：统计信息 -->
             <div class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span>提供商 {{ model.active_provider_count || 0 }}/{{ model.provider_count || 0 }}</span>
+              <button
+                type="button"
+                class="rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="查看具体提供商"
+                @click.stop="selectModel(model, 'routing')"
+              >
+                提供商 {{ model.active_provider_count || 0 }}/{{ model.provider_count || 0 }}
+              </button>
               <span>调用 {{ formatUsageCount(model.usage_count || 0) }}</span>
               <span
                 v-if="getFirstTierPrice(model, 'input') || getFirstTierPrice(model, 'output')"
@@ -318,6 +333,7 @@
       ref="modelDetailDrawerRef"
       :model="selectedModel"
       :open="!!selectedModel"
+      :initial-tab="modelDetailInitialTab"
       :has-blocking-dialog-open="hasBlockingDialogOpen"
       @update:open="handleDrawerOpenChange"
       @edit-model="editModel"
@@ -700,7 +716,7 @@ const { copyToClipboard } = useClipboard()
 
 // 状态
 const loading = ref(false)
-const detailTab = ref('basic')
+const modelDetailInitialTab = ref<'basic' | 'routing' | 'mappings'>('basic')
 const searchQuery = ref('')
 const selectedModel = ref<GlobalModelResponse | null>(null)
 const modelDetailDrawerRef = ref<InstanceType<typeof ModelDetailDrawer> | null>(null)
@@ -1120,11 +1136,14 @@ function handleRowClick(event: MouseEvent, model: GlobalModelResponse) {
   selectModel(model)
 }
 
-async function selectModel(model: GlobalModelResponse) {
+async function selectModel(
+  model: GlobalModelResponse,
+  initialTab: 'basic' | 'routing' | 'mappings' = 'basic'
+) {
   const requestId = ++modelSelectionRequestId
   // 先显示缓存数据，提升响应速度
+  modelDetailInitialTab.value = initialTab
   selectedModel.value = model
-  detailTab.value = 'basic'
 
   // 并行加载最新模型数据和关联提供商
   const [latestModel] = await Promise.all([

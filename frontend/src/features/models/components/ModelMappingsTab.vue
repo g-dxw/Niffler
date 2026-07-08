@@ -2,22 +2,27 @@
   <Card class="overflow-hidden">
     <!-- 表头 -->
     <div class="px-4 py-3 border-b border-border/60">
-      <div class="flex items-center justify-between">
-        <div class="flex items-baseline gap-2">
-          <h4 class="text-sm font-semibold">
-            映射规则
-          </h4>
-          <span class="text-xs text-muted-foreground">
-            支持正则表达式 ({{ localMappings.length }}/{{ MAX_MAPPINGS_PER_MODEL }})
-          </span>
+      <div class="flex items-start justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex items-baseline gap-2">
+            <h4 class="text-sm font-semibold">
+              别名匹配
+            </h4>
+            <span class="text-xs text-muted-foreground">
+              支持精确别名和正则规则 ({{ localRules.length }}/{{ MAX_MAPPINGS_PER_MODEL }})
+            </span>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            用户请求的模型名匹配这些规则时，会归到当前模型；已有同名全局模型会优先命中自身。
+          </p>
         </div>
         <div class="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
             class="h-7 w-7"
-            title="添加规则"
-            :disabled="localMappings.length >= MAX_MAPPINGS_PER_MODEL"
+            title="添加别名规则"
+            :disabled="localRules.length >= MAX_MAPPINGS_PER_MODEL"
             @click="addMapping"
           >
             <Plus class="w-4 h-4" />
@@ -41,11 +46,11 @@
 
     <!-- 规则列表 -->
     <div
-      v-if="localMappings.length > 0"
+      v-if="localRules.length > 0"
       class="divide-y"
     >
       <div
-        v-for="(mapping, index) in localMappings"
+        v-for="(rule, index) in localRules"
         :key="index"
       >
         <!-- 规则行 -->
@@ -57,14 +62,37 @@
             class="w-4 h-4 text-muted-foreground transition-transform flex-shrink-0"
             :class="{ 'rotate-90': expandedIndex === index }"
           />
-          <div class="flex-1 min-w-0">
-            <Input
-              v-model="localMappings[index]"
-              placeholder="例如: claude-haiku-.*"
-              :class="`font-mono text-sm ${normalizedMappings[index] && !mappingValidations[index].valid ? 'border-destructive' : ''}`"
-              @click.stop
-              @input="markDirty"
-            />
+          <div class="flex-1 min-w-0 space-y-1">
+            <div class="flex items-center gap-2">
+              <div
+                class="inline-flex shrink-0 rounded-lg border border-border/60 bg-muted/30 p-0.5"
+                @click.stop
+              >
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
+                  :class="rule.mode === 'alias' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                  @click="setMappingMode(index, 'alias')"
+                >
+                  别名
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
+                  :class="rule.mode === 'regex' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                  @click="setMappingMode(index, 'regex')"
+                >
+                  正则
+                </button>
+              </div>
+              <Input
+                v-model="rule.value"
+                :placeholder="getMappingPlaceholder(rule.mode)"
+                :class="`font-mono text-sm ${normalizedMappings[index] && !mappingValidations[index].valid ? 'border-destructive' : ''}`"
+                @click.stop
+                @input="markDirty"
+              />
+            </div>
             <!-- 验证错误提示 -->
             <div
               v-if="normalizedMappings[index] && !mappingValidations[index].valid"
@@ -139,7 +167,7 @@
             class="text-center py-4"
           >
             <p class="text-sm text-muted-foreground">
-              {{ normalizedMappings[index] ? '此规则暂无匹配的 Key 白名单' : '请输入映射规则' }}
+              {{ normalizedMappings[index] ? '此规则暂未匹配任何 Key 白名单模型名' : '请输入别名规则' }}
             </p>
           </div>
 
@@ -213,7 +241,7 @@
     >
       <GitMerge class="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
       <p class="text-sm text-muted-foreground">
-        暂无映射规则
+        暂无别名规则
       </p>
     </div>
   </Card>
@@ -223,18 +251,28 @@
 import { ref, watch, onUnmounted, computed } from 'vue'
 import { Card, Button, Input, Badge } from '@/components/ui'
 import { Plus, Trash2, GitMerge, RefreshCw, ChevronRight, Save, AlertCircle, Link } from 'lucide-vue-next'
-import { updateGlobalModel, getGlobalModel, getGlobalModelRoutingPreview } from '@/api/global-models'
-import type { ModelRoutingPreviewResponse } from '@/api/endpoints/types'
+import { updateGlobalModel, getGlobalModel, getGlobalModelRoutingPreview, getGlobalModels } from '@/api/global-models'
+import type { GlobalModelResponse, ModelRoutingPreviewResponse } from '@/api/endpoints/types'
 import { log } from '@/utils/logger'
 import { useToast } from '@/composables/useToast'
 import {
   MAX_MAPPINGS_PER_MODEL,
+  MAX_MAPPING_LENGTH,
   MAX_MODEL_NAME_LENGTH,
   createLRURegexCache,
+  escapeModelAliasPattern,
   getCompiledModelMappingRegex,
+  unescapeEscapedModelAliasPattern,
   validateModelMappingPattern,
   type ValidationResult,
 } from '@/features/models/utils/model-mapping-regex'
+
+type MappingMode = 'alias' | 'regex'
+
+interface LocalMappingRule {
+  value: string
+  mode: MappingMode
+}
 
 const props = defineProps<{
   globalModelId: string
@@ -254,18 +292,20 @@ const emit = defineEmits<{
 const { success: toastSuccess, error: toastError } = useToast()
 
 // 本地状态
-const localMappings = ref<string[]>([...props.mappings])
-const originalMappings = ref<string[]>([...props.mappings])  // 用于保存失败时恢复
+const localRules = ref<LocalMappingRule[]>(props.mappings.map(createLocalRuleFromStoredMapping))
+const originalRules = ref<LocalMappingRule[]>(cloneRules(localRules.value))  // 用于保存失败时恢复
 const isDirty = ref(false)
 const saving = ref(false)
 const expandedIndex = ref<number | null>(null)
 
 // 统一以 trim 后的规则做预览/校验（保存时也会 trim），避免前后端行为不一致
-const normalizedMappings = computed(() => localMappings.value.map(m => m.trim()))
+const normalizedMappings = computed(() => localRules.value.map(rule => rule.value.trim()))
+const normalizedStoredMappings = computed(() => localRules.value.map(rule => toStoredMappingPattern(rule)))
 const mappingValidations = computed<ValidationResult[]>(() => {
-  return normalizedMappings.value.map(pattern => {
-    if (!pattern) return { valid: true }
-    return validateModelMappingPattern(pattern)
+  return localRules.value.map(rule => {
+    const value = rule.value.trim()
+    if (!value) return { valid: true }
+    return validateLocalRule(rule)
   })
 })
 
@@ -295,6 +335,81 @@ interface ProviderGroup {
   providerName: string
   keys: MatchedKeyForMapping[]
   isLinked: boolean  // 是否已关联到当前模型
+}
+
+function cloneRules(rules: LocalMappingRule[]): LocalMappingRule[] {
+  return rules.map(rule => ({ ...rule }))
+}
+
+function createLocalRuleFromStoredMapping(mapping: string): LocalMappingRule {
+  const trimmed = mapping.trim()
+  const alias = unescapeEscapedModelAliasPattern(trimmed)
+  if (alias !== null) {
+    return { value: alias, mode: 'alias' }
+  }
+  return { value: trimmed, mode: 'regex' }
+}
+
+function toStoredMappingPattern(rule: LocalMappingRule): string {
+  const value = rule.value.trim()
+  if (!value) return ''
+  return rule.mode === 'alias' ? escapeModelAliasPattern(value) : value
+}
+
+function validateLocalRule(rule: LocalMappingRule): ValidationResult {
+  const value = rule.value.trim()
+  if (!value) {
+    return { valid: false, error: '规则不能为空' }
+  }
+
+  if (rule.mode === 'regex') {
+    return validateModelMappingPattern(value)
+  }
+
+  const escapedPattern = escapeModelAliasPattern(value)
+  if (value.length > MAX_MODEL_NAME_LENGTH || escapedPattern.length > MAX_MAPPING_LENGTH) {
+    return { valid: false, error: `别名过长 (最大 ${MAX_MODEL_NAME_LENGTH} 字符)` }
+  }
+
+  return { valid: true }
+}
+
+async function loadActiveGlobalModels(): Promise<GlobalModelResponse[]> {
+  const models: GlobalModelResponse[] = []
+  const limit = 1000
+  let skip = 0
+  let total = Number.POSITIVE_INFINITY
+
+  while (skip < total) {
+    const response = await getGlobalModels(
+      { skip, limit, is_active: true },
+      { cacheTtlMs: 60_000 },
+    )
+    models.push(...response.models)
+    total = response.total ?? models.length
+    if (response.models.length === 0) break
+    skip += response.models.length
+  }
+
+  return models
+}
+
+async function findActiveGlobalModelNameConflicts(rules: LocalMappingRule[]): Promise<string[]> {
+  const exactAliases = new Set(
+    rules
+      .filter(rule => rule.mode === 'alias')
+      .map(rule => rule.value.trim().toLowerCase())
+      .filter(Boolean)
+  )
+  if (exactAliases.size === 0) return []
+
+  const activeModels = await loadActiveGlobalModels()
+  const conflicts = activeModels
+    .filter(model => model.id !== props.globalModelId)
+    .filter(model => exactAliases.has(model.name.toLowerCase()))
+    .map(model => model.name)
+
+  return Array.from(new Set(conflicts))
 }
 
 /**
@@ -348,10 +463,10 @@ function computeMatchCount(pattern: string): number {
 
 const mappingMatchCounts = computed(() => {
   if (!routingData.value) {
-    return normalizedMappings.value.map(() => 0)
+    return normalizedStoredMappings.value.map(() => 0)
   }
 
-  return normalizedMappings.value.map((pattern, index) => {
+  return normalizedStoredMappings.value.map((pattern, index) => {
     if (!pattern) return 0
     if (!mappingValidations.value[index]?.valid) return 0
     return computeMatchCount(pattern)
@@ -444,8 +559,8 @@ const expandedGroups = computed<ProviderGroup[]>(() => {
 })
 
 watch(() => props.mappings, (newAliases) => {
-  localMappings.value = [...newAliases]
-  originalMappings.value = [...newAliases]
+  localRules.value = newAliases.map(createLocalRuleFromStoredMapping)
+  originalRules.value = cloneRules(localRules.value)
   isDirty.value = false
 }, { deep: true })
 
@@ -459,18 +574,31 @@ function markDirty() {
   isDirty.value = true
 }
 
+function getMappingPlaceholder(mode: MappingMode): string {
+  return mode === 'alias'
+    ? '例如: claude-opus-4.8-thinking'
+    : '例如: claude[-_]opus[-_]4[.-]8(?:[-_]thinking)?'
+}
+
+function setMappingMode(index: number, mode: MappingMode) {
+  const rule = localRules.value[index]
+  if (!rule || rule.mode === mode) return
+  rule.mode = mode
+  markDirty()
+}
+
 function addMapping() {
-  if (localMappings.value.length >= MAX_MAPPINGS_PER_MODEL) {
-    toastError(`最多支持 ${MAX_MAPPINGS_PER_MODEL} 条映射规则`)
+  if (localRules.value.length >= MAX_MAPPINGS_PER_MODEL) {
+    toastError(`最多支持 ${MAX_MAPPINGS_PER_MODEL} 条别名规则`)
     return
   }
-  localMappings.value.push('')
+  localRules.value.push({ value: '', mode: 'alias' })
   isDirty.value = true
-  expandedIndex.value = localMappings.value.length - 1
+  expandedIndex.value = localRules.value.length - 1
 }
 
 async function removeMapping(index: number) {
-  localMappings.value.splice(index, 1)
+  localRules.value.splice(index, 1)
   if (expandedIndex.value === index) {
     expandedIndex.value = null
   } else if (expandedIndex.value !== null && expandedIndex.value > index) {
@@ -478,7 +606,7 @@ async function removeMapping(index: number) {
   }
   // 删除后自动保存（仅在当前无校验错误时）
   if (hasValidationErrors.value) {
-    toastError('存在无效映射规则，请修正后再保存')
+    toastError('存在无效别名规则，请修正后再保存')
     isDirty.value = true
     return
   }
@@ -487,17 +615,28 @@ async function removeMapping(index: number) {
 
 async function saveMappings() {
   if (hasValidationErrors.value) {
-    toastError('存在无效映射规则，无法保存')
+    toastError('存在无效别名规则，无法保存')
     return
   }
 
-  const cleanedMappings = localMappings.value
-    .map(a => a.trim())
-    .filter(a => a.length > 0)
+  const cleanedRules = localRules.value
+    .map(rule => ({ value: rule.value.trim(), mode: rule.mode }))
+    .filter(rule => rule.value.length > 0)
+  const cleanedMappings = cleanedRules.map(rule => toStoredMappingPattern(rule))
 
   saving.value = true
   try {
-    const currentModel = await getGlobalModel(props.globalModelId)
+    const [currentModel, conflictingAliases] = await Promise.all([
+      getGlobalModel(props.globalModelId),
+      findActiveGlobalModelNameConflicts(cleanedRules),
+    ])
+    if (conflictingAliases.length > 0) {
+      toastError(
+        `这些别名已经是启用中的独立模型：${conflictingAliases.join(', ')}。请先停用或删除同名模型。`
+      )
+      return
+    }
+
     const currentConfig = currentModel.config || {}
 
     const updatedConfig: Record<string, unknown> = {
@@ -513,8 +652,8 @@ async function saveMappings() {
       config: updatedConfig,
     })
 
-    localMappings.value = cleanedMappings
-    originalMappings.value = [...cleanedMappings]  // 更新原始值
+    localRules.value = cleanedRules
+    originalRules.value = cloneRules(cleanedRules)  // 更新原始值
     isDirty.value = false
 
     // 收集所有未关联的提供商 ID
@@ -530,20 +669,20 @@ async function saveMappings() {
 
     // 自动关联未关联的提供商
     if (unlinkedProviderIds.length > 0) {
-      toastSuccess(`映射规则已保存，正在关联 ${unlinkedProviderIds.length} 个提供商...`)
+      toastSuccess(`别名规则已保存，正在关联 ${unlinkedProviderIds.length} 个提供商...`)
       emit('linkProviders', unlinkedProviderIds)
     } else {
-      toastSuccess('映射规则已保存')
+      toastSuccess('别名规则已保存')
     }
 
     // 保存成功后刷新数据
     emit('update', cleanedMappings)
     emit('refresh')
   } catch (err) {
-    log.error('保存映射规则失败:', err)
+    log.error('保存别名规则失败:', err)
     toastError('保存失败，请重试')
     // 保存失败时恢复到原始值
-    localMappings.value = [...originalMappings.value]
+    localRules.value = cloneRules(originalRules.value)
     isDirty.value = false
   } finally {
     saving.value = false

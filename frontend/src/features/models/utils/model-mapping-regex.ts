@@ -1,10 +1,42 @@
 export const MAX_MAPPINGS_PER_MODEL = 50
 export const MAX_MAPPING_LENGTH = 200
 export const MAX_MODEL_NAME_LENGTH = 200
+const REGEX_SPECIAL_CHARS = '\\^$.*+?()[]{}|'
+const REGEX_SPECIAL_PATTERN = /[\\^$.*+?()[\]{}|]/g
 
 export interface ValidationResult {
   valid: boolean
   error?: string
+}
+
+export function escapeModelAliasPattern(alias: string): string {
+  return alias.trim().replace(REGEX_SPECIAL_PATTERN, '\\$&')
+}
+
+export function unescapeEscapedModelAliasPattern(pattern: string): string | null {
+  const normalized = pattern.trim()
+  if (!normalized) return null
+
+  let output = ''
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index]
+    if (char === '\\') {
+      const next = normalized[index + 1]
+      if (!next || !REGEX_SPECIAL_CHARS.includes(next)) {
+        return null
+      }
+      output += next
+      index += 1
+      continue
+    }
+
+    if (REGEX_SPECIAL_CHARS.includes(char)) {
+      return null
+    }
+    output += char
+  }
+
+  return output
 }
 
 // 危险的正则模式（可能导致 ReDoS）

@@ -3,7 +3,9 @@ import {
   MAX_MAPPING_LENGTH,
   MAX_MODEL_NAME_LENGTH,
   createLRURegexCache,
+  escapeModelAliasPattern,
   safeTestModelMappingPattern,
+  unescapeEscapedModelAliasPattern,
   validateModelMappingPattern,
 } from '@/features/models/utils/model-mapping-regex'
 
@@ -40,5 +42,18 @@ describe('model-mapping-regex', () => {
     const longName = 'a'.repeat(MAX_MODEL_NAME_LENGTH + 1)
     expect(safeTestModelMappingPattern('a.*', longName, cache)).toBe(false)
   })
-})
 
+  it('escapeModelAliasPattern: treats dot as a literal character', () => {
+    const cache = createLRURegexCache(10)
+    const pattern = escapeModelAliasPattern('claude-opus-4.8-thinking')
+
+    expect(pattern).toBe('claude-opus-4\\.8-thinking')
+    expect(safeTestModelMappingPattern(pattern, 'claude-opus-4.8-thinking', cache)).toBe(true)
+    expect(safeTestModelMappingPattern(pattern, 'claude-opus-4x8-thinking', cache)).toBe(false)
+  })
+
+  it('unescapeEscapedModelAliasPattern: restores stored exact aliases only', () => {
+    expect(unescapeEscapedModelAliasPattern('claude-opus-4\\.8-thinking')).toBe('claude-opus-4.8-thinking')
+    expect(unescapeEscapedModelAliasPattern('claude[-_]opus[-_]4[.-]8')).toBeNull()
+  })
+})

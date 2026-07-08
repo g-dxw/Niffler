@@ -101,7 +101,7 @@
                 ]"
                 @click="detailTab = 'routing'"
               >
-                <span class="hidden sm:inline">链路控制</span>
+                <span class="hidden sm:inline">提供商链路</span>
                 <span class="sm:hidden">链路</span>
               </button>
               <button
@@ -114,8 +114,8 @@
                 ]"
                 @click="detailTab = 'mappings'"
               >
-                <span class="hidden sm:inline">模型映射</span>
-                <span class="sm:hidden">映射</span>
+                <span class="hidden sm:inline">别名匹配</span>
+                <span class="sm:hidden">别名</span>
               </button>
             </div>
 
@@ -469,13 +469,24 @@
                   统计信息
                 </h4>
                 <div class="grid grid-cols-2 gap-3">
-                  <div class="p-3 rounded-lg border bg-muted/20">
+                  <div
+                    role="button"
+                    tabindex="0"
+                    class="p-3 rounded-lg border bg-muted/20 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title="查看具体提供商和上游模型"
+                    @click="detailTab = 'routing'"
+                    @keydown.enter="detailTab = 'routing'"
+                    @keydown.space.prevent="detailTab = 'routing'"
+                  >
                     <div class="flex items-center justify-between">
-                      <Label class="text-xs text-muted-foreground">关联提供商</Label>
+                      <span class="text-xs text-muted-foreground">关联提供商</span>
                       <Building2 class="w-4 h-4 text-muted-foreground" />
                     </div>
                     <p class="text-2xl font-bold mt-1">
                       {{ model.active_provider_count || 0 }}<span class="text-sm text-muted-foreground font-normal">/{{ model.provider_count || 0 }}</span>
+                    </p>
+                    <p class="text-xs text-muted-foreground mt-1">
+                      点击查看明细
                     </p>
                   </div>
                   <div class="p-3 rounded-lg border bg-muted/20">
@@ -491,7 +502,7 @@
               </div>
             </div>
 
-            <!-- Tab 2: 链路控制 -->
+            <!-- Tab 2: 提供商链路 -->
             <div v-show="detailTab === 'routing'">
               <RoutingTab
                 v-if="model"
@@ -508,7 +519,7 @@
               />
             </div>
 
-            <!-- Tab 3: 模型映射 -->
+            <!-- Tab 3: 别名匹配 -->
             <div v-show="detailTab === 'mappings'">
               <ModelMappingsTab
                 v-if="model"
@@ -566,8 +577,11 @@ import type { GlobalModelResponse } from '@/api/global-models'
 import type { TieredPricingConfig, PricingTier, ModelRoutingPreviewResponse } from '@/api/endpoints/types'
 import type { RoutingProviderInfo } from '@/api/global-models'
 
+type ModelDetailTab = 'basic' | 'routing' | 'mappings'
+
 const props = withDefaults(defineProps<Props>(), {
   hasBlockingDialogOpen: false,
+  initialTab: 'basic',
 })
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -587,6 +601,7 @@ interface Props {
   model: GlobalModelResponse | null
   open: boolean
   hasBlockingDialogOpen?: boolean
+  initialTab?: ModelDetailTab
 }
 
 interface RoutingProviderLegacyPayload {
@@ -600,7 +615,7 @@ interface RoutingProviderLegacyPayload {
 
 // RoutingTab 引用
 const routingTabRef = ref<InstanceType<typeof RoutingTab> | null>(null)
-// ModelMappingsTab 引用
+// 别名匹配页签引用
 const modelMappingsTabRef = ref<InstanceType<typeof ModelMappingsTab> | null>(null)
 
 const displayModelMappings = computed<string[]>(() => {
@@ -662,9 +677,9 @@ function refreshRoutingData() {
   loadRoutingData()
 }
 
-// 处理模型映射更新
+// 处理别名规则更新
 function handleMappingsUpdate(_mappings: string[]) {
-  // 映射已在 ModelMappingsTab 内部保存到服务器
+  // 别名规则已在 ModelMappingsTab 内部保存到服务器
   // 路由数据刷新由 @refresh 事件处理，这里只需通知父组件刷新模型数据
   emit('refreshModel')
 }
@@ -760,7 +775,7 @@ function formatPixels(value: number): string {
   return `${value} px`
 }
 
-const detailTab = ref('basic')
+const detailTab = ref<ModelDetailTab>('basic')
 
 // 处理背景点击
 function handleBackdropClick() {
@@ -833,14 +848,19 @@ function getFirst1hCachePrice(tieredPricing: TieredPricingConfig | undefined | n
 // 监听 open 变化，重置 tab 并加载数据
 watch(() => props.open, (newOpen) => {
   if (newOpen) {
-    // 直接设置为 basic，不需要先重置为空
-    detailTab.value = 'basic'
+    detailTab.value = props.initialTab
     // 加载 routing 数据
     loadRoutingData()
   } else {
     // 关闭时清空数据
     routingData.value = null
     routingError.value = null
+  }
+})
+
+watch(() => props.initialTab, (newTab) => {
+  if (props.open) {
+    detailTab.value = newTab
   }
 })
 
