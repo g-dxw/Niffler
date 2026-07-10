@@ -213,6 +213,152 @@ fn apply_codex_image_generation_bridge_instructions(
     body_object.insert("instructions".to_string(), json!(instructions));
 }
 
+fn codex_openai_responses_stream_requested(body_object: &serde_json::Map<String, Value>) -> bool {
+    body_object
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn codex_openai_responses_tool_choice_allows_auto_selection(
+    body_object: &serde_json::Map<String, Value>,
+) -> bool {
+    match body_object.get("tool_choice") {
+        None | Some(Value::Null) => true,
+        Some(Value::String(value)) => value.trim().eq_ignore_ascii_case("auto"),
+        _ => false,
+    }
+}
+
+fn append_codex_user_text(value: &Value, output: &mut String) {
+    match value {
+        Value::String(text) => {
+            if !text.trim().is_empty() {
+                if !output.is_empty() {
+                    output.push('\n');
+                }
+                output.push_str(text);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                append_codex_user_text(item, output);
+            }
+        }
+        Value::Object(object) => {
+            if let Some(text) = object.get("text") {
+                append_codex_user_text(text, output);
+            }
+            if let Some(content) = object.get("content") {
+                append_codex_user_text(content, output);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn codex_openai_responses_user_text(body_object: &serde_json::Map<String, Value>) -> String {
+    let mut output = String::new();
+    match body_object.get("input") {
+        Some(Value::Array(items)) => {
+            for item in items {
+                let Some(object) = item.as_object() else {
+                    append_codex_user_text(item, &mut output);
+                    continue;
+                };
+                let role_is_user = object
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .is_none_or(|role| role.trim().eq_ignore_ascii_case("user"));
+                if role_is_user {
+                    append_codex_user_text(item, &mut output);
+                }
+            }
+        }
+        Some(value) => append_codex_user_text(value, &mut output),
+        None => {}
+    }
+    output
+}
+
+fn codex_user_text_requests_image_generation(text: &str) -> bool {
+    let normalized = text.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+
+    let chinese_image_request = text.contains("生图")
+        || text.contains("出图")
+        || text.contains("生成图片")
+        || text.contains("生成图像")
+        || text.contains("生成一张")
+        || text.contains("生成一幅")
+        || text.contains("生成一个")
+        || text.contains("画一张")
+        || text.contains("画一幅")
+        || text.contains("画个")
+        || text.contains("制作一张")
+        || text.contains("做一张图");
+    if chinese_image_request
+        && (text.contains("图")
+            || text.contains("图片")
+            || text.contains("图像")
+            || text.contains("照片")
+            || text.contains("海报")
+            || text.contains("插画")
+            || text.contains("画"))
+    {
+        return true;
+    }
+
+    let has_english_image_noun = [
+        "image",
+        "picture",
+        "photo",
+        "illustration",
+        "poster",
+        "logo",
+        "icon",
+        "avatar",
+        "wallpaper",
+    ]
+    .iter()
+    .any(|word| normalized.contains(word));
+    if !has_english_image_noun {
+        return false;
+    }
+    [
+        "generate",
+        "create",
+        "draw",
+        "render",
+        "make",
+        "produce",
+        "text-to-image",
+    ]
+    .iter()
+    .any(|word| normalized.contains(word))
+}
+
+fn maybe_force_codex_image_generation_tool_choice_for_user_intent(
+    body_object: &mut serde_json::Map<String, Value>,
+) {
+    if !codex_openai_responses_stream_requested(body_object)
+        || !codex_openai_responses_has_image_generation_tool(body_object)
+        || !codex_openai_responses_tool_choice_allows_auto_selection(body_object)
+    {
+        return;
+    }
+
+    let user_text = codex_openai_responses_user_text(body_object);
+    if codex_user_text_requests_image_generation(&user_text) {
+        body_object.insert(
+            "tool_choice".to_string(),
+            json!({"type": "image_generation"}),
+        );
+    }
+}
+
 fn apply_codex_openai_image_tool_overrides(
     body_object: &mut serde_json::Map<String, Value>,
     fallback_image_model: Option<&str>,
@@ -519,6 +665,7 @@ pub fn apply_openai_responses_image_generation_bridge_body_edits(
         || image_model.is_some()
         || codex_openai_responses_tool_choice_references_image_generation(body_object);
     if !enable_image_generation_tool || !explicit_image_request {
+        maybe_force_codex_image_generation_tool_choice_for_user_intent(body_object);
         return;
     }
 
@@ -1361,6 +1508,60 @@ mod tests {
             3,
             "tools array should be preserved when tool_choice is auto"
         );
+    }
+
+    #[test]
+    fn codex_streaming_image_prompt_forces_image_tool_choice_without_rewriting_model() {
+        let original_model = "gpt-5.6-sol";
+        let mut provider_request_body = json!({
+            "model": original_model,
+            "input": [{"role": "user", "content": "请生成一张 1:1 极简红色圆点图片"}],
+            "tools": [{"type": "image_generation"}],
+            "tool_choice": "auto",
+            "stream": true
+        });
+
+        apply_codex_openai_responses_special_body_edits(
+            &mut provider_request_body,
+            "codex",
+            "openai:responses",
+            None,
+            None,
+        );
+
+        assert_eq!(provider_request_body["model"], json!(original_model));
+        assert_eq!(
+            provider_request_body["tool_choice"],
+            json!({"type": "image_generation"})
+        );
+        assert_eq!(
+            provider_request_body["tools"][0]["type"],
+            json!("image_generation")
+        );
+        assert!(provider_request_body["tools"][0].get("model").is_none());
+    }
+
+    #[test]
+    fn codex_sync_image_prompt_keeps_auto_tool_choice() {
+        let original_model = "gpt-5.6-sol";
+        let mut provider_request_body = json!({
+            "model": original_model,
+            "input": [{"role": "user", "content": "请生成一张 1:1 极简红色圆点图片"}],
+            "tools": [{"type": "image_generation"}],
+            "tool_choice": "auto",
+            "stream": false
+        });
+
+        apply_codex_openai_responses_special_body_edits(
+            &mut provider_request_body,
+            "codex",
+            "openai:responses",
+            None,
+            None,
+        );
+
+        assert_eq!(provider_request_body["model"], json!(original_model));
+        assert_eq!(provider_request_body["tool_choice"], json!("auto"));
     }
 
     #[test]
