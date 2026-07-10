@@ -20,6 +20,7 @@
 - 启用状态的 Codex OAuth 账号持久化后会立即后台获取一次模型，不再只等每日周期任务或服务重启。
 - Codex 号池自动获取模型时会保留已确认开放的 `gpt-5.6-sol` 和 `gpt-5.6-terra`，避免上游临时返回旧列表时把 provider key 的模型白名单覆盖回 GPT-5.5。
 - Niffler 的 API Key 安装脚本会为 Codex CLI 自动写入本机 `niffler_model_catalog.json`，并在 `config.toml` 中设置 `model_catalog_json`，避免用户手动维护 `~/.codex/model_catalog.json` 才能看到 GPT-5.6 系列模型。
+- CC Switch 导入链路不写 Codex 本机 `model_catalog_json`，只通过深链传单个默认模型；Codex 导入默认模型已改为 `gpt-5.6-sol`。
 
 ## 影响范围
 
@@ -46,3 +47,4 @@
 - 运行 Codex 安装脚本相关单元测试，并用 `codex debug models` 验证生成的模型目录能被 Codex 解析。
 - 线上更新后，用 Niffler token 请求 `https://niffler.org/v1/models` 已返回 `gpt-5.6-sol` 和 `gpt-5.6-terra`，并已用 `gpt-5.6-sol` 完成一次 `/v1/responses` 调用。
 - 运行 `cargo test -p aether-gateway codex_model_fetch_preserves_released_gpt_56_models`，确认 Codex 自动获取模型即使只拿到 GPT-5.5，也会保留已开放的 GPT-5.6 模型。
+- 运行 `npm run test:run -- src/features/api-keys/utils/__tests__/ccswitchImport.spec.ts`，确认 CC Switch Codex 导入默认使用 `gpt-5.6-sol`。

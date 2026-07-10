@@ -896,7 +896,7 @@
           <Input
             id="ccswitch-model"
             v-model="ccSwitchModel"
-            placeholder="例如：gpt-5.5"
+            placeholder="例如：gpt-5.6-sol"
             class="h-11 border-border/60"
             autocomplete="off"
           />
@@ -1260,9 +1260,9 @@ async function copyInstallCommand() {
 
 function openCcSwitchDialog(apiKey: ApiKey) {
   selectedCcSwitchApiKey.value = apiKey
-  ccSwitchApp.value = 'claude'
+  ccSwitchApp.value = 'codex'
   ccSwitchProviderName.value = `Niffler - ${apiKey.name || 'API Key'}`
-  ccSwitchModel.value = ''
+  ccSwitchModel.value = DEFAULT_CCSWITCH_CODEX_MODEL
   showCcSwitchDialog.value = true
   void refreshCcSwitchBaseUrl()
 }
