@@ -1,11 +1,16 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::io::Error as IoError;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::time::{Duration, Instant};
 
+use aether_ai_formats::api::{
+    CLAUDE_CHAT_STREAM_PLAN_KIND, CLAUDE_CLI_STREAM_PLAN_KIND, GEMINI_CHAT_STREAM_PLAN_KIND,
+    GEMINI_CLI_STREAM_PLAN_KIND, OPENAI_CHAT_STREAM_PLAN_KIND, OPENAI_IMAGE_STREAM_PLAN_KIND,
+    OPENAI_RESPONSES_COMPACT_STREAM_PLAN_KIND, OPENAI_RESPONSES_STREAM_PLAN_KIND,
+};
 use aether_contracts::{
     ExecutionPlan, ExecutionStreamTerminalSummary, ExecutionTelemetry, StandardizedUsage,
     StreamFrame, StreamFramePayload,
@@ -13,13 +18,13 @@ use aether_contracts::{
 use aether_data_contracts::repository::candidates::RequestCandidateStatus;
 use aether_data_contracts::repository::usage::UsageBodyCaptureState;
 use aether_scheduler_core::{
-    parse_request_candidate_report_context, SchedulerRequestCandidateStatusUpdate,
+    SchedulerRequestCandidateStatusUpdate, parse_request_candidate_report_context,
 };
 use aether_usage_runtime::{
-    build_lifecycle_usage_seed, build_stream_terminal_usage_payload_seed,
-    build_sync_terminal_usage_payload_seed, build_terminal_usage_context_seed,
-    UsageBodyCapturePolicy, UsageRequestRecordLevel, UsageRuntimeAccess,
-    DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES,
+    DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES, UsageBodyCapturePolicy,
+    UsageRequestRecordLevel, UsageRuntimeAccess, build_lifecycle_usage_seed,
+    build_stream_terminal_usage_payload_seed, build_sync_terminal_usage_payload_seed,
+    build_terminal_usage_context_seed,
 };
 use async_stream::stream;
 use axum::body::{Body, Bytes};
@@ -27,7 +32,7 @@ use axum::http::Response;
 use base64::Engine as _;
 use futures_util::stream::BoxStream;
 use futures_util::{StreamExt, TryStreamExt};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 use tokio_util::codec::{FramedRead, LinesCodec};
@@ -35,22 +40,21 @@ use tokio_util::io::StreamReader;
 use tracing::{debug, info, warn};
 
 use super::error::{
-    build_synthetic_non_success_stream_error_body, collect_error_body, decode_stream_error_body,
-    inspect_prefetched_stream_body, read_next_frame,
+    StreamPrefetchInspection, build_synthetic_non_success_stream_error_body, collect_error_body,
+    decode_stream_error_body, inspect_prefetched_stream_body, read_next_frame,
     should_synthesize_non_success_stream_error_body,
     stream_client_error_status_code_for_upstream_status, synthetic_error_response_headers,
-    StreamPrefetchInspection,
 };
 #[path = "execution_failures.rs"]
 mod execution_failures;
 use self::execution_failures::{
-    build_stream_failure_from_execution_error, build_stream_failure_report,
-    handle_prefetch_stream_failure, submit_midstream_stream_failure, StreamFailureReport,
+    StreamFailureReport, build_stream_failure_from_execution_error, build_stream_failure_report,
+    handle_prefetch_stream_failure, submit_midstream_stream_failure,
 };
 use crate::ai_serving::api::{
-    maybe_bridge_standard_sync_json_to_stream, maybe_build_provider_private_stream_normalizer,
-    maybe_build_stream_response_rewriter, normalize_provider_private_report_context,
-    StreamingStandardTerminalObserver,
+    StreamingStandardTerminalObserver, maybe_bridge_standard_sync_json_to_stream,
+    maybe_build_provider_private_stream_normalizer, maybe_build_stream_response_rewriter,
+    normalize_provider_private_report_context,
 };
 use crate::api::response::{
     attach_control_metadata_headers, build_client_response, build_client_response_from_parts,
@@ -62,11 +66,11 @@ use crate::execution_runtime::build_direct_execution_frame_stream;
 use crate::execution_runtime::chatgpt_web_image::maybe_execute_chatgpt_web_image_stream;
 use crate::execution_runtime::grok::maybe_execute_grok_stream;
 use crate::execution_runtime::kiro_cache::{
+    KIRO_SIMULATED_CACHE_ENABLED_CONTEXT_FIELD, KiroPromptCacheUsage,
     billed_input_tokens as kiro_billed_input_tokens, build_kiro_prompt_cache_profile,
     estimate_kiro_prompt_input_tokens, kiro_prompt_cache_tracker,
     kiro_simulated_cache_enabled_from_provider_config,
-    kiro_simulated_cache_enabled_from_report_context, KiroPromptCacheUsage,
-    KIRO_SIMULATED_CACHE_ENABLED_CONTEXT_FIELD,
+    kiro_simulated_cache_enabled_from_report_context,
 };
 use crate::execution_runtime::kiro_web_search::maybe_execute_kiro_web_search_stream;
 use crate::execution_runtime::oauth_retry::refresh_oauth_plan_auth_for_retry;
@@ -77,16 +81,17 @@ use crate::execution_runtime::submission::{
     submit_local_core_error_or_sync_finalize,
 };
 use crate::execution_runtime::transport::{
+    DirectSyncExecutionRuntime, DirectUpstreamStreamExecution, ExecutionRuntimeTransportError,
     execute_stream_plan_via_local_tunnel, record_manual_proxy_request_failure,
     record_manual_proxy_request_success, record_manual_proxy_stream_error,
-    DirectSyncExecutionRuntime, DirectUpstreamStreamExecution, ExecutionRuntimeTransportError,
 };
 use crate::execution_runtime::{
-    apply_endpoint_response_header_rules, attach_provider_response_headers_to_report_context,
-    local_failover_response_text, resolve_core_stream_direct_finalize_report_kind,
+    LocalFailoverDecision, apply_endpoint_response_header_rules,
+    attach_provider_response_headers_to_report_context, local_failover_response_text,
+    resolve_core_stream_direct_finalize_report_kind,
     resolve_core_stream_error_finalize_report_kind,
     resolve_local_candidate_failover_analysis_stream, should_fallback_to_control_stream,
-    should_retry_next_local_candidate_stream, LocalFailoverDecision,
+    should_retry_next_local_candidate_stream,
 };
 use crate::execution_runtime::{MAX_STREAM_PREFETCH_BYTES, MAX_STREAM_PREFETCH_FRAMES};
 use crate::log_ids::short_request_id;
@@ -94,14 +99,14 @@ use crate::niffler_error_return::{
     build_niffler_upstream_error_context, rewrite_niffler_upstream_error_response,
 };
 use crate::orchestration::{
-    apply_local_execution_effect, build_local_error_flow_metadata, trace_upstream_response_body,
-    with_error_flow_report_context, with_upstream_response_report_context,
     LocalAdaptiveRateLimitEffect, LocalAdaptiveSuccessEffect, LocalAttemptFailureEffect,
     LocalExecutionEffect, LocalExecutionEffectContext, LocalHealthFailureEffect,
     LocalHealthSuccessEffect, LocalOAuthInvalidationEffect, LocalPoolErrorEffect,
+    apply_local_execution_effect, build_local_error_flow_metadata, trace_upstream_response_body,
+    with_error_flow_report_context, with_upstream_response_report_context,
 };
 use crate::provider_pool_demand::{
-    acquire_provider_pool_in_flight_guard, ProviderPoolInFlightGuard,
+    ProviderPoolInFlightGuard, acquire_provider_pool_in_flight_guard,
 };
 use crate::request_candidate_runtime::{
     ensure_execution_request_candidate_slot, snapshot_local_request_candidate_status,
@@ -110,10 +115,9 @@ use crate::request_candidate_runtime::{
 use crate::usage::submit_stream_report;
 use crate::usage::{GatewayStreamReportRequest, GatewaySyncReportRequest};
 use crate::{
-    AppState, GatewayError, GEMINI_FILES_DOWNLOAD_PLAN_KIND, OPENAI_VIDEO_CONTENT_PLAN_KIND,
+    AppState, GEMINI_FILES_DOWNLOAD_PLAN_KIND, GatewayError, OPENAI_VIDEO_CONTENT_PLAN_KIND,
 };
 
-const OPENAI_IMAGE_STREAM_PLAN_KIND: &str = "openai_image_stream";
 const SSE_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 const SSE_KEEPALIVE_BYTES: &[u8] = b": aether-keepalive\n\n";
 const STREAM_IDLE_LOG_INTERVAL: Duration = Duration::from_secs(60);
@@ -1178,13 +1182,73 @@ fn decode_stream_data_chunk(
     Ok(text.unwrap_or_default().as_bytes().to_vec())
 }
 
-fn response_headers_indicate_sse(headers: &BTreeMap<String, String>) -> bool {
+fn response_header_value<'a>(headers: &'a BTreeMap<String, String>, name: &str) -> Option<&'a str> {
     headers
-        .get("content-type")
-        .map(String::as_str)
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+fn remove_response_header(headers: &mut BTreeMap<String, String>, name: &str) {
+    let keys = headers
+        .keys()
+        .filter(|key| key.eq_ignore_ascii_case(name))
+        .cloned()
+        .collect::<Vec<_>>();
+    for key in keys {
+        headers.remove(&key);
+    }
+}
+
+fn set_response_header(headers: &mut BTreeMap<String, String>, name: &str, value: &str) {
+    remove_response_header(headers, name);
+    headers.insert(name.to_string(), value.to_string());
+}
+
+fn response_headers_indicate_sse(headers: &BTreeMap<String, String>) -> bool {
+    response_header_value(headers, "content-type")
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"))
+}
+
+fn stream_plan_outputs_sse(plan_kind: &str) -> bool {
+    matches!(
+        plan_kind,
+        OPENAI_CHAT_STREAM_PLAN_KIND
+            | OPENAI_RESPONSES_STREAM_PLAN_KIND
+            | OPENAI_RESPONSES_COMPACT_STREAM_PLAN_KIND
+            | OPENAI_IMAGE_STREAM_PLAN_KIND
+            | CLAUDE_CHAT_STREAM_PLAN_KIND
+            | CLAUDE_CLI_STREAM_PLAN_KIND
+            | GEMINI_CHAT_STREAM_PLAN_KIND
+            | GEMINI_CLI_STREAM_PLAN_KIND
+    )
+}
+
+fn normalize_client_stream_response_headers(
+    headers: &mut BTreeMap<String, String>,
+    client_body_is_sse: bool,
+) {
+    if !client_body_is_sse {
+        return;
+    }
+
+    remove_response_header(headers, "content-encoding");
+    remove_response_header(headers, "content-length");
+    set_response_header(headers, "content-type", "text/event-stream");
+}
+
+fn normalize_client_stream_response_headers_after_rules(
+    headers: &mut BTreeMap<String, String>,
+    known_client_body_is_sse: bool,
+) -> bool {
+    let headers_mark_response_as_sse = response_headers_indicate_sse(headers);
+    normalize_client_stream_response_headers(
+        headers,
+        known_client_body_is_sse || headers_mark_response_as_sse,
+    );
+    headers_mark_response_as_sse
 }
 
 fn parse_prefetched_sync_json_body(body: &[u8]) -> Option<Value> {
@@ -2244,6 +2308,11 @@ async fn execute_stream_from_frame_stream(
             }
         }
     }
+    let known_client_body_is_sse = response_headers_indicate_sse(&headers)
+        || stream_plan_outputs_sse(plan_kind)
+        || private_stream_normalizer.is_some()
+        || local_stream_rewriter.is_some()
+        || sync_json_stream_bridge_active;
     drop(private_stream_normalizer);
     drop(local_stream_rewriter);
 
@@ -2274,6 +2343,10 @@ async fn execute_stream_from_frame_stream(
     }
 
     apply_endpoint_response_header_rules(state, &plan, &mut headers, None).await?;
+    let emit_sse_keepalive = normalize_client_stream_response_headers_after_rules(
+        &mut headers,
+        known_client_body_is_sse,
+    );
 
     let request_id = request_id.to_string();
     let candidate_id = candidate_id.map(ToOwned::to_owned);
@@ -2664,29 +2737,31 @@ async fn execute_stream_from_frame_stream(
                         if sync_json_stream_bridge_active_for_report {
                             continue;
                         }
-                        let chunk =
-                            match decode_stream_data_chunk(chunk_b64.as_deref(), text.as_deref()) {
-                                Ok(chunk) => chunk,
-                                Err(err) => {
-                                    warn!(
-                                        event_name = "stream_execution_chunk_decode_failed",
-                                        log_type = "ops",
-                                        trace_id = %trace_id_owned,
-                                        request_id = %request_id_for_report_log,
-                                        candidate_id = ?candidate_id_for_report.as_deref(),
-                                        error = ?err,
-                                        "gateway failed to decode execution runtime chunk"
-                                    );
-                                    terminal_failure = Some(build_stream_failure_report(
-                                        "execution_runtime_stream_chunk_decode_error",
-                                        format!(
+                        let chunk = match decode_stream_data_chunk(
+                            chunk_b64.as_deref(),
+                            text.as_deref(),
+                        ) {
+                            Ok(chunk) => chunk,
+                            Err(err) => {
+                                warn!(
+                                    event_name = "stream_execution_chunk_decode_failed",
+                                    log_type = "ops",
+                                    trace_id = %trace_id_owned,
+                                    request_id = %request_id_for_report_log,
+                                    candidate_id = ?candidate_id_for_report.as_deref(),
+                                    error = ?err,
+                                    "gateway failed to decode execution runtime chunk"
+                                );
+                                terminal_failure = Some(build_stream_failure_report(
+                                    "execution_runtime_stream_chunk_decode_error",
+                                    format!(
                                         "failed to decode execution runtime stream chunk: {err:?}"
                                     ),
-                                        502,
-                                    ));
-                                    break;
-                                }
-                            };
+                                    502,
+                                ));
+                                break;
+                            }
+                        };
 
                         if chunk.is_empty() {
                             continue;
@@ -2718,10 +2793,12 @@ async fn execute_stream_from_frame_stream(
                                         "gateway failed to normalize execution runtime stream chunk"
                                     );
                                     terminal_failure = Some(build_stream_failure_report(
-                                            "execution_runtime_stream_rewrite_error",
-                                            format!("failed to normalize execution runtime stream chunk: {err:?}"),
-                                            502,
-                                        ));
+                                        "execution_runtime_stream_rewrite_error",
+                                        format!(
+                                            "failed to normalize execution runtime stream chunk: {err:?}"
+                                        ),
+                                        502,
+                                    ));
                                     break;
                                 }
                             }
@@ -2755,7 +2832,9 @@ async fn execute_stream_from_frame_stream(
                                     );
                                     terminal_failure = Some(build_stream_failure_report(
                                         "execution_runtime_stream_rewrite_error",
-                                        format!("failed to rewrite execution runtime stream chunk: {err:?}"),
+                                        format!(
+                                            "failed to rewrite execution runtime stream chunk: {err:?}"
+                                        ),
                                         502,
                                     ));
                                     break;
@@ -3318,10 +3397,6 @@ async fn execute_stream_from_frame_stream(
         );
     }
 
-    let emit_sse_keepalive = response_headers_indicate_sse(&headers);
-    if emit_sse_keepalive {
-        headers.remove("content-length");
-    }
     let body_stream = build_sse_body_stream(
         prefetched_chunks_for_body,
         rx,
@@ -3356,7 +3431,7 @@ mod tests {
 
     use aether_contracts::{
         ExecutionPlan, ExecutionStreamTerminalSummary, ExecutionTimeouts, RequestBody,
-        StandardizedUsage,
+        StandardizedUsage, StreamFrame, StreamFramePayload, StreamFrameType,
     };
     use aether_data::repository::candidates::InMemoryRequestCandidateRepository;
     use aether_data::repository::usage::InMemoryUsageReadRepository;
@@ -3366,14 +3441,14 @@ mod tests {
     use aether_data_contracts::repository::usage::UsageReadRepository;
     use aether_usage_runtime::UsageRuntimeConfig;
     use async_stream::stream;
-    use axum::body::{to_bytes, Body, Bytes};
-    use axum::extract::ws::Message;
+    use axum::body::{Body, Bytes, to_bytes};
     use axum::extract::Request;
+    use axum::extract::ws::Message;
     use axum::routing::any;
-    use axum::{http::header, http::HeaderValue, Router};
+    use axum::{Router, http::HeaderValue, http::header};
     use futures_util::StreamExt as _;
-    use serde_json::{json, Value};
-    use tokio::sync::{mpsc, watch, Notify};
+    use serde_json::{Value, json};
+    use tokio::sync::{Notify, mpsc, watch};
 
     use super::{
         build_sse_body_stream, execute_execution_runtime_stream, execute_stream_from_frame_stream,
@@ -3381,10 +3456,10 @@ mod tests {
         should_limit_direct_finalize_prefetch, should_probe_success_failover_before_stream,
         should_skip_direct_finalize_prefetch,
     };
+    use crate::AppState;
     use crate::control::GatewayControlDecision;
     use crate::request_candidate_runtime::flush_request_candidate_status_writes;
-    use crate::tunnel::{tunnel_protocol, TunnelProxyConn};
-    use crate::AppState;
+    use crate::tunnel::{TunnelProxyConn, tunnel_protocol};
 
     fn test_decision() -> GatewayControlDecision {
         GatewayControlDecision::synthetic(
@@ -3393,6 +3468,17 @@ mod tests {
             Some("openai".to_string()),
             Some("chat".to_string()),
             Some("openai:chat".to_string()),
+        )
+        .with_execution_runtime_candidate(true)
+    }
+
+    fn responses_test_decision() -> GatewayControlDecision {
+        GatewayControlDecision::synthetic(
+            "/v1/responses",
+            Some("ai_public".to_string()),
+            Some("openai".to_string()),
+            Some("responses".to_string()),
+            Some("openai:responses".to_string()),
         )
         .with_execution_runtime_candidate(true)
     }
@@ -3406,6 +3492,99 @@ mod tests {
             url: None,
             extra: Some(json!({"tunnel_base_url": base_url})),
         }
+    }
+
+    fn stream_frame_bytes(frame: StreamFrame) -> Bytes {
+        crate::execution_runtime::ndjson::encode_stream_frame_ndjson(&frame)
+            .expect("stream frame should encode")
+    }
+
+    fn stream_headers_frame(status_code: u16, headers: BTreeMap<String, String>) -> Bytes {
+        stream_frame_bytes(StreamFrame {
+            frame_type: StreamFrameType::Headers,
+            payload: StreamFramePayload::Headers {
+                status_code,
+                headers,
+            },
+        })
+    }
+
+    fn stream_data_frame(text: &str) -> Bytes {
+        stream_frame_bytes(StreamFrame {
+            frame_type: StreamFrameType::Data,
+            payload: StreamFramePayload::Data {
+                chunk_b64: None,
+                text: Some(text.to_string()),
+            },
+        })
+    }
+
+    async fn execute_test_stream_with_headers(
+        upstream_headers: BTreeMap<String, String>,
+        plan_kind: &str,
+        client_api_format: &str,
+        provider_api_format: &str,
+        decision: &GatewayControlDecision,
+    ) -> axum::http::Response<Body> {
+        let state = AppState::new().expect("app state should build");
+        let plan = ExecutionPlan {
+            request_id: format!("req-header-normalization-{plan_kind}"),
+            candidate_id: Some(format!("cand-header-normalization-{plan_kind}")),
+            provider_name: Some("openai".into()),
+            provider_id: "prov-1".into(),
+            endpoint_id: "ep-1".into(),
+            key_id: "key-1".into(),
+            method: "POST".into(),
+            url: "https://example.com/v1/responses".into(),
+            headers: BTreeMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("accept".into(), "text/event-stream".into()),
+            ]),
+            content_type: Some("application/json".into()),
+            content_encoding: None,
+            body: RequestBody::from_json(json!({
+                "model": "gpt-5.5",
+                "input": "hello",
+                "stream": true
+            })),
+            stream: true,
+            client_api_format: client_api_format.into(),
+            provider_api_format: provider_api_format.into(),
+            model_name: Some("gpt-5.5".into()),
+            proxy: None,
+            transport_profile: None,
+            timeouts: None,
+        };
+        let frame_stream = stream! {
+            yield Ok::<Bytes, std::io::Error>(stream_headers_frame(200, upstream_headers));
+            yield Ok::<Bytes, std::io::Error>(stream_data_frame("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"));
+            yield Ok::<Bytes, std::io::Error>(stream_frame_bytes(StreamFrame::eof()));
+        }
+        .boxed();
+
+        execute_stream_from_frame_stream(
+            &state,
+            plan,
+            "trace-header-normalization",
+            decision,
+            plan_kind,
+            None,
+            Some(json!({
+                "request_id": format!("req-header-normalization-{plan_kind}"),
+                "candidate_id": format!("cand-header-normalization-{plan_kind}"),
+                "candidate_index": 0,
+                "retry_index": 0,
+                "provider_api_format": provider_api_format,
+                "client_api_format": client_api_format
+            })),
+            crate::clock::current_unix_ms(),
+            Instant::now(),
+            frame_stream,
+            None,
+        )
+        .await
+        .expect("execution should succeed")
+        .expect("execution should return a client response")
     }
 
     #[test]
@@ -3953,14 +4132,18 @@ mod tests {
         super::seed_kiro_report_context_prompt_cache_usage(&plan, &mut report_context);
 
         let context = report_context.as_ref().expect("context should exist");
-        assert!(context
-            .get("input_tokens")
-            .and_then(Value::as_u64)
-            .is_some_and(|value| value > 0));
-        assert!(context
-            .get("cache_creation_input_tokens")
-            .and_then(Value::as_u64)
-            .is_some_and(|value| value > 0));
+        assert!(
+            context
+                .get("input_tokens")
+                .and_then(Value::as_u64)
+                .is_some_and(|value| value > 0)
+        );
+        assert!(
+            context
+                .get("cache_creation_input_tokens")
+                .and_then(Value::as_u64)
+                .is_some_and(|value| value > 0)
+        );
         assert_eq!(
             context
                 .get("cache_read_input_tokens")
@@ -4022,10 +4205,12 @@ mod tests {
         super::seed_kiro_report_context_prompt_cache_usage(&plan, &mut report_context);
 
         let context = report_context.as_ref().expect("context should exist");
-        assert!(context
-            .get("input_tokens")
-            .and_then(Value::as_u64)
-            .is_some_and(|value| value > 0));
+        assert!(
+            context
+                .get("input_tokens")
+                .and_then(Value::as_u64)
+                .is_some_and(|value| value > 0)
+        );
         assert_eq!(context.get("cache_creation_input_tokens"), None);
         assert_eq!(context.get("cache_read_input_tokens"), None);
     }
@@ -4105,6 +4290,121 @@ mod tests {
             "openai_chat_stream",
             false
         ));
+    }
+
+    #[test]
+    fn response_header_rules_marking_sse_are_included_in_stream_header_cleanup() {
+        let mut headers = BTreeMap::from([
+            ("content-type".to_string(), "text/event-stream".to_string()),
+            ("Content-Encoding".to_string(), "gzip".to_string()),
+            ("Content-Length".to_string(), "999".to_string()),
+        ]);
+
+        let emit_sse_keepalive =
+            super::normalize_client_stream_response_headers_after_rules(&mut headers, false);
+
+        assert!(emit_sse_keepalive);
+        assert_eq!(
+            super::response_header_value(&headers, "content-type"),
+            Some("text/event-stream")
+        );
+        assert!(super::response_header_value(&headers, "content-encoding").is_none());
+        assert!(super::response_header_value(&headers, "content-length").is_none());
+    }
+
+    #[test]
+    fn known_sse_streams_do_not_enable_keepalive_only_because_headers_are_normalized() {
+        let mut headers = BTreeMap::new();
+
+        let emit_sse_keepalive =
+            super::normalize_client_stream_response_headers_after_rules(&mut headers, true);
+
+        assert!(!emit_sse_keepalive);
+        assert_eq!(
+            super::response_header_value(&headers, "content-type"),
+            Some("text/event-stream")
+        );
+    }
+
+    #[tokio::test]
+    async fn sse_streams_normalize_missing_or_wrong_content_type_without_rewriting_body() {
+        for upstream_headers in [
+            BTreeMap::new(),
+            BTreeMap::from([
+                ("content-type".to_string(), "application/x-gzip".to_string()),
+                ("content-encoding".to_string(), "gzip".to_string()),
+                ("content-length".to_string(), "999".to_string()),
+            ]),
+            BTreeMap::from([
+                ("Content-Type".to_string(), "application/x-gzip".to_string()),
+                ("Content-Encoding".to_string(), "gzip".to_string()),
+                ("Content-Length".to_string(), "999".to_string()),
+            ]),
+        ] {
+            let response = execute_test_stream_with_headers(
+                upstream_headers,
+                "openai_responses_stream",
+                "openai:responses",
+                "openai:responses",
+                &responses_test_decision(),
+            )
+            .await;
+
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok()),
+                Some("text/event-stream")
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-cache, no-transform")
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get("x-accel-buffering")
+                    .and_then(|value| value.to_str().ok()),
+                Some("no")
+            );
+            assert!(response.headers().get(header::CONTENT_LENGTH).is_none());
+            assert!(response.headers().get(header::CONTENT_ENCODING).is_none());
+
+            let body = to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("response body should read");
+            assert_eq!(
+                body.as_ref(),
+                b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn non_sse_streams_keep_non_sse_content_type() {
+        let response = execute_test_stream_with_headers(
+            BTreeMap::from([(
+                "content-type".to_string(),
+                "application/octet-stream".to_string(),
+            )]),
+            "openai_video_content",
+            "openai:video",
+            "openai:video",
+            &test_decision(),
+        )
+        .await;
+
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/octet-stream")
+        );
     }
 
     #[tokio::test]
@@ -4520,8 +4820,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_execution_runtime_stream_records_first_data_as_streaming_before_terminal_telemetry(
-    ) {
+    async fn execute_execution_runtime_stream_records_first_data_as_streaming_before_terminal_telemetry() {
         let listener = crate::test_support::bind_loopback_listener()
             .await
             .expect("listener should bind");
@@ -4913,9 +5212,11 @@ mod tests {
         );
         assert_eq!(body_json["error"]["upstream_status"], json!(302));
         assert_eq!(body_json["error"]["location"], json!("/"));
-        assert!(body_json["error"]["message"]
-            .as_str()
-            .is_some_and(|value| value.contains("non-success status 302")));
+        assert!(
+            body_json["error"]["message"]
+                .as_str()
+                .is_some_and(|value| value.contains("non-success status 302"))
+        );
 
         let usage = tokio::time::timeout(Duration::from_secs(2), async {
             loop {
@@ -4935,10 +5236,12 @@ mod tests {
 
         assert_eq!(usage.status_code, Some(302));
         assert_eq!(usage.error_category.as_deref(), Some("redirect"));
-        assert!(usage
-            .error_message
-            .as_deref()
-            .is_some_and(|value| value.contains("non-success status 302")));
+        assert!(
+            usage
+                .error_message
+                .as_deref()
+                .is_some_and(|value| value.contains("non-success status 302"))
+        );
         assert_eq!(
             usage
                 .client_response_headers
@@ -4985,8 +5288,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_execution_runtime_stream_bridges_openai_image_sync_json_from_remote_runtime_to_image_sse(
-    ) {
+    async fn execute_execution_runtime_stream_bridges_openai_image_sync_json_from_remote_runtime_to_image_sse() {
         let listener = crate::test_support::bind_loopback_listener()
             .await
             .expect("listener should bind");
@@ -5098,8 +5400,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_execution_runtime_stream_returns_client_error_with_local_tunnel_message_before_first_data(
-    ) {
+    async fn execute_execution_runtime_stream_returns_client_error_with_local_tunnel_message_before_first_data() {
         let state = AppState::new().expect("app state should build");
         let tunnel_app = state.tunnel.app_state();
         let (proxy_tx, mut proxy_rx) = aether_runtime::bounded_queue(8);
