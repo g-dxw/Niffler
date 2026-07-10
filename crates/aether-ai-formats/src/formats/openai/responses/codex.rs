@@ -442,6 +442,18 @@ fn btree_map_has_non_empty_value(headers: &BTreeMap<String, String>, header_name
         .any(|(name, value)| name.trim().eq_ignore_ascii_case(&target) && !value.trim().is_empty())
 }
 
+fn remove_case_insensitive_header(headers: &mut BTreeMap<String, String>, header_name: &str) {
+    headers.retain(|name, _| !name.trim().eq_ignore_ascii_case(header_name));
+}
+
+fn codex_model_supports_responses_lite(provider_request_body: &Value) -> bool {
+    provider_request_body
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|model| model.eq_ignore_ascii_case("gpt-5.6-sol"))
+}
+
 fn extract_codex_account_id(decrypted_auth_config_raw: Option<&str>) -> Option<String> {
     let raw = decrypted_auth_config_raw?.trim();
     if raw.is_empty() {
@@ -868,6 +880,13 @@ pub fn apply_codex_openai_responses_special_headers(
 ) {
     if !is_codex_openai_responses_request(provider_type, provider_api_format) {
         return;
+    }
+
+    if !codex_model_supports_responses_lite(provider_request_body) {
+        remove_case_insensitive_header(
+            provider_request_headers,
+            OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER,
+        );
     }
 
     let prompt_cache_key = provider_request_body

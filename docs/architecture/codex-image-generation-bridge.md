@@ -12,7 +12,7 @@
 - 不改变 OpenAI Responses Compact 的请求能力。
 - 不把 `gpt-5.4-mini` 解释成图片模型。
 - 不改 Gemini 协议和 Gemini 图片转换逻辑。
-- 不通过删除 `X-OpenAI-Internal-Codex-Responses-Lite` 请求头，把 Lite 请求强制改成完整 Responses 请求。
+- 不在所有请求上无条件删除 `X-OpenAI-Internal-Codex-Responses-Lite` 请求头；只有目标模型不支持 Lite 时才移除。
 - 不移除或改写客户端已经声明的 function、custom、namespace 和客户端执行的工具搜索。
 
 ## 行为变化
@@ -20,6 +20,7 @@
 - 判断位置在路由选中具体账号和端点之后，不在入口层根据用户文字猜测。
 - 普通对话请求最终走 Codex / ChatGPT OAuth 的 OpenAI Responses 端点时，系统会在上游请求中补充 `image_generation` 工具。
 - Codex App / CLI 带 `X-OpenAI-Internal-Codex-Responses-Lite: true` 或 `1` 的请求不会自动补充 `image_generation` 工具，也不会注入图片工具说明；请求头和客户端工具列表保持原样。
+- `gpt-5.6-sol` 已确认支持 Responses Lite，转发时保留 Lite 请求头；`gpt-5.5` 等未确认支持 Lite 的模型会移除该请求头，改走同一 Codex 上游的完整 Responses 能力。
 - 非 Lite 请求已经声明 `image_gen` namespace、`image_gen.imagegen` 函数或同名 custom 工具时，不再补充托管的 `image_generation` 工具，避免同一请求同时存在两套图片工具。
 - 第三方 OpenAI 兼容端点默认不补充图片工具。只有管理员在 Provider 或 Endpoint 配置 `openai_responses_image_generation_tool_enabled: true` 后，普通对话才补充 `image_generation` 工具。
 - 如果请求没有设置 `tool_choice`，补充图片工具时会设置为 `auto`；如果请求已经设置了 `tool_choice`，不会覆盖用户原有选择。
@@ -39,6 +40,7 @@
 
 - 影响最终上游端点为 `openai:responses` 的 Codex / ChatGPT OAuth 请求。
 - Lite 请求保持客户端原始工具能力，避免上游因 Niffler 新增不支持的托管工具返回 400。
+- CC Switch 选择 `gpt-5.5` 等非 Lite 模型时，不会再因客户端统一携带 Lite 请求头而被上游拒绝。
 - 已经包含客户端图片工具的非 Lite 请求不再重复增加托管图片工具，避免工具名称冲突。
 - 影响显式开启 `openai_responses_image_generation_tool_enabled` 的第三方 OpenAI 兼容 Responses 端点。
 - 不影响 `openai:responses:compact`。
@@ -51,6 +53,7 @@
 
 - 单元测试覆盖 Codex Responses 普通请求自动补充图片工具和说明。
 - 单元测试覆盖 Lite 请求头的大小写、`true` 和 `1` 两种有效值。
+- 单元测试覆盖 `gpt-5.6-sol` 保留 Lite 请求头，`gpt-5.5` 移除 Lite 请求头。
 - 单元测试覆盖 Lite 请求不会自动补充图片工具或说明，并保留客户端允许的工具。
 - 单元测试覆盖已有 `image_gen` namespace 或同名客户端函数时，不补充托管图片工具。
 - 单元测试覆盖非 Lite 且没有客户端图片工具时，仍会补充现有图片工具和说明。
