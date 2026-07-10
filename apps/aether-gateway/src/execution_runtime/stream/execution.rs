@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::io::Error as IoError;
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
 };
 use std::time::{Duration, Instant};
 
@@ -18,13 +18,13 @@ use aether_contracts::{
 use aether_data_contracts::repository::candidates::RequestCandidateStatus;
 use aether_data_contracts::repository::usage::UsageBodyCaptureState;
 use aether_scheduler_core::{
-    SchedulerRequestCandidateStatusUpdate, parse_request_candidate_report_context,
+    parse_request_candidate_report_context, SchedulerRequestCandidateStatusUpdate,
 };
 use aether_usage_runtime::{
-    DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES, UsageBodyCapturePolicy,
-    UsageRequestRecordLevel, UsageRuntimeAccess, build_lifecycle_usage_seed,
-    build_stream_terminal_usage_payload_seed, build_sync_terminal_usage_payload_seed,
-    build_terminal_usage_context_seed,
+    build_lifecycle_usage_seed, build_stream_terminal_usage_payload_seed,
+    build_sync_terminal_usage_payload_seed, build_terminal_usage_context_seed,
+    UsageBodyCapturePolicy, UsageRequestRecordLevel, UsageRuntimeAccess,
+    DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES,
 };
 use async_stream::stream;
 use axum::body::{Body, Bytes};
@@ -32,7 +32,7 @@ use axum::http::Response;
 use base64::Engine as _;
 use futures_util::stream::BoxStream;
 use futures_util::{StreamExt, TryStreamExt};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 use tokio_util::codec::{FramedRead, LinesCodec};
@@ -40,21 +40,22 @@ use tokio_util::io::StreamReader;
 use tracing::{debug, info, warn};
 
 use super::error::{
-    StreamPrefetchInspection, build_synthetic_non_success_stream_error_body, collect_error_body,
-    decode_stream_error_body, inspect_prefetched_stream_body, read_next_frame,
+    build_synthetic_non_success_stream_error_body, collect_error_body, decode_stream_error_body,
+    inspect_prefetched_stream_body, read_next_frame,
     should_synthesize_non_success_stream_error_body,
     stream_client_error_status_code_for_upstream_status, synthetic_error_response_headers,
+    StreamPrefetchInspection,
 };
 #[path = "execution_failures.rs"]
 mod execution_failures;
 use self::execution_failures::{
-    StreamFailureReport, build_stream_failure_from_execution_error, build_stream_failure_report,
-    handle_prefetch_stream_failure, submit_midstream_stream_failure,
+    build_stream_failure_from_execution_error, build_stream_failure_report,
+    handle_prefetch_stream_failure, submit_midstream_stream_failure, StreamFailureReport,
 };
 use crate::ai_serving::api::{
-    StreamingStandardTerminalObserver, maybe_bridge_standard_sync_json_to_stream,
-    maybe_build_provider_private_stream_normalizer, maybe_build_stream_response_rewriter,
-    normalize_provider_private_report_context,
+    maybe_bridge_standard_sync_json_to_stream, maybe_build_provider_private_stream_normalizer,
+    maybe_build_stream_response_rewriter, normalize_provider_private_report_context,
+    StreamingStandardTerminalObserver,
 };
 use crate::api::response::{
     attach_control_metadata_headers, build_client_response, build_client_response_from_parts,
@@ -66,11 +67,11 @@ use crate::execution_runtime::build_direct_execution_frame_stream;
 use crate::execution_runtime::chatgpt_web_image::maybe_execute_chatgpt_web_image_stream;
 use crate::execution_runtime::grok::maybe_execute_grok_stream;
 use crate::execution_runtime::kiro_cache::{
-    KIRO_SIMULATED_CACHE_ENABLED_CONTEXT_FIELD, KiroPromptCacheUsage,
     billed_input_tokens as kiro_billed_input_tokens, build_kiro_prompt_cache_profile,
     estimate_kiro_prompt_input_tokens, kiro_prompt_cache_tracker,
     kiro_simulated_cache_enabled_from_provider_config,
-    kiro_simulated_cache_enabled_from_report_context,
+    kiro_simulated_cache_enabled_from_report_context, KiroPromptCacheUsage,
+    KIRO_SIMULATED_CACHE_ENABLED_CONTEXT_FIELD,
 };
 use crate::execution_runtime::kiro_web_search::maybe_execute_kiro_web_search_stream;
 use crate::execution_runtime::oauth_retry::refresh_oauth_plan_auth_for_retry;
@@ -81,17 +82,16 @@ use crate::execution_runtime::submission::{
     submit_local_core_error_or_sync_finalize,
 };
 use crate::execution_runtime::transport::{
-    DirectSyncExecutionRuntime, DirectUpstreamStreamExecution, ExecutionRuntimeTransportError,
     execute_stream_plan_via_local_tunnel, record_manual_proxy_request_failure,
     record_manual_proxy_request_success, record_manual_proxy_stream_error,
+    DirectSyncExecutionRuntime, DirectUpstreamStreamExecution, ExecutionRuntimeTransportError,
 };
 use crate::execution_runtime::{
-    LocalFailoverDecision, apply_endpoint_response_header_rules,
-    attach_provider_response_headers_to_report_context, local_failover_response_text,
-    resolve_core_stream_direct_finalize_report_kind,
+    apply_endpoint_response_header_rules, attach_provider_response_headers_to_report_context,
+    local_failover_response_text, resolve_core_stream_direct_finalize_report_kind,
     resolve_core_stream_error_finalize_report_kind,
     resolve_local_candidate_failover_analysis_stream, should_fallback_to_control_stream,
-    should_retry_next_local_candidate_stream,
+    should_retry_next_local_candidate_stream, LocalFailoverDecision,
 };
 use crate::execution_runtime::{MAX_STREAM_PREFETCH_BYTES, MAX_STREAM_PREFETCH_FRAMES};
 use crate::log_ids::short_request_id;
@@ -99,14 +99,14 @@ use crate::niffler_error_return::{
     build_niffler_upstream_error_context, rewrite_niffler_upstream_error_response,
 };
 use crate::orchestration::{
+    apply_local_execution_effect, build_local_error_flow_metadata, trace_upstream_response_body,
+    with_error_flow_report_context, with_upstream_response_report_context,
     LocalAdaptiveRateLimitEffect, LocalAdaptiveSuccessEffect, LocalAttemptFailureEffect,
     LocalExecutionEffect, LocalExecutionEffectContext, LocalHealthFailureEffect,
     LocalHealthSuccessEffect, LocalOAuthInvalidationEffect, LocalPoolErrorEffect,
-    apply_local_execution_effect, build_local_error_flow_metadata, trace_upstream_response_body,
-    with_error_flow_report_context, with_upstream_response_report_context,
 };
 use crate::provider_pool_demand::{
-    ProviderPoolInFlightGuard, acquire_provider_pool_in_flight_guard,
+    acquire_provider_pool_in_flight_guard, ProviderPoolInFlightGuard,
 };
 use crate::request_candidate_runtime::{
     ensure_execution_request_candidate_slot, snapshot_local_request_candidate_status,
@@ -115,7 +115,7 @@ use crate::request_candidate_runtime::{
 use crate::usage::submit_stream_report;
 use crate::usage::{GatewayStreamReportRequest, GatewaySyncReportRequest};
 use crate::{
-    AppState, GEMINI_FILES_DOWNLOAD_PLAN_KIND, GatewayError, OPENAI_VIDEO_CONTENT_PLAN_KIND,
+    AppState, GatewayError, GEMINI_FILES_DOWNLOAD_PLAN_KIND, OPENAI_VIDEO_CONTENT_PLAN_KIND,
 };
 
 const SSE_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
@@ -2737,31 +2737,29 @@ async fn execute_stream_from_frame_stream(
                         if sync_json_stream_bridge_active_for_report {
                             continue;
                         }
-                        let chunk = match decode_stream_data_chunk(
-                            chunk_b64.as_deref(),
-                            text.as_deref(),
-                        ) {
-                            Ok(chunk) => chunk,
-                            Err(err) => {
-                                warn!(
-                                    event_name = "stream_execution_chunk_decode_failed",
-                                    log_type = "ops",
-                                    trace_id = %trace_id_owned,
-                                    request_id = %request_id_for_report_log,
-                                    candidate_id = ?candidate_id_for_report.as_deref(),
-                                    error = ?err,
-                                    "gateway failed to decode execution runtime chunk"
-                                );
-                                terminal_failure = Some(build_stream_failure_report(
-                                    "execution_runtime_stream_chunk_decode_error",
-                                    format!(
+                        let chunk =
+                            match decode_stream_data_chunk(chunk_b64.as_deref(), text.as_deref()) {
+                                Ok(chunk) => chunk,
+                                Err(err) => {
+                                    warn!(
+                                        event_name = "stream_execution_chunk_decode_failed",
+                                        log_type = "ops",
+                                        trace_id = %trace_id_owned,
+                                        request_id = %request_id_for_report_log,
+                                        candidate_id = ?candidate_id_for_report.as_deref(),
+                                        error = ?err,
+                                        "gateway failed to decode execution runtime chunk"
+                                    );
+                                    terminal_failure = Some(build_stream_failure_report(
+                                        "execution_runtime_stream_chunk_decode_error",
+                                        format!(
                                         "failed to decode execution runtime stream chunk: {err:?}"
                                     ),
-                                    502,
-                                ));
-                                break;
-                            }
-                        };
+                                        502,
+                                    ));
+                                    break;
+                                }
+                            };
 
                         if chunk.is_empty() {
                             continue;
@@ -3441,14 +3439,14 @@ mod tests {
     use aether_data_contracts::repository::usage::UsageReadRepository;
     use aether_usage_runtime::UsageRuntimeConfig;
     use async_stream::stream;
-    use axum::body::{Body, Bytes, to_bytes};
-    use axum::extract::Request;
+    use axum::body::{to_bytes, Body, Bytes};
     use axum::extract::ws::Message;
+    use axum::extract::Request;
     use axum::routing::any;
-    use axum::{Router, http::HeaderValue, http::header};
+    use axum::{http::header, http::HeaderValue, Router};
     use futures_util::StreamExt as _;
-    use serde_json::{Value, json};
-    use tokio::sync::{Notify, mpsc, watch};
+    use serde_json::{json, Value};
+    use tokio::sync::{mpsc, watch, Notify};
 
     use super::{
         build_sse_body_stream, execute_execution_runtime_stream, execute_stream_from_frame_stream,
@@ -3456,10 +3454,10 @@ mod tests {
         should_limit_direct_finalize_prefetch, should_probe_success_failover_before_stream,
         should_skip_direct_finalize_prefetch,
     };
-    use crate::AppState;
     use crate::control::GatewayControlDecision;
     use crate::request_candidate_runtime::flush_request_candidate_status_writes;
-    use crate::tunnel::{TunnelProxyConn, tunnel_protocol};
+    use crate::tunnel::{tunnel_protocol, TunnelProxyConn};
+    use crate::AppState;
 
     fn test_decision() -> GatewayControlDecision {
         GatewayControlDecision::synthetic(
@@ -4132,18 +4130,14 @@ mod tests {
         super::seed_kiro_report_context_prompt_cache_usage(&plan, &mut report_context);
 
         let context = report_context.as_ref().expect("context should exist");
-        assert!(
-            context
-                .get("input_tokens")
-                .and_then(Value::as_u64)
-                .is_some_and(|value| value > 0)
-        );
-        assert!(
-            context
-                .get("cache_creation_input_tokens")
-                .and_then(Value::as_u64)
-                .is_some_and(|value| value > 0)
-        );
+        assert!(context
+            .get("input_tokens")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value > 0));
+        assert!(context
+            .get("cache_creation_input_tokens")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value > 0));
         assert_eq!(
             context
                 .get("cache_read_input_tokens")
@@ -4205,12 +4199,10 @@ mod tests {
         super::seed_kiro_report_context_prompt_cache_usage(&plan, &mut report_context);
 
         let context = report_context.as_ref().expect("context should exist");
-        assert!(
-            context
-                .get("input_tokens")
-                .and_then(Value::as_u64)
-                .is_some_and(|value| value > 0)
-        );
+        assert!(context
+            .get("input_tokens")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value > 0));
         assert_eq!(context.get("cache_creation_input_tokens"), None);
         assert_eq!(context.get("cache_read_input_tokens"), None);
     }
@@ -4820,7 +4812,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_execution_runtime_stream_records_first_data_as_streaming_before_terminal_telemetry() {
+    async fn execute_execution_runtime_stream_records_first_data_as_streaming_before_terminal_telemetry(
+    ) {
         let listener = crate::test_support::bind_loopback_listener()
             .await
             .expect("listener should bind");
@@ -5212,11 +5205,9 @@ mod tests {
         );
         assert_eq!(body_json["error"]["upstream_status"], json!(302));
         assert_eq!(body_json["error"]["location"], json!("/"));
-        assert!(
-            body_json["error"]["message"]
-                .as_str()
-                .is_some_and(|value| value.contains("non-success status 302"))
-        );
+        assert!(body_json["error"]["message"]
+            .as_str()
+            .is_some_and(|value| value.contains("non-success status 302")));
 
         let usage = tokio::time::timeout(Duration::from_secs(2), async {
             loop {
@@ -5236,12 +5227,10 @@ mod tests {
 
         assert_eq!(usage.status_code, Some(302));
         assert_eq!(usage.error_category.as_deref(), Some("redirect"));
-        assert!(
-            usage
-                .error_message
-                .as_deref()
-                .is_some_and(|value| value.contains("non-success status 302"))
-        );
+        assert!(usage
+            .error_message
+            .as_deref()
+            .is_some_and(|value| value.contains("non-success status 302")));
         assert_eq!(
             usage
                 .client_response_headers
@@ -5288,7 +5277,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_execution_runtime_stream_bridges_openai_image_sync_json_from_remote_runtime_to_image_sse() {
+    async fn execute_execution_runtime_stream_bridges_openai_image_sync_json_from_remote_runtime_to_image_sse(
+    ) {
         let listener = crate::test_support::bind_loopback_listener()
             .await
             .expect("listener should bind");
@@ -5400,7 +5390,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_execution_runtime_stream_returns_client_error_with_local_tunnel_message_before_first_data() {
+    async fn execute_execution_runtime_stream_returns_client_error_with_local_tunnel_message_before_first_data(
+    ) {
         let state = AppState::new().expect("app state should build");
         let tunnel_app = state.tunnel.app_state();
         let (proxy_tx, mut proxy_rx) = aether_runtime::bounded_queue(8);
