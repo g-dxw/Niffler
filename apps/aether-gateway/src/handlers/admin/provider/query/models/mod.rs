@@ -230,7 +230,6 @@ fn provider_query_filter_models_for_key(
     key: &StoredProviderCatalogKey,
     models: Vec<Value>,
 ) -> Vec<Value> {
-    let models = provider_query_append_codex_released_models(provider, models);
     if !provider.provider_type.trim().eq_ignore_ascii_case("grok") {
         return models;
     }
@@ -441,7 +440,11 @@ async fn provider_query_fetch_models_for_key(
         if let Some(cached_models) =
             provider_query_read_cached_models(state, &provider.id, &key.id).await
         {
-            let models = provider_query_filter_models_for_key(provider, key, cached_models);
+            let models = provider_query_filter_models_for_key(
+                provider,
+                key,
+                provider_query_append_codex_released_models(provider, cached_models),
+            );
             return Ok(ProviderQueryKeyFetchResult {
                 models,
                 error: None,
@@ -533,9 +536,14 @@ async fn provider_query_fetch_models_for_key(
     if unique_models.is_empty() && error.is_none() {
         error = Some(ADMIN_PROVIDER_QUERY_NO_MODELS_FROM_ENDPOINT_DETAIL.to_string());
     }
+    let models = if outcome.has_success {
+        provider_query_append_codex_released_models(provider, unique_models)
+    } else {
+        unique_models
+    };
 
     Ok(ProviderQueryKeyFetchResult {
-        models: provider_query_filter_models_for_key(provider, key, unique_models),
+        models: provider_query_filter_models_for_key(provider, key, models),
         error,
         from_cache: false,
         has_success: outcome.has_success,
@@ -767,11 +775,8 @@ mod tests {
 
     #[test]
     fn provider_query_codex_models_include_released_gpt_56_overrides() {
-        let models = provider_query_filter_models_for_key(
-            &codex_provider(),
-            &grok_key_with_quota(json!({})),
-            vec![model("gpt-5.5")],
-        );
+        let models =
+            provider_query_append_codex_released_models(&codex_provider(), vec![model("gpt-5.5")]);
         let ids = models
             .into_iter()
             .filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string))

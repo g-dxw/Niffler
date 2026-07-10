@@ -781,13 +781,16 @@ async fn gateway_handles_admin_provider_query_models_for_fixed_provider_without_
 
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
-    assert_eq!(payload["success"], json!(true));
-    assert_eq!(payload["data"]["error"], serde_json::Value::Null);
+    assert_eq!(payload["success"], json!(false));
+    assert_eq!(
+        payload["data"]["error"],
+        json!("No active endpoints found for this provider")
+    );
     assert_eq!(payload["data"]["from_cache"], json!(false));
     let models = payload["data"]["models"]
         .as_array()
         .expect("models should be an array");
-    assert!(models.iter().any(|model| model["id"] == "gpt-5.4"));
+    assert!(models.is_empty());
     assert_eq!(
         *execution_runtime_hits.lock().expect("mutex should lock"),
         0
