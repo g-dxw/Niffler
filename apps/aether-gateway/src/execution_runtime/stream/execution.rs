@@ -6,11 +6,6 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use aether_ai_formats::api::{
-    CLAUDE_CHAT_STREAM_PLAN_KIND, CLAUDE_CLI_STREAM_PLAN_KIND, GEMINI_CHAT_STREAM_PLAN_KIND,
-    GEMINI_CLI_STREAM_PLAN_KIND, OPENAI_CHAT_STREAM_PLAN_KIND, OPENAI_IMAGE_STREAM_PLAN_KIND,
-    OPENAI_RESPONSES_COMPACT_STREAM_PLAN_KIND, OPENAI_RESPONSES_STREAM_PLAN_KIND,
-};
 use aether_contracts::{
     ExecutionPlan, ExecutionStreamTerminalSummary, ExecutionTelemetry, StandardizedUsage,
     StreamFrame, StreamFramePayload,
@@ -55,7 +50,10 @@ use self::execution_failures::{
 use crate::ai_serving::api::{
     maybe_bridge_standard_sync_json_to_stream, maybe_build_provider_private_stream_normalizer,
     maybe_build_stream_response_rewriter, normalize_provider_private_report_context,
-    StreamingStandardTerminalObserver,
+    StreamingStandardTerminalObserver, CLAUDE_CHAT_STREAM_PLAN_KIND, CLAUDE_CLI_STREAM_PLAN_KIND,
+    GEMINI_CHAT_STREAM_PLAN_KIND, GEMINI_CLI_STREAM_PLAN_KIND, OPENAI_CHAT_STREAM_PLAN_KIND,
+    OPENAI_IMAGE_STREAM_PLAN_KIND, OPENAI_RESPONSES_COMPACT_STREAM_PLAN_KIND,
+    OPENAI_RESPONSES_STREAM_PLAN_KIND,
 };
 use crate::api::response::{
     attach_control_metadata_headers, build_client_response, build_client_response_from_parts,
