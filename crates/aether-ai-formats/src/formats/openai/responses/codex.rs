@@ -27,7 +27,6 @@ const CODEX_IMAGE_TOOL_DEFAULT_QUALITY: &str = "high";
 const CODEX_IMAGE_TOOL_DEFAULT_BACKGROUND: &str = "auto";
 const CODEX_IMAGE_GENERATION_BRIDGE_MARKER: &str = "<niffler-codex-image-generation>";
 const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user asks for raster image generation or editing, use the OpenAI Responses native `image_generation` tool attached to this request. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
-const OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str = "x-openai-internal-codex-responses-lite";
 const UUID_NAMESPACE_OID_BYTES: [u8; 16] = [
     0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
 ];
@@ -211,150 +210,6 @@ fn apply_codex_image_generation_bridge_instructions(
         format!("{existing}\n\n{CODEX_IMAGE_GENERATION_BRIDGE_TEXT}")
     };
     body_object.insert("instructions".to_string(), json!(instructions));
-}
-
-fn codex_openai_responses_stream_requested(body_object: &serde_json::Map<String, Value>) -> bool {
-    body_object
-        .get("stream")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-}
-
-fn codex_openai_responses_tool_choice_allows_auto_selection(
-    body_object: &serde_json::Map<String, Value>,
-) -> bool {
-    match body_object.get("tool_choice") {
-        None | Some(Value::Null) => true,
-        Some(Value::String(value)) => value.trim().eq_ignore_ascii_case("auto"),
-        _ => false,
-    }
-}
-
-fn append_codex_user_text(value: &Value, output: &mut String) {
-    match value {
-        Value::String(text) if !text.trim().is_empty() => {
-            if !output.is_empty() {
-                output.push('\n');
-            }
-            output.push_str(text);
-        }
-        Value::Array(items) => {
-            for item in items {
-                append_codex_user_text(item, output);
-            }
-        }
-        Value::Object(object) => {
-            if let Some(text) = object.get("text") {
-                append_codex_user_text(text, output);
-            }
-            if let Some(content) = object.get("content") {
-                append_codex_user_text(content, output);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn codex_openai_responses_user_text(body_object: &serde_json::Map<String, Value>) -> String {
-    let mut output = String::new();
-    match body_object.get("input") {
-        Some(Value::Array(items)) => {
-            for item in items {
-                let Some(object) = item.as_object() else {
-                    append_codex_user_text(item, &mut output);
-                    continue;
-                };
-                let role_is_user = object
-                    .get("role")
-                    .and_then(Value::as_str)
-                    .is_none_or(|role| role.trim().eq_ignore_ascii_case("user"));
-                if role_is_user {
-                    append_codex_user_text(item, &mut output);
-                }
-            }
-        }
-        Some(value) => append_codex_user_text(value, &mut output),
-        None => {}
-    }
-    output
-}
-
-fn codex_user_text_requests_image_generation(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return false;
-    }
-
-    let chinese_image_request = text.contains("生图")
-        || text.contains("出图")
-        || text.contains("生成图片")
-        || text.contains("生成图像")
-        || text.contains("生成一张")
-        || text.contains("生成一幅")
-        || text.contains("生成一个")
-        || text.contains("画一张")
-        || text.contains("画一幅")
-        || text.contains("画个")
-        || text.contains("制作一张")
-        || text.contains("做一张图");
-    if chinese_image_request
-        && (text.contains("图")
-            || text.contains("图片")
-            || text.contains("图像")
-            || text.contains("照片")
-            || text.contains("海报")
-            || text.contains("插画")
-            || text.contains("画"))
-    {
-        return true;
-    }
-
-    let has_english_image_noun = [
-        "image",
-        "picture",
-        "photo",
-        "illustration",
-        "poster",
-        "logo",
-        "icon",
-        "avatar",
-        "wallpaper",
-    ]
-    .iter()
-    .any(|word| normalized.contains(word));
-    if !has_english_image_noun {
-        return false;
-    }
-    [
-        "generate",
-        "create",
-        "draw",
-        "render",
-        "make",
-        "produce",
-        "text-to-image",
-    ]
-    .iter()
-    .any(|word| normalized.contains(word))
-}
-
-fn maybe_force_codex_image_generation_tool_choice_for_user_intent(
-    body_object: &mut serde_json::Map<String, Value>,
-) {
-    if !codex_openai_responses_stream_requested(body_object)
-        || !codex_openai_responses_has_image_generation_tool(body_object)
-        || !codex_openai_responses_tool_choice_allows_auto_selection(body_object)
-    {
-        return;
-    }
-
-    let user_text = codex_openai_responses_user_text(body_object);
-    if codex_user_text_requests_image_generation(&user_text) {
-        body_object.insert(
-            "tool_choice".to_string(),
-            json!({"type": "image_generation"}),
-        );
-    }
 }
 
 fn apply_codex_openai_image_tool_overrides(
@@ -543,10 +398,6 @@ fn btree_map_has_non_empty_value(headers: &BTreeMap<String, String>, header_name
         .any(|(name, value)| name.trim().eq_ignore_ascii_case(&target) && !value.trim().is_empty())
 }
 
-fn remove_case_insensitive_header(headers: &mut BTreeMap<String, String>, header_name: &str) {
-    headers.retain(|name, _| !name.trim().eq_ignore_ascii_case(header_name));
-}
-
 fn extract_codex_account_id(decrypted_auth_config_raw: Option<&str>) -> Option<String> {
     let raw = decrypted_auth_config_raw?.trim();
     if raw.is_empty() {
@@ -663,7 +514,6 @@ pub fn apply_openai_responses_image_generation_bridge_body_edits(
         || image_model.is_some()
         || codex_openai_responses_tool_choice_references_image_generation(body_object);
     if !enable_image_generation_tool || !explicit_image_request {
-        maybe_force_codex_image_generation_tool_choice_for_user_intent(body_object);
         return;
     }
 
@@ -974,16 +824,6 @@ pub fn apply_codex_openai_responses_special_headers(
 ) {
     if !is_codex_openai_responses_request(provider_type, provider_api_format) {
         return;
-    }
-
-    if provider_request_body
-        .as_object()
-        .is_some_and(codex_openai_responses_has_image_generation_tool)
-    {
-        remove_case_insensitive_header(
-            provider_request_headers,
-            OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER,
-        );
     }
 
     let prompt_cache_key = provider_request_body
@@ -1509,7 +1349,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_streaming_image_prompt_forces_image_tool_choice_without_rewriting_model() {
+    fn codex_streaming_image_prompt_keeps_auto_tool_choice() {
         let original_model = "gpt-5.6-sol";
         let mut provider_request_body = json!({
             "model": original_model,
@@ -1528,10 +1368,7 @@ mod tests {
         );
 
         assert_eq!(provider_request_body["model"], json!(original_model));
-        assert_eq!(
-            provider_request_body["tool_choice"],
-            json!({"type": "image_generation"})
-        );
+        assert_eq!(provider_request_body["tool_choice"], json!("auto"));
         assert_eq!(
             provider_request_body["tools"][0]["type"],
             json!("image_generation")

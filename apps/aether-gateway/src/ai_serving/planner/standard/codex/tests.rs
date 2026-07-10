@@ -198,7 +198,7 @@ fn injects_chatgpt_account_id_and_session_headers_for_codex_requests() {
 }
 
 #[test]
-fn removes_codex_responses_lite_header_when_image_tool_is_present() {
+fn keeps_codex_responses_lite_header_when_image_tool_is_present() {
     let mut headers = BTreeMap::new();
     headers.insert(
         "X-OpenAI-Internal-Codex-Responses-Lite".to_string(),
@@ -220,9 +220,10 @@ fn removes_codex_responses_lite_header_when_image_tool_is_present() {
         Some(r#"{"account_id":"acc-123"}"#),
     );
 
-    assert!(!headers
-        .keys()
-        .any(|name| name.eq_ignore_ascii_case("x-openai-internal-codex-responses-lite")));
+    assert_eq!(
+        headers.get("X-OpenAI-Internal-Codex-Responses-Lite"),
+        Some(&"true".to_string())
+    );
 }
 
 #[test]
