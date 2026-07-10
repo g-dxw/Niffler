@@ -18,6 +18,7 @@
 - 已确认上游返回 `gpt-5.6-sol` 和 `gpt-5.6-terra` 后，Codex 号池 provider key 的模型限制需要同步加入这两个模型，否则 `/v1/models` 和真实调用仍会被 key 级限制挡住。
 - 新创建或导入的 Codex OAuth 账号默认开启自动获取模型；重复导入更新已有账号时也会补开自动获取。
 - 启用状态的 Codex OAuth 账号持久化后会立即后台获取一次模型，不再只等每日周期任务或服务重启。
+- Codex 号池自动获取模型时会保留已确认开放的 `gpt-5.6-sol` 和 `gpt-5.6-terra`，避免上游临时返回旧列表时把 provider key 的模型白名单覆盖回 GPT-5.5。
 - Niffler 的 API Key 安装脚本会为 Codex CLI 自动写入本机 `niffler_model_catalog.json`，并在 `config.toml` 中设置 `model_catalog_json`，避免用户手动维护 `~/.codex/model_catalog.json` 才能看到 GPT-5.6 系列模型。
 
 ## 影响范围
@@ -44,3 +45,4 @@
 - 对返回的 GPT-5.6 系列模型做一次 `/v1/responses` 真实调用验证。
 - 运行 Codex 安装脚本相关单元测试，并用 `codex debug models` 验证生成的模型目录能被 Codex 解析。
 - 线上更新后，用 Niffler token 请求 `https://niffler.org/v1/models` 已返回 `gpt-5.6-sol` 和 `gpt-5.6-terra`，并已用 `gpt-5.6-sol` 完成一次 `/v1/responses` 调用。
+- 运行 `cargo test -p aether-gateway codex_model_fetch_preserves_released_gpt_56_models`，确认 Codex 自动获取模型即使只拿到 GPT-5.5，也会保留已开放的 GPT-5.6 模型。

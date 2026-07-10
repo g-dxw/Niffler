@@ -20,6 +20,8 @@ pub(crate) mod state;
 
 use self::state::ModelFetchRuntimeState;
 
+const CODEX_RELEASED_MODEL_OVERRIDES: &[&str] = &["gpt-5.6-sol", "gpt-5.6-terra"];
+
 #[derive(Debug, Clone)]
 struct SelectedFetchTarget {
     provider: StoredProviderCatalogProvider,
@@ -233,11 +235,14 @@ async fn fetch_and_persist_key_models(
                 .filter_map(Value::as_str)
                 .map(ToOwned::to_owned)
                 .collect::<Vec<_>>();
-            let filtered_models = apply_model_filters(
-                &fetched_model_ids,
-                json_string_list(target.key.locked_models.as_ref()),
-                json_string_list(target.key.model_include_patterns.as_ref()),
-                json_string_list(target.key.model_exclude_patterns.as_ref()),
+            let filtered_models = apply_codex_released_model_overrides(
+                &target.provider,
+                apply_model_filters(
+                    &fetched_model_ids,
+                    json_string_list(target.key.locked_models.as_ref()),
+                    json_string_list(target.key.model_include_patterns.as_ref()),
+                    json_string_list(target.key.model_exclude_patterns.as_ref()),
+                ),
             );
             persist_key_fetch_success(state, &target.key, now_unix_secs, &filtered_models, None)
                 .await?;
@@ -322,11 +327,14 @@ async fn fetch_and_persist_key_models(
         return Ok(KeyFetchDisposition::Failed);
     }
 
-    let filtered_models = apply_model_filters(
-        &result.fetched_model_ids,
-        json_string_list(target.key.locked_models.as_ref()),
-        json_string_list(target.key.model_include_patterns.as_ref()),
-        json_string_list(target.key.model_exclude_patterns.as_ref()),
+    let filtered_models = apply_codex_released_model_overrides(
+        &target.provider,
+        apply_model_filters(
+            &result.fetched_model_ids,
+            json_string_list(target.key.locked_models.as_ref()),
+            json_string_list(target.key.model_include_patterns.as_ref()),
+            json_string_list(target.key.model_exclude_patterns.as_ref()),
+        ),
     );
 
     persist_key_fetch_success(
@@ -384,6 +392,23 @@ async fn persist_key_fetch_success(
     updated.updated_at_unix_secs = Some(now_unix_secs);
     state.update_provider_catalog_key(&updated).await?;
     Ok(())
+}
+
+fn apply_codex_released_model_overrides(
+    provider: &StoredProviderCatalogProvider,
+    mut models: Vec<String>,
+) -> Vec<String> {
+    if !provider.provider_type.trim().eq_ignore_ascii_case("codex") {
+        return models;
+    }
+    for model in CODEX_RELEASED_MODEL_OVERRIDES {
+        if !models.iter().any(|value| value == model) {
+            models.push((*model).to_string());
+        }
+    }
+    models.sort();
+    models.dedup();
+    models
 }
 
 fn now_unix_secs() -> u64 {
@@ -833,6 +858,61 @@ mod tests {
             .lock()
             .expect("cache mutex")
             .contains_key(&("provider-codex".to_string(), "key-codex".to_string())));
+    }
+
+    #[tokio::test]
+    async fn codex_model_fetch_preserves_released_gpt_56_models() {
+        let provider = sample_provider("provider-codex", "codex");
+        let endpoint = sample_endpoint(
+            "endpoint-codex-responses",
+            "provider-codex",
+            "openai:responses",
+        );
+        let key = sample_key(
+            "key-codex-responses",
+            "provider-codex",
+            "oauth",
+            &["openai:responses"],
+        );
+        let transport = sample_transport(
+            "codex",
+            "provider-codex",
+            "endpoint-codex-responses",
+            "key-codex-responses",
+            "openai:responses",
+            "oauth",
+            None,
+        );
+        let state = TestState::new(
+            vec![provider],
+            vec![endpoint],
+            vec![key],
+            HashMap::from([(
+                (
+                    "provider-codex".to_string(),
+                    "endpoint-codex-responses".to_string(),
+                    "key-codex-responses".to_string(),
+                ),
+                transport,
+            )]),
+            vec![execution_result(json!({
+                "models": [{ "id": "gpt-5.5" }]
+            }))],
+        );
+
+        let summary = perform_model_fetch_once_with_state(&state)
+            .await
+            .expect("fetch should succeed");
+
+        assert_eq!(summary.succeeded, 1);
+        let updated = state.key("key-codex-responses");
+        let allowed_models = updated
+            .allowed_models
+            .expect("allowed_models should be set");
+        assert_eq!(
+            allowed_models,
+            json!(["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra"])
+        );
     }
 
     #[tokio::test]
