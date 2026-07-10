@@ -849,8 +849,8 @@
       </template>
 
       <div class="space-y-5">
-        <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          会使用当前页面地址生成导入链接。域名或 IP 以后变了，重新导入一次即可。
+        <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground leading-relaxed">
+          Codex 用户建议先点“导入”，再复制下面的“更新 Codex 5.6 模型列表”命令到本机终端执行。域名或 IP 以后变了，重新导入一次即可。
         </div>
 
         <div class="space-y-2">
@@ -919,6 +919,65 @@
             将导入的服务地址
           </div>
           <pre class="max-h-24 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ ccSwitchEndpointPreview }}</pre>
+        </div>
+
+        <div
+          v-if="ccSwitchApp === 'codex'"
+          class="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3"
+        >
+          <div class="space-y-1">
+            <p class="text-xs font-semibold text-foreground">
+              更新 Codex 5.6 模型列表
+            </p>
+            <p class="text-xs text-muted-foreground leading-relaxed">
+              CC Switch 导入只能写入服务地址和默认模型；Codex App 的下拉列表还要更新本机模型目录。下面命令会保留 Codex 默认模型，并加入 GPT-5.6 Sol / Terra / Luna；不会改服务地址、API Key 或 provider 名称。已设置 CODEX_HOME 时会自动写入自定义目录。
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-medium text-muted-foreground">macOS / Linux</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 px-2 text-xs"
+                @click="copyCodexModelCatalogCommand('unix')"
+              >
+                <Copy class="mr-1 h-3 w-3" />
+                复制
+              </Button>
+            </div>
+            <pre class="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-background p-2 text-xs font-mono">{{ codexModelCatalogUnixCommand }}</pre>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-medium text-muted-foreground">Windows PowerShell</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 px-2 text-xs"
+                @click="copyCodexModelCatalogCommand('windows')"
+              >
+                <Copy class="mr-1 h-3 w-3" />
+                复制
+              </Button>
+            </div>
+            <pre class="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-background p-2 text-xs font-mono">{{ codexModelCatalogPowerShellCommand }}</pre>
+          </div>
+
+          <div class="rounded-md border border-border/60 bg-background p-3 text-xs text-muted-foreground leading-relaxed">
+            如果终端命令无法执行，可以
+            <a
+              class="font-medium text-primary underline underline-offset-2"
+              :href="codexModelCatalogDownloadUrl"
+              target="_blank"
+              rel="noreferrer"
+            >下载模型目录模板</a>
+            ，模板已包含 Codex 默认模型和 GPT-5.6 系列。保存为 Codex 主目录下的 <code class="font-mono">niffler_model_catalog.json</code>，自定义 <code class="font-mono">CODEX_HOME</code> 时保存到该目录。再把
+            <code class="font-mono">config.toml</code> 顶层的 <code class="font-mono">model_catalog_json</code> 指向这个文件，并把
+            <code class="font-mono">model</code> 和 <code class="font-mono">review_model</code> 设置为 <code class="font-mono">gpt-5.6-sol</code>。
+          </div>
         </div>
 
         <p class="text-xs text-muted-foreground">
@@ -1088,6 +1147,18 @@ const ccSwitchBaseUrl = ref(getApiBaseOrigin())
 
 const ccSwitchEndpointPreview = computed(() => {
   return ccSwitchEndpoint(ccSwitchApp.value, ccSwitchBaseUrl.value)
+})
+
+const codexModelCatalogUnixCommand = computed(() => {
+  return `curl -fsSL ${ccSwitchBaseUrl.value}/install/codex-models | sh`
+})
+
+const codexModelCatalogPowerShellCommand = computed(() => {
+  return `irm ${ccSwitchBaseUrl.value}/install/codex-models.ps1 | iex`
+})
+
+const codexModelCatalogDownloadUrl = computed(() => {
+  return `${ccSwitchBaseUrl.value}/install/codex-model-catalog.json`
 })
 
 onMounted(() => {
@@ -1261,7 +1332,7 @@ async function copyInstallCommand() {
 function openCcSwitchDialog(apiKey: ApiKey) {
   selectedCcSwitchApiKey.value = apiKey
   ccSwitchApp.value = 'codex'
-  ccSwitchProviderName.value = `Niffler - ${apiKey.name || 'API Key'}`
+  ccSwitchProviderName.value = apiKey.name || 'Niffler'
   ccSwitchModel.value = DEFAULT_CCSWITCH_CODEX_MODEL
   showCcSwitchDialog.value = true
   void refreshCcSwitchBaseUrl()
@@ -1308,6 +1379,17 @@ async function importToCcSwitch() {
     showError(parseApiError(error, '导入 CC Switch 失败'))
   } finally {
     ccSwitchImportLoading.value = false
+  }
+}
+
+async function copyCodexModelCatalogCommand(system: 'unix' | 'windows') {
+  await refreshCcSwitchBaseUrl()
+  const command = system === 'windows'
+    ? codexModelCatalogPowerShellCommand.value
+    : codexModelCatalogUnixCommand.value
+  const copied = await copyTextToClipboard(command, false)
+  if (copied) {
+    success('更新 Codex 5.6 模型列表命令已复制')
   }
 }
 

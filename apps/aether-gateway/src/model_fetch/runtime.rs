@@ -20,7 +20,7 @@ pub(crate) mod state;
 
 use self::state::ModelFetchRuntimeState;
 
-const CODEX_RELEASED_MODEL_OVERRIDES: &[&str] = &["gpt-5.6-sol", "gpt-5.6-terra"];
+const CODEX_RELEASED_MODEL_OVERRIDES: &[&str] = &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
 
 #[derive(Debug, Clone)]
 struct SelectedFetchTarget {
@@ -911,7 +911,7 @@ mod tests {
             .expect("allowed_models should be set");
         assert_eq!(
             allowed_models,
-            json!(["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra"])
+            json!(["gpt-5.5", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"])
         );
     }
 
