@@ -18,13 +18,13 @@
 - CC Switch 导入会单独传入余额检查地址，避免 Codex 端点是 `/v1` 时把余额接口拼成 `/v1/v1/usage`。
 - 后端同时接受 `/user/balance` 和 `/v1/user/balance`，兼容客户端刷新用量时继续使用 OpenAI v1 服务地址作为 `baseUrl` 的情况。
 - CC Switch 导入如果填写了模型，余额检查会把模型传给 Niffler，Niffler 按该模型查询套餐额度。
-- Codex 导入只传 CC Switch 源码确认会读取的顶层 `model`、`endpoint` 和 `apiKey`；未填写模型时默认使用 `gpt-5.6-sol`，CC Switch 生成的 Codex 配置会写入 `model_reasoning_effort = "high"`。
+- Codex 导入只传 CC Switch 源码确认会读取的顶层 `model`、`endpoint` 和 `apiKey`；未填写模型时默认使用 `gpt-5.6-sol`，CC Switch 生成的 Codex 配置会写入 `model_reasoning_effort = "high"`。该导入不会写入 Codex 的 `model_catalog_json`，所以用户还需要执行页面提供的模型目录命令，Codex App 下拉列表才会显示 GPT-5.6 系列。
 - API Key 页面打开 CC Switch 导入弹窗时默认选择 Codex，并自动填入 `gpt-5.6-sol`，减少用户误导入 Claude Code 的情况。
 - CC Switch 导入弹窗为 Codex 用户提供独立的“更新 Codex 5.6 模型列表”命令。该命令不重配 API Key，不覆盖 CC Switch 管理的服务地址和 provider 配置，只写入本机 `niffler_model_catalog.json`，并更新 Codex `config.toml` 顶层 `model`、`review_model`、`model_catalog_json`。
 - Codex 模型目录命令会优先读取本机 `codex debug models --bundled` 的官方默认模型目录，再追加 Niffler 提供的 GPT-5.6 Sol/Terra/Luna；不能用只包含 Niffler 模型的 JSON 替换整个目录，否则 Codex CLI 会只剩 5.6。
 - CC Switch 导入弹窗默认 provider 名称使用 API Key 名称，不再自动加 `Niffler -` 前缀，避免用户重复导入时生成新 provider 名称。
 - Codex 一键配置和“更新 Codex 5.6 模型列表”命令都支持 macOS、Linux 和 Windows；如果用户设置了 `CODEX_HOME`，脚本优先使用该目录，并在输出中明确提示已使用自定义 Codex 主目录。未设置时分别使用 `~/.codex` 或 `%USERPROFILE%\.codex`。
-- 如果用户机器无法执行脚本，页面提供 `/install/codex-model-catalog.json` 作为手动下载模板。用户可以把它保存为 Codex 主目录下的 `niffler_model_catalog.json`，再手动在 `config.toml` 顶层写入 `model_catalog_json`、`model = "gpt-5.6-sol"` 和 `review_model = "gpt-5.6-sol"`。
+- 如果用户机器无法执行脚本，页面提供 `/install/codex-model-catalog.json` 作为手动下载模板，并提供 macOS、Linux、Windows 三份可复制 `config.toml` 片段。用户只需要把模板保存到 Codex 主目录下的 `niffler_model_catalog.json`，再按系统复制配置片段并修改路径里的用户名或自定义 `CODEX_HOME`。
 - 前端优先向后端获取公开 API 地址，不再只用浏览器当前域名推断。
 - 一键配置生成公开地址时，公网默认使用 HTTPS；本机地址仍允许 HTTP。
 - Windows 一键配置脚本避免依赖 PowerShell 7 专属的 `ConvertFrom-Json -AsHashtable`。
