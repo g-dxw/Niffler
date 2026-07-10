@@ -232,13 +232,11 @@ fn codex_openai_responses_tool_choice_allows_auto_selection(
 
 fn append_codex_user_text(value: &Value, output: &mut String) {
     match value {
-        Value::String(text) => {
-            if !text.trim().is_empty() {
-                if !output.is_empty() {
-                    output.push('\n');
-                }
-                output.push_str(text);
+        Value::String(text) if !text.trim().is_empty() => {
+            if !output.is_empty() {
+                output.push('\n');
             }
+            output.push_str(text);
         }
         Value::Array(items) => {
             for item in items {
