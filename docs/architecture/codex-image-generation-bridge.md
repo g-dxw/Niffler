@@ -17,7 +17,6 @@
 
 - 判断位置在路由选中具体账号和端点之后，不在入口层根据用户文字猜测。
 - 普通对话请求最终走 Codex / ChatGPT OAuth 的 OpenAI Responses 端点时，系统会在上游请求中补充 `image_generation` 工具。
-- Codex App / CLI 带 `X-Openai-Internal-Codex-Responses-Lite: true` 的请求不自动补充 `image_generation` 工具，也不移除 Lite 请求头；这类请求保留 Codex 官方客户端原本的图片展示路径。
 - 第三方 OpenAI 兼容端点默认不补充图片工具。只有管理员在 Provider 或 Endpoint 配置 `openai_responses_image_generation_tool_enabled: true` 后，普通对话才补充 `image_generation` 工具。
 - 如果请求没有设置 `tool_choice`，补充图片工具时会设置为 `auto`；如果请求已经设置了 `tool_choice`，不会覆盖用户原有选择。
 - 系统会在上游 `instructions` 中补一句说明：即使本地客户端没有 `image_gen` 命名空间，也可以使用 Responses 原生 `image_generation` 工具。
@@ -35,7 +34,6 @@
 ## 影响范围
 
 - 影响最终上游端点为 `openai:responses` 的 Codex / ChatGPT OAuth 请求。
-- 影响 Codex App / CLI 的 Responses Lite 请求：Lite 请求保持客户端原样，不由 Niffler 自动添加图片工具或改写工具选择，避免破坏客户端图片展示。
 - 影响显式开启 `openai_responses_image_generation_tool_enabled` 的第三方 OpenAI 兼容 Responses 端点。
 - 不影响 `openai:responses:compact`。
 - `openai:image` 仍走已有图片接口转换逻辑。
@@ -46,7 +44,6 @@
 ## 验证方式
 
 - 单元测试覆盖 Codex Responses 普通请求自动补充图片工具和说明。
-- 单元测试覆盖 Codex App / CLI Responses Lite 请求不会自动补充图片工具，也不会注入图片工具说明。
 - 单元测试覆盖第三方 OpenAI 兼容 Responses 默认不补充图片工具。
 - 单元测试覆盖第三方 OpenAI 兼容 Responses 显式开启后补充图片工具。
 - 单元测试覆盖明确选择图片工具时不会丢失工具和 `tool_choice`。

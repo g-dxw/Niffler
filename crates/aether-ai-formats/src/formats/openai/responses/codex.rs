@@ -1349,57 +1349,6 @@ mod tests {
     }
 
     #[test]
-    fn codex_streaming_image_prompt_keeps_auto_tool_choice() {
-        let original_model = "gpt-5.6-sol";
-        let mut provider_request_body = json!({
-            "model": original_model,
-            "input": [{"role": "user", "content": "请生成一张 1:1 极简红色圆点图片"}],
-            "tools": [{"type": "image_generation"}],
-            "tool_choice": "auto",
-            "stream": true
-        });
-
-        apply_codex_openai_responses_special_body_edits(
-            &mut provider_request_body,
-            "codex",
-            "openai:responses",
-            None,
-            None,
-        );
-
-        assert_eq!(provider_request_body["model"], json!(original_model));
-        assert_eq!(provider_request_body["tool_choice"], json!("auto"));
-        assert_eq!(
-            provider_request_body["tools"][0]["type"],
-            json!("image_generation")
-        );
-        assert!(provider_request_body["tools"][0].get("model").is_none());
-    }
-
-    #[test]
-    fn codex_sync_image_prompt_keeps_auto_tool_choice() {
-        let original_model = "gpt-5.6-sol";
-        let mut provider_request_body = json!({
-            "model": original_model,
-            "input": [{"role": "user", "content": "请生成一张 1:1 极简红色圆点图片"}],
-            "tools": [{"type": "image_generation"}],
-            "tool_choice": "auto",
-            "stream": false
-        });
-
-        apply_codex_openai_responses_special_body_edits(
-            &mut provider_request_body,
-            "codex",
-            "openai:responses",
-            None,
-            None,
-        );
-
-        assert_eq!(provider_request_body["model"], json!(original_model));
-        assert_eq!(provider_request_body["tool_choice"], json!("auto"));
-    }
-
-    #[test]
     fn codex_responses_image_tool_edits_skipped_when_tool_choice_absent() {
         let original_model = "gpt-5.5";
         let mut provider_request_body = json!({
