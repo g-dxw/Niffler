@@ -27,6 +27,7 @@ const CODEX_IMAGE_TOOL_DEFAULT_QUALITY: &str = "high";
 const CODEX_IMAGE_TOOL_DEFAULT_BACKGROUND: &str = "auto";
 const CODEX_IMAGE_GENERATION_BRIDGE_MARKER: &str = "<niffler-codex-image-generation>";
 const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user asks for raster image generation or editing, use the OpenAI Responses native `image_generation` tool attached to this request. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
+const OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str = "x-openai-internal-codex-responses-lite";
 const UUID_NAMESPACE_OID_BYTES: [u8; 16] = [
     0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
 ];
@@ -36,6 +37,49 @@ pub fn normalize_codex_openai_image_bridge_model(model: Option<&str>) -> &str {
         .map(str::trim)
         .filter(|value| value.to_ascii_lowercase().starts_with("gpt-"))
         .unwrap_or(CODEX_OPENAI_IMAGE_BRIDGE_MODEL_DEFAULT)
+}
+
+pub fn codex_openai_responses_lite_requested(headers: Option<&http::HeaderMap>) -> bool {
+    headers
+        .and_then(|headers| headers.get(OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER))
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case("true") || value == "1")
+}
+
+fn codex_client_image_tool_name(name: &str) -> bool {
+    let normalized = name.trim().to_ascii_lowercase();
+    matches!(normalized.as_str(), "image_gen" | "imagegen")
+        || normalized.starts_with("image_gen.")
+        || normalized.starts_with("imagegen.")
+}
+
+fn codex_request_has_client_image_tool(provider_request_body: &Value) -> bool {
+    provider_request_body
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .any(|tool| {
+            matches!(
+                tool.get("type").and_then(Value::as_str),
+                Some("function" | "custom" | "namespace")
+            ) && tool
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(codex_client_image_tool_name)
+        })
+}
+
+pub fn codex_hosted_image_generation_tool_allowed(
+    configured_enabled: bool,
+    headers: Option<&http::HeaderMap>,
+    provider_request_body: &Value,
+) -> bool {
+    configured_enabled
+        && !codex_openai_responses_lite_requested(headers)
+        && !codex_request_has_client_image_tool(provider_request_body)
 }
 
 fn is_codex_openai_responses_request(provider_type: &str, provider_api_format: &str) -> bool {

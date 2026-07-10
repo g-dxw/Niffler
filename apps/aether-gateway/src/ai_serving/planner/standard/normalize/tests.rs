@@ -2,7 +2,7 @@ use aether_provider_transport::snapshot::{
     GatewayProviderTransportEndpoint, GatewayProviderTransportKey,
     GatewayProviderTransportProvider, GatewayProviderTransportSnapshot,
 };
-use http::Request;
+use http::{HeaderMap, HeaderValue, Request};
 use serde_json::{json, Value};
 
 use super::{
@@ -172,6 +172,135 @@ fn local_openai_responses_wrapper_preserves_body_order_after_edits() {
         .unwrap_or_default()
         .contains("Responses native `image_generation` tool"));
     assert!(has_image_generation_tool(&provider_request_body));
+}
+
+#[test]
+fn codex_request_with_client_image_namespace_does_not_inject_hosted_image_tool() {
+    let body_json = json!({
+        "model": "gpt-5.5",
+        "input": "Explain this codebase",
+        "stream": true,
+        "tool_choice": "auto",
+        "tools": [{
+            "type": "namespace",
+            "name": "image_gen",
+            "description": "Client-executed image tools"
+        }]
+    });
+
+    let provider_request_body = build_local_openai_responses_request_body(
+        &body_json,
+        "gpt-5.5",
+        true,
+        false,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        &http::HeaderMap::new(),
+        false,
+        None,
+        true,
+    )
+    .expect("codex request with client image namespace should build");
+
+    let tools = provider_request_body["tools"]
+        .as_array()
+        .expect("client tools should remain present");
+    assert!(tools.iter().any(|tool| {
+        tool.get("type") == Some(&json!("namespace"))
+            && tool.get("name") == Some(&json!("image_gen"))
+    }));
+    assert!(!has_image_generation_tool(&provider_request_body));
+    assert!(!provider_request_body["instructions"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Responses native `image_generation` tool"));
+}
+
+#[test]
+fn codex_lite_request_preserves_supported_client_tools_without_hosted_image_tool() {
+    let body_json = json!({
+        "model": "gpt-5.6-sol",
+        "input": "hi",
+        "stream": true,
+        "tool_choice": "auto",
+        "tools": [
+            {"type": "function", "name": "read_file", "parameters": {"type": "object"}},
+            {"type": "custom", "name": "apply_patch"},
+            {"type": "tool_search", "execution": "client"}
+        ]
+    });
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "X-OpenAI-Internal-Codex-Responses-Lite",
+        HeaderValue::from_static("1"),
+    );
+
+    let provider_request_body = build_local_openai_responses_request_body(
+        &body_json,
+        "gpt-5.6-sol",
+        true,
+        false,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        &headers,
+        false,
+        None,
+        true,
+    )
+    .expect("codex lite request with supported tools should build");
+
+    let tool_types = provider_request_body["tools"]
+        .as_array()
+        .expect("client tools should remain present")
+        .iter()
+        .filter_map(|tool| tool.get("type").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    assert_eq!(tool_types, vec!["function", "custom", "tool_search"]);
+    assert!(!has_image_generation_tool(&provider_request_body));
+}
+
+#[test]
+fn codex_request_with_client_image_function_does_not_inject_hosted_image_tool() {
+    let body_json = json!({
+        "model": "gpt-5.5",
+        "input": "Explain this codebase",
+        "stream": true,
+        "tool_choice": "auto",
+        "tools": [{
+            "type": "function",
+            "name": "image_gen.imagegen",
+            "parameters": {"type": "object"}
+        }]
+    });
+
+    let provider_request_body = build_local_openai_responses_request_body(
+        &body_json,
+        "gpt-5.5",
+        true,
+        false,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        &HeaderMap::new(),
+        false,
+        None,
+        true,
+    )
+    .expect("codex request with client image function should build");
+
+    let tools = provider_request_body["tools"]
+        .as_array()
+        .expect("client tools should remain present");
+    assert!(tools.iter().any(|tool| {
+        tool.get("type") == Some(&json!("function"))
+            && tool.get("name") == Some(&json!("image_gen.imagegen"))
+    }));
+    assert!(!has_image_generation_tool(&provider_request_body));
 }
 
 #[test]

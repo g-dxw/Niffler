@@ -17,7 +17,7 @@ pub(crate) use self::codex::{
     apply_codex_openai_responses_special_body_edits,
     apply_codex_openai_responses_special_body_edits_with_bridge_config,
     apply_codex_openai_responses_special_body_edits_with_bridge_model,
-    apply_codex_openai_responses_special_headers,
+    apply_codex_openai_responses_special_headers, codex_hosted_image_generation_tool_allowed,
     codex_openai_image_bridge_model_from_provider_config,
     openai_responses_image_generation_tool_enabled_from_transport_config,
 };
@@ -141,7 +141,11 @@ pub(crate) async fn maybe_build_stream_local_standard_decision_payload(
 
 #[cfg(test)]
 mod tests {
-    use super::build_standard_request_body;
+    use super::{
+        build_standard_request_body,
+        build_standard_request_body_with_model_directives_and_request_headers,
+    };
+    use http::{HeaderMap, HeaderValue};
     use serde_json::json;
 
     #[test]
@@ -325,6 +329,49 @@ mod tests {
         assert_eq!(converted["parallel_tool_calls"], true);
         assert_eq!(converted["reasoning"]["effort"], "medium");
         assert_eq!(converted["reasoning"]["summary"], "auto");
+    }
+
+    #[test]
+    fn codex_lite_request_does_not_inject_hosted_image_generation_tool() {
+        let request = json!({
+            "model": "gpt-5.6-sol",
+            "input": "hi",
+            "stream": true,
+            "tool_choice": "auto"
+        });
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-openai-internal-codex-responses-lite",
+            HeaderValue::from_static("true"),
+        );
+
+        let converted = build_standard_request_body_with_model_directives_and_request_headers(
+            &request,
+            "openai:responses",
+            "gpt-5.6-sol",
+            "codex",
+            "openai:responses",
+            "/v1/responses",
+            true,
+            None,
+            Some("api-key-id"),
+            Some(&headers),
+            false,
+        )
+        .expect("codex lite request should build");
+
+        assert_eq!(converted["model"], "gpt-5.6-sol");
+        assert_eq!(converted["tool_choice"], "auto");
+        assert!(converted
+            .get("tools")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(|tools| tools
+                .iter()
+                .all(|tool| tool.get("type") != Some(&json!("image_generation")))));
+        assert!(!converted["instructions"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Responses native `image_generation` tool"));
     }
 
     #[test]
