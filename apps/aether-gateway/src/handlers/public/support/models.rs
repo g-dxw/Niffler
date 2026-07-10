@@ -1,5 +1,6 @@
 use axum::{body::Body, response::Response};
 
+use super::support_install::codex_model_catalog_json;
 pub(super) use super::{query_param_value, AppState, GatewayPublicRequestContext};
 
 #[path = "models/responses.rs"]

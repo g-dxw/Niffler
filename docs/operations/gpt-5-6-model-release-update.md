@@ -22,6 +22,8 @@
 - 管理端“获取上游模型”弹窗对 Codex provider 使用同一口径：在真实上游返回结果基础上补充已发布的 GPT-5.6 系列，方便管理员直接导入模型。
 - Niffler 的 API Key 安装脚本会为 Codex CLI 自动写入本机 `niffler_model_catalog.json`，并在 `config.toml` 中设置 `model_catalog_json`，避免用户手动维护 `~/.codex/model_catalog.json` 才能看到 GPT-5.6 系列模型。
 - CC Switch 导入链路不写 Codex 本机 `model_catalog_json`，只通过深链传单个默认模型；Codex 导入默认模型已改为 `gpt-5.6-sol`。
+- Codex App 访问 `/v1/models?client_version=...` 时，Niffler 直接返回 Codex 模型目录格式，包含 GPT-5.6 Sol/Terra/Luna 和 Codex 默认模型。用户通过 CC Switch 导入后，即使没有手动配置本机 `model_catalog_json`，也可以从服务端拿到 5.6 系列模型目录。
+- 普通 `/v1/models` 仍按账号真实能力返回 OpenAI 标准模型列表，不因为 Codex App 专用目录而改变展示口径。
 - CC Switch 用户可以在 API Key 页面复制独立命令更新本机 Codex 模型目录：macOS/Linux 使用 `/install/codex-models`，Windows 使用 `/install/codex-models.ps1`。该命令只更新模型目录和 Codex 顶层默认模型，不改 API Key、provider、服务地址。
 - Codex 模型目录必须保留本机 Codex 自带默认模型，再追加 Niffler 提供的 GPT-5.6 Sol/Terra/Luna；不能写成只包含 GPT-5.6，否则 Codex CLI 的模型选择会丢失 GPT-5.5、GPT-5.4 等默认模型。
 - 独立命令优先识别 `CODEX_HOME` 自定义 Codex 主目录；未设置时使用系统默认目录。脚本输出会说明实际写入目录，避免用户自定义目录时误写默认目录。
@@ -50,6 +52,7 @@
 
 - 查询 Plus、Pro、Team 三个 Codex 号池的 OAuth key，`auto_fetch_models` 均已开启；启用 key 的模型清单来自上游模型获取结果。
 - 使用 Niffler token 请求 `https://niffler.org/v1/models` 时，只返回该 Codex OAuth 账号真实获取到的模型名。
+- 使用 Niffler token 请求 `https://niffler.org/v1/models?client_version=0.137.0` 时，返回 Codex App 专用 `{ "models": [...] }` 目录，并包含 GPT-5.6 Sol/Terra/Luna。
 - 对返回的 GPT-5.6 系列模型做一次 `/v1/responses` 真实调用验证。
 - 运行 Codex 安装脚本相关单元测试，并用 `codex debug models` 验证生成的模型目录能被 Codex 解析。
 - 线上更新后，用 Niffler token 请求 `https://niffler.org/v1/models` 应返回 GPT-5.6 系列，并用 `gpt-5.6-sol` 完成一次 `/v1/responses` 调用。
@@ -58,4 +61,5 @@
 - 运行 `npm run test:run -- src/features/api-keys/utils/__tests__/ccswitchImport.spec.ts`，确认 CC Switch Codex 导入默认使用 `gpt-5.6-sol`。
 - 运行 Codex 模型目录脚本测试，确认公开脚本支持 `CODEX_HOME`，包含 `gpt-5.6-sol`、`gpt-5.6-terra` 和 `gpt-5.6-luna`。
 - 运行 `cargo test -p aether-gateway codex_model_catalog_download_json_contains_codex_defaults_and_released_models`，确认下载模板同时包含 Codex 默认模型和已发布的 GPT-5.6 模型。
+- 运行 `cargo test -p aether-gateway gateway_handles_codex_client_models_manifest_without_hitting_fallback_probe`，确认 Codex App 模型目录请求由本地服务端直接返回。
 - 运行线上只读 SQL，确认 GPT-5.6 三个全局模型价格和 provider model 关联已存在。

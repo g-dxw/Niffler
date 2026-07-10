@@ -256,7 +256,7 @@ fn cli_binary(target_cli: InstallTargetCli) -> &'static str {
     }
 }
 
-fn codex_model_catalog_json() -> &'static str {
+pub(super) fn codex_model_catalog_json() -> &'static str {
     r#"{
   "models": [
     {
