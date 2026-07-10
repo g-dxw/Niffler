@@ -256,6 +256,103 @@ fn cli_binary(target_cli: InstallTargetCli) -> &'static str {
     }
 }
 
+fn codex_model_catalog_json() -> &'static str {
+    r#"{
+  "models": [
+    {
+      "slug": "gpt-5.6-sol",
+      "display_name": "GPT-5.6 Sol",
+      "description": "Niffler Codex model",
+      "base_instructions": "You are Codex, a coding agent based on GPT-5.",
+      "default_reasoning_level": "medium",
+      "supported_reasoning_levels": [
+        { "effort": "low", "description": "Fast responses" },
+        { "effort": "medium", "description": "Balanced reasoning" },
+        { "effort": "high", "description": "Deeper reasoning" },
+        { "effort": "xhigh", "description": "Extra high reasoning" }
+      ],
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "context_window": 272000,
+      "max_context_window": 1000000,
+      "supports_parallel_tool_calls": true,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "web_search_tool_type": "text_and_image",
+      "input_modalities": ["text", "image"],
+      "supports_image_detail_original": true,
+      "truncation_policy": { "mode": "tokens", "limit": 10000 },
+      "experimental_supported_tools": [],
+      "supported_in_api": true,
+      "priority": 1
+    },
+    {
+      "slug": "gpt-5.6-terra",
+      "display_name": "GPT-5.6 Terra",
+      "description": "Niffler Codex model",
+      "base_instructions": "You are Codex, a coding agent based on GPT-5.",
+      "default_reasoning_level": "medium",
+      "supported_reasoning_levels": [
+        { "effort": "low", "description": "Fast responses" },
+        { "effort": "medium", "description": "Balanced reasoning" },
+        { "effort": "high", "description": "Deeper reasoning" },
+        { "effort": "xhigh", "description": "Extra high reasoning" }
+      ],
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "context_window": 272000,
+      "max_context_window": 1000000,
+      "supports_parallel_tool_calls": true,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "web_search_tool_type": "text_and_image",
+      "input_modalities": ["text", "image"],
+      "supports_image_detail_original": true,
+      "truncation_policy": { "mode": "tokens", "limit": 10000 },
+      "experimental_supported_tools": [],
+      "supported_in_api": true,
+      "priority": 2
+    },
+    {
+      "slug": "gpt-5.6-luna",
+      "display_name": "GPT-5.6 Luna",
+      "description": "Niffler Codex model",
+      "base_instructions": "You are Codex, a coding agent based on GPT-5.",
+      "default_reasoning_level": "medium",
+      "supported_reasoning_levels": [
+        { "effort": "low", "description": "Fast responses" },
+        { "effort": "medium", "description": "Balanced reasoning" },
+        { "effort": "high", "description": "Deeper reasoning" },
+        { "effort": "xhigh", "description": "Extra high reasoning" }
+      ],
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "context_window": 272000,
+      "max_context_window": 1000000,
+      "supports_parallel_tool_calls": true,
+      "supports_reasoning_summaries": true,
+      "default_reasoning_summary": "none",
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "web_search_tool_type": "text_and_image",
+      "input_modalities": ["text", "image"],
+      "supports_image_detail_original": true,
+      "truncation_policy": { "mode": "tokens", "limit": 10000 },
+      "experimental_supported_tools": [],
+      "supported_in_api": true,
+      "priority": 3
+    }
+  ]
+}"#
+}
+
 fn build_unix_script(session: &StoredInstallSession) -> String {
     let target_cli = match session.target_cli {
         InstallTargetCli::ClaudeCode => "claude_code",
@@ -335,15 +432,24 @@ import pathlib, re, sys
 path = pathlib.Path(sys.argv[1])
 base_url = sys.argv[2].rstrip('/') + '/v1'
 api_key = sys.argv[3]
+catalog_path = path.parent / 'niffler_model_catalog.json'
+catalog_path.write_text(r'''{codex_model_catalog_json}''' + '\n')
 text = path.read_text() if path.exists() else ''
 lines = text.splitlines()
 
 def quote_toml(value: str) -> str:
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
+managed_top = {{
+    'model_provider': quote_toml('aether'),
+    'model': quote_toml('gpt-5.6-sol'),
+    'review_model': quote_toml('gpt-5.6-sol'),
+    'model_catalog_json': quote_toml(str(catalog_path)),
+}}
+
 result = []
 in_aether = False
-top_model_provider_set = False
+managed_top_written = set()
 seen_section = False
 for line in lines:
     stripped = line.strip()
@@ -354,18 +460,28 @@ for line in lines:
             continue
     if in_aether:
         continue
-    if not seen_section and re.match(r'^model_provider\s*=', stripped):
-        if not top_model_provider_set:
-            result.append('model_provider = "aether"')
-            top_model_provider_set = True
-        continue
+    if not seen_section:
+        key_match = re.match(r'^([A-Za-z0-9_-]+)\s*=', stripped)
+        key = key_match.group(1) if key_match else None
+        if key in managed_top:
+            if key not in managed_top_written:
+                result.append(f'{{key}} = {{managed_top[key]}}')
+                managed_top_written.add(key)
+            continue
     result.append(line)
 
-if not top_model_provider_set:
+insert_lines = [
+    f'{{key}} = {{managed_top[key]}}'
+    for key in ('model_provider', 'model', 'review_model', 'model_catalog_json')
+    if key not in managed_top_written
+]
+if insert_lines:
     insert_at = next((idx for idx, line in enumerate(result) if line.strip().startswith('[')), len(result))
     while insert_at > 0 and result[insert_at - 1].strip() == '':
         insert_at -= 1
-    result[insert_at:insert_at] = ['model_provider = "aether"', '']
+    if insert_at > 0:
+        insert_lines.append('')
+    result[insert_at:insert_at] = insert_lines
 
 while result and result[-1].strip() == '':
     result.pop()
@@ -382,7 +498,7 @@ result.extend([
 ])
 path.write_text('\n'.join(result) + '\n')
 PY
-    chmod 600 "$HOME/.codex/config.toml" 2>/dev/null || true
+    chmod 600 "$HOME/.codex/config.toml" "$HOME/.codex/niffler_model_catalog.json" 2>/dev/null || true
     ;;
   gemini_cli)
     mkdir -p "$HOME/.gemini"
@@ -412,6 +528,7 @@ say "$CLI_LABEL 已配置到 Niffler。执行 $CLI_BIN --version 验证安装。
         label = shell_single_quote(cli_label(session.target_cli)),
         binary = shell_single_quote(cli_binary(session.target_cli)),
         npm_package = shell_single_quote(npm_package(session.target_cli)),
+        codex_model_catalog_json = codex_model_catalog_json(),
     )
 }
 
@@ -482,12 +599,22 @@ if ($TargetCli -eq 'claude_code') {{
 }} elseif ($TargetCli -eq 'codex_cli') {{
   $Dir = Join-Path $HomeDir '.codex'; New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   $Path = Join-Path $Dir 'config.toml'
+  $CatalogPath = Join-Path $Dir 'niffler_model_catalog.json'
+  @'
+{codex_model_catalog_json}
+'@ | Set-Content $CatalogPath -Encoding UTF8
   $Text = if (Test-Path $Path) {{ Get-Content $Path -Raw }} else {{ '' }}
   $Lines = if ($Text.Length -gt 0) {{ $Text -split "`r?`n" }} else {{ @() }}
   $Result = New-Object System.Collections.Generic.List[string]
   $InAether = $false
-  $TopModelProviderSet = $false
   $SeenSection = $false
+  $ManagedTop = [ordered]@{{
+    model_provider = '"aether"'
+    model = '"gpt-5.6-sol"'
+    review_model = '"gpt-5.6-sol"'
+    model_catalog_json = '"' + $CatalogPath.Replace('\', '\\').Replace('"', '\"') + '"'
+  }}
+  $ManagedTopWritten = @{{}}
   foreach ($Line in $Lines) {{
     $Stripped = $Line.Trim()
     if ($Stripped -match '^\[.*\]$') {{
@@ -496,23 +623,34 @@ if ($TargetCli -eq 'claude_code') {{
       if ($InAether) {{ continue }}
     }}
     if ($InAether) {{ continue }}
-    if (-not $SeenSection -and $Stripped -match '^model_provider\s*=') {{
-      if (-not $TopModelProviderSet) {{
-        $Result.Add('model_provider = "aether"')
-        $TopModelProviderSet = $true
+    if (-not $SeenSection -and $Stripped -match '^([A-Za-z0-9_-]+)\s*=') {{
+      $Key = $Matches[1]
+      if ($ManagedTop.Contains($Key)) {{
+        if (-not $ManagedTopWritten.ContainsKey($Key)) {{
+          $Result.Add("$Key = $($ManagedTop[$Key])")
+          $ManagedTopWritten[$Key] = $true
+        }}
+        continue
       }}
-      continue
     }}
     $Result.Add($Line)
   }}
-  if (-not $TopModelProviderSet) {{
+  $InsertLines = New-Object System.Collections.Generic.List[string]
+  foreach ($Key in @('model_provider', 'model', 'review_model', 'model_catalog_json')) {{
+    if (-not $ManagedTopWritten.ContainsKey($Key)) {{
+      $InsertLines.Add("$Key = $($ManagedTop[$Key])")
+    }}
+  }}
+  if ($InsertLines.Count -gt 0) {{
     $InsertAt = $Result.Count
     for ($Index = 0; $Index -lt $Result.Count; $Index++) {{
       if ($Result[$Index].Trim().StartsWith('[')) {{ $InsertAt = $Index; break }}
     }}
     while ($InsertAt -gt 0 -and $Result[$InsertAt - 1].Trim() -eq '') {{ $InsertAt-- }}
-    $Result.Insert($InsertAt, '')
-    $Result.Insert($InsertAt, 'model_provider = "aether"')
+    if ($InsertAt -gt 0) {{ $InsertLines.Add('') }}
+    for ($Index = $InsertLines.Count - 1; $Index -ge 0; $Index--) {{
+      $Result.Insert($InsertAt, $InsertLines[$Index])
+    }}
   }}
   while ($Result.Count -gt 0 -and $Result[$Result.Count - 1].Trim() -eq '') {{ $Result.RemoveAt($Result.Count - 1) }}
   if ($Result.Count -gt 0) {{ $Result.Add('') }}
@@ -549,6 +687,7 @@ Say "$CliLabel 已配置到 Niffler。执行 $CliBin --version 验证安装。"
         label = powershell_single_quote(cli_label(session.target_cli)),
         binary = powershell_single_quote(cli_binary(session.target_cli)),
         npm_package = powershell_single_quote(npm_package(session.target_cli)),
+        codex_model_catalog_json = codex_model_catalog_json(),
     )
 }
 
@@ -1002,7 +1141,12 @@ mod tests {
 
         assert!(script.contains("path.read_text() if path.exists() else ''"));
         assert!(script.contains("stripped == '[model_providers.aether]'"));
-        assert!(script.contains("model_provider = \"aether\""));
+        assert!(script.contains("'model_provider': quote_toml('aether')"));
+        assert!(script.contains("'model': quote_toml('gpt-5.6-sol')"));
+        assert!(script.contains("'review_model': quote_toml('gpt-5.6-sol')"));
+        assert!(script.contains("'model_catalog_json': quote_toml(str(catalog_path))"));
+        assert!(script.contains("niffler_model_catalog.json"));
+        assert!(script.contains("gpt-5.6-terra"));
         assert!(script.contains("wire_api = \"responses\""));
         assert!(script.contains("requires_openai_auth = false"));
         assert!(script.contains("experimental_bearer_token ="));
@@ -1017,7 +1161,12 @@ mod tests {
 
         assert!(script.contains("Get-Content $Path -Raw"));
         assert!(script.contains("$Stripped -eq '[model_providers.aether]'"));
-        assert!(script.contains("model_provider = \"aether\""));
+        assert!(script.contains("model_provider = '\"aether\"'"));
+        assert!(script.contains("model = '\"gpt-5.6-sol\"'"));
+        assert!(script.contains("review_model = '\"gpt-5.6-sol\"'"));
+        assert!(script.contains("model_catalog_json ="));
+        assert!(script.contains("niffler_model_catalog.json"));
+        assert!(script.contains("gpt-5.6-terra"));
         assert!(script.contains("wire_api = \"responses\""));
         assert!(script.contains("requires_openai_auth = false"));
         assert!(script.contains("experimental_bearer_token ="));

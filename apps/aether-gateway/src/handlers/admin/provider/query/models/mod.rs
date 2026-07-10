@@ -278,21 +278,6 @@ fn provider_query_attach_model_test_capabilities(
         .collect()
 }
 
-fn provider_query_codex_preset_fallback(
-    provider: &StoredProviderCatalogProvider,
-) -> Option<ProviderQueryKeyFetchResult> {
-    if !provider.provider_type.trim().eq_ignore_ascii_case("codex") {
-        return None;
-    }
-    let models = preset_models_for_provider(&provider.provider_type)?;
-    Some(ProviderQueryKeyFetchResult {
-        models: aggregate_models_for_cache(&models),
-        error: None,
-        from_cache: false,
-        has_success: true,
-    })
-}
-
 mod model_test;
 
 pub(crate) use self::model_test::{
@@ -486,9 +471,6 @@ async fn provider_query_fetch_models_for_key(
         Ok(outcome) => outcome,
         Err(err) => {
             all_errors.push(err);
-            if let Some(fallback) = provider_query_codex_preset_fallback(provider) {
-                return Ok(fallback);
-            }
             return Ok(ProviderQueryKeyFetchResult {
                 models: Vec::new(),
                 error: Some(all_errors.join("; ")),
@@ -508,12 +490,6 @@ async fn provider_query_fetch_models_for_key(
             &unique_models,
         )
         .await;
-    }
-
-    if unique_models.is_empty() && !all_errors.is_empty() {
-        if let Some(fallback) = provider_query_codex_preset_fallback(provider) {
-            return Ok(fallback);
-        }
     }
 
     let mut error = if all_errors.is_empty() {

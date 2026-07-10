@@ -2,26 +2,27 @@
 
 ## 目标
 
-让线上 Niffler 能展示并调度 GPT-5.6 系列模型，同时记录官方基础价格。
+让线上 Niffler 能展示并调度 Codex OAuth 上游实际返回的 GPT-5.6 系列模型，同时记录基础价格。
 
 ## 非目标
 
 - 不修改用户套餐规则。
 - 不修改 Codex OAuth 凭证解析流程。
-- 不证明所有上游账号都实际拥有 GPT-5.6 调用权限。
+- 不为 Codex OAuth 自行补充上游未返回或不可调用的模型名。
 
 ## 行为变化
 
-- 全局模型新增 `gpt-5.6`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`。
-- Pro 号池新增同名 provider model。
-- `gpt-5.6` 按 `gpt-5.6-sol` 价格配置，并在 provider model 映射中指向 `gpt-5.6-sol`。
-- Codex 预置模型列表新增 GPT-5.6 系列，供无实时模型列表时使用。
+- Codex OAuth 模型展示以 ChatGPT Codex 上游模型获取接口返回结果为准。
+- 不对 Codex OAuth 增加 `gpt-5.6` 到 `gpt-5.6-sol` 这类自定义 provider model 映射。
+- 不再为 Codex 维护写死预置模型列表；无实时模型列表时不展示 Niffler 自行补充的 Codex 模型。
+- 上游模型获取结果未返回 GPT-5.6 系列前，公开模型目录也不启用 GPT-5.6 系列展示。
 - 新创建或导入的 Codex OAuth 账号默认开启自动获取模型；重复导入更新已有账号时也会补开自动获取。
 - 启用状态的 Codex OAuth 账号持久化后会立即后台获取一次模型，不再只等每日周期任务或服务重启。
+- Niffler 的 API Key 安装脚本会为 Codex CLI 自动写入本机 `niffler_model_catalog.json`，并在 `config.toml` 中设置 `model_catalog_json`，避免用户手动维护 `~/.codex/model_catalog.json` 才能看到 GPT-5.6 系列模型。
 
 ## 影响范围
 
-- 影响公开模型目录、全局模型目录、Pro 号池调度和模型计费配置。
+- 影响公开模型目录、全局模型目录、Codex 号池调度和模型计费配置。
 - Codex OAuth 自动获取模型覆盖所有 Codex provider，包括 Plus、Pro、Team 号池；不影响第三方 custom provider。
 - 线上已有 Codex OAuth 账号如果历史上关闭了 `auto_fetch_models`，需要单独做一次数据更新后才会进入周期性自动获取模型任务。本次已更新线上 Plus、Pro、Team 号池的 Codex OAuth key。
 
@@ -37,9 +38,7 @@
 
 ## 验证方式
 
-- 查询 `global_models` 能看到 4 个 GPT-5.6 模型启用。
-- 查询 Pro 号池 `models` 能看到 4 个 GPT-5.6 provider model 启用。
-- 查询 `niffler_model_base_prices` 能看到 4 个 GPT-5.6 基础价格。
-- 查询 Plus、Pro、Team 三个 Codex 号池的 OAuth key，`auto_fetch_models` 均已开启；所有启用 key 已完成一次启动阶段模型获取。
-- `https://niffler.org/api/public/models` 能返回 GPT-5.6 系列模型。
-- `https://niffler.org/api/public/global-models` 能返回 GPT-5.6 系列模型。
+- 查询 Plus、Pro、Team 三个 Codex 号池的 OAuth key，`auto_fetch_models` 均已开启；启用 key 的模型清单来自上游模型获取结果。
+- 使用 Niffler token 请求 `https://niffler.org/v1/models` 时，只返回该 Codex OAuth 账号真实获取到的模型名。
+- 对返回的 GPT-5.6 系列模型做一次 `/v1/responses` 真实调用验证。
+- 运行 Codex 安装脚本相关单元测试，并用 `codex debug models` 验证生成的模型目录能被 Codex 解析。

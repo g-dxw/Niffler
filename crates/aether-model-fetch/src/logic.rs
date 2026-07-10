@@ -265,18 +265,6 @@ pub fn preset_models_for_provider(provider_type: &str) -> Option<Vec<Value>> {
             preset_model("claude-sonnet-4-5-20250929", "anthropic", "Claude Sonnet 4.5", "claude:messages"),
             preset_model("claude-haiku-4-5-20251001", "anthropic", "Claude Haiku 4.5", "claude:messages"),
         ],
-        "codex" => vec![
-            preset_model("gpt-5.6", "openai", "GPT-5.6", "openai:responses"),
-            preset_model("gpt-5.6-sol", "openai", "GPT-5.6 Sol", "openai:responses"),
-            preset_model("gpt-5.6-terra", "openai", "GPT-5.6 Terra", "openai:responses"),
-            preset_model("gpt-5.6-luna", "openai", "GPT-5.6 Luna", "openai:responses"),
-            preset_model("gpt-5.5", "openai", "GPT-5.5", "openai:responses"),
-            preset_model("gpt-5.4", "openai", "GPT-5.4", "openai:responses"),
-            preset_model("gpt-5.4-mini", "openai", "GPT-5.4 Mini", "openai:responses"),
-            preset_model("gpt-5.3-codex", "openai", "GPT-5.3 Codex", "openai:responses"),
-            preset_model("gpt-5.3-codex-spark", "openai", "GPT-5.3 Codex Spark", "openai:responses"),
-            preset_model("gpt-image-2", "openai", "GPT Image 2", "openai:image"),
-        ],
         "grok" => vec![
             preset_model("grok-4.20-0309-non-reasoning", "xai", "Grok 4.20 0309 Non-Reasoning", "openai:chat"),
             preset_model("grok-4.20-0309", "xai", "Grok 4.20 0309", "openai:chat"),
@@ -913,32 +901,8 @@ mod tests {
     }
 
     #[test]
-    fn preset_models_cover_codex_catalog() {
-        let models = preset_models_for_provider("codex").expect("preset models should exist");
-        let model_ids = models
-            .iter()
-            .map(|model| model["id"].as_str().expect("model id"))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            model_ids,
-            vec![
-                "gpt-5.6",
-                "gpt-5.6-sol",
-                "gpt-5.6-terra",
-                "gpt-5.6-luna",
-                "gpt-5.5",
-                "gpt-5.4",
-                "gpt-5.4-mini",
-                "gpt-5.3-codex",
-                "gpt-5.3-codex-spark",
-                "gpt-image-2",
-            ]
-        );
-        let image_model = models
-            .iter()
-            .find(|model| model["id"] == "gpt-image-2")
-            .expect("codex image model should exist");
-        assert_eq!(image_model["api_formats"], json!(["openai:image"]));
+    fn preset_models_do_not_override_codex_upstream_catalog() {
+        assert!(preset_models_for_provider("codex").is_none());
     }
 
     #[test]

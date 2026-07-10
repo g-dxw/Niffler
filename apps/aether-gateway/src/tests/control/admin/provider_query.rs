@@ -353,7 +353,7 @@ async fn gateway_handles_admin_provider_query_models_with_openai_responses_endpo
 }
 
 #[tokio::test]
-async fn gateway_handles_admin_provider_query_models_falls_back_to_codex_preset_when_token_invalidated(
+async fn gateway_handles_admin_provider_query_models_reports_codex_fetch_error_without_preset_fallback(
 ) {
     let execution_runtime_hits = Arc::new(Mutex::new(0usize));
     let execution_runtime_hits_clone = Arc::clone(&execution_runtime_hits);
@@ -431,29 +431,15 @@ async fn gateway_handles_admin_provider_query_models_falls_back_to_codex_preset_
 
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
-    assert_eq!(payload["success"], json!(true));
-    assert_eq!(payload["data"]["error"], serde_json::Value::Null);
-    let model_ids = payload["data"]["models"]
+    assert_eq!(payload["success"], json!(false));
+    assert!(payload["data"]["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Your authentication token has been invalidated"));
+    assert!(payload["data"]["models"]
         .as_array()
         .expect("models should be an array")
-        .iter()
-        .map(|model| model["id"].as_str().expect("model id"))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        model_ids,
-        vec![
-            "gpt-5.3-codex",
-            "gpt-5.3-codex-spark",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "gpt-5.5",
-            "gpt-5.6",
-            "gpt-5.6-luna",
-            "gpt-5.6-sol",
-            "gpt-5.6-terra",
-            "gpt-image-2",
-        ]
-    );
+        .is_empty());
     assert_eq!(
         *execution_runtime_hits.lock().expect("mutex should lock"),
         1
