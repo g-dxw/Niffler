@@ -318,36 +318,6 @@ fn codex_model_catalog_json() -> &'static str {
       "experimental_supported_tools": [],
       "supported_in_api": true,
       "priority": 2
-    },
-    {
-      "slug": "gpt-5.6-luna",
-      "display_name": "GPT-5.6 Luna",
-      "description": "Niffler Codex model",
-      "base_instructions": "You are Codex, a coding agent based on GPT-5.",
-      "default_reasoning_level": "medium",
-      "supported_reasoning_levels": [
-        { "effort": "low", "description": "Fast responses" },
-        { "effort": "medium", "description": "Balanced reasoning" },
-        { "effort": "high", "description": "Deeper reasoning" },
-        { "effort": "xhigh", "description": "Extra high reasoning" }
-      ],
-      "shell_type": "shell_command",
-      "visibility": "list",
-      "context_window": 272000,
-      "max_context_window": 1000000,
-      "supports_parallel_tool_calls": true,
-      "supports_reasoning_summaries": true,
-      "default_reasoning_summary": "none",
-      "support_verbosity": true,
-      "default_verbosity": "low",
-      "apply_patch_tool_type": "freeform",
-      "web_search_tool_type": "text_and_image",
-      "input_modalities": ["text", "image"],
-      "supports_image_detail_original": true,
-      "truncation_policy": { "mode": "tokens", "limit": 10000 },
-      "experimental_supported_tools": [],
-      "supported_in_api": true,
-      "priority": 3
     }
   ]
 }"#
