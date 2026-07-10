@@ -832,13 +832,8 @@ mod tests {
 
     #[tokio::test]
     async fn model_fetch_uses_preset_models_without_endpoint() {
-        let provider = sample_provider("provider-codex", "codex");
-        let key = sample_key(
-            "key-codex",
-            "provider-codex",
-            "api_key",
-            &["openai:responses"],
-        );
+        let provider = sample_provider("provider-kiro", "kiro");
+        let key = sample_key("key-kiro", "provider-kiro", "api_key", &["claude:messages"]);
         let state = TestState::new(vec![provider], vec![], vec![key], HashMap::new(), vec![]);
 
         let summary = perform_model_fetch_once_with_state(&state)
@@ -847,17 +842,19 @@ mod tests {
 
         assert_eq!(summary.attempted, 1);
         assert_eq!(summary.succeeded, 1);
-        let updated = state.key("key-codex");
+        let updated = state.key("key-kiro");
         let allowed_models = updated
             .allowed_models
             .and_then(|value| value.as_array().cloned())
             .expect("allowed_models should be set");
-        assert!(allowed_models.iter().any(|model| model == "gpt-5.4"));
+        assert!(allowed_models
+            .iter()
+            .any(|model| model == "claude-sonnet-4.6"));
         assert!(state
             .cached_models
             .lock()
             .expect("cache mutex")
-            .contains_key(&("provider-codex".to_string(), "key-codex".to_string())));
+            .contains_key(&("provider-kiro".to_string(), "key-kiro".to_string())));
     }
 
     #[tokio::test]
