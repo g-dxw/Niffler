@@ -37,7 +37,9 @@ use crate::ai_serving::{
 use crate::client_session_affinity::client_session_affinity_from_parts;
 use crate::{AppState, GatewayError};
 
-use super::super::super::openai_request_is_image_generation_intent;
+use super::super::super::{
+    openai_image_generation_candidate_model, openai_request_is_image_generation_intent,
+};
 use super::LocalOpenAiResponsesSpec;
 
 pub(crate) use crate::ai_serving::planner::candidate_materialization::LocalExecutionCandidateAttempt as LocalOpenAiResponsesCandidateAttempt;
@@ -365,10 +367,12 @@ pub(crate) async fn build_local_openai_responses_image_candidate_attempt_source<
         input.required_capabilities.as_ref(),
         LocalCandidatePersistencePolicyKind::OpenAiResponsesDecision,
     );
+    let image_candidate_model =
+        openai_image_generation_candidate_model(&input.requested_model, body_json);
     let preselection = preselect_local_execution_candidates_for_api_formats_with_serving(
         planner_state,
         spec_metadata.api_format,
-        &input.requested_model,
+        &image_candidate_model,
         false,
         input.required_capabilities.as_ref(),
         &input.auth_snapshot,

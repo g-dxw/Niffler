@@ -167,11 +167,11 @@ fn local_openai_responses_wrapper_preserves_body_order_after_edits() {
         ]
     );
     assert_eq!(provider_request_body["parallel_tool_calls"], json!(true));
-    assert!(provider_request_body["instructions"]
+    assert!(!provider_request_body["instructions"]
         .as_str()
         .unwrap_or_default()
         .contains("Responses native `image_generation` tool"));
-    assert!(has_image_generation_tool(&provider_request_body));
+    assert!(!has_image_generation_tool(&provider_request_body));
 }
 
 #[test]
@@ -615,7 +615,7 @@ fn applies_codex_defaults_unless_body_rules_handle_the_field() {
         .as_str()
         .unwrap_or_default();
     assert!(instructions.starts_with("Custom instructions"));
-    assert!(instructions.contains("Responses native `image_generation` tool"));
+    assert!(!instructions.contains("Responses native `image_generation` tool"));
     assert_eq!(provider_request_body["metadata"]["trace_id"], "keep-me");
 }
 

@@ -2,7 +2,7 @@
 
 ## 目标
 
-让通过 Codex / ChatGPT OAuth 账号转发的 OpenAI Responses 请求，在用户要求生成或编辑图片时，可以使用 OpenAI Responses 原生 `image_generation` 工具，避免模型误以为当前客户端没有图片生成能力。
+让通过 Codex / ChatGPT OAuth 账号转发的明确生图请求走独立图片执行链路，并以 OpenAI Responses 原生图片事件返回结果；普通 Responses 请求保持客户端原始工具能力。
 
 ## 非目标
 
@@ -17,14 +17,15 @@
 
 ## 行为变化
 
-- 判断位置在路由选中具体账号和端点之后，不在入口层根据用户文字猜测。
-- 普通对话请求最终走 Codex / ChatGPT OAuth 的 OpenAI Responses 端点时，系统会在上游请求中补充 `image_generation` 工具。
+- 判断位置在候选端点选择之前，只读取最后一条用户消息，并仅识别带明确生成动作和图片对象的请求。
+- 普通对话请求最终走 Codex / ChatGPT OAuth 的 OpenAI Responses 端点时，不再补充托管 `image_generation` 工具。
+- 明确生图请求优先选择同一模型服务中的 `openai:image` 端点，复用现有图片生成、下载和 Responses 事件转换能力。
 - Codex App / CLI 带 `X-OpenAI-Internal-Codex-Responses-Lite: true` 或 `1` 的请求不会自动补充 `image_generation` 工具，也不会注入图片工具说明；请求头和客户端工具列表保持原样。
 - `gpt-5.6-sol` 已确认支持 Responses Lite，转发时保留 Lite 请求头；`gpt-5.5` 等未确认支持 Lite 的模型会移除该请求头，改走同一 Codex 上游的完整 Responses 能力。
-- 非 Lite 请求已经声明 `image_gen` namespace、`image_gen.imagegen` 函数或同名 custom 工具时，不再补充托管的 `image_generation` 工具，避免同一请求同时存在两套图片工具。
+- 客户端已经声明 `image_gen` namespace、`image_gen.imagegen` 函数或同名 custom 工具时，不再补充托管的 `image_generation` 工具，避免同一请求同时存在两套图片工具。
 - 第三方 OpenAI 兼容端点默认不补充图片工具。只有管理员在 Provider 或 Endpoint 配置 `openai_responses_image_generation_tool_enabled: true` 后，普通对话才补充 `image_generation` 工具。
 - 如果请求没有设置 `tool_choice`，补充图片工具时会设置为 `auto`；如果请求已经设置了 `tool_choice`，不会覆盖用户原有选择。
-- 系统会在上游 `instructions` 中补一句说明：即使本地客户端没有 `image_gen` 命名空间，也可以使用 Responses 原生 `image_generation` 工具。
+- 只有已经进入 `openai:image` 专用链路的请求才会构造 Responses 原生 `image_generation` 工具和说明。
 - 明确图片请求统一按 CPA / Sub2API 的桥接方式处理：顶层 `model` 使用 Responses 主模型，图片模型放到 `tools[].model`，并强制 `tool_choice` 为 `image_generation`。
 - 明确图片请求包括：`openai:image` 路径、顶层模型为 `gpt-image-*`、或 `tool_choice` 明确选择 `image_generation`。
 - 如果请求只是普通工具请求，且 `tool_choice` 是 `auto` 或未设置，不会强制改成图片生成请求。
@@ -45,6 +46,7 @@
 - 影响显式开启 `openai_responses_image_generation_tool_enabled` 的第三方 OpenAI 兼容 Responses 端点。
 - 不影响 `openai:responses:compact`。
 - `openai:image` 仍走已有图片接口转换逻辑。
+- 图片调用开始后，必须收到非空图片结果和 `response.completed` 才能记录成功；提前 EOF 会返回明确失败。
 - 第三方 `openai:image` 上游会收到真正的图片工具，而不是只有 `input` 和 `model` 的普通 Responses 请求。
 - 请求记录中仍保留用户原始请求，上游请求记录会体现系统补充后的工具和说明。
 - 使用记录和计费继续按用户请求的图片模型记录，例如 `gpt-image-2`；桥接主模型只作为上游执行细节保存。

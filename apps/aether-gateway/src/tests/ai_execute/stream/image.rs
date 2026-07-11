@@ -776,7 +776,7 @@ fn image_bridge_auth_snapshot(api_key_id: &str, user_id: &str) -> StoredAuthApiK
             "openai:responses",
             "openai:image"
         ])),
-        Some(serde_json::json!(["gpt-image-2"])),
+        Some(serde_json::json!(["gpt-image-2", "gpt-5.5", "gpt-5.6-sol"])),
         api_key_id.to_string(),
         Some("default".to_string()),
         true,
@@ -791,7 +791,7 @@ fn image_bridge_auth_snapshot(api_key_id: &str, user_id: &str) -> StoredAuthApiK
             "openai:responses",
             "openai:image"
         ])),
-        Some(serde_json::json!(["gpt-image-2"])),
+        Some(serde_json::json!(["gpt-image-2", "gpt-5.5", "gpt-5.6-sol"])),
     )
     .expect("auth snapshot should build")
 }
@@ -1087,7 +1087,7 @@ async fn gateway_routes_openai_chat_stream_image_intent_to_openai_image_plan_wit
         .header(http::header::AUTHORIZATION, format!("Bearer {client_api_key}"))
         .header(TRACE_ID_HEADER, "trace-chat-stream-image-bridge-123")
         .body(
-            r#"{"model":"gpt-image-2","messages":[{"role":"user","content":"Draw a city made of glass"}],"stream":true,"size":"1024x1024"}"#,
+            r#"{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Create an image of a city made of glass"}],"stream":true}"#,
         )
         .send()
         .await
@@ -1121,18 +1121,18 @@ async fn gateway_routes_openai_chat_stream_image_intent_to_openai_image_plan_wit
     assert!(seen_plan.plan_stream);
     assert_eq!(seen_plan.auth_header, "Bearer sk-upstream-image-bridge");
     assert_eq!(seen_plan.chatgpt_web_marker, "");
-    assert!(seen_plan.body_json.get("model").is_none());
+    assert_eq!(seen_plan.body_json["model"], "gpt-5.6-sol");
     assert_eq!(seen_plan.body_json["stream"], true);
     assert_eq!(
         seen_plan.body_json["input"][0]["content"],
-        "Draw a city made of glass"
+        "Create an image of a city made of glass"
     );
     assert_eq!(seen_plan.body_json["tools"][0]["type"], "image_generation");
     assert_eq!(
         seen_plan.body_json["tools"][0]["model"],
         "upstream-image-model"
     );
-    assert_eq!(seen_plan.body_json["tools"][0]["size"], "1024x1024");
+    assert!(seen_plan.body_json["tools"][0].get("size").is_none());
     assert_eq!(
         seen_plan.body_json["tool_choice"]["type"],
         "image_generation"
@@ -1164,7 +1164,7 @@ async fn gateway_routes_openai_responses_stream_image_intent_to_openai_image_pla
         .header(http::header::AUTHORIZATION, format!("Bearer {client_api_key}"))
         .header(TRACE_ID_HEADER, "trace-responses-stream-image-bridge-123")
         .body(
-            r#"{"model":"gpt-image-2","input":"Draw a mountain observatory","tools":[{"type":"image_generation","size":"1024x1024"}],"stream":true}"#,
+            r#"{"model":"gpt-5.5","input":"Create an image of a mountain observatory","stream":true}"#,
         )
         .send()
         .await
@@ -1191,14 +1191,17 @@ async fn gateway_routes_openai_responses_stream_image_intent_to_openai_image_pla
     assert!(seen_plan.plan_stream);
     assert_eq!(seen_plan.auth_header, "Bearer sk-upstream-image-bridge");
     assert_eq!(seen_plan.body_json["stream"], true);
-    assert_eq!(seen_plan.body_json["input"], "Draw a mountain observatory");
-    assert!(seen_plan.body_json.get("model").is_none());
+    assert_eq!(
+        seen_plan.body_json["input"],
+        "Create an image of a mountain observatory"
+    );
+    assert_eq!(seen_plan.body_json["model"], "gpt-5.5");
     assert_eq!(seen_plan.body_json["tools"][0]["type"], "image_generation");
     assert_eq!(
         seen_plan.body_json["tools"][0]["model"],
         "upstream-image-model"
     );
-    assert_eq!(seen_plan.body_json["tools"][0]["size"], "1024x1024");
+    assert!(seen_plan.body_json["tools"][0].get("size").is_none());
     assert_eq!(
         seen_plan.body_json["tool_choice"]["type"],
         "image_generation"

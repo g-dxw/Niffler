@@ -28,6 +28,8 @@ use crate::ai_serving::{
 };
 use crate::{AppState, GatewayError};
 
+use super::super::super::openai_image_generation_candidate_model;
+
 pub(crate) use crate::ai_serving::planner::candidate_materialization::LocalExecutionCandidateAttempt as LocalOpenAiChatCandidateAttempt;
 pub(crate) use crate::ai_serving::planner::candidate_materialization::LocalExecutionCandidateAttemptSource as LocalOpenAiChatCandidateAttemptSource;
 pub(crate) use crate::ai_serving::planner::decision_input::LocalRequestedModelDecisionInput as LocalOpenAiChatDecisionInput;
@@ -375,10 +377,12 @@ pub(crate) async fn build_local_openai_chat_image_candidate_attempt_source<'a>(
         input.required_capabilities.as_ref(),
         LocalCandidatePersistencePolicyKind::OpenAiChatDecision,
     );
+    let image_candidate_model =
+        openai_image_generation_candidate_model(&input.requested_model, body_json);
     let preselection = preselect_local_execution_candidates_for_api_formats_with_serving(
         planner_state,
         "openai:chat",
-        &input.requested_model,
+        &image_candidate_model,
         false,
         input.required_capabilities.as_ref(),
         &input.auth_snapshot,

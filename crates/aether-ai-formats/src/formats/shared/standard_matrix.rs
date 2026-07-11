@@ -123,7 +123,7 @@ pub fn build_standard_request_body_with_model_directives_and_request_headers(
         "openai:responses" | "openai:responses:compact"
     );
     let enable_codex_image_generation_tool =
-        codex_hosted_image_generation_tool_allowed(true, request_headers, &provider_request_body);
+        codex_hosted_image_generation_tool_allowed(true, provider_api_format);
     if client_is_openai_responses_family {
         apply_codex_openai_responses_special_body_edits_with_bridge_config(
             &mut provider_request_body,
@@ -1015,7 +1015,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_responses_bridge_adds_image_tool_and_instructions() {
+    fn codex_responses_bridge_does_not_add_image_tool_to_text_request() {
         let request = json!({
             "model": "gpt-5.5",
             "instructions": "Be helpful.",
@@ -1036,21 +1036,17 @@ mod tests {
         .expect("codex responses request should build");
 
         assert_eq!(converted["model"], json!("gpt-5.5"));
-        assert!(converted
+        assert!(!converted
             .get("tools")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .any(|tool| tool.get("type") == Some(&json!("image_generation"))));
-        assert!(converted["instructions"]
+        assert!(!converted["instructions"]
             .as_str()
             .unwrap_or_default()
             .contains("Responses native `image_generation` tool"));
-        assert_eq!(
-            converted["tool_choice"],
-            json!("auto"),
-            "auto advertises the tool without forcing image generation"
-        );
+        assert!(converted.get("tool_choice").is_none());
     }
 
     #[test]

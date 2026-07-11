@@ -47,39 +47,11 @@ pub fn codex_openai_responses_lite_requested(headers: Option<&http::HeaderMap>) 
         .is_some_and(|value| value.eq_ignore_ascii_case("true") || value == "1")
 }
 
-fn codex_client_image_tool_name(name: &str) -> bool {
-    let normalized = name.trim().to_ascii_lowercase();
-    matches!(normalized.as_str(), "image_gen" | "imagegen")
-        || normalized.starts_with("image_gen.")
-        || normalized.starts_with("imagegen.")
-}
-
-fn codex_request_has_client_image_tool(provider_request_body: &Value) -> bool {
-    provider_request_body
-        .get("tools")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_object)
-        .any(|tool| {
-            matches!(
-                tool.get("type").and_then(Value::as_str),
-                Some("function" | "custom" | "namespace")
-            ) && tool
-                .get("name")
-                .and_then(Value::as_str)
-                .is_some_and(codex_client_image_tool_name)
-        })
-}
-
 pub fn codex_hosted_image_generation_tool_allowed(
     configured_enabled: bool,
-    headers: Option<&http::HeaderMap>,
-    provider_request_body: &Value,
+    provider_api_format: &str,
 ) -> bool {
-    configured_enabled
-        && !codex_openai_responses_lite_requested(headers)
-        && !codex_request_has_client_image_tool(provider_request_body)
+    configured_enabled && is_openai_image_request(provider_api_format)
 }
 
 fn is_codex_openai_responses_request(provider_type: &str, provider_api_format: &str) -> bool {
@@ -569,7 +541,7 @@ pub fn apply_openai_responses_image_generation_bridge_body_edits(
     let explicit_image_request = is_openai_image_request(provider_api_format)
         || image_model.is_some()
         || codex_openai_responses_tool_choice_references_image_generation(body_object);
-    if !enable_image_generation_tool || !explicit_image_request {
+    if !explicit_image_request {
         return;
     }
 
@@ -736,7 +708,7 @@ pub fn apply_codex_openai_responses_special_body_edits_with_bridge_model(
         body_rules,
         user_api_key_id,
         image_bridge_model,
-        true,
+        is_openai_image_request(provider_api_format),
     );
 }
 
@@ -837,7 +809,7 @@ pub fn apply_codex_openai_responses_chat_body_edits_with_bridge_model(
         body_rules,
         user_api_key_id,
         image_bridge_model,
-        true,
+        is_openai_image_request(provider_api_format),
     );
 }
 
@@ -959,7 +931,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn codex_responses_body_edits_inject_passthrough_fields_without_reasoning_summary() {
+    fn codex_responses_body_edits_keep_passthrough_fields_without_hosted_image_tool() {
         let mut provider_request_body = json!( {
             "input": [{
                 "role": "user",
@@ -983,11 +955,11 @@ mod tests {
             json!(["reasoning.encrypted_content"])
         );
         assert_eq!(provider_request_body["parallel_tool_calls"], json!(true));
-        assert!(provider_request_body["instructions"]
+        assert!(!provider_request_body["instructions"]
             .as_str()
             .unwrap_or_default()
             .contains("Responses native `image_generation` tool"));
-        assert!(provider_request_body["tools"]
+        assert!(!provider_request_body["tools"]
             .as_array()
             .into_iter()
             .flatten()
@@ -1429,7 +1401,7 @@ mod tests {
         );
 
         assert_eq!(provider_request_body["model"], json!(original_model));
-        assert_eq!(provider_request_body["tool_choice"], json!("auto"));
+        assert!(provider_request_body.get("tool_choice").is_none());
         assert_eq!(
             provider_request_body["tools"][0]["type"],
             json!("image_generation")

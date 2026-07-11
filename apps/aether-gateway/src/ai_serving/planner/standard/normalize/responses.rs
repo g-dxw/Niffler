@@ -42,8 +42,7 @@ pub(crate) fn build_local_openai_responses_request_body(
         )?;
     let allow_hosted_image_generation = codex_hosted_image_generation_tool_allowed(
         openai_responses_image_generation_tool_enabled,
-        Some(request_headers),
-        &provider_request_body,
+        provider_api_format,
     );
     apply_codex_openai_responses_special_body_edits_with_bridge_config(
         &mut provider_request_body,
@@ -107,8 +106,7 @@ pub(crate) fn build_cross_format_openai_responses_request_body(
         )?;
     let allow_hosted_image_generation = codex_hosted_image_generation_tool_allowed(
         openai_responses_image_generation_tool_enabled,
-        Some(request_headers),
-        &provider_request_body,
+        provider_api_format,
     );
     apply_codex_openai_responses_special_body_edits_with_bridge_config(
         &mut provider_request_body,
