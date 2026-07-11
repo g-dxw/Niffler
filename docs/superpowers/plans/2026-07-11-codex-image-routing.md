@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让 Codex App 中明确的自然语言生图请求走 Niffler 已验证可用的 `openai:image` 链路，并禁止残缺图片流被记录为成功。
+**Goal:** 让 Codex App 的模型按完整语义自主选择原生图片工具，并禁止残缺图片流被记录为成功。
 
-**Architecture:** 在候选端点选择前识别最后一条用户消息中的明确生图意图，优先选择现有 `openai:image` 端点；普通 Codex Responses 请求不再自动注入托管图片工具。流处理额外跟踪 Responses 图片调用的开始、结果和完成事件，缺少终止事件时返回明确失败。
+**Architecture:** Codex / ChatGPT OAuth 的普通 Responses 请求注入原生 `image_generation` 工具并使用 `tool_choice:auto`，由模型按语义选择；Niffler 不再匹配自然语言关键词。带图片工具的请求移除 Lite 请求头，完整 Responses 端点负责执行图片工具；流处理保留原生图片事件并追加 Codex App 可见的助手图片消息。
 
 **Tech Stack:** Rust、Axum、OpenAI Responses SSE、Cargo tests
 
@@ -141,3 +141,27 @@ Expected: 当前没有 Responses 图片展示重写模式，测试失败。
 Run: `cargo test -p aether-ai-formats rewrites_openai_image_stream_to_codex_responses_visible_image -- --nocapture`
 
 Expected: PASS，并确认缺少最终结果时不会产生助手图片消息。
+
+### Task 6: 用语义工具选择替代关键词路由
+
+**Files:**
+- Modify: `apps/aether-gateway/src/ai_serving/planner/standard/openai/image_intent.rs`
+- Modify: `crates/aether-ai-formats/src/formats/openai/responses/codex.rs`
+- Modify: `crates/aether-ai-formats/src/formats/shared/stream_rewrite.rs`
+- Test: 对应模块单元测试与 Niffler 真实接口
+
+- [x] **Step 1: 先做协议实验**
+
+使用旧关键词规则无法识别的正向表达测试 `gpt-5.6-sol` 和 `gpt-5.6-terra`。两者都由模型选择原生 `image_generation` 并返回非空图片；负向的讲解和代码请求只返回文本。带现有图片的编辑请求正确传递图片数量。
+
+- [x] **Step 2: 写失败测试**
+
+固定四项边界：自然语言不再触发专用路由；普通 Codex Responses 允许原生图片工具；带图片工具的 Sol 请求移除 Lite；同格式 Responses 图片流追加可见助手图片消息。
+
+- [x] **Step 3: 最小实现**
+
+删除自然语言关键词判断，保留协议级显式图片判断；启用 OAuth Responses 原生图片工具；根据工具声明处理 Lite 请求头；扩展同格式 Responses 图片流展示转换。
+
+- [ ] **Step 4: 回归、评审与上线验证**
+
+运行相关单元测试和包级检查，检查变更差异，再通过 Niffler 使用无法被旧规则匹配的正向表达和容易误判的负向表达做线上验证。

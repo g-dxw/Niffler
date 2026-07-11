@@ -51,7 +51,9 @@ pub fn codex_hosted_image_generation_tool_allowed(
     configured_enabled: bool,
     provider_api_format: &str,
 ) -> bool {
-    configured_enabled && is_openai_image_request(provider_api_format)
+    configured_enabled
+        && (is_openai_image_request(provider_api_format)
+            || aether_ai_formats::is_openai_responses_format(provider_api_format))
 }
 
 fn is_codex_openai_responses_request(provider_type: &str, provider_api_format: &str) -> bool {
@@ -132,6 +134,34 @@ fn codex_openai_responses_has_image_generation_tool(
             tool.get("type")
                 .and_then(Value::as_str)
                 .is_some_and(|tool_type| tool_type.trim().eq_ignore_ascii_case("image_generation"))
+        })
+}
+
+fn codex_openai_responses_has_client_image_tool(
+    body_object: &serde_json::Map<String, Value>,
+) -> bool {
+    body_object
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .any(|tool| {
+            let tool_type = tool
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim();
+            let name = tool
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim();
+            (tool_type.eq_ignore_ascii_case("namespace") && name.eq_ignore_ascii_case("image_gen"))
+                || (matches!(
+                    tool_type.to_ascii_lowercase().as_str(),
+                    "function" | "custom"
+                ) && name.eq_ignore_ascii_case("image_gen.imagegen"))
         })
 }
 
@@ -531,7 +561,8 @@ pub fn apply_openai_responses_image_generation_bridge_body_edits(
         provider_api_format,
         body_object,
         enable_image_generation_tool,
-    ) {
+    ) && !codex_openai_responses_has_client_image_tool(body_object)
+    {
         ensure_codex_openai_responses_image_generation_tool(body_object);
         ensure_codex_openai_responses_auto_tool_choice(body_object);
         apply_codex_image_generation_bridge_instructions(body_object);
@@ -854,7 +885,10 @@ pub fn apply_codex_openai_responses_special_headers(
         return;
     }
 
-    if !codex_model_supports_responses_lite(provider_request_body) {
+    let has_hosted_image_tool = provider_request_body
+        .as_object()
+        .is_some_and(codex_openai_responses_has_image_generation_tool);
+    if has_hosted_image_tool || !codex_model_supports_responses_lite(provider_request_body) {
         remove_case_insensitive_header(
             provider_request_headers,
             OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER,
@@ -926,9 +960,22 @@ mod tests {
         apply_codex_openai_responses_chat_body_edits,
         apply_codex_openai_responses_special_body_edits,
         apply_codex_openai_responses_special_body_edits_with_bridge_model,
-        apply_openai_responses_compact_special_body_edits, CODEX_OPENAI_IMAGE_INTERNAL_MODEL,
+        apply_openai_responses_compact_special_body_edits,
+        codex_hosted_image_generation_tool_allowed, CODEX_OPENAI_IMAGE_INTERNAL_MODEL,
     };
     use serde_json::json;
+
+    #[test]
+    fn hosted_image_tool_is_allowed_for_normal_responses_when_enabled() {
+        assert!(codex_hosted_image_generation_tool_allowed(
+            true,
+            "openai:responses"
+        ));
+        assert!(!codex_hosted_image_generation_tool_allowed(
+            false,
+            "openai:responses"
+        ));
+    }
 
     #[test]
     fn codex_responses_body_edits_keep_passthrough_fields_without_hosted_image_tool() {

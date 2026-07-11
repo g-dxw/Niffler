@@ -1015,7 +1015,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_responses_bridge_does_not_add_image_tool_to_text_request() {
+    fn codex_responses_bridge_exposes_image_tool_for_semantic_model_selection() {
         let request = json!({
             "model": "gpt-5.5",
             "instructions": "Be helpful.",
@@ -1036,17 +1036,17 @@ mod tests {
         .expect("codex responses request should build");
 
         assert_eq!(converted["model"], json!("gpt-5.5"));
-        assert!(!converted
+        assert!(converted
             .get("tools")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .any(|tool| tool.get("type") == Some(&json!("image_generation"))));
-        assert!(!converted["instructions"]
+        assert!(converted["instructions"]
             .as_str()
             .unwrap_or_default()
             .contains("Responses native `image_generation` tool"));
-        assert!(converted.get("tool_choice").is_none());
+        assert_eq!(converted["tool_choice"], json!("auto"));
     }
 
     #[test]

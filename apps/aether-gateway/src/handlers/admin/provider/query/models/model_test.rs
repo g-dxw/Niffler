@@ -2731,7 +2731,17 @@ async fn provider_query_execute_standard_test_candidate(
                     format!("Provider request body rules rejected {provider_api_format}"),
                 ));
             }
-            crate::ai_serving::apply_codex_openai_responses_special_body_edits_with_bridge_model(
+            let image_tool_enabled = crate::ai_serving::openai_responses_image_generation_tool_enabled_from_transport_config(
+                transport.provider.provider_type.as_str(),
+                transport.provider.config.as_ref(),
+                transport.endpoint.config.as_ref(),
+            );
+            let allow_hosted_image_generation =
+                crate::ai_serving::codex_hosted_image_generation_tool_allowed(
+                    image_tool_enabled,
+                    provider_api_format,
+                );
+            crate::ai_serving::apply_codex_openai_responses_special_body_edits_with_bridge_config(
                 &mut provider_request_body,
                 transport.provider.provider_type.as_str(),
                 provider_api_format,
@@ -2740,6 +2750,7 @@ async fn provider_query_execute_standard_test_candidate(
                 crate::ai_serving::codex_openai_image_bridge_model_from_provider_config(
                     transport.provider.config.as_ref(),
                 ),
+                allow_hosted_image_generation,
             );
             crate::ai_serving::apply_openai_responses_compact_special_body_edits(
                 &mut provider_request_body,

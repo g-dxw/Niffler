@@ -332,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_lite_request_does_not_inject_hosted_image_generation_tool() {
+    fn codex_lite_request_injects_hosted_image_generation_tool_for_full_responses() {
         let request = json!({
             "model": "gpt-5.6-sol",
             "input": "hi",
@@ -365,10 +365,10 @@ mod tests {
         assert!(converted
             .get("tools")
             .and_then(serde_json::Value::as_array)
-            .is_none_or(|tools| tools
+            .is_some_and(|tools| tools
                 .iter()
-                .all(|tool| tool.get("type") != Some(&json!("image_generation")))));
-        assert!(!converted["instructions"]
+                .any(|tool| tool.get("type") == Some(&json!("image_generation")))));
+        assert!(converted["instructions"]
             .as_str()
             .unwrap_or_default()
             .contains("Responses native `image_generation` tool"));

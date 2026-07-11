@@ -299,8 +299,7 @@ impl OpenAiImageResponsesStreamState {
             self.transform_block(&block)?
         };
         for block in self.pending_image_blocks.drain(..) {
-            output.extend(block);
-            output.extend_from_slice(b"\n\n");
+            output.extend(sse_block_bytes(&block));
         }
         self.pending_image_keys.clear();
         Ok(output)
@@ -434,7 +433,12 @@ impl OpenAiImageResponsesStreamState {
 }
 
 fn sse_block_bytes(block: &[u8]) -> Vec<u8> {
-    let mut output = block.to_vec();
+    let content_end = block
+        .iter()
+        .rposition(|byte| !matches!(byte, b'\n' | b'\r'))
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let mut output = block[..content_end].to_vec();
     output.extend_from_slice(b"\n\n");
     output
 }

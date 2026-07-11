@@ -167,11 +167,11 @@ fn local_openai_responses_wrapper_preserves_body_order_after_edits() {
         ]
     );
     assert_eq!(provider_request_body["parallel_tool_calls"], json!(true));
-    assert!(!provider_request_body["instructions"]
+    assert!(provider_request_body["instructions"]
         .as_str()
         .unwrap_or_default()
         .contains("Responses native `image_generation` tool"));
-    assert!(!has_image_generation_tool(&provider_request_body));
+    assert!(has_image_generation_tool(&provider_request_body));
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn codex_request_with_client_image_namespace_does_not_inject_hosted_image_tool()
 }
 
 #[test]
-fn codex_lite_request_preserves_supported_client_tools_without_hosted_image_tool() {
+fn codex_lite_request_preserves_supported_client_tools_and_adds_hosted_image_tool() {
     let body_json = json!({
         "model": "gpt-5.6-sol",
         "input": "hi",
@@ -259,8 +259,11 @@ fn codex_lite_request_preserves_supported_client_tools_without_hosted_image_tool
         .iter()
         .filter_map(|tool| tool.get("type").and_then(Value::as_str))
         .collect::<Vec<_>>();
-    assert_eq!(tool_types, vec!["function", "custom", "tool_search"]);
-    assert!(!has_image_generation_tool(&provider_request_body));
+    assert_eq!(
+        tool_types,
+        vec!["function", "custom", "tool_search", "image_generation"]
+    );
+    assert!(has_image_generation_tool(&provider_request_body));
 }
 
 #[test]
@@ -615,7 +618,7 @@ fn applies_codex_defaults_unless_body_rules_handle_the_field() {
         .as_str()
         .unwrap_or_default();
     assert!(instructions.starts_with("Custom instructions"));
-    assert!(!instructions.contains("Responses native `image_generation` tool"));
+    assert!(instructions.contains("Responses native `image_generation` tool"));
     assert_eq!(provider_request_body["metadata"]["trace_id"], "keep-me");
 }
 

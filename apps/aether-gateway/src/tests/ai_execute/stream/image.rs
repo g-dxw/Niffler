@@ -1143,7 +1143,7 @@ async fn gateway_routes_openai_chat_stream_image_intent_to_openai_image_plan_wit
 }
 
 #[tokio::test]
-async fn gateway_routes_openai_responses_stream_image_intent_to_openai_image_plan_without_streaming_support(
+async fn gateway_routes_explicit_openai_responses_image_tool_to_openai_image_plan_without_streaming_support(
 ) {
     let seen_execution_plan = Arc::new(Mutex::new(None::<SeenImageBridgeExecutionPlan>));
     let execution_runtime = image_bridge_execution_runtime(Arc::clone(&seen_execution_plan));
@@ -1164,7 +1164,7 @@ async fn gateway_routes_openai_responses_stream_image_intent_to_openai_image_pla
         .header(http::header::AUTHORIZATION, format!("Bearer {client_api_key}"))
         .header(TRACE_ID_HEADER, "trace-responses-stream-image-bridge-123")
         .body(
-            r#"{"model":"gpt-5.5","input":"Create an image of a mountain observatory","stream":true}"#,
+            r#"{"model":"gpt-5.5","input":"Create an image of a mountain observatory","tools":[{"type":"image_generation","model":"gpt-image-2"}],"tool_choice":{"type":"image_generation"},"stream":true}"#,
         )
         .send()
         .await

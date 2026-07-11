@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use super::{
-    apply_codex_openai_responses_special_body_edits, apply_codex_openai_responses_special_headers,
+    apply_codex_openai_responses_special_body_edits,
+    apply_codex_openai_responses_special_body_edits_with_bridge_config,
+    apply_codex_openai_responses_special_headers,
     openai_responses_image_generation_tool_enabled_from_transport_config,
 };
 use http::{HeaderMap, HeaderValue};
@@ -18,12 +20,14 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
         "store": true
     });
 
-    apply_codex_openai_responses_special_body_edits(
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
         &mut body,
         "codex",
         "openai:responses",
         None,
         None,
+        None,
+        true,
     );
 
     assert!(body.get("max_output_tokens").is_none());
@@ -250,6 +254,34 @@ fn keeps_codex_responses_lite_header_for_supported_model() {
         headers.get("x-openai-internal-codex-responses-lite"),
         Some(&"true".to_string())
     );
+}
+
+#[test]
+fn removes_codex_responses_lite_header_when_sol_uses_hosted_image_tool() {
+    let mut headers = BTreeMap::new();
+    headers.insert(
+        "x-openai-internal-codex-responses-lite".to_string(),
+        "true".to_string(),
+    );
+    let body = json!({
+        "model": "gpt-5.6-sol",
+        "tools": [{"type": "image_generation", "model": "gpt-image-2"}],
+        "tool_choice": "auto"
+    });
+
+    apply_codex_openai_responses_special_headers(
+        &mut headers,
+        &body,
+        &HeaderMap::new(),
+        "codex",
+        "openai:responses",
+        Some("trace-codex-sol-image"),
+        Some(r#"{"account_id":"acc-123"}"#),
+    );
+
+    assert!(!headers
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case("x-openai-internal-codex-responses-lite")));
 }
 
 #[test]

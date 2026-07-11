@@ -85,6 +85,20 @@ pub(crate) async fn maybe_build_local_openai_responses_decision_payload_for_cand
     if let Some(image_request_summary) = resolved.image_request_summary.as_ref() {
         extra_fields.insert("image_request".to_string(), image_request_summary.clone());
     }
+    if resolved
+        .provider_request_body
+        .get("tools")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|tool| {
+            tool.get("type")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| value.eq_ignore_ascii_case("image_generation"))
+        })
+    {
+        extra_fields.insert("codex_hosted_image_generation".to_string(), json!(true));
+    }
     if input.defer_scheduler_affinity_until_success {
         extra_fields.insert(
             CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD.to_string(),
