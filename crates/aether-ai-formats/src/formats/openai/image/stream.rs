@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use aether_contracts::{ExecutionStreamTerminalSummary, StandardizedUsage};
 use base64::Engine as _;
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 
 use crate::contracts::OPENAI_IMAGE_SYNC_FINALIZE_REPORT_KIND;
 use crate::formats::openai::responses::codex::CODEX_OPENAI_IMAGE_DEFAULT_OUTPUT_FORMAT;
@@ -37,6 +38,13 @@ pub struct OpenAiImageChatStreamState {
     started: bool,
     finished: bool,
     emitted_failure: bool,
+}
+
+#[derive(Default)]
+pub struct OpenAiImageResponsesStreamState {
+    buffered: Vec<u8>,
+    pending_image_blocks: Vec<Vec<u8>>,
+    pending_image_keys: BTreeSet<String>,
 }
 
 #[derive(Clone)]
@@ -265,6 +273,223 @@ impl OpenAiImageStreamState {
             }),
         )
     }
+}
+
+impl OpenAiImageResponsesStreamState {
+    pub fn push_chunk(
+        &mut self,
+        _report_context: &Value,
+        chunk: &[u8],
+    ) -> Result<Vec<u8>, AiSurfaceFinalizeError> {
+        self.buffered.extend_from_slice(chunk);
+        let mut output = Vec::new();
+        while let Some(block_end) = find_sse_block_end(&self.buffered) {
+            let block = self.buffered.drain(..block_end).collect::<Vec<_>>();
+            output.extend(self.transform_block(&block)?);
+            drain_sse_separator(&mut self.buffered);
+        }
+        Ok(output)
+    }
+
+    pub fn finish(&mut self, _report_context: &Value) -> Result<Vec<u8>, AiSurfaceFinalizeError> {
+        let mut output = if self.buffered.is_empty() {
+            Vec::new()
+        } else {
+            let block = std::mem::take(&mut self.buffered);
+            self.transform_block(&block)?
+        };
+        for block in self.pending_image_blocks.drain(..) {
+            output.extend(block);
+            output.extend_from_slice(b"\n\n");
+        }
+        self.pending_image_keys.clear();
+        Ok(output)
+    }
+
+    fn transform_block(&mut self, block: &[u8]) -> Result<Vec<u8>, AiSurfaceFinalizeError> {
+        let text = std::str::from_utf8(block)
+            .map_err(|err| AiSurfaceFinalizeError::new(err.to_string()))?;
+        let Some(data) = text.lines().find_map(|line| {
+            line.trim_end_matches('\r')
+                .strip_prefix("data:")
+                .map(str::trim)
+        }) else {
+            return Ok(sse_block_bytes(block));
+        };
+        if data.is_empty() || data == "[DONE]" {
+            return Ok(sse_block_bytes(block));
+        }
+        let event: Value = serde_json::from_str(data)?;
+        let event_type = event
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if matches!(event_type, "error" | "response.failed") {
+            self.pending_image_blocks.clear();
+            self.pending_image_keys.clear();
+            return Ok(sse_block_bytes(block));
+        }
+        if event_type == "response.completed" {
+            return self.complete_response(event);
+        }
+        if event_type != "response.output_item.done" {
+            return Ok(sse_block_bytes(block));
+        }
+        let Some(item) = event.get("item").and_then(Value::as_object) else {
+            return Ok(sse_block_bytes(block));
+        };
+        if item.get("type").and_then(Value::as_str) != Some("image_generation_call") {
+            return Ok(sse_block_bytes(block));
+        }
+        let Some(result) = item
+            .get("result")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Ok(sse_block_bytes(block));
+        };
+        let key = image_chat_output_key(item, result);
+        if self.pending_image_keys.insert(key) {
+            self.pending_image_blocks.push(block.to_vec());
+        }
+        Ok(Vec::new())
+    }
+
+    fn complete_response(
+        &mut self,
+        mut completed_event: Value,
+    ) -> Result<Vec<u8>, AiSurfaceFinalizeError> {
+        if self.pending_image_blocks.is_empty() {
+            return encode_json_sse(Some("response.completed"), &completed_event);
+        }
+
+        let pending_blocks = std::mem::take(&mut self.pending_image_blocks);
+        self.pending_image_keys.clear();
+        let mut next_output_index = completed_event
+            .get("response")
+            .and_then(|response| response.get("output"))
+            .and_then(Value::as_array)
+            .map(|output| output.len() as u64)
+            .unwrap_or_default();
+        for block in &pending_blocks {
+            if let Some(index) = image_output_index_from_sse_block(block) {
+                next_output_index = next_output_index.max(index.saturating_add(1));
+            }
+        }
+
+        let mut output = Vec::new();
+        let mut visible_items = Vec::new();
+        for block in pending_blocks {
+            output.extend(sse_block_bytes(&block));
+            let Some((item, markdown)) = image_item_and_markdown_from_sse_block(&block)? else {
+                continue;
+            };
+            let item_id = item
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("image");
+            let visible_item = serde_json::json!({
+                "id": format!("msg_{item_id}"),
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "phase": "final_answer",
+                "content": [{
+                    "type": "output_text",
+                    "text": markdown,
+                    "annotations": []
+                }]
+            });
+            output.extend(encode_json_sse(
+                Some("response.output_item.done"),
+                &serde_json::json!({
+                    "type": "response.output_item.done",
+                    "output_index": next_output_index,
+                    "item": visible_item.clone(),
+                }),
+            )?);
+            visible_items.push(visible_item);
+            next_output_index = next_output_index.saturating_add(1);
+        }
+        if let Some(response) = completed_event
+            .get_mut("response")
+            .and_then(Value::as_object_mut)
+        {
+            let response_output = response
+                .entry("output")
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Some(response_output) = response_output.as_array_mut() {
+                response_output.extend(visible_items);
+            }
+        }
+        output.extend(encode_json_sse(
+            Some("response.completed"),
+            &completed_event,
+        )?);
+        Ok(output)
+    }
+}
+
+fn sse_block_bytes(block: &[u8]) -> Vec<u8> {
+    let mut output = block.to_vec();
+    output.extend_from_slice(b"\n\n");
+    output
+}
+
+fn parse_sse_block_data(block: &[u8]) -> Result<Option<Value>, AiSurfaceFinalizeError> {
+    let text =
+        std::str::from_utf8(block).map_err(|err| AiSurfaceFinalizeError::new(err.to_string()))?;
+    let Some(data) = text.lines().find_map(|line| {
+        line.trim_end_matches('\r')
+            .strip_prefix("data:")
+            .map(str::trim)
+    }) else {
+        return Ok(None);
+    };
+    if data.is_empty() || data == "[DONE]" {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::from_str(data)?))
+}
+
+fn image_output_index_from_sse_block(block: &[u8]) -> Option<u64> {
+    parse_sse_block_data(block)
+        .ok()
+        .flatten()
+        .and_then(|event| event.get("output_index").and_then(Value::as_u64))
+}
+
+fn image_item_and_markdown_from_sse_block(
+    block: &[u8],
+) -> Result<Option<(Map<String, Value>, String)>, AiSurfaceFinalizeError> {
+    let Some(event) = parse_sse_block_data(block)? else {
+        return Ok(None);
+    };
+    let Some(item) = event.get("item").and_then(Value::as_object).cloned() else {
+        return Ok(None);
+    };
+    let Some(result) = item
+        .get("result")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    let output_format = item
+        .get("output_format")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(CODEX_OPENAI_IMAGE_DEFAULT_OUTPUT_FORMAT);
+    let markdown = image_chat_markdown(&OpenAiImageChatFrame {
+        b64_json: result.to_string(),
+        output_format: Some(output_format.to_string()),
+    });
+    Ok(Some((item, markdown)))
 }
 
 impl OpenAiImageChatStreamState {
@@ -787,7 +1012,7 @@ fn image_chat_output_key(item: &Map<String, Value>, result: &str) -> String {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| result.to_string())
+        .unwrap_or_else(|| format!("sha256:{:x}", Sha256::digest(result.as_bytes())))
 }
 
 fn openai_image_stream_standardized_usage(
@@ -1284,7 +1509,19 @@ mod tests {
     use base64::Engine as _;
     use serde_json::json;
 
-    use super::{maybe_build_openai_image_sync_finalize_product, OpenAiImageStreamState};
+    use super::{
+        image_chat_output_key, maybe_build_openai_image_sync_finalize_product,
+        OpenAiImageStreamState,
+    };
+
+    #[test]
+    fn image_output_key_without_id_is_bounded() {
+        let item = serde_json::Map::new();
+        let result = "a".repeat(3 * 1024 * 1024);
+        let key = image_chat_output_key(&item, &result);
+
+        assert!(key.len() <= 80, "fallback key should not copy image data");
+    }
 
     fn utf8(bytes: Vec<u8>) -> String {
         String::from_utf8(bytes).expect("utf8 should decode")

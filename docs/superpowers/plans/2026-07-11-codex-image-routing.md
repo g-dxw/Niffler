@@ -70,21 +70,21 @@ Expected: PASS。
 - Modify: `apps/aether-gateway/src/execution_runtime/stream/execution.rs`
 - Test: `apps/aether-gateway/src/execution_runtime/stream/execution.rs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 构造只包含 `response.image_generation_call.in_progress` 和 `generating` 后 EOF 的 Responses 流，要求终态为失败；包含非空图片结果和 `response.completed` 的流保持成功。
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test -p aether-gateway incomplete_image_stream -- --nocapture`
 
 Expected: 当前 EOF 被当作成功，测试失败。
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 增加轻量终态跟踪器，记录图片调用是否开始、是否收到非空结果以及是否收到 `response.completed`。图片调用开始后遇到 EOF 且缺少结果或完成事件时，生成 `response.failed` 并将使用记录标记为失败。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test -p aether-gateway incomplete_image_stream -- --nocapture`
 
@@ -114,3 +114,30 @@ Expected: PASS，无新增警告。
 - [ ] **Step 3: Verify through Niffler**
 
 使用测试 API Key 验证普通 5.5、5.6 Sol 文本请求仍成功，并验证明确生图请求返回含非空 `image_generation_call.result` 与 `response.completed` 的 Responses 流。
+
+### Task 5: Codex App 可见图片消息
+
+**Files:**
+- Modify: `crates/aether-ai-formats/src/formats/openai/image/stream.rs`
+- Modify: `crates/aether-ai-formats/src/formats/shared/stream_rewrite.rs`
+- Test: `crates/aether-ai-formats/src/formats/shared/stream_rewrite.rs`
+
+- [x] **Step 1: Write the failing test**
+
+构造 `openai:image` 到 `openai:responses` 的完整图片流，要求最终输出除了原生 `image_generation_call` 外，还包含一条助手 `message` 完成事件，正文是 `data:image` Markdown。
+
+- [x] **Step 2: Run test to verify it fails**
+
+Run: `cargo test -p aether-ai-formats rewrites_openai_image_stream_to_codex_responses_visible_image -- --nocapture`
+
+Expected: 当前没有 Responses 图片展示重写模式，测试失败。
+
+- [x] **Step 3: Write minimal implementation**
+
+为 `openai:image -> openai:responses` 增加专用流重写模式。原生图片事件保持不变；收到非空最终图片结果时，追加 Codex 能按普通助手消息处理的 Markdown `data:image` 图片完成事件。
+
+- [x] **Step 4: Run test to verify it passes**
+
+Run: `cargo test -p aether-ai-formats rewrites_openai_image_stream_to_codex_responses_visible_image -- --nocapture`
+
+Expected: PASS，并确认缺少最终结果时不会产生助手图片消息。

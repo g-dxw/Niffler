@@ -2,7 +2,7 @@
 
 ## 目标
 
-让通过 Codex / ChatGPT OAuth 账号转发的明确生图请求走独立图片执行链路，并以 OpenAI Responses 原生图片事件返回结果；普通 Responses 请求保持客户端原始工具能力。
+让通过 Codex / ChatGPT OAuth 账号转发的明确生图请求走独立图片执行链路，并以 Codex App 能实际展示的 Responses 助手图片消息返回结果；普通 Responses 请求保持客户端原始工具能力。
 
 ## 非目标
 
@@ -20,6 +20,8 @@
 - 判断位置在候选端点选择之前，只读取最后一条用户消息，并仅识别带明确生成动作和图片对象的请求。
 - 普通对话请求最终走 Codex / ChatGPT OAuth 的 OpenAI Responses 端点时，不再补充托管 `image_generation` 工具。
 - 明确生图请求优先选择同一模型服务中的 `openai:image` 端点，复用现有图片生成、下载和 Responses 事件转换能力。
+- Codex App 当前不会把服务端直接返回的 Responses `image_generation_call` 转成可见图片。图片桥接收到最终 Base64 图片并确认 `response.completed` 后，会额外输出一条助手 `message`，内容为 Markdown `data:image/...;base64,...` 图片；保留原生图片事件用于协议兼容和计费，并把助手消息同步写入完成响应的 `output`。
+- 只有收到非空最终图片结果后才生成助手图片消息；处理中事件和失败事件不会产生“生成好了”文本或空图片占位。
 - Codex App / CLI 带 `X-OpenAI-Internal-Codex-Responses-Lite: true` 或 `1` 的请求不会自动补充 `image_generation` 工具，也不会注入图片工具说明；请求头和客户端工具列表保持原样。
 - `gpt-5.6-sol` 已确认支持 Responses Lite，转发时保留 Lite 请求头；`gpt-5.5` 等未确认支持 Lite 的模型会移除该请求头，改走同一 Codex 上游的完整 Responses 能力。
 - 客户端已经声明 `image_gen` namespace、`image_gen.imagegen` 函数或同名 custom 工具时，不再补充托管的 `image_generation` 工具，避免同一请求同时存在两套图片工具。
@@ -47,6 +49,7 @@
 - 不影响 `openai:responses:compact`。
 - `openai:image` 仍走已有图片接口转换逻辑。
 - 图片调用开始后，必须收到非空图片结果和 `response.completed` 才能记录成功；提前 EOF 会返回明确失败。
+- Codex App 展示不再依赖客户端把原生 `image_generation_call` 保存成 `imageGeneration` 历史项；生成结果会同时以普通助手图片消息交付。
 - 第三方 `openai:image` 上游会收到真正的图片工具，而不是只有 `input` 和 `model` 的普通 Responses 请求。
 - 请求记录中仍保留用户原始请求，上游请求记录会体现系统补充后的工具和说明。
 - 使用记录和计费继续按用户请求的图片模型记录，例如 `gpt-image-2`；桥接主模型只作为上游执行细节保存。
@@ -67,3 +70,6 @@
 - 单元测试覆盖图片工具参数整理不会复制普通函数工具的 `description`、`parameters` 等字段。
 - 单元测试覆盖自定义桥接主模型时，顶层 `model` 使用自定义值，`tools[].model` 仍保留图片工具模型。
 - 单元测试覆盖 Chat/Responses 转第三方 `openai:image` 时会注入图片工具和 `tool_choice`。
+- 单元测试覆盖 `openai:image` 转 Codex Responses 时，最终图片结果会生成带 `data:image` Markdown 的助手 `message` 完成事件。
+- 单元测试覆盖没有最终图片结果、收到失败事件或完成事件缺失时不会生成助手图片消息。
+- 单元测试覆盖多图助手消息使用不冲突的 `output_index`，且完成响应的 `output` 与流事件一致。
