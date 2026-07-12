@@ -318,7 +318,7 @@ impl OpenAiImageResponsesStreamState {
         if data.is_empty() || data == "[DONE]" {
             return Ok(sse_block_bytes(block));
         }
-        let event: Value = serde_json::from_str(data)?;
+        let mut event: Value = serde_json::from_str(data)?;
         let event_type = event
             .get("type")
             .and_then(Value::as_str)
@@ -334,7 +334,7 @@ impl OpenAiImageResponsesStreamState {
         if event_type != "response.output_item.done" {
             return Ok(sse_block_bytes(block));
         }
-        let Some(item) = event.get("item").and_then(Value::as_object) else {
+        let Some(item) = event.get_mut("item").and_then(Value::as_object_mut) else {
             return Ok(sse_block_bytes(block));
         };
         if item.get("type").and_then(Value::as_str) != Some("image_generation_call") {
@@ -350,7 +350,9 @@ impl OpenAiImageResponsesStreamState {
         };
         let key = image_chat_output_key(item, result);
         if self.pending_image_keys.insert(key) {
-            self.pending_image_blocks.push(block.to_vec());
+            item.insert("status".to_string(), Value::String("completed".to_string()));
+            self.pending_image_blocks
+                .push(encode_json_sse(Some("response.output_item.done"), &event)?);
         }
         Ok(Vec::new())
     }

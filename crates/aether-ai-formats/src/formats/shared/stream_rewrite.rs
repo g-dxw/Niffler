@@ -864,7 +864,7 @@ data: {"type":"response.completed","response":{"id":"resp_1","status":"completed
         let output_item = rewriter
             .push_chunk(
                 br#"event: response.output_item.done
-data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"ig_native","status":"completed","result":"aGVsbG8=","output_format":"png"}}
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"ig_native","status":"generating","result":"aGVsbG8=","output_format":"png"}}
 
 "#,
             )
@@ -884,6 +884,8 @@ data: {"type":"response.completed","response":{"id":"resp_native","status":"comp
         assert!(output_text.contains("\"type\":\"image_generation_call\""));
         assert!(output_text.contains("\"output\":[{"));
         assert!(output_text.contains("\"id\":\"ig_native\""));
+        assert!(output_text.contains("\"status\":\"completed\""));
+        assert!(!output_text.contains("\"status\":\"generating\""));
         assert!(!output_text.contains("\"type\":\"message\""));
         assert!(!output_text.contains("data:image/"));
     }
