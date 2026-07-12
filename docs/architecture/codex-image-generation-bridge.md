@@ -21,6 +21,7 @@
 - 模型读取完整会话并按语义选择工具。Niffler 不读取最后一条用户消息做关键词匹配，也不把自然语言请求提前改路由到 `openai:image`。
 - 顶层模型保持用户选择的 Responses 模型，图片工具模型默认使用 `gpt-image-2`。
 - 请求含原生 `image_generation` 工具时，移除 `X-OpenAI-Internal-Codex-Responses-Lite` 及请求体内对应的 Lite 镜像标记。Lite 端点不接受该托管工具；完整 Responses 端点已验证 `gpt-5.6-sol` 和 `gpt-5.6-terra` 都能执行图片工具。
+- 普通 Codex Responses 请求若携带布尔型 Lite 镜像标记，网关先将其规范为上游接受的字符串 `"true"` 或 `"false"`，不直接传递布尔值。
 - 没有图片工具的 `gpt-5.6-sol` 请求继续保留 Lite 请求头；不支持 Lite 的模型仍按原规则移除。
 - 已经声明 `image_gen` namespace、`image_gen.imagegen` 函数或同名 custom 工具时，不再补充第二套托管图片工具，避免冲突。
 - Provider 或 Endpoint 可以通过 `openai_responses_image_generation_tool_enabled: false` 关闭默认图片工具；第三方兼容端点仍需显式设为 `true` 才启用。

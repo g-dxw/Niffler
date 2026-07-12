@@ -58,6 +58,9 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
 fn normalizes_replayed_image_generation_call_for_codex_upstream() {
     let mut body = json!({
         "model": "gpt-5.6-sol",
+        "client_metadata": {
+            "ws_request_header_x_openai_internal_codex_responses_lite": true
+        },
         "input": [{
             "type": "image_generation_call",
             "id": "ig_123",
@@ -90,6 +93,33 @@ fn normalizes_replayed_image_generation_call_for_codex_upstream() {
             "status": "completed",
             "result": "aGVsbG8="
         })
+    );
+    assert!(body.get("client_metadata").is_none());
+}
+
+#[test]
+fn normalizes_boolean_codex_responses_lite_metadata_without_hosted_image_tool() {
+    let mut body = json!({
+        "model": "gpt-5.6-sol",
+        "client_metadata": {
+            "ws_request_header_x_openai_internal_codex_responses_lite": true
+        },
+        "input": [{"role": "user", "content": "hello"}]
+    });
+
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
+        &mut body,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        None,
+        false,
+    );
+
+    assert_eq!(
+        body["client_metadata"]["ws_request_header_x_openai_internal_codex_responses_lite"],
+        json!("true")
     );
 }
 

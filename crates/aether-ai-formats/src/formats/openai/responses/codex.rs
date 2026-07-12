@@ -272,6 +272,20 @@ fn remove_codex_responses_lite_metadata(body_object: &mut serde_json::Map<String
     }
 }
 
+fn normalize_codex_responses_lite_metadata(body_object: &mut serde_json::Map<String, Value>) {
+    const LITE_METADATA_KEY: &str = "ws_request_header_x_openai_internal_codex_responses_lite";
+    let Some(value) = body_object
+        .get_mut("client_metadata")
+        .and_then(Value::as_object_mut)
+        .and_then(|metadata| metadata.get_mut(LITE_METADATA_KEY))
+    else {
+        return;
+    };
+    if let Some(enabled) = value.as_bool() {
+        *value = Value::String(enabled.to_string());
+    }
+}
+
 fn normalize_codex_replayed_image_generation_calls(
     body_object: &mut serde_json::Map<String, Value>,
 ) {
@@ -828,6 +842,7 @@ pub fn apply_codex_openai_responses_special_body_edits_with_bridge_config(
     strip_codex_hosted_tool_choice_name_for_backend(body_object);
     normalize_codex_responses_string_input(body_object);
     normalize_codex_replayed_image_generation_calls(body_object);
+    normalize_codex_responses_lite_metadata(body_object);
 
     apply_openai_responses_image_generation_bridge_body_edits(
         provider_request_body,
