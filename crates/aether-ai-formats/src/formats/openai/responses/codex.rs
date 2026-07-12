@@ -26,7 +26,7 @@ const CODEX_IMAGE_TOOL_DEFAULT_SIZE: &str = "1024x1024";
 const CODEX_IMAGE_TOOL_DEFAULT_QUALITY: &str = "high";
 const CODEX_IMAGE_TOOL_DEFAULT_BACKGROUND: &str = "auto";
 const CODEX_IMAGE_GENERATION_BRIDGE_MARKER: &str = "<niffler-codex-image-generation>";
-const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user asks for raster image generation or editing, use the OpenAI Responses native `image_generation` tool attached to this request. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
+const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user's requested outcome is a raster image or image edit, you MUST call the OpenAI Responses native `image_generation` tool attached to this request. Infer that intent from the full semantic request, not from specific keywords. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Never substitute a prompt, external URL, Markdown image, or an unsupported claim of completion for a successful tool result. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
 const OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str = "x-openai-internal-codex-responses-lite";
 const UUID_NAMESPACE_OID_BYTES: [u8; 16] = [
     0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
@@ -269,6 +269,23 @@ fn remove_codex_responses_lite_metadata(body_object: &mut serde_json::Map<String
         });
     if remove_container {
         body_object.remove("client_metadata");
+    }
+}
+
+fn normalize_codex_replayed_image_generation_calls(
+    body_object: &mut serde_json::Map<String, Value>,
+) {
+    let Some(input) = body_object.get_mut("input").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for item in input {
+        let Some(item) = item.as_object_mut() else {
+            continue;
+        };
+        if item.get("type").and_then(Value::as_str) != Some("image_generation_call") {
+            continue;
+        }
+        item.retain(|key, _| matches!(key.as_str(), "type" | "id" | "status" | "result"));
     }
 }
 
@@ -810,6 +827,7 @@ pub fn apply_codex_openai_responses_special_body_edits_with_bridge_config(
     strip_codex_hosted_tool_names_for_backend(body_object);
     strip_codex_hosted_tool_choice_name_for_backend(body_object);
     normalize_codex_responses_string_input(body_object);
+    normalize_codex_replayed_image_generation_calls(body_object);
 
     apply_openai_responses_image_generation_bridge_body_edits(
         provider_request_body,

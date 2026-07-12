@@ -39,6 +39,10 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
         .as_str()
         .unwrap_or_default()
         .contains("Responses native `image_generation` tool"));
+    assert!(body["instructions"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("MUST call"));
     assert!(body["tools"]
         .as_array()
         .into_iter()
@@ -48,6 +52,45 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
     assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
     assert_eq!(body["parallel_tool_calls"], true);
     assert!(body.get("reasoning").is_none());
+}
+
+#[test]
+fn normalizes_replayed_image_generation_call_for_codex_upstream() {
+    let mut body = json!({
+        "model": "gpt-5.6-sol",
+        "input": [{
+            "type": "image_generation_call",
+            "id": "ig_123",
+            "status": "completed",
+            "result": "aGVsbG8=",
+            "action": "generate",
+            "background": "auto",
+            "output_format": "png",
+            "quality": "auto",
+            "revised_prompt": "revised",
+            "size": "1024x1024"
+        }]
+    });
+
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
+        &mut body,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        None,
+        true,
+    );
+
+    assert_eq!(
+        body["input"][0],
+        json!({
+            "type": "image_generation_call",
+            "id": "ig_123",
+            "status": "completed",
+            "result": "aGVsbG8="
+        })
+    );
 }
 
 #[test]

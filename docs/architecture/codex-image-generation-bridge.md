@@ -26,6 +26,8 @@
 - Provider 或 Endpoint 可以通过 `openai_responses_image_generation_tool_enabled: false` 关闭默认图片工具；第三方兼容端点仍需显式设为 `true` 才启用。
 - 顶层模型为 `gpt-image-*`、请求路径为 `openai:image`、或 `tool_choice` 明确选择 `image_generation` 时，仍可进入现有专用图片桥接链路。这些都是协议字段，不是文本匹配。
 - 流处理按 SSE 事件块透传 `event:` 与 `data:`，保留原生 `image_generation_call`。如果终态 `response.output` 为空，可使用此前的 `response.output_item.done.item` 重建终态输出，但不得追加 Markdown Base64 助手消息。
+- 下一轮请求回放 `image_generation_call` 时，只保留上游接受的 `type`、`id`、`status`、`result`；移除响应展示使用的 `action`、`background`、`output_format`、`quality`、`revised_prompt`、`size` 等字段。
+- 桥接指令要求模型在用户目标是栅格成品或编辑结果时必须调用托管工具；不得用提示词、外部链接、Markdown 图片或没有工具结果的“已经完成”代替。
 - ChatGPT Codex OAuth 上游继续强制 `store: false`；图片预览依赖当前响应中的原生图片事件，不依赖上游存储。
 - 文本用量读取上游 `usage`；图片工具用量读取 `tool_usage.image_gen`。计费估算、日志和补偿统计不得把 `result`、`partial_image_b64` 等二进制字段计作文本 Token。
 
@@ -49,4 +51,5 @@
 - 单元测试覆盖带图片工具时移除 Lite 请求头、没有图片工具的 Sol 保留 Lite 请求头。
 - 单元测试覆盖同格式 Responses 图片流原样保留图片事件，不产生 Markdown Base64 助手消息；普通文本流保持不变，失败或提前结束不伪造成功结果。
 - 验证图片后的下一轮请求不会将上一张图片的 Base64 作为普通文本重新发送，输入 Token 不出现异常增长。
+- 验证带完整上游图片展示字段的 `image_generation_call` 可以在下一轮归一化后继续对话。
 - 验证直连 Niffler 与经下游中转两种路径都无需客户端额外请求头。
