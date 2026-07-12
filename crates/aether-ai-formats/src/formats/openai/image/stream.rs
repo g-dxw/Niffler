@@ -365,53 +365,14 @@ impl OpenAiImageResponsesStreamState {
 
         let pending_blocks = std::mem::take(&mut self.pending_image_blocks);
         self.pending_image_keys.clear();
-        let mut next_output_index = completed_event
-            .get("response")
-            .and_then(|response| response.get("output"))
-            .and_then(Value::as_array)
-            .map(|output| output.len() as u64)
-            .unwrap_or_default();
-        for block in &pending_blocks {
-            if let Some(index) = image_output_index_from_sse_block(block) {
-                next_output_index = next_output_index.max(index.saturating_add(1));
-            }
-        }
-
         let mut output = Vec::new();
-        let mut visible_items = Vec::new();
+        let mut image_items = Vec::new();
         for block in pending_blocks {
             output.extend(sse_block_bytes(&block));
-            let Some((item, markdown)) = image_item_and_markdown_from_sse_block(&block)? else {
+            let Some(item) = image_item_from_sse_block(&block)? else {
                 continue;
             };
-            let item_id = item
-                .get("id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or("image");
-            let visible_item = serde_json::json!({
-                "id": format!("msg_{item_id}"),
-                "type": "message",
-                "status": "completed",
-                "role": "assistant",
-                "phase": "final_answer",
-                "content": [{
-                    "type": "output_text",
-                    "text": markdown,
-                    "annotations": []
-                }]
-            });
-            output.extend(encode_json_sse(
-                Some("response.output_item.done"),
-                &serde_json::json!({
-                    "type": "response.output_item.done",
-                    "output_index": next_output_index,
-                    "item": visible_item.clone(),
-                }),
-            )?);
-            visible_items.push(visible_item);
-            next_output_index = next_output_index.saturating_add(1);
+            image_items.push(Value::Object(item));
         }
         if let Some(response) = completed_event
             .get_mut("response")
@@ -421,7 +382,9 @@ impl OpenAiImageResponsesStreamState {
                 .entry("output")
                 .or_insert_with(|| Value::Array(Vec::new()));
             if let Some(response_output) = response_output.as_array_mut() {
-                response_output.extend(visible_items);
+                if response_output.is_empty() {
+                    response_output.extend(image_items);
+                }
             }
         }
         output.extend(encode_json_sse(
@@ -459,41 +422,24 @@ fn parse_sse_block_data(block: &[u8]) -> Result<Option<Value>, AiSurfaceFinalize
     Ok(Some(serde_json::from_str(data)?))
 }
 
-fn image_output_index_from_sse_block(block: &[u8]) -> Option<u64> {
-    parse_sse_block_data(block)
-        .ok()
-        .flatten()
-        .and_then(|event| event.get("output_index").and_then(Value::as_u64))
-}
-
-fn image_item_and_markdown_from_sse_block(
+fn image_item_from_sse_block(
     block: &[u8],
-) -> Result<Option<(Map<String, Value>, String)>, AiSurfaceFinalizeError> {
+) -> Result<Option<Map<String, Value>>, AiSurfaceFinalizeError> {
     let Some(event) = parse_sse_block_data(block)? else {
         return Ok(None);
     };
     let Some(item) = event.get("item").and_then(Value::as_object).cloned() else {
         return Ok(None);
     };
-    let Some(result) = item
+    let has_result = item
         .get("result")
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+        .is_some_and(|value| !value.is_empty());
+    if !has_result {
         return Ok(None);
-    };
-    let output_format = item
-        .get("output_format")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(CODEX_OPENAI_IMAGE_DEFAULT_OUTPUT_FORMAT);
-    let markdown = image_chat_markdown(&OpenAiImageChatFrame {
-        b64_json: result.to_string(),
-        output_format: Some(output_format.to_string()),
-    });
-    Ok(Some((item, markdown)))
+    }
+    Ok(Some(item))
 }
 
 impl OpenAiImageChatStreamState {

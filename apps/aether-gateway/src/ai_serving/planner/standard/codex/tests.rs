@@ -285,6 +285,35 @@ fn removes_codex_responses_lite_header_when_sol_uses_hosted_image_tool() {
 }
 
 #[test]
+fn removes_codex_responses_lite_metadata_when_sol_uses_hosted_image_tool() {
+    let mut body = json!({
+        "model": "gpt-5.6-sol",
+        "client_metadata": {
+            "ws_request_header_x_openai_internal_codex_responses_lite": true,
+            "x-codex-installation-id": "install-123"
+        }
+    });
+
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
+        &mut body,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        None,
+        true,
+    );
+
+    assert!(body["client_metadata"]
+        .get("ws_request_header_x_openai_internal_codex_responses_lite")
+        .is_none());
+    assert_eq!(
+        body["client_metadata"]["x-codex-installation-id"],
+        "install-123"
+    );
+}
+
+#[test]
 fn respects_existing_codex_request_and_session_headers() {
     let mut headers = BTreeMap::new();
     headers.insert(

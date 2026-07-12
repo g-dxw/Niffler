@@ -1175,8 +1175,8 @@ async fn gateway_routes_explicit_openai_responses_image_tool_to_openai_image_pla
     assert_eq!(status, StatusCode::OK, "{response_text}");
     assert!(response_text.contains("response.output_item.done"));
     assert!(response_text.contains("image_generation_call"));
-    assert!(response_text.contains("\"type\":\"message\""));
-    assert!(response_text.contains("![generated image](data:image/png;base64,aGVsbG8=)"));
+    assert!(!response_text.contains("\"type\":\"message\""));
+    assert!(!response_text.contains("data:image/"));
 
     let seen_plan = seen_execution_plan
         .lock()

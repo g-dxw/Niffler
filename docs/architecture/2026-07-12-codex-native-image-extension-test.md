@@ -1,5 +1,7 @@
 # Codex 原生生图隔离验证
 
+> 状态：历史隔离测试记录，已由 `codex-image-generation-bridge.md` 中的服务端托管生图方案取代，不代表当前生产设计。
+
 ## 目标
 
 在不修改生产实例和客户路由的前提下，验证 Codex App 通过 Niffler 使用原生 `image_gen` 扩展时，能够完成图片生成、本地保存和图片预览，并且后续请求不会把图片 Base64 当作文本 token 计费。

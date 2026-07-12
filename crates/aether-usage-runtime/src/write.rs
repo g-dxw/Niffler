@@ -2775,6 +2775,9 @@ fn is_binary_payload_field(key: &str, value: &Value, object_type: Option<&str>) 
     };
     match (object_type, key) {
         (_, "b64_json") => true,
+        (Some("image_generation_call"), "result") => true,
+        (Some("response.image_generation_call.partial_image"), "partial_image_b64") => true,
+        (Some("image_generation.completed" | "image_edit.completed"), "result") => true,
         (Some("input_image"), "image_url") => text.starts_with("data:image/"),
         (Some("input_audio"), "data") => true,
         (Some("input_file"), "file_data") => true,
@@ -3220,6 +3223,37 @@ mod tests {
             .expect("small binary request should be estimated");
         let large = estimate_request_usage(&request_with_binary(&"A".repeat(1_000_000)))
             .expect("large binary request should be estimated");
+
+        assert_eq!(small.input_tokens, large.input_tokens);
+        assert!(
+            large.input_tokens > 0,
+            "text metadata must still be counted"
+        );
+    }
+
+    #[test]
+    fn request_usage_estimate_ignores_native_image_generation_result_bytes() {
+        let request_with_native_image = |binary_bytes: &str| {
+            json!({
+                "model": "gpt-5.6-sol",
+                "input": [{
+                    "type": "image_generation_call",
+                    "id": "ig_123",
+                    "status": "completed",
+                    "result": binary_bytes,
+                    "revised_prompt": "A glass city at dusk"
+                }, {
+                    "type": "response.image_generation_call.partial_image",
+                    "partial_image_b64": binary_bytes,
+                    "partial_image_index": 0
+                }]
+            })
+        };
+
+        let small = estimate_request_usage(&request_with_native_image("AAAA"))
+            .expect("small native image request should be estimated");
+        let large = estimate_request_usage(&request_with_native_image(&"A".repeat(1_000_000)))
+            .expect("large native image request should be estimated");
 
         assert_eq!(small.input_tokens, large.input_tokens);
         assert!(

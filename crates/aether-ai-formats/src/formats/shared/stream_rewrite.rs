@@ -809,7 +809,7 @@ data: {"type":"response.completed","response":{"id":"resp_123","model":"gpt-imag
     }
 
     #[test]
-    fn rewrites_openai_image_stream_to_codex_responses_visible_image() {
+    fn rewrites_openai_image_stream_to_codex_native_image_event() {
         let report_context = json!({
             "provider_api_format": "openai:image",
             "client_api_format": "openai:responses",
@@ -841,14 +841,13 @@ data: {"type":"response.completed","response":{"id":"resp_1","status":"completed
         let output_text = String::from_utf8(output).expect("output should be utf8");
 
         assert!(output_text.contains("\"type\":\"image_generation_call\""));
-        assert!(output_text.contains("\"type\":\"message\""));
-        assert!(output_text.contains("\"role\":\"assistant\""));
-        assert!(output_text.contains("\"type\":\"output_text\""));
-        assert!(output_text.contains("![generated image](data:image/png;base64,aGVsbG8=)"));
+        assert!(!output_text.contains("\"type\":\"message\""));
+        assert!(!output_text.contains("\"type\":\"output_text\""));
+        assert!(!output_text.contains("data:image/"));
     }
 
     #[test]
-    fn rewrites_same_format_responses_hosted_image_to_visible_message() {
+    fn rewrites_same_format_responses_hosted_image_to_native_output() {
         let report_context = json!({
             "provider_api_format": "openai:responses",
             "client_api_format": "openai:responses",
@@ -875,16 +874,18 @@ data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image
         let output = rewriter
             .push_chunk(
                 br#"event: response.completed
-data: {"type":"response.completed","response":{"id":"resp_native","status":"completed","output":[{"type":"image_generation_call","id":"ig_native","status":"completed","result":"aGVsbG8="}]}}
+data: {"type":"response.completed","response":{"id":"resp_native","status":"completed","output":[]}}
 
 "#,
             )
-            .expect("completed response should release visible image");
+            .expect("completed response should release native image");
         let output_text = String::from_utf8(output).expect("output should be utf8");
 
         assert!(output_text.contains("\"type\":\"image_generation_call\""));
-        assert!(output_text.contains("\"type\":\"message\""));
-        assert!(output_text.contains("![generated image](data:image/png;base64,aGVsbG8=)"));
+        assert!(output_text.contains("\"output\":[{"));
+        assert!(output_text.contains("\"id\":\"ig_native\""));
+        assert!(!output_text.contains("\"type\":\"message\""));
+        assert!(!output_text.contains("data:image/"));
     }
 
     #[test]
@@ -971,7 +972,7 @@ data: {"type":"response.failed","response":{"status":"failed","error":{"message"
     }
 
     #[test]
-    fn openai_image_responses_multi_image_messages_use_non_conflicting_indexes() {
+    fn openai_image_responses_multi_image_events_remain_native() {
         let report_context = json!({
             "provider_api_format": "openai:image",
             "client_api_format": "openai:responses",
@@ -1004,12 +1005,13 @@ data: {"type":"response.completed","response":{"id":"resp_1","status":"completed
             .filter_map(|block| block.lines().find_map(|line| line.strip_prefix("data: ")))
             .filter_map(|data| serde_json::from_str::<serde_json::Value>(data).ok())
             .collect::<Vec<_>>();
-        let message_indexes = events
+        let image_events = events
             .iter()
-            .filter(|event| event["item"]["type"] == "message")
-            .filter_map(|event| event["output_index"].as_u64())
-            .collect::<Vec<_>>();
-        assert_eq!(message_indexes, vec![2, 3]);
+            .filter(|event| event["item"]["type"] == "image_generation_call")
+            .count();
+        assert_eq!(image_events, 2);
+        assert!(!completed_text.contains("\"type\":\"message\""));
+        assert!(!completed_text.contains("data:image/"));
         let completed_event = events
             .iter()
             .find(|event| event["type"] == "response.completed")
@@ -1019,7 +1021,7 @@ data: {"type":"response.completed","response":{"id":"resp_1","status":"completed
                 .as_array()
                 .unwrap()
                 .len(),
-            4
+            2
         );
     }
 

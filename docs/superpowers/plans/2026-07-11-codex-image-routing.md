@@ -1,5 +1,7 @@
 # Codex Image Routing Implementation Plan
 
+> 状态：历史实施计划。当前行为以 `docs/architecture/codex-image-generation-bridge.md` 为准；其中追加 Markdown Base64 助手消息的方案已经废弃。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 Codex App 的模型按完整语义自主选择原生图片工具，并禁止残缺图片流被记录为成功。

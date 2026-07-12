@@ -258,6 +258,20 @@ fn apply_codex_image_generation_bridge_instructions(
     body_object.insert("instructions".to_string(), json!(instructions));
 }
 
+fn remove_codex_responses_lite_metadata(body_object: &mut serde_json::Map<String, Value>) {
+    const LITE_METADATA_KEY: &str = "ws_request_header_x_openai_internal_codex_responses_lite";
+    let remove_container = body_object
+        .get_mut("client_metadata")
+        .and_then(Value::as_object_mut)
+        .is_some_and(|metadata| {
+            metadata.remove(LITE_METADATA_KEY);
+            metadata.is_empty()
+        });
+    if remove_container {
+        body_object.remove("client_metadata");
+    }
+}
+
 fn apply_codex_openai_image_tool_overrides(
     body_object: &mut serde_json::Map<String, Value>,
     fallback_image_model: Option<&str>,
@@ -566,6 +580,9 @@ pub fn apply_openai_responses_image_generation_bridge_body_edits(
         ensure_codex_openai_responses_image_generation_tool(body_object);
         ensure_codex_openai_responses_auto_tool_choice(body_object);
         apply_codex_image_generation_bridge_instructions(body_object);
+    }
+    if codex_openai_responses_has_image_generation_tool(body_object) {
+        remove_codex_responses_lite_metadata(body_object);
     }
 
     let image_model = codex_openai_responses_model_references_image_generation(body_object);
