@@ -875,6 +875,7 @@ fn normalize_quality_value(value: &Value) -> Option<Value> {
         .filter(|value| !value.is_empty())?
         .to_ascii_lowercase();
     let normalized = match quality.as_str() {
+        "auto" => "auto",
         "low" => "low",
         "medium" => "medium",
         "high" => "high",
@@ -1396,6 +1397,23 @@ mod tests {
             request.requested_model.as_deref(),
             Some("Custom/Image-Model:V1")
         );
+    }
+
+    #[test]
+    fn normalize_generate_request_preserves_codex_native_auto_quality() {
+        let parts = request_parts("/v1/images/generations", Some("application/json"));
+        let request = normalize_openai_image_request(
+            &parts,
+            &json!({
+                "model": "gpt-image-2",
+                "prompt": "generate image",
+                "quality": "auto"
+            }),
+            None,
+        )
+        .expect("Codex native auto quality should normalize");
+
+        assert_eq!(request.tool.get("quality"), Some(&json!("auto")));
     }
 
     #[test]
