@@ -886,6 +886,12 @@ const navigation = computed(() => {
       ]
     },
     {
+      title: '工具',
+      items: [
+        { name: '生图工作台', href: '/dashboard/image-studio', icon: Zap },
+      ]
+    },
+    {
       title: '账户',
       items: [
          { name: '钱包中心', href: '/dashboard/wallet', icon: Wallet },

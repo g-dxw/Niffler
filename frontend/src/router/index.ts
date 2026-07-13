@@ -161,6 +161,11 @@ const routes: RouteRecordRaw[] = [
         component: () => importWithRetry(() => import('@/views/user/ModelCatalog.vue'))
       },
       {
+        path: 'image-studio',
+        name: 'ImageStudio',
+        component: () => importWithRetry(() => import('@/views/user/ImageStudio.vue'))
+      },
+      {
         path: 'async-tasks',
         name: 'UserAsyncTasks',
         component: () => importWithRetry(() => import('@/views/admin/AsyncTasks.vue'))
