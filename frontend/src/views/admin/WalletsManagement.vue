@@ -1110,7 +1110,7 @@
               </div>
 
               <div class="min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-background">
-                <Table class="w-full min-w-[900px] table-fixed">
+                <Table class="w-full min-w-[780px] table-fixed">
                   <colgroup>
                     <col :style="{ width: redeemCodeTableColumnWidths.code }">
                     <col :style="{ width: redeemCodeTableColumnWidths.status }">
@@ -1779,17 +1779,17 @@ const {
 
 type RedeemCodeTableColumnKey = 'code' | 'status' | 'redeemer' | 'order' | 'actions'
 const redeemCodeTableColumns: ResizableTableColumn<RedeemCodeTableColumnKey>[] = [
-  { key: 'code', width: '260px', minWidth: 220 },
-  { key: 'status', width: '120px', minWidth: 110 },
-  { key: 'redeemer', width: '180px', minWidth: 150 },
-  { key: 'order', width: '220px', minWidth: 180 },
-  { key: 'actions', width: '120px', minWidth: 110 },
+  { key: 'code', width: '220px', minWidth: 200 },
+  { key: 'status', width: '100px', minWidth: 90 },
+  { key: 'redeemer', width: '150px', minWidth: 130 },
+  { key: 'order', width: '190px', minWidth: 160 },
+  { key: 'actions', width: '100px', minWidth: 90 },
 ]
 const {
   columnWidths: redeemCodeTableColumnWidths,
   startResize: handleRedeemCodeTableColumnResizeStart,
 } = useResizableTableColumns<RedeemCodeTableColumnKey>({
-  storageKey: 'wallet-redeem-codes-table-column-widths',
+  storageKey: 'wallet-redeem-codes-table-column-widths-v2',
   columns: redeemCodeTableColumns,
   defaultMinWidth: 84,
 })
