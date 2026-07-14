@@ -32,10 +32,14 @@
 - 桥接指令要求模型在用户目标是栅格成品或编辑结果时必须调用托管工具；不得用提示词、外部链接、Markdown 图片或没有工具结果的“已经完成”代替。
 - ChatGPT Codex OAuth 上游继续强制 `store: false`；图片预览依赖当前响应中的原生图片事件，不依赖上游存储。
 - 文本用量读取上游 `usage`；图片工具用量读取 `tool_usage.image_gen`。计费估算、日志和补偿统计不得把 `result`、`partial_image_b64` 等二进制字段计作文本 Token。
+- 同步 Images 接口默认开启长连接心跳：等待上游 SSE 生成结果时，每 15 秒向客户端输出 JSON 合法空白，避免 Cloudflare 在 120 秒无下行数据时中断请求。
+- 心跳包装覆盖完整的账号候选重试流程；单个上游失败后仍可切换账号，不会因为已开始下行响应而跳过重试。
+- 心跳开启后外层 HTTP 状态固定为 200，上游错误放在标准 JSON `error` 中，并在 `error.upstream_status` 保留原状态码。管理员仍可显式关闭心跳，但经 CDN 或反向代理部署时不建议关闭。
 
 ## 影响范围
 
 - 影响最终上游端点为 `openai:responses` 的 Codex / ChatGPT OAuth 请求。
+- 影响 `/v1/images/generations`、`/v1/images/edits` 等同步 OpenAI Images 请求的等待方式；非图片接口不受影响。
 - 开启配置的第三方 OpenAI 兼容 Responses 端点使用相同行为。
 - 普通文本请求会多携带一个托管图片工具声明，由模型决定是否调用；客户端和下游中转无需增加 `X-OpenAI-Actor-Authorization`。
 - 带图片工具的 Sol 请求改用完整 Responses 端点；没有图片工具的 Sol 请求仍可使用 Lite。
@@ -55,3 +59,5 @@
 - 验证图片后的下一轮请求不会将上一张图片的 Base64 作为普通文本重新发送，输入 Token 不出现异常增长。
 - 验证带完整上游图片展示字段的 `image_generation_call` 可以在下一轮归一化后继续对话。
 - 验证直连 Niffler 与经下游中转两种路径都无需客户端额外请求头。
+- 验证同步图片生成超过 120 秒时，经 Cloudflare 的连接仍持续存活，最终返回可解析图片 JSON。
+- 验证心跳模式下第一个账号返回可重试错误时，网关会继续尝试下一个账号；全部失败时响应体包含 `error.upstream_status`。

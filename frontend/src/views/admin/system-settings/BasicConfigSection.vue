@@ -163,10 +163,10 @@
               for="enable-openai-image-sync-heartbeat"
               class="cursor-pointer"
             >
-              同步生图心跳
+              同步生图保活
             </Label>
             <p class="text-xs text-muted-foreground">
-              开启后同步生图外层 HTTP 状态固定为 200，上游失败需读取响应体 error.upstream_status
+              避免超时中断；错误状态写入响应体
             </p>
           </div>
         </div>
