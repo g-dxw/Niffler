@@ -8,7 +8,7 @@
 
 ### Current Phase
 
-Review Phase 5
+Review Phase 6
 
 ### Phases
 
@@ -16,12 +16,12 @@ Review Phase 5
 - [x] Review Phase 2：逐项审查模型版本管理、测试脚本、文档和任务记录
 - [x] Review Phase 3：先更新设计记录，再修复审查问题并补充测试
 - [x] Review Phase 4：运行格式、静态检查和单元测试；真实上游模型目录验证安排在生产部署后执行
-- [ ] Review Phase 5：按文件清单暂存并创建约定式提交，推送远端
-- [ ] Review Phase 6：等待生产镜像构建，部署 hd0526 并完成两次健康检查和模型目录验证
+- [x] Review Phase 5：按文件清单暂存并创建约定式提交，推送远端
+- [x] Review Phase 6：等待生产镜像构建，部署 hd0526 并完成两次健康检查和模型目录验证
 
 ### Status
 
-in_progress
+complete
 
 ### Errors Encountered
 
@@ -30,6 +30,9 @@ in_progress
 | `planning-with-files` 恢复脚本读到旧会话中与当前工作区不一致的描述 | 恢复未同步上下文 | 以当前 `git status`、完整差异和现有计划文件为准，旧描述不作为本次审查依据 |
 | 新增空模型目录回归测试后按预期失败：成功数为 1，预期为 0 | 验证 HTTP 200 空目录不会清空权限 | 将空目录改为失败结果并保留原有权限和缓存，随后重新运行测试 |
 | 将提交接到 `eb44f662` 后，生图架构文档出现一处内容冲突 | 保留已上线的同步图片保活说明，同时合并 Codex App 请求头结论 | 手工合并两组验证要求并完成 rebase，代码文件无冲突 |
+| 首次触发镜像工作流时，GitHub CLI 使用了错误的默认仓库 | 直接运行 `gh workflow run app-image.yml` | 显式指定 `-R ryfineZ/Niffler` 后成功触发生产镜像构建 |
+| 首次生产模型验证脚本存在 shell 引号错误，随后又使用了错误的管理鉴权头 | 调用本机管理接口验证三个号池 | 改用编码后的 Python 脚本，并按代码定义使用 `x-aether-admin-*` 请求头；Plus、Pro、Team 均验证成功 |
+| hd0526 没有安装 `rg` | 筛选最近 15 分钟容器错误日志 | 改用 `grep -Eai`，两个容器均未发现 `panic`、`fatal` 或 `error` |
 
 ---
 
