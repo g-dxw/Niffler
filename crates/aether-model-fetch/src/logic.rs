@@ -6,6 +6,8 @@ use aether_data_contracts::repository::provider_catalog::{
 use regex::Regex;
 use serde_json::{json, Value};
 
+use crate::config::{codex_model_fetch_client_version, is_valid_codex_model_fetch_client_version};
+
 const MODEL_FETCH_FORMAT_PRIORITY: &[&[&str]] = &[
     &[
         "openai:chat",
@@ -62,13 +64,32 @@ pub fn build_models_fetch_url(
     endpoint_api_format: &str,
     base_url: &str,
 ) -> Option<(String, String)> {
+    build_models_fetch_url_with_codex_client_version(
+        provider_type,
+        endpoint_api_format,
+        base_url,
+        None,
+    )
+}
+
+pub fn build_models_fetch_url_with_codex_client_version(
+    provider_type: &str,
+    endpoint_api_format: &str,
+    base_url: &str,
+    codex_client_version: Option<&str>,
+) -> Option<(String, String)> {
     let api_format = normalize_api_format(endpoint_api_format);
     if !endpoint_supports_rust_models_fetch(&api_format) {
         return None;
     }
     let provider_type = provider_type.trim().to_ascii_lowercase();
     let url = if provider_type == "codex" && api_format.starts_with("openai:") {
-        build_codex_models_url(base_url)
+        let client_version = codex_client_version
+            .map(str::trim)
+            .filter(|value| is_valid_codex_model_fetch_client_version(value))
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(codex_model_fetch_client_version);
+        build_codex_models_url(base_url, &client_version)
     } else if api_format.starts_with("openai:") || api_format.starts_with("claude:") {
         build_v1_models_url(base_url)
     } else if api_format.starts_with("gemini:") {
@@ -492,7 +513,7 @@ fn build_v1_models_url(base_url: &str) -> Option<String> {
     Some(url)
 }
 
-fn build_codex_models_url(base_url: &str) -> Option<String> {
+fn build_codex_models_url(base_url: &str, client_version: &str) -> Option<String> {
     let (trimmed_base_url, query) = split_url_query(base_url);
     let trimmed_base_url = trimmed_base_url.trim_end_matches('/');
     if trimmed_base_url.is_empty() {
@@ -518,7 +539,8 @@ fn build_codex_models_url(base_url: &str) -> Option<String> {
     if !has_client_version {
         let separator = if url.contains('?') { '&' } else { '?' };
         url.push(separator);
-        url.push_str("client_version=0.128.0-alpha.1");
+        url.push_str("client_version=");
+        url.push_str(client_version);
     }
     Some(url)
 }
@@ -772,8 +794,39 @@ mod tests {
                 "https://chatgpt.com/backend-api/codex"
             ),
             Some((
-                "https://chatgpt.com/backend-api/codex/models?client_version=0.128.0-alpha.1"
-                    .to_string(),
+                "https://chatgpt.com/backend-api/codex/models?client_version=0.144.1".to_string(),
+                "openai:responses".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn build_models_fetch_url_accepts_validated_codex_client_version() {
+        assert_eq!(
+            super::build_models_fetch_url_with_codex_client_version(
+                "codex",
+                "openai:responses",
+                "https://chatgpt.com/backend-api/codex",
+                Some("0.144.3"),
+            ),
+            Some((
+                "https://chatgpt.com/backend-api/codex/models?client_version=0.144.3".to_string(),
+                "openai:responses".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn codex_endpoint_client_version_has_highest_priority() {
+        assert_eq!(
+            super::build_models_fetch_url_with_codex_client_version(
+                "codex",
+                "openai:responses",
+                "https://chatgpt.com/backend-api/codex?client_version=0.143.0",
+                Some("0.144.3"),
+            ),
+            Some((
+                "https://chatgpt.com/backend-api/codex/models?client_version=0.143.0".to_string(),
                 "openai:responses".to_string()
             ))
         );

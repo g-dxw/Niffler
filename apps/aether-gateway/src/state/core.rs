@@ -232,6 +232,7 @@ impl AppState {
             execution_runtime_sync_override: None,
             data: Arc::clone(&data),
             runtime_state: runtime_state.clone(),
+            codex_model_fetch_client_version_cache: Arc::new(StdMutex::new(None)),
             usage_runtime: Arc::new(usage::UsageRuntime::disabled()),
             request_candidate_status_write_queue: Arc::new(RequestCandidateStatusWriteQueue::new()),
             video_tasks: Arc::new(VideoTaskService::new(

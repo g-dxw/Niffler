@@ -2,7 +2,9 @@
 
 ## 目标
 
-让通过 Codex / ChatGPT OAuth 账号转发的普通 Responses 请求具备原生图片生成能力。模型根据完整语义自主决定是否调用 `image_generation`，Niffler 不再通过自然语言关键词判断生图意图；图片结果按 Responses 原生 `image_generation_call` 返回，由 Codex App 直接预览。
+让通过 Codex / ChatGPT OAuth 账号转发的普通 Responses 请求具备托管图片生成能力。模型根据完整语义自主决定是否调用 `image_generation`，Niffler 不再通过自然语言关键词判断生图意图；图片结果按 Responses 原生 `image_generation_call` 返回。
+
+该服务端桥接只保证 Responses API 的协议结果，不负责让 Codex App 加载本机 `image_gen`。Codex App 是否提供本地生图工具由客户端在发出请求前决定；当前稳定使用方式仍需 Provider 配置携带非空的 `X-OpenAI-Actor-Authorization`。后续由 Niffler 定制版 CC Switch 自动写入该配置，用户无需手工编辑 TOML。
 
 ## 非目标
 
@@ -12,7 +14,7 @@
 - 不改变 `openai:responses:compact`。
 - 不移除或改写客户端已经声明的 function、custom、namespace 和客户端执行的工具搜索。
 - 不为未启用此能力的第三方 OpenAI 兼容端点注入图片工具。
-- 不依赖客户端配置 `X-OpenAI-Actor-Authorization`，也不远程启用客户端本地 `image_gen`。
+- 不声称服务端响应能够远程启用客户端本地 `image_gen`。
 - 不把图片 Base64 转换成 Markdown、普通助手文本或其他会进入后续文本上下文的内容。
 
 ## 行为变化
@@ -41,7 +43,8 @@
 - 影响最终上游端点为 `openai:responses` 的 Codex / ChatGPT OAuth 请求。
 - 影响 `/v1/images/generations`、`/v1/images/edits` 等同步 OpenAI Images 请求的等待方式；非图片接口不受影响。
 - 开启配置的第三方 OpenAI 兼容 Responses 端点使用相同行为。
-- 普通文本请求会多携带一个托管图片工具声明，由模型决定是否调用；客户端和下游中转无需增加 `X-OpenAI-Actor-Authorization`。
+- 普通文本请求会多携带一个托管图片工具声明，由模型决定是否调用；这项能力可用于直接 API 调用，但不等同于 Codex App 已加载本地 `image_gen`。
+- Codex App 使用本地生图工具时，客户端 Provider 配置必须携带非空的 `X-OpenAI-Actor-Authorization`。下游中转如果直接向终端用户提供 Codex App 接入，也必须通过配置模板或定制版 CC Switch 写入该请求头。
 - 带图片工具的 Sol 请求改用完整 Responses 端点；没有图片工具的 Sol 请求仍可使用 Lite。
 - `openai:responses:compact`、Gemini 协议和 Gemini 图片转换逻辑不受影响。
 - 图片调用开始后，必须收到非空结果和 `response.completed` 才记录成功；提前结束会明确失败。
@@ -58,6 +61,7 @@
 - 单元测试覆盖同格式 Responses 图片流原样保留图片事件，不产生 Markdown Base64 助手消息；普通文本流保持不变，失败或提前结束不伪造成功结果。
 - 验证图片后的下一轮请求不会将上一张图片的 Base64 作为普通文本重新发送，输入 Token 不出现异常增长。
 - 验证带完整上游图片展示字段的 `image_generation_call` 可以在下一轮归一化后继续对话。
-- 验证直连 Niffler 与经下游中转两种路径都无需客户端额外请求头。
+- API 层分别验证直连 Niffler 与下游中转的托管 `image_generation` 结果；该结果不能替代 Codex App 界面验收。
+- Codex App 界面验收必须使用包含 `X-OpenAI-Actor-Authorization` 的 Provider 配置，确认本地 `image_gen` 已加载、图片可以预览和继续编辑。
 - 验证同步图片生成超过 120 秒时，经 Cloudflare 的连接仍持续存活，最终返回可解析图片 JSON。
 - 验证心跳模式下第一个账号返回可重试错误时，网关会继续尝试下一个账号；全部失败时响应体包含 `error.upstream_status`。

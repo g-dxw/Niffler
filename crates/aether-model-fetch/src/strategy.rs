@@ -20,6 +20,7 @@ use crate::logic::{extract_error_message, parse_models_response_page, preset_mod
 use crate::transport::{
     build_antigravity_fetch_available_models_plan, build_gemini_cli_load_code_assist_plan,
     build_kiro_list_available_models_plan, build_standard_models_fetch_execution_plan,
+    build_standard_models_fetch_execution_plan_with_codex_client_version,
     build_vertex_models_fetch_execution_plan, ModelFetchTransportRuntime,
 };
 
@@ -80,8 +81,16 @@ pub async fn fetch_models_from_transports(
     runtime: &(impl ModelFetchTransportRuntime + ?Sized),
     transports: &[GatewayProviderTransportSnapshot],
 ) -> Result<ModelsFetchOutcome, String> {
+    fetch_models_from_transports_with_codex_client_version(runtime, transports, None).await
+}
+
+pub async fn fetch_models_from_transports_with_codex_client_version(
+    runtime: &(impl ModelFetchTransportRuntime + ?Sized),
+    transports: &[GatewayProviderTransportSnapshot],
+    codex_client_version: Option<&str>,
+) -> Result<ModelsFetchOutcome, String> {
     let strategy = select_model_fetch_strategy(transports)?;
-    execute_model_fetch_strategy(runtime, transports, strategy).await
+    execute_model_fetch_strategy(runtime, transports, strategy, codex_client_version).await
 }
 
 fn select_model_fetch_strategy(
@@ -149,6 +158,7 @@ async fn execute_model_fetch_strategy(
     runtime: &(impl ModelFetchTransportRuntime + ?Sized),
     transports: &[GatewayProviderTransportSnapshot],
     strategy: SelectedModelFetchStrategy,
+    codex_client_version: Option<&str>,
 ) -> Result<ModelsFetchOutcome, String> {
     let Some(first_transport) = transports.first() else {
         return Err("No transport snapshots available for models fetch".to_string());
@@ -161,7 +171,7 @@ async fn execute_model_fetch_strategy(
             true,
         )),
         ModelFetchStrategyKind::StandardTransport => {
-            fetch_standard_models(runtime, transports).await
+            fetch_standard_models(runtime, transports, codex_client_version).await
         }
         ModelFetchStrategyKind::Vertex => fetch_vertex_models(runtime, transports).await,
         ModelFetchStrategyKind::Antigravity => {
@@ -182,13 +192,14 @@ async fn execute_model_fetch_strategy(
 async fn fetch_standard_models(
     runtime: &(impl ModelFetchTransportRuntime + ?Sized),
     transports: &[GatewayProviderTransportSnapshot],
+    codex_client_version: Option<&str>,
 ) -> Result<ModelsFetchOutcome, String> {
     let mut all_models = Vec::new();
     let mut errors = Vec::new();
     let mut has_success = false;
 
     for transport in transports {
-        match fetch_standard_models_for_transport(runtime, transport).await {
+        match fetch_standard_models_for_transport(runtime, transport, codex_client_version).await {
             Ok(outcome) => {
                 all_models.extend(outcome.cached_models);
                 has_success |= outcome.has_success;
@@ -203,6 +214,7 @@ async fn fetch_standard_models(
 async fn fetch_standard_models_for_transport(
     runtime: &(impl ModelFetchTransportRuntime + ?Sized),
     transport: &GatewayProviderTransportSnapshot,
+    codex_client_version: Option<&str>,
 ) -> Result<ModelsFetchOutcome, String> {
     let mut all_models = Vec::new();
     let mut seen_ids = BTreeSet::new();
@@ -210,12 +222,18 @@ async fn fetch_standard_models_for_transport(
     let mut has_success = false;
 
     for _ in 0..20 {
-        let plan = build_standard_models_fetch_execution_plan(
-            runtime,
-            transport,
-            next_after_id.as_deref(),
-        )
-        .await?;
+        let plan = if codex_client_version.is_some() {
+            build_standard_models_fetch_execution_plan_with_codex_client_version(
+                runtime,
+                transport,
+                next_after_id.as_deref(),
+                codex_client_version,
+            )
+            .await?
+        } else {
+            build_standard_models_fetch_execution_plan(runtime, transport, next_after_id.as_deref())
+                .await?
+        };
         let result = runtime.execute_model_fetch_execution_plan(&plan).await?;
         let body_json = execution_result_json_body(&result)?;
         let parsed = parse_models_response_page(&transport.endpoint.api_format, &body_json)?;
@@ -1269,8 +1287,10 @@ mod tests {
         build_vertex_google_list_url, build_vertex_service_account_list_url,
         select_model_fetch_strategy, ModelFetchStrategy, ModelFetchStrategyKind,
     };
-    use crate::fetch_models_from_transports;
     use crate::transport::ModelFetchTransportRuntime;
+    use crate::{
+        fetch_models_from_transports, fetch_models_from_transports_with_codex_client_version,
+    };
 
     struct TestRuntime {
         executed_urls: Arc<Mutex<Vec<String>>>,
@@ -1559,10 +1579,38 @@ mod tests {
         let urls = executed_urls.lock().expect("executed_urls lock");
         assert_eq!(
             urls.as_slice(),
-            &["https://chatgpt.com/backend-api/codex/models?client_version=0.128.0-alpha.1"]
+            &["https://chatgpt.com/backend-api/codex/models?client_version=0.144.1"]
         );
         assert_eq!(outcome.fetched_model_ids, vec!["gpt-5.4-upstream"]);
         assert_eq!(outcome.cached_models.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn codex_transport_can_probe_discovered_client_version() {
+        let executed_urls = Arc::new(Mutex::new(Vec::new()));
+        let runtime = TestRuntime {
+            executed_urls: Arc::clone(&executed_urls),
+            response_body: json!({
+                "models": [{
+                    "id": "gpt-5.6-sol"
+                }]
+            }),
+            status_code: 200,
+        };
+        let outcome = fetch_models_from_transports_with_codex_client_version(
+            &runtime,
+            &[sample_codex_transport()],
+            Some("0.144.3"),
+        )
+        .await
+        .expect("models fetch should succeed");
+
+        let urls = executed_urls.lock().expect("executed_urls lock");
+        assert_eq!(
+            urls.as_slice(),
+            &["https://chatgpt.com/backend-api/codex/models?client_version=0.144.3"]
+        );
+        assert_eq!(outcome.fetched_model_ids, vec!["gpt-5.6-sol"]);
     }
 
     #[tokio::test]
