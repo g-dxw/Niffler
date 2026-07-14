@@ -251,6 +251,11 @@ function getButton(root: HTMLElement, text: string) {
     .find(button => button.textContent?.includes(text))
 }
 
+function getButtonExact(root: HTMLElement, text: string) {
+  return Array.from(root.querySelectorAll('button'))
+    .find(button => button.textContent?.trim() === text)
+}
+
 function getImportTextarea(root: HTMLElement) {
   const textarea = root.querySelector('textarea')
   if (!(textarea instanceof HTMLTextAreaElement)) {
@@ -259,7 +264,7 @@ function getImportTextarea(root: HTMLElement) {
   return textarea
 }
 
-describe('OAuthAccountDialog Grok import', () => {
+describe('OAuthAccountDialog imports', () => {
   beforeEach(() => {
     endpointMocks.startProviderLevelOAuth.mockReset()
     endpointMocks.completeProviderLevelOAuth.mockReset()
@@ -270,6 +275,12 @@ describe('OAuthAccountDialog Grok import', () => {
     endpointMocks.pollDeviceAuthorize.mockReset()
     endpointMocks.getAwsRegions.mockReset()
 
+    endpointMocks.startProviderLevelOAuth.mockResolvedValue({
+      authorization_url: 'https://example.com/oauth',
+      redirect_uri: 'http://localhost/callback',
+      provider_type: 'codex',
+      instructions: '',
+    })
     endpointMocks.importProviderRefreshToken.mockResolvedValue({
       provider_type: 'grok',
       has_refresh_token: false,
@@ -362,6 +373,75 @@ describe('OAuthAccountDialog Grok import', () => {
       undefined,
     )
     expect(endpointMocks.importProviderRefreshToken).not.toHaveBeenCalled()
+  })
+
+  it('routes a sub2api export object to the batch import task', async () => {
+    const root = mountDialog('codex')
+    await settle()
+
+    getButton(root, '导入授权')?.click()
+    await settle()
+
+    const raw = JSON.stringify({
+      exported_at: '2026-07-14T10:36:05Z',
+      proxies: [],
+      accounts: [{
+        name: 'ignored-custom-name',
+        platform: 'openai',
+        type: 'oauth',
+        credentials: {
+          access_token: 'pat-1',
+          email: 'first@example.com',
+          chatgpt_account_id: 'workspace-1',
+          chatgpt_user_id: 'user-1',
+          plan_type: 'team',
+        },
+      }],
+    })
+    const textarea = getImportTextarea(root)
+    textarea.value = raw
+    textarea.dispatchEvent(new Event('input'))
+    await settle()
+
+    getButtonExact(root, '导入')?.click()
+    await settle()
+
+    expect(endpointMocks.startBatchImportOAuthTask).toHaveBeenCalledWith(
+      'provider-1',
+      raw,
+      undefined,
+    )
+    expect(endpointMocks.importProviderRefreshToken).not.toHaveBeenCalled()
+  })
+
+  it('keeps a single account object with exported_at on the single import path', async () => {
+    const root = mountDialog('codex')
+    await settle()
+
+    getButton(root, '导入授权')?.click()
+    await settle()
+
+    const raw = JSON.stringify({
+      access_token: 'legacy-token',
+      email: 'legacy@example.com',
+      exported_at: '2026-07-14T10:36:05Z',
+    })
+    const textarea = getImportTextarea(root)
+    textarea.value = raw
+    textarea.dispatchEvent(new Event('input'))
+    await settle()
+
+    getButtonExact(root, '导入')?.click()
+    await settle()
+
+    expect(endpointMocks.importProviderRefreshToken).toHaveBeenCalledWith(
+      'provider-1',
+      expect.objectContaining({
+        access_token: 'legacy-token',
+        email: 'legacy@example.com',
+      }),
+    )
+    expect(endpointMocks.startBatchImportOAuthTask).not.toHaveBeenCalled()
   })
 
   it('extracts Grok account fields from a pasted browser cookie header', async () => {

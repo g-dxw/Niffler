@@ -21,6 +21,8 @@ pub(super) struct AdminProviderOAuthBatchImportRequest {
 
 #[derive(Debug, Clone)]
 pub(super) struct AdminProviderOAuthBatchImportEntry {
+    pub key_name: Option<String>,
+    pub validation_error: Option<String>,
     pub refresh_token: Option<String>,
     pub access_token: Option<String>,
     pub id_token: Option<String>,
@@ -200,6 +202,8 @@ fn extract_admin_provider_oauth_batch_import_entry(
                     access_token.as_deref(),
                 );
                 Some(AdminProviderOAuthBatchImportEntry {
+                    key_name: None,
+                    validation_error: None,
                     refresh_token,
                     access_token,
                     id_token: None,
@@ -378,6 +382,8 @@ fn extract_admin_provider_oauth_batch_import_entry(
                     .or_else(|| object.get("lastRefreshedAt")),
             );
             Some(AdminProviderOAuthBatchImportEntry {
+                key_name: None,
+                validation_error: None,
                 refresh_token,
                 access_token,
                 id_token,
@@ -402,6 +408,155 @@ fn extract_admin_provider_oauth_batch_import_entry(
     }
 }
 
+fn invalid_sub2api_oauth_import_entry(
+    error: impl Into<String>,
+) -> AdminProviderOAuthBatchImportEntry {
+    AdminProviderOAuthBatchImportEntry {
+        key_name: None,
+        validation_error: Some(error.into()),
+        refresh_token: None,
+        access_token: None,
+        id_token: None,
+        expires_at: None,
+        disabled: false,
+        account_id: None,
+        account_user_id: None,
+        plan_type: None,
+        pool_tier: None,
+        user_id: None,
+        email: None,
+        account_name: None,
+        sso_rw_token: None,
+        cf_cookies: None,
+        cf_clearance: None,
+        user_agent: None,
+        browser_profile: None,
+        last_refresh: None,
+    }
+}
+
+fn sub2api_oauth_import_string(object: &Map<String, Value>, fields: &[&str]) -> Option<String> {
+    fields
+        .iter()
+        .find_map(|field| coerce_admin_provider_oauth_import_str(object.get(*field)))
+}
+
+fn sub2api_oauth_key_name(
+    email: Option<&str>,
+    user_id: Option<&str>,
+    account_id: Option<&str>,
+    workspace_name: Option<&str>,
+) -> Option<String> {
+    let account_label = email.or(user_id)?.trim();
+    if account_label.is_empty() {
+        return None;
+    }
+
+    let workspace_label = workspace_name
+        .or(account_id)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != account_label);
+    Some(match workspace_label {
+        Some(workspace_label) => format!("{account_label} · {workspace_label}"),
+        None => account_label.to_string(),
+    })
+}
+
+fn extract_sub2api_oauth_import_entry(
+    provider_type: &str,
+    item: &Value,
+) -> AdminProviderOAuthBatchImportEntry {
+    let Value::Object(account) = item else {
+        return invalid_sub2api_oauth_import_entry("sub2api 账号条目必须是 JSON 对象");
+    };
+
+    if !matches!(
+        provider_type.trim().to_ascii_lowercase().as_str(),
+        "codex" | "chatgpt_web"
+    ) {
+        return invalid_sub2api_oauth_import_entry(
+            "当前 Provider 不支持 sub2api OpenAI OAuth 账号导入",
+        );
+    }
+
+    let platform = sub2api_oauth_import_string(account, &["platform"]);
+    if !platform
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("openai"))
+    {
+        return invalid_sub2api_oauth_import_entry(
+            "sub2api 账号平台不是 openai，不能导入当前 Provider",
+        );
+    }
+    let account_type = sub2api_oauth_import_string(account, &["type"]);
+    if !account_type
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case("oauth"))
+    {
+        return invalid_sub2api_oauth_import_entry(
+            "sub2api 账号类型不是 oauth，不能导入当前 Provider",
+        );
+    }
+
+    let Some(credentials) = account.get("credentials").and_then(Value::as_object) else {
+        return invalid_sub2api_oauth_import_entry("sub2api 账号缺少 credentials 凭证对象");
+    };
+    let Some(mut entry) = extract_admin_provider_oauth_batch_import_entry(
+        provider_type,
+        &Value::Object(credentials.clone()),
+    ) else {
+        return invalid_sub2api_oauth_import_entry(
+            "sub2api 账号凭证缺少 access_token 或 refresh_token",
+        );
+    };
+
+    let workspace_name = sub2api_oauth_import_string(
+        credentials,
+        &[
+            "workspace_name",
+            "space_name",
+            "chatgpt_account_name",
+            "organization_name",
+            "account_name",
+        ],
+    );
+    if workspace_name.is_some() {
+        entry.account_name = workspace_name.clone();
+    }
+    entry.key_name = sub2api_oauth_key_name(
+        entry.email.as_deref(),
+        entry.user_id.as_deref(),
+        entry.account_id.as_deref(),
+        workspace_name.as_deref(),
+    );
+    if entry.key_name.is_none() {
+        return invalid_sub2api_oauth_import_entry(
+            "sub2api 账号缺少邮箱或用户 ID，无法确认账号身份",
+        );
+    }
+    entry
+}
+
+fn sub2api_oauth_accounts(
+    object: &Map<String, Value>,
+) -> Option<Result<&Vec<Value>, &'static str>> {
+    let has_sub2api_type = object
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| matches!(value, "sub2api-data" | "sub2api-bundle"));
+    let has_legacy_sub2api_shape = object.contains_key("exported_at")
+        && object.contains_key("proxies")
+        && object.contains_key("accounts");
+    let looks_like_sub2api_export = has_sub2api_type || has_legacy_sub2api_shape;
+    looks_like_sub2api_export.then(|| {
+        object
+            .get("accounts")
+            .and_then(Value::as_array)
+            .ok_or("sub2api 导出文件缺少 accounts 数组")
+    })
+}
+
 pub(super) fn parse_admin_provider_oauth_batch_import_entries(
     provider_type: &str,
     raw_credentials: &str,
@@ -424,9 +579,18 @@ pub(super) fn parse_admin_provider_oauth_batch_import_entries(
     }
 
     if raw.starts_with('{') {
-        if let Ok(value @ serde_json::Value::Object(_)) =
-            serde_json::from_str::<serde_json::Value>(raw)
-        {
+        if let Ok(value @ serde_json::Value::Object(_)) = serde_json::from_str::<Value>(raw) {
+            if let Value::Object(object) = &value {
+                if let Some(accounts) = sub2api_oauth_accounts(object) {
+                    return match accounts {
+                        Ok(accounts) => accounts
+                            .iter()
+                            .map(|item| extract_sub2api_oauth_import_entry(provider_type, item))
+                            .collect(),
+                        Err(error) => vec![invalid_sub2api_oauth_import_entry(error)],
+                    };
+                }
+            }
             return extract_admin_provider_oauth_batch_import_entry(provider_type, &value)
                 .into_iter()
                 .collect();
@@ -654,6 +818,165 @@ mod tests {
         assert_eq!(entries[0].expires_at, Some(2_100_000_000));
         assert_eq!(entries[0].account_id.as_deref(), Some("acc-1"));
         assert_eq!(entries[0].email.as_deref(), Some("u@example.com"));
+    }
+
+    #[test]
+    fn parses_sub2api_export_accounts_with_account_and_workspace_names() {
+        let entries = parse_admin_provider_oauth_batch_import_entries(
+            "codex",
+            &json!({
+                "exported_at": "2026-07-14T10:36:05Z",
+                "proxies": [],
+                "accounts": [
+                    {
+                        "name": "ignored-custom-name",
+                        "platform": "openai",
+                        "type": "oauth",
+                        "credentials": {
+                            "access_token": "pat-1",
+                            "email": "first@example.com",
+                            "chatgpt_account_id": "workspace-1",
+                            "chatgpt_user_id": "user-1",
+                            "workspace_name": "研发空间",
+                            "plan_type": "team"
+                        }
+                    },
+                    {
+                        "name": "also-ignored",
+                        "platform": "openai",
+                        "type": "oauth",
+                        "credentials": {
+                            "access_token": "pat-2",
+                            "email": "second@example.com",
+                            "chatgpt_account_id": "workspace-1",
+                            "chatgpt_user_id": "user-2",
+                            "plan_type": "team"
+                        }
+                    }
+                ]
+            })
+            .to_string(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].access_token.as_deref(), Some("pat-1"));
+        assert_eq!(entries[0].account_id.as_deref(), Some("workspace-1"));
+        assert_eq!(entries[0].user_id.as_deref(), Some("user-1"));
+        assert_eq!(entries[0].plan_type.as_deref(), Some("team"));
+        assert_eq!(entries[0].account_name.as_deref(), Some("研发空间"));
+        assert_eq!(
+            entries[0].key_name.as_deref(),
+            Some("first@example.com · 研发空间")
+        );
+        assert_eq!(
+            entries[1].key_name.as_deref(),
+            Some("second@example.com · workspace-1")
+        );
+        assert_eq!(entries[0].validation_error, None);
+        assert_eq!(entries[1].validation_error, None);
+    }
+
+    #[test]
+    fn keeps_invalid_sub2api_accounts_as_failed_entries_without_token_data() {
+        let entries = parse_admin_provider_oauth_batch_import_entries(
+            "codex",
+            &json!({
+                "exported_at": "2026-07-14T10:36:05Z",
+                "proxies": [],
+                "accounts": [
+                    {
+                        "platform": "anthropic",
+                        "type": "oauth",
+                        "credentials": { "access_token": "secret-token" }
+                    },
+                    {
+                        "platform": "openai",
+                        "type": "oauth",
+                        "credentials": {}
+                    }
+                ]
+            })
+            .to_string(),
+        );
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].access_token, None);
+        assert!(entries[0]
+            .validation_error
+            .as_deref()
+            .is_some_and(|error| error.contains("平台")));
+        assert!(!entries[0]
+            .validation_error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("secret-token"));
+        assert!(entries[1]
+            .validation_error
+            .as_deref()
+            .is_some_and(|error| error.contains("凭证")));
+    }
+
+    #[test]
+    fn reports_sub2api_export_without_accounts_array() {
+        let entries = parse_admin_provider_oauth_batch_import_entries(
+            "codex",
+            &json!({
+                "exported_at": "2026-07-14T10:36:05Z",
+                "proxies": [],
+                "accounts": {}
+            })
+            .to_string(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0]
+            .validation_error
+            .as_deref()
+            .is_some_and(|error| error.contains("accounts 数组")));
+    }
+
+    #[test]
+    fn keeps_single_account_json_with_exported_at_on_legacy_path() {
+        let entries = parse_admin_provider_oauth_batch_import_entries(
+            "codex",
+            &json!({
+                "access_token": "legacy-token",
+                "email": "legacy@example.com",
+                "exported_at": "2026-07-14T10:36:05Z"
+            })
+            .to_string(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].access_token.as_deref(), Some("legacy-token"));
+        assert_eq!(entries[0].validation_error, None);
+    }
+
+    #[test]
+    fn rejects_sub2api_account_with_only_workspace_id() {
+        let entries = parse_admin_provider_oauth_batch_import_entries(
+            "codex",
+            &json!({
+                "exported_at": "2026-07-14T10:36:05Z",
+                "proxies": [],
+                "accounts": [{
+                    "platform": "openai",
+                    "type": "oauth",
+                    "credentials": {
+                        "access_token": "pat-workspace-only",
+                        "chatgpt_account_id": "workspace-1"
+                    }
+                }]
+            })
+            .to_string(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0]
+            .validation_error
+            .as_deref()
+            .is_some_and(|error| error.contains("邮箱或用户 ID")));
+        assert_eq!(entries[0].access_token, None);
     }
 
     #[test]

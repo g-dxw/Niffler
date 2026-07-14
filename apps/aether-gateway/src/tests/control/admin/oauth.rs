@@ -1916,6 +1916,128 @@ async fn gateway_batch_imports_admin_provider_oauth_locally_with_trusted_admin_p
 }
 
 #[tokio::test]
+async fn gateway_batch_imports_sub2api_codex_export_with_workspace_names() {
+    let mut provider = sample_provider("provider-codex", "codex", 10);
+    provider.provider_type = "codex".to_string();
+    let endpoint = sample_endpoint(
+        "endpoint-codex-responses",
+        "provider-codex",
+        "openai:responses",
+        "https://chatgpt.com/backend-api/codex",
+    );
+    let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
+        vec![provider],
+        vec![endpoint],
+        vec![],
+    ));
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(
+                GatewayDataState::with_provider_catalog_repository_for_tests(
+                    provider_catalog_repository.clone(),
+                )
+                .with_encryption_key_for_tests(DEVELOPMENT_ENCRYPTION_KEY),
+            ),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+    let credentials = json!({
+        "exported_at": "2026-07-14T10:36:05Z",
+        "proxies": [],
+        "accounts": [
+            {
+                "name": "ignored-custom-name",
+                "platform": "openai",
+                "type": "oauth",
+                "credentials": {
+                    "access_token": "sub2api-pat-1",
+                    "email": "first@example.com",
+                    "chatgpt_account_id": "workspace-1",
+                    "chatgpt_user_id": "user-1",
+                    "workspace_name": "研发空间",
+                    "plan_type": "team"
+                }
+            },
+            {
+                "name": "also-ignored",
+                "platform": "openai",
+                "type": "oauth",
+                "credentials": {
+                    "access_token": "sub2api-pat-2",
+                    "email": "second@example.com",
+                    "chatgpt_account_id": "workspace-1",
+                    "chatgpt_user_id": "user-2",
+                    "plan_type": "team"
+                }
+            },
+            {
+                "platform": "anthropic",
+                "type": "oauth",
+                "credentials": { "access_token": "must-not-leak" }
+            }
+        ]
+    })
+    .to_string();
+
+    let response = reqwest::Client::new()
+        .post(format!(
+            "{gateway_url}/api/admin/provider-oauth/providers/provider-codex/batch-import"
+        ))
+        .header(crate::constants::GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .json(&json!({ "credentials": credentials }))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    let status = response.status();
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    assert_eq!(status, StatusCode::OK, "payload={payload}");
+    assert_eq!(payload["total"], 3);
+    assert_eq!(payload["success"], 2);
+    assert_eq!(payload["failed"], 1);
+    let error = payload["results"][2]["error"]
+        .as_str()
+        .expect("invalid entry should include an error");
+    assert!(error.contains("平台"));
+    assert!(!error.contains("must-not-leak"));
+
+    let reloaded = provider_catalog_repository
+        .list_keys_by_provider_ids(&["provider-codex".to_string()])
+        .await
+        .expect("keys should load");
+    assert_eq!(reloaded.len(), 2);
+    let names = reloaded
+        .iter()
+        .map(|key| key.name.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert!(names.contains("first@example.com · 研发空间"));
+    assert!(names.contains("second@example.com · workspace-1"));
+    assert!(!names.iter().any(|name| name.starts_with("codex_")));
+
+    for persisted in reloaded {
+        let decrypted_auth_config = decrypt_python_fernet_ciphertext(
+            DEVELOPMENT_ENCRYPTION_KEY,
+            persisted
+                .encrypted_auth_config
+                .as_deref()
+                .expect("auth config should be stored"),
+        )
+        .expect("auth config should decrypt");
+        let auth_config: serde_json::Value =
+            serde_json::from_str(&decrypted_auth_config).expect("auth config json should parse");
+        assert_eq!(auth_config["provider_type"], "codex");
+        assert_eq!(auth_config["access_token_import_temporary"], true);
+        assert_eq!(auth_config["account_id"], "workspace-1");
+        assert_eq!(auth_config["plan_type"], "team");
+    }
+
+    gateway_handle.abort();
+}
+
+#[tokio::test]
 async fn gateway_batch_imports_chatgpt_web_access_tokens_with_pool_hints() {
     let token_hits = Arc::new(Mutex::new(0usize));
     let token_hits_clone = Arc::clone(&token_hits);

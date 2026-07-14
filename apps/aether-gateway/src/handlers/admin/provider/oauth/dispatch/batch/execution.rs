@@ -263,6 +263,24 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
     let mut failed = 0usize;
 
     for (index, entry) in entries.iter().enumerate() {
+        if let Some(error) = entry.validation_error.as_ref() {
+            failed += 1;
+            results.push(json!({
+                "index": index,
+                "status": "error",
+                "error": error,
+                "replaced": false,
+            }));
+            maybe_report_admin_provider_oauth_batch_import_progress(
+                &mut progress,
+                entries.len(),
+                success,
+                failed,
+                &results,
+            )
+            .await;
+            continue;
+        }
         let resolved_import = match resolve_admin_provider_oauth_batch_import_tokens(
             state,
             template,
@@ -361,11 +379,13 @@ pub(super) async fn execute_admin_provider_oauth_batch_import(
                 }
             }
         } else {
-            let key_name = admin_provider_oauth_key_name_from_auth_config(
-                provider_type,
-                &auth_config,
-                Some(index),
-            );
+            let key_name = entry.key_name.clone().unwrap_or_else(|| {
+                admin_provider_oauth_key_name_from_auth_config(
+                    provider_type,
+                    &auth_config,
+                    Some(index),
+                )
+            });
             match create_provider_oauth_catalog_key(
                 state,
                 provider_id,
