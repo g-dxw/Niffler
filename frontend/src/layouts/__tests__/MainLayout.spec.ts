@@ -77,7 +77,16 @@ vi.mock('@/components/layout/AppShell.vue', () => ({
 }))
 
 vi.mock('@/components/layout/SidebarNav.vue', () => ({
-  default: defineComponent({ name: 'SidebarNavStub', setup: () => () => h('nav') }),
+  default: defineComponent({
+    name: 'SidebarNavStub',
+    props: { items: { type: Array, default: () => [] } },
+    setup(props) {
+      return () => h('nav', (props.items as Array<{ title: string, items: Array<{ name: string, href: string }> }>).flatMap(group => [
+        h('span', group.title),
+        ...group.items.map(item => h('a', { href: item.href }, item.name)),
+      ]))
+    },
+  }),
 }))
 
 vi.mock('@/components/HeaderLogo.vue', () => ({
@@ -213,5 +222,13 @@ describe('MainLayout version check', () => {
     await settle()
 
     expect(adminApiMocks.checkUpdate).not.toHaveBeenCalled()
+  })
+
+  it('shows the image studio entry in the administrator tools menu', async () => {
+    await mountMainLayout()
+    await settle()
+
+    const link = document.querySelector('a[href="/admin/image-studio"]')
+    expect(link?.textContent).toBe('生图工作台')
   })
 })

@@ -886,6 +886,12 @@ const navigation = computed(() => {
       ]
     },
     {
+      title: '工具',
+      items: [
+        { name: '生图工作台', href: '/dashboard/image-studio', icon: Zap },
+      ]
+    },
+    {
       title: '账户',
       items: [
          { name: '钱包中心', href: '/dashboard/wallet', icon: Wallet },
@@ -961,6 +967,12 @@ const navigation = computed(() => {
         { name: '邀请返利', href: '/admin/referrals', icon: Gift },
         { name: '异步任务', href: '/admin/async-tasks', icon: Zap },
         { name: '使用记录', href: '/admin/usage', icon: BarChart3 },
+      ]
+    },
+    {
+      title: '工具',
+      items: [
+        { name: '生图工作台', href: '/admin/image-studio', icon: Zap },
       ]
     },
     {

@@ -161,6 +161,11 @@ const routes: RouteRecordRaw[] = [
         component: () => importWithRetry(() => import('@/views/user/ModelCatalog.vue'))
       },
       {
+        path: 'image-studio',
+        name: 'ImageStudio',
+        component: () => importWithRetry(() => import('@/views/user/ImageStudio.vue'))
+      },
+      {
         path: 'async-tasks',
         name: 'UserAsyncTasks',
         component: () => importWithRetry(() => import('@/views/admin/AsyncTasks.vue'))
@@ -176,6 +181,11 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'AdminDashboard',
         component: () => importWithRetry(() => import('@/views/shared/Dashboard.vue'))
+      },
+      {
+        path: 'image-studio',
+        name: 'AdminImageStudio',
+        component: () => importWithRetry(() => import('@/views/user/ImageStudio.vue'))
       },
       {
         path: 'users',
