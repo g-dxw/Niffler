@@ -76,6 +76,7 @@ pub(crate) use self::standard::{
     build_local_sync_attempt_source as build_standard_family_sync_attempt_source,
     build_local_sync_plan_and_reports as build_standard_family_sync_plan_and_reports,
     codex_openai_image_bridge_model_from_provider_config,
+    openai_responses_image_generation_tool_enabled_from_transport_config,
     set_local_openai_chat_execution_exhausted_diagnostic,
 };
 pub(crate) use self::state::{

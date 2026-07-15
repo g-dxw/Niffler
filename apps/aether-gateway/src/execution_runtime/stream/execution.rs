@@ -1206,6 +1206,34 @@ fn encode_terminal_sse_error_event(failure: &StreamFailureReport) -> Result<Byte
     Ok(Bytes::from(event))
 }
 
+fn encode_openai_responses_failed_event(
+    failure: &StreamFailureReport,
+) -> Result<Bytes, std::io::Error> {
+    let failure_body = failure
+        .to_json_string()
+        .map_err(|err| IoError::other(err.to_string()))?;
+    let failure_json: Value =
+        serde_json::from_str(&failure_body).map_err(|err| IoError::other(err.to_string()))?;
+    let error = failure_json.get("error").cloned().unwrap_or_else(|| {
+        json!({
+            "type": failure.error_type.as_str(),
+            "message": failure.error_message.as_str(),
+            "code": failure.status_code,
+        })
+    });
+    let payload = serde_json::to_string(&json!({
+        "type": "response.failed",
+        "response": {
+            "status": "failed",
+            "error": error,
+        }
+    }))
+    .map_err(|err| IoError::other(err.to_string()))?;
+    Ok(Bytes::from(format!(
+        "event: response.failed\ndata: {payload}\n\n"
+    )))
+}
+
 fn image_stream_failed_event_name(report_context: Option<&Value>) -> &'static str {
     let operation = report_context
         .and_then(|value| value.get("image_request"))
@@ -1318,6 +1346,98 @@ fn stream_chunk_contains_sse_done(chunk: &[u8]) -> bool {
     std::str::from_utf8(chunk)
         .ok()
         .is_some_and(|text| text.lines().any(|line| line.trim() == "data: [DONE]"))
+}
+
+#[derive(Default)]
+struct OpenAiResponsesImageTerminalTracker {
+    buffered: Vec<u8>,
+    current_event: Option<String>,
+    image_call_count: usize,
+    image_result_count: usize,
+    saw_response_completed: bool,
+}
+
+impl OpenAiResponsesImageTerminalTracker {
+    const MAX_LINE_PREFIX_BYTES: usize = 64 * 1024;
+
+    fn push(&mut self, chunk: &[u8]) {
+        let mut remaining = chunk;
+        while let Some(line_end) = remaining.iter().position(|byte| *byte == b'\n') {
+            self.append_line_prefix(&remaining[..line_end]);
+            let line = std::mem::take(&mut self.buffered);
+            self.observe_line(&line);
+            remaining = &remaining[line_end + 1..];
+        }
+        self.append_line_prefix(remaining);
+    }
+
+    fn append_line_prefix(&mut self, bytes: &[u8]) {
+        let remaining_capacity = Self::MAX_LINE_PREFIX_BYTES.saturating_sub(self.buffered.len());
+        self.buffered
+            .extend_from_slice(&bytes[..bytes.len().min(remaining_capacity)]);
+    }
+
+    fn observe_line(&mut self, line: &[u8]) {
+        let Ok(line) = std::str::from_utf8(line) else {
+            return;
+        };
+        if let Some(event_name) = line.trim().strip_prefix("event:").map(str::trim) {
+            self.current_event = Some(event_name.to_string());
+            if event_name.starts_with("response.image_generation_call.") {
+                self.image_call_count = self.image_call_count.max(1);
+            }
+            return;
+        }
+        let Some(data) = line.trim().strip_prefix("data:") else {
+            return;
+        };
+        let parsed = serde_json::from_str::<Value>(data.trim()).ok();
+        let event_type = parsed
+            .as_ref()
+            .and_then(|event| event.get("type"))
+            .and_then(Value::as_str)
+            .or(self.current_event.as_deref())
+            .unwrap_or_default();
+        let contains_image_call = data.contains("\"type\":\"image_generation_call\"")
+            || data.contains("\"type\": \"image_generation_call\"");
+        if event_type.starts_with("response.image_generation_call.") {
+            self.image_call_count = self.image_call_count.max(1);
+        } else if event_type == "response.output_item.added" && contains_image_call {
+            self.image_call_count = self.image_call_count.saturating_add(1);
+        }
+        if event_type == "response.output_item.done"
+            && contains_image_call
+            && contains_non_empty_json_string(data, "result")
+        {
+            self.image_result_count = self.image_result_count.saturating_add(1);
+            self.image_call_count = self.image_call_count.max(self.image_result_count);
+        }
+        if event_type == "response.completed" {
+            self.saw_response_completed = true;
+            if self.image_result_count == 0
+                && contains_image_call
+                && contains_non_empty_json_string(data, "result")
+            {
+                self.image_call_count = 1;
+                self.image_result_count = 1;
+            }
+        }
+    }
+
+    fn incomplete_at_eof(&self) -> bool {
+        self.image_call_count > 0
+            && (self.image_result_count < self.image_call_count || !self.saw_response_completed)
+    }
+}
+
+fn contains_non_empty_json_string(data: &str, field: &str) -> bool {
+    let compact_marker = format!("\"{field}\":\"");
+    let spaced_marker = format!("\"{field}\": \"");
+    [compact_marker.as_str(), spaced_marker.as_str()]
+        .iter()
+        .find_map(|marker| data.find(marker).map(|index| (index, marker.len())))
+        .and_then(|(index, marker_len)| data.as_bytes().get(index + marker_len))
+        .is_some_and(|next| *next != b'"')
 }
 
 async fn next_stream_frame<R>(
@@ -2377,6 +2497,8 @@ async fn execute_stream_from_frame_stream(
         );
         let mut client_visible_stream_completed =
             stream_chunk_contains_sse_done(&prefetched_body_for_report);
+        let mut image_terminal_tracker = OpenAiResponsesImageTerminalTracker::default();
+        image_terminal_tracker.push(&prefetched_body_for_report);
         let mut usage_stream_telemetry: Option<ExecutionTelemetry> = initial_telemetry.clone();
         let mut telemetry: Option<ExecutionTelemetry> = initial_telemetry;
         let reached_eof = initial_reached_eof;
@@ -2801,6 +2923,7 @@ async fn execute_stream_from_frame_stream(
                             max_stream_body_buffer_bytes,
                             &mut client_body_truncated,
                         );
+                        image_terminal_tracker.push(&rewritten_chunk);
                         let rewritten_chunk_len =
                             u64::try_from(rewritten_chunk.len()).unwrap_or(u64::MAX);
                         let chunk_completed_stream =
@@ -2930,6 +3053,7 @@ async fn execute_stream_from_frame_stream(
                                 max_stream_body_buffer_bytes,
                                 &mut client_body_truncated,
                             );
+                            image_terminal_tracker.push(&rewritten_chunk);
                             let rewritten_chunk_len =
                                 u64::try_from(rewritten_chunk.len()).unwrap_or(u64::MAX);
                             let chunk_completed_stream =
@@ -2990,6 +3114,7 @@ async fn execute_stream_from_frame_stream(
                                 max_stream_body_buffer_bytes,
                                 &mut client_body_truncated,
                             );
+                            image_terminal_tracker.push(&flushed_chunk);
                             let flushed_chunk_len =
                                 u64::try_from(flushed_chunk.len()).unwrap_or(u64::MAX);
                             let chunk_completed_stream =
@@ -3041,9 +3166,26 @@ async fn execute_stream_from_frame_stream(
             }
         }
 
+        if !downstream_dropped
+            && terminal_failure.is_none()
+            && image_terminal_tracker.incomplete_at_eof()
+        {
+            terminal_failure = Some(build_stream_failure_report(
+                "incomplete_image_generation_stream",
+                "image generation stream ended before a final image result and response.completed",
+                502,
+            ));
+        }
+
         if !downstream_dropped {
             if let Some(failure) = terminal_failure.as_ref() {
-                let terminal_event = if is_openai_image_stream_for_report {
+                let terminal_event = if failure.error_type == "incomplete_image_generation_stream"
+                    && plan_for_report
+                        .client_api_format
+                        .eq_ignore_ascii_case("openai:responses")
+                {
+                    Some(encode_openai_responses_failed_event(failure))
+                } else if is_openai_image_stream_for_report {
                     Some(encode_openai_image_failed_event(
                         report_context_owned.as_ref(),
                         failure,
@@ -3376,10 +3518,11 @@ mod tests {
     use tokio::sync::{mpsc, watch, Notify};
 
     use super::{
-        build_sse_body_stream, execute_execution_runtime_stream, execute_stream_from_frame_stream,
+        build_sse_body_stream, encode_openai_responses_failed_event,
+        execute_execution_runtime_stream, execute_stream_from_frame_stream,
         maybe_apply_kiro_prompt_cache_usage_to_stream_summary, merge_stream_terminal_summary,
         should_limit_direct_finalize_prefetch, should_probe_success_failover_before_stream,
-        should_skip_direct_finalize_prefetch,
+        should_skip_direct_finalize_prefetch, OpenAiResponsesImageTerminalTracker,
     };
     use crate::control::GatewayControlDecision;
     use crate::request_candidate_runtime::flush_request_candidate_status_writes;
@@ -3395,6 +3538,97 @@ mod tests {
             Some("openai:chat".to_string()),
         )
         .with_execution_runtime_candidate(true)
+    }
+
+    #[test]
+    fn incomplete_image_stream_is_rejected_at_eof() {
+        let mut tracker = OpenAiResponsesImageTerminalTracker::default();
+        tracker.push(br#"event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"type":"image_generation_call","status":"in_progress"}}
+
+event: response.image_generation_call.generating
+data: {"type":"response.image_generation_call.generating"}
+
+"#);
+
+        assert!(tracker.incomplete_at_eof());
+    }
+
+    #[test]
+    fn completed_image_stream_with_result_is_accepted_at_eof() {
+        let mut tracker = OpenAiResponsesImageTerminalTracker::default();
+        tracker.push(br#"event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"type":"image_generation_call","status":"in_progress"}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"type":"image_generation_call","status":"completed","result":"aGVsbG8="}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"status":"completed"}}
+
+"#);
+
+        assert!(!tracker.incomplete_at_eof());
+    }
+
+    #[test]
+    fn multiple_image_calls_require_a_result_for_each_call() {
+        let mut tracker = OpenAiResponsesImageTerminalTracker::default();
+        tracker.push(br#"event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"ig_1","type":"image_generation_call"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"ig_2","type":"image_generation_call"}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"ig_1","type":"image_generation_call","result":"aGVsbG8="}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"status":"completed"}}
+
+"#);
+
+        assert!(tracker.incomplete_at_eof());
+    }
+
+    #[test]
+    fn response_completed_event_name_without_data_is_not_terminal() {
+        let mut tracker = OpenAiResponsesImageTerminalTracker::default();
+        tracker.push(br#"event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"ig_1","type":"image_generation_call"}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"ig_1","type":"image_generation_call","result":"aGVsbG8="}}
+
+event: response.completed
+"#);
+
+        assert!(tracker.incomplete_at_eof());
+    }
+
+    #[test]
+    fn image_terminal_tracker_bounds_unterminated_sse_line_memory() {
+        let mut tracker = OpenAiResponsesImageTerminalTracker::default();
+        let mut chunk = b"event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"image_generation_call\",\"result\":\"".to_vec();
+        chunk.extend(std::iter::repeat_n(b'A', 1_000_000));
+        tracker.push(&chunk);
+
+        assert!(tracker.buffered.len() <= 64 * 1024);
+    }
+
+    #[test]
+    fn incomplete_image_stream_failure_uses_responses_failed_event() {
+        let failure = super::build_stream_failure_report(
+            "incomplete_image_generation_stream",
+            "image stream ended early",
+            502,
+        );
+        let event = encode_openai_responses_failed_event(&failure).expect("event should encode");
+        let text = String::from_utf8(event.to_vec()).expect("event should be utf-8");
+
+        assert!(text.starts_with("event: response.failed\n"));
+        assert!(text.contains("\"type\":\"response.failed\""));
+        assert!(text.contains("incomplete_image_generation_stream"));
     }
 
     fn tunnel_proxy_snapshot(base_url: String) -> aether_contracts::ProxySnapshot {

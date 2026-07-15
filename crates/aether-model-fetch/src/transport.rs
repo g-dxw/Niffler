@@ -21,8 +21,6 @@ use aether_provider_transport::{
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::build_models_fetch_url;
-
 const OPENAI_RESPONSES_USER_AGENT: &str = "openai-codex/1.0";
 const CLAUDE_CLI_USER_AGENT: &str = "claude-code/1.0.1";
 const GEMINI_CLI_USER_AGENT: &str = "GeminiCLI/0.1.5 (Windows; AMD64)";
@@ -49,6 +47,10 @@ const BROWSER_FINGERPRINT_HEADERS: &[(&str, &str)] = &[
 
 #[async_trait]
 pub trait ModelFetchTransportRuntime: Send + Sync {
+    async fn resolve_codex_model_fetch_client_version(&self) -> String {
+        crate::codex_model_fetch_client_version()
+    }
+
     async fn resolve_local_oauth_request_auth(
         &self,
         transport: &GatewayProviderTransportSnapshot,
@@ -87,6 +89,31 @@ pub async fn build_standard_models_fetch_execution_plan(
     runtime: &(impl ModelFetchTransportRuntime + ?Sized),
     transport: &GatewayProviderTransportSnapshot,
     after_id: Option<&str>,
+) -> Result<ExecutionPlan, String> {
+    let codex_client_version = if transport
+        .provider
+        .provider_type
+        .trim()
+        .eq_ignore_ascii_case("codex")
+    {
+        Some(runtime.resolve_codex_model_fetch_client_version().await)
+    } else {
+        None
+    };
+    build_standard_models_fetch_execution_plan_with_codex_client_version(
+        runtime,
+        transport,
+        after_id,
+        codex_client_version.as_deref(),
+    )
+    .await
+}
+
+pub async fn build_standard_models_fetch_execution_plan_with_codex_client_version(
+    runtime: &(impl ModelFetchTransportRuntime + ?Sized),
+    transport: &GatewayProviderTransportSnapshot,
+    after_id: Option<&str>,
+    codex_client_version: Option<&str>,
 ) -> Result<ExecutionPlan, String> {
     let api_format = transport.endpoint.api_format.trim().to_ascii_lowercase();
     let provider_api_format = api_format.clone();
@@ -128,7 +155,7 @@ pub async fn build_standard_models_fetch_execution_plan(
         headers = apply_fetch_header_rules(transport, headers, &protected_headers)?;
     }
 
-    let upstream_url = build_standard_models_fetch_url(transport, after_id)?;
+    let upstream_url = build_standard_models_fetch_url(transport, after_id, codex_client_version)?;
     build_execution_plan(
         runtime,
         transport,
@@ -499,6 +526,7 @@ fn standard_models_fetch_headers(
 fn build_standard_models_fetch_url(
     transport: &GatewayProviderTransportSnapshot,
     after_id: Option<&str>,
+    codex_client_version: Option<&str>,
 ) -> Result<String, String> {
     let api_format = transport.endpoint.api_format.trim().to_ascii_lowercase();
     if api_format.starts_with("gemini:") {
@@ -515,19 +543,21 @@ fn build_standard_models_fetch_url(
             })
             .ok_or_else(|| "Gemini models fetch requires an API key".to_string())?;
 
-        let (url, _) = build_models_fetch_url(
+        let (url, _) = crate::build_models_fetch_url_with_codex_client_version(
             &transport.provider.provider_type,
             &transport.endpoint.api_format,
             &transport.endpoint.base_url,
+            codex_client_version,
         )
         .ok_or_else(|| "Rust models fetch does not support this provider format yet".to_string())?;
         return Ok(append_query_param(url, "key", &secret));
     }
 
-    let (mut url, _) = build_models_fetch_url(
+    let (mut url, _) = crate::build_models_fetch_url_with_codex_client_version(
         &transport.provider.provider_type,
         &transport.endpoint.api_format,
         &transport.endpoint.base_url,
+        codex_client_version,
     )
     .ok_or_else(|| "Rust models fetch does not support this provider format yet".to_string())?;
 
@@ -599,8 +629,9 @@ mod tests {
     use super::{
         build_antigravity_fetch_available_models_plan, build_gemini_cli_load_code_assist_plan,
         build_kiro_list_available_models_plan, build_models_fetch_execution_plan,
-        build_standard_models_fetch_execution_plan, build_vertex_models_fetch_execution_plan,
-        ModelFetchTransportRuntime,
+        build_standard_models_fetch_execution_plan,
+        build_standard_models_fetch_execution_plan_with_codex_client_version,
+        build_vertex_models_fetch_execution_plan, ModelFetchTransportRuntime,
     };
 
     struct TestRuntime {
@@ -759,7 +790,7 @@ mod tests {
 
         assert_eq!(
             plan.url,
-            "https://chatgpt.com/backend-api/codex/models?client_version=0.128.0-alpha.1"
+            "https://chatgpt.com/backend-api/codex/models?client_version=0.144.1"
         );
         assert_eq!(
             plan.headers.get("authorization").map(String::as_str),
@@ -772,6 +803,35 @@ mod tests {
         assert_eq!(
             plan.headers.get("accept").map(String::as_str),
             Some("application/json")
+        );
+    }
+
+    #[tokio::test]
+    async fn builds_codex_models_fetch_plan_with_discovered_client_version() {
+        let runtime = TestRuntime {
+            oauth_auth: Some(
+                aether_provider_transport::LocalResolvedOAuthRequestAuth::Header {
+                    name: "authorization".to_string(),
+                    value: "Bearer access-token".to_string(),
+                },
+            ),
+            proxy: None,
+        };
+        let mut transport = sample_transport("codex", "openai:responses", "oauth");
+        transport.endpoint.base_url = "https://chatgpt.com/backend-api/codex".to_string();
+
+        let plan = build_standard_models_fetch_execution_plan_with_codex_client_version(
+            &runtime,
+            &transport,
+            None,
+            Some("0.144.3"),
+        )
+        .await
+        .expect("plan");
+
+        assert_eq!(
+            plan.url,
+            "https://chatgpt.com/backend-api/codex/models?client_version=0.144.3"
         );
     }
 

@@ -26,7 +26,7 @@ const OPENAI_IMAGE_PARTIAL_IMAGES_DETAIL: &str =
 const OPENAI_IMAGE_STYLE_DETAIL: &str = "当前 Codex 图片反代暂不支持 style 参数";
 const OPENAI_IMAGE_RESPONSE_FORMAT_DETAIL: &str = "response_format 仅支持 url 或 b64_json";
 const OPENAI_IMAGE_OUTPUT_FORMAT_DETAIL: &str = "output_format 仅支持 png、jpeg 或 webp";
-const OPENAI_IMAGE_QUALITY_DETAIL: &str = "quality 仅支持 low、medium、high、standard 或 hd";
+const OPENAI_IMAGE_QUALITY_DETAIL: &str = "quality 仅支持 auto、low、medium、high、standard 或 hd";
 const OPENAI_IMAGE_BACKGROUND_DETAIL: &str = "background 仅支持 auto、opaque 或 transparent";
 const OPENAI_IMAGE_MODERATION_DETAIL: &str = "moderation 仅支持 auto 或 low";
 const OPENAI_IMAGE_INPUT_FIDELITY_DETAIL: &str = "input_fidelity 仅支持 low 或 high";
@@ -289,7 +289,7 @@ fn maybe_build_local_openai_request_validation_response(
     if validation
         .quality
         .as_deref()
-        .is_some_and(|value| !matches!(value, "low" | "medium" | "high" | "standard" | "hd"))
+        .is_some_and(|value| !openai_image_quality_is_supported(value))
     {
         return Some(build_ai_public_error_response(
             http::StatusCode::BAD_REQUEST,
@@ -341,6 +341,13 @@ fn maybe_build_local_openai_request_validation_response(
     }
 
     None
+}
+
+fn openai_image_quality_is_supported(value: &str) -> bool {
+    matches!(
+        value,
+        "auto" | "low" | "medium" | "high" | "standard" | "hd"
+    )
 }
 
 fn openai_image_n_detail(max_generation_count: u64) -> String {
@@ -1278,8 +1285,8 @@ fn estimate_text_tokens(text: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        estimate_claude_count_tokens, parse_openai_image_validation_input, validate_openai_image_n,
-        OpenAiImageOperation,
+        estimate_claude_count_tokens, openai_image_quality_is_supported,
+        parse_openai_image_validation_input, validate_openai_image_n, OpenAiImageOperation,
     };
     use axum::body::Bytes;
     use serde_json::json;
@@ -1330,6 +1337,11 @@ mod tests {
         .expect("custom image model should validate");
 
         assert_eq!(validation.model.as_deref(), Some("Custom/Image-Model:V1"));
+    }
+
+    #[test]
+    fn image_validation_accepts_codex_native_auto_quality() {
+        assert!(openai_image_quality_is_supported("auto"));
     }
 
     #[test]

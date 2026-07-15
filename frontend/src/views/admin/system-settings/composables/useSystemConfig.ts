@@ -277,7 +277,7 @@ function createDefaultConfig(): SystemConfig {
     // 格式转换
     enable_format_conversion: false,
     // 同步生图心跳
-    enable_openai_image_sync_heartbeat: false,
+    enable_openai_image_sync_heartbeat: true,
     // 请求记录
     request_record_level: 'basic',
     max_request_body_size: 262144,
@@ -633,7 +633,7 @@ export function useSystemConfig() {
         {
           key: 'enable_openai_image_sync_heartbeat',
           value: systemConfig.value.enable_openai_image_sync_heartbeat,
-          description: '同步生图心跳开关：开启后外层 HTTP 状态固定为 200，上游失败写入响应体',
+          description: '同步生图保活：避免 CDN 超时，上游状态写入响应体',
         },
       ]
       const turnstileSecret = systemConfig.value.turnstile_secret_key.trim()

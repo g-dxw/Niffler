@@ -482,15 +482,15 @@ async fn openai_image_sync_heartbeat_enabled(state: &AppState) -> bool {
         .read_system_config_json_value(ENABLE_OPENAI_IMAGE_SYNC_HEARTBEAT_CONFIG_KEY)
         .await
     {
-        Ok(value) => system_config_bool(value.as_ref(), false),
+        Ok(value) => system_config_bool(value.as_ref(), true),
         Err(err) => {
             tracing::warn!(
                 event_name = "openai_image_sync_heartbeat_config_read_failed",
                 log_type = "ops",
                 error = ?err,
-                "gateway failed to read sync image heartbeat config; defaulting disabled"
+                "gateway failed to read sync image heartbeat config; defaulting enabled"
             );
-            false
+            true
         }
     }
 }
@@ -1042,8 +1042,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn openai_image_sync_heartbeat_missing_config_defaults_disabled() {
+    async fn openai_image_sync_heartbeat_missing_config_defaults_enabled() {
         let state = AppState::new().expect("state should build");
+
+        assert!(openai_image_sync_heartbeat_enabled(&state).await);
+    }
+
+    #[tokio::test]
+    async fn openai_image_sync_heartbeat_explicit_false_disables_it() {
+        let state = AppState::new().expect("state should build");
+        state
+            .upsert_system_config_json_value(
+                ENABLE_OPENAI_IMAGE_SYNC_HEARTBEAT_CONFIG_KEY,
+                &json!(false),
+                None,
+            )
+            .await
+            .expect("heartbeat config should be saved");
 
         assert!(!openai_image_sync_heartbeat_enabled(&state).await);
     }

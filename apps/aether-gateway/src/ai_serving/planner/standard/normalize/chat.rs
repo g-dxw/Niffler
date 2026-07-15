@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::ai_serving::planner::standard::codex_hosted_image_generation_tool_allowed;
 use crate::ai_serving::transport::apply_standard_provider_request_body_rules_with_request_headers;
 use crate::ai_serving::{
     apply_codex_openai_responses_chat_body_edits_with_bridge_config,
@@ -78,6 +79,10 @@ pub(crate) fn build_cross_format_openai_chat_request_body(
             body_json,
             request_headers,
         )?;
+    let allow_hosted_image_generation = codex_hosted_image_generation_tool_allowed(
+        openai_responses_image_generation_tool_enabled,
+        provider_api_format,
+    );
     apply_codex_openai_responses_chat_body_edits_with_bridge_config(
         &mut provider_request_body,
         provider_type,
@@ -85,7 +90,7 @@ pub(crate) fn build_cross_format_openai_chat_request_body(
         body_rules,
         user_api_key_id,
         codex_image_bridge_model,
-        openai_responses_image_generation_tool_enabled,
+        allow_hosted_image_generation,
     );
     if !provider_type.trim().eq_ignore_ascii_case("codex") {
         apply_openai_responses_image_generation_bridge_body_edits(

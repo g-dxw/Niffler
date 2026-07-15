@@ -1,6 +1,8 @@
 use serde_json::Value;
 
-use crate::formats::openai::image::stream::{OpenAiImageChatStreamState, OpenAiImageStreamState};
+use crate::formats::openai::image::stream::{
+    OpenAiImageChatStreamState, OpenAiImageResponsesStreamState, OpenAiImageStreamState,
+};
 use crate::formats::shared::model_directives::model_directive_display_model_from_report_context;
 use crate::formats::shared::stream_core::StreamingStandardFormatMatrix;
 use crate::formats::shared::AiSurfaceFinalizeError;
@@ -16,6 +18,7 @@ pub enum FinalizeStreamRewriteMode {
     ModelDirectiveDisplay,
     OpenAiImage,
     OpenAiImageToOpenAiChat,
+    OpenAiImageToOpenAiResponses,
     Standard,
     KiroToClaudeCli,
     KiroToClaudeCliThenStandard,
@@ -60,6 +63,20 @@ pub fn resolve_finalize_stream_rewrite_mode(
 
     if provider_api_format == "openai:image" && client_api_format == "openai:chat" {
         return Some(FinalizeStreamRewriteMode::OpenAiImageToOpenAiChat);
+    }
+
+    if provider_api_format == "openai:image" && client_api_format == "openai:responses" {
+        return Some(FinalizeStreamRewriteMode::OpenAiImageToOpenAiResponses);
+    }
+
+    if provider_api_format == "openai:responses"
+        && client_api_format == "openai:responses"
+        && report_context
+            .get("codex_hosted_image_generation")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    {
+        return Some(FinalizeStreamRewriteMode::OpenAiImageToOpenAiResponses);
     }
 
     if provider_api_format == "openai:image" && client_api_format == "openai:image" {
@@ -112,6 +129,7 @@ enum AiSurfaceStreamRewriteState {
     ModelDirectiveDisplay,
     OpenAiImage(Box<OpenAiImageStreamState>),
     OpenAiImageToOpenAiChat(Box<OpenAiImageChatStreamState>),
+    OpenAiImageToOpenAiResponses(Box<OpenAiImageResponsesStreamState>),
     Standard(Box<StreamingStandardFormatMatrix>),
     KiroToClaudeCli(Box<KiroToClaudeCliStreamState>),
     KiroToClaudeCliThenStandard {
@@ -143,6 +161,11 @@ pub fn maybe_build_ai_surface_stream_rewriter<'a>(
                 Box::<OpenAiImageChatStreamState>::default(),
             )
         }
+        FinalizeStreamRewriteMode::OpenAiImageToOpenAiResponses => {
+            AiSurfaceStreamRewriteState::OpenAiImageToOpenAiResponses(Box::<
+                OpenAiImageResponsesStreamState,
+            >::default())
+        }
         FinalizeStreamRewriteMode::Standard => {
             AiSurfaceStreamRewriteState::Standard(Box::<StreamingStandardFormatMatrix>::default())
         }
@@ -173,6 +196,10 @@ impl AiSurfaceStreamRewriter<'_> {
             AiSurfaceStreamRewriteState::OpenAiImageToOpenAiChat(state) => {
                 state.push_chunk(self.report_context, chunk)
             }
+            AiSurfaceStreamRewriteState::OpenAiImageToOpenAiResponses(state) => {
+                let output = state.push_chunk(self.report_context, chunk)?;
+                rewrite_model_directive_stream_bytes(self.report_context, output)
+            }
             AiSurfaceStreamRewriteState::KiroToClaudeCli(state) => {
                 state.push_chunk(self.report_context, chunk)
             }
@@ -199,6 +226,10 @@ impl AiSurfaceStreamRewriter<'_> {
             AiSurfaceStreamRewriteState::OpenAiImage(state) => state.finish(self.report_context),
             AiSurfaceStreamRewriteState::OpenAiImageToOpenAiChat(state) => {
                 state.finish(self.report_context)
+            }
+            AiSurfaceStreamRewriteState::OpenAiImageToOpenAiResponses(state) => {
+                let output = state.finish(self.report_context)?;
+                rewrite_model_directive_stream_bytes(self.report_context, output)
             }
             AiSurfaceStreamRewriteState::KiroToClaudeCli(state) => {
                 state.finish(self.report_context)
@@ -246,10 +277,28 @@ impl AiSurfaceStreamRewriter<'_> {
             }
             AiSurfaceStreamRewriteState::OpenAiImage(_)
             | AiSurfaceStreamRewriteState::OpenAiImageToOpenAiChat(_)
+            | AiSurfaceStreamRewriteState::OpenAiImageToOpenAiResponses(_)
             | AiSurfaceStreamRewriteState::KiroToClaudeCli(_)
             | AiSurfaceStreamRewriteState::KiroToClaudeCliThenStandard { .. } => Ok(Vec::new()),
         }
     }
+}
+
+fn rewrite_model_directive_stream_bytes(
+    report_context: &Value,
+    bytes: Vec<u8>,
+) -> Result<Vec<u8>, AiSurfaceFinalizeError> {
+    if model_directive_display_model_from_report_context(report_context).is_none() {
+        return Ok(bytes);
+    }
+    let mut output = Vec::with_capacity(bytes.len());
+    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
+        output.extend(rewrite_model_directive_stream_line(
+            report_context,
+            line.to_vec(),
+        )?);
+    }
+    Ok(output)
 }
 
 fn rewrite_model_directive_stream_line(
@@ -757,5 +806,274 @@ data: {"type":"response.completed","response":{"id":"resp_123","model":"gpt-imag
         assert!(final_text.contains("![generated image](data:image/png;base64,aGVsbG8=)"));
         assert!(final_text.contains("data: [DONE]"));
         assert!(!final_text.contains("image_generation.completed"));
+    }
+
+    #[test]
+    fn rewrites_openai_image_stream_to_codex_native_image_event() {
+        let report_context = json!({
+            "provider_api_format": "openai:image",
+            "client_api_format": "openai:responses",
+            "mapped_model": "gpt-image-2",
+            "request_id": "trace-image-responses-stream",
+            "needs_conversion": false,
+        });
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("image to responses stream rewriter should exist");
+
+        let output_item = rewriter
+            .push_chunk(
+                br#"event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"ig_1","status":"completed","result":"aGVsbG8=","output_format":"png"}}
+
+"#,
+            )
+            .expect("output item should rewrite");
+        assert!(output_item.is_empty());
+
+        let output = rewriter
+            .push_chunk(
+                br#"event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"image_generation_call","id":"ig_1","status":"completed","result":"aGVsbG8="}]}}
+
+"#,
+            )
+            .expect("completed response should release visible image");
+        let output_text = String::from_utf8(output).expect("output should be utf8");
+
+        assert!(output_text.contains("\"type\":\"image_generation_call\""));
+        assert!(!output_text.contains("\"type\":\"message\""));
+        assert!(!output_text.contains("\"type\":\"output_text\""));
+        assert!(!output_text.contains("data:image/"));
+    }
+
+    #[test]
+    fn rewrites_same_format_responses_hosted_image_to_native_output() {
+        let report_context = json!({
+            "provider_api_format": "openai:responses",
+            "client_api_format": "openai:responses",
+            "codex_hosted_image_generation": true,
+            "needs_conversion": false,
+        });
+        assert_eq!(
+            resolve_finalize_stream_rewrite_mode(&report_context),
+            Some(FinalizeStreamRewriteMode::OpenAiImageToOpenAiResponses)
+        );
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("hosted image response rewriter should exist");
+
+        let output_item = rewriter
+            .push_chunk(
+                br#"event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"ig_native","status":"generating","result":"aGVsbG8=","output_format":"png"}}
+
+"#,
+            )
+            .expect("native image should buffer");
+        assert!(output_item.is_empty());
+
+        let output = rewriter
+            .push_chunk(
+                br#"event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_native","status":"completed","output":[]}}
+
+"#,
+            )
+            .expect("completed response should release native image");
+        let output_text = String::from_utf8(output).expect("output should be utf8");
+
+        assert!(output_text.contains("\"type\":\"image_generation_call\""));
+        assert!(output_text.contains("\"output\":[{"));
+        assert!(output_text.contains("\"id\":\"ig_native\""));
+        assert!(output_text.contains("\"status\":\"completed\""));
+        assert!(!output_text.contains("\"status\":\"generating\""));
+        assert!(!output_text.contains("\"type\":\"message\""));
+        assert!(!output_text.contains("data:image/"));
+    }
+
+    #[test]
+    fn same_format_responses_hosted_image_rewriter_preserves_text_events() {
+        let report_context = json!({
+            "provider_api_format": "openai:responses",
+            "client_api_format": "openai:responses",
+            "codex_hosted_image_generation": true,
+            "needs_conversion": false,
+        });
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("hosted image response rewriter should exist");
+        let event = br#"event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"plain text"}
+
+"#;
+
+        let output = rewriter
+            .push_chunk(event)
+            .expect("text event should pass through");
+
+        assert_eq!(output, event);
+    }
+
+    #[test]
+    fn same_format_responses_hosted_image_rewriter_preserves_display_model() {
+        let report_context = json!({
+            "provider_api_format": "openai:responses",
+            "client_api_format": "openai:responses",
+            "codex_hosted_image_generation": true,
+            "model": "gpt-5.6-terra-high",
+            "mapped_model": "gpt-5.6-terra",
+            "needs_conversion": false,
+        });
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("hosted image response rewriter should exist");
+
+        let output = rewriter
+            .push_chunk(
+                br#"event: response.created
+data: {"type":"response.created","response":{"id":"resp_123","model":"gpt-5.6-terra","status":"in_progress"}}
+
+"#,
+            )
+            .expect("created event should pass through");
+        let output = String::from_utf8(output).expect("output should be utf8");
+
+        assert!(output.contains("\"model\":\"gpt-5.6-terra-high\""));
+        assert!(!output.contains("\"model\":\"gpt-5.6-terra\""));
+    }
+
+    #[test]
+    fn openai_image_responses_failure_discards_pending_visible_image() {
+        let report_context = json!({
+            "provider_api_format": "openai:image",
+            "client_api_format": "openai:responses",
+            "needs_conversion": false,
+        });
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("image to responses stream rewriter should exist");
+
+        let output_item = rewriter
+            .push_chunk(
+                br#"event: response.output_item.done
+data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"ig_1","status":"completed","result":"aGVsbG8=","output_format":"png"}}
+
+"#,
+            )
+            .expect("output item should buffer");
+        assert!(output_item.is_empty());
+
+        let failed = rewriter
+            .push_chunk(
+                br#"event: response.failed
+data: {"type":"response.failed","response":{"status":"failed","error":{"message":"generation failed"}}}
+
+"#,
+            )
+            .expect("failure should pass through");
+        let failed_text = String::from_utf8(failed).expect("failure should be utf8");
+        assert!(failed_text.contains("response.failed"));
+        assert!(!failed_text.contains("\"type\":\"message\""));
+        assert!(!failed_text.contains("data:image/"));
+    }
+
+    #[test]
+    fn openai_image_responses_multi_image_events_remain_native() {
+        let report_context = json!({
+            "provider_api_format": "openai:image",
+            "client_api_format": "openai:responses",
+            "needs_conversion": false,
+        });
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("image to responses stream rewriter should exist");
+
+        for (index, id, result) in [(0, "ig_1", "aGVsbG8="), (1, "ig_2", "d29ybGQ=")] {
+            let block = format!(
+                "event: response.output_item.done\ndata: {{\"type\":\"response.output_item.done\",\"output_index\":{index},\"item\":{{\"type\":\"image_generation_call\",\"id\":\"{id}\",\"status\":\"completed\",\"result\":\"{result}\",\"output_format\":\"png\"}}}}\n\n"
+            );
+            assert!(rewriter
+                .push_chunk(block.as_bytes())
+                .expect("image should buffer")
+                .is_empty());
+        }
+
+        let completed = rewriter
+            .push_chunk(
+                br#"event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[{"type":"image_generation_call","id":"ig_1"},{"type":"image_generation_call","id":"ig_2"}]}}
+
+"#,
+            )
+            .expect("completion should release both images");
+        let completed_text = String::from_utf8(completed).expect("output should be utf8");
+        let events = completed_text
+            .split("\n\n")
+            .filter_map(|block| block.lines().find_map(|line| line.strip_prefix("data: ")))
+            .filter_map(|data| serde_json::from_str::<serde_json::Value>(data).ok())
+            .collect::<Vec<_>>();
+        let image_events = events
+            .iter()
+            .filter(|event| event["item"]["type"] == "image_generation_call")
+            .count();
+        assert_eq!(image_events, 2);
+        assert!(!completed_text.contains("\"type\":\"message\""));
+        assert!(!completed_text.contains("data:image/"));
+        let completed_event = events
+            .iter()
+            .find(|event| event["type"] == "response.completed")
+            .expect("completed event should remain");
+        assert_eq!(
+            completed_event["response"]["output"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn openai_image_responses_eof_does_not_emit_visible_image_message() {
+        let report_context = json!({
+            "provider_api_format": "openai:image",
+            "client_api_format": "openai:responses",
+            "needs_conversion": false,
+        });
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("image to responses stream rewriter should exist");
+        let output_item = rewriter
+            .push_chunk(
+                b"event: response.output_item.done\r\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"image_generation_call\",\"id\":\"ig_1\",\"status\":\"completed\",\"result\":\"aGVsbG8=\",\"output_format\":\"png\"}}\r\n\r\n",
+            )
+            .expect("output item should buffer");
+        assert!(output_item.is_empty());
+
+        let eof_output = rewriter.finish().expect("EOF should flush native item");
+        let eof_text = String::from_utf8(eof_output).expect("output should be utf8");
+        assert!(eof_text.contains("image_generation_call"));
+        assert!(!eof_text.contains("\"type\":\"message\""));
+        assert!(!eof_text.contains("data:image/"));
+    }
+
+    #[test]
+    fn openai_image_responses_progress_does_not_emit_visible_image_message() {
+        let report_context = json!({
+            "provider_api_format": "openai:image",
+            "client_api_format": "openai:responses",
+            "mapped_model": "gpt-image-2",
+            "request_id": "trace-image-responses-progress",
+            "needs_conversion": false,
+        });
+        let mut rewriter = maybe_build_ai_surface_stream_rewriter(Some(&report_context))
+            .expect("image to responses stream rewriter should exist");
+
+        let output = rewriter
+            .push_chunk(
+                br#"event: response.image_generation_call.generating
+data: {"type":"response.image_generation_call.generating","item_id":"ig_1"}
+
+"#,
+            )
+            .expect("progress should pass through");
+        let output_text = String::from_utf8(output).expect("output should be utf8");
+
+        assert!(output_text.contains("response.image_generation_call.generating"));
+        assert!(!output_text.contains("\"type\":\"message\""));
+        assert!(!output_text.contains("data:image/"));
     }
 }

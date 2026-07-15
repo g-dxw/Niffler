@@ -71,6 +71,10 @@ impl provider_transport::VideoTaskTransportSnapshotLookup for AppState {
 
 #[async_trait]
 impl ModelFetchTransportRuntime for AppState {
+    async fn resolve_codex_model_fetch_client_version(&self) -> String {
+        crate::model_fetch::resolve_effective_codex_model_fetch_client_version(self).await
+    }
+
     async fn resolve_local_oauth_request_auth(
         &self,
         transport: &GatewayProviderTransportSnapshot,

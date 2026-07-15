@@ -155,6 +155,7 @@ pub use crate::formats::{
                 apply_codex_openai_responses_special_headers,
                 apply_openai_responses_compact_special_body_edits,
                 apply_openai_responses_image_generation_bridge_body_edits,
+                codex_hosted_image_generation_tool_allowed,
                 CODEX_OPENAI_IMAGE_BRIDGE_MODEL_DEFAULT, CODEX_OPENAI_IMAGE_DEFAULT_MODEL,
                 CODEX_OPENAI_IMAGE_DEFAULT_OUTPUT_FORMAT,
                 CODEX_OPENAI_IMAGE_DEFAULT_VARIATION_MODEL,

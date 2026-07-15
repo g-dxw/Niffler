@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use super::{
-    apply_codex_openai_responses_special_body_edits, apply_codex_openai_responses_special_headers,
+    apply_codex_openai_responses_special_body_edits,
+    apply_codex_openai_responses_special_body_edits_with_bridge_config,
+    apply_codex_openai_responses_special_headers,
     openai_responses_image_generation_tool_enabled_from_transport_config,
 };
 use http::{HeaderMap, HeaderValue};
@@ -18,12 +20,14 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
         "store": true
     });
 
-    apply_codex_openai_responses_special_body_edits(
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
         &mut body,
         "codex",
         "openai:responses",
         None,
         None,
+        None,
+        true,
     );
 
     assert!(body.get("max_output_tokens").is_none());
@@ -35,6 +39,10 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
         .as_str()
         .unwrap_or_default()
         .contains("Responses native `image_generation` tool"));
+    assert!(body["instructions"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("MUST call"));
     assert!(body["tools"]
         .as_array()
         .into_iter()
@@ -44,6 +52,75 @@ fn applies_codex_defaults_when_body_rules_do_not_handle_fields() {
     assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
     assert_eq!(body["parallel_tool_calls"], true);
     assert!(body.get("reasoning").is_none());
+}
+
+#[test]
+fn normalizes_replayed_image_generation_call_for_codex_upstream() {
+    let mut body = json!({
+        "model": "gpt-5.6-sol",
+        "client_metadata": {
+            "ws_request_header_x_openai_internal_codex_responses_lite": true
+        },
+        "input": [{
+            "type": "image_generation_call",
+            "id": "ig_123",
+            "status": "completed",
+            "result": "aGVsbG8=",
+            "action": "generate",
+            "background": "auto",
+            "output_format": "png",
+            "quality": "auto",
+            "revised_prompt": "revised",
+            "size": "1024x1024"
+        }]
+    });
+
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
+        &mut body,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        None,
+        true,
+    );
+
+    assert_eq!(
+        body["input"][0],
+        json!({
+            "type": "image_generation_call",
+            "id": "ig_123",
+            "status": "completed",
+            "result": "aGVsbG8="
+        })
+    );
+    assert!(body.get("client_metadata").is_none());
+}
+
+#[test]
+fn normalizes_boolean_codex_responses_lite_metadata_without_hosted_image_tool() {
+    let mut body = json!({
+        "model": "gpt-5.6-sol",
+        "client_metadata": {
+            "ws_request_header_x_openai_internal_codex_responses_lite": true
+        },
+        "input": [{"role": "user", "content": "hello"}]
+    });
+
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
+        &mut body,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        None,
+        false,
+    );
+
+    assert_eq!(
+        body["client_metadata"]["ws_request_header_x_openai_internal_codex_responses_lite"],
+        json!("true")
+    );
 }
 
 #[test]
@@ -194,6 +271,118 @@ fn injects_chatgpt_account_id_and_session_headers_for_codex_requests() {
     assert_eq!(
         headers.get("conversation_id"),
         Some(&"ab5ecce4f0d110fe".to_string())
+    );
+}
+
+#[test]
+fn removes_codex_responses_lite_header_for_unsupported_model() {
+    let mut headers = BTreeMap::new();
+    headers.insert(
+        "X-OpenAI-Internal-Codex-Responses-Lite".to_string(),
+        "true".to_string(),
+    );
+    let body = json!({
+        "model": "gpt-5.5",
+        "tool_choice": "auto"
+    });
+
+    apply_codex_openai_responses_special_headers(
+        &mut headers,
+        &body,
+        &HeaderMap::new(),
+        "codex",
+        "openai:responses",
+        Some("trace-codex-gpt-55"),
+        Some(r#"{"account_id":"acc-123"}"#),
+    );
+
+    assert!(!headers
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case("x-openai-internal-codex-responses-lite")));
+}
+
+#[test]
+fn keeps_codex_responses_lite_header_for_supported_model() {
+    let mut headers = BTreeMap::new();
+    headers.insert(
+        "x-openai-internal-codex-responses-lite".to_string(),
+        "true".to_string(),
+    );
+    let body = json!({
+        "model": "gpt-5.6-sol",
+        "tool_choice": "auto"
+    });
+
+    apply_codex_openai_responses_special_headers(
+        &mut headers,
+        &body,
+        &HeaderMap::new(),
+        "codex",
+        "openai:responses",
+        Some("trace-codex-gpt-56-sol"),
+        Some(r#"{"account_id":"acc-123"}"#),
+    );
+
+    assert_eq!(
+        headers.get("x-openai-internal-codex-responses-lite"),
+        Some(&"true".to_string())
+    );
+}
+
+#[test]
+fn removes_codex_responses_lite_header_when_sol_uses_hosted_image_tool() {
+    let mut headers = BTreeMap::new();
+    headers.insert(
+        "x-openai-internal-codex-responses-lite".to_string(),
+        "true".to_string(),
+    );
+    let body = json!({
+        "model": "gpt-5.6-sol",
+        "tools": [{"type": "image_generation", "model": "gpt-image-2"}],
+        "tool_choice": "auto"
+    });
+
+    apply_codex_openai_responses_special_headers(
+        &mut headers,
+        &body,
+        &HeaderMap::new(),
+        "codex",
+        "openai:responses",
+        Some("trace-codex-sol-image"),
+        Some(r#"{"account_id":"acc-123"}"#),
+    );
+
+    assert!(!headers
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case("x-openai-internal-codex-responses-lite")));
+}
+
+#[test]
+fn removes_codex_responses_lite_metadata_when_sol_uses_hosted_image_tool() {
+    let mut body = json!({
+        "model": "gpt-5.6-sol",
+        "client_metadata": {
+            "ws_request_header_x_openai_internal_codex_responses_lite": true,
+            "x-codex-installation-id": "install-123"
+        }
+    });
+
+    apply_codex_openai_responses_special_body_edits_with_bridge_config(
+        &mut body,
+        "codex",
+        "openai:responses",
+        None,
+        Some("key-123"),
+        None,
+        true,
+    );
+
+    assert!(body["client_metadata"]
+        .get("ws_request_header_x_openai_internal_codex_responses_lite")
+        .is_none());
+    assert_eq!(
+        body["client_metadata"]["x-codex-installation-id"],
+        "install-123"
     );
 }
 

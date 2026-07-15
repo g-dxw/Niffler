@@ -6,15 +6,24 @@ use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
 };
 use aether_model_fetch::{
-    apply_model_filters, fetch_models_from_transports, json_string_list, merge_upstream_metadata,
-    model_fetch_interval_minutes, model_fetch_startup_delay_seconds, model_fetch_startup_enabled,
-    preset_models_for_provider, selected_models_fetch_endpoints,
+    apply_model_filters, codex_model_fetch_client_version_override, fetch_models_from_transports,
+    fetch_models_from_transports_with_codex_client_version, json_string_list,
+    merge_upstream_metadata, model_fetch_interval_minutes, model_fetch_startup_delay_seconds,
+    model_fetch_startup_enabled, preset_models_for_provider, selected_models_fetch_endpoints,
     sync_provider_model_whitelist_associations, ModelFetchAssociationStore, ModelFetchRunSummary,
 };
 use serde_json::{json, Value};
 use tracing::{debug, info, warn};
 
 use crate::{AppState, GatewayError};
+
+use super::codex_version::{
+    candidate_catalog_preserves_current_models, client_version_check_is_due,
+    client_version_next_check_at, discovered_version_is_newer, effective_version_after_probe,
+    effective_version_from_state_and_memory, fetch_official_codex_stable_version,
+    process_last_known_version, read_codex_client_version_state, write_codex_client_version_state,
+    CodexClientVersionState, CODEX_CLIENT_VERSION_RETRY_INTERVAL_SECS,
+};
 
 pub(crate) mod state;
 
@@ -45,15 +54,26 @@ pub(crate) fn spawn_model_fetch_worker(state: AppState) -> Option<tokio::task::J
             info!("gateway model fetch startup disabled");
         }
 
-        let mut interval = tokio::time::interval(Duration::from_secs(
+        let mut model_fetch_interval = tokio::time::interval(Duration::from_secs(
             model_fetch_interval_minutes().saturating_mul(60),
         ));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        interval.tick().await;
+        model_fetch_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        model_fetch_interval.tick().await;
+        let mut codex_version_interval = tokio::time::interval(Duration::from_secs(
+            CODEX_CLIENT_VERSION_RETRY_INTERVAL_SECS,
+        ));
+        codex_version_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        codex_version_interval.tick().await;
         loop {
-            interval.tick().await;
-            if let Err(err) = run_model_fetch_cycle(&state, "tick").await {
-                warn!(error = ?err, "gateway model fetch tick failed");
+            tokio::select! {
+                _ = model_fetch_interval.tick() => {
+                    if let Err(err) = run_model_fetch_cycle(&state, "tick").await {
+                        warn!(error = ?err, "gateway model fetch tick failed");
+                    }
+                }
+                _ = codex_version_interval.tick() => {
+                    refresh_codex_client_version_if_due(&state).await;
+                }
             }
         }
     }))
@@ -99,6 +119,24 @@ async fn collect_fetch_targets<S>(
     state: &S,
     provider_id_filter: Option<&str>,
     key_id_filter: Option<&str>,
+) -> Result<Vec<SelectedFetchTarget>, GatewayError>
+where
+    S: ModelFetchRuntimeState + ?Sized,
+{
+    collect_fetch_targets_with_auto_fetch_requirement(
+        state,
+        provider_id_filter,
+        key_id_filter,
+        true,
+    )
+    .await
+}
+
+async fn collect_fetch_targets_with_auto_fetch_requirement<S>(
+    state: &S,
+    provider_id_filter: Option<&str>,
+    key_id_filter: Option<&str>,
+    require_auto_fetch_models: bool,
 ) -> Result<Vec<SelectedFetchTarget>, GatewayError>
 where
     S: ModelFetchRuntimeState + ?Sized,
@@ -155,7 +193,7 @@ where
             if key_id_filter.is_some_and(|key_id| key.id != key_id) {
                 continue;
             }
-            if !key.is_active || !key.auto_fetch_models {
+            if !key.is_active || (require_auto_fetch_models && !key.auto_fetch_models) {
                 continue;
             }
             let selected_endpoints = selected_models_fetch_endpoints(&endpoints, &key);
@@ -192,10 +230,8 @@ where
     Ok(summary)
 }
 
-async fn run_model_fetch_cycle<S>(state: &S, phase: &'static str) -> Result<(), GatewayError>
-where
-    S: ModelFetchRuntimeState + ?Sized,
-{
+async fn run_model_fetch_cycle(state: &AppState, phase: &'static str) -> Result<(), GatewayError> {
+    refresh_codex_client_version_if_due(state).await;
     let summary = perform_model_fetch_once_with_state(state).await?;
     if summary.attempted == 0 {
         debug!(phase, "gateway model fetch found no eligible keys");
@@ -211,6 +247,199 @@ where
         "gateway model fetch cycle completed"
     );
     Ok(())
+}
+
+async fn refresh_codex_client_version_if_due(state: &AppState) {
+    if let Some(version) = codex_model_fetch_client_version_override() {
+        debug!(
+            version,
+            "Codex model fetch client version pinned by environment"
+        );
+        return;
+    }
+
+    let now_unix_secs = now_unix_secs();
+    let process_last_known = process_last_known_version(state);
+    let existing = match read_codex_client_version_state(state).await {
+        Ok(existing) => existing,
+        Err(err) => {
+            warn!(error = %err, "Codex client version state read failed");
+            None
+        }
+    };
+    if !client_version_check_is_due(existing.as_ref(), now_unix_secs) {
+        return;
+    }
+
+    let current_version =
+        effective_version_from_state_and_memory(existing.as_ref(), process_last_known.as_deref());
+    let discovered_version = match fetch_official_codex_stable_version(state).await {
+        Ok(version) => version,
+        Err(err) => {
+            warn!(error = %err, version = %current_version, "Codex client version discovery failed");
+            persist_codex_client_version_check(state, current_version, now_unix_secs, false).await;
+            return;
+        }
+    };
+
+    if !discovered_version_is_newer(&current_version, &discovered_version) {
+        persist_codex_client_version_check(state, current_version, now_unix_secs, true).await;
+        return;
+    }
+
+    let accepted = match probe_codex_client_version(state, &current_version, &discovered_version)
+        .await
+    {
+        Ok(accepted) => accepted,
+        Err(err) => {
+            warn!(error = ?err, version = %discovered_version, "Codex client version validation failed");
+            false
+        }
+    };
+    let effective_version =
+        effective_version_after_probe(&current_version, &discovered_version, accepted);
+    let persisted =
+        persist_codex_client_version_check(state, effective_version, now_unix_secs, accepted).await;
+    if accepted && persisted {
+        info!(
+            previous_version = %current_version,
+            version = %discovered_version,
+            "Codex model fetch client version updated"
+        );
+    }
+}
+
+async fn persist_codex_client_version_check(
+    state: &AppState,
+    version: String,
+    checked_at_unix_secs: u64,
+    check_succeeded: bool,
+) -> bool {
+    if let Err(err) = write_codex_client_version_state(
+        state,
+        &CodexClientVersionState {
+            version,
+            checked_at_unix_secs,
+            next_check_at_unix_secs: client_version_next_check_at(
+                checked_at_unix_secs,
+                check_succeeded,
+            ),
+        },
+    )
+    .await
+    {
+        warn!(error = %err, "Codex client version state write failed");
+        return false;
+    }
+    true
+}
+
+async fn probe_codex_client_version<S>(
+    state: &S,
+    current_version: &str,
+    candidate_version: &str,
+) -> Result<bool, GatewayError>
+where
+    S: ModelFetchRuntimeState + ?Sized,
+{
+    let targets =
+        collect_fetch_targets_with_auto_fetch_requirement(state, None, None, false).await?;
+    let mut attempted = false;
+    for target in targets.into_iter().filter(|target| {
+        target
+            .provider
+            .provider_type
+            .trim()
+            .eq_ignore_ascii_case("codex")
+    }) {
+        let mut transports = Vec::new();
+        for endpoint in &target.endpoints {
+            if let Some(transport) = state
+                .read_provider_transport_snapshot(&target.provider.id, &endpoint.id, &target.key.id)
+                .await?
+            {
+                if !codex_endpoint_pins_client_version(&transport.endpoint.base_url) {
+                    transports.push(transport);
+                }
+            }
+        }
+        if transports.is_empty() {
+            continue;
+        }
+        attempted = true;
+        let current = match fetch_models_from_transports_with_codex_client_version(
+            state,
+            &transports,
+            Some(current_version),
+        )
+        .await
+        {
+            Ok(outcome) if outcome.has_success && !outcome.fetched_model_ids.is_empty() => outcome,
+            Ok(_) => continue,
+            Err(err) => {
+                debug!(
+                    provider_id = %target.provider.id,
+                    key_id = %target.key.id,
+                    version = %current_version,
+                    error = %err,
+                    "Current Codex client version probe failed for key"
+                );
+                continue;
+            }
+        };
+        let candidate = match fetch_models_from_transports_with_codex_client_version(
+            state,
+            &transports,
+            Some(candidate_version),
+        )
+        .await
+        {
+            Ok(outcome) if outcome.has_success && !outcome.fetched_model_ids.is_empty() => outcome,
+            Ok(_) => continue,
+            Err(err) => {
+                debug!(
+                    provider_id = %target.provider.id,
+                    key_id = %target.key.id,
+                    version = %candidate_version,
+                    error = %err,
+                    "Candidate Codex client version probe failed for key"
+                );
+                continue;
+            }
+        };
+        if candidate_catalog_preserves_current_models(
+            &current.fetched_model_ids,
+            &candidate.fetched_model_ids,
+        ) {
+            return Ok(true);
+        }
+        warn!(
+            provider_id = %target.provider.id,
+            key_id = %target.key.id,
+            current_version = %current_version,
+            candidate_version = %candidate_version,
+            current_model_count = current.fetched_model_ids.len(),
+            candidate_model_count = candidate.fetched_model_ids.len(),
+            "Candidate Codex client version returned a reduced model catalog"
+        );
+    }
+    if !attempted {
+        debug!(version = %candidate_version, "Codex client version probe found no eligible key");
+    }
+    Ok(false)
+}
+
+fn codex_endpoint_pins_client_version(base_url: &str) -> bool {
+    base_url
+        .split_once('?')
+        .map(|(_, query)| {
+            query.split('&').any(|part| {
+                part.split_once('=')
+                    .map(|(key, _)| key.trim().eq_ignore_ascii_case("client_version"))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -322,6 +551,18 @@ async fn fetch_and_persist_key_models(
         return Ok(KeyFetchDisposition::Failed);
     }
 
+    if result.fetched_model_ids.is_empty() {
+        let error = "Upstream models fetch returned an empty catalog".to_string();
+        persist_key_fetch_failure(state, &target.key, now_unix_secs, error.clone()).await?;
+        warn!(
+            provider_id = %target.provider.id,
+            key_id = %target.key.id,
+            message = %error,
+            "gateway model fetch failed"
+        );
+        return Ok(KeyFetchDisposition::Failed);
+    }
+
     let filtered_models = apply_model_filters(
         &result.fetched_model_ids,
         json_string_list(target.key.locked_models.as_ref()),
@@ -395,7 +636,11 @@ fn now_unix_secs() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{perform_model_fetch_once_with_state, state::ModelFetchRuntimeState};
+    use super::{
+        codex_endpoint_pins_client_version, collect_fetch_targets_with_auto_fetch_requirement,
+        perform_model_fetch_once_with_state, probe_codex_client_version,
+        state::ModelFetchRuntimeState,
+    };
     use aether_contracts::{ExecutionPlan, ExecutionResult, ProxySnapshot};
     use aether_data_contracts::repository::global_models::{
         AdminGlobalModelListQuery, AdminProviderModelListQuery, StoredAdminGlobalModelPage,
@@ -418,6 +663,19 @@ mod tests {
         GatewayProviderTransportEndpoint, GatewayProviderTransportKey,
         GatewayProviderTransportProvider, GatewayProviderTransportSnapshot,
     };
+
+    #[test]
+    fn codex_version_probe_skips_endpoints_with_explicit_version() {
+        assert!(codex_endpoint_pins_client_version(
+            "https://chatgpt.com/backend-api/codex?client_version=0.143.0"
+        ));
+        assert!(codex_endpoint_pins_client_version(
+            "https://chatgpt.com/backend-api/codex?foo=1&CLIENT_VERSION=0.143.0"
+        ));
+        assert!(!codex_endpoint_pins_client_version(
+            "https://chatgpt.com/backend-api/codex"
+        ));
+    }
 
     #[derive(Clone, Default)]
     struct TestState {
@@ -703,6 +961,38 @@ mod tests {
         key
     }
 
+    #[tokio::test]
+    async fn codex_version_probe_can_use_active_key_without_auto_fetch() {
+        let provider = sample_provider("provider-codex", "codex");
+        let endpoint = sample_endpoint("endpoint-codex", "provider-codex", "openai:responses");
+        let mut key = sample_key(
+            "key-codex",
+            "provider-codex",
+            "oauth",
+            &["openai:responses"],
+        );
+        key.auto_fetch_models = false;
+        let state = TestState::new(
+            vec![provider],
+            vec![endpoint],
+            vec![key],
+            HashMap::new(),
+            Vec::new(),
+        );
+
+        let probe_targets =
+            collect_fetch_targets_with_auto_fetch_requirement(&state, None, None, false)
+                .await
+                .expect("probe targets");
+        let automatic_targets =
+            collect_fetch_targets_with_auto_fetch_requirement(&state, None, None, true)
+                .await
+                .expect("automatic targets");
+
+        assert_eq!(probe_targets.len(), 1);
+        assert!(automatic_targets.is_empty());
+    }
+
     fn sample_transport(
         provider_type: &str,
         provider_id: &str,
@@ -779,6 +1069,55 @@ mod tests {
             telemetry: None,
             error: None,
         }
+    }
+
+    #[tokio::test]
+    async fn codex_version_probe_rejects_reduced_candidate_catalog() {
+        let provider = sample_provider("provider-codex", "codex");
+        let mut endpoint = sample_endpoint("endpoint-codex", "provider-codex", "openai:responses");
+        endpoint.base_url = "https://chatgpt.com/backend-api/codex".to_string();
+        let mut key = sample_key(
+            "key-codex",
+            "provider-codex",
+            "oauth",
+            &["openai:responses"],
+        );
+        key.auto_fetch_models = false;
+        let mut transport = sample_transport(
+            "codex",
+            "provider-codex",
+            "endpoint-codex",
+            "key-codex",
+            "openai:responses",
+            "oauth",
+            None,
+        );
+        transport.endpoint.base_url = "https://chatgpt.com/backend-api/codex".to_string();
+        let state = TestState::new(
+            vec![provider],
+            vec![endpoint],
+            vec![key],
+            HashMap::from([(
+                (
+                    "provider-codex".to_string(),
+                    "endpoint-codex".to_string(),
+                    "key-codex".to_string(),
+                ),
+                transport,
+            )]),
+            vec![
+                execution_result(json!({
+                    "models": [{"id":"gpt-5.5"}, {"id":"gpt-5.6-sol"}]
+                })),
+                execution_result(json!({
+                    "models": [{"id":"gpt-5.5"}]
+                })),
+            ],
+        );
+
+        assert!(!probe_codex_client_version(&state, "0.144.1", "0.144.3")
+            .await
+            .expect("probe result"));
     }
 
     #[tokio::test]
@@ -945,5 +1284,68 @@ mod tests {
             updated.last_models_fetch_error.as_deref(),
             Some("Provider transport snapshot unavailable")
         );
+    }
+
+    #[tokio::test]
+    async fn model_fetch_empty_catalog_keeps_existing_allowed_models() {
+        let provider = sample_provider("provider-codex", "codex");
+        let mut endpoint = sample_endpoint(
+            "endpoint-codex-responses",
+            "provider-codex",
+            "openai:responses",
+        );
+        endpoint.base_url = "https://chatgpt.com/backend-api/codex".to_string();
+        let mut key = sample_key(
+            "key-codex-responses",
+            "provider-codex",
+            "oauth",
+            &["openai:responses"],
+        );
+        key.allowed_models = Some(json!(["gpt-5.5"]));
+        let mut transport = sample_transport(
+            "codex",
+            "provider-codex",
+            "endpoint-codex-responses",
+            "key-codex-responses",
+            "openai:responses",
+            "oauth",
+            None,
+        );
+        transport.endpoint.base_url = "https://chatgpt.com/backend-api/codex".to_string();
+        let state = TestState::new(
+            vec![provider],
+            vec![endpoint],
+            vec![key],
+            HashMap::from([(
+                (
+                    "provider-codex".to_string(),
+                    "endpoint-codex-responses".to_string(),
+                    "key-codex-responses".to_string(),
+                ),
+                transport,
+            )]),
+            vec![execution_result(json!({"models": []}))],
+        );
+
+        let summary = perform_model_fetch_once_with_state(&state)
+            .await
+            .expect("fetch should finish");
+
+        assert_eq!(summary.succeeded, 0);
+        assert_eq!(summary.failed, 1);
+        let updated = state.key("key-codex-responses");
+        assert_eq!(updated.allowed_models, Some(json!(["gpt-5.5"])));
+        assert_eq!(
+            updated.last_models_fetch_error.as_deref(),
+            Some("Upstream models fetch returned an empty catalog")
+        );
+        assert!(!state
+            .cached_models
+            .lock()
+            .expect("cache mutex")
+            .contains_key(&(
+                "provider-codex".to_string(),
+                "key-codex-responses".to_string()
+            )));
     }
 }

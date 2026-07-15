@@ -26,7 +26,8 @@ const CODEX_IMAGE_TOOL_DEFAULT_SIZE: &str = "1024x1024";
 const CODEX_IMAGE_TOOL_DEFAULT_QUALITY: &str = "high";
 const CODEX_IMAGE_TOOL_DEFAULT_BACKGROUND: &str = "auto";
 const CODEX_IMAGE_GENERATION_BRIDGE_MARKER: &str = "<niffler-codex-image-generation>";
-const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user asks for raster image generation or editing, use the OpenAI Responses native `image_generation` tool attached to this request. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
+const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user's requested outcome is a raster image or image edit, you MUST call the OpenAI Responses native `image_generation` tool attached to this request. Infer that intent from the full semantic request, not from specific keywords. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Never substitute a prompt, external URL, Markdown image, or an unsupported claim of completion for a successful tool result. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
+const OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str = "x-openai-internal-codex-responses-lite";
 const UUID_NAMESPACE_OID_BYTES: [u8; 16] = [
     0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
 ];
@@ -36,6 +37,23 @@ pub fn normalize_codex_openai_image_bridge_model(model: Option<&str>) -> &str {
         .map(str::trim)
         .filter(|value| value.to_ascii_lowercase().starts_with("gpt-"))
         .unwrap_or(CODEX_OPENAI_IMAGE_BRIDGE_MODEL_DEFAULT)
+}
+
+pub fn codex_openai_responses_lite_requested(headers: Option<&http::HeaderMap>) -> bool {
+    headers
+        .and_then(|headers| headers.get(OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER))
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case("true") || value == "1")
+}
+
+pub fn codex_hosted_image_generation_tool_allowed(
+    configured_enabled: bool,
+    provider_api_format: &str,
+) -> bool {
+    configured_enabled
+        && (is_openai_image_request(provider_api_format)
+            || aether_ai_formats::is_openai_responses_format(provider_api_format))
 }
 
 fn is_codex_openai_responses_request(provider_type: &str, provider_api_format: &str) -> bool {
@@ -116,6 +134,34 @@ fn codex_openai_responses_has_image_generation_tool(
             tool.get("type")
                 .and_then(Value::as_str)
                 .is_some_and(|tool_type| tool_type.trim().eq_ignore_ascii_case("image_generation"))
+        })
+}
+
+fn codex_openai_responses_has_client_image_tool(
+    body_object: &serde_json::Map<String, Value>,
+) -> bool {
+    body_object
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .any(|tool| {
+            let tool_type = tool
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim();
+            let name = tool
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim();
+            (tool_type.eq_ignore_ascii_case("namespace") && name.eq_ignore_ascii_case("image_gen"))
+                || (matches!(
+                    tool_type.to_ascii_lowercase().as_str(),
+                    "function" | "custom"
+                ) && name.eq_ignore_ascii_case("image_gen.imagegen"))
         })
 }
 
@@ -210,6 +256,51 @@ fn apply_codex_image_generation_bridge_instructions(
         format!("{existing}\n\n{CODEX_IMAGE_GENERATION_BRIDGE_TEXT}")
     };
     body_object.insert("instructions".to_string(), json!(instructions));
+}
+
+fn remove_codex_responses_lite_metadata(body_object: &mut serde_json::Map<String, Value>) {
+    const LITE_METADATA_KEY: &str = "ws_request_header_x_openai_internal_codex_responses_lite";
+    let remove_container = body_object
+        .get_mut("client_metadata")
+        .and_then(Value::as_object_mut)
+        .is_some_and(|metadata| {
+            metadata.remove(LITE_METADATA_KEY);
+            metadata.is_empty()
+        });
+    if remove_container {
+        body_object.remove("client_metadata");
+    }
+}
+
+fn normalize_codex_responses_lite_metadata(body_object: &mut serde_json::Map<String, Value>) {
+    const LITE_METADATA_KEY: &str = "ws_request_header_x_openai_internal_codex_responses_lite";
+    let Some(value) = body_object
+        .get_mut("client_metadata")
+        .and_then(Value::as_object_mut)
+        .and_then(|metadata| metadata.get_mut(LITE_METADATA_KEY))
+    else {
+        return;
+    };
+    if let Some(enabled) = value.as_bool() {
+        *value = Value::String(enabled.to_string());
+    }
+}
+
+fn normalize_codex_replayed_image_generation_calls(
+    body_object: &mut serde_json::Map<String, Value>,
+) {
+    let Some(input) = body_object.get_mut("input").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for item in input {
+        let Some(item) = item.as_object_mut() else {
+            continue;
+        };
+        if item.get("type").and_then(Value::as_str) != Some("image_generation_call") {
+            continue;
+        }
+        item.retain(|key, _| matches!(key.as_str(), "type" | "id" | "status" | "result"));
+    }
 }
 
 fn apply_codex_openai_image_tool_overrides(
@@ -398,6 +489,18 @@ fn btree_map_has_non_empty_value(headers: &BTreeMap<String, String>, header_name
         .any(|(name, value)| name.trim().eq_ignore_ascii_case(&target) && !value.trim().is_empty())
 }
 
+fn remove_case_insensitive_header(headers: &mut BTreeMap<String, String>, header_name: &str) {
+    headers.retain(|name, _| !name.trim().eq_ignore_ascii_case(header_name));
+}
+
+fn codex_model_supports_responses_lite(provider_request_body: &Value) -> bool {
+    provider_request_body
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|model| model.eq_ignore_ascii_case("gpt-5.6-sol"))
+}
+
 fn extract_codex_account_id(decrypted_auth_config_raw: Option<&str>) -> Option<String> {
     let raw = decrypted_auth_config_raw?.trim();
     if raw.is_empty() {
@@ -503,17 +606,21 @@ pub fn apply_openai_responses_image_generation_bridge_body_edits(
         provider_api_format,
         body_object,
         enable_image_generation_tool,
-    ) {
+    ) && !codex_openai_responses_has_client_image_tool(body_object)
+    {
         ensure_codex_openai_responses_image_generation_tool(body_object);
         ensure_codex_openai_responses_auto_tool_choice(body_object);
         apply_codex_image_generation_bridge_instructions(body_object);
+    }
+    if codex_openai_responses_has_image_generation_tool(body_object) {
+        remove_codex_responses_lite_metadata(body_object);
     }
 
     let image_model = codex_openai_responses_model_references_image_generation(body_object);
     let explicit_image_request = is_openai_image_request(provider_api_format)
         || image_model.is_some()
         || codex_openai_responses_tool_choice_references_image_generation(body_object);
-    if !enable_image_generation_tool || !explicit_image_request {
+    if !explicit_image_request {
         return;
     }
 
@@ -680,7 +787,7 @@ pub fn apply_codex_openai_responses_special_body_edits_with_bridge_model(
         body_rules,
         user_api_key_id,
         image_bridge_model,
-        true,
+        is_openai_image_request(provider_api_format),
     );
 }
 
@@ -734,6 +841,8 @@ pub fn apply_codex_openai_responses_special_body_edits_with_bridge_config(
     strip_codex_hosted_tool_names_for_backend(body_object);
     strip_codex_hosted_tool_choice_name_for_backend(body_object);
     normalize_codex_responses_string_input(body_object);
+    normalize_codex_replayed_image_generation_calls(body_object);
+    normalize_codex_responses_lite_metadata(body_object);
 
     apply_openai_responses_image_generation_bridge_body_edits(
         provider_request_body,
@@ -781,7 +890,7 @@ pub fn apply_codex_openai_responses_chat_body_edits_with_bridge_model(
         body_rules,
         user_api_key_id,
         image_bridge_model,
-        true,
+        is_openai_image_request(provider_api_format),
     );
 }
 
@@ -824,6 +933,16 @@ pub fn apply_codex_openai_responses_special_headers(
 ) {
     if !is_codex_openai_responses_request(provider_type, provider_api_format) {
         return;
+    }
+
+    let has_hosted_image_tool = provider_request_body
+        .as_object()
+        .is_some_and(codex_openai_responses_has_image_generation_tool);
+    if has_hosted_image_tool || !codex_model_supports_responses_lite(provider_request_body) {
+        remove_case_insensitive_header(
+            provider_request_headers,
+            OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER,
+        );
     }
 
     let prompt_cache_key = provider_request_body
@@ -891,12 +1010,25 @@ mod tests {
         apply_codex_openai_responses_chat_body_edits,
         apply_codex_openai_responses_special_body_edits,
         apply_codex_openai_responses_special_body_edits_with_bridge_model,
-        apply_openai_responses_compact_special_body_edits, CODEX_OPENAI_IMAGE_INTERNAL_MODEL,
+        apply_openai_responses_compact_special_body_edits,
+        codex_hosted_image_generation_tool_allowed, CODEX_OPENAI_IMAGE_INTERNAL_MODEL,
     };
     use serde_json::json;
 
     #[test]
-    fn codex_responses_body_edits_inject_passthrough_fields_without_reasoning_summary() {
+    fn hosted_image_tool_is_allowed_for_normal_responses_when_enabled() {
+        assert!(codex_hosted_image_generation_tool_allowed(
+            true,
+            "openai:responses"
+        ));
+        assert!(!codex_hosted_image_generation_tool_allowed(
+            false,
+            "openai:responses"
+        ));
+    }
+
+    #[test]
+    fn codex_responses_body_edits_keep_passthrough_fields_without_hosted_image_tool() {
         let mut provider_request_body = json!( {
             "input": [{
                 "role": "user",
@@ -920,11 +1052,11 @@ mod tests {
             json!(["reasoning.encrypted_content"])
         );
         assert_eq!(provider_request_body["parallel_tool_calls"], json!(true));
-        assert!(provider_request_body["instructions"]
+        assert!(!provider_request_body["instructions"]
             .as_str()
             .unwrap_or_default()
             .contains("Responses native `image_generation` tool"));
-        assert!(provider_request_body["tools"]
+        assert!(!provider_request_body["tools"]
             .as_array()
             .into_iter()
             .flatten()
@@ -1366,7 +1498,7 @@ mod tests {
         );
 
         assert_eq!(provider_request_body["model"], json!(original_model));
-        assert_eq!(provider_request_body["tool_choice"], json!("auto"));
+        assert!(provider_request_body.get("tool_choice").is_none());
         assert_eq!(
             provider_request_body["tools"][0]["type"],
             json!("image_generation")

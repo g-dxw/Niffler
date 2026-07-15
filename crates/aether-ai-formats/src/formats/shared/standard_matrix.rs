@@ -14,8 +14,9 @@ use serde_json::Value;
 use crate::formats::shared::model_directives::apply_model_directive_overrides_from_request;
 
 use crate::formats::openai::responses::codex::{
-    apply_codex_openai_responses_chat_body_edits, apply_codex_openai_responses_special_body_edits,
-    apply_openai_responses_compact_special_body_edits,
+    apply_codex_openai_responses_chat_body_edits_with_bridge_config,
+    apply_codex_openai_responses_special_body_edits_with_bridge_config,
+    apply_openai_responses_compact_special_body_edits, codex_hosted_image_generation_tool_allowed,
 };
 use crate::formats::shared::standard_normalize::build_local_openai_chat_request_body_with_model_directives;
 
@@ -121,21 +122,27 @@ pub fn build_standard_request_body_with_model_directives_and_request_headers(
         aether_ai_formats::normalize_api_format_alias(client_api_format).as_str(),
         "openai:responses" | "openai:responses:compact"
     );
+    let enable_codex_image_generation_tool =
+        codex_hosted_image_generation_tool_allowed(true, provider_api_format);
     if client_is_openai_responses_family {
-        apply_codex_openai_responses_special_body_edits(
+        apply_codex_openai_responses_special_body_edits_with_bridge_config(
             &mut provider_request_body,
             provider_type,
             provider_api_format,
             body_rules,
             user_api_key_id,
+            None,
+            enable_codex_image_generation_tool,
         );
     } else {
-        apply_codex_openai_responses_chat_body_edits(
+        apply_codex_openai_responses_chat_body_edits_with_bridge_config(
             &mut provider_request_body,
             provider_type,
             provider_api_format,
             body_rules,
             user_api_key_id,
+            None,
+            enable_codex_image_generation_tool,
         );
     }
     apply_openai_responses_compact_special_body_edits(
@@ -1008,7 +1015,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_responses_bridge_adds_image_tool_and_instructions() {
+    fn codex_responses_bridge_exposes_image_tool_for_semantic_model_selection() {
         let request = json!({
             "model": "gpt-5.5",
             "instructions": "Be helpful.",
@@ -1039,11 +1046,7 @@ mod tests {
             .as_str()
             .unwrap_or_default()
             .contains("Responses native `image_generation` tool"));
-        assert_eq!(
-            converted["tool_choice"],
-            json!("auto"),
-            "auto advertises the tool without forcing image generation"
-        );
+        assert_eq!(converted["tool_choice"], json!("auto"));
     }
 
     #[test]

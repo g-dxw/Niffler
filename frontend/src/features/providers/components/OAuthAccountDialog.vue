@@ -1110,7 +1110,18 @@ function isBatchImport(text: string): boolean {
   // 单个 JSON 对象（可能是 pretty-printed 多行）不算批量导入
   if (trimmed.startsWith('{')) {
     try {
-      JSON.parse(trimmed)
+      const parsed = JSON.parse(trimmed) as unknown
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        const object = parsed as Record<string, unknown>
+        const hasSub2apiType = object.type === 'sub2api-data' || object.type === 'sub2api-bundle'
+        const hasLegacySub2apiShape = 'exported_at' in object
+          && 'proxies' in object
+          && 'accounts' in object
+        const looksLikeSub2apiExport = hasSub2apiType || hasLegacySub2apiShape
+        if (looksLikeSub2apiExport) {
+          return true
+        }
+      }
       return false // 可解析的单个 JSON 对象，走单条导入
     } catch {
       // 解析失败：可能是多个 JSON 对象（JSON Lines 格式），继续检查

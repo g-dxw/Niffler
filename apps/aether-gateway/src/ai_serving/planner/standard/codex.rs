@@ -6,7 +6,7 @@ pub(crate) use crate::ai_serving::{
     apply_codex_openai_responses_special_body_edits,
     apply_codex_openai_responses_special_body_edits_with_bridge_config,
     apply_codex_openai_responses_special_body_edits_with_bridge_model,
-    apply_codex_openai_responses_special_headers,
+    apply_codex_openai_responses_special_headers, codex_hosted_image_generation_tool_allowed,
 };
 
 const OPENAI_RESPONSES_IMAGE_GENERATION_TOOL_ENABLED_CONFIG_KEY: &str =

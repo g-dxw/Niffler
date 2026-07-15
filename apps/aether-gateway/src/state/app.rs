@@ -52,6 +52,7 @@ pub struct AppState {
     pub(crate) execution_runtime_sync_override: Option<TestExecutionRuntimeSyncOverride>,
     pub(crate) data: Arc<GatewayDataState>,
     pub(crate) runtime_state: Arc<RuntimeState>,
+    pub(crate) codex_model_fetch_client_version_cache: Arc<StdMutex<Option<String>>>,
     pub(crate) usage_runtime: Arc<usage::UsageRuntime>,
     pub(crate) request_candidate_status_write_queue:
         Arc<crate::request_candidate_runtime::RequestCandidateStatusWriteQueue>,

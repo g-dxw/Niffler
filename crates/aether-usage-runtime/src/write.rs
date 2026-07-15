@@ -2750,14 +2750,38 @@ fn estimate_json_tokens(value: &Value) -> u64 {
             .iter()
             .map(estimate_json_tokens)
             .fold(0u64, u64::saturating_add),
-        Value::Object(object) => object
-            .iter()
-            .map(|(key, value)| {
-                estimate_text_tokens(key).saturating_add(estimate_json_tokens(value))
-            })
-            .fold(0u64, u64::saturating_add),
+        Value::Object(object) => {
+            let object_type = object.get("type").and_then(Value::as_str);
+            object
+                .iter()
+                .map(|(key, value)| {
+                    let value_tokens = if is_binary_payload_field(key, value, object_type) {
+                        0
+                    } else {
+                        estimate_json_tokens(value)
+                    };
+                    estimate_text_tokens(key).saturating_add(value_tokens)
+                })
+                .fold(0u64, u64::saturating_add)
+        }
         Value::Null => 0,
         _ => 1,
+    }
+}
+
+fn is_binary_payload_field(key: &str, value: &Value, object_type: Option<&str>) -> bool {
+    let Some(text) = value.as_str() else {
+        return false;
+    };
+    match (object_type, key) {
+        (_, "b64_json") => true,
+        (Some("image_generation_call"), "result") => true,
+        (Some("response.image_generation_call.partial_image"), "partial_image_b64") => true,
+        (Some("image_generation.completed" | "image_edit.completed"), "result") => true,
+        (Some("input_image"), "image_url") => text.starts_with("data:image/"),
+        (Some("input_audio"), "data") => true,
+        (Some("input_file"), "file_data") => true,
+        _ => false,
     }
 }
 
@@ -3115,7 +3139,7 @@ mod tests {
         build_stream_terminal_usage_event, build_streaming_usage_record,
         build_sync_terminal_usage_event, build_sync_terminal_usage_payload_seed,
         build_sync_terminal_usage_seed, build_terminal_usage_context_seed,
-        build_terminal_usage_event_from_seed, build_usage_event_data_seed,
+        build_terminal_usage_event_from_seed, build_usage_event_data_seed, estimate_request_usage,
         extract_token_counts_from_json, extract_token_counts_from_value, headers_to_json,
         mask_header_value, mask_sensitive_headers_in_json_value, parse_sse_body_for_storage,
         resolve_error_message, standardized_usage_total_tokens, trim_owned_non_empty_string,
@@ -3133,6 +3157,137 @@ mod tests {
     use base64::Engine as _;
     use serde_json::{json, Value};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn request_usage_estimate_ignores_native_input_image_data_bytes() {
+        let request_with_image = |image_bytes: &str| {
+            json!({
+                "model": "gpt-5.6-sol",
+                "input": [{
+                    "type": "function_call_output",
+                    "call_id": "call_image_1",
+                    "output": [
+                        {
+                            "type": "input_image",
+                            "image_url": format!("data:image/png;base64,{image_bytes}")
+                        },
+                        {
+                            "type": "input_text",
+                            "text": "The generated image was saved locally"
+                        }
+                    ]
+                }]
+            })
+        };
+
+        let small = estimate_request_usage(&request_with_image("AAAA"))
+            .expect("small image request should be estimated");
+        let large = estimate_request_usage(&request_with_image(&"A".repeat(1_000_000)))
+            .expect("large image request should be estimated");
+
+        assert_eq!(small.input_tokens, large.input_tokens);
+        assert!(
+            large.input_tokens > 0,
+            "text metadata must still be counted"
+        );
+    }
+
+    #[test]
+    fn request_usage_estimate_ignores_typed_audio_and_file_data_bytes() {
+        let request_with_binary = |binary_bytes: &str| {
+            json!({
+                "model": "gpt-5.6-sol",
+                "input": [{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_audio",
+                            "data": binary_bytes,
+                            "format": "wav"
+                        },
+                        {
+                            "type": "input_file",
+                            "filename": "notes.pdf",
+                            "file_data": format!("data:application/pdf;base64,{binary_bytes}")
+                        },
+                        {
+                            "type": "input_text",
+                            "text": "Summarize the supplied content"
+                        }
+                    ]
+                }]
+            })
+        };
+
+        let small = estimate_request_usage(&request_with_binary("AAAA"))
+            .expect("small binary request should be estimated");
+        let large = estimate_request_usage(&request_with_binary(&"A".repeat(1_000_000)))
+            .expect("large binary request should be estimated");
+
+        assert_eq!(small.input_tokens, large.input_tokens);
+        assert!(
+            large.input_tokens > 0,
+            "text metadata must still be counted"
+        );
+    }
+
+    #[test]
+    fn request_usage_estimate_ignores_native_image_generation_result_bytes() {
+        let request_with_native_image = |binary_bytes: &str| {
+            json!({
+                "model": "gpt-5.6-sol",
+                "input": [{
+                    "type": "image_generation_call",
+                    "id": "ig_123",
+                    "status": "completed",
+                    "result": binary_bytes,
+                    "revised_prompt": "A glass city at dusk"
+                }, {
+                    "type": "response.image_generation_call.partial_image",
+                    "partial_image_b64": binary_bytes,
+                    "partial_image_index": 0
+                }]
+            })
+        };
+
+        let small = estimate_request_usage(&request_with_native_image("AAAA"))
+            .expect("small native image request should be estimated");
+        let large = estimate_request_usage(&request_with_native_image(&"A".repeat(1_000_000)))
+            .expect("large native image request should be estimated");
+
+        assert_eq!(small.input_tokens, large.input_tokens);
+        assert!(
+            large.input_tokens > 0,
+            "text metadata must still be counted"
+        );
+    }
+
+    #[test]
+    fn request_usage_estimate_does_not_inherit_binary_type_into_nested_metadata() {
+        let request_with_metadata = |metadata_text: &str| {
+            json!({
+                "model": "gpt-5.6-sol",
+                "input": [{
+                    "role": "user",
+                    "content": [{
+                        "type": "input_audio",
+                        "data": "AAAA",
+                        "format": "wav",
+                        "metadata": {
+                            "data": metadata_text
+                        }
+                    }]
+                }]
+            })
+        };
+
+        let small = estimate_request_usage(&request_with_metadata("short text"))
+            .expect("small metadata request should be estimated");
+        let large = estimate_request_usage(&request_with_metadata(&"A".repeat(4_000)))
+            .expect("large metadata request should be estimated");
+
+        assert!(large.input_tokens > small.input_tokens);
+    }
 
     #[test]
     fn extracts_openai_usage_tokens() {

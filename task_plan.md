@@ -1,4 +1,122 @@
-# Task Plan: 后台钱包检索、用户时间展示与前端表格体验优化
+# Task Plan: 当前任务记录
+
+## 本地未提交改动审查与上线（2026-07-15）
+
+### Goal
+
+完整审查当前工作区 24 个未提交文件，修复审查发现的问题，验证 Codex 模型目录版本管理、生图验收脚本和相关文档后，提交、推送并按现有生产流程部署。
+
+### Current Phase
+
+Review Phase 6
+
+### Phases
+
+- [x] Review Phase 1：核对项目规则、变更范围和已上线内容，识别重复或过期改动
+- [x] Review Phase 2：逐项审查模型版本管理、测试脚本、文档和任务记录
+- [x] Review Phase 3：先更新设计记录，再修复审查问题并补充测试
+- [x] Review Phase 4：运行格式、静态检查和单元测试；真实上游模型目录验证安排在生产部署后执行
+- [x] Review Phase 5：按文件清单暂存并创建约定式提交，推送远端
+- [x] Review Phase 6：等待生产镜像构建，部署 hd0526 并完成两次健康检查和模型目录验证
+
+### Status
+
+complete
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| `planning-with-files` 恢复脚本读到旧会话中与当前工作区不一致的描述 | 恢复未同步上下文 | 以当前 `git status`、完整差异和现有计划文件为准，旧描述不作为本次审查依据 |
+| 新增空模型目录回归测试后按预期失败：成功数为 1，预期为 0 | 验证 HTTP 200 空目录不会清空权限 | 将空目录改为失败结果并保留原有权限和缓存，随后重新运行测试 |
+| 将提交接到 `eb44f662` 后，生图架构文档出现一处内容冲突 | 保留已上线的同步图片保活说明，同时合并 Codex App 请求头结论 | 手工合并两组验证要求并完成 rebase，代码文件无冲突 |
+| 首次触发镜像工作流时，GitHub CLI 使用了错误的默认仓库 | 直接运行 `gh workflow run app-image.yml` | 显式指定 `-R ryfineZ/Niffler` 后成功触发生产镜像构建 |
+| 首次生产模型验证脚本存在 shell 引号错误，随后又使用了错误的管理鉴权头 | 调用本机管理接口验证三个号池 | 改用编码后的 Python 脚本，并按代码定义使用 `x-aether-admin-*` 请求头；Plus、Pro、Team 均验证成功 |
+| hd0526 没有安装 `rg` | 筛选最近 15 分钟容器错误日志 | 改用 `grep -Eai`，两个容器均未发现 `panic`、`fatal` 或 `error` |
+
+---
+
+## sub2api JSON 导入兼容性（2026-07-14）
+
+### Goal
+
+核对用户提供的 sub2api 导出文件与 Niffler 导入协议，定位“无法解析输入内容”的确切原因并给出修复范围；本轮先诊断，不修改代码。
+
+### Current Phase
+
+Implement Phase 5
+
+### Phases
+
+- [x] Import Phase 1：验证 JSON 语法、编码和顶层结构
+- [x] Import Phase 2：检查 Niffler 前端解析与后端导入协议
+- [x] Import Phase 3：对照 sub2api 导出结构，确认缺失兼容分支和安全边界
+- [x] Import Phase 4：汇总根因、影响范围和修复方案
+
+### Status
+
+complete
+
+### Implementation
+
+- [x] Implement Phase 1：确认显示名称规则与兼容边界
+- [x] Implement Phase 2：新增设计记录
+- [x] Implement Phase 3：补充前后端失败测试
+- [x] Implement Phase 4：实现前端识别、后端展开与名称生成
+- [x] Implement Phase 5：运行回归测试和 UI review（功能测试通过；UI 静态审查仅命中弹窗既有样式问题）
+
+**Implementation Status:** complete
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 读取 `token_import.rs` 时少写了 `dispatch/` 路径 | 检查 Access Token 单独导入行为 | 改用 `apps/aether-gateway/src/handlers/admin/provider/oauth/dispatch/token_import.rs` |
+| 一条 `jq` 表达式因逗号优先级错误而索引数组 | 汇总平台、套餐和授权模式 | 拆成独立表达式重新查询 |
+| UI 静态审查命中弹窗既有交互密度和配色问题 | 按紧凑工具界面规则复核本次前端改动 | 本次没有改可见界面；记录既有问题，不扩大本次兼容性修复范围 |
+
+---
+
+## 线上生图超时事故（2026-07-14）
+
+### Goal
+
+确认线上 Niffler 生图请求超时的具体环节和影响范围，修复后提交并部署生产环境。
+
+### Current Phase
+
+Incident Phase 5
+
+### Phases
+
+- [x] Incident Phase 1：核对客户端现象和线上网关日志
+- [x] Incident Phase 2：核对请求记录、提供商端点与出站链路
+- [x] Incident Phase 3：检查超时、取消和账号切换的实现
+- [x] Incident Phase 4：得出结论并给出修复范围
+- [x] Incident Phase 5：开启生产保活、提交代码、构建部署并完成真实生图验证
+
+### Known Facts
+
+- Codex App 已加载生图工具，请求已到达 Niffler 的 `/v1/images/generations`。
+- 线上请求被路由到 Pro 号池的 `gpt-image-2`，多个不同账号都出现 60 秒、120 秒无上游响应。
+- 同时段文本 Responses 请求大多仍能完成，问题集中在图片生成链路。
+- 更正：进一步核对 `extra_data.image_progress` 后，大多数失败请求已在 0.3–2.8 秒内收到上游响应头，且收到 8–9 个 `keepalive` 事件；并非“上游完全无响应”。
+- 连接统一在约 124.6 秒被取消，与 Cloudflare 默认 120 秒 Proxy Read Timeout 一致。
+- 代码已有 15 秒 JSON 空白心跳实现，但 `should_enable_openai_image_sync_json_heartbeat` 固定返回 `false`，生产请求的心跳数为 0。
+- 生产配置已开启同步生图保活；代码默认值改为开启，同时保留管理员显式关闭能力。
+- 提交 `fcc5a165` 已部署至 hd0526，前台和后台容器均健康。
+- 部署后真实生图请求 HTTP 200，0.87 秒收到首字节，21.56 秒完成，最终 JSON 中的图片可解码为有效 PNG。
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| hd0526 未安装 `rg` | 用 `rg` 过滤容器日志 | 改用 `grep -E` |
+| Postgres `json` 不支持 `?` 操作符 | 直接检查 `request_headers` 键 | 转为 `jsonb` 后查询；该取消记录未保存请求头 |
+
+---
+
+# 暂停的原任务：后台钱包检索、用户时间展示与前端表格体验优化
 
 ## Goal
 
