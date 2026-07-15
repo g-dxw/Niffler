@@ -166,4 +166,21 @@ describe('image generation API', () => {
     })
     await expect(promise).rejects.toMatchObject<ImageGenerationError>({ message: '余额不足', status: 402 })
   })
+
+  it.each([
+    [401, '当前 API 密钥无效，或没有调用图片接口的权限'],
+    [403, '当前 API 密钥无权调用所选图片模型或图片接口'],
+  ])('explains image permission failures for HTTP %i', async (status, message) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status })))
+
+    const promise = generateImage({
+      apiKey: 'secret-key',
+      baseUrl: 'https://niffler.example',
+      model: 'gpt-image-2',
+      prompt: 'a cat',
+      responseFormat: 'b64_json',
+    })
+
+    await expect(promise).rejects.toMatchObject<ImageGenerationError>({ message, status })
+  })
 })

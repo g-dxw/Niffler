@@ -183,6 +183,11 @@ const routes: RouteRecordRaw[] = [
         component: () => importWithRetry(() => import('@/views/shared/Dashboard.vue'))
       },
       {
+        path: 'image-studio',
+        name: 'AdminImageStudio',
+        component: () => importWithRetry(() => import('@/views/user/ImageStudio.vue'))
+      },
+      {
         path: 'users',
         name: 'Users',
         component: () => importWithRetry(() => import('@/views/admin/Users.vue'))

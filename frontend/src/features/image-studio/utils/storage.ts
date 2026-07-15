@@ -2,7 +2,7 @@ import { DEFAULT_IMAGE_STUDIO_SETTINGS } from '../constants'
 import type { ImageStudioSettings, ImageTask, ImageTaskStatus } from '../types'
 
 const VALID_STATUSES = new Set<ImageTaskStatus>(['pending', 'running', 'success', 'error', 'cancelled'])
-const TASK_LIMIT = 300
+export const IMAGE_TASK_LIMIT = 300
 
 function settingsKey(userId: string) {
   return `niffler:image-studio:${userId}:settings:v1`
@@ -43,7 +43,7 @@ export function loadImageTasks(userId: string): ImageTask[] {
   try {
     const values = JSON.parse(localStorage.getItem(tasksKey(userId)) || '[]') as Partial<ImageTask>[]
     if (!Array.isArray(values)) return []
-    return values.flatMap((value): ImageTask[] => {
+    const tasks = values.flatMap((value): ImageTask[] => {
       if (
         typeof value.id !== 'string'
         || typeof value.prompt !== 'string'
@@ -54,19 +54,35 @@ export function loadImageTasks(userId: string): ImageTask[] {
         || !VALID_STATUSES.has(value.status)
       ) return []
 
-      const task = value as ImageTask
+      const task = {
+        ...value,
+        apiKeyId: typeof value.apiKeyId === 'string' ? value.apiKeyId : '',
+      } as ImageTask
       if (task.status === 'pending' || task.status === 'running') {
         return [{ ...task, status: 'cancelled', error: '页面刷新，任务已中断', finishedAt: Date.now() }]
       }
       return [task]
     })
+    const retainedIds = selectRetainedImageTaskIds(tasks)
+    return tasks.filter(task => retainedIds.has(task.id))
   } catch {
     return []
   }
 }
 
+export function selectRetainedImageTaskIds(tasks: ImageTask[]) {
+  return new Set(
+    [...tasks]
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, IMAGE_TASK_LIMIT)
+      .map(task => task.id),
+  )
+}
+
 export function saveImageTasks(userId: string, tasks: ImageTask[]) {
-  const serializable = tasks.slice(-TASK_LIMIT).map(task => ({
+  const retainedIds = selectRetainedImageTaskIds(tasks)
+  const retainedTasks = tasks.filter(task => retainedIds.has(task.id))
+  const serializable = retainedTasks.map(task => ({
     ...task,
     imageUrl: task.imageUrl?.startsWith('blob:') || task.imageUrl?.startsWith('data:')
       ? undefined
@@ -78,4 +94,5 @@ export function saveImageTasks(userId: string, tasks: ImageTask[]) {
   } catch {
     // Ignore quota/privacy failures. Image blobs are managed separately in IndexedDB.
   }
+  return retainedIds
 }

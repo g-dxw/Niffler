@@ -159,6 +159,7 @@ import { downloadImage } from '@/features/image-studio/utils/image-download'
 import { isImageGenerationModel } from '@/features/image-studio/utils/model-capability'
 import { loadImageSettings, saveImageSettings } from '@/features/image-studio/utils/storage'
 import { resolveImageApiBaseUrl } from '@/features/image-studio/utils/base-url'
+import { createImageSubmissionSnapshot } from '@/features/image-studio/utils/submission'
 
 const authStore = useAuthStore()
 const { error: showError, success, warning } = useToast()
@@ -169,8 +170,7 @@ const form = ref<ImageGenerationFormState>({ ...DEFAULT_IMAGE_GENERATION_FORM, i
 const apiKeys = ref<ImageApiKeyOption[]>([])
 const models = ref<ImageModelOption[]>([])
 const baseUrl = ref('')
-const apiKey = ref('')
-const loadedCredentialKeyId = ref('')
+const credentialCache = new Map<string, string>()
 const resourceLoading = ref(false)
 const previewOpen = ref(false)
 const previewTask = ref<ImageTask | null>(null)
@@ -188,7 +188,7 @@ const {
   retryTask,
   removeTask,
   clearTasks,
-} = useImageTasks({ userId, baseUrl, apiKey, settings })
+} = useImageTasks({ userId, settings })
 
 const orderedTasks = computed(() => [...tasks.value].sort((a, b) => b.createdAt - a.createdAt))
 const deleteTarget = computed(() => tasks.value.find(task => task.id === deleteTargetId.value))
@@ -203,13 +203,18 @@ const deleteDescription = computed(() => {
 })
 
 watch(settings, value => saveImageSettings(userId, value), { deep: true })
-watch(() => settings.value.selectedKeyId, () => {
-  apiKey.value = ''
-  loadedCredentialKeyId.value = ''
-})
+watch(tasks, (value) => {
+  if (!previewTask.value) return
+  const current = value.find(task => task.id === previewTask.value?.id)
+  if (!current || current.imageUrl !== previewTask.value.imageUrl) {
+    previewOpen.value = false
+    previewTask.value = null
+  }
+}, { deep: true })
 
 async function loadResources() {
   resourceLoading.value = true
+  credentialCache.clear()
   try {
     const [keysResponse, modelsResponse, resolvedBaseUrl] = await Promise.all([
       meApi.getApiKeys(),
@@ -232,7 +237,6 @@ async function loadResources() {
         name: model.name,
         displayName: model.display_name || model.name,
       }))
-
     baseUrl.value = resolvedBaseUrl
 
     if (!apiKeys.value.some(key => key.id === settings.value.selectedKeyId)) {
@@ -249,32 +253,48 @@ async function loadResources() {
   }
 }
 
-async function ensureApiKey() {
-  const selectedId = settings.value.selectedKeyId
-  if (!selectedId) throw new Error('请选择 API 密钥')
-  if (apiKey.value && loadedCredentialKeyId.value === selectedId) return
-  const response = await meApi.getFullApiKey(selectedId)
-  if (!response.key?.trim()) throw new Error('无法读取所选 API 密钥')
-  apiKey.value = response.key
-  loadedCredentialKeyId.value = selectedId
+async function getTaskCredential(apiKeyId = settings.value.selectedKeyId) {
+  if (!apiKeyId) throw new Error('请选择 API 密钥')
+  if (!apiKeys.value.some(key => key.id === apiKeyId)) {
+    throw new Error('原任务 API 密钥已不可用，请重新创建任务')
+  }
+  let apiKey = credentialCache.get(apiKeyId)
+  if (!apiKey) {
+    const response = await meApi.getFullApiKey(apiKeyId)
+    apiKey = response.key?.trim()
+  }
+  if (!apiKey) throw new Error('无法读取所选 API 密钥')
+  credentialCache.set(apiKeyId, apiKey)
+  return { apiKeyId, apiKey, baseUrl: baseUrl.value }
+}
+
+function ensureSelectedModelAvailable(model: string) {
+  if (!models.value.some(item => item.name === model)) {
+    throw new Error('所选图片模型已不可用，请重新选择')
+  }
 }
 
 async function handleSubmit() {
   try {
-    if (!form.value.prompt.trim()) throw new Error('请输入提示词')
-    if (!settings.value.model) throw new Error('请选择图片模型')
+    const submission = createImageSubmissionSnapshot(settings.value, form.value)
+    if (!submission.form.prompt.trim()) throw new Error('请输入提示词')
+    if (!submission.model) throw new Error('请选择图片模型')
     if (!baseUrl.value) throw new Error('API 地址尚未加载')
-    await ensureApiKey()
+    ensureSelectedModelAvailable(submission.model)
+    const credential = await getTaskCredential(submission.apiKeyId)
 
-    const advancedParams = parseAdvancedParams(form.value.advancedJson)
+    const advancedParams = parseAdvancedParams(submission.form.advancedJson)
     const extraParams: Record<string, unknown> = {
       ...advancedParams,
-      ...(form.value.quality !== 'auto' ? { quality: form.value.quality } : {}),
-      ...(form.value.background !== 'auto' ? { background: form.value.background } : {}),
-      ...(form.value.outputFormat !== 'auto' ? { output_format: form.value.outputFormat } : {}),
+      ...(submission.form.quality !== 'auto' ? { quality: submission.form.quality } : {}),
+      ...(submission.form.background !== 'auto' ? { background: submission.form.background } : {}),
+      ...(submission.form.outputFormat !== 'auto' ? { output_format: submission.form.outputFormat } : {}),
     }
-    addTasks(form.value, extraParams)
-    success(`已添加 ${Math.min(8, Math.max(1, form.value.count))} 个生图任务`)
+    addTasks(submission.form, extraParams, credential, {
+      model: submission.model,
+      responseFormat: submission.responseFormat,
+    })
+    success(`已添加 ${Math.min(8, Math.max(1, submission.form.count))} 个生图任务`)
   } catch (error) {
     showError(error instanceof Error ? error.message : '无法创建生图任务')
   }
@@ -282,8 +302,10 @@ async function handleSubmit() {
 
 async function handleRetry(id: string) {
   try {
-    await ensureApiKey()
-    retryTask(id)
+    const task = tasks.value.find(item => item.id === id)
+    if (!task) return
+    const credential = await getTaskCredential(task.apiKeyId || settings.value.selectedKeyId)
+    retryTask(id, credential)
   } catch (error) {
     showError(error instanceof Error ? error.message : '无法重试任务')
   }

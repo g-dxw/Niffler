@@ -32,6 +32,12 @@ function assertParams(params: GenerateImageParams) {
 }
 
 function responseErrorMessage(status: number, fallback: string) {
+  if (status === 401) {
+    return `当前 API 密钥无效，或没有调用图片接口的权限${fallback ? `：${fallback}` : ''}`
+  }
+  if (status === 403) {
+    return `当前 API 密钥无权调用所选图片模型或图片接口${fallback ? `：${fallback}` : ''}`
+  }
   if (status === 524) {
     return '生图请求在边缘网关等待超时（524），请稍后重试或降低图片质量/尺寸'
   }

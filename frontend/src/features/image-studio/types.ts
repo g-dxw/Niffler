@@ -25,6 +25,7 @@ export interface ImageGenerationForm {
 
 export interface ImageTask {
   id: string
+  apiKeyId: string
   mode: ImageTaskMode
   prompt: string
   model: string
@@ -43,6 +44,17 @@ export interface ImageTask {
   extraParams?: Record<string, unknown>
   inputImageCount?: number
   hasMask?: boolean
+}
+
+export interface ImageTaskCredential {
+  apiKeyId: string
+  apiKey: string
+  baseUrl: string
+}
+
+export interface ImageTaskConfiguration {
+  model: string
+  responseFormat: ImageResponseFormat
 }
 
 export interface GenerateImageParams {

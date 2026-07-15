@@ -1,4 +1,4 @@
-interface CachedImageRecord {
+export interface CachedImageRecord {
   id: string
   userId: string
   taskId: string
@@ -8,9 +8,12 @@ interface CachedImageRecord {
   cachedAt: number
 }
 
+export type CachedImageMetadata = Omit<CachedImageRecord, 'blob' | 'mimeType'>
+
 const DB_NAME = 'niffler-image-studio-cache'
 const DB_VERSION = 1
 const STORE_NAME = 'images'
+export const MAX_IMAGE_CACHE_BYTES = 250 * 1024 * 1024
 
 function recordId(userId: string, taskId: string) {
   return `${userId}:${taskId}`
@@ -96,4 +99,78 @@ export async function clearUserImages(userId: string) {
     transaction.onerror = () => reject(transaction.error || new Error('清理图片缓存失败'))
   })
   db.close()
+}
+
+export function selectImageCacheRecordsForDeletion(
+  records: CachedImageMetadata[],
+  currentUserId: string,
+  retainedTaskIds: ReadonlySet<string>,
+  maxBytes = MAX_IMAGE_CACHE_BYTES,
+) {
+  const orphaned = records.filter(record => (
+    record.userId === currentUserId && !retainedTaskIds.has(record.taskId)
+  ))
+  const orphanedIds = new Set(orphaned.map(record => record.id))
+  const retained = records
+    .filter(record => !orphanedIds.has(record.id))
+    .sort((a, b) => a.cachedAt - b.cachedAt)
+  let retainedBytes = retained.reduce((total, record) => total + record.size, 0)
+  const overCapacity: CachedImageMetadata[] = []
+  for (const record of retained) {
+    if (retainedBytes <= maxBytes) break
+    overCapacity.push(record)
+    retainedBytes -= record.size
+  }
+  return [...orphaned, ...overCapacity]
+}
+
+export async function pruneUserImages(
+  userId: string,
+  retainedTaskIds: ReadonlySet<string>,
+  maxBytes = MAX_IMAGE_CACHE_BYTES,
+) {
+  const db = await openDatabase()
+  return new Promise<string[]>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(STORE_NAME)
+    const request = store.openCursor()
+    const records: CachedImageMetadata[] = []
+    let deletedTaskIds: string[] = []
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (cursor) {
+        const record = cursor.value as CachedImageRecord
+        records.push({
+          id: record.id,
+          userId: record.userId,
+          taskId: record.taskId,
+          size: record.size,
+          cachedAt: record.cachedAt,
+        })
+        cursor.continue()
+        return
+      }
+      const deletions = selectImageCacheRecordsForDeletion(records, userId, retainedTaskIds, maxBytes)
+      deletedTaskIds = deletions
+        .filter(record => record.userId === userId)
+        .map(record => record.taskId)
+      deletions.forEach(record => store.delete(record.id))
+    }
+    request.onerror = () => {
+      db.close()
+      reject(request.error || new Error('读取图片缓存失败'))
+    }
+    transaction.oncomplete = () => {
+      db.close()
+      resolve(deletedTaskIds)
+    }
+    transaction.onerror = () => {
+      db.close()
+      reject(transaction.error || new Error('清理图片缓存失败'))
+    }
+    transaction.onabort = () => {
+      db.close()
+      reject(transaction.error || new Error('清理图片缓存已中止'))
+    }
+  })
 }

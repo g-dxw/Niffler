@@ -4,16 +4,22 @@ import type {
   ImageGenerationForm,
   ImageStudioSettings,
   ImageTask,
+  ImageTaskConfiguration,
+  ImageTaskCredential,
   PendingImageInputs,
 } from '../types'
-import { cacheTaskImage, clearUserImages, deleteTaskImage, getTaskImage } from './image-cache'
-import { loadImageTasks, saveImageTasks } from '../utils/storage'
+import {
+  cacheTaskImage,
+  clearUserImages,
+  deleteTaskImage,
+  getTaskImage,
+  pruneUserImages,
+} from './image-cache'
+import { loadImageTasks, saveImageTasks, selectRetainedImageTaskIds } from '../utils/storage'
 import { buildCompatibleImageRequest } from '../utils/image-sizing'
 
 interface UseImageTasksOptions {
   userId: string
-  baseUrl: Ref<string>
-  apiKey: Ref<string>
   settings: Ref<ImageStudioSettings>
 }
 
@@ -31,11 +37,22 @@ export function useImageTasks(options: UseImageTasksOptions) {
   const tasks = ref<ImageTask[]>(loadImageTasks(options.userId))
   const controllers = new Map<string, AbortController>()
   const pendingInputs = new Map<string, PendingImageInputs>()
+  const taskCredentials = new Map<string, ImageTaskCredential>()
   const objectUrls = new Set<string>()
   let scheduling = false
+  let cachePruneRunning = false
+  let cachePruneRequested = false
+  let disposed = false
+  let lastCreatedAt = tasks.value.reduce((latest, task) => Math.max(latest, task.createdAt), 0)
 
   const runningCount = computed(() => tasks.value.filter(task => task.status === 'running').length)
   const pendingCount = computed(() => tasks.value.filter(task => task.status === 'pending').length)
+
+  function reserveCreatedAtSequence(count = 1) {
+    const first = Math.max(Date.now(), lastCreatedAt + 1)
+    lastCreatedAt = first + count - 1
+    return first
+  }
 
   function replaceTask(id: string, change: Partial<ImageTask>) {
     const index = tasks.value.findIndex(task => task.id === id)
@@ -53,7 +70,11 @@ export function useImageTasks(options: UseImageTasksOptions) {
     if (task.status !== 'success' || !task.imageCached || task.imageUrl) return
     try {
       const cached = await getTaskImage(options.userId, task.id)
-      if (!cached) return
+      if (!cached) {
+        replaceTask(task.id, { imageCached: false, imageSize: undefined })
+        return
+      }
+      if (!tasks.value.some(item => item.id === task.id)) return
       const url = URL.createObjectURL(cached.blob)
       objectUrls.add(url)
       replaceTask(task.id, {
@@ -67,8 +88,12 @@ export function useImageTasks(options: UseImageTasksOptions) {
   }
 
   async function runTask(task: ImageTask) {
-    if (!options.apiKey.value.trim()) {
+    const credential = taskCredentials.get(task.id)
+    if (!credential?.apiKey.trim()) {
+      pendingInputs.delete(task.id)
+      taskCredentials.delete(task.id)
       replaceTask(task.id, { status: 'error', error: 'API 密钥未加载', finishedAt: Date.now() })
+      schedule()
       return
     }
 
@@ -79,8 +104,8 @@ export function useImageTasks(options: UseImageTasksOptions) {
     try {
       const inputs = pendingInputs.get(task.id)
       const baseParams = {
-        apiKey: options.apiKey.value,
-        baseUrl: options.baseUrl.value,
+        apiKey: credential.apiKey,
+        baseUrl: credential.baseUrl,
         model: task.model,
         prompt: task.prompt,
         size: task.size,
@@ -136,6 +161,8 @@ export function useImageTasks(options: UseImageTasksOptions) {
       })
     } finally {
       controllers.delete(task.id)
+      pendingInputs.delete(task.id)
+      taskCredentials.delete(task.id)
       schedule()
     }
   }
@@ -156,28 +183,35 @@ export function useImageTasks(options: UseImageTasksOptions) {
     })
   }
 
-  function addTasks(form: ImageGenerationForm, extraParams: Record<string, unknown>) {
+  function addTasks(
+    form: ImageGenerationForm,
+    extraParams: Record<string, unknown>,
+    credential: ImageTaskCredential,
+    configuration: ImageTaskConfiguration,
+  ) {
     const count = Math.min(8, Math.max(1, Math.floor(form.count || 1)))
-    const now = Date.now()
+    const now = reserveCreatedAtSequence(count)
     const isEdit = form.inputImages.length > 0
     const compatibleRequest = buildCompatibleImageRequest({
-      model: options.settings.value.model,
+      model: configuration.model,
       prompt: form.prompt,
       size: form.size,
       extraParams,
     })
     const newTasks = Array.from({ length: count }, (_, index): ImageTask => {
       const id = taskId()
+      taskCredentials.set(id, { ...credential })
       if (isEdit) {
         pendingInputs.set(id, { images: [...form.inputImages], mask: form.maskImage })
       }
       return {
         id,
+        apiKeyId: credential.apiKeyId,
         mode: isEdit ? 'edit' : 'generate',
         prompt: compatibleRequest.prompt,
-        model: options.settings.value.model.trim(),
+        model: configuration.model.trim(),
         size: compatibleRequest.size,
-        responseFormat: options.settings.value.responseFormat,
+        responseFormat: configuration.responseFormat,
         status: 'pending',
         createdAt: now + index,
         extraParams: compatibleRequest.extraParams,
@@ -186,7 +220,25 @@ export function useImageTasks(options: UseImageTasksOptions) {
       }
     })
     tasks.value.push(...newTasks)
+    trimTaskHistory()
     schedule()
+  }
+
+  function releaseTaskResources(task: ImageTask, deleteImage = true) {
+    controllers.get(task.id)?.abort()
+    controllers.delete(task.id)
+    pendingInputs.delete(task.id)
+    taskCredentials.delete(task.id)
+    revokeObjectUrl(task.imageUrl)
+    if (deleteImage) void deleteTaskImage(options.userId, task.id).catch(() => undefined)
+  }
+
+  function trimTaskHistory() {
+    const retainedIds = selectRetainedImageTaskIds(tasks.value)
+    if (retainedIds.size === tasks.value.length) return
+    const removed = tasks.value.filter(task => !retainedIds.has(task.id))
+    removed.forEach(task => releaseTaskResources(task))
+    tasks.value = tasks.value.filter(task => retainedIds.has(task.id))
   }
 
   function cancelTask(id: string) {
@@ -197,15 +249,22 @@ export function useImageTasks(options: UseImageTasksOptions) {
     }
     const task = tasks.value.find(item => item.id === id)
     if (task?.status === 'pending') {
+      pendingInputs.delete(id)
+      taskCredentials.delete(id)
       replaceTask(id, { status: 'cancelled', error: '任务已取消', finishedAt: Date.now() })
     }
   }
 
-  function retryTask(id: string) {
+  function retryTask(id: string, credential?: ImageTaskCredential) {
     const task = tasks.value.find(item => item.id === id)
     if (!task || task.status === 'running' || task.status === 'pending') return
     if (task.mode === 'edit' && !pendingInputs.has(id)) {
       replaceTask(id, { status: 'error', error: '参考图已释放，请重新提交图生图任务' })
+      return
+    }
+    if (credential) taskCredentials.set(id, { ...credential })
+    if (!taskCredentials.has(id)) {
+      replaceTask(id, { status: 'error', error: '原任务 API 密钥未加载，请刷新密钥后重试' })
       return
     }
     revokeObjectUrl(task.imageUrl)
@@ -219,43 +278,74 @@ export function useImageTasks(options: UseImageTasksOptions) {
       imageSize: undefined,
       startedAt: undefined,
       finishedAt: undefined,
-      createdAt: Date.now(),
+      createdAt: reserveCreatedAtSequence(),
     })
     schedule()
   }
 
   function removeTask(id: string) {
-    controllers.get(id)?.abort()
-    controllers.delete(id)
-    pendingInputs.delete(id)
     const task = tasks.value.find(item => item.id === id)
-    revokeObjectUrl(task?.imageUrl)
+    if (task) releaseTaskResources(task)
     tasks.value = tasks.value.filter(item => item.id !== id)
-    void deleteTaskImage(options.userId, id).catch(() => undefined)
   }
 
   async function clearTasks() {
     controllers.forEach(controller => controller.abort())
     controllers.clear()
     pendingInputs.clear()
+    taskCredentials.clear()
     objectUrls.forEach(url => URL.revokeObjectURL(url))
     objectUrls.clear()
     tasks.value = []
     await clearUserImages(options.userId).catch(() => undefined)
   }
 
-  watch(tasks, value => saveImageTasks(options.userId, value), { deep: true })
+  function persistTasksAndPruneCache(value: ImageTask[]) {
+    saveImageTasks(options.userId, value)
+    cachePruneRequested = true
+    if (cachePruneRunning) return
+    cachePruneRunning = true
+    queueMicrotask(async () => {
+      try {
+        while (cachePruneRequested && !disposed) {
+          cachePruneRequested = false
+          const retainedTaskIds = saveImageTasks(options.userId, tasks.value)
+          const deletedTaskIds = await pruneUserImages(options.userId, retainedTaskIds)
+          if (disposed) return
+          const deleted = new Set(deletedTaskIds)
+          for (const task of tasks.value) {
+            if (deleted.has(task.id) && task.imageCached) {
+              revokeObjectUrl(task.imageUrl)
+              replaceTask(task.id, { imageUrl: undefined, imageCached: false, imageSize: undefined })
+            }
+          }
+        }
+      } catch {
+        // IndexedDB may be unavailable; task history still works in localStorage.
+      } finally {
+        cachePruneRunning = false
+        if (cachePruneRequested && !disposed) persistTasksAndPruneCache(tasks.value)
+      }
+    })
+  }
+
+  watch(tasks, persistTasksAndPruneCache, { deep: true })
   watch(() => options.settings.value.concurrency, schedule)
-  watch(() => options.apiKey.value, schedule)
 
   onMounted(() => {
+    trimTaskHistory()
     tasks.value.forEach(task => void attachCachedImage(task))
+    persistTasksAndPruneCache(tasks.value)
     schedule()
   })
 
   onBeforeUnmount(() => {
+    disposed = true
     controllers.forEach(controller => controller.abort())
+    pendingInputs.clear()
+    taskCredentials.clear()
     objectUrls.forEach(url => URL.revokeObjectURL(url))
+    objectUrls.clear()
   })
 
   return {

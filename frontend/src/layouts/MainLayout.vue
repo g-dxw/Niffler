@@ -970,6 +970,12 @@ const navigation = computed(() => {
       ]
     },
     {
+      title: '工具',
+      items: [
+        { name: '生图工作台', href: '/admin/image-studio', icon: Zap },
+      ]
+    },
+    {
       title: '系统',
       items: systemItems
     }
