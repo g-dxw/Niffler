@@ -896,7 +896,7 @@
               </div>
             </div>
 
-            <div class="grid gap-5 xl:grid-cols-[1.1fr_1fr]">
+            <div class="min-w-0">
               <div class="space-y-4">
                 <div class="flex flex-wrap items-center gap-2">
                   <Select v-model="redeemBatchStatusFilter">
@@ -954,7 +954,7 @@
                           v-for="batch in redeemBatches"
                           :key="batch.id"
                           class="hover:bg-muted/20"
-                          :class="batch.id === selectedRedeemBatchId ? 'bg-muted/30 ring-1 ring-border/60' : ''"
+                          :class="showRedeemCodesDrawer && batch.id === selectedRedeemBatchId ? 'bg-muted/30 ring-1 ring-border/60' : ''"
                         >
                           <TableCell>
                             <div
@@ -982,10 +982,10 @@
                             <div class="flex justify-end gap-2">
                               <Button
                                 size="sm"
-                                :variant="batch.id === selectedRedeemBatchId ? 'default' : 'outline'"
+                                variant="outline"
                                 @click="selectRedeemBatch(batch)"
                               >
-                                {{ batch.id === selectedRedeemBatchId ? '当前查看' : '查看码' }}
+                                查看码
                               </Button>
                               <Button
                                 v-if="batch.status === 'active'"
@@ -1031,153 +1031,191 @@
                   @update:page-size="handleRedeemBatchPageSizeChange"
                 />
               </div>
-
-              <div
-                ref="redeemCodesPanelRef"
-                class="space-y-4"
-              >
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h4 class="text-sm font-semibold">
-                      {{ currentRedeemBatch?.name || '兑换码列表' }}
-                    </h4>
-                    <p class="text-xs text-muted-foreground mt-1">
-                      {{ currentRedeemBatch ? `面额 ${formatCurrency(currentRedeemBatch.amount_usd)} · 剩余 ${currentRedeemBatch.active_count}` : '先从左侧选择一个批次' }}
-                    </p>
-                  </div>
-                  <div class="flex flex-wrap items-center gap-3">
-                    <div class="flex items-center gap-2">
-                      <span class="text-xs text-muted-foreground">显示明文</span>
-                      <Switch
-                        :model-value="showPlainRedeemCodes"
-                        :disabled="!canRevealPlainRedeemCodes"
-                        @update:model-value="showPlainRedeemCodes = Boolean($event)"
-                      />
-                    </div>
-                    <Select v-model="redeemCodeStatusFilter">
-                      <SelectTrigger class="w-[180px]">
-                        <SelectValue placeholder="码状态" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">
-                          全部状态
-                        </SelectItem>
-                        <SelectItem value="active">
-                          可用
-                        </SelectItem>
-                        <SelectItem value="disabled">
-                          已停用
-                        </SelectItem>
-                        <SelectItem value="redeemed">
-                          已兑换
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div class="text-xs text-muted-foreground">
-                  {{
-                    canRevealPlainRedeemCodes
-                      ? '当前批次属于本次生成，已支持明文显示开关。'
-                      : '仅当前会话内最近生成的一批兑换码支持明文显示；其余批次仅显示脱敏码。'
-                  }}
-                </div>
-
-                <div class="rounded-2xl border border-border/60 overflow-hidden bg-background">
-                  <div class="overflow-x-auto">
-                    <Table class="w-full min-w-[900px] table-fixed">
-                      <colgroup>
-                        <col :style="{ width: redeemCodeTableColumnWidths.code }">
-                        <col :style="{ width: redeemCodeTableColumnWidths.status }">
-                        <col :style="{ width: redeemCodeTableColumnWidths.redeemer }">
-                        <col :style="{ width: redeemCodeTableColumnWidths.order }">
-                        <col :style="{ width: redeemCodeTableColumnWidths.actions }">
-                      </colgroup>
-                      <TableHeader>
-                        <TableRow>
-                          <SortableTableHead :sortable="false" resize-column-key="code" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                            兑换码
-                          </SortableTableHead>
-                          <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                            状态
-                          </SortableTableHead>
-                          <SortableTableHead :sortable="false" resize-column-key="redeemer" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                            兑换用户
-                          </SortableTableHead>
-                          <SortableTableHead :sortable="false" resize-column-key="order" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                            关联订单
-                          </SortableTableHead>
-                          <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                            操作
-                          </SortableTableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow
-                          v-for="code in redeemCodes"
-                          :key="code.id"
-                        >
-                          <TableCell
-                            class="font-mono text-xs break-all"
-                            :title="displayRedeemCode(code)"
-                          >
-                            {{ displayRedeemCode(code) }}
-                          </TableCell>
-                          <TableCell>
-                            <Badge :variant="redeemCodeStatusBadge(code.status)">
-                              {{ redeemCodeStatusLabel(code.status) }}
-                            </Badge>
-                          </TableCell>
-                          <TableCell class="text-xs text-muted-foreground">
-                            {{ code.redeemed_by_user_name || code.redeemed_by_user_id || '-' }}
-                          </TableCell>
-                          <TableCell
-                            class="font-mono text-xs break-all"
-                            :title="code.redeemed_order_no || code.redeemed_payment_order_id || '-'"
-                          >
-                            {{ code.redeemed_order_no || code.redeemed_payment_order_id || '-' }}
-                          </TableCell>
-                          <TableCell class="text-right">
-                            <Button
-                              v-if="code.status === 'active'"
-                              size="sm"
-                              variant="outline"
-                              @click="disableRedeemCode(code.id)"
-                            >
-                              停用
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow v-if="!loadingRedeemCodes && redeemCodes.length === 0">
-                          <TableCell
-                            colspan="5"
-                            class="py-10"
-                          >
-                            <EmptyState
-                              title="暂无兑换码"
-                              description="选择左侧批次后会显示兑换码明细"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-
-                <Pagination
-                  :current="redeemCodePage"
-                  :total="redeemCodeTotal"
-                  :page-size="redeemCodePageSize"
-                  @update:current="handleRedeemCodePageChange"
-                  @update:page-size="handleRedeemCodePageSizeChange"
-                />
-              </div>
             </div>
           </TabsContent>
         </Tabs>
       </div>
     </Card>
+
+    <Teleport to="body">
+      <Transition name="drawer">
+        <div
+          v-if="showRedeemCodesDrawer && currentRedeemBatch"
+          class="fixed inset-0 z-[80] flex justify-end"
+        >
+          <div
+            class="absolute inset-0 bg-black/35 backdrop-blur-sm"
+            @click="closeRedeemCodesDrawer"
+          />
+          <div class="drawer-panel relative flex h-full w-full flex-col border-l border-border bg-background shadow-2xl sm:w-[760px] sm:max-w-[95vw] lg:w-[920px]">
+            <div class="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6 sm:py-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3 class="truncate text-lg font-semibold leading-tight text-foreground">
+                    {{ currentRedeemBatch.name }}
+                  </h3>
+                  <p class="mt-1 text-xs text-muted-foreground">
+                    面额 {{ formatCurrency(currentRedeemBatch.amount_usd) }} · 剩余 {{ currentRedeemBatch.active_count }} · 共 {{ redeemCodeTotal }} 个兑换码
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-9 w-9 shrink-0"
+                  title="关闭"
+                  @click="closeRedeemCodesDrawer"
+                >
+                  <X class="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div class="min-w-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-muted-foreground">显示明文</span>
+                  <Switch
+                    :model-value="showPlainRedeemCodes"
+                    :disabled="!canRevealPlainRedeemCodes"
+                    @update:model-value="showPlainRedeemCodes = Boolean($event)"
+                  />
+                </div>
+                <Select v-model="redeemCodeStatusFilter">
+                  <SelectTrigger class="w-[180px]">
+                    <SelectValue placeholder="码状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      全部状态
+                    </SelectItem>
+                    <SelectItem value="active">
+                      可用
+                    </SelectItem>
+                    <SelectItem value="disabled">
+                      已停用
+                    </SelectItem>
+                    <SelectItem value="redeemed">
+                      已兑换
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div class="rounded-xl border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+                {{
+                  canRevealPlainRedeemCodes
+                    ? '当前批次属于本次生成，已支持明文显示开关。'
+                    : '仅当前会话内最近生成的一批兑换码支持明文显示；其余批次仅显示脱敏码。'
+                }}
+              </div>
+
+              <div
+                data-testid="redeem-codes-table-scroll"
+                class="min-w-0 overflow-x-auto overscroll-x-contain rounded-2xl border border-border/60 bg-background"
+              >
+                <div
+                  data-testid="redeem-codes-table-content"
+                  class="min-w-[780px]"
+                >
+                  <Table class="w-full min-w-[780px] table-fixed">
+                    <colgroup>
+                      <col :style="{ width: redeemCodeTableColumnWidths.code }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.status }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.redeemer }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.order }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.actions }">
+                    </colgroup>
+                    <TableHeader>
+                      <TableRow>
+                        <SortableTableHead :sortable="false" resize-column-key="code" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          兑换码
+                        </SortableTableHead>
+                        <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          状态
+                        </SortableTableHead>
+                        <SortableTableHead :sortable="false" resize-column-key="redeemer" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          兑换用户
+                        </SortableTableHead>
+                        <SortableTableHead :sortable="false" resize-column-key="order" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          关联订单
+                        </SortableTableHead>
+                        <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          操作
+                        </SortableTableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow v-if="loadingRedeemCodes">
+                        <TableCell
+                          colspan="5"
+                          class="py-10 text-center text-sm text-muted-foreground"
+                        >
+                          正在加载兑换码...
+                        </TableCell>
+                      </TableRow>
+                      <TableRow
+                        v-for="code in redeemCodes"
+                        :key="code.id"
+                      >
+                        <TableCell
+                          class="font-mono text-xs break-all"
+                          :title="displayRedeemCode(code)"
+                        >
+                          {{ displayRedeemCode(code) }}
+                        </TableCell>
+                        <TableCell>
+                          <Badge :variant="redeemCodeStatusBadge(code.status)">
+                            {{ redeemCodeStatusLabel(code.status) }}
+                          </Badge>
+                        </TableCell>
+                        <TableCell class="text-xs text-muted-foreground">
+                          {{ code.redeemed_by_user_name || code.redeemed_by_user_id || '-' }}
+                        </TableCell>
+                        <TableCell
+                          class="font-mono text-xs break-all"
+                          :title="code.redeemed_order_no || code.redeemed_payment_order_id || '-'"
+                        >
+                          {{ code.redeemed_order_no || code.redeemed_payment_order_id || '-' }}
+                        </TableCell>
+                        <TableCell class="text-right">
+                          <Button
+                            v-if="code.status === 'active'"
+                            size="sm"
+                            variant="outline"
+                            @click="disableRedeemCode(code.id)"
+                          >
+                            停用
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow v-if="!loadingRedeemCodes && redeemCodes.length === 0">
+                        <TableCell
+                          colspan="5"
+                          class="py-10"
+                        >
+                          <EmptyState
+                            title="暂无兑换码"
+                            description="当前筛选条件下没有兑换码"
+                          />
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              <Pagination
+                :current="redeemCodePage"
+                :total="redeemCodeTotal"
+                :page-size="redeemCodePageSize"
+                @update:current="handleRedeemCodePageChange"
+                @update:page-size="handleRedeemCodePageSizeChange"
+              />
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <Teleport to="body">
       <Transition name="drawer">
@@ -1565,7 +1603,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Badge,
@@ -1749,17 +1787,17 @@ const {
 
 type RedeemCodeTableColumnKey = 'code' | 'status' | 'redeemer' | 'order' | 'actions'
 const redeemCodeTableColumns: ResizableTableColumn<RedeemCodeTableColumnKey>[] = [
-  { key: 'code', width: '260px', minWidth: 220 },
-  { key: 'status', width: '120px', minWidth: 110 },
-  { key: 'redeemer', width: '180px', minWidth: 150 },
-  { key: 'order', width: '220px', minWidth: 180 },
-  { key: 'actions', width: '120px', minWidth: 110 },
+  { key: 'code', width: '220px', minWidth: 200 },
+  { key: 'status', width: '100px', minWidth: 90 },
+  { key: 'redeemer', width: '150px', minWidth: 130 },
+  { key: 'order', width: '190px', minWidth: 160 },
+  { key: 'actions', width: '100px', minWidth: 90 },
 ]
 const {
   columnWidths: redeemCodeTableColumnWidths,
   startResize: handleRedeemCodeTableColumnResizeStart,
 } = useResizableTableColumns<RedeemCodeTableColumnKey>({
-  storageKey: 'wallet-redeem-codes-table-column-widths',
+  storageKey: 'wallet-redeem-codes-table-column-widths-v2',
   columns: redeemCodeTableColumns,
   defaultMinWidth: 84,
 })
@@ -1831,7 +1869,7 @@ const currentRedeemBatch = ref<RedeemCodeBatch | null>(null)
 const latestGeneratedRedeemBatch = ref<RedeemCodeBatch | null>(null)
 const latestGeneratedRedeemCodes = ref<Array<{ id: string; code: string; masked_code: string }>>([])
 const showPlainRedeemCodes = ref(false)
-const redeemCodesPanelRef = ref<HTMLElement | null>(null)
+const showRedeemCodesDrawer = ref(false)
 
 const redeemBatchForm = reactive({
   name: '',
@@ -2134,6 +2172,7 @@ async function loadRedeemCodeBatches() {
         currentRedeemBatch.value = latest
         await loadRedeemCodes(latest.id)
       } else {
+        showRedeemCodesDrawer.value = false
         selectedRedeemBatchId.value = null
         currentRedeemBatch.value = null
         redeemCodes.value = []
@@ -2154,6 +2193,8 @@ async function loadRedeemCodes(batchId = selectedRedeemBatchId.value || undefine
     redeemCodeTotal.value = 0
     return
   }
+  redeemCodes.value = []
+  redeemCodeTotal.value = 0
   loadingRedeemCodes.value = true
   try {
     const offset = (redeemCodePage.value - 1) * redeemCodePageSize.value
@@ -2178,9 +2219,8 @@ async function selectRedeemBatch(batch: RedeemCodeBatch) {
   currentRedeemBatch.value = batch
   selectedRedeemBatchId.value = batch.id
   redeemCodePage.value = 1
+  showRedeemCodesDrawer.value = true
   await loadRedeemCodes(batch.id)
-  await nextTick()
-  redeemCodesPanelRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 function exportRedeemCodesCsv(batch: RedeemCodeBatch, codes: Array<{ id: string; code: string; masked_code: string }>) {
@@ -2235,6 +2275,7 @@ async function submitRedeemCodeBatch() {
     selectedRedeemBatchId.value = resp.batch.id
     await loadRedeemCodeBatches()
     await loadRedeemCodes(resp.batch.id)
+    showRedeemCodesDrawer.value = true
   } catch (error) {
     log.error('创建兑换码批次失败:', error)
     showError(parseApiError(error, '创建兑换码批次失败'))
@@ -2283,6 +2324,7 @@ async function deleteRedeemBatch(batch: RedeemCodeBatch) {
     await adminPaymentsApi.deleteRedeemCodeBatch(batch.id)
     success('批次已删除')
     if (selectedRedeemBatchId.value === batch.id) {
+      showRedeemCodesDrawer.value = false
       selectedRedeemBatchId.value = null
       currentRedeemBatch.value = null
       redeemCodes.value = []
@@ -2376,6 +2418,10 @@ function openRefundDrawer(refund: AdminGlobalRefund) {
 
 function closeRefundDrawer() {
   showRefundDrawer.value = false
+}
+
+function closeRedeemCodesDrawer() {
+  showRedeemCodesDrawer.value = false
 }
 
 function syncCurrentRefund(refundId: string) {
