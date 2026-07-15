@@ -1109,91 +1109,99 @@
                 }}
               </div>
 
-              <div class="min-w-0 overflow-hidden rounded-2xl border border-border/60 bg-background">
-                <Table class="w-full min-w-[780px] table-fixed">
-                  <colgroup>
-                    <col :style="{ width: redeemCodeTableColumnWidths.code }">
-                    <col :style="{ width: redeemCodeTableColumnWidths.status }">
-                    <col :style="{ width: redeemCodeTableColumnWidths.redeemer }">
-                    <col :style="{ width: redeemCodeTableColumnWidths.order }">
-                    <col :style="{ width: redeemCodeTableColumnWidths.actions }">
-                  </colgroup>
-                  <TableHeader>
-                    <TableRow>
-                      <SortableTableHead :sortable="false" resize-column-key="code" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                        兑换码
-                      </SortableTableHead>
-                      <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                        状态
-                      </SortableTableHead>
-                      <SortableTableHead :sortable="false" resize-column-key="redeemer" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                        兑换用户
-                      </SortableTableHead>
-                      <SortableTableHead :sortable="false" resize-column-key="order" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                        关联订单
-                      </SortableTableHead>
-                      <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                        操作
-                      </SortableTableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow v-if="loadingRedeemCodes">
-                      <TableCell
-                        colspan="5"
-                        class="py-10 text-center text-sm text-muted-foreground"
-                      >
-                        正在加载兑换码...
-                      </TableCell>
-                    </TableRow>
-                    <TableRow
-                      v-for="code in redeemCodes"
-                      :key="code.id"
-                    >
-                      <TableCell
-                        class="font-mono text-xs break-all"
-                        :title="displayRedeemCode(code)"
-                      >
-                        {{ displayRedeemCode(code) }}
-                      </TableCell>
-                      <TableCell>
-                        <Badge :variant="redeemCodeStatusBadge(code.status)">
-                          {{ redeemCodeStatusLabel(code.status) }}
-                        </Badge>
-                      </TableCell>
-                      <TableCell class="text-xs text-muted-foreground">
-                        {{ code.redeemed_by_user_name || code.redeemed_by_user_id || '-' }}
-                      </TableCell>
-                      <TableCell
-                        class="font-mono text-xs break-all"
-                        :title="code.redeemed_order_no || code.redeemed_payment_order_id || '-'"
-                      >
-                        {{ code.redeemed_order_no || code.redeemed_payment_order_id || '-' }}
-                      </TableCell>
-                      <TableCell class="text-right">
-                        <Button
-                          v-if="code.status === 'active'"
-                          size="sm"
-                          variant="outline"
-                          @click="disableRedeemCode(code.id)"
+              <div
+                data-testid="redeem-codes-table-scroll"
+                class="min-w-0 overflow-x-auto overscroll-x-contain rounded-2xl border border-border/60 bg-background"
+              >
+                <div
+                  data-testid="redeem-codes-table-content"
+                  class="min-w-[780px]"
+                >
+                  <Table class="w-full min-w-[780px] table-fixed">
+                    <colgroup>
+                      <col :style="{ width: redeemCodeTableColumnWidths.code }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.status }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.redeemer }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.order }">
+                      <col :style="{ width: redeemCodeTableColumnWidths.actions }">
+                    </colgroup>
+                    <TableHeader>
+                      <TableRow>
+                        <SortableTableHead :sortable="false" resize-column-key="code" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          兑换码
+                        </SortableTableHead>
+                        <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          状态
+                        </SortableTableHead>
+                        <SortableTableHead :sortable="false" resize-column-key="redeemer" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          兑换用户
+                        </SortableTableHead>
+                        <SortableTableHead :sortable="false" resize-column-key="order" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          关联订单
+                        </SortableTableHead>
+                        <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
+                          操作
+                        </SortableTableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow v-if="loadingRedeemCodes">
+                        <TableCell
+                          colspan="5"
+                          class="py-10 text-center text-sm text-muted-foreground"
                         >
-                          停用
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow v-if="!loadingRedeemCodes && redeemCodes.length === 0">
-                      <TableCell
-                        colspan="5"
-                        class="py-10"
+                          正在加载兑换码...
+                        </TableCell>
+                      </TableRow>
+                      <TableRow
+                        v-for="code in redeemCodes"
+                        :key="code.id"
                       >
-                        <EmptyState
-                          title="暂无兑换码"
-                          description="当前筛选条件下没有兑换码"
-                        />
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
+                        <TableCell
+                          class="font-mono text-xs break-all"
+                          :title="displayRedeemCode(code)"
+                        >
+                          {{ displayRedeemCode(code) }}
+                        </TableCell>
+                        <TableCell>
+                          <Badge :variant="redeemCodeStatusBadge(code.status)">
+                            {{ redeemCodeStatusLabel(code.status) }}
+                          </Badge>
+                        </TableCell>
+                        <TableCell class="text-xs text-muted-foreground">
+                          {{ code.redeemed_by_user_name || code.redeemed_by_user_id || '-' }}
+                        </TableCell>
+                        <TableCell
+                          class="font-mono text-xs break-all"
+                          :title="code.redeemed_order_no || code.redeemed_payment_order_id || '-'"
+                        >
+                          {{ code.redeemed_order_no || code.redeemed_payment_order_id || '-' }}
+                        </TableCell>
+                        <TableCell class="text-right">
+                          <Button
+                            v-if="code.status === 'active'"
+                            size="sm"
+                            variant="outline"
+                            @click="disableRedeemCode(code.id)"
+                          >
+                            停用
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow v-if="!loadingRedeemCodes && redeemCodes.length === 0">
+                        <TableCell
+                          colspan="5"
+                          class="py-10"
+                        >
+                          <EmptyState
+                            title="暂无兑换码"
+                            description="当前筛选条件下没有兑换码"
+                          />
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
 
               <Pagination
