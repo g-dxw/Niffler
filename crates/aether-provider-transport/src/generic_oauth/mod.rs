@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 
 use aether_oauth::provider::providers::{
-    GenericProviderOAuthAdapter, GENERIC_PROVIDER_OAUTH_TEMPLATES,
+    GenericProviderOAuthAdapter, GrokOAuthProviderOAuthAdapter, GENERIC_PROVIDER_OAUTH_TEMPLATES,
+    GROK_OAUTH_PROVIDER_TYPE,
 };
 use aether_oauth::provider::{ProviderOAuthAccount, ProviderOAuthAdapter, ProviderOAuthTokenSet};
 use async_trait::async_trait;
 use serde_json::Value;
+use std::sync::Arc;
 
 use super::oauth_refresh::{
     oauth_error_to_local_refresh_error, provider_oauth_transport_context_from_snapshot,
@@ -44,12 +46,19 @@ impl GenericOAuthRefreshAdapter {
     fn adapter_for_provider_type(
         &self,
         provider_type: &'static str,
-    ) -> Option<GenericProviderOAuthAdapter> {
-        let adapter = GenericProviderOAuthAdapter::for_provider_type(provider_type)?;
-        if let Some(token_url) = self.token_url_overrides.get(provider_type) {
-            return Some(adapter.with_token_url_override(token_url.clone()));
+    ) -> Option<Arc<dyn ProviderOAuthAdapter>> {
+        if provider_type.eq_ignore_ascii_case(GROK_OAUTH_PROVIDER_TYPE) {
+            let adapter = GrokOAuthProviderOAuthAdapter::default();
+            return Some(match self.token_url_overrides.get(provider_type) {
+                Some(token_url) => Arc::new(adapter.with_token_url_override(token_url.clone())),
+                None => Arc::new(adapter),
+            });
         }
-        Some(adapter)
+        let adapter = GenericProviderOAuthAdapter::for_provider_type(provider_type)?;
+        Some(match self.token_url_overrides.get(provider_type) {
+            Some(token_url) => Arc::new(adapter.with_token_url_override(token_url.clone())),
+            None => Arc::new(adapter),
+        })
     }
 
     fn auth_config_from_transport(transport: &GatewayProviderTransportSnapshot) -> Option<Value> {
@@ -282,6 +291,9 @@ impl LocalOAuthRefreshAdapter for GenericOAuthRefreshAdapter {
 
 fn generic_provider_type(provider_type: &str) -> Option<&'static str> {
     let normalized = provider_type.trim();
+    if normalized.eq_ignore_ascii_case(GROK_OAUTH_PROVIDER_TYPE) {
+        return Some(GROK_OAUTH_PROVIDER_TYPE);
+    }
     GENERIC_PROVIDER_OAUTH_TEMPLATES
         .iter()
         .find(|template| normalized.eq_ignore_ascii_case(template.provider_type))

@@ -128,7 +128,6 @@ fn sample_candidate_row() -> StoredMinimalCandidateSelectionRow {
             priority: 1,
             api_formats: Some(vec!["openai:responses".to_string()]),
             endpoint_ids: None,
-            operations: None,
         }]),
         model_supports_streaming: Some(true),
         model_is_active: true,
@@ -443,9 +442,21 @@ async fn gateway_routes_grok_oauth_responses_and_chat_through_cli_responses_cont
         .send()
         .await
         .expect("Responses request should succeed");
-    assert_eq!(responses.status(), StatusCode::OK);
+    let responses_status = responses.status();
+    let responses_miss_reason = responses
+        .headers()
+        .get(crate::constants::LOCAL_EXECUTION_RUNTIME_MISS_REASON_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let responses_body = responses.bytes().await.expect("Responses body should read");
+    assert_eq!(
+        responses_status,
+        StatusCode::OK,
+        "unexpected Responses miss reason {responses_miss_reason:?}, body: {}",
+        String::from_utf8_lossy(&responses_body)
+    );
     let responses_json: serde_json::Value =
-        responses.json().await.expect("Responses body should parse");
+        serde_json::from_slice(&responses_body).expect("Responses body should parse");
     assert_eq!(responses_json["id"], "resp-grok-oauth");
     assert_eq!(
         responses_json["output"][0]["content"][0]["text"],

@@ -1,7 +1,10 @@
 use aether_data_contracts::repository::usage::UpsertUsageRecord;
 use aether_data_contracts::DataLayerError;
 
-use crate::request_metadata::sanitize_usage_request_metadata;
+use crate::request_metadata::{
+    attach_client_request_body_metadata, attach_provider_request_body_metadata,
+    sanitize_usage_request_metadata,
+};
 use crate::{UsageEvent, UsageEventType};
 
 fn metadata_string(metadata: Option<&serde_json::Value>, key: &str) -> Option<String> {
@@ -29,7 +32,15 @@ pub fn build_upsert_usage_record_from_event(
     event: &UsageEvent,
 ) -> Result<UpsertUsageRecord, DataLayerError> {
     let (status, billing_status) = lifecycle_status_and_billing(event.event_type);
-    let data = event.data.clone();
+    let mut data = event.data.clone();
+    let request_metadata = attach_client_request_body_metadata(
+        data.request_metadata.take(),
+        data.request_body.as_ref(),
+    );
+    let request_metadata = attach_provider_request_body_metadata(
+        request_metadata,
+        data.provider_request_body.as_ref(),
+    );
     let billing_status = billing_status_override(&data)
         .unwrap_or(billing_status)
         .to_string();
@@ -126,7 +137,7 @@ pub fn build_upsert_usage_record_from_event(
                 )
             },
         ),
-        request_metadata: sanitize_usage_request_metadata(data.request_metadata),
+        request_metadata: sanitize_usage_request_metadata(request_metadata),
         finalized_at_unix_secs: Some(now_unix_secs),
         created_at_unix_ms: Some(now_unix_secs),
         updated_at_unix_secs: now_unix_secs,
@@ -346,5 +357,41 @@ mod tests {
                 "billing_snapshot": { "status": "complete" }
             }))
         );
+    }
+
+    #[test]
+    fn records_requested_and_provider_reasoning_efforts() {
+        let record = build_upsert_usage_record_from_event(&UsageEvent {
+            event_type: UsageEventType::Completed,
+            request_id: "req-reasoning".to_string(),
+            timestamp_ms: 1_700_000_000_000,
+            data: UsageEventData {
+                provider_name: "Grok OAuth".to_string(),
+                model: "grok-4.5".to_string(),
+                request_body: Some(serde_json::json!({
+                    "model": "grok-4.5"
+                })),
+                provider_request_body: Some(serde_json::json!({
+                    "model": "grok-4.5",
+                    "reasoning": { "effort": "high" }
+                })),
+                ..UsageEventData::default()
+            },
+        })
+        .expect("record should build");
+
+        assert_eq!(
+            record
+                .request_metadata
+                .as_ref()
+                .and_then(|value| value.get("provider_reasoning_effort"))
+                .and_then(serde_json::Value::as_str),
+            Some("high")
+        );
+        assert!(record
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("requested_reasoning_effort"))
+            .is_none());
     }
 }

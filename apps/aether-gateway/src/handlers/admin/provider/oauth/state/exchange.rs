@@ -3,7 +3,9 @@ use super::super::errors::{
 };
 use crate::handlers::admin::request::{AdminAppState, AdminProviderOAuthTemplate};
 use aether_contracts::ProxySnapshot;
-use aether_oauth::provider::providers::GenericProviderOAuthAdapter;
+use aether_oauth::provider::providers::{
+    GenericProviderOAuthAdapter, GrokOAuthProviderOAuthAdapter,
+};
 use aether_oauth::provider::{ProviderOAuthService, ProviderOAuthTransportContext};
 use axum::{body::Body, http, response::Response};
 use serde_json::Value;
@@ -45,6 +47,11 @@ fn provider_oauth_service_for_template(
     template: AdminProviderOAuthTemplate,
     token_url: String,
 ) -> Result<ProviderOAuthService, Response<Body>> {
+    if template.provider_type.eq_ignore_ascii_case("grok_oauth") {
+        return Ok(ProviderOAuthService::new().with_adapter(Arc::new(
+            GrokOAuthProviderOAuthAdapter::default().with_token_url_override(token_url),
+        )));
+    }
     GenericProviderOAuthAdapter::for_provider_type(template.provider_type)
         .map(|adapter| adapter.with_token_url_override(token_url))
         .map(|adapter| ProviderOAuthService::new().with_adapter(Arc::new(adapter)))

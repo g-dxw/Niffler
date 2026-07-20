@@ -858,6 +858,16 @@
                     v-else
                     class="text-xs text-muted-foreground"
                   >-</span>
+                  <div
+                    v-if="keyUiStateMap[key.key_id]?.quotaFreshnessText"
+                    data-testid="pool-quota-freshness"
+                    class="mt-2 text-[10px] leading-none tabular-nums"
+                    :class="keyUiStateMap[key.key_id]?.quotaFreshnessStale
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-muted-foreground'"
+                  >
+                    {{ keyUiStateMap[key.key_id]?.quotaFreshnessText }}
+                  </div>
                 </TableCell>
                 <TableCell class="py-3 px-2 align-middle">
                   <div
@@ -1398,6 +1408,16 @@
                 >
                   -
                 </div>
+                <div
+                  v-if="keyUiStateMap[key.key_id]?.quotaFreshnessText"
+                  data-testid="pool-quota-freshness"
+                  class="mt-2 text-[10px] leading-none tabular-nums"
+                  :class="keyUiStateMap[key.key_id]?.quotaFreshnessStale
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-muted-foreground'"
+                >
+                  {{ keyUiStateMap[key.key_id]?.quotaFreshnessText }}
+                </div>
               </div>
 
               <div class="flex items-center gap-0.5">
@@ -1840,6 +1860,7 @@ import {
   getOAuthStatusTitle as resolveOAuthStatusTitle,
 } from '@/utils/providerKeyStatus'
 import {
+  getGrokOAuthQuotaFreshness,
   getLegacyAccountQuotaText,
   getQuotaDisplayText,
 } from '@/utils/providerKeyQuota'
@@ -1864,6 +1885,7 @@ const PROVIDER_TYPES = new Set<ProviderType>([
   'antigravity',
   'kiro',
   'grok',
+  'grok_oauth',
   'vertex_ai',
 ])
 
@@ -2660,6 +2682,8 @@ type PoolKeyUiState = {
   planClass: string
   quotaFallbackText: string | null
   quotaTextClass: string
+  quotaFreshnessText: string | null
+  quotaFreshnessStale: boolean
   importedAtRelative: string
   lastUsedRelative: string
   statsDisplay: PoolStatsDisplay
@@ -2682,6 +2706,7 @@ const keyUiStateMap = computed<Record<string, PoolKeyUiState>>(() => {
     const visibleOAuthState = getVisibleOAuthState(key)
     const oauthOrgBadge = getOAuthOrgBadge(key)
     const quotaFallbackText = getQuotaFallbackText(key)
+    const quotaFreshness = getGrokOAuthQuotaFreshness(key, selectedProviderType.value)
     const planType = resolvePoolKeyPlanType(key)
     const canRefreshToken = canRefreshOAuthCredential(key)
     const showOAuthRefreshControl = shouldShowOAuthRefreshControl(key, selectedProviderType.value)
@@ -2701,6 +2726,10 @@ const keyUiStateMap = computed<Record<string, PoolKeyUiState>>(() => {
       planClass: planType ? getOAuthPlanTypeClass(planType) : '',
       quotaFallbackText,
       quotaTextClass: quotaFallbackText ? getQuotaTextClass(quotaFallbackText) : '',
+      quotaFreshnessText: quotaFreshness
+        ? `${quotaFreshness.isStale ? '额度数据已过期 · 更新' : '额度更新'} ${formatUnixSeconds(quotaFreshness.updatedAtSeconds)}`
+        : null,
+      quotaFreshnessStale: quotaFreshness?.isStale ?? false,
       importedAtRelative: formatPoolKeyImportedAt(key),
       lastUsedRelative: key.last_used_at ? formatRelativeTime(key.last_used_at) : '-',
       statsDisplay: buildPoolStatsDisplay(key, selectedProviderType.value, poolStatsMode.value),

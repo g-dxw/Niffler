@@ -22,6 +22,8 @@ export interface UsageRecord {
   provider_name?: string
   provider_route?: string[]
   model: string
+  requested_reasoning_effort?: string | null
+  reasoning_effort?: string | null
   input_tokens: number
   effective_input_tokens?: number
   output_tokens: number
@@ -551,6 +553,8 @@ export const usageApi = {
       has_format_conversion?: boolean | null
       has_fallback?: boolean | null
       target_model?: string | null
+      requested_reasoning_effort?: string | null
+      reasoning_effort?: string | null
       image_progress?: ImageProgress | null
     }>
   }> {

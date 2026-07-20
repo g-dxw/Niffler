@@ -663,6 +663,10 @@ export interface PoolAdvancedConfig {
   account_self_check_enabled?: boolean
   account_self_check_interval_minutes?: number | null
   account_self_check_concurrency?: number | null
+  // deprecated: retained for backward-compatible reads
+  self_check_enabled?: boolean
+  self_check_interval_minutes?: number | null
+  self_check_concurrency?: number | null
   auto_remove_banned_keys?: boolean
 }
 

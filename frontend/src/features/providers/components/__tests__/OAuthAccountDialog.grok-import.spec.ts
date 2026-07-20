@@ -330,16 +330,16 @@ describe('OAuthAccountDialog imports', () => {
 
     const root = mountDialog('grok_oauth')
     await settle()
-    getExactButton(root, '导入授权')?.click()
+    getButtonExact(root, '导入授权')?.click()
     await settle()
-    getExactButton(root, '获取授权')?.click()
+    getButtonExact(root, '获取授权')?.click()
     await settle()
 
     const textarea = getImportTextarea(root)
     textarea.value = 'xai-code_123'
     textarea.dispatchEvent(new Event('input'))
     await settle()
-    getExactButton(root, '验证')?.click()
+    getButtonExact(root, '验证')?.click()
     await settle()
 
     expect(endpointMocks.completeProviderLevelOAuth).toHaveBeenCalledTimes(1)
@@ -364,9 +364,9 @@ describe('OAuthAccountDialog imports', () => {
 
     const root = mountDialog('grok_oauth')
     await settle()
-    getExactButton(root, '导入授权')?.click()
+    getButtonExact(root, '导入授权')?.click()
     await settle()
-    getExactButton(root, '获取授权')?.click()
+    getButtonExact(root, '获取授权')?.click()
     await settle()
 
     const callbackUrl = 'http://127.0.0.1:56121/callback?code=xai-code_456&state=state-456'
@@ -374,7 +374,7 @@ describe('OAuthAccountDialog imports', () => {
     textarea.value = callbackUrl
     textarea.dispatchEvent(new Event('input'))
     await settle()
-    getExactButton(root, '验证')?.click()
+    getButtonExact(root, '验证')?.click()
     await settle()
 
     expect(endpointMocks.completeProviderLevelOAuth).toHaveBeenCalledWith('provider-1', {

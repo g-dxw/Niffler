@@ -348,9 +348,11 @@ pub fn parse_grok_oauth_monthly_billing_response(
         Some(limit) if limit > 0.0 => used.min(limit),
         _ => used,
     });
-    let used_percent = included_used_cents.zip(limit_cents).and_then(|(used, limit)| {
-        (limit > 0.0).then_some((used / limit * 100.0).clamp(0.0, 100.0))
-    });
+    let used_percent = included_used_cents
+        .zip(limit_cents)
+        .and_then(|(used, limit)| {
+            (limit > 0.0).then_some((used / limit * 100.0).clamp(0.0, 100.0))
+        });
     let period_start = parse_grok_oauth_billing_timestamp(config.get("billingPeriodStart"));
     let period_end = parse_grok_oauth_billing_timestamp(config.get("billingPeriodEnd"));
     let plan_type = grok_oauth_plan_type_from_monthly_limit(limit_cents);

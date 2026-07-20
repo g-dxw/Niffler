@@ -4,6 +4,7 @@ use crate::ai_serving::planner::standard::codex_hosted_image_generation_tool_all
 use crate::ai_serving::transport::apply_standard_provider_request_body_rules_with_request_headers;
 use crate::ai_serving::{
     apply_codex_openai_responses_chat_body_edits_with_bridge_config,
+    apply_grok_oauth_responses_reasoning_default,
     apply_openai_responses_compact_special_body_edits,
     apply_openai_responses_image_generation_bridge_body_edits,
     build_cross_format_openai_chat_request_body_with_model_directives as surface_build_cross_format_openai_chat_request_body,
@@ -100,6 +101,12 @@ pub(crate) fn build_cross_format_openai_chat_request_body(
             openai_responses_image_generation_tool_enabled,
         );
     }
+    apply_grok_oauth_responses_reasoning_default(
+        &mut provider_request_body,
+        provider_type,
+        provider_api_format,
+        mapped_model,
+    );
     apply_openai_responses_compact_special_body_edits(
         &mut provider_request_body,
         provider_api_format,

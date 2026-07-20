@@ -48,10 +48,14 @@ impl Default for GrokOAuthProviderOAuthAdapter {
 }
 
 impl GrokOAuthProviderOAuthAdapter {
-    #[cfg(test)]
-    fn with_token_url_for_tests(mut self, token_url: impl Into<String>) -> Self {
-        self.inner = self.inner.with_token_url_for_tests(token_url);
+    pub fn with_token_url_override(mut self, token_url: impl Into<String>) -> Self {
+        self.inner = self.inner.with_token_url_override(token_url);
         self
+    }
+
+    #[cfg(test)]
+    fn with_token_url_for_tests(self, token_url: impl Into<String>) -> Self {
+        self.with_token_url_override(token_url)
     }
 
     fn enrich_token_set(mut token_set: ProviderOAuthTokenSet) -> ProviderOAuthTokenSet {

@@ -540,7 +540,10 @@ export function useUsageData(options: UseUsageDataOptions) {
           provider_key_name: existing.provider_key_name || record.provider_key_name,
           provider_key_account_label: existing.provider_key_account_label || record.provider_key_account_label,
           rate_multiplier: record.rate_multiplier ?? existing.rate_multiplier,
-          target_model: existing.target_model || record.target_model
+          target_model: existing.target_model || record.target_model,
+          requested_reasoning_effort: record.requested_reasoning_effort
+            ?? existing.requested_reasoning_effort,
+          reasoning_effort: record.reasoning_effort ?? existing.reasoning_effort,
         }
       }
 

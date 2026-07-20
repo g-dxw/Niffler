@@ -12,6 +12,7 @@ use crate::body_capture::{
     RuntimeBodyCaptureMetadataInput,
 };
 use crate::request_metadata::{
+    attach_client_request_body_metadata, attach_provider_request_body_metadata,
     build_usage_request_metadata_seed, merge_usage_request_metadata,
     merge_usage_request_metadata_owned, sanitize_usage_request_metadata,
     sanitize_usage_request_metadata_ref,
@@ -551,6 +552,10 @@ fn build_terminal_usage_event_from_seed_impl(
     } else {
         merge_usage_request_metadata(request_metadata, audit_payload)
     };
+    let request_metadata =
+        attach_client_request_body_metadata(request_metadata, request_body.as_ref());
+    let request_metadata =
+        attach_provider_request_body_metadata(request_metadata, provider_request.as_ref());
 
     let mut data = UsageEventData {
         user_id,
@@ -1602,7 +1607,16 @@ fn build_runtime_request_metadata_seed(
             }
         }
     }
-    metadata
+    let metadata = attach_provider_request_body_metadata(
+        metadata,
+        plan.body.json_body.as_ref().or_else(|| {
+            context_value_ref(context, "provider_request_body").filter(|value| !value.is_null())
+        }),
+    );
+    attach_client_request_body_metadata(
+        metadata,
+        context_value_ref(context, "original_request_body"),
+    )
 }
 
 fn build_runtime_request_metadata_seed_from_parts(

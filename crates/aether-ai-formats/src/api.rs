@@ -161,6 +161,7 @@ pub use crate::formats::{
                 CODEX_OPENAI_IMAGE_DEFAULT_VARIATION_MODEL,
                 CODEX_OPENAI_IMAGE_DEFAULT_VARIATION_PROMPT, CODEX_OPENAI_IMAGE_INTERNAL_MODEL,
             },
+            grok_oauth::apply_grok_oauth_responses_reasoning_default,
             spec::{
                 resolve_stream_spec as resolve_openai_responses_stream_spec,
                 resolve_sync_spec as resolve_openai_responses_sync_spec, LocalOpenAiResponsesSpec,
