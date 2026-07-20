@@ -2324,6 +2324,7 @@ const showAccountQuotaColumn = computed(() => {
     || selectedProviderType.value === 'kiro'
     || selectedProviderType.value === 'antigravity'
     || selectedProviderType.value === 'grok'
+    || selectedProviderType.value === 'grok_oauth'
     || selectedProviderType.value === 'chatgpt_web'
 })
 
@@ -2778,6 +2779,7 @@ const quotaRefreshSupported = computed(() => {
     || selectedProviderType.value === 'kiro'
     || selectedProviderType.value === 'antigravity'
     || selectedProviderType.value === 'grok'
+    || selectedProviderType.value === 'grok_oauth'
     || selectedProviderType.value === 'chatgpt_web'
 })
 
@@ -4613,6 +4615,33 @@ function buildQuotaProgressItemsFromSnapshot(key: PoolKeyDetail): QuotaProgressI
       resetSeconds: normalizeRemainingSeconds(window?.reset_seconds ?? quotaResetSeconds ?? null),
       updatedAtSeconds: getQuotaSnapshotUpdatedAtSeconds(quota),
     }]
+  }
+
+  if (providerType === 'grok_oauth') {
+    const quotaResetAtSeconds = getQuotaSnapshotResetAtSeconds(quota)
+    const quotaResetSeconds = getQuotaSnapshotResetSeconds(quota)
+    return ([
+      ['周', 'weekly'],
+      ['月', 'monthly'],
+    ] as const)
+      .map(([label, code]): QuotaProgressItem | null => {
+        const window = getQuotaSnapshotWindow(quota, code)
+        const remainingPercent = getQuotaWindowRemainingPercent(window)
+        if (remainingPercent == null) return null
+        const rawValueText = code === 'monthly' ? getQuotaWindowValueText(window) : undefined
+        const detail = rawValueText
+          ? rawValueText.split('/').map(value => `$${value}`).join('/')
+          : undefined
+        return {
+          label,
+          remainingPercent,
+          detail,
+          resetAtSeconds: normalizeUnixSeconds(window?.reset_at ?? quotaResetAtSeconds ?? null),
+          resetSeconds: normalizeRemainingSeconds(window?.reset_seconds ?? quotaResetSeconds ?? null),
+          updatedAtSeconds: getQuotaSnapshotUpdatedAtSeconds(quota),
+        }
+      })
+      .filter((item): item is QuotaProgressItem => item != null)
   }
 
   if (providerType === 'grok') {

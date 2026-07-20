@@ -377,6 +377,7 @@ fn split_path_and_query(path: &str) -> Option<(String, BTreeMap<String, String>)
 
 #[cfg(test)]
 mod tests {
+    use aether_oauth::provider::providers::apply_grok_oauth_auth_config_defaults;
     use serde_json::json;
 
     use super::{absorb_local_auth_config_safe_subset, LocalAuthConfigAbsorption};
@@ -481,6 +482,38 @@ mod tests {
                 Some(r#"{"query":{"key":"secret"}}"#),
             ),
             LocalAuthConfigAbsorption::Unsupported
+        );
+    }
+
+    #[test]
+    fn applies_grok_oauth_cli_identity_headers_from_persisted_auth_config() {
+        let mut auth_config = serde_json::Map::new();
+        auth_config.insert("provider_type".to_string(), json!("grok_oauth"));
+        auth_config.insert("refresh_token".to_string(), json!("redacted-refresh-token"));
+        apply_grok_oauth_auth_config_defaults(&mut auth_config);
+
+        let mut headers = std::collections::BTreeMap::from([(
+            "authorization".to_string(),
+            "Bearer runtime-access-token".to_string(),
+        )]);
+        let raw_auth_config = serde_json::Value::Object(auth_config).to_string();
+        apply_local_auth_config_header_overrides(&mut headers, Some(&raw_auth_config));
+
+        assert_eq!(
+            headers.get("authorization"),
+            Some(&"Bearer runtime-access-token".to_string())
+        );
+        assert_eq!(
+            headers.get("x-xai-token-auth"),
+            Some(&"xai-grok-cli".to_string())
+        );
+        assert_eq!(
+            headers.get("x-grok-client-version"),
+            Some(&"0.2.93".to_string())
+        );
+        assert_eq!(
+            headers.get("user-agent"),
+            Some(&"xai-grok-workspace/0.2.93".to_string())
         );
     }
 

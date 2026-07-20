@@ -430,12 +430,34 @@ export interface GrokUpstreamMetadata {
   account_user_id?: string | null
 }
 
+export interface GrokOAuthUpstreamMetadata {
+  updated_at?: number | null
+  source?: string | null
+  plan_type?: string | null
+  weekly_used_percent?: number | null
+  weekly_period_start?: number | null
+  weekly_period_end?: number | null
+  weekly_reset_at?: number | null
+  weekly_updated_at?: number | null
+  monthly_limit_cents?: number | null
+  monthly_used_cents?: number | null
+  monthly_included_used_cents?: number | null
+  monthly_used_percent?: number | null
+  monthly_period_start?: number | null
+  monthly_period_end?: number | null
+  monthly_reset_at?: number | null
+  monthly_updated_at?: number | null
+  partial?: boolean | null
+  failed_windows?: string[] | null
+}
+
 export interface UpstreamMetadata {
   codex?: CodexUpstreamMetadata
   antigravity?: AntigravityUpstreamMetadata
   kiro?: KiroUpstreamMetadata
   chatgpt_web?: ChatGPTWebUpstreamMetadata
   grok?: GrokUpstreamMetadata
+  grok_oauth?: GrokOAuthUpstreamMetadata
 }
 
 // 按格式的健康度数据
@@ -563,7 +585,7 @@ export interface PublicEndpointStatusMonitorResponse {
   formats: PublicEndpointStatusMonitor[]
 }
 
-export type ProviderType = 'custom' | 'claude_code' | 'claude_code_api' | 'codex' | 'chatgpt_web' | 'gemini_cli' | 'antigravity' | 'kiro' | 'grok' | 'vertex_ai'
+export type ProviderType = 'custom' | 'claude_code' | 'claude_code_api' | 'codex' | 'chatgpt_web' | 'gemini_cli' | 'antigravity' | 'kiro' | 'grok' | 'grok_oauth' | 'vertex_ai'
 
 export interface ClaudeCodeAdvancedConfig {
   // 会话数量控制：null/undefined 表示不限制

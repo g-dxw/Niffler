@@ -5,6 +5,7 @@ use super::antigravity::refresh_antigravity_provider_quota_locally;
 use super::chatgpt_web::refresh_chatgpt_web_provider_quota_locally;
 use super::codex::refresh_codex_provider_quota_locally;
 use super::grok::refresh_grok_provider_quota_locally;
+use super::grok_oauth::refresh_grok_oauth_provider_quota_locally;
 use super::kiro::refresh_kiro_provider_quota_locally;
 use crate::handlers::admin::request::AdminAppState;
 use crate::GatewayError;
@@ -35,6 +36,10 @@ const PROVIDER_QUOTA_REFRESH_HANDLERS: &[(&str, ProviderQuotaRefreshHandler)] = 
     ),
     ("codex", refresh_codex_provider_quota_locally_boxed),
     ("grok", refresh_grok_provider_quota_locally_boxed),
+    (
+        "grok_oauth",
+        refresh_grok_oauth_provider_quota_locally_boxed,
+    ),
     ("kiro", refresh_kiro_provider_quota_locally_boxed),
 ];
 
@@ -128,6 +133,21 @@ fn refresh_grok_provider_quota_locally_boxed<'a>(
     proxy_override: Option<ProxySnapshot>,
 ) -> ProviderQuotaRefreshFuture<'a> {
     Box::pin(refresh_grok_provider_quota_locally(
+        state,
+        provider,
+        endpoint,
+        keys,
+        proxy_override,
+    ))
+}
+fn refresh_grok_oauth_provider_quota_locally_boxed<'a>(
+    state: &'a AdminAppState<'a>,
+    provider: &'a StoredProviderCatalogProvider,
+    endpoint: &'a StoredProviderCatalogEndpoint,
+    keys: Vec<StoredProviderCatalogKey>,
+    proxy_override: Option<ProxySnapshot>,
+) -> ProviderQuotaRefreshFuture<'a> {
+    Box::pin(refresh_grok_oauth_provider_quota_locally(
         state,
         provider,
         endpoint,

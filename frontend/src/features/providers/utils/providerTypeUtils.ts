@@ -12,6 +12,7 @@ const oauthAccountProviderTypes = new Set([
   'antigravity',
   'kiro',
   'grok',
+  'grok_oauth',
 ])
 
 export const isOAuthAccountProviderType = (providerType?: string | null): boolean =>
