@@ -230,25 +230,43 @@
                     {{ group.title }}
                   </div>
                   <div class="grid grid-cols-2 gap-2">
-                    <RouterLink
+                    <template
                       v-for="item in group.items"
                       :key="item.href"
-                      :to="item.href"
-                      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
-                      :class="isNavActive(item.href)
-                        ? 'bg-[#cc785c]/10 dark:bg-[#cc785c]/20 text-[#cc785c] dark:text-[#d4a27f]'
-                        : 'text-[#666663] dark:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-[#191919] dark:hover:text-white'"
-                      @mouseenter="prefetchNavigationItem(item.href)"
-                      @focus="prefetchNavigationItem(item.href)"
-                      @pointerdown="prefetchNavigationItem(item.href)"
-                      @click="mobileMenuOpen = false"
                     >
-                      <component
-                        :is="item.icon"
-                        class="h-4 w-4 shrink-0"
-                      />
-                      <span class="truncate">{{ item.name }}</span>
-                    </RouterLink>
+                      <a
+                        v-if="item.external"
+                        :href="item.href"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-[#666663] dark:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-[#191919] dark:hover:text-white"
+                        @click="mobileMenuOpen = false"
+                      >
+                        <component
+                          :is="item.icon"
+                          class="h-4 w-4 shrink-0"
+                        />
+                        <span class="truncate">{{ item.name }}</span>
+                      </a>
+                      <RouterLink
+                        v-else
+                        :to="item.href"
+                        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
+                        :class="isNavActive(item.href)
+                          ? 'bg-[#cc785c]/10 dark:bg-[#cc785c]/20 text-[#cc785c] dark:text-[#d4a27f]'
+                          : 'text-[#666663] dark:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-[#191919] dark:hover:text-white'"
+                        @mouseenter="prefetchNavigationItem(item.href)"
+                        @focus="prefetchNavigationItem(item.href)"
+                        @pointerdown="prefetchNavigationItem(item.href)"
+                        @click="mobileMenuOpen = false"
+                      >
+                        <component
+                          :is="item.icon"
+                          class="h-4 w-4 shrink-0"
+                        />
+                        <span class="truncate">{{ item.name }}</span>
+                      </RouterLink>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -509,6 +527,7 @@ import {
   Package,
   Gift,
   Menu,
+  Maximize2,
   X,
   Puzzle,
   Zap,
@@ -889,6 +908,7 @@ const navigation = computed(() => {
       title: '工具',
       items: [
         { name: '生图工作台', href: '/dashboard/image-studio', icon: Zap },
+        { name: '无限画布', href: '/InfiniteCanvas/canvas', icon: Maximize2, external: true },
       ]
     },
     {
@@ -973,6 +993,7 @@ const navigation = computed(() => {
       title: '工具',
       items: [
         { name: '生图工作台', href: '/admin/image-studio', icon: Zap },
+        { name: '无限画布', href: '/InfiniteCanvas/canvas', icon: Maximize2, external: true },
       ]
     },
     {

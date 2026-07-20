@@ -141,6 +141,7 @@ vi.mock('lucide-vue-next', () => {
     KeyRound: Icon,
     Layers: Icon,
     LogOut: Icon,
+    Maximize2: Icon,
     Megaphone: Icon,
     Menu: Icon,
     Moon: Icon,
@@ -230,5 +231,13 @@ describe('MainLayout version check', () => {
 
     const link = document.querySelector('a[href="/admin/image-studio"]')
     expect(link?.textContent).toBe('生图工作台')
+  })
+
+  it('shows the infinite canvas as an external administrator tool link', async () => {
+    await mountMainLayout()
+    await settle()
+
+    const link = document.querySelector('a[href="/InfiniteCanvas/canvas"]')
+    expect(link?.textContent).toBe('无限画布')
   })
 })
