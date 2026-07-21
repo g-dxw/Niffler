@@ -134,7 +134,7 @@
               文档
             </RouterLink>
             <a
-              href="/InfiniteCanvas/"
+              :href="infiniteCanvasHomeUrl"
               class="group relative px-3 py-2 text-sm font-medium transition whitespace-nowrap text-[#666663] dark:text-muted-foreground hover:text-[#191919] dark:hover:text-white"
             >
               无限画布
@@ -476,6 +476,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDarkMode } from '@/composables/useDarkMode'
 import { useClipboard } from '@/composables/useClipboard'
 import { useSiteInfo } from '@/composables/useSiteInfo'
+import { getInfiniteCanvasUrl } from '@/utils/infiniteCanvasUrl'
 import LoginDialog from '@/features/auth/components/LoginDialog.vue'
 import RippleLogo from '@/components/RippleLogo.vue'
 import HeaderLogo from '@/components/HeaderLogo.vue'
@@ -502,6 +503,7 @@ const authStore = useAuthStore()
 const { isDark, themeMode, toggleDarkMode } = useDarkMode()
 const { copyToClipboard } = useClipboard()
 const { siteName, siteSubtitle } = useSiteInfo()
+const infiniteCanvasHomeUrl = getInfiniteCanvasUrl()
 
 const dashboardPath = computed(() =>
   authStore.canAccessAdmin ? '/admin/dashboard' : '/dashboard'

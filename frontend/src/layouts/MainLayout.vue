@@ -500,6 +500,7 @@ import HeaderLogo from '@/components/HeaderLogo.vue'
 import UpdateDialog from '@/components/common/UpdateDialog.vue'
 import VersionButton from '@/components/common/VersionButton.vue'
 import { buildUpdateErrorStatus } from '@/utils/updateStatus'
+import { getInfiniteCanvasUrl } from '@/utils/infiniteCanvasUrl'
 import {
   Home,
   Users,
@@ -888,6 +889,8 @@ function prefetchNavigationItem(href: string) {
 }
 
 // Navigation Data
+const infiniteCanvasCanvasUrl = getInfiniteCanvasUrl('canvas')
+
 const navigation = computed(() => {
   const baseNavigation = [
     {
@@ -908,7 +911,7 @@ const navigation = computed(() => {
       title: '工具',
       items: [
         { name: '生图工作台', href: '/dashboard/image-studio', icon: Zap },
-        { name: '无限画布', href: '/InfiniteCanvas/canvas', icon: Maximize2, external: true },
+        { name: '无限画布', href: infiniteCanvasCanvasUrl, icon: Maximize2, external: true },
       ]
     },
     {
@@ -993,7 +996,7 @@ const navigation = computed(() => {
       title: '工具',
       items: [
         { name: '生图工作台', href: '/admin/image-studio', icon: Zap },
-        { name: '无限画布', href: '/InfiniteCanvas/canvas', icon: Maximize2, external: true },
+        { name: '无限画布', href: infiniteCanvasCanvasUrl, icon: Maximize2, external: true },
       ]
     },
     {
