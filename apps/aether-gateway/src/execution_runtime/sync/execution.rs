@@ -43,7 +43,9 @@ use crate::execution_runtime::grok::maybe_execute_grok_sync;
 use crate::execution_runtime::oauth_retry::refresh_oauth_plan_auth_for_retry;
 #[cfg(test)]
 use crate::execution_runtime::remote_compat::post_sync_plan_to_remote_execution_runtime;
-use crate::execution_runtime::submission::submit_local_core_error_or_sync_finalize;
+use crate::execution_runtime::submission::{
+    normalize_openai_image_sync_failure_payload, submit_local_core_error_or_sync_finalize,
+};
 use crate::execution_runtime::transport::{
     build_request_body, collect_response_headers, decode_response_body_bytes,
     format_upstream_request_error, format_wreq_upstream_request_error, response_body_is_json,
@@ -2092,9 +2094,10 @@ async fn execute_execution_runtime_sync_impl(
             body_base64,
             telemetry,
         );
+        normalize_openai_image_sync_failure_payload(&mut payload)?;
         if let Some(outcome) = maybe_build_sync_finalize_outcome(trace_id, decision, &payload)? {
             let usage_payload = outcome.background_report.as_ref().unwrap_or(&payload);
-            if status_code < 400 {
+            if payload.status_code < 400 {
                 apply_sync_success_effects(
                     state,
                     &plan,

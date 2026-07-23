@@ -404,6 +404,46 @@ fn provider_quota_metadata_bucket<'a>(
         .and_then(Value::as_object)
 }
 
+fn is_codex_quota_metadata_key(key: &str) -> bool {
+    matches!(
+        key,
+        "has_credits"
+            | "credits_balance"
+            | "credits_unlimited"
+            | "primary_over_secondary_limit_percent"
+            | "windows"
+    ) || [
+        "primary_",
+        "secondary_",
+        "spark_primary_",
+        "spark_secondary_",
+    ]
+    .iter()
+    .any(|prefix| key.starts_with(prefix))
+}
+
+pub(crate) fn codex_metadata_has_quota_evidence(metadata: &Map<String, Value>) -> bool {
+    metadata.keys().any(|key| is_codex_quota_metadata_key(key))
+}
+
+pub(crate) fn merge_codex_metadata_bucket(current: Option<&Value>, incoming: &Value) -> Value {
+    let mut merged = current
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let Some(incoming_object) = incoming.as_object() else {
+        return Value::Object(merged);
+    };
+
+    if codex_metadata_has_quota_evidence(incoming_object) {
+        merged.retain(|key, _| !is_codex_quota_metadata_key(key));
+    }
+    for (key, value) in incoming_object {
+        merged.insert(key.clone(), value.clone());
+    }
+    Value::Object(merged)
+}
+
 fn provider_quota_timestamp_unix_secs(value: Option<&Value>) -> Option<u64> {
     let mut parsed = match value {
         Some(Value::Number(number)) => number.as_f64(),
@@ -643,11 +683,22 @@ fn normalize_elapsed_codex_quota_windows_at(quota: &mut Value, now_unix_secs: u6
 }
 
 fn codex_quota_window_is_primary(window: &Map<String, Value>) -> bool {
-    window
+    let scope = window
+        .get("scope")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("account");
+    if scope.eq_ignore_ascii_case("feature")
+        || scope.eq_ignore_ascii_case("model")
+        || scope.eq_ignore_ascii_case("workspace")
+    {
+        return false;
+    }
+    !window
         .get("code")
         .and_then(Value::as_str)
         .map(str::trim)
-        .is_some_and(|code| code.eq_ignore_ascii_case("weekly") || code.eq_ignore_ascii_case("5h"))
+        .is_some_and(|code| code.starts_with("spark:") || code.starts_with("spark_"))
 }
 
 fn refresh_codex_quota_summary_from_windows(quota: &mut Value) {
@@ -784,70 +835,105 @@ fn preserve_quota_window_usage_state(current_status_snapshot: Option<&Value>, qu
     }
 }
 
-fn preserve_missing_codex_quota_windows(
-    current_status_snapshot: Option<&Value>,
-    quota: &mut Value,
-) {
-    let Some(current_windows) = current_status_snapshot
-        .and_then(Value::as_object)
-        .and_then(|snapshot| snapshot.get("quota"))
-        .and_then(Value::as_object)
-        .and_then(|quota| quota.get("windows"))
-        .and_then(Value::as_array)
-    else {
-        return;
-    };
-    let observed_at = quota
-        .get("observed_at")
-        .or_else(|| quota.get("updated_at"))
-        .and_then(admin_provider_quota_pure::coerce_json_u64);
-    let Some(next_windows) = quota.get_mut("windows").and_then(Value::as_array_mut) else {
-        return;
-    };
-
-    for current_window in current_windows {
-        let Some(current_code) = current_window
-            .get("code")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|code| !code.is_empty())
-        else {
-            continue;
-        };
-        if next_windows
-            .iter()
-            .filter_map(Value::as_object)
-            .any(|window| {
-                window
-                    .get("code")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .is_some_and(|code| code.eq_ignore_ascii_case(current_code))
-            })
-        {
-            continue;
-        }
-        let Some(reset_at) = current_window
-            .get("reset_at")
-            .and_then(admin_provider_quota_pure::coerce_json_u64)
-        else {
-            continue;
-        };
-        if observed_at.is_some_and(|observed_at| reset_at <= observed_at) {
-            continue;
-        }
-        next_windows.push(current_window.clone());
-    }
-}
-
 fn codex_default_window_minutes(code: &str) -> Option<u64> {
     if code.eq_ignore_ascii_case("5h") || code.eq_ignore_ascii_case("spark_5h") {
         Some(300)
-    } else if code.eq_ignore_ascii_case("weekly") || code.eq_ignore_ascii_case("spark_weekly") {
+    } else if code.eq_ignore_ascii_case("weekly")
+        || code.eq_ignore_ascii_case("7d")
+        || code.eq_ignore_ascii_case("spark_weekly")
+        || code.eq_ignore_ascii_case("spark_7d")
+    {
         Some(10_080)
+    } else if code.eq_ignore_ascii_case("1m") || code.eq_ignore_ascii_case("monthly") {
+        Some(43_200)
     } else {
         None
     }
+}
+
+fn codex_quota_window_snapshot_from_metadata(
+    item: &Map<String, Value>,
+    observed_at_unix_secs: Option<u64>,
+) -> Option<Value> {
+    let code = item
+        .get("code")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let label = item
+        .get("label")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(code);
+    let used_percent = item
+        .get("used_percent")
+        .and_then(admin_provider_quota_pure::coerce_json_f64);
+    let explicit_reset_at = item
+        .get("reset_at")
+        .and_then(admin_provider_quota_pure::coerce_json_u64);
+    let reset_seconds = item
+        .get("reset_after_seconds")
+        .or_else(|| item.get("reset_seconds"))
+        .and_then(admin_provider_quota_pure::coerce_json_u64)
+        .or_else(|| {
+            observed_at_unix_secs
+                .zip(explicit_reset_at)
+                .map(|(observed_at, reset_at)| reset_at.saturating_sub(observed_at))
+        });
+    let reset_at = explicit_reset_at.or_else(|| {
+        observed_at_unix_secs
+            .zip(reset_seconds)
+            .map(|(observed_at, reset_seconds)| observed_at.saturating_add(reset_seconds))
+    });
+    let window_seconds = item
+        .get("window_seconds")
+        .and_then(admin_provider_quota_pure::coerce_json_u64);
+    let window_minutes = item
+        .get("window_minutes")
+        .and_then(admin_provider_quota_pure::coerce_json_u64)
+        .or_else(|| {
+            window_seconds
+                .filter(|seconds| seconds % 60 == 0)
+                .map(|seconds| seconds / 60)
+        })
+        .or_else(|| codex_default_window_minutes(code));
+    let used_ratio = used_percent.map(|value| (value / 100.0).clamp(0.0, 1.0));
+    let remaining_ratio = used_ratio.map(|value| (1.0 - value).max(0.0));
+    let is_exhausted = item
+        .get("is_exhausted")
+        .and_then(admin_provider_quota_pure::coerce_json_bool)
+        .or_else(|| used_ratio.map(|value| value >= 1.0 - 1e-6));
+
+    if used_ratio.is_none()
+        && reset_at.is_none()
+        && window_minutes.is_none()
+        && is_exhausted.is_none()
+    {
+        return None;
+    }
+
+    let mut window = Map::new();
+    window.insert("code".to_string(), json!(code));
+    window.insert("label".to_string(), json!(label));
+    window.insert(
+        "scope".to_string(),
+        item.get("scope")
+            .cloned()
+            .unwrap_or_else(|| json!("account")),
+    );
+    window.insert("unit".to_string(), json!("percent"));
+    window.insert("used_ratio".to_string(), json!(used_ratio));
+    window.insert("remaining_ratio".to_string(), json!(remaining_ratio));
+    window.insert("reset_at".to_string(), json!(reset_at));
+    window.insert("reset_seconds".to_string(), json!(reset_seconds));
+    window.insert(
+        "window_seconds".to_string(),
+        json!(window_seconds.or_else(|| window_minutes.and_then(|minutes| minutes.checked_mul(60)))),
+    );
+    window.insert("window_minutes".to_string(), json!(window_minutes));
+    window.insert("is_exhausted".to_string(), json!(is_exhausted));
+    Some(Value::Object(window))
 }
 
 fn codex_quota_window_has_materialized_limit(
@@ -963,27 +1049,54 @@ fn build_codex_quota_status_snapshot(
         .get("credits_unlimited")
         .and_then(admin_provider_quota_pure::coerce_json_bool);
 
-    let windows = [
-        codex_quota_window_snapshot(metadata, "primary", "weekly", "周", observed_at_unix_secs),
-        codex_quota_window_snapshot(metadata, "secondary", "5h", "5H", observed_at_unix_secs),
-        codex_quota_window_snapshot(
-            metadata,
-            "spark_primary",
-            "spark_5h",
-            "Spark 5H",
-            observed_at_unix_secs,
-        ),
-        codex_quota_window_snapshot(
-            metadata,
-            "spark_secondary",
-            "spark_weekly",
-            "Spark 周",
-            observed_at_unix_secs,
-        ),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
+    let windows = metadata
+        .get("windows")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_object)
+                .filter_map(|item| {
+                    codex_quota_window_snapshot_from_metadata(item, observed_at_unix_secs)
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|windows| !windows.is_empty())
+        .unwrap_or_else(|| {
+            [
+                codex_quota_window_snapshot(
+                    metadata,
+                    "primary",
+                    "weekly",
+                    "7D",
+                    observed_at_unix_secs,
+                ),
+                codex_quota_window_snapshot(
+                    metadata,
+                    "secondary",
+                    "5h",
+                    "5H",
+                    observed_at_unix_secs,
+                ),
+                codex_quota_window_snapshot(
+                    metadata,
+                    "spark_primary",
+                    "spark_5h",
+                    "Spark 5H",
+                    observed_at_unix_secs,
+                ),
+                codex_quota_window_snapshot(
+                    metadata,
+                    "spark_secondary",
+                    "spark_weekly",
+                    "Spark 7D",
+                    observed_at_unix_secs,
+                ),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+        });
 
     if windows.is_empty()
         && plan_type.is_none()
@@ -997,15 +1110,10 @@ fn build_codex_quota_status_snapshot(
 
     let primary_windows = windows
         .iter()
-        .filter(|window| {
-            window
-                .get("code")
-                .and_then(Value::as_str)
-                .is_some_and(|code| {
-                    code.eq_ignore_ascii_case("weekly") || code.eq_ignore_ascii_case("5h")
-                })
-        })
+        .filter_map(Value::as_object)
+        .filter(|window| codex_quota_window_is_primary(window))
         .cloned()
+        .map(Value::Object)
         .collect::<Vec<_>>();
     let usage_ratio = primary_windows
         .iter()
@@ -1530,7 +1638,6 @@ pub(crate) fn sync_provider_key_quota_status_snapshot(
         _ => None,
     }?;
     if normalized_provider_type == "codex" {
-        preserve_missing_codex_quota_windows(status_snapshot, &mut quota);
         preserve_quota_window_usage_state(status_snapshot, &mut quota);
         normalize_codex_quota_windows_for_display_at(
             &mut quota,
@@ -2445,8 +2552,51 @@ mod tests {
         assert_eq!(windows.len(), 4);
         assert_eq!(spark_5h.get("label"), Some(&json!("Spark 5H")));
         assert_eq!(spark_5h.get("remaining_ratio"), Some(&json!(0.6)));
-        assert_eq!(spark_weekly.get("label"), Some(&json!("Spark 周")));
+        assert_eq!(spark_weekly.get("label"), Some(&json!("Spark 7D")));
         assert_eq!(spark_weekly.get("remaining_ratio"), Some(&json!(0.95)));
+    }
+
+    #[test]
+    fn provider_key_status_snapshot_uses_generic_codex_windows_without_feature_exhaustion() {
+        let mut key = sample_catalog_key();
+        key.upstream_metadata = Some(json!({
+            "codex": {
+                "updated_at": 1_775_553_285u64,
+                "plan_type": "team",
+                "windows": [{
+                    "code": "1m",
+                    "label": "1M",
+                    "scope": "account",
+                    "used_percent": 10.0,
+                    "reset_at": 1_900_000_000u64,
+                    "window_seconds": 2_592_000u64
+                }, {
+                    "code": "spark:5h",
+                    "label": "GPT-5.3-Codex-Spark 5H",
+                    "scope": "feature",
+                    "used_percent": 100.0,
+                    "reset_at": 1_800_000_000u64,
+                    "window_seconds": 18_000u64
+                }]
+            }
+        }));
+
+        let payload = provider_key_status_snapshot_payload(&key, "codex");
+        let quota = payload["quota"]
+            .as_object()
+            .expect("quota snapshot should exist");
+        let windows = quota["windows"]
+            .as_array()
+            .expect("quota windows should exist");
+
+        assert_eq!(windows.len(), 2);
+        assert_eq!(quota.get("usage_ratio"), Some(&json!(0.1)));
+        assert_eq!(quota.get("exhausted"), Some(&json!(false)));
+        assert!(windows.iter().any(|window| {
+            window["code"] == json!("1m")
+                && window["window_minutes"] == json!(43_200u64)
+                && window["remaining_ratio"] == json!(0.9)
+        }));
     }
 
     #[test]
@@ -2874,7 +3024,7 @@ mod tests {
     }
 
     #[test]
-    fn sync_provider_key_quota_status_snapshot_preserves_missing_active_codex_windows() {
+    fn sync_provider_key_quota_status_snapshot_does_not_preserve_missing_active_codex_windows() {
         let current_status_snapshot = json!({
             "quota": {
                 "version": 2,
@@ -2919,16 +3069,91 @@ mod tests {
             .as_array()
             .expect("quota windows should exist");
 
+        assert!(windows.is_empty());
+    }
+
+    #[test]
+    fn sync_provider_key_quota_status_snapshot_removes_stale_codex_five_hour_window() {
+        let current_status_snapshot = json!({
+            "quota": {
+                "version": 2,
+                "provider_type": "codex",
+                "windows": [
+                    {
+                        "code": "weekly",
+                        "label": "周",
+                        "used_ratio": 0.16,
+                        "remaining_ratio": 0.84,
+                        "reset_at": 1_900_000_000u64,
+                        "reset_seconds": 530_000u64,
+                        "window_minutes": 10_080u64
+                    },
+                    {
+                        "code": "5h",
+                        "label": "5H",
+                        "used_ratio": 0.05,
+                        "remaining_ratio": 0.95,
+                        "reset_at": 1_900_500_000u64,
+                        "reset_seconds": 12_000u64,
+                        "window_minutes": 300u64
+                    }
+                ]
+            }
+        });
+        let upstream_metadata = json!({
+            "codex": {
+                "updated_at": 1_777_000_000u64,
+                "plan_type": "team",
+                "primary_used_percent": 16.0,
+                "primary_reset_after_seconds": 530_000u64,
+                "primary_window_minutes": 10_080u64
+            }
+        });
+
+        let payload = sync_provider_key_quota_status_snapshot(
+            Some(&current_status_snapshot),
+            "codex",
+            Some(&upstream_metadata),
+            "response_headers",
+        )
+        .expect("quota snapshot should sync");
+        let windows = payload["quota"]["windows"]
+            .as_array()
+            .expect("quota windows should exist");
+
         assert!(windows
             .iter()
             .any(|window| window.get("code") == Some(&json!("weekly"))));
-        assert!(windows
+        assert!(!windows
             .iter()
             .any(|window| window.get("code") == Some(&json!("5h"))));
     }
 
     #[test]
-    fn sync_provider_key_quota_status_snapshot_ignores_zero_length_codex_refresh_window() {
+    fn merge_codex_metadata_bucket_removes_stale_quota_fields_when_new_evidence_arrives() {
+        let current = json!({
+            "plan_type": "team",
+            "secondary_used_percent": 7.0,
+            "secondary_reset_after_seconds": 1200u64,
+            "account_id": "account-1"
+        });
+        let incoming = json!({
+            "updated_at": 1_777_000_000u64,
+            "primary_used_percent": 12.0,
+            "primary_window_minutes": 10_080u64
+        });
+
+        let merged = merge_codex_metadata_bucket(Some(&current), &incoming);
+
+        assert_eq!(merged["plan_type"], json!("team"));
+        assert_eq!(merged["account_id"], json!("account-1"));
+        assert_eq!(merged["primary_used_percent"], json!(12.0));
+        assert!(merged.get("secondary_used_percent").is_none());
+        assert!(merged.get("secondary_reset_after_seconds").is_none());
+    }
+
+    #[test]
+    fn sync_provider_key_quota_status_snapshot_drops_zero_length_codex_refresh_window() {
         let current_status_snapshot = json!({
             "quota": {
                 "version": 2,
@@ -2971,7 +3196,7 @@ mod tests {
         assert!(!windows
             .iter()
             .any(|window| window.get("code") == Some(&json!("weekly"))));
-        assert!(windows
+        assert!(!windows
             .iter()
             .any(|window| window.get("code") == Some(&json!("5h"))));
     }

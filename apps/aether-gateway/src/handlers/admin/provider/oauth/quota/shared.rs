@@ -3,7 +3,8 @@ use crate::handlers::admin::provider::shared::payloads::{
 };
 use crate::handlers::admin::request::{AdminAppState, AdminGatewayProviderTransportSnapshot};
 use crate::handlers::shared::{
-    sync_provider_key_oauth_status_snapshot, sync_provider_key_quota_status_snapshot,
+    merge_codex_metadata_bucket, sync_provider_key_oauth_status_snapshot,
+    sync_provider_key_quota_status_snapshot,
 };
 use crate::GatewayError;
 use aether_admin::provider::quota as admin_provider_quota_pure;
@@ -112,17 +113,9 @@ fn merge_upstream_metadata(
     if let Some(update_object) = updates.as_object() {
         for (key, value) in update_object {
             if key == "codex" {
-                if let (Some(current_object), Some(update_object)) = (
-                    merged.get(key).and_then(serde_json::Value::as_object),
-                    value.as_object(),
-                ) {
-                    let mut next = current_object.clone();
-                    for (field, field_value) in update_object {
-                        next.insert(field.clone(), field_value.clone());
-                    }
-                    merged.insert(key.clone(), serde_json::Value::Object(next));
-                    continue;
-                }
+                let next = merge_codex_metadata_bucket(merged.get(key), value);
+                merged.insert(key.clone(), next);
+                continue;
             }
             merged.insert(key.clone(), value.clone());
         }

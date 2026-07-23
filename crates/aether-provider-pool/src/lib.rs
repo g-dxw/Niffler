@@ -427,6 +427,48 @@ mod tests {
     }
 
     #[test]
+    fn codex_generic_windows_use_all_account_limits_but_ignore_feature_limits() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_secs();
+
+        assert!(provider_pool_key_account_quota_exhausted(
+            &sample_key(Some(json!({
+                "codex": {
+                    "updated_at": now,
+                    "windows": [{
+                        "code": "1m",
+                        "scope": "account",
+                        "used_percent": 100.0,
+                        "reset_at": now.saturating_add(3600)
+                    }]
+                }
+            }))),
+            "codex",
+        ));
+        assert!(!provider_pool_key_account_quota_exhausted(
+            &sample_key(Some(json!({
+                "codex": {
+                    "updated_at": now,
+                    "windows": [{
+                        "code": "1m",
+                        "scope": "account",
+                        "used_percent": 10.0,
+                        "reset_at": now.saturating_add(3600)
+                    }, {
+                        "code": "spark:5h",
+                        "scope": "feature",
+                        "used_percent": 100.0,
+                        "reset_at": now.saturating_add(3600)
+                    }]
+                }
+            }))),
+            "codex",
+        ));
+    }
+
+    #[test]
     fn provider_quota_exhaustion_metadata_expires_after_reset_at() {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

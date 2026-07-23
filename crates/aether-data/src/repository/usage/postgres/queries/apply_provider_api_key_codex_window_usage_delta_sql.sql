@@ -14,32 +14,79 @@ windows AS (
     parsed.ordinality,
     parsed.window_item,
     parsed.code,
+    parsed.scope,
     parsed.reset_at,
+    parsed.window_seconds,
     parsed.window_minutes,
     parsed.usage_reset_at,
-    COALESCE(parsed.window_minutes, CASE parsed.code
-      WHEN '5h' THEN 300
-      WHEN 'weekly' THEN 10080
-      ELSE NULL
-    END) AS resolved_window_minutes
+    COALESCE(
+      parsed.window_seconds,
+      CASE
+        WHEN parsed.window_minutes BETWEEN 0 AND 153722867280912930
+        THEN parsed.window_minutes * 60
+        ELSE NULL
+      END,
+      CASE parsed.code
+        WHEN '5h' THEN 18000
+        WHEN '7d' THEN 604800
+        WHEN 'weekly' THEN 604800
+        WHEN '1m' THEN 2592000
+        WHEN 'monthly' THEN 2592000
+        ELSE NULL
+      END
+    ) AS resolved_window_seconds
   FROM target
   CROSS JOIN LATERAL (
     SELECT
       item.window_item,
       item.ordinality,
       lower(BTRIM(COALESCE(item.window_item ->> 'code', ''))) AS code,
+      lower(BTRIM(COALESCE(item.window_item ->> 'scope', 'account'))) AS scope,
       CASE
         WHEN BTRIM(COALESCE(item.window_item ->> 'reset_at', '')) ~ '^[0-9]+$'
+          AND (
+            length(BTRIM(item.window_item ->> 'reset_at')) < 19
+            OR (
+              length(BTRIM(item.window_item ->> 'reset_at')) = 19
+              AND BTRIM(item.window_item ->> 'reset_at') <= '9223372036854775807'
+            )
+          )
         THEN CAST(item.window_item ->> 'reset_at' AS BIGINT)
         ELSE NULL
       END AS reset_at,
       CASE
+        WHEN BTRIM(COALESCE(item.window_item ->> 'window_seconds', '')) ~ '^[0-9]+$'
+          AND (
+            length(BTRIM(item.window_item ->> 'window_seconds')) < 19
+            OR (
+              length(BTRIM(item.window_item ->> 'window_seconds')) = 19
+              AND BTRIM(item.window_item ->> 'window_seconds') <= '9223372036854775807'
+            )
+          )
+        THEN CAST(item.window_item ->> 'window_seconds' AS BIGINT)
+        ELSE NULL
+      END AS window_seconds,
+      CASE
         WHEN BTRIM(COALESCE(item.window_item ->> 'window_minutes', '')) ~ '^[0-9]+$'
+          AND (
+            length(BTRIM(item.window_item ->> 'window_minutes')) < 19
+            OR (
+              length(BTRIM(item.window_item ->> 'window_minutes')) = 19
+              AND BTRIM(item.window_item ->> 'window_minutes') <= '9223372036854775807'
+            )
+          )
         THEN CAST(item.window_item ->> 'window_minutes' AS BIGINT)
         ELSE NULL
       END AS window_minutes,
       CASE
         WHEN BTRIM(COALESCE(item.window_item ->> 'usage_reset_at', '')) ~ '^[0-9]+$'
+          AND (
+            length(BTRIM(item.window_item ->> 'usage_reset_at')) < 19
+            OR (
+              length(BTRIM(item.window_item ->> 'usage_reset_at')) = 19
+              AND BTRIM(item.window_item ->> 'usage_reset_at') <= '9223372036854775807'
+            )
+          )
         THEN CAST(item.window_item ->> 'usage_reset_at' AS BIGINT)
         ELSE NULL
       END AS usage_reset_at
@@ -52,11 +99,11 @@ updated AS (
     id,
     jsonb_agg(
       CASE
-        WHEN code IN ('5h', 'weekly')
+        WHEN scope NOT IN ('feature', 'model', 'workspace')
           AND reset_at IS NOT NULL
-          AND resolved_window_minutes IS NOT NULL
-          AND reset_at >= resolved_window_minutes * 60
-          AND $5::BIGINT >= GREATEST(reset_at - resolved_window_minutes * 60, COALESCE(usage_reset_at, 0))
+          AND resolved_window_seconds IS NOT NULL
+          AND reset_at >= resolved_window_seconds
+          AND $5::BIGINT >= GREATEST(reset_at - resolved_window_seconds, COALESCE(usage_reset_at, 0))
           AND $5::BIGINT < reset_at
         THEN jsonb_set(
           window_item,

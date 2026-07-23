@@ -344,26 +344,27 @@ export interface EndpointAPIKey {
 export interface CodexUpstreamMetadata {
   updated_at?: number  // 更新时间（Unix 时间戳）
   plan_type?: string  // 套餐类型
-  primary_used_percent?: number  // 周限额窗口使用百分比
-  primary_reset_seconds?: number  // 周限额重置剩余秒数
-  primary_reset_after_seconds?: number  // 周限额重置剩余秒数（兼容字段）
-  primary_reset_at?: number  // 周限额重置时间（Unix 时间戳）
-  primary_window_minutes?: number  // 周限额窗口大小（分钟）
-  secondary_used_percent?: number  // 5H限额窗口使用百分比
-  secondary_reset_seconds?: number  // 5H限额重置剩余秒数
-  secondary_reset_after_seconds?: number  // 5H限额重置剩余秒数（兼容字段）
-  secondary_reset_at?: number  // 5H限额重置时间（Unix 时间戳）
-  secondary_window_minutes?: number  // 5H限额窗口大小（分钟）
-  spark_primary_used_percent?: number  // Spark 5H限额窗口使用百分比
-  spark_primary_reset_seconds?: number  // Spark 5H限额重置剩余秒数
-  spark_primary_reset_after_seconds?: number  // Spark 5H限额重置剩余秒数（兼容字段）
-  spark_primary_reset_at?: number  // Spark 5H限额重置时间（Unix 时间戳）
-  spark_primary_window_minutes?: number  // Spark 5H限额窗口大小（分钟）
-  spark_secondary_used_percent?: number  // Spark 周限额窗口使用百分比
-  spark_secondary_reset_seconds?: number  // Spark 周限额重置剩余秒数
-  spark_secondary_reset_after_seconds?: number  // Spark 周限额重置剩余秒数（兼容字段）
-  spark_secondary_reset_at?: number  // Spark 周限额重置时间（Unix 时间戳）
-  spark_secondary_window_minutes?: number  // Spark 周限额窗口大小（分钟）
+  // 以下字段只用于读取旧版 primary/secondary 元数据；当前窗口事实在 status_snapshot.quota.windows。
+  primary_used_percent?: number
+  primary_reset_seconds?: number
+  primary_reset_after_seconds?: number
+  primary_reset_at?: number
+  primary_window_minutes?: number
+  secondary_used_percent?: number
+  secondary_reset_seconds?: number
+  secondary_reset_after_seconds?: number
+  secondary_reset_at?: number
+  secondary_window_minutes?: number
+  spark_primary_used_percent?: number
+  spark_primary_reset_seconds?: number
+  spark_primary_reset_after_seconds?: number
+  spark_primary_reset_at?: number
+  spark_primary_window_minutes?: number
+  spark_secondary_used_percent?: number
+  spark_secondary_reset_seconds?: number
+  spark_secondary_reset_after_seconds?: number
+  spark_secondary_reset_at?: number
+  spark_secondary_window_minutes?: number
   has_credits?: boolean  // 是否有积分
   credits_balance?: number  // 积分余额
 }

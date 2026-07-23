@@ -33,6 +33,8 @@
 - 下一轮请求回放 `image_generation_call` 时，只保留上游接受的 `type`、`id`、`status`、`result`；移除响应展示使用的 `action`、`background`、`output_format`、`quality`、`revised_prompt`、`size` 等字段。
 - 桥接指令要求模型在用户目标是栅格成品或编辑结果时必须调用托管工具；不得用提示词、外部链接、Markdown 图片或没有工具结果的“已经完成”代替。
 - ChatGPT Codex OAuth 上游继续强制 `store: false`；图片预览依赖当前响应中的原生图片事件，不依赖上游存储。
+- 同步生图上游即使返回 HTTP 200，只要正文包含 `response.failed`、非空 `error` 或非完成状态，Niffler 必须先将状态改为真实错误，再记录用量、更新账号状态和构造客户端响应，不能继续作为成功请求结算。标准成功响应中的 `error: null` 不算失败。
+- 同步生图事件流同时接受 LF 和 CRLF 换行，避免不同上游或代理使用 Windows 风格换行时漏掉失败事件。
 - 文本用量读取上游 `usage`；图片工具用量读取 `tool_usage.image_gen`。计费估算、日志和补偿统计不得把 `result`、`partial_image_b64` 等二进制字段计作文本 Token。
 - 同步 Images 接口默认开启长连接心跳：等待上游 SSE 生成结果时，每 15 秒向客户端输出 JSON 合法空白，避免 Cloudflare 在 120 秒无下行数据时中断请求。
 - 心跳包装覆盖完整的账号候选重试流程；单个上游失败后仍可切换账号，不会因为已开始下行响应而跳过重试。

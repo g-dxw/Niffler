@@ -1,5 +1,43 @@
 # Task Plan: 当前任务记录
 
+## Codex 上游配额窗口与真实展示（2026-07-23）
+
+### Goal
+
+让 Codex 账号配额显示完全以当前上游返回为准，覆盖 5H、7D、1M 以及未来出现的其他窗口；不再把窗口位置强行解释成“周”和“5H”，也不因上游暂时不返回某个窗口而沿用旧数据。
+
+### Current Phase
+
+已完成：通用窗口解析、快照展示、调度判断、用量统计和测试验证
+
+### Phases
+
+- [x] Phase 1：确认上游 `/wham/usage` 与响应头的窗口字段、现有本地持久化和历史兼容边界
+- [x] Phase 2：先更新设计记录，再实现后端通用窗口解析和快照汇总
+- [x] Phase 3：移除管理端号池和前端对 `weekly/5h` 的展示硬编码
+- [x] Phase 4：更新耗尽判断、窗口用量统计和重置处理，支持新增/消失窗口
+- [x] Phase 5：补充 5H、7D、1M、单窗口、窗口消失和未知窗口测试
+- [x] Phase 6：运行 Rust/前端相关验证，复核与当前未提交图片改动的边界
+- [x] Phase 7：修复最终审查发现的失败状态判断、CRLF 事件流和 SQL 数值溢出问题
+
+### Implementation Status
+
+complete
+
+### Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| 窗口事实以 `limit_window_seconds`、`window_minutes`、`reset_at` 和 `used_percent` 为准 | 窗口位置 `primary/secondary` 不是业务名称，不能据此推断周/月 |
+| 标准窗口代码使用 `5h`、`weekly`、`1m`；其它窗口使用基于真实时长的稳定代码 | 7D 沿用已有标识，避免同义代码和历史用量迁移；界面仍显示 `7D` |
+| 额度窗口消失就从当前快照移除，不从历史快照补回 | 防止过期额度被误显示为当前额度 |
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| planning-with-files 恢复脚本路径不存在 | 调用旧 Claude 插件路径 | 以项目现有 `task_plan.md`、`findings.md`、`progress.md` 和工作区为准继续 |
+
 ## 本地未提交改动审查与上线（2026-07-15）
 
 ### Goal

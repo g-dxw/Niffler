@@ -1,5 +1,22 @@
 # Findings
 
+## 2026-07-23 Codex 上游配额窗口
+
+- 用户要求覆盖的不只是 5H，还包括 7D（周额度）、1M（月额度）和上游以后可能返回的其它窗口。
+- sub2api 当前 OpenAI 配额查询调用 `https://chatgpt.com/backend-api/wham/usage`，窗口结构包含 `used_percent`、`limit_window_seconds`、`reset_after_seconds` 和 `reset_at`；`primary_window`、`secondary_window` 只是位置字段。
+- sub2api 当前把窗口标准化成 `codex_5h_*` 和 `codex_7d_*`，并没有可靠证据说明 1M 在所有账号上都会返回，因此 Niffler 不能把“没有 1M”当成“没有月额度”。
+- Aether 当前 Codex 解析器把付费账号的窗口位置重排后写成 `primary/weekly` 和 `secondary/5h`，只生成 `weekly`、`5h`、`spark_5h`、`spark_weekly` 四种代码。
+- Aether 前端 `providerKeyQuota.ts`、ProviderDetailDrawer、管理号池 payload 和部分窗口统计/重置逻辑均固定筛选 `weekly/5h`，会漏掉 `7d`、`1m` 和未知时长窗口。
+- 窗口用量统计按快照中的 `code` 关联数据库汇总；因此如果新快照把 7D 改成 `7d`，需要同时兼容旧汇总中的 `weekly`，否则历史用量会消失。
+- 本次实现应保留上游实际窗口时长和重置数据；只能把标准时长转换成可读标签，不能通过固定窗口名伪造数据。
+- 已实现通用 `windows[]` 作为当前配额事实来源：5H、7D、1M 和未知时长均保留真实秒数、重置信息和可读标签。
+- 7D 窗口继续使用已有的 `weekly` 内部标识，界面显示 `7D`；`primary/secondary` 字段只保留读取兼容，当前展示、耗尽判断和窗口用量统计不再依赖固定两窗口。
+- 账号级窗口参与普通 Codex 耗尽判断和本地用量统计；feature/model/workspace 窗口只展示独立上游额度，不串入普通请求用量。
+- 上游本次没有返回的窗口会从当前快照移除，避免旧的 5H、周额度或月额度继续显示。
+- 最终审查发现同步生图失败状态虽已从正文识别出来，但成功副作用仍读取修改前的 HTTP 状态；现已统一读取归一化后的状态。
+- 最终审查发现同步生图收尾解析使用固定 LF 分隔，而同文件实时解析已支持 CRLF；现已复用同一分块规则。
+- 最终审查发现 PostgreSQL 增量统计直接转换和相乘窗口数值，异常快照可能触发 `BIGINT` 错误；现已与重建统计保持相同的范围保护。
+
 ## 2026-07-15 本地未提交改动审查与上线
 
 - 当前分支 `codex/fix-codex-lite-tools` 停在 `153046f0`，生产后续提交 `fcc5a165`（同步生图保活）和 `eb44f662`（sub2api OAuth 导入）与其构成线性提交链。

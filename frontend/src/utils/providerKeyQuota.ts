@@ -125,18 +125,45 @@ function getGrokQuotaWindowLabel(window: QuotaWindowSnapshot): string {
   return GROK_QUOTA_MODE_LABELS[normalized] || GROK_QUOTA_MODE_LABELS[rawCode.toLowerCase()] || rawLabel || rawCode || '模式'
 }
 
-function getCodexQuotaText(quota: QuotaStatusSnapshot): string | null {
-  const parts: string[] = []
-  for (const [label, code] of [
-    ['周', 'weekly'],
-    ['5H', '5h'],
-    ['Spark5H', 'spark_5h'],
-    ['Spark周', 'spark_weekly'],
-  ] as const) {
-    const remainingPercent = getQuotaWindowRemainingPercent(getQuotaWindow(quota, code))
-    if (remainingPercent == null) continue
-    parts.push(`${label}剩余 ${formatPercent(remainingPercent)}`)
+function getCodexQuotaWindowLabel(window: QuotaWindowSnapshot): string {
+  const label = normalizeText(window.label)
+  if (label) {
+    return label
   }
+  const seconds = typeof window.window_seconds === 'number' ? window.window_seconds : null
+  if (seconds && seconds > 0) return formatCodexWindowSeconds(seconds)
+  const minutes = typeof window.window_minutes === 'number' ? window.window_minutes : null
+  if (minutes === 300) return '5H'
+  if (minutes === 10_080) return '7D'
+  if (minutes === 43_200) return '1M'
+  if (minutes) return formatCodexWindowMinutes(minutes)
+  return normalizeText(window.code) || '窗口'
+}
+
+function formatCodexWindowSeconds(totalSeconds: number): string {
+  return formatCodexWindowMinutes(Math.max(Math.ceil(totalSeconds / 60), 1))
+}
+
+function formatCodexWindowMinutes(totalMinutes: number): string {
+  const normalizedMinutes = Math.max(Math.ceil(totalMinutes), 1)
+  const days = Math.floor(normalizedMinutes / (24 * 60))
+  const hours = Math.floor((normalizedMinutes % (24 * 60)) / 60)
+  const minutes = normalizedMinutes % 60
+  const parts: string[] = []
+  if (days > 0) parts.push(`${days}天`)
+  if (hours > 0) parts.push(`${hours}小时`)
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}分钟`)
+  return parts.join('')
+}
+
+function getCodexQuotaText(quota: QuotaStatusSnapshot): string | null {
+  const parts = getQuotaWindows(quota)
+    .map((window) => {
+      const remainingPercent = getQuotaWindowRemainingPercent(window)
+      if (remainingPercent == null) return null
+      return `${getCodexQuotaWindowLabel(window)}剩余 ${formatPercent(remainingPercent)}`
+    })
+    .filter((value): value is string => value != null)
   if (parts.length > 0) return parts.join(' | ')
 
   if (quota.credits?.has_credits === true && typeof quota.credits.balance === 'number') {
@@ -145,7 +172,7 @@ function getCodexQuotaText(quota: QuotaStatusSnapshot): string | null {
   if (quota.credits?.has_credits === true) return '有积分'
   if (quota.credits?.has_credits === false) return '无可用积分'
 
-  return normalizeText(quota.label)
+  return normalizeText(quota.label) || '暂无上游配额数据'
 }
 
 function getKiroQuotaText(quota: QuotaStatusSnapshot): string | null {

@@ -1271,9 +1271,93 @@ fn drain_sse_separator(buffer: &mut Vec<u8>) {
     }
 }
 
+fn next_sse_block<'a>(remaining: &mut &'a [u8]) -> Option<&'a [u8]> {
+    while matches!(remaining.first(), Some(b'\n' | b'\r')) {
+        *remaining = &remaining[1..];
+    }
+    if remaining.is_empty() {
+        return None;
+    }
+
+    let block_end = find_sse_block_end(remaining).unwrap_or(remaining.len());
+    let (block, rest) = remaining.split_at(block_end);
+    *remaining = rest;
+    Some(block)
+}
+
 pub struct OpenAiImageSyncFinalizeProduct {
     pub client_body_json: Value,
     pub provider_body_json: Value,
+}
+
+fn openai_image_failure_body_from_value(value: &Value) -> Option<Value> {
+    let event_type = value
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let source = if event_type == "response.failed" {
+        value.get("response").unwrap_or(value)
+    } else {
+        value
+    };
+    let status = source
+        .get("status")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let error = source.get("error").filter(|error| !error.is_null());
+    let failed = event_type == "error"
+        || event_type == "response.failed"
+        || event_type.ends_with(".failed")
+        || (!status.is_empty() && status != "completed")
+        || error.is_some();
+    if !failed {
+        return None;
+    }
+
+    if let Some(error) = error {
+        return Some(serde_json::json!({ "error": error }));
+    }
+    if let Some(error) = value.get("error").filter(|error| !error.is_null()) {
+        return Some(serde_json::json!({ "error": error }));
+    }
+
+    Some(serde_json::json!({
+        "error": {
+            "message": "Upstream image generation failed",
+            "type": "server_error",
+            "code": "image_generation_failed"
+        }
+    }))
+}
+
+pub fn maybe_extract_openai_image_sync_failure_body(
+    report_kind: &str,
+    status_code: u16,
+    body_json: Option<&Value>,
+    body_base64: Option<&str>,
+) -> Result<Option<Value>, AiSurfaceFinalizeError> {
+    if report_kind != OPENAI_IMAGE_SYNC_FINALIZE_REPORT_KIND || status_code >= 400 {
+        return Ok(None);
+    }
+    if let Some(body_json) = body_json {
+        return Ok(openai_image_failure_body_from_value(body_json));
+    }
+    let Some(body_base64) = body_base64 else {
+        return Ok(None);
+    };
+    let body_bytes = base64::engine::general_purpose::STANDARD.decode(body_base64)?;
+    let mut remaining = body_bytes.as_slice();
+    while let Some(block) = next_sse_block(&mut remaining) {
+        let Some(event) = parse_sse_block_data(block)? else {
+            continue;
+        };
+        if let Some(error_body) = openai_image_failure_body_from_value(&event) {
+            return Ok(Some(error_body));
+        }
+    }
+    Ok(None)
 }
 
 pub fn maybe_build_openai_image_sync_finalize_product(
@@ -1347,28 +1431,16 @@ pub fn maybe_build_openai_image_sync_finalize_product(
         .filter(|value| !value.is_empty())
         .unwrap_or(CODEX_OPENAI_IMAGE_DEFAULT_OUTPUT_FORMAT);
     let body_bytes = base64::engine::general_purpose::STANDARD.decode(body_base64)?;
-    let text = std::str::from_utf8(&body_bytes)
-        .map_err(|err| AiSurfaceFinalizeError::new(err.to_string()))?;
-
     let mut created = None;
     let mut completed_response = None;
+    let mut saw_failure = false;
     let mut images = Vec::new();
 
-    for raw_block in text.split("\n\n") {
-        let block = raw_block.trim();
-        if block.is_empty() {
-            continue;
-        }
-        let data_line = block
-            .lines()
-            .find_map(|line| line.trim().strip_prefix("data:").map(str::trim));
-        let Some(data_line) = data_line else {
+    let mut remaining = body_bytes.as_slice();
+    while let Some(block) = next_sse_block(&mut remaining) {
+        let Some(event) = parse_sse_block_data(block)? else {
             continue;
         };
-        if data_line.is_empty() || data_line == "[DONE]" {
-            continue;
-        }
-        let event: Value = serde_json::from_str(data_line)?;
         match event
             .get("type")
             .and_then(Value::as_str)
@@ -1380,6 +1452,9 @@ pub fn maybe_build_openai_image_sync_finalize_product(
                     .and_then(|value| value.get("created_at"))
                     .and_then(Value::as_i64)
                     .or(created);
+            }
+            "error" | "response.failed" => {
+                saw_failure = true;
             }
             "response.output_item.done" => {
                 let Some(item) = event.get("item").and_then(Value::as_object) else {
@@ -1398,13 +1473,30 @@ pub fn maybe_build_openai_image_sync_finalize_product(
                 }));
             }
             "response.completed" => {
-                completed_response = event.get("response").and_then(Value::as_object).cloned();
+                if let Some(response) = event.get("response").and_then(Value::as_object) {
+                    if response
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .is_some_and(|status| status != "completed")
+                    {
+                        saw_failure = true;
+                    }
+                    if response.get("error").is_some_and(|error| !error.is_null()) {
+                        saw_failure = true;
+                    }
+                    completed_response = Some(response.clone());
+                }
             }
             _ => {}
         }
     }
 
     if images.is_empty() {
+        return Ok(None);
+    }
+    if saw_failure {
         return Ok(None);
     }
 
@@ -1463,7 +1555,7 @@ mod tests {
 
     use super::{
         image_chat_output_key, maybe_build_openai_image_sync_finalize_product,
-        OpenAiImageStreamState,
+        maybe_extract_openai_image_sync_failure_body, OpenAiImageStreamState,
     };
 
     #[test]
@@ -1674,6 +1766,106 @@ mod tests {
         assert_eq!(
             product.provider_body_json["output"][0]["revised_prompt"],
             "revised history prompt"
+        );
+    }
+
+    #[test]
+    fn sync_finalize_product_rejects_failed_streams() {
+        let report_context = json!({
+            "client_api_format": "openai:image",
+            "provider_api_format": "openai:image",
+            "image_request": {
+                "operation": "generate",
+                "output_format": "png"
+            }
+        });
+        let body_base64 = base64::engine::general_purpose::STANDARD.encode(
+            concat!(
+                "event: response.output_item.done\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"ig_fail_123\",\"type\":\"image_generation_call\",\"output_format\":\"png\",\"result\":\"aGVsbG8=\"}}\n\n",
+                "event: response.failed\n",
+                "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"Upstream failed\"}}}\n\n"
+            )
+            .as_bytes(),
+        );
+
+        let product = maybe_build_openai_image_sync_finalize_product(
+            "openai_image_sync_finalize",
+            200,
+            Some(&report_context),
+            None,
+            Some(&body_base64),
+        )
+        .expect("finalize should not error");
+
+        assert!(product.is_none());
+    }
+
+    #[test]
+    fn sync_finalize_product_accepts_completed_stream_with_null_error() {
+        let report_context = json!({
+            "client_api_format": "openai:image",
+            "provider_api_format": "openai:image",
+            "image_request": {
+                "operation": "generate",
+                "output_format": "png"
+            }
+        });
+        let body_base64 = base64::engine::general_purpose::STANDARD.encode(
+            concat!(
+                "event: response.output_item.done\n",
+                "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"image_generation_call\",\"output_format\":\"png\",\"result\":\"aGVsbG8=\"}}\n\n",
+                "event: response.completed\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"error\":null}}\n\n"
+            )
+            .as_bytes(),
+        );
+
+        let product = maybe_build_openai_image_sync_finalize_product(
+            "openai_image_sync_finalize",
+            200,
+            Some(&report_context),
+            None,
+            Some(&body_base64),
+        )
+        .expect("finalize should not error")
+        .expect("completed response should convert");
+
+        assert_eq!(product.client_body_json["data"][0]["b64_json"], "aGVsbG8=");
+        assert!(maybe_extract_openai_image_sync_failure_body(
+            "openai_image_sync_finalize",
+            200,
+            None,
+            Some(&body_base64),
+        )
+        .expect("failure extraction should not error")
+        .is_none());
+    }
+
+    #[test]
+    fn sync_failure_extraction_accepts_crlf_event_streams() {
+        let body_base64 = base64::engine::general_purpose::STANDARD.encode(
+            concat!(
+                "event: response.failed\r\n",
+                "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"Upstream failed\"}}}\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+
+        assert_eq!(
+            maybe_extract_openai_image_sync_failure_body(
+                "openai_image_sync_finalize",
+                200,
+                None,
+                Some(&body_base64),
+            )
+            .expect("failure extraction should not error"),
+            Some(json!({
+                "error": {
+                    "code": "server_error",
+                    "message": "Upstream failed"
+                }
+            }))
         );
     }
 }

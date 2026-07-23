@@ -111,15 +111,17 @@ fn reset_codex_cycle_usage_windows(status_snapshot: &mut Value, now_unix_secs: u
 
     let mut reset_count = 0;
     for window in windows.iter_mut().filter_map(Value::as_object_mut) {
-        let code = window
-            .get("code")
+        let scope = window
+            .get("scope")
             .and_then(Value::as_str)
             .map(str::trim)
-            .unwrap_or_default();
-        if !code.eq_ignore_ascii_case("5h") && !code.eq_ignore_ascii_case("weekly") {
+            .unwrap_or("account");
+        if scope.eq_ignore_ascii_case("feature")
+            || scope.eq_ignore_ascii_case("model")
+            || scope.eq_ignore_ascii_case("workspace")
+        {
             continue;
         }
-
         window.insert("usage_reset_at".to_string(), json!(now_unix_secs));
         window.insert(
             "usage".to_string(),
@@ -182,12 +184,19 @@ mod tests {
                         "usage": {
                             "request_count": 11
                         }
+                    },
+                    {
+                        "code": "spark:5h",
+                        "scope": "feature",
+                        "usage": {
+                            "request_count": 12
+                        }
                     }
                 ]
             }
         });
 
-        assert_eq!(reset_codex_cycle_usage_windows(&mut snapshot, 1_234), 2);
+        assert_eq!(reset_codex_cycle_usage_windows(&mut snapshot, 1_234), 3);
         let windows = snapshot["quota"]["windows"].as_array().expect("windows");
         assert_eq!(windows[0]["usage_reset_at"], json!(1_234));
         assert_eq!(windows[0]["usage"]["request_count"], json!(0));
@@ -197,7 +206,11 @@ mod tests {
         assert_eq!(windows[1]["usage"]["request_count"], json!(0));
         assert_eq!(windows[1]["usage"]["total_tokens"], json!(0));
         assert_eq!(windows[1]["usage"]["total_cost_usd"], json!("0.00000000"));
-        assert!(windows[2].get("usage_reset_at").is_none());
-        assert!(windows[2].get("usage").is_some());
+        assert_eq!(windows[2]["usage_reset_at"], json!(1_234));
+        assert_eq!(windows[2]["usage"]["request_count"], json!(0));
+        assert_eq!(windows[2]["usage"]["total_tokens"], json!(0));
+        assert_eq!(windows[2]["usage"]["total_cost_usd"], json!("0.00000000"));
+        assert!(windows[3].get("usage_reset_at").is_none());
+        assert_eq!(windows[3]["usage"]["request_count"], json!(12));
     }
 }

@@ -3,7 +3,7 @@ use crate::ai_serving::api::core_success_background_report_kind;
 use crate::ai_serving::api::{
     build_core_error_body_for_client_format, core_error_background_report_kind,
     core_error_default_client_api_format, is_core_error_finalize_kind,
-    maybe_compile_sync_finalize_response,
+    maybe_compile_sync_finalize_response, maybe_extract_openai_image_sync_failure_body,
     normalize_provider_private_response_value as unwrap_local_finalize_response_value,
     LocalCoreSyncErrorKind,
 };
@@ -21,6 +21,37 @@ struct LocalSyncErrorDetails {
     message: String,
     code: Option<String>,
     kind: LocalCoreSyncErrorKind,
+}
+
+pub(crate) fn normalize_openai_image_sync_failure_payload(
+    payload: &mut GatewaySyncReportRequest,
+) -> Result<bool, GatewayError> {
+    let Some(error_body) = maybe_extract_openai_image_sync_failure_body(
+        payload.report_kind.as_str(),
+        payload.status_code,
+        payload.body_json.as_ref(),
+        payload.body_base64.as_deref(),
+    )
+    .map_err(GatewayError::from)?
+    else {
+        return Ok(false);
+    };
+
+    let status_code = resolve_local_sync_error_status_code(payload.status_code, &error_body);
+    payload.status_code = if status_code >= 400 {
+        status_code
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR.as_u16()
+    };
+    payload.headers.remove("content-encoding");
+    payload.headers.remove("content-length");
+    payload
+        .headers
+        .insert("content-type".to_string(), "application/json".to_string());
+    payload.body_json = Some(error_body);
+    payload.client_body_json = None;
+    payload.body_base64 = None;
+    Ok(true)
 }
 
 pub(super) fn maybe_build_local_core_error_response(
@@ -515,6 +546,13 @@ fn classify_local_sync_error_kind(
     {
         return LocalCoreSyncErrorKind::Overloaded;
     }
+    if fingerprint.contains("server_error")
+        || fingerprint.contains("internal_error")
+        || fingerprint.contains("internal server")
+        || fingerprint.contains("upstream failed")
+    {
+        return LocalCoreSyncErrorKind::ServerError;
+    }
     if (500..600).contains(&status_code) {
         return LocalCoreSyncErrorKind::ServerError;
     }
@@ -591,8 +629,9 @@ pub(crate) async fn submit_local_core_error_or_sync_finalize(
     state: &AppState,
     trace_id: &str,
     decision: &GatewayControlDecision,
-    payload: GatewaySyncReportRequest,
+    mut payload: GatewaySyncReportRequest,
 ) -> Result<Response<Body>, GatewayError> {
+    normalize_openai_image_sync_failure_payload(&mut payload)?;
     let response = if let Some(response) =
         maybe_compile_sync_finalize_response(trace_id, decision, &payload)?
     {
@@ -643,9 +682,13 @@ pub(crate) async fn submit_local_core_error_or_sync_finalize(
 #[cfg(test)]
 mod tests {
     use axum::body::to_bytes;
+    use base64::Engine as _;
     use serde_json::json;
 
-    use super::{maybe_build_local_core_error_response, submit_local_core_error_or_sync_finalize};
+    use super::{
+        maybe_build_local_core_error_response, normalize_openai_image_sync_failure_payload,
+        submit_local_core_error_or_sync_finalize,
+    };
     use crate::control::GatewayControlDecision;
     use crate::usage::GatewaySyncReportRequest;
     use crate::AppState;
@@ -682,6 +725,104 @@ mod tests {
             body_base64: None,
             telemetry: None,
         }
+    }
+
+    #[test]
+    fn normalizes_http_200_image_failed_event_before_usage_and_response_handling() {
+        let mut payload = GatewaySyncReportRequest {
+            trace_id: "trace-image-failed-200".to_string(),
+            report_kind: "openai_image_sync_finalize".to_string(),
+            report_context: Some(json!({
+                "client_api_format": "openai:image",
+                "provider_api_format": "openai:image",
+            })),
+            status_code: 200,
+            headers: std::collections::BTreeMap::from([(
+                "content-type".to_string(),
+                "text/event-stream".to_string(),
+            )]),
+            body_json: None,
+            client_body_json: None,
+            body_base64: Some(base64::engine::general_purpose::STANDARD.encode(
+                concat!(
+                    "event: response.failed\n",
+                    "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"Upstream failed\"}}}\n\n"
+                )
+                .as_bytes(),
+            )),
+            telemetry: None,
+        };
+
+        assert!(normalize_openai_image_sync_failure_payload(&mut payload)
+            .expect("failure normalization should not error"));
+        assert_eq!(payload.status_code, 500);
+        assert_eq!(
+            payload.body_json,
+            Some(json!({
+                "error": {
+                    "code": "server_error",
+                    "message": "Upstream failed"
+                }
+            }))
+        );
+        assert!(payload.body_base64.is_none());
+        assert_eq!(
+            payload.headers.get("content-type").map(String::as_str),
+            Some("application/json")
+        );
+    }
+
+    #[tokio::test]
+    async fn image_failed_event_returns_json_error_instead_of_raw_http_200_stream() {
+        let payload = GatewaySyncReportRequest {
+            trace_id: "trace-image-failed-response".to_string(),
+            report_kind: "openai_image_sync_finalize".to_string(),
+            report_context: Some(json!({
+                "client_api_format": "openai:image",
+                "provider_api_format": "openai:image",
+            })),
+            status_code: 200,
+            headers: std::collections::BTreeMap::from([(
+                "content-type".to_string(),
+                "text/event-stream".to_string(),
+            )]),
+            body_json: None,
+            client_body_json: None,
+            body_base64: Some(base64::engine::general_purpose::STANDARD.encode(
+                concat!(
+                    "event: response.failed\n",
+                    "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"Upstream failed\"}}}\n\n"
+                )
+                .as_bytes(),
+            )),
+            telemetry: None,
+        };
+        let state = AppState::new().expect("state should build");
+
+        let response = submit_local_core_error_or_sync_finalize(
+            &state,
+            "trace-image-failed-response",
+            &test_decision(),
+            payload,
+        )
+        .await
+        .expect("response should build");
+
+        assert_eq!(response.status(), http::StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(
+                &to_bytes(response.into_body(), usize::MAX)
+                    .await
+                    .expect("body should read"),
+            )
+            .expect("body should decode"),
+            json!({
+                "error": {
+                    "code": "server_error",
+                    "message": "Upstream failed"
+                }
+            })
+        );
     }
 
     #[tokio::test]

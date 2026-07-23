@@ -21,6 +21,7 @@ parsed_windows AS (
     window_items.window_item,
     window_items.window_ordinality,
     lower(BTRIM(COALESCE(window_items.window_item ->> 'code', ''))) AS window_code,
+    lower(BTRIM(COALESCE(window_items.window_item ->> 'scope', 'account'))) AS window_scope,
     CASE
       WHEN text_values.reset_at_text ~ '^[0-9]+$'
            AND (
@@ -34,6 +35,18 @@ parsed_windows AS (
       ELSE NULL
     END AS reset_at,
     CASE
+      WHEN text_values.window_seconds_text ~ '^[0-9]+$'
+           AND (
+             length(text_values.window_seconds_text) < 19
+             OR (
+               length(text_values.window_seconds_text) = 19
+               AND text_values.window_seconds_text <= '9223372036854775807'
+             )
+           )
+      THEN text_values.window_seconds_text::BIGINT
+      ELSE NULL
+    END AS explicit_window_seconds,
+    CASE
       WHEN text_values.window_minutes_text ~ '^[0-9]+$'
            AND (
              length(text_values.window_minutes_text) < 19
@@ -45,7 +58,10 @@ parsed_windows AS (
       THEN text_values.window_minutes_text::BIGINT
       ELSE CASE lower(BTRIM(COALESCE(window_items.window_item ->> 'code', '')))
         WHEN '5h' THEN 300
+        WHEN '7d' THEN 10080
         WHEN 'weekly' THEN 10080
+        WHEN '1m' THEN 43200
+        WHEN 'monthly' THEN 43200
         ELSE NULL
       END
     END AS window_minutes,
@@ -65,6 +81,7 @@ parsed_windows AS (
   CROSS JOIN LATERAL (
     SELECT
       BTRIM(COALESCE(window_items.window_item ->> 'reset_at', '')) AS reset_at_text,
+      BTRIM(COALESCE(window_items.window_item ->> 'window_seconds', '')) AS window_seconds_text,
       BTRIM(COALESCE(window_items.window_item ->> 'window_minutes', '')) AS window_minutes_text,
       BTRIM(COALESCE(window_items.window_item ->> 'usage_reset_at', '')) AS usage_reset_at_text
   ) AS text_values
@@ -72,18 +89,21 @@ parsed_windows AS (
 window_usage AS (
   SELECT
     parsed_windows.*,
-    CASE
-      WHEN parsed_windows.window_minutes BETWEEN 0 AND 153722867280912930
-      THEN parsed_windows.window_minutes * 60
-      ELSE NULL
-    END AS window_seconds
+    COALESCE(
+      parsed_windows.explicit_window_seconds,
+      CASE
+        WHEN parsed_windows.window_minutes BETWEEN 0 AND 153722867280912930
+        THEN parsed_windows.window_minutes * 60
+        ELSE NULL
+      END
+    ) AS window_seconds
   FROM parsed_windows
 ),
 window_bounds AS (
   SELECT
     window_usage.*,
     CASE
-      WHEN window_usage.window_code IN ('5h', 'weekly')
+      WHEN window_usage.window_scope NOT IN ('feature', 'model', 'workspace')
            AND window_usage.reset_at IS NOT NULL
            AND window_usage.window_seconds IS NOT NULL
            AND window_usage.reset_at >= window_usage.window_seconds
@@ -94,7 +114,7 @@ window_bounds AS (
       ELSE NULL
     END AS window_start,
     CASE
-      WHEN window_usage.window_code IN ('5h', 'weekly')
+      WHEN window_usage.window_scope NOT IN ('feature', 'model', 'workspace')
            AND window_usage.reset_at IS NOT NULL
            AND window_usage.window_seconds IS NOT NULL
            AND window_usage.reset_at >= window_usage.window_seconds

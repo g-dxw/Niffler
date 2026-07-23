@@ -163,8 +163,10 @@ fn apply_f64_delta(current: f64, delta: f64) -> f64 {
 fn default_codex_window_minutes(code: &str) -> Option<u64> {
     if code.eq_ignore_ascii_case("5h") {
         Some(300)
-    } else if code.eq_ignore_ascii_case("weekly") {
+    } else if code.eq_ignore_ascii_case("weekly") || code.eq_ignore_ascii_case("7d") {
         Some(10_080)
+    } else if code.eq_ignore_ascii_case("1m") || code.eq_ignore_ascii_case("monthly") {
+        Some(43_200)
     } else {
         None
     }
@@ -215,24 +217,31 @@ fn apply_f64_delta_to_json_cost(current: f64, delta: f64) -> f64 {
 }
 
 fn codex_window_matches_usage_time(window: &Map<String, Value>, usage_created_at: u64) -> bool {
+    let scope = window
+        .get("scope")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("account");
+    if scope.eq_ignore_ascii_case("feature")
+        || scope.eq_ignore_ascii_case("model")
+        || scope.eq_ignore_ascii_case("workspace")
+    {
+        return false;
+    }
+    let Some(reset_at) = json_u64(window.get("reset_at")) else {
+        return false;
+    };
     let code = window
         .get("code")
         .and_then(Value::as_str)
         .map(str::trim)
         .unwrap_or_default();
-    if !code.eq_ignore_ascii_case("5h") && !code.eq_ignore_ascii_case("weekly") {
-        return false;
-    }
-
-    let Some(reset_at) = json_u64(window.get("reset_at")) else {
-        return false;
-    };
-    let Some(window_minutes) =
-        json_u64(window.get("window_minutes")).or_else(|| default_codex_window_minutes(code))
-    else {
-        return false;
-    };
-    let Some(window_seconds) = window_minutes.checked_mul(60) else {
+    let window_seconds = json_u64(window.get("window_seconds")).or_else(|| {
+        json_u64(window.get("window_minutes"))
+            .or_else(|| default_codex_window_minutes(code))
+            .and_then(|minutes| minutes.checked_mul(60))
+    });
+    let Some(window_seconds) = window_seconds else {
         return false;
     };
     let Some(window_start) = reset_at.checked_sub(window_seconds) else {
@@ -972,7 +981,19 @@ mod tests {
                     },
                     {
                         "code": "weekly",
-                        "reset_at": 700_000u64
+                        "reset_at": 700_000u64,
+                        "window_minutes": 10_080u64
+                    },
+                    {
+                        "code": "1m",
+                        "reset_at": 2_600_000u64,
+                        "window_minutes": 43_200u64
+                    },
+                    {
+                        "code": "spark:5h",
+                        "scope": "feature",
+                        "reset_at": 120_000u64,
+                        "window_minutes": 300u64
                     }
                 ]
             }
@@ -1006,17 +1027,71 @@ mod tests {
             .iter()
             .find(|window| window["code"] == json!("5h"))
             .expect("5h window should exist");
-        let weekly = windows
+        let seven_day = windows
             .iter()
             .find(|window| window["code"] == json!("weekly"))
             .expect("weekly window should exist");
+        let monthly = windows
+            .iter()
+            .find(|window| window["code"] == json!("1m"))
+            .expect("1m window should exist");
+        let spark = windows
+            .iter()
+            .find(|window| window["code"] == json!("spark:5h"))
+            .expect("Spark window should exist");
 
         assert_eq!(five_h["usage"]["request_count"], json!(3));
         assert_eq!(five_h["usage"]["total_tokens"], json!(35));
         assert_eq!(five_h["usage"]["total_cost_usd"], json!("0.35000000"));
-        assert_eq!(weekly["usage"]["request_count"], json!(2));
-        assert_eq!(weekly["usage"]["total_tokens"], json!(25));
-        assert_eq!(weekly["usage"]["total_cost_usd"], json!("0.25000000"));
+        assert_eq!(seven_day["usage"]["request_count"], json!(2));
+        assert_eq!(seven_day["usage"]["total_tokens"], json!(25));
+        assert_eq!(seven_day["usage"]["total_cost_usd"], json!("0.25000000"));
+        assert_eq!(monthly["usage"]["request_count"], json!(2));
+        assert_eq!(monthly["usage"]["total_tokens"], json!(25));
+        assert_eq!(monthly["usage"]["total_cost_usd"], json!("0.25000000"));
+        assert!(spark.get("usage").is_none());
+    }
+
+    #[tokio::test]
+    async fn codex_window_usage_uses_exact_window_seconds() {
+        let mut key = sample_key("key-1", "provider-1");
+        key.status_snapshot = Some(json!({
+            "quota": {
+                "provider_type": "codex",
+                "windows": [{
+                    "code": "window_12345s",
+                    "scope": "account",
+                    "reset_at": 20_000u64,
+                    "window_seconds": 12_345u64
+                }]
+            }
+        }));
+        let repository = InMemoryProviderCatalogReadRepository::seed(
+            vec![sample_provider("provider-1")],
+            vec![],
+            vec![key],
+        );
+
+        repository.apply_usage_stats_delta(
+            "key-1",
+            &ProviderApiKeyUsageDelta {
+                window_request_count: 1,
+                window_total_tokens: 5,
+                window_total_cost_usd: 0.05,
+                usage_created_at_unix_secs: Some(7_660),
+                ..ProviderApiKeyUsageDelta::default()
+            },
+            None,
+        );
+
+        let stored = repository
+            .list_keys_by_ids(&["key-1".to_string()])
+            .await
+            .expect("keys should read");
+        let window = &stored[0].status_snapshot.as_ref().expect("snapshot")["quota"]["windows"][0];
+        assert_eq!(window["usage"]["request_count"], json!(1));
+        assert_eq!(window["usage"]["total_tokens"], json!(5));
+        assert_eq!(window["usage"]["total_cost_usd"], json!("0.05000000"));
     }
 
     #[tokio::test]

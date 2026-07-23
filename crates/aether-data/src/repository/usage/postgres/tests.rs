@@ -246,11 +246,14 @@ fn usage_sql_rebuilds_provider_key_window_usage_into_status_snapshot() {
         super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL.contains("'{quota,windows}'")
     );
     assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL.contains("'{usage}'"));
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL.contains("WHEN '5h' THEN 300")
-    );
+    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
+        .contains("window_seconds_text"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
+        .contains("parsed_windows.explicit_window_seconds"));
     assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
         .contains("WHEN 'weekly' THEN 10080"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
+        .contains("window_scope NOT IN ('feature', 'model', 'workspace')"));
     assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
         .contains("\"usage\".billing_status = 'settled'"));
     assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
@@ -311,6 +314,19 @@ fn usage_sql_moves_shared_counter_updates_behind_outbox() {
         .contains("WITH ORDINALITY AS item(window, ordinality)"));
     assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
         .contains("status_snapshot::jsonb"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("window_item ->> 'window_seconds'"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("resolved_window_seconds"));
+    assert!(
+        super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL.contains("153722867280912930")
+    );
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("'9223372036854775807'"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("WHEN 'weekly' THEN 604800"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("scope NOT IN ('feature', 'model', 'workspace')"));
 }
 
 #[test]

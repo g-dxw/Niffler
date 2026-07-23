@@ -3,7 +3,27 @@ import { describe, expect, it } from 'vitest'
 import { getQuotaDisplayText } from '../providerKeyQuota'
 
 describe('providerKeyQuota', () => {
-  it('includes Codex Spark quota windows in display text', () => {
+  it('does not invent a Codex quota when upstream returned no current window', () => {
+    expect(getQuotaDisplayText({
+      status_snapshot: {
+        oauth: {
+          code: 'valid',
+        },
+        account: {
+          code: 'ok',
+          blocked: false,
+        },
+        quota: {
+          provider_type: 'codex',
+          code: 'unknown',
+          exhausted: false,
+          windows: [],
+        },
+      },
+    }, 'codex')).toBe('暂无上游配额数据')
+  })
+
+  it('displays every upstream Codex quota window by its real duration', () => {
     expect(getQuotaDisplayText({
       status_snapshot: {
         oauth: {
@@ -20,24 +40,28 @@ describe('providerKeyQuota', () => {
           windows: [
             {
               code: 'weekly',
+              window_minutes: 10_080,
               remaining_ratio: 0.9,
             },
             {
               code: '5h',
+              window_minutes: 300,
               remaining_ratio: 0.8,
             },
             {
-              code: 'spark_5h',
+              code: '1m',
+              window_minutes: 43_200,
               remaining_ratio: 0.6,
             },
             {
-              code: 'spark_weekly',
+              code: 'window_12345s',
+              window_seconds: 12_345,
               remaining_ratio: 0.95,
             },
           ],
         },
       },
-    }, 'codex')).toBe('周剩余 90.0% | 5H剩余 80.0% | Spark5H剩余 60.0% | Spark周剩余 95.0%')
+    }, 'codex')).toBe('7D剩余 90.0% | 5H剩余 80.0% | 1M剩余 60.0% | 3小时26分钟剩余 95.0%')
   })
 
   it('formats Grok account quota from structured quota windows', () => {
