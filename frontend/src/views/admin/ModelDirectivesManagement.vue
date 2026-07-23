@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="模型后缀参数"
-      description="允许通过模型名后缀覆盖推理参数"
+      :title="t('admin.modelDirectives.title')"
+      :description="t('admin.modelDirectives.description')"
     >
       <template #actions>
         <Button
@@ -14,7 +14,7 @@
             class="w-4 h-4 mr-2"
             :class="{ 'animate-spin': loading }"
           />
-          刷新
+          {{ t('admin.modelDirectives.refresh') }}
         </Button>
       </template>
     </PageHeader>
@@ -37,6 +37,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RefreshCw } from 'lucide-vue-next'
 import Button from '@/components/ui/button.vue'
 import Card from '@/components/ui/card.vue'
@@ -52,6 +53,7 @@ import {
   type ModelDirectivesConfig,
 } from './module-management/modelDirectivesConfig'
 
+const { t } = useI18n()
 const { success, error } = useToast()
 
 const modelDirectivesConfig = ref<ModelDirectivesConfig>(createDefaultModelDirectivesConfig())
@@ -65,7 +67,7 @@ async function loadConfig() {
     const normalized = normalizeModelDirectivesConfig(response.value)
     modelDirectivesConfig.value = normalized
   } catch (err) {
-    error('获取模型后缀参数配置失败')
+    error(t('admin.modelDirectives.loadFailed'))
     log.error('获取模型后缀参数配置失败:', err)
   } finally {
     loading.value = false
@@ -80,11 +82,11 @@ async function saveConfig() {
     await adminApi.updateSystemConfig(
       'model_directives',
       normalized,
-      '模型后缀参数配置'
+      t('admin.modelDirectives.configName')
     )
-    success('模型后缀参数配置已保存')
+    success(t('admin.modelDirectives.saved'))
   } catch (err) {
-    error(getErrorMessage(err, '保存模型后缀参数配置失败'))
+    error(getErrorMessage(err, t('admin.modelDirectives.saveFailed')))
     log.error('保存模型后缀参数配置失败:', err)
   } finally {
     saving.value = false

@@ -11,7 +11,7 @@
             {{ group.name }}
           </p>
           <p class="truncate text-xs text-muted-foreground">
-            {{ group.description || '未填写描述' }}
+            {{ group.description || t('routingGroupList.noDescription') }}
           </p>
         </div>
         <span class="shrink-0 rounded-md border px-2 py-1 text-xs text-muted-foreground">
@@ -23,6 +23,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 export interface RoutingGroupListItem {
   id: string
   name: string

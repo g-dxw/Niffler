@@ -1,977 +1,447 @@
 <template>
-  <div
-    ref="scrollContainer"
-    class="relative h-screen overflow-y-auto overflow-x-hidden snap-y snap-mandatory scroll-smooth literary-grid literary-paper"
-  >
-    <!-- Fixed scroll indicator -->
-    <nav class="scroll-indicator">
-      <button
-        v-for="(section, index) in sections"
-        :key="index"
-        class="scroll-indicator-btn group"
-        @click="scrollToSection(index)"
-      >
-        <span class="scroll-indicator-label">{{ section.name }}</span>
-        <div
-          class="scroll-indicator-dot"
-          :class="{ active: currentSection === index }"
-        />
-      </button>
-    </nav>
-
-    <!-- Header -->
-    <header class="sticky top-0 z-50 border-b border-[#cc785c]/10 dark:border-[rgba(227,224,211,0.12)] bg-[#fafaf7]/90 dark:bg-[#191714]/95 backdrop-blur-xl transition-all">
-      <!-- Mobile layout (< md): Logo left, buttons right -->
-      <div class="h-14 sm:h-16 flex md:hidden items-center justify-between px-3 sm:px-4">
-        <!-- Logo & Brand -->
-        <div
-          class="flex items-center gap-2 sm:gap-3 group/logo cursor-pointer shrink-0"
-          @click="scrollToSection(0)"
-        >
-          <HeaderLogo
-            size="h-7 w-7 sm:h-9 sm:w-9"
-            class-name="text-[#191919] dark:text-white"
-          />
-          <div class="flex flex-col justify-center">
-            <h1 class="text-base sm:text-lg font-bold text-[#191919] dark:text-white leading-none">
-              {{ siteName }}
-            </h1>
-            <span class="text-[9px] sm:text-[10px] text-[#91918d] dark:text-muted-foreground leading-none mt-1 sm:mt-1.5 font-medium tracking-wide">{{ siteSubtitle }}</span>
-          </div>
-        </div>
-
-        <!-- Right: Login + Icons -->
-        <div class="flex items-center gap-2">
-          <RouterLink
-            v-if="authStore.isAuthenticated"
-            :to="dashboardPath"
-            class="min-w-[60px] text-center rounded-lg bg-[#191919] dark:bg-[#cc785c] px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-[#262625] dark:hover:bg-[#b86d52] whitespace-nowrap"
-          >
-            控制台
-          </RouterLink>
-          <button
-            v-else
-            class="min-w-[60px] text-center rounded-lg bg-[#cc785c] px-3 py-1.5 text-xs font-medium text-white shadow-lg shadow-[#cc785c]/30 transition hover:bg-[#d4a27f] whitespace-nowrap"
-            @click="showLoginDialog = true"
-          >
-            登录
-          </button>
-          <button
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
-            :title="themeMode === 'system' ? '跟随系统' : themeMode === 'dark' ? '深色模式' : '浅色模式'"
-            @click="toggleDarkMode"
-          >
-            <SunMoon
-              v-if="themeMode === 'system'"
-              class="h-3.5 w-3.5"
-            />
-            <Sun
-              v-else-if="themeMode === 'light'"
-              class="h-3.5 w-3.5"
-            />
-            <Moon
-              v-else
-              class="h-3.5 w-3.5"
-            />
-          </button>
-          <a
-            href="https://github.com/ryfineZ/Niffler"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
-            title="GitHub 仓库"
-          >
-            <GithubIcon class="h-3.5 w-3.5" />
-          </a>
-        </div>
-      </div>
-
-      <!-- Desktop layout (>= md): Centered nav with balanced spacing -->
-      <div class="h-16 hidden md:flex items-center justify-between px-8">
-        <!-- Left spacer for balance (matches right icons width) -->
-        <div class="w-[76px] shrink-0" />
-
-        <!-- Center: Logo + Nav + Login Button -->
-        <div class="flex items-center">
-          <!-- Logo & Brand -->
-          <div
-            class="flex items-center gap-3 group/logo cursor-pointer shrink-0"
-            @click="scrollToSection(0)"
-          >
-            <HeaderLogo
-              size="h-9 w-9"
-              class-name="text-[#191919] dark:text-white"
-            />
-            <div class="flex flex-col justify-center">
-              <h1 class="text-lg font-bold text-[#191919] dark:text-white leading-none">
-                {{ siteName }}
-              </h1>
-              <span class="text-[10px] text-[#91918d] dark:text-muted-foreground leading-none mt-1.5 font-medium tracking-wide">{{ siteSubtitle }}</span>
-            </div>
-          </div>
-
-          <!-- Navigation -->
-          <nav class="flex items-center gap-2 mx-8 lg:mx-16">
-            <button
-              v-for="(section, index) in sections.slice(0, -1)"
-              :key="index"
-              class="group relative px-3 py-2 text-sm font-medium transition whitespace-nowrap"
-              :class="currentSection === index
-                ? 'text-[#cc785c] dark:text-[#d4a27f]'
-                : 'text-[#666663] dark:text-muted-foreground hover:text-[#191919] dark:hover:text-white'"
-              @click="scrollToSection(index)"
-            >
-              {{ section.name }}
-              <div
-                class="absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-all duration-300"
-                :class="currentSection === index ? 'bg-[#cc785c] dark:bg-[#d4a27f] scale-x-100' : 'bg-transparent scale-x-0'"
-              />
-            </button>
-            <RouterLink
-              to="/guide"
-              class="group relative px-3 py-2 text-sm font-medium transition whitespace-nowrap text-[#666663] dark:text-muted-foreground hover:text-[#191919] dark:hover:text-white"
-            >
-              文档
-            </RouterLink>
-            <button
-              class="group relative px-3 py-2 text-sm font-medium transition whitespace-nowrap"
-              :class="currentSection === SECTIONS.FEATURES
-                ? 'text-[#cc785c] dark:text-[#d4a27f]'
-                : 'text-[#666663] dark:text-muted-foreground hover:text-[#191919] dark:hover:text-white'"
-              @click="scrollToSection(SECTIONS.FEATURES)"
-            >
-              {{ sections[SECTIONS.FEATURES].name }}
-              <div
-                class="absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-all duration-300"
-                :class="currentSection === SECTIONS.FEATURES ? 'bg-[#cc785c] dark:bg-[#d4a27f] scale-x-100' : 'bg-transparent scale-x-0'"
-              />
-            </button>
-          </nav>
-
-          <!-- Login/Dashboard Button -->
-          <RouterLink
-            v-if="authStore.isAuthenticated"
-            :to="dashboardPath"
-            class="min-w-[72px] text-center rounded-xl bg-[#191919] dark:bg-[#cc785c] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#262625] dark:hover:bg-[#b86d52] whitespace-nowrap"
-          >
-            控制台
-          </RouterLink>
-          <button
-            v-else
-            class="min-w-[72px] text-center rounded-xl bg-[#cc785c] px-4 py-2 text-sm font-medium text-white shadow-lg shadow-[#cc785c]/30 transition hover:bg-[#d4a27f] whitespace-nowrap"
-            @click="showLoginDialog = true"
-          >
-            登录
-          </button>
-        </div>
-
-        <!-- Right: Theme Toggle + GitHub Icons -->
-        <div class="flex items-center gap-1 shrink-0">
-          <button
-            class="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
-            :title="themeMode === 'system' ? '跟随系统' : themeMode === 'dark' ? '深色模式' : '浅色模式'"
-            @click="toggleDarkMode"
-          >
-            <SunMoon
-              v-if="themeMode === 'system'"
-              class="h-4 w-4"
-            />
-            <Sun
-              v-else-if="themeMode === 'light'"
-              class="h-4 w-4"
-            />
-            <Moon
-              v-else
-              class="h-4 w-4"
-            />
-          </button>
-          <a
-            href="https://github.com/ryfineZ/Niffler"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
-            title="GitHub 仓库"
-          >
-            <GithubIcon class="h-4 w-4" />
-          </a>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Content -->
+  <div class="min-h-screen overflow-x-hidden bg-background text-foreground literary-grid literary-paper">
     <main class="relative z-10">
-      <!-- Fixed Logo Container -->
-      <div class="fixed top-0 left-0 right-0 bottom-0 z-20 pointer-events-none flex items-center justify-center overflow-hidden">
-        <!-- Gemini Star Cluster - positioned behind logo -->
-        <Transition name="fade">
-          <GeminiStarCluster
-            v-if="currentSection === SECTIONS.GEMINI"
-            :is-visible="sectionVisibility[SECTIONS.GEMINI] > 0.05"
-            class="absolute gemini-stars"
-            :class="windowWidth < 768 ? 'scale-75 opacity-60' : ''"
-            :style="fixedLogoStyle"
-          />
-        </Transition>
-
-        <div
-          class="transform-gpu logo-container"
-          :class="[currentSection === SECTIONS.HOME ? 'home-section' : '', `logo-transition-${scrollDirection}`]"
-          :style="fixedLogoStyle"
-        >
-          <Transition :name="logoTransitionName">
-            <AetherLineByLineLogo
-              v-if="currentSection === SECTIONS.HOME"
-              ref="aetherLogoRef"
-              key="aether-logo"
-              :size="homeLogoSize"
-              :line-delay="50"
-              :stroke-duration="1200"
-              :fill-duration="1500"
-              :auto-start="false"
-              :loop="true"
-              :loop-pause="800"
-              :stroke-width="windowWidth < 768 ? 2.5 : 3.5"
-              :cycle-colors="true"
-              :is-dark="isDark"
-            />
-            <div
-              v-else
-              :key="`ripple-wrapper-${currentLogoType}`"
-              :class="{ 'heartbeat-wrapper': currentSection === SECTIONS.GEMINI && geminiFillComplete }"
-            >
-              <RippleLogo
-                ref="rippleLogoRef"
-                :type="currentLogoType"
-                :size="windowWidth < 768 ? 200 : 320"
-                :use-adaptive="false"
-                :disable-ripple="currentSection === SECTIONS.GEMINI || currentSection === SECTIONS.FEATURES"
-                :anim-delay="logoTransitionDelay"
-                :static="currentSection === SECTIONS.FEATURES"
-                class="logo-active"
-                :class="[currentLogoClass]"
-              />
+      <section class="mx-auto max-w-[1480px] px-4 pb-10 pt-8 sm:px-6 sm:pt-12 lg:px-8 lg:pb-14 lg:pt-16">
+        <div class="grid overflow-hidden border border-border/80 bg-background/75 shadow-sm backdrop-blur-sm lg:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.75fr)]">
+          <div class="relative border-b border-border/70 p-7 sm:p-10 lg:border-b-0 lg:border-r lg:p-14">
+            <div class="absolute inset-y-0 left-0 w-1 bg-primary" />
+            <div class="flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
+              <span class="h-px w-8 bg-primary" />
+              {{ t('home.heroEyebrow') }}
             </div>
-          </Transition>
-        </div>
-      </div>
+            <h1 class="mt-7 max-w-4xl font-serif text-5xl font-semibold leading-[0.94] tracking-[-0.045em] sm:text-7xl lg:text-[5.6rem]">
+              {{ t('home.heroTitleLine1') }}<br>
+              <span class="text-primary">{{ t('home.heroTitleLine2') }}</span>
+            </h1>
+            <p class="mt-7 max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">
+              {{ t('home.heroDescription') }}
+            </p>
+            <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+              <RouterLink
+                :to="authStore.isAuthenticated ? dashboardPath : '/models'"
+                class="inline-flex h-12 items-center justify-center gap-2 bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
+              >
+                {{ authStore.isAuthenticated ? t('nav.dashboard') : t('home.exploreModels') }}
+                <ArrowRight class="h-4 w-4" />
+              </RouterLink>
+              <RouterLink
+                to="/guide"
+                class="inline-flex h-12 items-center justify-center gap-2 border border-border bg-background/70 px-6 text-sm font-semibold transition hover:border-primary/50 hover:text-primary"
+              >
+                <BookOpen class="h-4 w-4" />
+                {{ t('home.readDocs') }}
+              </RouterLink>
+            </div>
+            <div class="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border/60 pt-6 text-xs text-muted-foreground">
+              <span class="flex items-center gap-2"><CheckCircle2 class="h-4 w-4 text-emerald-500" />{{ t('home.openaiCompatible') }}</span>
+              <span class="flex items-center gap-2"><CheckCircle2 class="h-4 w-4 text-emerald-500" />{{ t('home.noSdkChanges') }}</span>
+              <span class="flex items-center gap-2"><CheckCircle2 class="h-4 w-4 text-emerald-500" />{{ t('home.selfHosted') }}</span>
+            </div>
+          </div>
 
-      <!-- Section 0: Introduction -->
-      <section
-        ref="section0"
-        class="min-h-screen snap-start flex items-center justify-center px-4 sm:px-8 md:px-16 lg:px-20 py-20"
-      >
-        <div class="max-w-4xl mx-auto text-center">
-          <div class="h-64 sm:h-80 md:h-[26rem] w-full mb-12 sm:mb-8 md:mb-10 mt-8 sm:mt-12" />
-          <h1
-            class="mb-6 text-3xl sm:text-5xl md:text-7xl font-bold text-[#191919] dark:text-white leading-tight transition-all duration-700"
-            :style="getTitleStyle(SECTIONS.HOME)"
-          >
-            欢迎使用 <span class="text-primary typewriter">{{ aetherText }}<span
-              class="cursor"
-              :class="{ 'cursor-hidden': !showCursor }"
-            >_</span></span>
-          </h1>
-          <p
-            class="mb-8 text-base sm:text-lg md:text-xl text-[#666663] dark:text-[#c9c3b4] max-w-2xl mx-auto transition-all duration-700"
-            :style="getDescStyle(SECTIONS.HOME)"
-          >
-            AI 开发工具统一接入平台<br>
-            整合 Claude Code、Codex CLI、Gemini CLI 等多个 AI 编程助手
-          </p>
-          <button
-            class="mt-8 transition-all duration-700 cursor-pointer hover:scale-110"
-            :style="getScrollIndicatorStyle(SECTIONS.HOME)"
-            @click="scrollToSection(SECTIONS.CLAUDE)"
-          >
-            <ChevronDown class="h-8 w-8 mx-auto text-[#91918d] dark:text-muted-foreground/80 animate-bounce" />
-          </button>
+          <aside class="bg-muted/15 p-7 sm:p-10 lg:p-12">
+            <div class="flex items-center gap-3">
+              <span class="h-2.5 w-2.5 bg-primary" />
+              <h2 class="font-semibold">{{ t('home.integrationSteps') }}</h2>
+            </div>
+            <ol class="mt-7 divide-y divide-border/60 border-y border-border/60">
+              <li v-for="(step, index) in integrationSteps" :key="step" class="flex gap-5 py-6">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center bg-primary font-mono text-xs font-bold text-primary-foreground">
+                  {{ String(index + 1).padStart(2, '0') }}
+                </span>
+                <p class="pt-1 text-sm leading-6 text-muted-foreground">{{ step }}</p>
+              </li>
+            </ol>
+            <div class="mt-7 grid grid-cols-3 divide-x divide-border/60 border border-border/60 bg-background/60 text-center">
+              <div class="px-2 py-4">
+                <div class="font-serif text-2xl font-semibold">{{ modelTotalLabel }}</div>
+                <div class="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{{ t('home.modelsStat') }}</div>
+              </div>
+              <div class="px-2 py-4">
+                <div class="font-serif text-2xl font-semibold">3</div>
+                <div class="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{{ t('home.protocolsStat') }}</div>
+              </div>
+              <div class="px-2 py-4">
+                <div class="font-serif text-2xl font-semibold">1</div>
+                <div class="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{{ t('home.gatewayStat') }}</div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="grid border-x border-b border-border/80 bg-background/70 sm:grid-cols-2 lg:grid-cols-4">
+          <article v-for="(feature, index) in heroFeatures" :key="feature.title" class="border-b border-border/70 p-6 last:border-b-0 sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r lg:last:border-r-0">
+            <div class="text-[10px] font-bold tracking-[0.18em] text-primary">A{{ String(index + 1).padStart(2, '0') }}</div>
+            <h3 class="mt-4 font-semibold">{{ feature.title }}</h3>
+            <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ feature.description }}</p>
+          </article>
         </div>
       </section>
 
-      <!-- Section 1: Claude Code -->
-      <CliSection
-        ref="section1"
-        v-model:platform-value="claudePlatform"
-        title="Claude Code"
-        description="直接在您的终端中释放Claude的原始力量。瞬间搜索百万行代码库。将数小时的流程转化为单一命令。您的工具。您的流程。您的代码库,以思维速度进化。"
-        :badge-icon="Code2"
-        badge-text="IDE 集成"
-        badge-class="bg-[#cc785c]/10 dark:bg-[#cc785c]/20 border border-[#cc785c]/20 dark:border-[#d4a27f]/30 text-[#cc785c] dark:text-[#d4a27f]"
-        :platform-options="platformPresets.claude.options"
-        :install-command="claudeInstallCommand"
-        :config-files="[{ path: '~/.claude/settings.json', content: claudeConfig, language: 'json' }]"
-        :badge-style="getBadgeStyle(SECTIONS.CLAUDE)"
-        :title-style="getTitleStyle(SECTIONS.CLAUDE)"
-        :desc-style="getDescStyle(SECTIONS.CLAUDE)"
-        :card-style-fn="(idx) => getCardStyle(SECTIONS.CLAUDE, idx)"
-        content-position="right"
-        @copy="copyToClipboard"
-      />
-
-      <!-- Section 2: Codex CLI -->
-      <CliSection
-        ref="section2"
-        v-model:platform-value="codexPlatform"
-        title="Codex CLI"
-        description="Codex CLI 是一款可在本地终端运行的编程助手工具，它能够读取、修改并执行用户指定目录中的代码。"
-        :badge-icon="Terminal"
-        badge-text="命令行工具"
-        badge-class="bg-[#cc785c]/10 dark:bg-[#cc785c]/20 border border-[#cc785c]/20 dark:border-[#d4a27f]/30 text-[#cc785c] dark:text-[#d4a27f]"
-        :platform-options="platformPresets.codex.options"
-        :install-command="codexInstallCommand"
-        :config-files="[
-          { path: '~/.codex/config.toml', content: codexConfig, language: 'toml' },
-          { path: '~/.codex/auth.json', content: codexAuthConfig, language: 'json' }
-        ]"
-        :badge-style="getBadgeStyle(SECTIONS.CODEX)"
-        :title-style="getTitleStyle(SECTIONS.CODEX)"
-        :desc-style="getDescStyle(SECTIONS.CODEX)"
-        :card-style-fn="(idx) => getCardStyle(SECTIONS.CODEX, idx)"
-        content-position="left"
-        @copy="copyToClipboard"
-      />
-
-      <!-- Section 3: Gemini CLI -->
-      <CliSection
-        ref="section3"
-        v-model:platform-value="geminiPlatform"
-        title="Gemini CLI"
-        description="Gemini CLI 是一款开源人工智能代理，可将 Gemini 的强大功能直接带入你的终端。它提供了对 Gemini 的轻量级访问，为你提供了从提示符到我们模型的最直接路径。"
-        :badge-icon="Sparkles"
-        badge-text="多模态 AI"
-        badge-class="bg-[#cc785c]/10 dark:bg-[#cc785c]/20 border border-[#cc785c]/20 dark:border-[#d4a27f]/30 text-[#cc785c] dark:text-[#d4a27f]"
-        :platform-options="platformPresets.gemini.options"
-        :install-command="geminiInstallCommand"
-        :config-files="[
-          { path: '~/.gemini/.env', content: geminiEnvConfig, language: 'dotenv' },
-          { path: '~/.gemini/settings.json', content: geminiSettingsConfig, language: 'json' }
-        ]"
-        :badge-style="getBadgeStyle(SECTIONS.GEMINI)"
-        :title-style="getTitleStyle(SECTIONS.GEMINI)"
-        :desc-style="getDescStyle(SECTIONS.GEMINI)"
-        :card-style-fn="(idx) => getCardStyle(SECTIONS.GEMINI, idx)"
-        content-position="right"
-        @copy="copyToClipboard"
-      />
-
-      <!-- Section 4: Features -->
-      <section
-        ref="section4"
-        class="min-h-screen snap-start flex items-center justify-center px-4 sm:px-8 md:px-16 lg:px-20 py-12 md:py-20 relative overflow-hidden"
-      >
-        <div class="max-w-4xl mx-auto text-center relative z-10">
-          <div
-            class="inline-flex items-center gap-1.5 md:gap-2 rounded-full bg-[#cc785c]/10 dark:bg-[#cc785c]/20 border border-[#cc785c]/20 dark:border-[#d4a27f]/30 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-medium text-[#cc785c] dark:text-[#d4a27f] mb-4 md:mb-6 backdrop-blur-sm transition-all duration-500"
-            :style="getBadgeStyle(SECTIONS.FEATURES)"
-          >
-            <Sparkles class="h-3.5 w-3.5 md:h-4 md:w-4" />
-            项目进度
+      <section class="border-y border-border/70 bg-background/55 py-10">
+        <div class="mx-auto max-w-[1480px] px-4 sm:px-6 lg:px-8">
+          <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+            <div>
+              <div class="section-eyebrow">{{ t('home.modelsEyebrow') }}</div>
+              <h2 class="mt-3 font-serif text-3xl font-semibold sm:text-4xl">{{ t('home.modelsTitle') }}</h2>
+            </div>
+            <RouterLink to="/models" class="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline">
+              {{ t('home.viewAllModels') }} <ArrowRight class="h-4 w-4" />
+            </RouterLink>
           </div>
 
-          <h2
-            class="text-2xl md:text-5xl font-bold text-[#191919] dark:text-white mb-3 md:mb-6 transition-all duration-700"
-            :style="getTitleStyle(SECTIONS.FEATURES)"
-          >
-            功能开发进度
-          </h2>
-
-          <p
-            class="text-base md:text-lg text-[#666663] dark:text-[#c9c3b4] mb-6 md:mb-12 max-w-2xl mx-auto transition-all duration-700"
-            :style="getDescStyle(SECTIONS.FEATURES)"
-          >
-            核心 API 代理功能已完成，正在载入更多功能
-          </p>
-
-          <div class="grid md:grid-cols-3 gap-3 md:gap-6">
-            <div
-              v-for="(feature, idx) in featureCards"
-              :key="idx"
-              class="group bg-white/90 dark:bg-[#262624]/80 backdrop-blur-sm rounded-xl md:rounded-2xl p-4 md:p-6 border transition-all duration-700"
-              :class="feature.status === 'completed'
-                ? 'border-[#cc785c]/20 dark:border-[#d4a27f]/20'
-                : 'border-[#e5e4df] dark:border-[rgba(227,224,211,0.16)] border-dashed'"
-              :style="getFeatureCardStyle(SECTIONS.FEATURES, idx)"
+          <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <RouterLink
+              v-for="model in featuredModels"
+              :key="model.id"
+              to="/models"
+              class="group flex items-center gap-4 border border-border/80 bg-background/75 p-4 transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-sm"
             >
-              <div
-                class="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg md:rounded-xl mb-2 md:mb-4 mx-auto bg-[#cc785c]/8 dark:bg-[#cc785c]/12"
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-background font-serif text-lg font-semibold"
+                :class="modelBadgeClass(model.name)"
+                :aria-label="`${modelFamily(model.name)} model`"
               >
-                <component
-                  :is="feature.icon"
-                  class="h-5 w-5 md:h-6 md:w-6 text-[#cc785c] dark:text-[#d4a27f]"
-                  :class="{ 'opacity-50': feature.status !== 'completed' }"
-                />
+                <img
+                  v-if="modelIcon(model.name)"
+                  :src="modelIcon(model.name) || undefined"
+                  :alt="`${modelFamily(model.name)} icon`"
+                  class="h-5 w-5 object-contain"
+                >
+                <span v-else>{{ modelInitial(model.name) }}</span>
+              </span>
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold">{{ model.display_name || model.name }}</div>
+                <div class="mt-1 truncate font-mono text-[10px] text-muted-foreground">{{ model.name }}</div>
               </div>
-              <h3
-                class="text-base md:text-lg font-bold mb-1 md:mb-2"
-                :class="feature.status === 'completed'
-                  ? 'text-[#191919] dark:text-white'
-                  : 'text-[#666663] dark:text-[#a0a0a0]'"
-              >
-                {{ feature.title }}
-              </h3>
-              <p class="text-xs md:text-sm text-[#666663] dark:text-[#c9c3b4]">
-                {{ feature.desc }}
-              </p>
-              <div
-                class="mt-2 md:mt-3 inline-flex items-center gap-1.5 px-2 md:px-2.5 py-0.5 md:py-1 rounded-full text-xs font-medium border"
-                :class="feature.status === 'completed'
-                  ? 'bg-[#cc785c]/5 text-[#cc785c] dark:text-[#d4a27f] border-[#cc785c]/20 dark:border-[#d4a27f]/20'
-                  : 'bg-transparent text-[#91918d] dark:text-[#808080] border-[#e5e4df] dark:border-[rgba(227,224,211,0.12)]'"
-              >
-                {{ feature.status === 'completed' ? '已完成' : '开发中' }}
+              <ArrowUpRight class="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-primary" />
+            </RouterLink>
+          </div>
+          <div v-if="modelsLoading" class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div v-for="index in 4" :key="index" class="h-[74px] animate-pulse border border-border/70 bg-muted/30" />
+          </div>
+        </div>
+      </section>
+
+      <section id="gateway" class="mx-auto max-w-[1480px] scroll-mt-24 px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+        <div class="grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
+          <div class="lg:sticky lg:top-28">
+            <div class="section-eyebrow">{{ t('home.gatewayEyebrow') }}</div>
+            <h2 class="mt-4 max-w-xl font-serif text-4xl font-semibold leading-tight sm:text-5xl">{{ t('home.gatewayTitle') }}</h2>
+            <p class="mt-5 max-w-xl text-base leading-8 text-muted-foreground">{{ t('home.gatewayDescription') }}</p>
+            <div class="mt-8 grid grid-cols-3 gap-3">
+              <div v-for="metric in gatewayMetrics" :key="metric.label" class="border border-border/70 bg-background/70 p-4">
+                <div class="font-serif text-2xl font-semibold text-primary">{{ metric.value }}</div>
+                <div class="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{{ metric.label }}</div>
               </div>
             </div>
           </div>
 
-          <div
-            class="mt-6 md:mt-12 transition-all duration-700 flex items-center justify-center gap-4 relative z-30"
-            :style="getButtonsStyle(SECTIONS.FEATURES)"
-          >
-            <RouterLink
-              v-if="authStore.isAuthenticated"
-              :to="dashboardPath"
-              class="inline-flex items-center justify-center gap-2 rounded-xl bg-transparent border-2 border-[#cc785c] px-6 py-3 text-base font-semibold text-[#cc785c] dark:text-[#d4a27f] dark:border-[#d4a27f] transition hover:bg-[#cc785c]/10 dark:hover:bg-[#d4a27f]/10 hover:scale-105 w-[160px]"
-            >
-              <Rocket class="h-5 w-5" />
-              立即开始
+          <div class="border border-border/80 bg-background/75 p-5 shadow-sm sm:p-8">
+            <div class="flex items-center justify-between border-b border-border/60 pb-5">
+              <div class="flex items-center gap-3">
+                <Activity class="h-5 w-5 text-primary" />
+                <span class="font-semibold">{{ t('home.requestFlow') }}</span>
+              </div>
+              <span class="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />{{ t('home.live') }}
+              </span>
+            </div>
+            <div class="mt-6 space-y-3">
+              <div v-for="(layer, index) in gatewayLayers" :key="layer.title" class="grid grid-cols-[42px_minmax(0,1fr)] gap-4">
+                <div class="flex flex-col items-center">
+                  <span class="flex h-10 w-10 items-center justify-center border border-primary/30 bg-primary/10 text-xs font-bold text-primary">{{ index + 1 }}</span>
+                  <span v-if="index < gatewayLayers.length - 1" class="my-2 h-full min-h-8 w-px bg-border" />
+                </div>
+                <div class="mb-3 border border-border/70 bg-muted/15 p-5">
+                  <div class="flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                      <component :is="layer.icon" class="h-5 w-5 text-primary" />
+                      <h3 class="font-semibold">{{ layer.title }}</h3>
+                    </div>
+                    <span class="font-mono text-[10px] text-muted-foreground">{{ layer.code }}</span>
+                  </div>
+                  <p class="mt-3 text-sm leading-6 text-muted-foreground">{{ layer.description }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="border-y border-border/70 bg-[#26231f] py-16 text-[#f7f3ea] dark:bg-[#11100e] lg:py-20">
+        <div class="mx-auto grid max-w-[1480px] gap-10 px-4 sm:px-6 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
+          <div>
+            <div class="text-[11px] font-bold uppercase tracking-[0.2em] text-[#d4a27f]">{{ t('home.quickstartEyebrow') }}</div>
+            <h2 class="mt-4 font-serif text-4xl font-semibold sm:text-5xl">{{ t('home.quickstartTitle') }}</h2>
+            <p class="mt-5 max-w-lg text-sm leading-7 text-[#c9c3b4]">{{ t('home.quickstartDescription') }}</p>
+            <div class="mt-8 flex flex-wrap gap-2">
+              <button
+                v-for="option in protocolOptions"
+                :key="option.id"
+                class="border px-4 py-2 text-sm font-medium transition"
+                :class="activeProtocol === option.id ? 'border-[#d4a27f] bg-[#d4a27f] text-[#26231f]' : 'border-white/15 text-[#c9c3b4] hover:border-[#d4a27f]/60'"
+                @click="activeProtocol = option.id"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-hidden border border-white/15 bg-[#181613] shadow-2xl">
+            <div class="flex items-center justify-between border-b border-white/10 px-5 py-3">
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-[#e06c5f]" />
+                <span class="h-2.5 w-2.5 rounded-full bg-[#d8b45f]" />
+                <span class="h-2.5 w-2.5 rounded-full bg-[#75a56b]" />
+              </div>
+              <button class="flex items-center gap-2 text-xs text-[#c9c3b4] transition hover:text-white" @click="copyProtocolConfig">
+                <Check v-if="copied" class="h-3.5 w-3.5 text-emerald-400" />
+                <Copy v-else class="h-3.5 w-3.5" />
+                {{ copied ? t('common.copied') : t('common.copy') }}
+              </button>
+            </div>
+            <pre class="min-h-[290px] overflow-x-auto p-6 text-[12px] leading-7 text-[#e8ddc5] sm:p-8 sm:text-sm"><code>{{ activeConfig }}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="mx-auto max-w-[1480px] px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+        <div class="flex flex-col items-start justify-between gap-8 border border-border/80 bg-background/75 p-8 shadow-sm sm:p-12 lg:flex-row lg:items-center">
+          <div>
+            <div class="section-eyebrow">{{ t('home.ctaEyebrow') }}</div>
+            <h2 class="mt-3 font-serif text-3xl font-semibold sm:text-4xl">{{ t('home.ctaTitle') }}</h2>
+            <p class="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">{{ t('home.ctaDescription') }}</p>
+          </div>
+          <div class="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row">
+            <RouterLink to="/models" class="inline-flex h-12 items-center justify-center gap-2 border border-border px-5 text-sm font-semibold hover:border-primary/50 hover:text-primary">
+              {{ t('home.exploreModels') }}
             </RouterLink>
-            <button
-              v-else
-              class="inline-flex items-center justify-center gap-2 rounded-xl bg-transparent border-2 border-[#cc785c] px-6 py-3 text-base font-semibold text-[#cc785c] dark:text-[#d4a27f] dark:border-[#d4a27f] transition hover:bg-[#cc785c]/10 dark:hover:bg-[#d4a27f]/10 hover:scale-105 w-[160px]"
-              @click="showLoginDialog = true"
-            >
-              <Rocket class="h-5 w-5" />
-              立即开始
+            <button class="inline-flex h-12 items-center justify-center gap-2 bg-primary px-5 text-sm font-semibold text-primary-foreground" @click="openPrimaryAction">
+              {{ authStore.isAuthenticated ? t('nav.dashboard') : t('home.startNow') }} <ArrowRight class="h-4 w-4" />
             </button>
           </div>
         </div>
       </section>
     </main>
 
-    <LoginDialog v-model="showLoginDialog" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
-  ChevronDown,
-  Code2,
-  Moon,
-  Rocket,
-  Sparkles,
-  Sun,
-  SunMoon,
-  Terminal
+  Activity,
+  ArrowRight,
+  ArrowUpRight,
+  BookOpen,
+  Check,
+  CheckCircle2,
+  Copy,
+  KeyRound,
+  Route,
+  ShieldCheck,
 } from 'lucide-vue-next'
-import GithubIcon from '@/components/icons/GithubIcon.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useDarkMode } from '@/composables/useDarkMode'
 import { useClipboard } from '@/composables/useClipboard'
-import { useSiteInfo } from '@/composables/useSiteInfo'
-import LoginDialog from '@/features/auth/components/LoginDialog.vue'
-import RippleLogo from '@/components/RippleLogo.vue'
-import HeaderLogo from '@/components/HeaderLogo.vue'
-import AetherLineByLineLogo from '@/components/AetherLineByLineLogo.vue'
-import GeminiStarCluster from '@/components/GeminiStarCluster.vue'
-import CliSection from './CliSection.vue'
-import {
-  SECTIONS,
-  sections,
-  featureCards,
-  useCliConfigs,
-  platformPresets,
-  getInstallCommand,
-  getLogoType,
-  getLogoClass
-} from './home-config'
-import {
-  useSectionAnimations,
-  useLogoPosition,
-  useLogoTransition
-} from './useSectionAnimations'
+import { usePublicLoginDialog } from '@/composables/usePublicLoginDialog'
+import { getPublicGlobalModels, type PublicGlobalModel } from '@/api/public-models'
 
+type ProtocolId = 'openai' | 'anthropic' | 'gemini'
+
+const router = useRouter()
+const { t } = useI18n()
 const authStore = useAuthStore()
-const { isDark, themeMode, toggleDarkMode } = useDarkMode()
 const { copyToClipboard } = useClipboard()
-const { siteName, siteSubtitle } = useSiteInfo()
 
-const dashboardPath = computed(() =>
-  authStore.canAccessAdmin ? '/admin/dashboard' : '/dashboard'
-)
-const baseUrl = computed(() => window.location.origin)
+const { showLoginDialog } = usePublicLoginDialog()
+const models = ref<PublicGlobalModel[]>([])
+const modelsLoading = ref(true)
+const activeProtocol = ref<ProtocolId>('openai')
+const copied = ref(false)
+let copyTimer: ReturnType<typeof setTimeout> | undefined
 
-// Scroll state
-const scrollContainer = ref<HTMLElement | null>(null)
-const currentSection = ref(0)
-const previousSection = ref(0)
-const scrollDirection = ref<'up' | 'down'>('down')
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const sectionVisibility = ref<number[]>([0, 0, 0, 0, 0])
-let lastScrollY = 0
-
-// Section refs - section0 and section4 are direct HTML elements, section1-3 are CliSection components
-const section0 = ref<HTMLElement | null>(null)
-const section1 = ref<InstanceType<typeof CliSection> | null>(null)
-const section2 = ref<InstanceType<typeof CliSection> | null>(null)
-const section3 = ref<InstanceType<typeof CliSection> | null>(null)
-const section4 = ref<HTMLElement | null>(null)
-
-// Helper to get DOM element from ref (handles both direct elements and component instances)
-const getSectionElement = (index: number): HTMLElement | null => {
-  switch (index) {
-    case 0: return section0.value
-    case 1: return (section1.value?.sectionEl as HTMLElement | null | undefined) ?? null
-    case 2: return (section2.value?.sectionEl as HTMLElement | null | undefined) ?? null
-    case 3: return (section3.value?.sectionEl as HTMLElement | null | undefined) ?? null
-    case 4: return section4.value
-    default: return null
+const dashboardPath = computed(() => authStore.canAccessAdmin ? '/admin/dashboard' : '/dashboard')
+const modelTotalLabel = computed(() => modelsLoading.value ? '—' : `${models.value.length}+`)
+const featuredModels = computed(() => {
+  const groups = new Map<string, PublicGlobalModel[]>()
+  for (const model of models.value) {
+    const family = modelFamily(model.name)
+    const group = groups.get(family) || []
+    group.push(model)
+    groups.set(family, group)
   }
-}
-
-// Logo refs
-const aetherLogoRef = ref<InstanceType<typeof AetherLineByLineLogo> | null>(null)
-const rippleLogoRef = ref<InstanceType<typeof RippleLogo> | null>(null)
-const hasLogoAnimationStarted = ref(false)
-const geminiFillComplete = ref(false)
-
-// Animation composables
-const {
-  getBadgeStyle,
-  getTitleStyle,
-  getDescStyle,
-  getButtonsStyle,
-  getScrollIndicatorStyle,
-  getCardStyle,
-  getFeatureCardStyle
-} = useSectionAnimations(sectionVisibility)
-
-const { fixedLogoStyle } = useLogoPosition(currentSection, windowWidth)
-const { logoTransitionName } = useLogoTransition(currentSection, previousSection)
-
-// Logo computed
-const currentLogoType = computed(() => getLogoType(currentSection.value))
-const currentLogoClass = computed(() => getLogoClass(currentSection.value))
-
-// Responsive logo size - matches .logo-container.home-section CSS
-const homeLogoSize = computed(() => windowWidth.value < 768 ? 280 : 400)
-const logoTransitionDelay = computed(() => {
-  if (currentSection.value === SECTIONS.FEATURES) return 0
-  if (previousSection.value === SECTIONS.FEATURES) return 200
-  return 500
-})
-
-// Platform states
-const claudePlatform = ref(platformPresets.claude.defaultValue)
-const codexPlatform = ref(platformPresets.codex.defaultValue)
-const geminiPlatform = ref(platformPresets.gemini.defaultValue)
-
-// Install commands
-const claudeInstallCommand = computed(() => getInstallCommand('claude', claudePlatform.value))
-const codexInstallCommand = computed(() => getInstallCommand('codex', codexPlatform.value))
-const geminiInstallCommand = computed(() => getInstallCommand('gemini', geminiPlatform.value))
-
-// CLI configs
-const { claudeConfig, codexConfig, codexAuthConfig, geminiEnvConfig, geminiSettingsConfig } =
-  useCliConfigs(baseUrl)
-
-// Dialog state
-const showLoginDialog = ref(false)
-
-// Typewriter effect for site name
-const aetherText = ref('')
-const showCursor = ref(true)
-const typewriterFullText = computed(() => siteName.value)
-let typewriterTimer: ReturnType<typeof setTimeout> | null = null
-const hasTypewriterStarted = ref(false)
-
-const startTypewriter = () => {
-  if (hasTypewriterStarted.value) return
-  hasTypewriterStarted.value = true
-  aetherText.value = ''
-  showCursor.value = true
-
-  const typeSpeed = 200
-  const deleteSpeed = 120
-  const pauseAfterType = 3500
-  const pauseAfterDelete = 1000
-
-  const typeLoop = () => {
-    let index = 0
-    const fullText = typewriterFullText.value
-
-    // Type phase
-    const typeNextChar = () => {
-      if (index < fullText.length) {
-        aetherText.value = fullText.slice(0, index + 1)
-        index++
-        typewriterTimer = setTimeout(typeNextChar, typeSpeed)
-      } else {
-        // Pause then start deleting
-        typewriterTimer = setTimeout(deleteChars, pauseAfterType)
+  const selected: PublicGlobalModel[] = []
+  let index = 0
+  while (selected.length < 8 && selected.length < models.value.length) {
+    let added = false
+    for (const group of groups.values()) {
+      if (group[index]) {
+        selected.push(group[index])
+        added = true
+        if (selected.length === 8) break
       }
     }
-
-    // Delete phase
-    const deleteChars = () => {
-      if (aetherText.value.length > 0) {
-        aetherText.value = aetherText.value.slice(0, -1)
-        typewriterTimer = setTimeout(deleteChars, deleteSpeed)
-      } else {
-        // Pause then restart typing
-        typewriterTimer = setTimeout(typeLoop, pauseAfterDelete)
-      }
-    }
-
-    typeNextChar()
+    if (!added) break
+    index += 1
   }
-  
-  // Start typing after a short delay
-  typewriterTimer = setTimeout(typeLoop, 400)
-}
-
-// Scroll handling
-let scrollEndTimer: ReturnType<typeof setTimeout> | null = null
-
-const calculateVisibility = (element: HTMLElement | null): number => {
-  if (!element) return 0
-  const rect = element.getBoundingClientRect()
-  const containerHeight = window.innerHeight
-  if (rect.bottom < 0 || rect.top > containerHeight) return 0
-  const elementCenter = rect.top + rect.height / 2
-  const viewportCenter = containerHeight / 2
-  const distanceFromCenter = Math.abs(elementCenter - viewportCenter)
-  const maxDistance = containerHeight / 2 + rect.height / 2
-  return Math.max(0, 1 - distanceFromCenter / maxDistance)
-}
-
-const handleScroll = () => {
-  if (!scrollContainer.value) return
-
-  const containerHeight = window.innerHeight
-  const newScrollY = scrollContainer.value.scrollTop
-
-  // Track scroll direction
-  scrollDirection.value = newScrollY > lastScrollY ? 'down' : 'up'
-  lastScrollY = newScrollY
-
-  // Update visibility
-  for (let i = 0; i < 5; i++) {
-    sectionVisibility.value[i] = calculateVisibility(getSectionElement(i))
-  }
-
-  // Update current section
-  const scrollMiddle = newScrollY + containerHeight / 2
-  for (let i = 4; i >= 0; i--) {
-    const section = getSectionElement(i)
-    if (section && section.offsetTop <= scrollMiddle) {
-      if (currentSection.value !== i) {
-        previousSection.value = currentSection.value
-        currentSection.value = i
-        hasLogoAnimationStarted.value = false
-      }
-      break
-    }
-  }
-
-  // Detect snap complete
-  if (scrollEndTimer) clearTimeout(scrollEndTimer)
-  scrollEndTimer = setTimeout(() => {
-    if (currentSection.value === SECTIONS.HOME && !hasLogoAnimationStarted.value) {
-      hasLogoAnimationStarted.value = true
-      setTimeout(() => aetherLogoRef.value?.startAnimation(), 100)
-      startTypewriter()
-    }
-  }, 150)
-}
-
-const scrollToSection = (index: number) => {
-  const target = getSectionElement(index)
-  if (target) target.scrollIntoView({ behavior: 'smooth' })
-}
-
-// Watch Gemini fill complete
-watch(
-  () => rippleLogoRef.value?.fillComplete,
-  (val) => {
-    if (currentSection.value === SECTIONS.GEMINI && val) geminiFillComplete.value = true
-  }
-)
-
-watch(currentSection, (_, old) => {
-  if (old === SECTIONS.GEMINI) geminiFillComplete.value = false
+  return selected
 })
 
-const handleResize = () => {
-  windowWidth.value = window.innerWidth
+const integrationSteps = computed(() => [
+  t('home.stepCreateKey'),
+  t('home.stepChooseModels'),
+  t('home.stepConnect'),
+])
+
+const heroFeatures = computed(() => [
+  { title: t('home.featureOneKeyTitle'), description: t('home.featureOneKeyDescription') },
+  { title: t('home.featureRoutingTitle'), description: t('home.featureRoutingDescription') },
+  { title: t('home.featureQuotaTitle'), description: t('home.featureQuotaDescription') },
+  { title: t('home.featureTraceTitle'), description: t('home.featureTraceDescription') },
+])
+
+const gatewayMetrics = computed(() => [
+  { value: '3', label: t('home.protocolsStat') },
+  { value: modelTotalLabel.value, label: t('home.modelsStat') },
+  { value: '100%', label: t('home.traceableStat') },
+])
+
+const gatewayLayers = computed(() => [
+  { icon: KeyRound, code: 'AUTH', title: t('home.layerAuthTitle'), description: t('home.layerAuthDescription') },
+  { icon: Route, code: 'ROUTE', title: t('home.layerRouteTitle'), description: t('home.layerRouteDescription') },
+  { icon: ShieldCheck, code: 'TRACE', title: t('home.layerTraceTitle'), description: t('home.layerTraceDescription') },
+])
+
+const protocolOptions = computed(() => [
+  { id: 'openai' as const, label: 'OpenAI' },
+  { id: 'anthropic' as const, label: 'Claude' },
+  { id: 'gemini' as const, label: 'Gemini' },
+])
+
+const baseUrl = 'https://niffler.org'
+const protocolConfigs = computed<Record<ProtocolId, string>>(() => ({
+  openai: `from openai import OpenAI\n\nclient = OpenAI(\n    api_key="YOUR_NIFFLER_KEY",\n    base_url="${baseUrl}/v1"\n)\n\nresponse = client.chat.completions.create(\n    model="gpt-5.4",\n    messages=[{"role": "user", "content": "Hello"}]\n)`,
+  anthropic: `export ANTHROPIC_AUTH_TOKEN="YOUR_NIFFLER_KEY"\nexport ANTHROPIC_BASE_URL="${baseUrl}"\n\nclaude`,
+  gemini: `export GEMINI_API_KEY="YOUR_NIFFLER_KEY"\nexport GOOGLE_GEMINI_BASE_URL="${baseUrl}"\nexport GEMINI_MODEL="gemini-3-pro"\n\ngemini`,
+}))
+const activeConfig = computed(() => protocolConfigs.value[activeProtocol.value])
+
+function modelInitial(name: string) {
+  const family = modelFamily(name)
+  if (family === 'claude' || family === 'codex') return 'C'
+  if (family === 'gpt' || family === 'image') return 'G'
+  if (family === 'gemini') return '✦'
+  if (family === 'deepseek') return 'D'
+  if (family === 'qwen') return 'Q'
+  if (family === 'embedding') return 'E'
+  if (family === 'rerank') return 'R'
+  return name.slice(0, 1).toUpperCase()
 }
 
-onMounted(() => {
-  scrollContainer.value?.addEventListener('scroll', handleScroll, { passive: true })
-  window.addEventListener('resize', handleResize, { passive: true })
-  handleScroll()
+function modelBadgeClass(name: string) {
+  const family = modelFamily(name)
+  if (family === 'claude' || family === 'codex') return 'border-[#d97757]/35 bg-[#d97757]/10 text-[#c65f3d]'
+  if (family === 'gpt' || family === 'image') return 'border-[#10a37f]/35 bg-[#10a37f]/10 text-[#087f63]'
+  if (family === 'gemini') return 'border-[#4285f4]/35 bg-[#4285f4]/10 text-[#3574d3]'
+  if (family === 'deepseek') return 'border-[#4b8bea]/35 bg-[#4b8bea]/10 text-[#3675c9]'
+  if (family === 'qwen') return 'border-[#6155d9]/35 bg-[#6155d9]/10 text-[#5145bf]'
+  return 'border-primary/25 bg-primary/10 text-primary'
+}
 
-  // Initial animation
-  setTimeout(() => {
-    if (currentSection.value === SECTIONS.HOME && !hasLogoAnimationStarted.value) {
-      hasLogoAnimationStarted.value = true
-      setTimeout(() => aetherLogoRef.value?.startAnimation(), 100)
-      startTypewriter()
+function modelIcon(name: string): string | null {
+  const family = modelFamily(name)
+  if (family === 'claude') return '/claude-color.svg'
+  if (family === 'gemini') return '/gemini-color.svg'
+  if (family === 'gpt' || family === 'image' || family === 'codex') return '/openai.svg'
+  if (family === 'deepseek') return '/deepseek.svg'
+  if (family === 'doubao') return '/doubao.svg'
+  if (family === 'glm') return '/glm.svg'
+  if (family === 'grok') return '/grok.svg'
+  if (family === 'kimi') return '/kimi.svg'
+  if (family === 'mimo') return '/mimo.svg'
+  if (family === 'minimax') return '/minimax.svg'
+  if (family === 'qwen') return '/qwen.svg'
+  if (family === 'wenxin') return '/wenxin.svg'
+  return null
+}
+
+function modelFamily(name: string) {
+  const normalized = name.toLowerCase()
+  if (normalized.startsWith('claude')) return 'claude'
+  if (normalized.startsWith('codex')) return 'codex'
+  if (normalized.startsWith('gpt-image')) return 'image'
+  if (normalized.startsWith('gpt') || normalized.startsWith('o1') || normalized.startsWith('o3')) return 'gpt'
+  if (normalized.startsWith('gemini')) return 'gemini'
+  if (normalized.startsWith('deepseek')) return 'deepseek'
+  if (normalized.startsWith('doubao')) return 'doubao'
+  if (normalized.startsWith('glm') || normalized.startsWith('chatglm') || normalized.startsWith('zhipu')) return 'glm'
+  if (normalized.startsWith('grok')) return 'grok'
+  if (normalized.startsWith('kimi') || normalized.startsWith('moonshot')) return 'kimi'
+  if (normalized.startsWith('mimo') || normalized.startsWith('xiaomi')) return 'mimo'
+  if (normalized.startsWith('minimax')) return 'minimax'
+  if (normalized.startsWith('qwen')) return 'qwen'
+  if (normalized.startsWith('wenxin') || normalized.startsWith('ernie') || normalized.startsWith('baidu')) return 'wenxin'
+  if (normalized.includes('embedding')) return 'embedding'
+  if (normalized.includes('rerank') || normalized.startsWith('bge')) return 'rerank'
+  return normalized.split(/[-/:]/)[0] || normalized
+}
+
+async function loadModels() {
+  modelsLoading.value = true
+  try {
+    const firstPage = await getPublicGlobalModels({ skip: 0, limit: 1000, is_active: true })
+    const collected = [...(firstPage.models || [])]
+    while (collected.length < firstPage.total) {
+      const page = await getPublicGlobalModels({ skip: collected.length, limit: 1000, is_active: true })
+      if (!page.models?.length) break
+      const knownIds = new Set(collected.map(model => model.id))
+      const additions = page.models.filter(model => !knownIds.has(model.id))
+      if (!additions.length) break
+      collected.push(...additions)
     }
-  }, 300)
-})
+    models.value = collected
+  } catch {
+    models.value = []
+  } finally {
+    modelsLoading.value = false
+  }
+}
 
-onUnmounted(() => {
-  scrollContainer.value?.removeEventListener('scroll', handleScroll)
-  window.removeEventListener('resize', handleResize)
-  if (scrollEndTimer) clearTimeout(scrollEndTimer)
-  if (typewriterTimer) clearTimeout(typewriterTimer)
-})
+async function copyProtocolConfig() {
+  await copyToClipboard(activeConfig.value)
+  copied.value = true
+  if (copyTimer) clearTimeout(copyTimer)
+  copyTimer = setTimeout(() => { copied.value = false }, 1600)
+}
+
+function openPrimaryAction() {
+  if (authStore.isAuthenticated) void router.push(dashboardPath.value)
+  else showLoginDialog.value = true
+}
+
+onMounted(loadModels)
 </script>
 
 <style scoped>
-/* Typography */
-h1, h2, h3 {
-  font-family: var(--serif);
-  letter-spacing: -0.02em;
+.nav-link {
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
   font-weight: 500;
+  transition: color 150ms ease, background-color 150ms ease;
 }
-
-p {
-  font-family: var(--serif);
-  letter-spacing: 0.01em;
-  line-height: 1.7;
+.nav-link:hover { color: hsl(var(--foreground)); background: hsl(var(--muted) / 0.5); }
+.nav-link-active { color: hsl(var(--primary)); background: hsl(var(--primary) / 0.1); }
+.section-eyebrow {
+  color: hsl(var(--primary));
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
-
-button, nav, a, .inline-flex {
-  font-family: var(--sans-serif);
-}
-
-/* Panel styles */
-.command-panel-surface {
-  border-color: var(--color-border);
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(12px);
-}
-
-.dark .command-panel-surface {
-  background: rgba(38, 38, 36, 0.3);
-}
-
-/* Performance */
-h1, h2, p {
-  will-change: transform, opacity;
-}
-
-/* Scroll indicator */
-.scroll-indicator {
-  position: fixed;
-  right: 2rem;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-@media (max-width: 1023px) {
-  .scroll-indicator {
-    display: none;
-  }
-}
-
-.scroll-indicator-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0.25rem;
-}
-
-.scroll-indicator-label {
-  position: absolute;
-  right: 1.5rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: #666663;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(8px);
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  pointer-events: none;
-}
-
-.dark .scroll-indicator-label {
-  color: #a0a0a0;
-  background: rgba(25, 23, 20, 0.9);
-}
-
-.scroll-indicator-btn:hover .scroll-indicator-label {
-  opacity: 1;
-}
-
-.scroll-indicator-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid #d4d4d4;
-  background: transparent;
-  transition: all 0.3s ease;
-}
-
-.dark .scroll-indicator-dot {
-  border-color: #4a4a4a;
-}
-
-.scroll-indicator-dot.active {
-  background: #cc785c;
-  border-color: #cc785c;
-  transform: scale(1.3);
-}
-
-/* Logo transitions */
-.logo-scale-enter-active {
-  transition: opacity 0.5s ease-out, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.logo-scale-leave-active {
-  transition: opacity 0.3s ease-in, transform 0.3s ease-in;
-}
-
-.logo-scale-enter-from {
-  opacity: 0;
-  transform: scale(0.6) rotate(-8deg);
-}
-
-.logo-scale-leave-to {
-  opacity: 0;
-  transform: scale(1.2) rotate(8deg);
-}
-
-.logo-slide-left-enter-active,
-.logo-slide-right-enter-active {
-  transition: opacity 0.4s ease-out, transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.logo-slide-left-leave-active,
-.logo-slide-right-leave-active {
-  transition: opacity 0.25s ease-in, transform 0.3s ease-in;
-}
-
-.logo-slide-left-enter-from {
-  opacity: 0;
-  transform: translateX(60px) scale(0.9);
-}
-
-.logo-slide-left-leave-to {
-  opacity: 0;
-  transform: translateX(-60px) scale(0.9);
-}
-
-.logo-slide-right-enter-from {
-  opacity: 0;
-  transform: translateX(-60px) scale(0.9);
-}
-
-.logo-slide-right-leave-to {
-  opacity: 0;
-  transform: translateX(60px) scale(0.9);
-}
-
-/* Logo container */
-.logo-container {
-  width: 320px;
-  height: 320px;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.logo-container.home-section {
-  width: 400px;
-  height: 400px;
-}
-
-.logo-container > * {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-@media (max-width: 768px) {
-  .logo-container {
-    width: 240px;
-    height: 240px;
-  }
-  .logo-container.home-section {
-    width: 280px;
-    height: 280px;
-  }
-}
-
-/* Heartbeat animation */
-.heartbeat-wrapper {
-  animation: heartbeat 1.5s ease-in-out infinite;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-@keyframes heartbeat {
-  0%, 70%, 100% { transform: scale(1); }
-  14% { transform: scale(1.06); }
-  28% { transform: scale(1); }
-  42% { transform: scale(1.1); }
-}
-
-/* Gemini star cluster positioning */
-.gemini-stars {
-  z-index: -1;
-}
-
-/* Fade transition */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.6s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* Typewriter cursor */
-.typewriter {
-  display: inline;
-}
-
-.typewriter .cursor {
-  font-weight: 400;
-  opacity: 1;
-  animation: cursor-blink 1s ease-in-out infinite;
-  margin-left: 1px;
-}
-
-.typewriter .cursor.cursor-hidden {
-  opacity: 0;
-  animation: none;
-}
-
-@keyframes cursor-blink {
-  0%, 45% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
+pre, code { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
 </style>

@@ -1,3 +1,6 @@
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
 const MODEL_TEST_RESPONSE_PREVIEW_MAX_LENGTH = 160
 const MODEL_TEST_IMAGE_PREVIEW_MAX_ITEMS = 6
 
@@ -14,7 +17,7 @@ export function extractModelTestResponsePreview(responseBody: unknown): string |
   if (text) return text
 
   const reasoning = extractResponseReasoning(responseBody)
-  if (reasoning) return `推理：${reasoning}`
+  if (reasoning) return t('modelTestPreview.reasoning', { value: reasoning })
 
   const image = extractImagePreview(responseBody)
   if (image) return image
@@ -192,7 +195,7 @@ function pushImagePreview(
   seen.add(preview.src)
   previews.push({
     ...preview,
-    label: `图片 ${previews.length + 1}`,
+    label: t('modelTestPreview.imageLabel', { count: previews.length + 1 }),
   })
 }
 
@@ -381,25 +384,25 @@ function extractImagePreviewFromRecord(value: JsonRecord, depth: number): string
 
   const imageUrl = value.image_url
   if (typeof imageUrl === 'string' && imageUrl.trim()) {
-    return compactPreviewText(`图片：${imageUrl}`)
+    return compactPreviewText(t('modelTestPreview.image', { value: imageUrl }))
   }
   if (isJsonRecord(imageUrl)) {
     const nestedUrl = compactPreviewText(imageUrl.url)
-    if (nestedUrl) return `图片：${nestedUrl}`
+    if (nestedUrl) return t('modelTestPreview.image', { value: nestedUrl })
     if (compactPreviewText(imageUrl.b64_json)) {
-      return '图片：base64'
+      return t('modelTestPreview.imageBase64')
     }
   }
 
   const url = compactPreviewText(value.url)
-  if (url) return `图片：${url}`
+  if (url) return t('modelTestPreview.image', { value: url })
 
   if (compactPreviewText(value.b64_json)) {
-    return '图片：base64'
+    return t('modelTestPreview.imageBase64')
   }
 
   if (value.type === 'image_generation_call' && compactPreviewText(value.result)) {
-    return '图片：base64'
+    return t('modelTestPreview.imageBase64')
   }
 
   return extractImagePreviewFromCollection(value.data, depth + 1)
@@ -444,14 +447,14 @@ function extractResponseSummary(responseBody: unknown): string | null {
     const embeddingDimensions = responseBody.data
       .map(item => isJsonRecord(item) && Array.isArray(item.embedding) ? item.embedding.length : null)
       .find((size): size is number => typeof size === 'number')
-    if (embeddingDimensions != null) return `Embedding 维度：${embeddingDimensions}`
-    if (responseBody.data.length > 0) return `返回数据：${responseBody.data.length} 条`
+    if (embeddingDimensions != null) return t('modelTestPreview.embeddingDimensions', { value: embeddingDimensions })
+    if (responseBody.data.length > 0) return t('modelTestPreview.dataCount', { count: responseBody.data.length })
   }
 
-  if (Array.isArray(responseBody.results)) return `Rerank 结果：${responseBody.results.length} 条`
+  if (Array.isArray(responseBody.results)) return t('modelTestPreview.rerankCount', { count: responseBody.results.length })
 
   const model = compactPreviewText(responseBody.model)
-  if (model) return `返回模型：${model}`
+  if (model) return t('modelTestPreview.returnedModel', { value: model })
 
   return null
 }

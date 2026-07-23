@@ -20,7 +20,7 @@ pub(super) use self::global::{
 };
 pub(super) use self::global_models::maybe_build_local_admin_global_models_response;
 pub(super) use self::routes::maybe_build_local_admin_model_response;
-pub(super) use self::routing::{
+pub(crate) use self::routing::{
     build_admin_assign_global_model_to_providers_payload, build_admin_global_model_routing_payload,
 };
 pub(super) use self::write::{

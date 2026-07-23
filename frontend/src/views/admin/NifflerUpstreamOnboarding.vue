@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="上游接入"
-      description="接入可调用的上游服务和账号。这里只写新模型，不影响线上调度。"
+      :title="t('upstreamOnboarding.title')"
+      :description="t('upstreamOnboarding.description')"
       :icon="Server"
     >
       <template #actions>
@@ -16,14 +16,14 @@
             class="mr-2 h-4 w-4"
             :class="{ 'animate-spin': pageLoading }"
           />
-          刷新
+          {{ t('upstreamOnboarding.refresh') }}
         </Button>
         <Button
           class="admin-entry-action"
           @click="openServiceDialog"
         >
           <Plus class="mr-2 h-4 w-4" />
-          新增上游
+          {{ t('upstreamOnboarding.add') }}
         </Button>
       </template>
     </PageHeader>
@@ -55,10 +55,10 @@
             <div class="flex items-center justify-between gap-3">
               <div>
                 <h2 class="text-sm font-semibold">
-                  上游
+                  {{ t('upstreamOnboarding.upstream') }}
                 </h2>
                 <p class="mt-1 text-xs text-muted-foreground">
-                  平台从这里调用模型。
+                  {{ t('upstreamOnboarding.upstreamHint') }}
                 </p>
               </div>
               <Badge variant="secondary">
@@ -70,7 +70,7 @@
               <Input
                 v-model="serviceSearch"
                 class="h-9"
-                placeholder="搜索上游"
+                :placeholder="t('upstreamOnboarding.search')"
                 @keyup.enter="loadServices"
               />
               <Button
@@ -78,7 +78,7 @@
                 size="icon"
                 class="admin-filter-action h-9 w-9 shrink-0"
                 :disabled="serviceLoading"
-                title="搜索"
+                :title="t('upstreamOnboarding.searchAction')"
                 @click="loadServices"
               >
                 <Search class="h-4 w-4" />
@@ -97,7 +97,7 @@
               class="flex items-center justify-center py-12 text-sm text-muted-foreground"
             >
               <Loader2 class="mr-2 h-5 w-5 animate-spin" />
-              正在读取上游
+              {{ t('upstreamOnboarding.loading') }}
             </div>
 
             <div
@@ -105,10 +105,10 @@
               class="mt-4 rounded-lg border border-dashed border-border/70 p-4"
             >
               <p class="text-sm font-medium">
-                还没有上游
+                {{ t('upstreamOnboarding.empty') }}
               </p>
               <p class="mt-1 text-xs text-muted-foreground">
-                用右上角“新增上游”接入第一个服务。
+                {{ t('upstreamOnboarding.emptyHint') }}
               </p>
             </div>
 
@@ -134,7 +134,7 @@
                     </div>
                   </div>
                   <Badge :variant="service.is_active ? 'outline' : 'secondary'">
-                    {{ service.is_active ? '启用' : '停用' }}
+                    {{ service.is_active ? t('upstreamOnboarding.enabled') : t('upstreamOnboarding.disabled') }}
                   </Badge>
                 </div>
               </button>
@@ -147,10 +147,10 @@
               class="flex min-h-[440px] flex-col justify-center rounded-lg border border-dashed border-border/70 p-6"
             >
               <p class="text-base font-semibold">
-                {{ services.length === 0 ? '等待新增上游' : '选择一个上游' }}
+                {{ services.length === 0 ? t('upstreamOnboarding.waiting') : t('upstreamOnboarding.select') }}
               </p>
               <p class="mt-2 max-w-md text-sm text-muted-foreground">
-                {{ services.length === 0 ? '用右上角“新增上游”创建服务，创建后在这里配置账号和能力。' : '从左侧选择上游，查看账号和能力配置。' }}
+                {{ services.length === 0 ? t('upstreamOnboarding.emptyDetail') : t('upstreamOnboarding.selectDetail') }}
               </p>
             </div>
 
@@ -165,16 +165,16 @@
                       {{ selectedService.display_name }}
                     </h2>
                     <Badge :variant="selectedService.is_active ? 'outline' : 'secondary'">
-                      {{ selectedService.is_active ? '启用' : '停用' }}
+                      {{ selectedService.is_active ? t('upstreamOnboarding.enabled') : t('upstreamOnboarding.disabled') }}
                     </Badge>
                     <Badge variant="secondary">
                       {{ serviceKindLabel(selectedService.service_kind) }}
                     </Badge>
                   </div>
                   <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>协议 {{ selectedService.default_api_format || '-' }}</span>
-                    <span>成本倍率 {{ formatMultiplier(selectedService.cost_multiplier) }}</span>
-                    <span>账号 {{ accounts.length }}</span>
+                    <span>{{ t('upstreamOnboarding.protocolValue', { value: selectedService.default_api_format || '-' }) }}</span>
+                    <span>{{ t('upstreamOnboarding.costMultiplierValue', { value: formatMultiplier(selectedService.cost_multiplier) }) }}</span>
+                    <span>{{ t('upstreamOnboarding.accountCount', { count: accounts.length }) }}</span>
                   </div>
                   <p
                     v-if="selectedService.base_url"
@@ -188,7 +188,7 @@
                   @click="accountDialogOpen = true"
                 >
                   <Plus class="mr-2 h-4 w-4" />
-                  添加账号
+                  {{ t('upstreamOnboarding.addAccount') }}
                 </Button>
               </div>
 
@@ -197,7 +197,7 @@
                   <div class="flex items-center justify-between border-b border-border/70 px-4 py-3">
                     <div>
                       <h3 class="text-sm font-semibold">
-                        账号
+                        {{ t('upstreamOnboarding.account') }}
                       </h3>
                     </div>
                     <Badge variant="secondary">
@@ -217,7 +217,7 @@
                     class="flex items-center justify-center py-12 text-sm text-muted-foreground"
                   >
                     <Loader2 class="mr-2 h-5 w-5 animate-spin" />
-                    正在读取账号
+                    {{ t('upstreamOnboarding.loadingAccounts') }}
                   </div>
 
                   <div
@@ -226,17 +226,17 @@
                   >
                     <div class="rounded-lg border border-dashed border-border/70 p-4">
                       <p class="text-sm font-medium">
-                        还没有账号
+                        {{ t('upstreamOnboarding.noAccounts') }}
                       </p>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        当前只登记账号身份，不保存真实凭证。
+                        {{ t('upstreamOnboarding.accountHint') }}
                       </p>
                       <Button
                         class="admin-entry-action mt-3 h-8"
                         size="sm"
                         @click="accountDialogOpen = true"
                       >
-                        添加账号
+                        {{ t('upstreamOnboarding.addAccount') }}
                       </Button>
                     </div>
                   </div>
@@ -265,15 +265,15 @@
                       </div>
                       <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span>{{ authKindLabel(account.auth_kind) }}</span>
-                        <span>成本 {{ formatMultiplier(account.cost_multiplier) }}</span>
-                        <span>优先级 {{ account.priority }}</span>
-                        <span>测试 {{ accountTestStatus(account) }}</span>
+                        <span>{{ t('upstreamOnboarding.costMultiplierValue', { value: formatMultiplier(account.cost_multiplier) }) }}</span>
+                        <span>{{ t('upstreamOnboarding.priorityValue', { value: account.priority }) }}</span>
+                        <span>{{ t('upstreamOnboarding.testValue', { value: accountTestStatus(account) }) }}</span>
                       </div>
                       <p
                         v-if="account.cooldown_until_unix_ms"
                         class="mt-1 text-xs text-muted-foreground"
                       >
-                        冷却到 {{ formatNifflerUnixMs(account.cooldown_until_unix_ms) }}
+                        {{ t('upstreamOnboarding.cooldownUntil', { value: formatNifflerUnixMs(account.cooldown_until_unix_ms) }) }}
                       </p>
                       <p
                         v-if="account.last_test_error"
@@ -289,10 +289,10 @@
                   <div class="flex flex-col gap-3 border-b border-border/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 class="text-sm font-semibold">
-                        能力
+                        {{ t('upstreamOnboarding.capability') }}
                       </h3>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        只声明这个上游能做什么，不测试真实请求。
+                        {{ t('upstreamOnboarding.capabilityHint') }}
                       </p>
                     </div>
                     <div class="flex gap-2">
@@ -303,7 +303,7 @@
                         :disabled="serviceCapabilityLoading"
                         @click="checkServiceCapabilities"
                       >
-                        检查
+                        {{ t('upstreamOnboarding.check') }}
                       </Button>
                       <Button
                         class="admin-entry-action"
@@ -311,7 +311,7 @@
                         :disabled="savingServiceCapabilities || serviceCapabilityLoading"
                         @click="submitServiceCapabilities"
                       >
-                        {{ savingServiceCapabilities ? '保存中...' : '保存能力' }}
+                        {{ savingServiceCapabilities ? t('upstreamOnboarding.saving') : t('upstreamOnboarding.saveCapability') }}
                       </Button>
                     </div>
                   </div>
@@ -328,7 +328,7 @@
                     class="flex items-center justify-center py-12 text-sm text-muted-foreground"
                   >
                     <Loader2 class="mr-2 h-5 w-5 animate-spin" />
-                    正在读取能力
+                    {{ t('upstreamOnboarding.loadingCapability') }}
                   </div>
 
                   <div
@@ -337,10 +337,10 @@
                   >
                     <div class="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
                       <div class="space-y-2">
-                        <Label for="service-capability-protocol">协议</Label>
+                        <Label for="service-capability-protocol">{{ t('upstreamOnboarding.protocol') }}</Label>
                         <Select v-model="serviceCapabilityForm.protocol_kind">
                           <SelectTrigger id="service-capability-protocol">
-                            <SelectValue placeholder="选择协议" />
+                            <SelectValue :placeholder="t('upstreamOnboarding.selectProtocol')" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="openai">
@@ -356,14 +356,14 @@
                               Codex
                             </SelectItem>
                             <SelectItem value="custom">
-                              自定义
+                              {{ t('upstreamOnboarding.custom') }}
                             </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div class="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
                         <div class="text-xs text-muted-foreground">
-                          已开启
+                          {{ t('upstreamOnboarding.active') }}
                         </div>
                         <div
                           v-if="selectedServiceCapabilityLabels.length > 0"
@@ -381,7 +381,7 @@
                           v-else
                           class="mt-2 text-sm text-muted-foreground"
                         >
-                          暂未开启
+                          {{ t('upstreamOnboarding.inactive') }}
                         </p>
                       </div>
                     </div>
@@ -418,8 +418,8 @@
     <Dialog
       v-model="serviceDialogOpen"
       size="2xl"
-      title="新增上游"
-      description="选择接入类型后，系统会自动填好默认协议和能力。"
+      :title="t('upstreamOnboarding.addTitle')"
+      :description="t('upstreamOnboarding.addDescription')"
       :icon="Server"
     >
       <form
@@ -428,19 +428,19 @@
       >
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-2">
-            <Label for="service-name">上游名称</Label>
+            <Label for="service-name">{{ t('upstreamOnboarding.serviceName') }}</Label>
             <Input
               id="service-name"
               v-model="serviceForm.display_name"
-              placeholder="例如 cc-max 主接口"
+              :placeholder="t('upstreamOnboarding.serviceNamePlaceholder')"
               required
             />
           </div>
           <div class="space-y-2">
-            <Label for="service-template">接入类型</Label>
+            <Label for="service-template">{{ t('upstreamOnboarding.integrationType') }}</Label>
             <Select v-model="selectedServiceTemplateKey">
               <SelectTrigger id="service-template">
-                <SelectValue placeholder="选择类型" />
+                <SelectValue :placeholder="t('upstreamOnboarding.selectType')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -460,13 +460,13 @@
                 {{ selectedServiceTemplate.description }}
               </p>
               <Badge variant="outline">
-                账号默认：{{ authKindLabel(selectedServiceTemplate.defaultAuthKind) }}
+                {{ t('upstreamOnboarding.defaultAuth', { value: authKindLabel(selectedServiceTemplate.defaultAuthKind) }) }}
               </Badge>
             </div>
             <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span class="rounded-md bg-background px-2 py-1">类型：{{ serviceKindLabel(serviceForm.service_kind) }}</span>
-              <span class="rounded-md bg-background px-2 py-1">协议：{{ serviceForm.protocol_kind }}</span>
-              <span class="rounded-md bg-background px-2 py-1">格式：{{ serviceForm.default_api_format }}</span>
+              <span class="rounded-md bg-background px-2 py-1">{{ t('upstreamOnboarding.typeValue', { value: serviceKindLabel(serviceForm.service_kind) }) }}</span>
+              <span class="rounded-md bg-background px-2 py-1">{{ t('upstreamOnboarding.protocolValue', { value: serviceForm.protocol_kind }) }}</span>
+              <span class="rounded-md bg-background px-2 py-1">{{ t('upstreamOnboarding.formatValue', { value: serviceForm.default_api_format }) }}</span>
             </div>
           </div>
 
@@ -480,7 +480,7 @@
             />
           </div>
           <div class="space-y-2">
-            <Label for="cost-multiplier">成本倍率</Label>
+            <Label for="cost-multiplier">{{ t('upstreamOnboarding.costMultiplier') }}</Label>
             <Input
               id="cost-multiplier"
               v-model.number="serviceForm.cost_multiplier"
@@ -494,27 +494,27 @@
               id="service-active"
               v-model="serviceForm.is_active"
             />
-            <Label for="service-active">启用上游</Label>
+            <Label for="service-active">{{ t('upstreamOnboarding.enableUpstream') }}</Label>
           </div>
 
           <details class="rounded-xl border border-border/70 p-4 sm:col-span-2">
             <summary class="cursor-pointer text-sm font-medium">
-              高级字段
+              {{ t('upstreamOnboarding.advancedFields') }}
             </summary>
             <div class="mt-4 grid gap-4 sm:grid-cols-3">
               <div class="space-y-2">
-                <Label for="service-kind">服务类型</Label>
+                <Label for="service-kind">{{ t('upstreamOnboarding.serviceType') }}</Label>
                 <Input
                   id="service-kind"
                   v-model="serviceForm.service_kind"
-                  placeholder="例如 openai_compatible"
+                  :placeholder="t('upstreamOnboarding.serviceTypePlaceholder')"
                 />
               </div>
               <div class="space-y-2">
-                <Label for="protocol-kind">协议</Label>
+                <Label for="protocol-kind">{{ t('upstreamOnboarding.protocol') }}</Label>
                 <Select v-model="serviceForm.protocol_kind">
                   <SelectTrigger id="protocol-kind">
-                    <SelectValue placeholder="选择协议" />
+                    <SelectValue :placeholder="t('upstreamOnboarding.selectProtocol')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="openai">
@@ -530,17 +530,17 @@
                       Codex
                     </SelectItem>
                     <SelectItem value="custom">
-                      自定义
+                      {{ t('upstreamOnboarding.custom') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div class="space-y-2">
-                <Label for="api-format">默认格式</Label>
+                <Label for="api-format">{{ t('upstreamOnboarding.defaultFormat') }}</Label>
                 <Input
                   id="api-format"
                   v-model="serviceForm.default_api_format"
-                  placeholder="例如 openai、codex"
+              :placeholder="t('upstreamOnboarding.defaultFormatPlaceholder')"
                 />
               </div>
             </div>
@@ -549,10 +549,10 @@
 
         <div class="rounded-xl border border-border/70 p-4">
           <p class="text-sm font-medium">
-            默认能力
+            {{ t('upstreamOnboarding.defaultCapabilities') }}
           </p>
           <p class="mt-1 text-xs text-muted-foreground">
-            只显示当前协议能配置的能力。
+            {{ t('upstreamOnboarding.defaultCapabilitiesHint') }}
           </p>
           <div class="mt-3 grid gap-3 sm:grid-cols-2">
             <label
@@ -577,7 +577,7 @@
           :disabled="savingService"
           @click="submitService"
         >
-          {{ savingService ? '保存中...' : '保存上游' }}
+          {{ savingService ? t('upstreamOnboarding.saving') : t('upstreamOnboarding.saveUpstream') }}
         </Button>
         <Button
           class="admin-entry-action"
@@ -586,7 +586,7 @@
           :disabled="savingService"
           @click="serviceDialogOpen = false"
         >
-          取消
+          {{ t('upstreamOnboarding.cancel') }}
         </Button>
       </template>
     </Dialog>
@@ -594,8 +594,8 @@
     <Dialog
       v-model="accountDialogOpen"
       size="lg"
-      title="添加账号"
-      description="当前只登记账号身份，不保存真实凭证。"
+      :title="t('upstreamOnboarding.addAccountTitle')"
+      :description="t('upstreamOnboarding.accountHint')"
       :icon="KeyRound"
     >
       <form
@@ -619,7 +619,7 @@
         </div>
 
         <div class="space-y-2">
-          <Label for="account-name">账号名称</Label>
+          <Label for="account-name">{{ t('upstreamOnboarding.accountName') }}</Label>
           <Input
             id="account-name"
             v-model="accountForm.display_name"
@@ -630,7 +630,7 @@
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-2">
-            <Label for="account-email">邮箱</Label>
+            <Label for="account-email">{{ t('upstreamOnboarding.email') }}</Label>
             <Input
               id="account-email"
               v-model="accountForm.email"
@@ -638,11 +638,11 @@
             />
           </div>
           <div class="space-y-2">
-            <Label for="account-phone">手机号</Label>
+            <Label for="account-phone">{{ t('upstreamOnboarding.phone') }}</Label>
             <Input
               id="account-phone"
               v-model="accountForm.phone"
-              placeholder="可选"
+              :placeholder="t('upstreamOnboarding.optional')"
             />
           </div>
         </div>
@@ -653,10 +653,10 @@
 
         <div class="grid gap-4 sm:grid-cols-3">
           <div class="space-y-2">
-            <Label for="account-auth">认证方式</Label>
+            <Label for="account-auth">{{ t('upstreamOnboarding.authMethod') }}</Label>
             <Select v-model="accountForm.auth_kind">
               <SelectTrigger id="account-auth">
-                <SelectValue placeholder="选择方式" />
+                <SelectValue :placeholder="t('upstreamOnboarding.selectMethod')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="oauth">
@@ -666,13 +666,13 @@
                   API Key
                 </SelectItem>
                 <SelectItem value="custom_header">
-                  自定义 Header
+                  {{ t('upstreamOnboarding.customHeader') }}
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div class="space-y-2">
-            <Label for="account-cost">成本倍率</Label>
+            <Label for="account-cost">{{ t('upstreamOnboarding.costMultiplier') }}</Label>
             <Input
               id="account-cost"
               v-model.number="accountForm.cost_multiplier"
@@ -682,7 +682,7 @@
             />
           </div>
           <div class="space-y-2">
-            <Label for="account-priority">优先级</Label>
+            <Label for="account-priority">{{ t('upstreamOnboarding.priority') }}</Label>
             <Input
               id="account-priority"
               v-model.number="accountForm.priority"
@@ -700,7 +700,7 @@
           :disabled="savingAccount || !selectedService"
           @click="submitAccount"
         >
-          {{ savingAccount ? '保存中...' : '保存账号' }}
+          {{ savingAccount ? t('upstreamOnboarding.saving') : t('upstreamOnboarding.saveAccount') }}
         </Button>
         <Button
           class="admin-entry-action"
@@ -709,7 +709,7 @@
           :disabled="savingAccount"
           @click="accountDialogOpen = false"
         >
-          取消
+          {{ t('upstreamOnboarding.cancel') }}
         </Button>
       </template>
     </Dialog>
@@ -718,6 +718,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import {
   KeyRound,
   Loader2,
@@ -783,36 +786,36 @@ import {
 
 const { success, error: showError } = useToast()
 
-const onboardingSteps = [
+const onboardingSteps = computed(() => [
   {
     index: '01',
-    title: '选择类型',
-    description: '选择 OAuth、API Key 或兼容接口，系统填好默认协议。',
+    title: t('upstreamOnboarding.stepChooseType'),
+    description: t('upstreamOnboarding.stepChooseTypeHint'),
   },
   {
     index: '02',
-    title: '添加账号',
-    description: '登记邮箱、手机号和调度信息，后续再保存真实凭证。',
+    title: t('upstreamOnboarding.stepAddAccount'),
+    description: t('upstreamOnboarding.stepAddAccountHint'),
   },
   {
     index: '03',
-    title: '保存能力',
-    description: '声明文本、流式、图片接口和模型测试能力。',
+    title: t('upstreamOnboarding.stepSaveCapabilities'),
+    description: t('upstreamOnboarding.stepSaveCapabilitiesHint'),
   },
-]
+])
 
-const capabilityOptions: Array<{
+const capabilityOptions = computed<Array<{
   key: NifflerServiceCapabilityKey
   label: string
   description: string
-}> = [
-  { key: 'text', label: '文本对话', description: '支持普通文本请求' },
-  { key: 'streaming', label: '流式响应', description: '支持边生成边返回' },
-  { key: 'images_endpoint', label: '图片接口', description: '支持 /images 生图接口' },
-  { key: 'openai_responses_image_tool', label: 'Responses 生图工具', description: '支持对话内调用图片工具' },
-  { key: 'model_list', label: '模型列表', description: '支持读取模型列表' },
-  { key: 'model_test', label: '模型测试', description: '支持后台测试模型' },
-]
+}>>(() => [
+  { key: 'text', label: t('upstreamOnboarding.capabilityText'), description: t('upstreamOnboarding.capabilityTextHint') },
+  { key: 'streaming', label: t('upstreamOnboarding.capabilityStreaming'), description: t('upstreamOnboarding.capabilityStreamingHint') },
+  { key: 'images_endpoint', label: t('upstreamOnboarding.capabilityImages'), description: t('upstreamOnboarding.capabilityImagesHint') },
+  { key: 'openai_responses_image_tool', label: t('upstreamOnboarding.capabilityImageTool'), description: t('upstreamOnboarding.capabilityImageToolHint') },
+  { key: 'model_list', label: t('upstreamOnboarding.capabilityModelList'), description: t('upstreamOnboarding.capabilityModelListHint') },
+  { key: 'model_test', label: t('upstreamOnboarding.capabilityModelTest'), description: t('upstreamOnboarding.capabilityModelTestHint') },
+])
 
 const services = ref<NifflerUpstreamService[]>([])
 const loadedServiceCapabilities = ref<NifflerUpstreamServiceCapability[]>([])
@@ -879,20 +882,20 @@ const selectedServiceTemplate = computed(() =>
 
 const visibleCapabilityOptions = computed(() =>
   filterCapabilityOptionsForProtocol(
-    capabilityOptions,
+    capabilityOptions.value,
     (serviceForm.value.protocol_kind || selectedServiceTemplate.value.protocolKind) as NifflerProtocolKind
   )
 )
 
 const selectedServiceCapabilityOptions = computed(() =>
   filterCapabilityOptionsForProtocol(
-    capabilityOptions,
+    capabilityOptions.value,
     serviceCapabilityForm.value.protocol_kind
   )
 )
 
 const selectedServiceCapabilityLabels = computed(() =>
-  enabledCapabilityLabels(capabilityOptions, serviceCapabilityForm.value.capabilities)
+  enabledCapabilityLabels(capabilityOptions.value, serviceCapabilityForm.value.capabilities)
 )
 
 const serviceCapabilityIssues = computed(() =>
@@ -962,9 +965,9 @@ function clearHiddenCapabilityValues(
   protocolKind: NifflerProtocolKind
 ) {
   const visibleKeys = new Set(
-    filterCapabilityOptionsForProtocol(capabilityOptions, protocolKind).map(option => option.key)
+    filterCapabilityOptionsForProtocol(capabilityOptions.value, protocolKind).map(option => option.key)
   )
-  for (const option of capabilityOptions) {
+  for (const option of capabilityOptions.value) {
     if (!visibleKeys.has(option.key)) {
       capabilities[option.key] = false
     }
@@ -1002,7 +1005,7 @@ async function loadServices() {
       }
     }
   } catch (err) {
-    serviceError.value = extractErrorMessage(err, '读取上游失败')
+    serviceError.value = extractErrorMessage(err, t('upstreamOnboarding.loadFailed'))
     showError(serviceError.value)
   } finally {
     serviceLoading.value = false
@@ -1027,7 +1030,7 @@ async function loadAccounts(serviceId: string) {
     accounts.value = response.items
   } catch (err) {
     if (seq !== accountLoadSeq) return
-    accountError.value = extractErrorMessage(err, '读取账号失败')
+    accountError.value = extractErrorMessage(err, t('upstreamOnboarding.loadAccountsFailed'))
     showError(accountError.value)
   } finally {
     if (seq === accountLoadSeq) {
@@ -1049,7 +1052,7 @@ async function loadServiceCapabilities(serviceId: string) {
     serviceCapabilityForm.value = buildNifflerServiceCapabilityForm(service, response.items)
   } catch (err) {
     if (seq !== serviceCapabilityLoadSeq) return
-    serviceCapabilityError.value = extractErrorMessage(err, '读取能力失败')
+    serviceCapabilityError.value = extractErrorMessage(err, t('upstreamOnboarding.loadCapabilitiesFailed'))
     showError(serviceCapabilityError.value)
   } finally {
     if (seq === serviceCapabilityLoadSeq) {
@@ -1065,12 +1068,12 @@ async function submitService() {
   savingService.value = true
   try {
     const created = await createNifflerUpstreamService(payload)
-    success('上游已保存')
+    success(t('upstreamOnboarding.saved'))
     serviceDialogOpen.value = false
     await loadServices()
     await selectService(created.id)
   } catch (err) {
-    showError(extractErrorMessage(err, '新增上游失败'))
+    showError(extractErrorMessage(err, t('upstreamOnboarding.createFailed')))
   } finally {
     savingService.value = false
   }
@@ -1093,9 +1096,9 @@ async function submitServiceCapabilities() {
     const response = await updateNifflerUpstreamServiceCapabilities(selectedServiceId.value, payload)
     loadedServiceCapabilities.value = response.items
     serviceCapabilityForm.value = buildNifflerServiceCapabilityForm(selectedService.value, response.items)
-    success('能力已保存')
+    success(t('upstreamOnboarding.capabilitiesSaved'))
   } catch (err) {
-    showError(extractErrorMessage(err, '保存能力失败'))
+    showError(extractErrorMessage(err, t('upstreamOnboarding.saveCapabilitiesFailed')))
   } finally {
     savingServiceCapabilities.value = false
   }
@@ -1106,7 +1109,7 @@ function checkServiceCapabilities() {
     showError(serviceCapabilityIssues.value.join(' '))
     return
   }
-  success('配置检查通过')
+  success(t('upstreamOnboarding.checkPassed'))
 }
 
 async function submitAccount() {
@@ -1117,11 +1120,11 @@ async function submitAccount() {
   savingAccount.value = true
   try {
     await createNifflerUpstreamAccount(selectedServiceId.value, payload)
-    success('账号已保存')
+    success(t('upstreamOnboarding.accountSaved'))
     accountDialogOpen.value = false
     await loadAccounts(selectedServiceId.value)
   } catch (err) {
-    showError(extractErrorMessage(err, '添加账号失败'))
+    showError(extractErrorMessage(err, t('upstreamOnboarding.addAccountFailed')))
   } finally {
     savingAccount.value = false
   }
@@ -1132,13 +1135,13 @@ function normalizeServicePayload(
 ): CreateNifflerUpstreamServicePayload | null {
   const displayName = form.display_name.trim()
   if (!displayName) {
-    showError('上游名称不能为空')
+    showError(t('upstreamOnboarding.serviceNameRequired'))
     return null
   }
 
   const costMultiplier = Number(form.cost_multiplier ?? 1)
   if (!Number.isFinite(costMultiplier) || costMultiplier < 0) {
-    showError('成本倍率必须是非负数字')
+    showError(t('upstreamOnboarding.multiplierNonNegative'))
     return null
   }
 
@@ -1173,19 +1176,19 @@ function normalizeAccountPayload(
 ): CreateNifflerUpstreamAccountPayload | null {
   const displayName = form.display_name.trim()
   if (!displayName) {
-    showError('账号名称不能为空')
+    showError(t('upstreamOnboarding.accountNameRequired'))
     return null
   }
 
   const costMultiplier = Number(form.cost_multiplier ?? 1)
   if (!Number.isFinite(costMultiplier) || costMultiplier < 0) {
-    showError('成本倍率必须是非负数字')
+    showError(t('upstreamOnboarding.multiplierNonNegative'))
     return null
   }
 
   const priority = Number(form.priority ?? 0)
   if (!Number.isFinite(priority)) {
-    showError('优先级必须是数字')
+    showError(t('upstreamOnboarding.priorityNumber'))
     return null
   }
 
@@ -1210,7 +1213,7 @@ function formatMultiplier(value: number): string {
 
 function accountContactLabel(account: NifflerUpstreamAccount): string {
   const contacts = [account.email, account.phone].filter(Boolean)
-  return contacts.length > 0 ? contacts.join(' / ') : '未填写邮箱或手机号'
+  return contacts.length > 0 ? contacts.join(' / ') : t('upstreamOnboarding.noContact')
 }
 
 function serviceKindLabel(value: string): string {
@@ -1221,18 +1224,18 @@ function authKindLabel(value: string): string {
   const labels: Record<string, string> = {
     api_key: 'API Key',
     oauth: 'OAuth',
-    custom_header: '自定义 Header',
+    custom_header: t('upstreamOnboarding.customHeader'),
   }
   return labels[value] ?? value
 }
 
 function accountStatusLabel(status: NifflerAccountStatus): string {
   const labels: Record<NifflerAccountStatus, string> = {
-    available: '可用',
-    disabled: '停用',
-    invalid: '失效',
-    quota_exhausted: '额度耗尽',
-    cooling_down: '冷却中',
+    available: t('upstreamOnboarding.available'),
+    disabled: t('upstreamOnboarding.disabled'),
+    invalid: t('upstreamOnboarding.invalid'),
+    quota_exhausted: t('upstreamOnboarding.quotaExhausted'),
+    cooling_down: t('upstreamOnboarding.coolingDown'),
   }
   return labels[status] ?? status
 }

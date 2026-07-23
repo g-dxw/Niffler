@@ -82,6 +82,7 @@ import {
   Filter
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 type EmptyStateType = 'default' | 'search' | 'filter' | 'error' | 'empty' | 'notFound'
 type ButtonVariant = 'default' | 'outline' | 'secondary' | 'ghost' | 'link' | 'destructive'
@@ -128,39 +129,40 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+const { t } = useI18n()
 
 // 根据类型获取默认配置
 const typeConfig = computed(() => {
   const configs = {
     default: {
       icon: Inbox,
-      title: '暂无数据',
-      description: '当前没有可显示的内容'
+      title: t('emptyState.defaultTitle'),
+      description: t('emptyState.defaultDescription')
     },
     search: {
       icon: Search,
-      title: '未找到结果',
-      description: '尝试使用不同的关键词搜索'
+      title: t('emptyState.searchTitle'),
+      description: t('emptyState.searchDescription')
     },
     filter: {
       icon: Filter,
-      title: '无匹配结果',
-      description: '没有符合当前筛选条件的数据'
+      title: t('emptyState.filterTitle'),
+      description: t('emptyState.filterDescription')
     },
     error: {
       icon: AlertCircle,
-      title: '加载失败',
-      description: '数据加载过程中出现错误'
+      title: t('emptyState.errorTitle'),
+      description: t('emptyState.errorDescription')
     },
     empty: {
       icon: PackageOpen,
-      title: '这里空空如也',
-      description: '还没有任何内容'
+      title: t('emptyState.emptyTitle'),
+      description: t('emptyState.emptyDescription')
     },
     notFound: {
       icon: FileQuestion,
-      title: '未找到',
-      description: '请求的资源不存在'
+      title: t('emptyState.notFoundTitle'),
+      description: t('emptyState.notFoundDescription')
     }
   }
 

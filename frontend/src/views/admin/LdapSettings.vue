@@ -1,14 +1,14 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="LDAP 配置"
-      description="配置 LDAP 认证服务"
+      :title="t('admin.ldap.title')"
+      :description="t('admin.ldap.description')"
     />
 
     <div class="mt-6 space-y-6">
       <CardSection
-        title="LDAP 服务器配置"
-        description="配置 LDAP 服务器连接参数"
+        :title="t('admin.ldap.serverConfig')"
+        :description="t('admin.ldap.serverHint')"
       >
         <template #actions>
           <div class="flex gap-2">
@@ -18,14 +18,14 @@
               :disabled="testLoading"
               @click="handleTestConnection"
             >
-              {{ testLoading ? '测试中...' : '测试连接' }}
+              {{ testLoading ? t('admin.ldap.testing') : t('admin.ldap.test') }}
             </Button>
             <Button
               size="sm"
               :disabled="saveLoading"
               @click="handleSave"
             >
-              {{ saveLoading ? '保存中...' : '保存' }}
+              {{ saveLoading ? t('admin.ldap.saving') : t('admin.ldap.save') }}
             </Button>
           </div>
         </template>
@@ -36,7 +36,7 @@
               for="server-url"
               class="block text-sm font-medium"
             >
-              服务器地址
+              {{ t('admin.ldap.serverUrl') }}
             </Label>
             <Input
               id="server-url"
@@ -46,7 +46,7 @@
               class="mt-1"
             />
             <p class="mt-1 text-xs text-muted-foreground">
-              格式: ldap://host:389 或 ldaps://host:636
+              {{ t('admin.ldap.serverUrlHint') }}
             </p>
           </div>
 
@@ -55,7 +55,7 @@
               for="bind-dn"
               class="block text-sm font-medium"
             >
-              绑定 DN
+              {{ t('admin.ldap.bindDn') }}
             </Label>
             <Input
               id="bind-dn"
@@ -65,7 +65,7 @@
               class="mt-1"
             />
             <p class="mt-1 text-xs text-muted-foreground">
-              用于连接 LDAP 服务器的管理员 DN
+              {{ t('admin.ldap.bindDnHint') }}
             </p>
           </div>
 
@@ -74,19 +74,19 @@
               for="bind-password"
               class="block text-sm font-medium"
             >
-              绑定密码
+              {{ t('admin.ldap.bindPassword') }}
             </Label>
             <div class="mt-1">
               <Input
                 id="bind-password"
                 v-model="ldapConfig.bind_password"
                 masked
-                :placeholder="hasPassword ? '已设置（留空保持不变）' : '请输入密码'"
+                :placeholder="hasPassword ? t('admin.ldap.passwordSet') : t('admin.ldap.passwordInput')"
                 autocomplete="new-password"
               />
             </div>
             <p class="mt-1 text-xs text-muted-foreground">
-              绑定账号的密码
+              {{ t('admin.ldap.bindPasswordHint') }}
             </p>
           </div>
 
@@ -95,7 +95,7 @@
               for="base-dn"
               class="block text-sm font-medium"
             >
-              基础 DN
+              {{ t('admin.ldap.baseDn') }}
             </Label>
             <Input
               id="base-dn"
@@ -105,7 +105,7 @@
               class="mt-1"
             />
             <p class="mt-1 text-xs text-muted-foreground">
-              用户搜索的基础 DN
+              {{ t('admin.ldap.baseDnHint') }}
             </p>
           </div>
 
@@ -114,7 +114,7 @@
               for="user-search-filter"
               class="block text-sm font-medium"
             >
-              用户搜索过滤器
+              {{ t('admin.ldap.searchFilter') }}
             </Label>
             <Input
               id="user-search-filter"
@@ -124,7 +124,7 @@
               class="mt-1"
             />
             <p class="mt-1 text-xs text-muted-foreground">
-              {username} 会被替换为登录用户名
+              {{ t('admin.ldap.searchFilterHint') }}
             </p>
           </div>
 
@@ -133,7 +133,7 @@
               for="username-attr"
               class="block text-sm font-medium"
             >
-              用户名属性
+              {{ t('admin.ldap.usernameAttr') }}
             </Label>
             <Input
               id="username-attr"
@@ -143,7 +143,7 @@
               class="mt-1"
             />
             <p class="mt-1 text-xs text-muted-foreground">
-              常用: uid (OpenLDAP), sAMAccountName (AD)
+              {{ t('admin.ldap.usernameAttrHint') }}
             </p>
           </div>
 
@@ -152,7 +152,7 @@
               for="email-attr"
               class="block text-sm font-medium"
             >
-              邮箱属性
+              {{ t('admin.ldap.emailAttr') }}
             </Label>
             <Input
               id="email-attr"
@@ -168,7 +168,7 @@
               for="display-name-attr"
               class="block text-sm font-medium"
             >
-              显示名称属性
+              {{ t('admin.ldap.displayNameAttr') }}
             </Label>
             <Input
               id="display-name-attr"
@@ -184,7 +184,7 @@
               for="connect-timeout"
               class="block text-sm font-medium"
             >
-              连接超时 (秒)
+              {{ t('admin.ldap.timeout') }}
             </Label>
             <Input
               id="connect-timeout"
@@ -196,7 +196,7 @@
               class="mt-1"
             />
             <p class="mt-1 text-xs text-muted-foreground">
-              单次 LDAP 操作超时时间 (1-60秒)，跨国网络建议 15-30 秒
+              {{ t('admin.ldap.timeoutHint') }}
             </p>
           </div>
         </div>
@@ -204,9 +204,9 @@
         <div class="mt-6 space-y-4">
           <div class="flex items-center justify-between">
             <div>
-              <Label class="text-sm font-medium">使用 STARTTLS</Label>
+              <Label class="text-sm font-medium">{{ t('admin.ldap.starttls') }}</Label>
               <p class="text-xs text-muted-foreground">
-                在非 SSL 连接上启用 TLS 加密
+                {{ t('admin.ldap.starttlsHint') }}
               </p>
             </div>
             <Switch v-model="ldapConfig.use_starttls" />
@@ -214,9 +214,9 @@
 
           <div class="flex items-center justify-between">
             <div>
-              <Label class="text-sm font-medium">启用 LDAP 认证</Label>
+              <Label class="text-sm font-medium">{{ t('admin.ldap.enabled') }}</Label>
               <p class="text-xs text-muted-foreground">
-                允许用户使用 LDAP 账号登录
+                {{ t('admin.ldap.enabledHint') }}
               </p>
             </div>
             <Switch v-model="ldapConfig.is_enabled" />
@@ -224,9 +224,9 @@
 
           <div class="flex items-center justify-between">
             <div>
-              <Label class="text-sm font-medium">仅允许 LDAP 登录</Label>
+              <Label class="text-sm font-medium">{{ t('admin.ldap.exclusive') }}</Label>
               <p class="text-xs text-muted-foreground">
-                禁用本地账号登录，仅允许 LDAP 认证
+                {{ t('admin.ldap.exclusiveHint') }}
               </p>
             </div>
             <Switch v-model="ldapConfig.is_exclusive" />
@@ -239,12 +239,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { PageContainer, PageHeader, CardSection } from '@/components/layout'
 import { Button, Input, Label, Switch } from '@/components/ui'
 import { useToast } from '@/composables/useToast'
 import { adminApi, type LdapConfigUpdateRequest } from '@/api/admin'
 import { log } from '@/utils/logger'
 
+const { t } = useI18n()
 const { success, error } = useToast()
 
 const loading = ref(false)
@@ -291,8 +293,8 @@ async function loadConfig() {
     }
     hasPassword.value = !!response.has_bind_password
   } catch (err) {
-    error('加载 LDAP 配置失败')
-    log.error('加载 LDAP 配置失败', err)
+    error(t('admin.ldap.loadFailed'))
+    log.error('Failed to load LDAP configuration', err)
   } finally {
     loading.value = false
   }
@@ -321,15 +323,15 @@ async function handleSave() {
     }
 
     await adminApi.updateLdapConfig(payload)
-    success('LDAP 配置保存成功')
+    success(t('admin.ldap.saved'))
 
     if (ldapConfig.value.bind_password) {
       hasPassword.value = true
     }
     ldapConfig.value.bind_password = ''
   } catch (err) {
-    error('保存 LDAP 配置失败')
-    log.error('保存 LDAP 配置失败', err)
+    error(t('admin.ldap.saveFailed'))
+    log.error('Failed to save LDAP configuration', err)
   } finally {
     saveLoading.value = false
   }
@@ -354,13 +356,13 @@ async function handleTestConnection() {
     }
     const response = await adminApi.testLdapConnection(payload)
     if (response.success) {
-      success('LDAP 连接测试成功')
+      success(t('admin.ldap.testPassed'))
     } else {
-      error(`LDAP 连接测试失败: ${response.message}`)
+      error(t('admin.ldap.testFailedDetail', { message: response.message }))
     }
   } catch (err) {
-    error('LDAP 连接测试失败')
-    log.error('LDAP 连接测试失败', err)
+    error(t('admin.ldap.testFailed'))
+    log.error('LDAP connection test failed', err)
   } finally {
     testLoading.value = false
   }

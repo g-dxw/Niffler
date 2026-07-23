@@ -14,7 +14,9 @@ use crate::handlers::shared::{
     unix_secs_to_rfc3339,
 };
 use crate::{AppState, GatewayError};
+use crate::handlers::admin::build_admin_global_model_routing_payload;
 use aether_data_contracts::repository::global_models::PublicGlobalModelQuery;
+use aether_data_contracts::repository::niffler_core::{NifflerProductPlanListQuery, NifflerProductPlanModelListQuery};
 use axum::body::{Body, Bytes};
 use axum::http::{self, Response};
 use axum::response::IntoResponse;
@@ -343,6 +345,123 @@ pub(crate) async fn maybe_build_local_public_support_response(
                 }))
                 .into_response(),
             );
+        }
+
+        if decision.route_kind.as_deref() == Some("model_groups_catalog")
+            && request_context.request_path == "/api/public/model-groups/catalog"
+        {
+            if !state.has_user_data_reader() || !state.has_global_model_data_reader() {
+                return None;
+            }
+            let groups = state.list_user_groups().await.ok()?;
+            let models = state
+                .list_public_global_models(&PublicGlobalModelQuery {
+                    offset: 0,
+                    limit: 1000,
+                    is_active: Some(true),
+                    search: None,
+                })
+                .await
+                .ok()?
+                .items;
+            let admin_state = crate::handlers::admin::request::AdminAppState::new(state);
+            let product_plans = state
+                .list_niffler_product_plans(&NifflerProductPlanListQuery { include_inactive: false, public_only: true, search: None, offset: 0, limit: 1000 })
+                .await
+                .ok()
+                .map(|page| page.items)
+                .unwrap_or_default();
+            let mut group_payloads = Vec::new();
+            let mut model_health_payloads = std::collections::BTreeMap::<String, serde_json::Value>::new();
+            for group in groups.into_iter().filter(|group| group.visibility == "public") {
+                let plan_models = state
+                    .list_niffler_product_plan_models(&NifflerProductPlanModelListQuery { product_plan_id: group.id.clone(), enabled_only: true, search: None, offset: 0, limit: 1000 })
+                    .await
+                    .ok()
+                    .map(|page| page.items)
+                    .unwrap_or_default();
+                let plan_exists = product_plans.iter().any(|plan| plan.id == group.id);
+                let allowed = if plan_exists { Some(plan_models.iter().map(|model| model.model_name.clone()).collect::<Vec<_>>()) } else { group.allowed_models.clone() };
+                let mode = if plan_exists { "specific".to_string() } else { group.allowed_models_mode.clone() };
+                let model_multipliers = if plan_exists { plan_models.iter().filter_map(|model| model.sales_multiplier_override.map(|value| (model.model_name.clone(), value))).collect::<std::collections::BTreeMap<_, _>>() } else { group.model_sales_multipliers.clone().and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default() };
+                let model_multipliers = model_multipliers.into_iter().map(|(key, value)| {
+                    let normalized = models.iter().find(|model| model.id == key).map(|model| model.name.clone()).unwrap_or(key);
+                    (normalized, value)
+                }).collect::<std::collections::BTreeMap<_, _>>();
+                let mut model_payloads = Vec::new();
+                for model in models.iter().filter(|model| {
+                    let matched = allowed.as_ref().is_some_and(|items| items.iter().any(|name| name == &model.name || model.display_name.as_ref().is_some_and(|display| display == name)));
+                    if mode == "deny" { !matched } else { allowed.as_ref().is_none_or(|items| items.is_empty() || matched) }
+                }) {
+                    let health = if let Some(health) = model_health_payloads.get(&model.id) {
+                        health.clone()
+                    } else {
+                        let routing = build_admin_global_model_routing_payload(&admin_state, &model.id).await;
+                        let mut active_providers = 0usize;
+                        let mut active_endpoints = 0usize;
+                        let mut scores = Vec::new();
+                        if let Some(payload) = routing {
+                            if let Some(providers) = payload.get("providers").and_then(serde_json::Value::as_array) {
+                                for provider in providers {
+                                    if provider["is_active"] != json!(true) || provider["model_is_active"] != json!(true) { continue; }
+                                    let mut provider_available = false;
+                                    if let Some(endpoints) = provider.get("endpoints").and_then(serde_json::Value::as_array) {
+                                        for endpoint in endpoints.iter().filter(|e| e["is_active"] == json!(true)) {
+                                            let available = endpoint.get("keys").and_then(serde_json::Value::as_array).is_some_and(|keys| keys.iter().any(|key| key["is_active"] == json!(true) && key["circuit_breaker_open"] != json!(true) && key["scheduling_blocking"] != json!(true)));
+                                            if available { active_endpoints += 1; provider_available = true; }
+                                            if let Some(keys) = endpoint.get("keys").and_then(serde_json::Value::as_array) { for key in keys { if key["is_active"] == json!(true) && key["circuit_breaker_open"] != json!(true) { if let Some(score) = key["health_score"].as_f64() { scores.push(score); } } } }
+                                        }
+                                    }
+                                    if provider_available { active_providers += 1; }
+                                }
+                            }
+                        }
+                        let score = if scores.is_empty() { serde_json::Value::Null } else { json!(scores.iter().sum::<f64>() / scores.len() as f64) };
+                        let status = if active_providers == 0 { "unavailable" } else if score.as_f64().is_some_and(|value| value < 0.5) { "degraded" } else { "healthy" };
+                        let health = json!({ "status": status, "score": score, "active_providers": active_providers, "active_endpoints": active_endpoints });
+                        model_health_payloads.insert(model.id.clone(), health.clone());
+                        health
+                    };
+                    model_payloads.push(json!({
+                        "id": model.id.clone(),
+                        "name": model.name.clone(),
+                        "display_name": model.display_name.clone(),
+                        "is_active": model.is_active,
+                        "default_price_per_request": model.default_price_per_request,
+                        "default_tiered_pricing": model.default_tiered_pricing.clone(),
+                        "supported_capabilities": model.supported_capabilities.clone(),
+                        "config": sanitize_public_model_config_for_user(model.config.clone()),
+                        "usage_count": model.usage_count,
+                        "health": health
+                    }));
+                }
+                group_payloads.push(json!({ "id": group.id, "name": group.name, "sales_multiplier": group.sales_multiplier, "model_sales_multipliers": model_multipliers, "allowed_models": allowed, "allowed_models_mode": mode, "models": model_payloads }));
+            }
+            return Some(Json(json!({ "groups": group_payloads })).into_response());
+        }
+
+        if decision.route_kind.as_deref() == Some("model_groups")
+            && request_context.request_path == "/api/public/model-groups"
+        {
+            if !state.has_user_data_reader() {
+                return None;
+            }
+            let groups = state.list_user_groups().await.ok()?;
+            let groups = groups
+                .into_iter()
+                .filter(|group| group.visibility == "public")
+                .map(|group| {
+                    json!({
+                        "id": group.id,
+                        "name": group.name,
+                        "sales_multiplier": group.sales_multiplier,
+                        "model_sales_multipliers": group.model_sales_multipliers,
+                        "allowed_models": group.allowed_models,
+                        "allowed_models_mode": group.allowed_models_mode,
+                    })
+                })
+                .collect::<Vec<_>>();
+            return Some(Json(json!({ "groups": groups })).into_response());
         }
 
         if decision.route_kind.as_deref() == Some("global_models")

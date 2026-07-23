@@ -1,5 +1,6 @@
 import { normalizeApiFormatAlias } from '@/api/endpoints/types/api-format'
 import type { ModelTestCapabilities, OpenAiImageModelTestCapability } from '@/api/endpoints/types'
+import { i18n } from '@/i18n'
 
 export type ModelTestEndpointSource = {
   api_format: string
@@ -42,7 +43,7 @@ const MODEL_TEST_BEARER_INHERITS_PROVIDER_FORMATS = new Set([
 ])
 
 const MODEL_TEST_DIAGNOSTIC_LABELS: Record<string, string> = {
-  pool_account_blocked: '账号已失效，需重新授权',
+  pool_account_blocked: i18n.global.t('accountUi.poolAccountBlocked'),
 }
 
 export function normalizeModelTestStringList(values: string[] | null | undefined): string[] {

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6 pb-8">
-    <TableCard title="独立余额 API Keys">
+    <TableCard :title="t('apiKeysAdmin.title')">
       <template #actions>
         <!-- 搜索框 -->
         <div class="relative">
@@ -8,7 +8,7 @@
           <Input
             v-model="searchQuery"
             type="text"
-            placeholder="搜索..."
+            :placeholder="t('apiKeysAdmin.search')"
             class="h-8 w-28 sm:w-40 pl-8 pr-2 text-xs"
           />
         </div>
@@ -22,7 +22,7 @@
             v-model="filterStatus"
           >
             <SelectTrigger class="w-20 sm:w-28 h-8 text-xs border-border/60">
-              <SelectValue placeholder="全部状态" />
+              <SelectValue :placeholder="t('apiKeysAdmin.allStatus')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -42,7 +42,7 @@
             v-model="filterBalance"
           >
             <SelectTrigger class="w-20 sm:w-28 h-8 text-xs border-border/60">
-              <SelectValue placeholder="全部类型" />
+              <SelectValue :placeholder="t('apiKeysAdmin.allTypes')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -64,7 +64,7 @@
           variant="ghost"
           size="icon"
           class="h-8 w-8"
-          title="创建独立 Key"
+          :title="t('apiKeysAdmin.create')"
           @click="openCreateDialog"
         >
           <Plus class="w-3.5 h-3.5" />
@@ -80,7 +80,7 @@
       <!-- 加载状态 -->
       <LoadingState
         v-if="loading"
-        message="加载中..."
+        :message="t('apiKeysAdmin.loading')"
         size="lg"
       />
 
@@ -106,7 +106,7 @@
                   :resizable="true"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  密钥信息
+                  {{ t('apiKeysAdmin.keyInfo') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="h-12 font-semibold"
@@ -115,11 +115,11 @@
                   resize-column-key="wallet"
                   :resizable="true"
                   :filter-active="filterBalance !== 'all'"
-                  filter-title="筛选余额类型"
+                  :filter-title="t('apiKeysAdmin.filterBalance')"
                   filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  钱包
+                  {{ t('apiKeysAdmin.wallet') }}
                   <template #filter="{ close }">
                     <TableFilterMenu
                       v-model="filterBalance"
@@ -135,7 +135,7 @@
                   :resizable="true"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  统计/限制
+                  {{ t('apiKeysAdmin.stats') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="h-12 font-semibold"
@@ -144,7 +144,7 @@
                   :resizable="true"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  创建时间
+                  {{ t('apiKeysAdmin.createdAt') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="h-12 font-semibold"
@@ -153,7 +153,7 @@
                   :resizable="true"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  有效期
+                  {{ t('apiKeysAdmin.expiry') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="h-12 font-semibold"
@@ -162,7 +162,7 @@
                   :resizable="true"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  最近使用
+                  {{ t('apiKeysAdmin.lastUsed') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="h-12 font-semibold"
@@ -171,11 +171,11 @@
                   resize-column-key="status"
                   :resizable="true"
                   :filter-active="filterStatus !== 'all'"
-                  filter-title="筛选状态"
+                  :filter-title="t('apiKeysAdmin.filterStatus')"
                   filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  状态
+                  {{ t('apiKeysAdmin.status') }}
                   <template #filter="{ close }">
                     <TableFilterMenu
                       v-model="filterStatus"
@@ -192,7 +192,7 @@
                   :resizable="true"
                   @resize-start="handleApiKeyTableColumnResizeStart"
                 >
-                  操作
+                  {{ t('apiKeysAdmin.actions') }}
                 </SortableTableHead>
               </TableRow>
             </TableHeader>
@@ -205,9 +205,9 @@
                   <EmptyState
                     :type="hasActiveFilters ? 'filter' : 'empty'"
                     :icon="hasActiveFilters ? undefined : Key"
-                    :title="hasActiveFilters ? '未找到匹配的 Key' : '暂无独立余额 Key'"
-                    :description="hasActiveFilters ? '尝试调整筛选条件' : '点击右上角按钮创建独立余额 Key'"
-                    :action-text="hasActiveFilters ? '清除筛选' : undefined"
+                    :title="hasActiveFilters ? t('apiKeysAdmin.noMatch') : t('apiKeysAdmin.empty')"
+                    :description="hasActiveFilters ? t('apiKeysAdmin.adjust') : t('apiKeysAdmin.createHint')"
+                    :action-text="hasActiveFilters ? t('apiKeysAdmin.clear') : undefined"
                     action-variant="outline"
                     action-size="sm"
                     size="sm"
@@ -224,9 +224,9 @@
                   <div class="space-y-1">
                     <div
                       class="break-words text-sm font-medium text-foreground leading-4"
-                      :title="apiKey.name || '未命名 Key'"
+                      :title="apiKey.name || t('apiKeysAdmin.unnamed')"
                     >
-                      {{ apiKey.name || '未命名 Key' }}
+                      {{ apiKey.name || t('apiKeysAdmin.unnamed') }}
                     </div>
                     <div class="flex items-center gap-1.5">
                       <code class="break-all text-xs font-mono text-muted-foreground leading-4">
@@ -236,7 +236,7 @@
                         variant="ghost"
                         size="icon"
                         class="h-6 w-6"
-                        title="复制完整密钥"
+                        :title="t('apiKeysAdmin.copy')"
                         @click="copyKeyPrefix(apiKey)"
                       >
                         <Copy class="h-3 w-3" />
@@ -247,13 +247,13 @@
                 <TableCell class="py-4">
                   <div class="space-y-1.5">
                     <div class="flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <span>余额：</span>
+                      <span>{{ t('apiKeysAdmin.balance') }}</span>
                       <Badge
                         v-if="isApiKeyUnlimited(apiKey)"
                         variant="secondary"
                         class="h-5 px-1.5 py-0 text-[10px] font-medium"
                       >
-                        无限额度
+                        {{ t('apiKeysAdmin.unlimited') }}
                       </Badge>
                       <span
                         v-else
@@ -265,7 +265,7 @@
                     </div>
                     <div class="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
                       <span>
-                        已消费：
+                        {{ t('apiKeysAdmin.consumed') }}
                         <span class="font-medium tabular-nums text-foreground">${{ getApiKeyWalletConsumed(apiKey).toFixed(2) }}</span>
                       </span>
                     </div>
@@ -274,13 +274,13 @@
                 <TableCell class="py-4">
                   <div class="space-y-1 text-xs">
                     <div class="text-muted-foreground">
-                      请求: <span class="font-medium text-foreground">{{ (apiKey.total_requests || 0).toLocaleString() }}</span>
+                      {{ t('apiKeysAdmin.requests') }} <span class="font-medium text-foreground">{{ (apiKey.total_requests || 0).toLocaleString() }}</span>
                     </div>
                     <div class="text-muted-foreground">
                       Tokens: <span class="font-medium text-foreground">{{ formatApiKeyTotalTokens(apiKey) }}</span>
                     </div>
                     <div class="flex items-center gap-1 text-muted-foreground">
-                      <span>限速:</span>
+                      <span>{{ t('apiKeysAdmin.rate') }}</span>
                       <Badge
                         v-if="isRateLimitInherited(apiKey.rate_limit) || isRateLimitUnlimited(apiKey.rate_limit)"
                         variant="secondary"
@@ -296,7 +296,7 @@
                       </span>
                     </div>
                     <div class="flex items-center gap-1 text-muted-foreground">
-                      <span>并发:</span>
+                      <span>{{ t('apiKeysAdmin.concurrency') }}</span>
                       <Badge
                         v-if="isConcurrentLimitInherited(apiKey.concurrent_limit) || isConcurrentLimitUnlimited(apiKey.concurrent_limit)"
                         variant="secondary"
@@ -335,7 +335,7 @@
                       v-else
                       class="text-muted-foreground"
                     >
-                      永不过期
+                      {{ t('apiKeysAdmin.never') }}
                     </div>
                   </div>
                 </TableCell>
@@ -348,7 +348,7 @@
                     <span
                       v-else
                       class="text-muted-foreground"
-                    >暂无记录</span>
+                    >{{ t('apiKeysAdmin.noRecords') }}</span>
                   </div>
                 </TableCell>
                 <TableCell class="py-4">
@@ -357,14 +357,14 @@
                       :variant="apiKey.is_active ? 'success' : 'destructive'"
                       class="h-5 px-1.5 py-0 text-[10px] font-medium"
                     >
-                      {{ apiKey.is_active ? '活跃' : '禁用' }}
+                      {{ apiKey.is_active ? t('apiKeysAdmin.active') : t('apiKeysAdmin.disabled') }}
                     </Badge>
                     <Badge
                       v-if="getApiKeyWallet(apiKey.id)"
                       :variant="walletStatusBadge(getApiKeyWalletStatus(apiKey.id))"
                       class="h-5 px-1.5 py-0 text-[10px] font-medium"
                     >
-                      {{ walletStatusLabel(getApiKeyWalletStatus(apiKey.id)) }}
+                      {{ walletStatusLabel(getApiKeyWalletStatus(apiKey.id), t) }}
                     </Badge>
                   </div>
                 </TableCell>
@@ -374,7 +374,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="一键安装并配置 CLI"
+                      :title="t('apiKeysAdmin.install')"
                       @click="openInstallDialog(apiKey)"
                     >
                       <Terminal class="h-3.5 w-3.5" />
@@ -383,7 +383,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="编辑"
+                      :title="t('apiKeysAdmin.edit')"
                       @click="editApiKey(apiKey)"
                     >
                       <SquarePen class="h-3.5 w-3.5" />
@@ -392,7 +392,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="资金操作"
+                      :title="t('apiKeysAdmin.funds')"
                       @click="openAddBalanceDialog(apiKey)"
                     >
                       <DollarSign class="h-3.5 w-3.5" />
@@ -401,7 +401,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      :title="apiKey.is_active ? '禁用' : '启用'"
+                      :title="apiKey.is_active ? t('apiKeysAdmin.disabled') : t('apiKeysAdmin.enable')"
                       @click="toggleApiKey(apiKey)"
                     >
                       <Power class="h-3.5 w-3.5" />
@@ -410,7 +410,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="删除"
+                      :title="t('apiKeysAdmin.delete')"
                       @click="deleteApiKey(apiKey)"
                     >
                       <Trash2 class="h-3.5 w-3.5" />
@@ -427,9 +427,9 @@
             v-if="filteredApiKeys.length === 0"
             :type="hasActiveFilters ? 'filter' : 'empty'"
             :icon="hasActiveFilters ? undefined : Key"
-            :title="hasActiveFilters ? '未找到匹配的 Key' : '暂无独立余额 Key'"
-            :description="hasActiveFilters ? '尝试调整筛选条件' : '点击右上角按钮创建独立余额 Key'"
-            :action-text="hasActiveFilters ? '清除筛选' : undefined"
+            :title="hasActiveFilters ? t('apiKeysAdmin.noMatch') : t('apiKeysAdmin.empty')"
+            :description="hasActiveFilters ? t('apiKeysAdmin.adjust') : t('apiKeysAdmin.createHint')"
+            :action-text="hasActiveFilters ? t('apiKeysAdmin.clearFilters') : undefined"
             action-variant="outline"
             action-size="sm"
             size="sm"
@@ -456,7 +456,7 @@
                         variant="ghost"
                         size="icon"
                         class="h-7 w-7 flex-shrink-0 hover:bg-muted"
-                        title="复制完整密钥"
+                        :title="t('apiKeysAdmin.copy')"
                         @click="copyKeyPrefix(apiKey)"
                       >
                         <Copy class="h-3.5 w-3.5" />
@@ -465,9 +465,9 @@
                     <div
                       class="truncate text-sm font-medium text-foreground"
                       :class="{ 'text-muted-foreground': !apiKey.name }"
-                      :title="apiKey.name || '未命名 Key'"
+                      :title="apiKey.name || t('apiKeysAdmin.unnamed')"
                     >
-                      {{ apiKey.name || '未命名 Key' }}
+                      {{ apiKey.name || t('apiKeysAdmin.unnamed') }}
                     </div>
                   </div>
                 </div>
@@ -477,14 +477,14 @@
                     :variant="apiKey.is_active ? 'success' : 'destructive'"
                     class="h-5 px-1.5 py-0 text-[10px] font-medium"
                   >
-                    {{ apiKey.is_active ? '活跃' : '禁用' }}
+                    {{ apiKey.is_active ? t('apiKeysAdmin.active') : t('apiKeysAdmin.disabled') }}
                   </Badge>
                   <Badge
                     v-if="getApiKeyWallet(apiKey.id)"
                     :variant="walletStatusBadge(getApiKeyWalletStatus(apiKey.id))"
                     class="h-5 px-1.5 py-0 text-[10px] font-medium"
                   >
-                    {{ walletStatusLabel(getApiKeyWalletStatus(apiKey.id)) }}
+                    {{ walletStatusLabel(getApiKeyWalletStatus(apiKey.id), t) }}
                   </Badge>
                   <Badge
                     variant="secondary"
@@ -503,7 +503,7 @@
                     variant="secondary"
                     class="h-5 px-1.5 py-0 text-[10px] font-medium"
                   >
-                    过期自动删除
+                    {{ t('apiKeysAdmin.never') }}
                   </Badge>
                 </div>
 
@@ -511,14 +511,14 @@
                   <div class="flex items-start justify-between gap-3">
                     <div class="space-y-1">
                       <p class="text-[11px] text-muted-foreground">
-                        余额：
+                        {{ t('apiKeysAdmin.balance') }}
                       </p>
                       <Badge
                         v-if="isApiKeyUnlimited(apiKey)"
                         variant="secondary"
                         class="h-5 px-1.5 py-0 text-[10px] font-medium"
                       >
-                        无限额度
+                        {{ t('apiKeysAdmin.unlimited') }}
                       </Badge>
                       <p
                         v-else
@@ -530,7 +530,7 @@
                     </div>
                     <div class="text-right">
                       <p class="text-[11px] text-muted-foreground">
-                        已消费：
+                        {{ t('apiKeysAdmin.consumed') }}
                       </p>
                       <p class="text-sm font-medium tabular-nums text-foreground">
                         ${{ getApiKeyWalletConsumed(apiKey).toFixed(2) }}
@@ -542,7 +542,7 @@
                 <div class="grid grid-cols-2 gap-2.5 text-xs">
                   <div class="rounded-lg border border-border/50 bg-background/70 p-2.5">
                     <div class="mb-1 text-muted-foreground">
-                      请求次数
+                      {{ t('apiKeysAdmin.requestsLabel') }}
                     </div>
                     <div class="font-medium text-foreground">
                       {{ (apiKey.total_requests || 0).toLocaleString() }}
@@ -558,10 +558,10 @@
                   </div>
                   <div class="col-span-2 rounded-lg border border-border/50 bg-background/70 p-2.5">
                     <div class="mb-1 text-muted-foreground">
-                      有效期
+                      {{ t('apiKeysAdmin.expiry') }}
                     </div>
                     <div class="font-medium text-foreground">
-                      {{ apiKey.expires_at ? formatDate(apiKey.expires_at) : '永不过期' }}
+                      {{ apiKey.expires_at ? formatDate(apiKey.expires_at) : t('apiKeysAdmin.never') }}
                     </div>
                     <div
                       v-if="apiKey.expires_at"
@@ -574,23 +574,23 @@
 
                 <div class="rounded-lg bg-muted/35 p-2.5 text-[11px] text-muted-foreground">
                   <div class="flex items-center justify-between gap-2">
-                    <span>创建</span>
+                    <span>{{ t('apiKeysAdmin.createdAt') }}</span>
                     <span class="font-medium text-foreground">{{ formatDate(apiKey.created_at) }}</span>
                   </div>
                   <div class="mt-1 flex items-center justify-between gap-2">
-                    <span>最近使用</span>
+                    <span>{{ t('apiKeysAdmin.lastUsed') }}</span>
                     <span
                       v-if="apiKey.last_used_at"
                       class="font-medium text-foreground"
                     >{{ formatDate(apiKey.last_used_at) }}</span>
-                    <span v-else>暂无记录</span>
+                    <span v-else>{{ t('apiKeysAdmin.noRecords') }}</span>
                   </div>
                   <div
                     v-if="apiKey.expires_at"
                     class="mt-1 flex items-center justify-between gap-2"
                   >
-                    <span>过期后</span>
-                    <span>{{ apiKey.auto_delete_on_expiry ? '自动删除' : '仅禁用' }}</span>
+                    <span>{{ t('apiKeysAdmin.afterExpiry') }}</span>
+                    <span>{{ apiKey.auto_delete_on_expiry ? t('apiKeysAdmin.autoDelete') : t('apiKeysAdmin.disableOnly') }}</span>
                   </div>
                 </div>
 
@@ -602,7 +602,7 @@
                     @click="openInstallDialog(apiKey)"
                   >
                     <Terminal class="mr-1.5 h-3.5 w-3.5" />
-                    安装
+                    {{ t('apiKeysAdmin.installShort') }}
                   </Button>
                   <Button
                     variant="outline"
@@ -611,7 +611,7 @@
                     @click="editApiKey(apiKey)"
                   >
                     <SquarePen class="mr-1.5 h-3.5 w-3.5" />
-                    编辑
+                    {{ t('apiKeysAdmin.edit') }}
                   </Button>
                   <Button
                     variant="outline"
@@ -620,7 +620,7 @@
                     @click="openAddBalanceDialog(apiKey)"
                   >
                     <DollarSign class="mr-1.5 h-3.5 w-3.5" />
-                    资金
+                    {{ t('apiKeysAdmin.fundsShort') }}
                   </Button>
                   <Button
                     variant="outline"
@@ -629,7 +629,7 @@
                     @click="toggleApiKey(apiKey)"
                   >
                     <Power class="mr-1.5 h-3.5 w-3.5" />
-                    {{ apiKey.is_active ? '禁用' : '启用' }}
+                    {{ apiKey.is_active ? t('apiKeysAdmin.disabled') : t('apiKeysAdmin.enable') }}
                   </Button>
                   <Button
                     variant="outline"
@@ -638,7 +638,7 @@
                     @click="deleteApiKey(apiKey)"
                   >
                     <Trash2 class="mr-1.5 h-3.5 w-3.5" />
-                    删除
+                    {{ t('apiKeysAdmin.delete') }}
                   </Button>
                 </div>
               </div>
@@ -681,10 +681,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                创建成功
+                {{ t('apiKeysAdmin.createdSuccess') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                请妥善保管, 切勿泄露给他人.
+                {{ t('apiKeysAdmin.keepSecret') }}
               </p>
             </div>
           </div>
@@ -707,7 +707,7 @@
               class="h-11"
               @click="copyKey"
             >
-              复制
+              {{ t('apiKeysAdmin.copyShort') }}
             </Button>
           </div>
         </div>
@@ -718,7 +718,7 @@
           class="h-10 px-5"
           @click="closeNewKeyDialog"
         >
-          确定
+          {{ t('apiKeysAdmin.confirm') }}
         </Button>
       </template>
     </Dialog>
@@ -736,10 +736,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                一键安装并配置 CLI
+                {{ t('apiKeysAdmin.install') }}
               </h3>
               <p class="text-xs text-muted-foreground truncate">
-                当前密钥：{{ selectedInstallApiKey?.name || selectedInstallApiKey?.key_display || '未选择' }}
+                {{ t('apiKeysAdmin.currentKey') }}: {{ selectedInstallApiKey?.name || selectedInstallApiKey?.key_display || t('apiKeysAdmin.unselected') }}
               </p>
             </div>
           </div>
@@ -748,11 +748,11 @@
 
       <div class="space-y-5">
         <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          选择要配置的 CLI 和目标系统，Niffler 会生成 15 分钟内有效的一次性 install code。页面命令不会包含原始 API Key。
+          {{ t('apiKeysAdmin.installHint') }}
         </div>
 
         <div class="space-y-2">
-          <Label class="text-sm font-semibold">目标 CLI</Label>
+          <Label class="text-sm font-semibold">{{ t('apiKeysAdmin.targetCli') }}</Label>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               v-for="option in installCliOptions"
@@ -767,7 +767,7 @@
         </div>
 
         <div class="space-y-2">
-          <Label class="text-sm font-semibold">目标系统</Label>
+          <Label class="text-sm font-semibold">{{ t('apiKeysAdmin.targetSystem') }}</Label>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               v-for="option in installSystemOptions"
@@ -783,14 +783,14 @@
 
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-2">
-            <Label class="text-sm font-semibold">复制到目标机器执行</Label>
+            <Label class="text-sm font-semibold">{{ t('apiKeysAdmin.executeHint') }}</Label>
             <div class="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 class="gap-1.5"
                 :disabled="installLoading || !installCommand"
-                :title="installCopied ? '已复制' : '一键复制安装命令'"
+                :title="installCopied ? t('apiKeysAdmin.copied') : t('apiKeysAdmin.copyInstall')"
                 @click="copyInstallCommand"
               >
                 <CheckCircle
@@ -801,7 +801,7 @@
                   v-else
                   class="h-3.5 w-3.5"
                 />
-                {{ installCopied ? '已复制' : '一键复制' }}
+                {{ installCopied ? t('apiKeysAdmin.copied') : t('apiKeysAdmin.copyOnce') }}
               </Button>
               <Button
                 variant="ghost"
@@ -809,12 +809,12 @@
                 :disabled="installLoading || !selectedInstallApiKey"
                 @click="refreshInstallCommand"
               >
-                {{ installLoading ? '生成中...' : '重新生成' }}
+                {{ installLoading ? t('apiKeysAdmin.generating') : t('apiKeysAdmin.regenerate') }}
               </Button>
             </div>
           </div>
           <div class="rounded-lg border border-border/60 bg-background overflow-hidden">
-            <pre class="max-h-32 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ installCommand || '正在生成短命令...' }}</pre>
+            <pre class="max-h-32 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ installCommand || t('apiKeysAdmin.generatingCommand') }}</pre>
           </div>
           <p class="text-xs text-muted-foreground">
             {{ installCommandHint }}
@@ -828,14 +828,14 @@
           class="h-10 px-5"
           @click="showInstallDialog = false"
         >
-          关闭
+          {{ t('apiKeysAdmin.close') }}
         </Button>
         <Button
           class="h-10 px-5 shadow-lg shadow-primary/20"
           :disabled="!installCommand || installLoading"
           @click="copyInstallCommand"
         >
-          {{ installCopied ? '已复制' : '复制命令' }}
+          {{ installCopied ? t('apiKeysAdmin.copied') : t('apiKeysAdmin.copyCommand') }}
         </Button>
       </template>
     </Dialog>
@@ -843,9 +843,9 @@
     <WalletOpsDrawer
       :open="showWalletActionDrawer"
       :wallet="walletActionTarget?.wallet || null"
-      :owner-name="walletActionTarget?.apiKey.name || walletActionTarget?.apiKey.key_display || '未命名 Key'"
+      :owner-name="walletActionTarget?.apiKey.name || walletActionTarget?.apiKey.key_display || t('apiKeysAdmin.unnamed')"
       :owner-subtitle="walletActionTarget?.apiKey.key_display || walletActionTarget?.apiKey.username || ''"
-      context-label="独立密钥钱包"
+      :context-label="t('apiKeysAdmin.walletContext')"
       accent="blue"
       :show-refunds="false"
       @close="closeWalletActionDrawer"
@@ -856,6 +856,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t, locale } = useI18n()
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useClipboard } from '@/composables/useClipboard'
@@ -942,11 +945,11 @@ const searchQuery = ref('')
 const filterStatus = ref<'all' | 'active' | 'inactive'>('all')
 const filterBalance = ref<'all' | 'limited' | 'unlimited'>('all')
 
-const statusFilters = [
-  { value: 'all' as const, label: '全部状态' },
-  { value: 'active' as const, label: '活跃' },
-  { value: 'inactive' as const, label: '禁用' }
-]
+const statusFilters = computed(() => [
+  { value: 'all' as const, label: t('apiKeysAdmin.allStatus') },
+  { value: 'active' as const, label: t('apiKeysAdmin.active') },
+  { value: 'inactive' as const, label: t('apiKeysAdmin.disabled') }
+])
 
 const installCliOptions: Array<{ value: InstallTargetCli; label: string }> = [
   { value: 'claude_code', label: 'Claude Code' },
@@ -960,11 +963,11 @@ const installSystemOptions: Array<{ value: InstallSessionTargetSystem; label: st
   { value: 'windows', label: 'Windows' }
 ]
 
-const balanceFilters = [
-  { value: 'all' as const, label: '全部类型' },
-  { value: 'limited' as const, label: '限额' },
-  { value: 'unlimited' as const, label: '无限' }
-]
+const balanceFilters = computed(() => [
+  { value: 'all' as const, label: t('apiKeysAdmin.allTypes') },
+  { value: 'limited' as const, label: t('apiKeysAdmin.limited') },
+  { value: 'unlimited' as const, label: t('apiKeysAdmin.unlimitedShort') }
+])
 type ApiKeyTableColumnKey = 'key' | 'wallet' | 'stats' | 'created' | 'expires' | 'lastUsed' | 'status' | 'actions'
 const apiKeyTableColumns: ResizableTableColumn<ApiKeyTableColumnKey>[] = [
   { key: 'key', width: '200px', minWidth: 190 },
@@ -998,9 +1001,9 @@ const installCommand = computed(() => {
 
 const installCommandHint = computed(() => {
   if (installSystem.value === 'windows') {
-    return 'Windows 请在 PowerShell 中执行。install code 使用后立即失效，如需再次执行请重新生成。'
+    return t('apiKeysAdmin.windowsInstallHint')
   }
-  return 'macOS / Linux 请在 sh 兼容终端中执行。install code 使用后立即失效，如需再次执行请重新生成。'
+  return t('apiKeysAdmin.unixInstallHint')
 })
 
 function clearFilters() {
@@ -1123,7 +1126,7 @@ async function refreshApiKeys() {
     apiKeyWalletMap.value = buildApiKeyWalletMap(standaloneKeys)
   } catch (err: unknown) {
     log.error('加载独立Keys失败:', err)
-    error(parseApiError(err, '加载独立 Keys 失败'))
+    error(parseApiError(err, t('apiKeysAdmin.loadFailed')))
   } finally {
     loading.value = false
   }
@@ -1172,7 +1175,7 @@ async function refreshInstallCommand() {
     })
   } catch (err: unknown) {
     log.error('生成 CLI 安装命令失败:', err)
-    error(parseApiError(err, '生成 CLI 安装命令失败'))
+    error(parseApiError(err, t('apiKeysAdmin.generateInstallFailed')))
   } finally {
     installLoading.value = false
   }
@@ -1184,7 +1187,7 @@ async function copyInstallCommand() {
   if (!copied) return
 
   installCopied.value = true
-  success('安装命令已复制到剪贴板')
+  success(t('apiKeysAdmin.installCommandCopied'))
   clearInstallCopiedResetTimer()
   installCopiedResetTimer = setTimeout(() => {
     installCopied.value = false
@@ -1202,14 +1205,14 @@ async function toggleApiKey(apiKey: AdminApiKey) {
     success(response.message)
   } catch (err: unknown) {
     log.error('切换密钥状态失败:', err)
-    error(parseApiError(err, '操作失败'))
+    error(parseApiError(err, t('apiKeysAdmin.operationFailed')))
   }
 }
 
 async function deleteApiKey(apiKey: AdminApiKey) {
   const confirmed = await confirmDanger(
-    `确定要删除这个独立余额 Key 吗？\n\n${apiKey.name || apiKey.key_display || '****'}\n\n此操作无法撤销。`,
-    '删除独立 Key'
+    t('apiKeysAdmin.deleteConfirm', { name: apiKey.name || apiKey.key_display || '****' }),
+    t('apiKeysAdmin.deleteTitle')
   )
 
   if (!confirmed) return
@@ -1222,7 +1225,7 @@ async function deleteApiKey(apiKey: AdminApiKey) {
     success(response.message)
   } catch (err: unknown) {
     log.error('删除密钥失败:', err)
-    error(parseApiError(err, '删除失败'))
+    error(parseApiError(err, t('apiKeysAdmin.deleteFailed')))
   }
 }
 
@@ -1313,15 +1316,15 @@ function getApiKeyWalletStatus(apiKeyId: string): string | null {
 
 function formatApiKeyTotalTokens(apiKey: AdminApiKey): string {
   if (apiKey.total_tokens == null) {
-    return '未统计'
+    return t('apiKeysAdmin.notCounted')
   }
   return formatTokens(apiKey.total_tokens)
 }
 
 function formatConcurrentLimitInheritable(concurrentLimit?: number | null): string {
-  if (concurrentLimit == null) return '不限并发'
-  if (concurrentLimit === 0) return '不限并发'
-  return `${concurrentLimit} 并发`
+  if (concurrentLimit == null) return t('apiKeysAdmin.unlimitedConcurrency')
+  if (concurrentLimit === 0) return t('apiKeysAdmin.unlimitedConcurrency')
+  return t('apiKeysAdmin.concurrencyValue', { count: concurrentLimit })
 }
 
 function isConcurrentLimitInherited(concurrentLimit?: number | null): boolean {
@@ -1332,7 +1335,7 @@ function isConcurrentLimitUnlimited(concurrentLimit?: number | null): boolean {
   return concurrentLimit === 0
 }
 
-function formatWalletAmount(value: number | null, nullLabel = '无限制'): string {
+function formatWalletAmount(value: number | null, nullLabel = t('common.unlimited')): string {
   if (value == null) {
     return nullLabel
   }
@@ -1346,7 +1349,7 @@ function isNegativeWalletAmount(value: number | null): boolean {
 function openAddBalanceDialog(apiKey: AdminApiKey) {
   const wallet = getApiKeyWallet(apiKey.id)
   if (!wallet) {
-    error('该独立 Key 的钱包尚未初始化，暂时无法进行资金操作')
+    error(t('apiKeysAdmin.walletUnavailable'))
     return
   }
 
@@ -1391,13 +1394,13 @@ async function copyKeyPrefix(apiKey: AdminApiKey) {
     const response = await adminApi.getFullApiKey(apiKey.id)
     const copied = await copyToClipboard(response.key, false)
     if (copied) {
-      success('完整密钥已复制到剪贴板')
+      success(t('apiKeysAdmin.fullKeyCopied'))
     } else {
-      error('复制失败，请手动复制')
+      error(t('apiKeysAdmin.copyManually'))
     }
   } catch (err) {
     log.error('复制密钥失败:', err)
-    error('复制失败，请重试')
+    error(t('apiKeysAdmin.copyFailedRetry'))
   }
 }
 
@@ -1422,7 +1425,7 @@ function isExpiringSoon(apiKey: AdminApiKey): boolean {
 }
 
 function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleString('zh-CN', {
+  return new Date(dateString).toLocaleString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -1436,14 +1439,14 @@ function getRelativeTime(dateString: string): string {
   const now = new Date()
   const diff = date.getTime() - now.getTime()
 
-  if (diff < 0) return '已过期'
+  if (diff < 0) return t('apiKeysAdmin.expired')
 
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   const hours = Math.floor(diff / (1000 * 60 * 60))
 
-  if (days > 0) return `${days}天后过期`
-  if (hours > 0) return `${hours}小时后过期`
-  return '即将过期'
+  if (days > 0) return t('apiKeysAdmin.expiresInDays', { count: days })
+  if (hours > 0) return t('apiKeysAdmin.expiresInHours', { count: hours })
+  return t('apiKeysAdmin.expiringSoon')
 }
 
 // ========== 统一表单对话框方法 ==========
@@ -1466,14 +1469,14 @@ async function handleKeyFormSubmit(data: StandaloneKeyFormData) {
   if (data.expires_at) {
     const selectedDate = parseDateInput(data.expires_at)
     if (!selectedDate) {
-      error('过期日期格式无效')
+      error(t('apiKeysAdmin.invalidExpiryDate'))
       return
     }
     selectedDate.setHours(0, 0, 0, 0)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     if (selectedDate <= today) {
-      error('过期日期必须晚于今天')
+      error(t('apiKeysAdmin.expiryMustBeFuture'))
       return
     }
   }
@@ -1505,12 +1508,12 @@ async function handleKeyFormSubmit(data: StandaloneKeyFormData) {
         }
         apiKeyWalletMap.value = buildApiKeyWalletMap(apiKeys.value)
       }
-      success('API Key 更新成功')
+      success(t('apiKeysAdmin.updated'))
     } else {
       // 创建
       const isUnlimited = Boolean(data.unlimited_balance)
       if (!isUnlimited && (!data.initial_balance_usd || data.initial_balance_usd <= 0)) {
-        error('初始余额必须大于 0')
+        error(t('apiKeysAdmin.initialBalanceRequired'))
         return
       }
       const createData: CreateStandaloneApiKeyRequest = {
@@ -1529,13 +1532,13 @@ async function handleKeyFormSubmit(data: StandaloneKeyFormData) {
       const response = await adminApi.createStandaloneApiKey(createData)
       newKeyValue.value = response.key
       showNewKeyDialog.value = true
-      success('独立 Key 创建成功')
+      success(t('apiKeysAdmin.created'))
       await refreshApiKeys()
     }
     closeKeyFormDialog()
   } catch (err: unknown) {
     log.error('保存独立Key失败:', err)
-    error(parseApiError(err, '保存失败'))
+    error(parseApiError(err, t('apiKeysAdmin.saveFailed')))
   } finally {
     keyFormDialogRef.value?.setSaving(false)
   }

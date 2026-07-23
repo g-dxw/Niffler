@@ -1347,6 +1347,15 @@ const mockHandlers: Record<string, (config: AxiosRequestConfig) => Promise<Axios
     })
   },
 
+  'GET /api/public/model-groups': async () => {
+    await delay()
+    return createMockResponse({
+      groups: [
+        { id: 'public-default', name: '默认', sales_multiplier: 1, model_sales_multipliers: null },
+      ],
+    })
+  },
+
   'GET /api/public/models': async () => {
     await delay()
     return createMockResponse({

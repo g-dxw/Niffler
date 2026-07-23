@@ -27,6 +27,43 @@ export interface PublicGlobalModelListResponse {
   total: number
 }
 
+export interface PublicModelGroup {
+  id: string
+  name: string
+  sales_multiplier: number
+  model_sales_multipliers?: Record<string, number> | null
+  allowed_models?: string[] | null
+  allowed_models_mode?: string
+}
+
+export interface PublicModelGroupListResponse {
+  groups: PublicModelGroup[]
+}
+
+export interface PublicModelGroupCatalog extends PublicModelGroup {
+  models: Array<{
+    id: string
+    name: string
+    display_name: string | null
+    is_active: boolean
+    default_price_per_request: number | null
+    default_tiered_pricing: TieredPricingConfig | null
+    supported_capabilities: string[] | Record<string, unknown> | null
+    config: Record<string, unknown> | null
+    usage_count: number
+    health: {
+      status: 'healthy' | 'degraded' | 'unavailable'
+      score: number | null
+      active_providers: number
+      active_endpoints: number
+    }
+  }>
+}
+
+export interface PublicModelGroupCatalogResponse {
+  groups: PublicModelGroupCatalog[]
+}
+
 /**
  * 获取公开的 GlobalModel 列表（普通用户可访问）
  */
@@ -37,5 +74,15 @@ export async function getPublicGlobalModels(params?: {
   search?: string
 }): Promise<PublicGlobalModelListResponse> {
   const response = await client.get('/api/public/global-models', { params })
+  return response.data
+}
+
+export async function getPublicModelGroups(): Promise<PublicModelGroupListResponse> {
+  const response = await client.get('/api/public/model-groups')
+  return response.data
+}
+
+export async function getPublicModelGroupCatalog(): Promise<PublicModelGroupCatalogResponse> {
+  const response = await client.get('/api/public/model-groups/catalog')
   return response.data
 }

@@ -12,15 +12,17 @@ import {
 } from '@/api/cache'
 import { log } from '@/utils/logger'
 import type { TimeScatterData } from '@/components/charts/scatter-types'
+import { useI18n } from 'vue-i18n'
+import { i18n } from '@/i18n'
 
 // 时间范围选项
 export const ANALYSIS_HOURS_OPTIONS = [
-  { value: '12', label: '12 小时' },
-  { value: '24', label: '24 小时' },
-  { value: '72', label: '3 天' },
-  { value: '168', label: '7 天' },
-  { value: '336', label: '14 天' },
-  { value: '720', label: '30 天' }
+  { value: '12', label: i18n.global.t('commonUi.hours', { value: 12 }) },
+  { value: '24', label: i18n.global.t('commonUi.hours', { value: 24 }) },
+  { value: '72', label: i18n.global.t('commonUi.days', { value: 3 }) },
+  { value: '168', label: i18n.global.t('commonUi.days', { value: 7 }) },
+  { value: '336', label: i18n.global.t('commonUi.days', { value: 14 }) },
+  { value: '720', label: i18n.global.t('commonUi.days', { value: 30 }) }
 ] as const
 
 // 间隔颜色配置
@@ -57,10 +59,10 @@ export function getTTLBadgeVariant(ttl: number): 'default' | 'secondary' | 'outl
  * 获取使用频率标签
  */
 export function getFrequencyLabel(ttl: number): string {
-  if (ttl <= 5) return '高频'
-  if (ttl <= 15) return '中高频'
-  if (ttl <= 30) return '中频'
-  return '低频'
+  if (ttl <= 5) return i18n.global.t('commonUi.highFrequency')
+  if (ttl <= 15) return i18n.global.t('commonUi.mediumHighFrequency')
+  if (ttl <= 30) return i18n.global.t('commonUi.mediumFrequency')
+  return i18n.global.t('commonUi.lowFrequency')
 }
 
 /**
@@ -75,6 +77,7 @@ export function getFrequencyClass(ttl: number): string {
 
 export function useTTLAnalysis() {
   const { error: showError, info: showInfo } = useToast()
+  const { t } = useI18n()
 
   // 状态
   const ttlAnalysis = ref<TTLAnalysisResponse | null>(null)
@@ -100,11 +103,11 @@ export function useTTLAnalysis() {
       ttlAnalysis.value = result
 
       if (result.total_users_analyzed === 0) {
-        const periodText = hours >= 24 ? `${hours / 24} 天` : `${hours} 小时`
-        showInfo(`未找到符合条件的数据（最近 ${periodText}）`)
+        const periodText = hours >= 24 ? t('ttlAnalysis.days', { count: hours / 24 }) : t('ttlAnalysis.hours', { count: hours })
+        showInfo(t('ttlAnalysis.noData', { period: periodText }))
       }
     } catch (error) {
-      showError('获取 TTL 分析失败')
+      showError(t('ttlAnalysis.fetchFailed'))
       log.error('获取 TTL 分析失败', error)
     } finally {
       ttlAnalysisLoading.value = false
@@ -119,7 +122,7 @@ export function useTTLAnalysis() {
         hours: parseInt(analysisHours.value)
       })
     } catch (error) {
-      showError('获取缓存命中分析失败')
+      showError(t('ttlAnalysis.hitFetchFailed'))
       log.error('获取缓存命中分析失败', error)
     } finally {
       hitAnalysisLoading.value = false
@@ -136,7 +139,7 @@ export function useTTLAnalysis() {
         user_id: userId
       })
     } catch (error) {
-      showError('获取用户时间线数据失败')
+      showError(t('ttlAnalysis.timelineFetchFailed'))
       log.error('获取用户时间线数据失败', error)
     } finally {
       userTimelineLoading.value = false
@@ -171,7 +174,7 @@ export function useTTLAnalysis() {
 
     return {
       datasets: [{
-        label: '请求间隔',
+        label: i18n.global.t('commonUi.requestInterval'),
         data: points.map(p => ({ x: p.x, y: p.y })),
         backgroundColor: points.map(p => getIntervalColor(p.y)),
         borderColor: points.map(p => getIntervalColor(p.y).replace('0.6', '1')),

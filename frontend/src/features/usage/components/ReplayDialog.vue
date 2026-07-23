@@ -14,7 +14,7 @@
           <!-- 头部：标题 + 提供商/Key 选择 + 发送 -->
           <div class="px-4 py-2.5 border-b flex items-center gap-3 shrink-0 flex-wrap">
             <h3 class="text-sm font-semibold shrink-0">
-              请求回放
+              {{ t('replayDialog.title') }}
             </h3>
             <Separator
               orientation="vertical"
@@ -23,7 +23,7 @@
 
             <!-- 提供商选择 -->
             <div class="flex items-center gap-1.5 min-w-0">
-              <label class="text-xs text-muted-foreground shrink-0">提供商</label>
+              <label class="text-xs text-muted-foreground shrink-0">{{ t('replayDialog.provider') }}</label>
               <select
                 v-model="selectedProviderId"
                 class="h-7 rounded-md border border-input bg-background px-2 text-xs min-w-[140px]"
@@ -31,7 +31,7 @@
                 @change="onProviderChange"
               >
                 <option value="">
-                  原始 ({{ detail?.provider || '-' }})
+                  {{ t('replayDialog.originalProvider', { provider: detail?.provider || '-' }) }}
                 </option>
                 <option
                   v-for="p in providers"
@@ -52,7 +52,7 @@
                 :disabled="replaying || loadingKeys"
               >
                 <option value="">
-                  {{ loadingKeys ? '加载中...' : selectedProviderId ? '自动选择' : '原始 Key' }}
+                  {{ loadingKeys ? t('replayDialog.loading') : selectedProviderId ? t('replayDialog.autoSelect') : t('replayDialog.originalKey') }}
                 </option>
                 <option
                   v-for="k in keys"
@@ -80,7 +80,7 @@
                   v-else
                   class="w-3.5 h-3.5"
                 />
-                {{ replaying ? '请求中...' : '发送' }}
+                {{ replaying ? t('replayDialog.requesting') : t('replayDialog.send') }}
               </Button>
               <Button
                 variant="ghost"
@@ -100,7 +100,7 @@
               <!-- 左栏头 -->
               <div class="px-4 py-1.5 border-b bg-muted/30 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-2 min-w-0">
-                  <span class="text-xs font-medium text-muted-foreground">请求</span>
+                  <span class="text-xs font-medium text-muted-foreground">{{ t('replayDialog.request') }}</span>
                   <span
                     v-if="detail?.model"
                     class="text-[11px] text-muted-foreground/60 font-mono truncate"
@@ -108,7 +108,7 @@
                 </div>
                 <button
                   class="p-1 rounded transition-colors text-muted-foreground hover:bg-muted shrink-0"
-                  :title="requestCopied ? '已复制' : '复制请求体'"
+                  :title="requestCopied ? t('replayDialog.copied') : t('replayDialog.copyRequestBody')"
                   @click="copyRequestBody"
                 >
                   <Check
@@ -167,7 +167,7 @@
                     v-else
                     class="text-xs text-muted-foreground/50 italic"
                   >
-                    无请求体
+                    {{ t('replayDialog.noRequestBody') }}
                   </div>
                 </div>
               </div>
@@ -178,7 +178,7 @@
               <!-- 右栏头 -->
               <div class="px-4 py-1.5 border-b bg-muted/30 flex items-center justify-between shrink-0">
                 <div class="flex items-center gap-2 min-w-0">
-                  <span class="text-xs font-medium text-muted-foreground">响应</span>
+                  <span class="text-xs font-medium text-muted-foreground">{{ t('replayDialog.response') }}</span>
                   <template v-if="replayResult">
                     <Badge
                       :variant="replayResult.status_code < 400 ? 'success' : 'destructive'"
@@ -193,7 +193,7 @@
                 <button
                   v-if="replayResult"
                   class="p-1 rounded transition-colors text-muted-foreground hover:bg-muted shrink-0"
-                  :title="responseCopied ? '已复制' : '复制响应体'"
+                  :title="responseCopied ? t('replayDialog.copied') : t('replayDialog.copyResponseBody')"
                   @click="copyResponseBody"
                 >
                   <Check
@@ -214,7 +214,7 @@
                   class="flex flex-col items-center justify-center h-full text-muted-foreground/40 gap-2"
                 >
                   <Play class="w-8 h-8" />
-                  <span class="text-xs">点击发送查看响应</span>
+                  <span class="text-xs">{{ t('replayDialog.sendToViewResponse') }}</span>
                 </div>
 
                 <!-- Loading -->
@@ -322,6 +322,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { dashboardApi, type ReplayResponse, type RequestDetail } from '@/api/dashboard'
 import { getProvidersSummary } from '@/api/endpoints/providers'
 import { getProviderKeys } from '@/api/endpoints/keys'
@@ -345,6 +346,7 @@ const props = defineProps<{
   requestId: string | null
   detail: RequestDetail | null
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -408,11 +410,11 @@ const responseHeaderCount = computed(() => {
 function formatReplayMode(mode?: string) {
   switch (mode) {
     case 'same_endpoint_reuse':
-      return '同端点复用'
+      return t('replayDialog.sameEndpointReuse')
     case 'same_provider_remap':
-      return '同 Provider 重映射'
+      return t('replayDialog.sameProviderRemap')
     case 'cross_provider_remap':
-      return '跨 Provider 重映射'
+      return t('replayDialog.crossProviderRemap')
     default:
       return mode || '-'
   }
@@ -421,13 +423,13 @@ function formatReplayMode(mode?: string) {
 function formatMappingSource(source?: string) {
   switch (source) {
     case 'original_target_model':
-      return '映射来源: 复用原目标模型'
+      return t('replayDialog.mappingOriginalTarget')
     case 'model_mapping':
-      return '映射来源: 模型映射'
+      return t('replayDialog.mappingModelMapping')
     case 'none':
-      return '映射来源: 未映射'
+      return t('replayDialog.mappingNone')
     default:
-      return source ? `映射来源: ${source}` : ''
+      return source ? t('replayDialog.mappingSource', { source }) : ''
   }
 }
 
@@ -488,7 +490,7 @@ async function doReplay() {
     )
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } }; message?: string }
-    replayError.value = err?.response?.data?.detail || err?.message || '请求失败'
+    replayError.value = err?.response?.data?.detail || err?.message || t('replayDialog.requestFailed')
     log.error('Replay failed:', e)
   } finally {
     replaying.value = false

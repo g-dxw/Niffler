@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="迁移观察"
-      description="查看灰度开关、路由记录和结算对账。"
+      :title="t('migrationConsole.title')"
+      :description="t('migrationConsole.description')"
       :icon="Gauge"
     >
       <template #actions>
@@ -16,7 +16,7 @@
             class="mr-2 h-4 w-4"
             :class="{ 'animate-spin': pageLoading }"
           />
-          刷新
+          {{ t('migrationConsole.refresh') }}
         </Button>
       </template>
     </PageHeader>
@@ -26,14 +26,14 @@
         <div class="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 class="text-lg font-semibold">
-              灰度开关
+              {{ t('migrationConsole.rollout') }}
             </h2>
             <p class="mt-1 text-sm text-muted-foreground">
-              只登记新链路开关；未接入运行时前，不影响线上请求。
+              {{ t('migrationConsole.rolloutHint') }}
             </p>
           </div>
           <Badge variant="secondary">
-            {{ runtimeRolloutSettings.length }} 条
+            {{ runtimeRolloutSettings.length }} {{ t('migrationConsole.records') }}
           </Badge>
         </div>
 
@@ -54,8 +54,8 @@
               <label class="flex items-start gap-3 rounded-lg border border-border/70 p-3">
                 <Switch v-model="runtimeRolloutForm.is_active" />
                 <span>
-                  <span class="block text-sm font-medium">启用</span>
-                  <span class="block text-xs text-muted-foreground">关闭后保留记录，但不会命中。</span>
+                  <span class="block text-sm font-medium">{{ t('migrationConsole.enabled') }}</span>
+                  <span class="block text-xs text-muted-foreground">{{ t('migrationConsole.enabledHint') }}</span>
                 </span>
               </label>
             </div>
@@ -70,10 +70,10 @@
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>目标</TableHead>
-                  <TableHead>开关</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>更新时间</TableHead>
+                  <TableHead>{{ t('migrationConsole.target') }}</TableHead>
+                  <TableHead>{{ t('migrationConsole.switch') }}</TableHead>
+                  <TableHead>{{ t('migrationConsole.status') }}</TableHead>
+                  <TableHead>{{ t('migrationConsole.updatedAt') }}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -84,7 +84,7 @@
                     colspan="4"
                     class="py-10 text-center text-sm text-muted-foreground"
                   >
-                    还没有灰度记录
+                    {{ t('migrationConsole.empty') }}
                   </TableCell>
                 </TableRow>
                 <TableRow
@@ -116,12 +116,12 @@
                       v-else
                       class="text-sm text-muted-foreground"
                     >
-                      未开启
+                      {{ t('migrationConsole.disabled') }}
                     </span>
                   </TableCell>
                   <TableCell>
                     <Badge :variant="setting.is_active ? 'outline' : 'secondary'">
-                      {{ setting.is_active ? '启用' : '停用' }}
+                      {{ setting.is_active ? t('migrationConsole.enabled') : t('migrationConsole.disabled') }}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -134,12 +134,12 @@
 
           <aside class="space-y-4 rounded-lg border border-border/70 bg-muted/20 p-4">
             <div class="space-y-2">
-              <Label for="rollout-product-plan">产品策略</Label>
+              <Label for="rollout-product-plan">{{ t('migrationConsole.productPlan') }}</Label>
               <Select v-model="selectedProductPlanId">
                 <SelectTrigger id="rollout-product-plan">
-                  <SelectValue placeholder="选择策略" />
+                  <SelectValue :placeholder="t('migrationConsole.selectPlan')" />
                 </SelectTrigger>
-                <SelectContent search-placeholder="搜索策略...">
+                <SelectContent :search-placeholder="t('migrationConsole.searchPlan')">
                   <SelectItem
                     v-for="plan in productPlans"
                     :key="plan.id"
@@ -154,17 +154,17 @@
                 :disabled="!selectedProductPlan || !selectedProductPlan.is_active || savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey('product_plan', selectedProductPlanId)"
                 @click="saveSelectedProductPlanRuntimeRollout"
               >
-                登记策略
+                {{ t('migrationConsole.registerPlan') }}
               </Button>
             </div>
 
             <div class="space-y-2">
-              <Label for="rollout-api-key">独立密钥</Label>
+              <Label for="rollout-api-key">{{ t('migrationConsole.apiKey') }}</Label>
               <Select v-model="selectedRuntimeRolloutApiKeyId">
                 <SelectTrigger id="rollout-api-key">
-                  <SelectValue placeholder="选择密钥" />
+                  <SelectValue :placeholder="t('migrationConsole.selectKey')" />
                 </SelectTrigger>
-                <SelectContent search-placeholder="搜索密钥...">
+                <SelectContent :search-placeholder="t('migrationConsole.searchKey')">
                   <SelectItem
                     v-for="apiKey in standaloneApiKeys"
                     :key="apiKey.id"
@@ -182,7 +182,7 @@
                   :disabled="!selectedRuntimeRolloutApiKey || !selectedRuntimeRolloutApiKey.is_active || savingRuntimeRolloutTargetKey === runtimeRolloutTargetKey('api_key', selectedRuntimeRolloutApiKeyId)"
                   @click="saveSelectedApiKeyRuntimeRollout"
                 >
-                  登记密钥
+                  {{ t('migrationConsole.registerKey') }}
                 </Button>
                 <Button
                   variant="outline"
@@ -190,7 +190,7 @@
                   :disabled="!selectedRuntimeRolloutApiKeyId || runtimeRolloutPreviewLoading"
                   @click="loadRuntimeRolloutPreview"
                 >
-                  预览
+                  {{ t('migrationConsole.preview') }}
                 </Button>
               </div>
             </div>
@@ -207,14 +207,14 @@
               class="space-y-3 rounded-lg border border-border/70 bg-background p-3"
             >
               <Badge :variant="runtimeRolloutPreview.decision.is_active ? 'outline' : 'secondary'">
-                {{ runtimeRolloutPreview.decision.is_active ? '会启用新链路' : '不会启用新链路' }}
+                {{ runtimeRolloutPreview.decision.is_active ? t('migrationConsole.previewEnabled') : t('migrationConsole.previewDisabled') }}
               </Badge>
               <p class="text-xs text-muted-foreground">
                 {{ runtimeRolloutPreview.decision.reason }}
               </p>
               <div class="space-y-1 text-xs text-muted-foreground">
-                <p>密钥：{{ runtimeRolloutPreview.api_key.name || runtimeRolloutPreview.api_key.id }}</p>
-                <p>策略：{{ runtimeRolloutPreview.product_plan?.display_name || runtimeRolloutPreview.product_plan?.id || '未绑定' }}</p>
+                <p>{{ t('migrationConsole.keyValue', { value: runtimeRolloutPreview.api_key.name || runtimeRolloutPreview.api_key.id }) }}</p>
+                <p>{{ t('migrationConsole.policyValue', { value: runtimeRolloutPreview.product_plan?.display_name || runtimeRolloutPreview.product_plan?.id || t('migrationConsole.unbound') }) }}</p>
               </div>
             </div>
           </aside>
@@ -228,19 +228,19 @@
         >
           <TabsList class="tabs-button-list grid w-full max-w-4xl grid-cols-5">
             <TabsTrigger value="routing">
-              路由
+              {{ t('migrationConsole.route') }}
             </TabsTrigger>
             <TabsTrigger value="settlement">
-              结算
+              {{ t('migrationConsole.settlement') }}
             </TabsTrigger>
             <TabsTrigger value="reservation">
-              预占
+              {{ t('migrationConsole.reservation') }}
             </TabsTrigger>
             <TabsTrigger value="referral">
-              返利
+              {{ t('migrationConsole.referral') }}
             </TabsTrigger>
             <TabsTrigger value="consistency">
-              一致性
+              {{ t('migrationConsole.consistency') }}
             </TabsTrigger>
           </TabsList>
 
@@ -249,21 +249,21 @@
             class="mt-5"
           >
             <ObservedTable
-              title="路由记录"
+              :title="t('migrationConsole.routeRecords')"
               :loading="routeAttemptLoading"
               :error="routeAttemptError"
               :empty="routeAttempts.length === 0"
-              empty-text="还没有路由记录"
+              :empty-text="t('migrationConsole.noRouteRecords')"
               @refresh="loadRouteAttempts"
             >
               <Table v-if="routeAttempts.length > 0">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>请求</TableHead>
-                    <TableHead>服务和账号</TableHead>
-                    <TableHead>结果</TableHead>
-                    <TableHead>上游</TableHead>
-                    <TableHead>时间</TableHead>
+                    <TableHead>{{ t('migrationConsole.request') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.serviceAccount') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.result') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.upstream') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.time') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -300,10 +300,10 @@
                     </TableCell>
                     <TableCell>
                       <div class="text-xs">
-                        状态码 {{ attempt.upstream_status_code ?? '无' }}
+                        {{ t('migrationConsole.statusCodeValue', { value: attempt.upstream_status_code ?? t('migrationConsole.none') }) }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        耗时 {{ formatLatencyMs(attempt.latency_ms) }}
+                        {{ t('migrationConsole.latencyValue', { value: formatLatencyMs(attempt.latency_ms) }) }}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -320,20 +320,20 @@
             class="mt-5"
           >
             <ObservedTable
-              title="结算快照"
+              :title="t('migrationConsole.settlementSnapshot')"
               :loading="settlementSnapshotLoading"
               :error="settlementSnapshotError"
               :empty="settlementSnapshots.length === 0"
-              empty-text="还没有结算快照"
+              :empty-text="t('migrationConsole.noSettlementSnapshots')"
               @refresh="loadSettlementSnapshots"
             >
               <Table v-if="settlementSnapshots.length > 0">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>请求</TableHead>
-                    <TableHead>服务和账号</TableHead>
-                    <TableHead>金额</TableHead>
-                    <TableHead>时间</TableHead>
+                    <TableHead>{{ t('migrationConsole.request') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.serviceAccount') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.amount') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.time') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -359,13 +359,13 @@
                     </TableCell>
                     <TableCell>
                       <div class="text-sm font-medium">
-                        钱包 {{ formatUsdAmount(snapshot.wallet_charge_usd) }}
+                        {{ t('migrationConsole.walletValue', { value: formatUsdAmount(snapshot.wallet_charge_usd) }) }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        套餐 {{ formatUsdAmount(snapshot.entitlement_charge_usd) }}
+                        {{ t('migrationConsole.planValue', { value: formatUsdAmount(snapshot.entitlement_charge_usd) }) }}
                       </div>
                       <div class="text-xs text-muted-foreground">
-                        成本 {{ formatUsdAmount(snapshot.upstream_cost_usd) }}
+                        {{ t('migrationConsole.costValue', { value: formatUsdAmount(snapshot.upstream_cost_usd) }) }}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -382,20 +382,20 @@
             class="mt-5"
           >
             <ObservedTable
-              title="计费预占"
+              :title="t('migrationConsole.billingReservation')"
               :loading="billingReservationLoading"
               :error="billingReservationError"
               :empty="billingReservations.length === 0"
-              empty-text="还没有预占记录"
+              :empty-text="t('migrationConsole.noReservations')"
               @refresh="loadBillingReservations"
             >
               <Table v-if="billingReservations.length > 0">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>请求</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>金额</TableHead>
-                    <TableHead>时间</TableHead>
+                    <TableHead>{{ t('migrationConsole.request') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.status') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.amount') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.time') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -408,7 +408,7 @@
                         {{ reservation.request_id }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        用户 {{ reservation.user_id || '未知' }}
+                        {{ t('migrationConsole.userValue', { value: reservation.user_id || t('migrationConsole.unknown') }) }}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -427,10 +427,10 @@
                         {{ formatUsdAmount(reservation.reserved_total_usd) }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        钱包 {{ formatUsdAmount(reservation.wallet_reserved_usd) }}
+                        {{ t('migrationConsole.walletValue', { value: formatUsdAmount(reservation.wallet_reserved_usd) }) }}
                       </div>
                       <div class="text-xs text-muted-foreground">
-                        套餐 {{ formatUsdAmount(reservation.entitlement_reserved_usd) }}
+                        {{ t('migrationConsole.planValue', { value: formatUsdAmount(reservation.entitlement_reserved_usd) }) }}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -447,21 +447,21 @@
             class="mt-5"
           >
             <ObservedTable
-              title="返利流水"
+              :title="t('migrationConsole.referralLedger')"
               :loading="referralRewardLedgerLoading"
               :error="referralRewardLedgerError"
               :empty="referralRewardLedger.length === 0"
-              empty-text="还没有返利流水"
+              :empty-text="t('migrationConsole.noReferralLedger')"
               @refresh="loadReferralRewardLedger"
             >
               <Table v-if="referralRewardLedger.length > 0">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>订单</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>金额</TableHead>
+                    <TableHead>{{ t('migrationConsole.order') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.status') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.amount') }}</TableHead>
                     <TableHead class="text-right">
-                      操作
+                      {{ t('migrationConsole.actions') }}
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -475,7 +475,7 @@
                         {{ ledger.order_id }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        邀请人 {{ ledger.inviter_user_id }}
+                        {{ t('migrationConsole.inviterValue', { value: ledger.inviter_user_id }) }}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -504,7 +504,7 @@
                           :disabled="referralRewardLedgerMutationId === ledger.id"
                           @click="retryReferralRewardLedger(ledger)"
                         >
-                          重试
+                          {{ t('migrationConsole.retry') }}
                         </Button>
                         <Button
                           size="sm"
@@ -513,7 +513,7 @@
                           :disabled="referralRewardLedgerMutationId === ledger.id"
                           @click="cancelReferralRewardLedger(ledger)"
                         >
-                          取消
+                          {{ t('migrationConsole.cancel') }}
                         </Button>
                       </div>
                       <span
@@ -534,20 +534,20 @@
             class="mt-5"
           >
             <ObservedTable
-              title="一致性看板"
+              :title="t('migrationConsole.consistencyBoard')"
               :loading="consistencyCheckLoading"
               :error="consistencyCheckError"
               :empty="consistencyChecks.length === 0"
-              empty-text="还没有一致性记录"
+              :empty-text="t('migrationConsole.noConsistency')"
               @refresh="loadConsistencyChecks"
             >
               <Table v-if="consistencyChecks.length > 0">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>请求</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>金额</TableHead>
-                    <TableHead>预占和路由</TableHead>
+                    <TableHead>{{ t('migrationConsole.request') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.status') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.amount') }}</TableHead>
+                    <TableHead>{{ t('migrationConsole.reservationRoute') }}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -560,7 +560,7 @@
                         {{ item.request_id }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        策略 {{ consistencyProductPlanLabel(item) }}
+                        {{ t('migrationConsole.policyValue', { value: consistencyProductPlanLabel(item) }) }}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -582,21 +582,21 @@
                     </TableCell>
                     <TableCell>
                       <div class="text-sm font-medium">
-                        合计 {{ formatUsdAmount(item.niffler_total_charge_usd) }}
+                        {{ t('migrationConsole.totalValue', { value: formatUsdAmount(item.niffler_total_charge_usd) }) }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        钱包 {{ formatUsdAmount(item.niffler_wallet_charge_usd) }}
+                        {{ t('migrationConsole.walletValue', { value: formatUsdAmount(item.niffler_wallet_charge_usd) }) }}
                       </div>
                       <div class="text-xs text-muted-foreground">
-                        套餐 {{ formatUsdAmount(item.niffler_entitlement_charge_usd) }}
+                        {{ t('migrationConsole.planValue', { value: formatUsdAmount(item.niffler_entitlement_charge_usd) }) }}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div class="text-xs">
-                        预占 {{ consistencyReservationLabel(item) }}
+                        {{ t('migrationConsole.reservationValue', { value: consistencyReservationLabel(item) }) }}
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
-                        路由 {{ item.successful_route_attempt_count }}/{{ item.route_attempt_count }} 成功
+                        {{ t('migrationConsole.routeSuccess', { success: item.successful_route_attempt_count, total: item.route_attempt_count }) }}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -612,6 +612,9 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import {
   Gauge,
   Loader2,
@@ -716,7 +719,7 @@ const ObservedTable = defineComponent({
           class: 'admin-filter-action',
           disabled: props.loading,
           onClick: () => emit('refresh'),
-        }, () => props.loading ? '刷新中...' : '刷新'),
+}, () => props.loading ? t('migrationConsole.refreshing') : t('migrationConsole.refresh')),
       ]),
       props.error
         ? h('p', { class: 'border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive' }, props.error)
@@ -724,7 +727,7 @@ const ObservedTable = defineComponent({
       props.loading
         ? h('div', { class: 'flex items-center justify-center py-12 text-sm text-muted-foreground' }, [
           h(Loader2, { class: 'mr-2 h-5 w-5 animate-spin' }),
-          '正在读取',
+ t('migrationConsole.loading'),
         ])
         : props.empty
           ? h('div', { class: 'py-12 text-center text-sm text-muted-foreground' }, props.emptyText)
@@ -740,11 +743,11 @@ const runtimeRolloutFlagOptions: Array<{
   label: string
   description: string
 }> = [
-  { key: 'enable_new_routing', label: '新调度', description: '按新模型读取路由配置。' },
-  { key: 'enable_settlement_snapshot', label: '结算快照', description: '记录价格和扣费依据。' },
-  { key: 'enable_error_return_rules', label: '错误提示', description: '按新规则返回用户文案。' },
-  { key: 'enable_billing_reservation', label: '钱包预占', description: '请求前预留钱包额度。' },
-  { key: 'enable_referral_ledger', label: '返利流水', description: '按新账本记录返利。' },
+{ key: 'enable_new_routing', label: t('migrationConsole.newRouting'), description: t('migrationConsole.newRoutingHint') },
+{ key: 'enable_settlement_snapshot', label: t('migrationConsole.settlementSnapshot'), description: t('migrationConsole.settlementSnapshotHint') },
+{ key: 'enable_error_return_rules', label: t('migrationConsole.errorRules'), description: t('migrationConsole.errorRulesHint') },
+{ key: 'enable_billing_reservation', label: t('migrationConsole.walletReservation'), description: t('migrationConsole.walletReservationHint') },
+{ key: 'enable_referral_ledger', label: t('migrationConsole.referralLedger'), description: t('migrationConsole.referralLedgerHint') },
 ]
 
 const defaultRuntimeRolloutForm = (): RuntimeRolloutForm => ({
@@ -856,7 +859,7 @@ async function loadSeedData() {
     selectedProductPlanId.value ||= productPlans.value[0]?.id ?? ''
     selectedRuntimeRolloutApiKeyId.value ||= standaloneApiKeys.value[0]?.id ?? ''
   } catch (err) {
-    showError(extractErrorMessage(err, '读取迁移对象失败'))
+    showError(extractErrorMessage(err, t('migrationConsole.loadTargetsFailed')))
   } finally {
     seedDataLoading.value = false
   }
@@ -872,7 +875,7 @@ async function loadRuntimeRolloutSettings() {
     })
     runtimeRolloutSettings.value = response.items
   } catch (err) {
-    runtimeRolloutError.value = extractErrorMessage(err, '读取灰度开关失败')
+  runtimeRolloutError.value = extractErrorMessage(err, t('migrationConsole.loadRolloutFailed'))
     showError(runtimeRolloutError.value)
   } finally {
     runtimeRolloutLoading.value = false
@@ -881,7 +884,7 @@ async function loadRuntimeRolloutSettings() {
 
 async function loadRuntimeRolloutPreview() {
   if (!selectedRuntimeRolloutApiKeyId.value) {
-    showError('请先选择密钥')
+    showError(t('migrationConsole.selectKeyFirst'))
     return
   }
   runtimeRolloutPreviewLoading.value = true
@@ -890,7 +893,7 @@ async function loadRuntimeRolloutPreview() {
     runtimeRolloutPreview.value = await getNifflerRuntimeRolloutPreview(selectedRuntimeRolloutApiKeyId.value)
   } catch (err) {
     runtimeRolloutPreview.value = null
-    runtimeRolloutPreviewError.value = extractErrorMessage(err, '读取预览失败')
+    runtimeRolloutPreviewError.value = extractErrorMessage(err, t('migrationConsole.loadPreviewFailed'))
     showError(runtimeRolloutPreviewError.value)
   } finally {
     runtimeRolloutPreviewLoading.value = false
@@ -899,11 +902,11 @@ async function loadRuntimeRolloutPreview() {
 
 async function saveSelectedProductPlanRuntimeRollout() {
   if (!selectedProductPlan.value) {
-    showError('请先选择策略')
+    showError(t('migrationConsole.selectPolicyFirst'))
     return
   }
   if (!selectedProductPlan.value.is_active) {
-    showError('只能登记启用的策略')
+    showError(t('migrationConsole.activePolicyOnly'))
     return
   }
   await saveRuntimeRolloutSetting('product_plan', selectedProductPlan.value.id)
@@ -911,11 +914,11 @@ async function saveSelectedProductPlanRuntimeRollout() {
 
 async function saveSelectedApiKeyRuntimeRollout() {
   if (!selectedRuntimeRolloutApiKey.value) {
-    showError('请先选择密钥')
+    showError(t('migrationConsole.selectKeyFirst'))
     return
   }
   if (!selectedRuntimeRolloutApiKey.value.is_active) {
-    showError('只能登记启用的密钥')
+    showError(t('migrationConsole.activeKeyOnly'))
     return
   }
   await saveRuntimeRolloutSetting('api_key', selectedRuntimeRolloutApiKey.value.id)
@@ -938,13 +941,13 @@ async function saveRuntimeRolloutSetting(
       enable_referral_ledger: runtimeRolloutForm.value.enable_referral_ledger,
       is_active: runtimeRolloutForm.value.is_active,
     })
-    success('灰度已保存')
+    success(t('migrationConsole.rolloutSaved'))
     await loadRuntimeRolloutSettings()
     if (selectedRuntimeRolloutApiKeyId.value) {
       await loadRuntimeRolloutPreview()
     }
   } catch (err) {
-    showError(extractErrorMessage(err, '保存灰度失败'))
+    showError(extractErrorMessage(err, t('migrationConsole.saveRolloutFailed')))
   } finally {
     savingRuntimeRolloutTargetKey.value = null
   }
@@ -957,7 +960,7 @@ async function loadBillingReservations() {
     const response = await listNifflerBillingReservations({ offset: 0, limit: 50 })
     billingReservations.value = response.items
   } catch (err) {
-    billingReservationError.value = extractErrorMessage(err, '读取预占失败')
+    billingReservationError.value = extractErrorMessage(err, t('migrationConsole.loadReservationFailed'))
     showError(billingReservationError.value)
   } finally {
     billingReservationLoading.value = false
@@ -971,7 +974,7 @@ async function loadSettlementSnapshots() {
     const response = await listNifflerSettlementSnapshots({ offset: 0, limit: 50 })
     settlementSnapshots.value = response.items
   } catch (err) {
-    settlementSnapshotError.value = extractErrorMessage(err, '读取结算快照失败')
+    settlementSnapshotError.value = extractErrorMessage(err, t('migrationConsole.loadSettlementFailed'))
     showError(settlementSnapshotError.value)
   } finally {
     settlementSnapshotLoading.value = false
@@ -985,7 +988,7 @@ async function loadReferralRewardLedger() {
     const response = await listNifflerReferralRewardLedger({ offset: 0, limit: 50 })
     referralRewardLedger.value = response.items
   } catch (err) {
-    referralRewardLedgerError.value = extractErrorMessage(err, '读取返利流水失败')
+    referralRewardLedgerError.value = extractErrorMessage(err, t('migrationConsole.loadReferralFailed'))
     showError(referralRewardLedgerError.value)
   } finally {
     referralRewardLedgerLoading.value = false
@@ -1001,10 +1004,10 @@ async function retryReferralRewardLedger(ledger: NifflerReferralRewardLedger) {
   referralRewardLedgerMutationId.value = ledger.id
   try {
     await retryNifflerReferralRewardLedger(ledger.id)
-    success('返利已重试')
+    success(t('migrationConsole.referralRetried'))
     await loadReferralRewardLedger()
   } catch (err) {
-    showError(extractErrorMessage(err, '重试返利失败'))
+    showError(extractErrorMessage(err, t('migrationConsole.retryReferralFailed')))
   } finally {
     referralRewardLedgerMutationId.value = null
   }
@@ -1015,10 +1018,10 @@ async function cancelReferralRewardLedger(ledger: NifflerReferralRewardLedger) {
   referralRewardLedgerMutationId.value = ledger.id
   try {
     await cancelNifflerReferralRewardLedger(ledger.id)
-    success('返利已取消')
+    success(t('migrationConsole.referralCancelled'))
     await loadReferralRewardLedger()
   } catch (err) {
-    showError(extractErrorMessage(err, '取消返利失败'))
+    showError(extractErrorMessage(err, t('migrationConsole.cancelReferralFailed')))
   } finally {
     referralRewardLedgerMutationId.value = null
   }
@@ -1031,7 +1034,7 @@ async function loadRouteAttempts() {
     const response = await listNifflerRouteAttempts({ offset: 0, limit: 50 })
     routeAttempts.value = response.items
   } catch (err) {
-    routeAttemptError.value = extractErrorMessage(err, '读取路由记录失败')
+    routeAttemptError.value = extractErrorMessage(err, t('migrationConsole.loadRoutesFailed'))
     showError(routeAttemptError.value)
   } finally {
     routeAttemptLoading.value = false
@@ -1045,7 +1048,7 @@ async function loadConsistencyChecks() {
     const response = await listNifflerConsistencyChecks({ offset: 0, limit: 50 })
     consistencyChecks.value = response.items
   } catch (err) {
-    consistencyCheckError.value = extractErrorMessage(err, '读取一致性看板失败')
+    consistencyCheckError.value = extractErrorMessage(err, t('migrationConsole.loadConsistencyFailed'))
     showError(consistencyCheckError.value)
   } finally {
     consistencyCheckLoading.value = false
@@ -1057,7 +1060,7 @@ function runtimeRolloutTargetKey(scope: NifflerRuntimeRolloutTargetScope, target
 }
 
 function runtimeRolloutTargetScopeLabel(scope: NifflerRuntimeRolloutTargetScope): string {
-  return scope === 'api_key' ? '密钥' : '产品策略'
+  return scope === 'api_key' ? t('migrationConsole.apiKey') : t('migrationConsole.productPlan')
 }
 
 function runtimeRolloutTargetLabel(setting: NifflerRuntimeRolloutSetting): string {
@@ -1078,11 +1081,11 @@ function runtimeRolloutEnabledLabels(
   >
 ): string[] {
   const labels: string[] = []
-  if (flags.enable_new_routing) labels.push('新调度')
-  if (flags.enable_settlement_snapshot) labels.push('结算快照')
-  if (flags.enable_error_return_rules) labels.push('错误提示')
-  if (flags.enable_billing_reservation) labels.push('钱包预占')
-  if (flags.enable_referral_ledger) labels.push('返利流水')
+  if (flags.enable_new_routing) labels.push(t('migrationConsole.newRouting'))
+  if (flags.enable_settlement_snapshot) labels.push(t('migrationConsole.settlementSnapshot'))
+  if (flags.enable_error_return_rules) labels.push(t('migrationConsole.errorRules'))
+  if (flags.enable_billing_reservation) labels.push(t('migrationConsole.walletReservation'))
+  if (flags.enable_referral_ledger) labels.push(t('migrationConsole.referralLedger'))
   return labels
 }
 
@@ -1108,31 +1111,31 @@ function reconciliationStatusVariant(status: string): 'default' | 'secondary' | 
 
 function billingReservationStatusLabel(status: NifflerBillingReservationStatus): string {
   const labels: Record<NifflerBillingReservationStatus, string> = {
-    active: '预占中',
-    settled: '已结算',
-    released: '已释放',
-    expired: '已过期',
-    manual_review: '人工处理',
+    active: t('migrationConsole.reservationActive'),
+    settled: t('migrationConsole.reservationSettled'),
+    released: t('migrationConsole.reservationReleased'),
+    expired: t('migrationConsole.reservationExpired'),
+    manual_review: t('migrationConsole.reservationManual'),
   }
   return labels[status] ?? status
 }
 
 function referralRewardLedgerStatusLabel(status: NifflerReferralRewardLedgerStatus): string {
   const labels: Record<NifflerReferralRewardLedgerStatus, string> = {
-    pending: '待发',
-    paid: '已发',
-    failed: '失败',
-    cancelled: '已取消',
+    pending: t('migrationConsole.referralPending'),
+    paid: t('migrationConsole.referralPaid'),
+    failed: t('migrationConsole.failed'),
+    cancelled: t('migrationConsole.cancelled'),
   }
   return labels[status] ?? status
 }
 
 function routeAttemptStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    success: '成功',
-    skipped: '跳过',
-    cancelled: '取消',
-    failed: '失败',
+    success: t('migrationConsole.success'),
+    skipped: t('migrationConsole.skipped'),
+    cancelled: t('migrationConsole.cancelled'),
+    failed: t('migrationConsole.failed'),
   }
   return labels[status] ?? status
 }
@@ -1145,32 +1148,32 @@ function routeAttemptStatusVariant(status: string): 'default' | 'secondary' | 'd
 }
 
 function routeAttemptServiceLabel(attempt: NifflerRouteAttempt): string {
-  return attempt.upstream_service_name || attempt.upstream_service_id || '未记录服务'
+  return attempt.upstream_service_name || attempt.upstream_service_id || t('migrationConsole.unrecordedService')
 }
 
 function routeAttemptAccountLabel(attempt: NifflerRouteAttempt): string {
   const contacts = [attempt.upstream_account_email, attempt.upstream_account_phone].filter(Boolean)
   if (contacts.length > 0) return contacts.join(' / ')
-  return attempt.upstream_account_display_name || attempt.upstream_account_id || '未记录账号'
+  return attempt.upstream_account_display_name || attempt.upstream_account_id || t('migrationConsole.unrecordedAccount')
 }
 
 function settlementSnapshotServiceLabel(snapshot: NifflerSettlementSnapshot): string {
-  return snapshot.upstream_service_name || snapshot.upstream_service_id || '未记录服务'
+  return snapshot.upstream_service_name || snapshot.upstream_service_id || t('migrationConsole.unrecordedService')
 }
 
 function settlementSnapshotAccountLabel(snapshot: NifflerSettlementSnapshot): string {
   const contacts = [snapshot.upstream_account_email, snapshot.upstream_account_phone].filter(Boolean)
   if (contacts.length > 0) return contacts.join(' / ')
-  return snapshot.upstream_account_display_name || snapshot.upstream_account_id || '未记录账号'
+  return snapshot.upstream_account_display_name || snapshot.upstream_account_id || t('migrationConsole.unrecordedAccount')
 }
 
 function formatLatencyMs(value?: number | null): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '无'
+  if (value === null || value === undefined || !Number.isFinite(value)) return t('migrationConsole.none')
   return `${Math.round(value)} ms`
 }
 
 function consistencyStatusLabel(status: string): string {
-  return status === 'ok' ? '一致' : '需检查'
+  return status === 'ok' ? t('migrationConsole.consistent') : t('migrationConsole.needsReview')
 }
 
 function consistencyStatusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
@@ -1178,28 +1181,28 @@ function consistencyStatusVariant(status: string): 'default' | 'secondary' | 'de
 }
 
 function consistencyProductPlanLabel(item: NifflerConsistencyCheck): string {
-  return item.product_plan_name || item.product_plan_id || '未绑定'
+  return item.product_plan_name || item.product_plan_id || t('migrationConsole.unbound')
 }
 
 function consistencyReservationLabel(item: NifflerConsistencyCheck): string {
-  if (!item.reservation_status) return '缺失'
+  if (!item.reservation_status) return t('migrationConsole.missing')
   const reason = item.reservation_release_reason ? ` / ${item.reservation_release_reason}` : ''
   return `${billingReservationStatusLabel(item.reservation_status)}${reason}`
 }
 
 function consistencyIssueLabel(issue: string): string {
   const labels: Record<string, string> = {
-    missing_legacy_usage: '缺旧使用记录',
-    missing_legacy_settlement: '缺旧结算',
-    legacy_not_settled: '旧结算未完成',
-    missing_legacy_wallet_charge: '缺钱包扣费',
-    wallet_charge_mismatch: '钱包金额不一致',
-    entitlement_charge_mismatch: '套餐金额不一致',
-    total_charge_mismatch: '合计金额不一致',
-    missing_billing_reservation: '缺预占',
-    reservation_not_finalized: '预占未完成',
-    reservation_manual_review: '预占需人工处理',
-    missing_route_attempt: '缺路由记录',
+    missing_legacy_usage: t('migrationConsole.issueMissingLegacyUsage'),
+    missing_legacy_settlement: t('migrationConsole.issueMissingLegacySettlement'),
+    legacy_not_settled: t('migrationConsole.issueLegacyNotSettled'),
+    missing_legacy_wallet_charge: t('migrationConsole.issueMissingWalletCharge'),
+    wallet_charge_mismatch: t('migrationConsole.issueWalletMismatch'),
+    entitlement_charge_mismatch: t('migrationConsole.issuePlanMismatch'),
+    total_charge_mismatch: t('migrationConsole.issueTotalMismatch'),
+    missing_billing_reservation: t('migrationConsole.issueMissingReservation'),
+    reservation_not_finalized: t('migrationConsole.issueReservationNotFinalized'),
+    reservation_manual_review: t('migrationConsole.issueReservationManual'),
+    missing_route_attempt: t('migrationConsole.issueMissingRoute'),
   }
   return labels[issue] ?? issue
 }

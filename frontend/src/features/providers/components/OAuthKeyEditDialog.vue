@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="isOpen"
-    title="编辑账号"
-    description="修改 OAuth 账号配置"
+    :title="t('oauthKeyEdit.title')"
+    :description="t('oauthKeyEdit.description')"
     :icon="SquarePen"
     size="xl"
     @update:model-value="handleDialogUpdate"
@@ -15,22 +15,22 @@
       <!-- 基本信息：账号名称 + 备注 -->
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <Label for="name">账号名称 *</Label>
+          <Label for="name">{{ t('oauthKeyEdit.name') }} *</Label>
           <Input
             id="name"
             v-model="form.name"
             required
-            placeholder="例如：主账号、备用账号"
+            :placeholder="t('oauthKeyEdit.namePlaceholder')"
             maxlength="100"
             autocomplete="off"
           />
         </div>
         <div>
-          <Label for="note">备注</Label>
+          <Label for="note">{{ t('oauthKeyEdit.note') }}</Label>
           <Input
             id="note"
             v-model="form.note"
-            placeholder="可选的备注信息"
+            :placeholder="t('oauthKeyEdit.notePlaceholder')"
           />
         </div>
       </div>
@@ -41,7 +41,7 @@
           <Label
             for="internal_priority"
             class="text-xs"
-          >优先级</Label>
+          >{{ t('oauthKeyEdit.priority') }}</Label>
           <Input
             id="internal_priority"
             v-model.number="form.internal_priority"
@@ -51,51 +51,51 @@
             class="h-8"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            越小越优先
+            {{ t('oauthKeyEdit.priorityHint') }}
           </p>
         </div>
         <div>
           <Label
             for="rpm_limit"
             class="text-xs"
-          >RPM 限制</Label>
+          >{{ t('oauthKeyEdit.rpmLimit') }}</Label>
           <Input
             id="rpm_limit"
             :model-value="form.rpm_limit ?? ''"
             type="number"
             min="1"
             max="10000"
-            placeholder="自适应"
+            :placeholder="t('oauthKeyEdit.adaptive')"
             class="h-8"
             @update:model-value="(v) => form.rpm_limit = parseNullableNumberInput(v, { min: 1, max: 10000 })"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            留空自适应
+            {{ t('oauthKeyEdit.adaptiveHint') }}
           </p>
         </div>
         <div>
           <Label
             for="concurrent_limit"
             class="text-xs"
-          >并发请求上限</Label>
+          >{{ t('oauthKeyEdit.concurrencyLimit') }}</Label>
           <Input
             id="concurrent_limit"
             :model-value="form.concurrent_limit ?? ''"
             type="number"
             min="0"
-            placeholder="不限制"
+            :placeholder="t('oauthKeyEdit.unlimited')"
             class="h-8"
             @update:model-value="(v) => form.concurrent_limit = parseNullableNumberInput(v, { min: 0 })"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            留空或 0 表示不限制
+            {{ t('oauthKeyEdit.unlimitedHint') }}
           </p>
         </div>
         <div>
           <Label
             for="cache_ttl_minutes"
             class="text-xs"
-          >缓存 TTL</Label>
+          >{{ t('oauthKeyEdit.cacheTtl') }}</Label>
           <Input
             id="cache_ttl_minutes"
             :model-value="form.cache_ttl_minutes ?? ''"
@@ -106,7 +106,7 @@
             @update:model-value="(v) => form.cache_ttl_minutes = parseNumberInput(v, { min: 0, max: 60 }) ?? 60"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            分钟，0 禁用，默认 60 分钟
+            {{ t('oauthKeyEdit.cacheTtlHint') }}
           </p>
         </div>
       </div>
@@ -115,9 +115,9 @@
       <div class="space-y-3 py-2 px-3 rounded-md border border-border/60 bg-muted/30">
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
-            <Label class="text-sm font-medium">自动获取上游可用模型</Label>
+            <Label class="text-sm font-medium">{{ t('oauthKeyEdit.autoFetch') }}</Label>
             <p class="text-xs text-muted-foreground">
-              定时更新上游模型, 配合模型映射使用
+              {{ t('oauthKeyEdit.autoFetchHint') }}
             </p>
             <p
               v-if="showAutoFetchWarning"
@@ -136,15 +136,15 @@
         >
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <Label class="text-xs">包含规则</Label>
+              <Label class="text-xs">{{ t('oauthKeyEdit.includeRules') }}</Label>
               <Input
                 v-model="form.model_include_patterns_text"
-                placeholder="gpt-*, claude-*, 留空包含全部"
+                :placeholder="t('oauthKeyEdit.includePlaceholder')"
                 class="h-8 text-sm"
               />
             </div>
             <div>
-              <Label class="text-xs">排除规则</Label>
+              <Label class="text-xs">{{ t('oauthKeyEdit.excludeRules') }}</Label>
               <Input
                 v-model="form.model_exclude_patterns_text"
                 placeholder="*-preview, *-beta"
@@ -153,7 +153,7 @@
             </div>
           </div>
           <p class="text-xs text-muted-foreground">
-            逗号分隔，支持 * ? 通配符，不区分大小写
+            {{ t('oauthKeyEdit.rulesHint') }}
           </p>
         </div>
       </div>
@@ -164,13 +164,13 @@
         variant="outline"
         @click="handleCancel"
       >
-        取消
+        {{ t('oauthKeyEdit.cancel') }}
       </Button>
       <Button
         :disabled="saving || !canSave"
         @click="handleSave"
       >
-        {{ saving ? '保存中...' : '保存' }}
+        {{ saving ? t('oauthKeyEdit.saving') : t('oauthKeyEdit.save') }}
       </Button>
     </template>
   </Dialog>
@@ -178,6 +178,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Dialog, Button, Input, Label, Switch } from '@/components/ui'
 import { SquarePen } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
@@ -195,6 +196,7 @@ const props = defineProps<{
   open: boolean
   editingKey: EndpointAPIKey | null
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -225,7 +227,7 @@ const autoFetchWarningMessage = computed(() => {
     ? props.editingKey.allowed_models
     : []
   if (models.length === 0) return ''
-  return `当前 Key 模型权限存在以下模型：${models.map(model => `“${model}”`).join('、')}，开启自动获取后将被覆盖`
+  return t('oauthKeyEdit.overwriteWarning', { models: models.map(model => `“${model}”`).join('、') })
 })
 
 // 表单是否可以保存
@@ -321,7 +323,7 @@ const {
 // 包装关闭逻辑：有未保存更改时弹出确认
 async function handleDialogUpdate(value: boolean) {
   if (!value && isDirty.value) {
-    const confirmed = await confirmWarning('有未保存的更改，确定要关闭吗？', '放弃更改')
+    const confirmed = await confirmWarning(t('oauthKeyEdit.unsavedConfirm'), t('oauthKeyEdit.discardChanges'))
     if (!confirmed) return
   }
   _baseHandleDialogUpdate(value)
@@ -329,7 +331,7 @@ async function handleDialogUpdate(value: boolean) {
 
 async function handleCancel() {
   if (isDirty.value) {
-    const confirmed = await confirmWarning('有未保存的更改，确定要关闭吗？', '放弃更改')
+    const confirmed = await confirmWarning(t('oauthKeyEdit.unsavedConfirm'), t('oauthKeyEdit.discardChanges'))
     if (!confirmed) return
   }
   _baseHandleCancel()
@@ -347,7 +349,7 @@ function parsePatternText(text: string): string[] {
 
 async function handleSave() {
   if (!props.editingKey) {
-    showError('无法保存：缺少账号信息', '错误')
+    showError(t('oauthKeyEdit.missingAccount'), t('oauthKeyEdit.error'))
     return
   }
 
@@ -368,12 +370,12 @@ async function handleSave() {
     }
 
     await updateProviderKey(props.editingKey.id, updateData)
-    success('账号已更新', '成功')
+    success(t('oauthKeyEdit.updated'), t('oauthKeyEdit.success'))
     emit('saved')
     emit('close')
   } catch (err: unknown) {
-    const errorMessage = parseApiError(err, '保存失败')
-    showError(errorMessage, '错误')
+    const errorMessage = parseApiError(err, t('oauthKeyEdit.saveFailed'))
+    showError(errorMessage, t('oauthKeyEdit.error'))
   } finally {
     saving.value = false
   }

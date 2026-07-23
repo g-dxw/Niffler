@@ -1,4 +1,6 @@
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { i18n } from '@/i18n'
 
 export type ConfirmVariant = 'danger' | 'destructive' | 'warning' | 'info' | 'question'
 
@@ -18,13 +20,14 @@ interface ConfirmState extends ConfirmOptions {
 const state = ref<ConfirmState>({
   isOpen: false,
   message: '',
-  title: '确认操作',
-  confirmText: '确认',
-  cancelText: '取消',
+  title: i18n.global.t('confirm.defaults.title'),
+  confirmText: i18n.global.t('confirm.defaults.confirm'),
+  cancelText: i18n.global.t('confirm.defaults.cancel'),
   variant: 'question'
 })
 
 export function useConfirm() {
+  const { t } = useI18n()
   /**
    * 显示确认对话框
    * @param options 对话框选项
@@ -34,10 +37,10 @@ export function useConfirm() {
     return new Promise((resolve) => {
       state.value = {
         isOpen: true,
-        title: options.title || '确认操作',
+        title: options.title || t('confirm.defaults.title'),
         message: options.message,
-        confirmText: options.confirmText || '确认',
-        cancelText: options.cancelText || '取消',
+        confirmText: options.confirmText || t('confirm.defaults.confirm'),
+        cancelText: options.cancelText || t('confirm.defaults.cancel'),
         variant: options.variant || 'question',
         resolve
       }
@@ -50,8 +53,8 @@ export function useConfirm() {
   const confirmDanger = (message: string, title?: string, confirmText?: string): Promise<boolean> => {
     return confirm({
       message,
-      title: title || '危险操作',
-      confirmText: confirmText || '删除',
+      title: title || t('confirm.dangerTitle'),
+      confirmText: confirmText || t('confirm.delete'),
       variant: 'danger'
     })
   }
@@ -62,8 +65,8 @@ export function useConfirm() {
   const confirmWarning = (message: string, title?: string): Promise<boolean> => {
     return confirm({
       message,
-      title: title || '警告',
-      confirmText: '继续',
+      title: title || t('confirm.warningTitle'),
+      confirmText: t('confirm.continue'),
       variant: 'warning'
     })
   }
@@ -74,8 +77,8 @@ export function useConfirm() {
   const confirmInfo = (message: string, title?: string): Promise<boolean> => {
     return confirm({
       message,
-      title: title || '提示',
-      confirmText: '确定',
+      title: title || t('confirm.infoTitle'),
+      confirmText: t('confirm.ok'),
       variant: 'info'
     })
   }

@@ -6,14 +6,14 @@
       class="absolute top-2 right-2 bg-gray-800/90 text-gray-100 px-3 py-2 rounded-lg text-sm shadow-lg border border-gray-600"
     >
       <div class="font-medium text-yellow-400">
-        Y = {{ crosshairStats.yValue.toFixed(1) }} 分钟
+        {{ t('scatterChart.yMinutes', { value: crosshairStats.yValue.toFixed(1) }) }}
       </div>
       <!-- 单个 dataset 时显示简单统计 -->
       <div
         v-if="crosshairStats.datasets.length === 1"
         class="mt-1"
       >
-        <span class="text-green-400">{{ crosshairStats.datasets[0].belowCount }}</span> / {{ crosshairStats.datasets[0].totalCount }} 点在横线以下
+        <span class="text-green-400">{{ crosshairStats.datasets[0].belowCount }}</span> / {{ t('scatterChart.pointsBelow', { total: crosshairStats.datasets[0].totalCount }) }}
         <span class="ml-2 text-blue-400">({{ crosshairStats.datasets[0].belowPercent.toFixed(1) }}%)</span>
       </div>
       <!-- 多个 dataset 时按模型分别显示 -->
@@ -36,7 +36,7 @@
         </div>
         <!-- 总计 -->
         <div class="flex items-center gap-2 pt-1 border-t border-gray-600 mt-1">
-          <span class="text-gray-300">总计:</span>
+          <span class="text-gray-300">{{ t('scatterChart.total') }}:</span>
           <span class="text-green-400">{{ crosshairStats.totalBelowCount }}</span>/<span class="text-gray-400">{{ crosshairStats.totalCount }}</span>
           <span class="text-blue-400">({{ crosshairStats.totalBelowPercent.toFixed(1) }}%)</span>
         </div>
@@ -47,6 +47,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
   LinearScale,
@@ -61,6 +62,8 @@ import {
 } from 'chart.js'
 import 'chartjs-adapter-date-fns'
 import type { TimeScatterData, TimeScatterOptions, TimeScatterPoint } from './scatter-types'
+
+const { t, locale } = useI18n()
 
 const props = withDefaults(defineProps<Props>(), {
   height: 300,
@@ -323,7 +326,7 @@ function formatDuration(ms: number): string {
   return `${minutes}m`
 }
 
-const defaultOptions: TimeScatterOptions = {
+const defaultOptions = computed<TimeScatterOptions>(() => ({
   responsive: true,
   maintainAspectRatio: false,
   interaction: {
@@ -376,7 +379,7 @@ const defaultOptions: TimeScatterOptions = {
       },
       title: {
         display: true,
-        text: '间隔 (分钟)',
+        text: t('scatterChart.intervalMinutes'),
         color: 'rgb(107, 114, 128)'
       },
       afterBuildTicks(scale: Scale) {
@@ -405,7 +408,7 @@ const defaultOptions: TimeScatterOptions = {
           const point = contexts[0].raw as { x: string; _originalX?: string }
           const timeStr = point._originalX || point.x
           const date = new Date(timeStr)
-          return date.toLocaleString('zh-CN', {
+          return date.toLocaleString(locale.value, {
             month: 'numeric',
             day: 'numeric',
             hour: '2-digit',
@@ -415,7 +418,7 @@ const defaultOptions: TimeScatterOptions = {
         label: (context) => {
           const point = context.raw as { x: string; y: number; _originalY?: number }
           const realY = point._originalY ?? toRealValue(point.y)
-          return `间隔: ${realY.toFixed(1)} 分钟`
+          return t('scatterChart.intervalValue', { value: realY.toFixed(1) })
         }
       }
     }
@@ -449,7 +452,7 @@ const defaultOptions: TimeScatterOptions = {
 
     chartInstance.draw()
   }
-}
+}))
 
 // 修改 crosshairPlugin 使用显示值
 const crosshairPluginWithTransform: Plugin<'scatter'> = {
@@ -542,7 +545,7 @@ function createChart() {
     type: 'scatter',
     data: chartData,
     options: {
-      ...defaultOptions,
+      ...defaultOptions.value,
       ...props.options
     },
     plugins: [crosshairPluginWithTransform, gapMarkerPlugin]
@@ -584,10 +587,10 @@ watch(
   ],
   updateChart
 )
-watch(() => props.options, () => {
+watch(() => [props.options, locale.value] as const, () => {
   if (chart) {
     chart.options = {
-      ...defaultOptions,
+      ...defaultOptions.value,
       ...props.options
     }
     chart.update('none')

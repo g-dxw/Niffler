@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="internalOpen"
-    :title="isEditMode ? '编辑提供商' : '添加提供商'"
-    :description="isEditMode ? '更新提供商配置。API 端点和密钥需在详情页面单独管理。' : '创建新的提供商配置。创建后可以为其添加 API 端点和密钥。'"
+    :title="isEditMode ? t('providerForm.editTitle') : t('providerForm.addTitle')"
+    :description="isEditMode ? t('providerForm.editDescription') : t('providerForm.addDescription')"
     :icon="isEditMode ? SquarePen : Server"
     size="xl"
     @update:model-value="handleDialogUpdate"
@@ -14,33 +14,33 @@
       <!-- 基本信息 -->
       <div class="space-y-3">
         <h3 class="text-sm font-medium border-b pb-2">
-          基本信息
+          {{ t('providerForm.basicInfo') }}
         </h3>
 
         <div class="space-y-1.5">
-          <Label for="name">名称 *</Label>
+          <Label for="name">{{ t('providerForm.name') }} *</Label>
           <Input
             id="name"
             v-model="form.name"
-            placeholder="例如: OpenAI 主账号"
+            :placeholder="t('providerForm.namePlaceholder')"
           />
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-1.5">
-            <Label>提供商类型</Label>
+            <Label>{{ t('providerForm.type') }}</Label>
             <Select
               v-model="form.provider_type"
               :disabled="isEditMode"
             >
               <SelectTrigger>
-                <SelectValue placeholder="请选择" />
+                <SelectValue :placeholder="t('providerForm.choose')" />
               </SelectTrigger>
               <SelectContent>
                 <!-- 新建模式：允许自定义及各反代类型 -->
                 <template v-if="!isEditMode">
                   <SelectItem value="custom">
-                    自定义
+                    {{ t('providerForm.custom') }}
                   </SelectItem>
                   <SelectItem value="vertex_ai">
                     Vertex AI
@@ -49,10 +49,10 @@
                     value="claude_code"
                     disabled
                   >
-                    ClaudeCode OAuth（暂不可用）
+                    {{ t('providerForm.claudeOAuthUnavailable') }}
                   </SelectItem>
                   <SelectItem value="claude_code_api">
-                    Claude Code 兼容 API
+                    {{ t('providerForm.claudeCompatible') }}
                   </SelectItem>
                   <SelectItem value="codex">
                     Codex
@@ -76,7 +76,7 @@
                 <!-- 编辑模式：显示所有类型（兼容已有数据） -->
                 <template v-else>
                   <SelectItem value="custom">
-                    自定义
+                    {{ t('providerForm.custom') }}
                   </SelectItem>
                   <SelectItem value="vertex_ai">
                     Vertex AI
@@ -85,7 +85,7 @@
                     ClaudeCode OAuth
                   </SelectItem>
                   <SelectItem value="claude_code_api">
-                    Claude Code 兼容 API
+                    {{ t('providerForm.claudeCompatible') }}
                   </SelectItem>
                   <SelectItem value="codex">
                     Codex
@@ -112,15 +112,15 @@
               v-if="!isEditMode && form.provider_type !== 'custom' && form.provider_type !== 'claude_code_api'"
               class="text-xs text-muted-foreground"
             >
-              反代使用固定端点且不可修改
+              {{ t('providerForm.fixedEndpointHint') }}
             </p>
           </div>
           <div class="space-y-1.5">
-            <Label for="website">主站链接</Label>
+            <Label for="website">{{ t('providerForm.website') }}</Label>
             <Input
               id="website"
               v-model="form.website"
-              placeholder="https://example.com（可选）"
+              :placeholder="t('providerForm.websitePlaceholder')"
             />
           </div>
         </div>
@@ -130,15 +130,15 @@
       <div class="space-y-3">
         <div class="grid grid-cols-2 gap-4">
           <h3 class="text-sm font-medium border-b pb-2">
-            计费与限流
+            {{ t('providerForm.billingRate') }}
           </h3>
           <h3 class="text-sm font-medium border-b pb-2">
-            请求配置
+            {{ t('providerForm.requestConfig') }}
           </h3>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-1.5">
-            <Label>计费类型</Label>
+            <Label>{{ t('providerForm.billingType') }}</Label>
             <Select
               v-model="form.billing_type"
             >
@@ -147,39 +147,39 @@
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="monthly_quota">
-                  月卡额度
+                  {{ t('providerForm.monthlyQuota') }}
                 </SelectItem>
                 <SelectItem value="pay_as_you_go">
-                  按量付费
+                  {{ t('providerForm.payAsYouGo') }}
                 </SelectItem>
                 <SelectItem value="free_tier">
-                  免费套餐
+                  {{ t('providerForm.freeTier') }}
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div class="space-y-1.5">
-            <Label>默认成本倍率</Label>
+            <Label>{{ t('providerForm.defaultCostMultiplier') }}</Label>
             <Input
               :model-value="form.cost_multiplier ?? ''"
               type="number"
               min="0"
               step="0.01"
-              placeholder="默认 1"
+              :placeholder="t('providerForm.defaultOne')"
               @update:model-value="(v) => form.cost_multiplier = parseNumberInput(v, { allowFloat: true })"
             />
             <p class="text-xs text-muted-foreground">
-              只影响平台成本统计，不影响用户扣费。
+              {{ t('providerForm.costMultiplierHint') }}
             </p>
           </div>
           <div class="space-y-1.5">
-            <Label>最大重试次数</Label>
+            <Label>{{ t('providerForm.maxRetries') }}</Label>
             <Input
               :model-value="form.max_retries ?? ''"
               type="number"
               min="0"
               max="999"
-              placeholder="默认 2"
+              :placeholder="t('providerForm.defaultTwo')"
               @update:model-value="(v) => form.max_retries = parseNumberInput(v)"
             />
           </div>
@@ -189,8 +189,8 @@
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-1.5">
             <Label>
-              流式首字节超时
-              <span class="text-xs text-muted-foreground">(秒)</span>
+              {{ t('providerForm.streamTimeout') }}
+              <span class="text-xs text-muted-foreground">({{ t('providerForm.seconds') }})</span>
             </Label>
             <Input
               :model-value="form.stream_first_byte_timeout ?? ''"
@@ -204,8 +204,8 @@
           </div>
           <div class="space-y-1.5">
             <Label>
-              非流式请求超时
-              <span class="text-xs text-muted-foreground">(秒)</span>
+              {{ t('providerForm.requestTimeout') }}
+              <span class="text-xs text-muted-foreground">({{ t('providerForm.seconds') }})</span>
             </Label>
             <Input
               :model-value="form.request_timeout ?? ''"
@@ -225,7 +225,7 @@
           class="grid grid-cols-2 gap-4 p-3 border rounded-lg bg-muted/50"
         >
           <div class="space-y-1.5">
-            <Label class="text-xs">周期额度 (USD)</Label>
+            <Label class="text-xs">{{ t('providerForm.periodQuota') }}</Label>
             <Input
               :model-value="form.monthly_quota_usd ?? ''"
               type="number"
@@ -235,7 +235,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-xs">重置周期 (天)</Label>
+            <Label class="text-xs">{{ t('providerForm.resetCycle') }}</Label>
             <Input
               :model-value="form.quota_reset_day ?? ''"
               type="number"
@@ -246,7 +246,7 @@
           </div>
           <div class="space-y-1.5">
             <Label class="text-xs">
-              周期开始时间 <span class="text-red-500">*</span>
+              {{ t('providerForm.periodStart') }} <span class="text-red-500">*</span>
             </Label>
             <Input
               v-model="form.quota_last_reset_at"
@@ -254,7 +254,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-xs">过期时间</Label>
+            <Label class="text-xs">{{ t('providerForm.expiry') }}</Label>
             <Input
               v-model="form.quota_expires_at"
               type="datetime-local"
@@ -266,14 +266,14 @@
       <!-- 功能开关 -->
       <div class="space-y-3">
         <h3 class="text-sm font-medium border-b pb-2">
-          功能开关
+          {{ t('providerForm.featureToggles') }}
         </h3>
 
         <div class="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
           <div class="space-y-0.5">
-            <span class="text-sm font-medium">格式转换保持优先级</span>
+            <span class="text-sm font-medium">{{ t('providerForm.keepPriority') }}</span>
             <p class="text-xs text-muted-foreground">
-              跨格式请求时保持原优先级排名，不降级到格式匹配的提供商之后
+              {{ t('providerForm.keepPriorityHint') }}
             </p>
           </div>
           <Switch
@@ -284,9 +284,9 @@
 
         <div class="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
           <div class="space-y-0.5">
-            <span class="text-sm font-medium">号池调度模式</span>
+            <span class="text-sm font-medium">{{ t('providerForm.poolMode') }}</span>
             <p class="text-xs text-muted-foreground">
-              启用后该提供商的密钥将由号池统一调度
+              {{ t('providerForm.poolModeHint') }}
             </p>
           </div>
           <Switch
@@ -300,9 +300,9 @@
           class="flex items-center justify-between p-3 border rounded-lg bg-muted/50"
         >
           <div class="space-y-0.5">
-            <span class="text-sm font-medium">模拟缓存模式</span>
+            <span class="text-sm font-medium">{{ t('providerForm.simulatedCache') }}</span>
             <p class="text-xs text-muted-foreground leading-relaxed">
-              启用后仅对 Kiro 请求模拟 prompt cache 读写计量。
+              {{ t('providerForm.simulatedCacheHint') }}
             </p>
           </div>
           <Switch
@@ -313,9 +313,9 @@
 
         <div class="flex items-center justify-between gap-4 p-3 border rounded-lg bg-muted/50">
           <div class="space-y-0.5">
-            <span class="text-sm font-medium">敏感信息保护</span>
+            <span class="text-sm font-medium">{{ t('providerForm.piiProtection') }}</span>
             <p class="text-xs text-muted-foreground leading-relaxed">
-              请前往模块管理-敏感信息保护中配置详细规则。
+              {{ t('providerForm.piiProtectionHint') }}
             </p>
           </div>
         </div>
@@ -329,13 +329,13 @@
         :disabled="loading"
         @click="handleCancel"
       >
-        取消
+        {{ t('providerForm.cancel') }}
       </Button>
       <Button
         :disabled="loading || !form.name"
         @click="handleSubmit"
       >
-        {{ loading ? (isEditMode ? '保存中...' : '创建中...') : (isEditMode ? '保存' : '创建') }}
+        {{ loading ? (isEditMode ? t('providerForm.saving') : t('providerForm.creating')) : (isEditMode ? t('providerForm.save') : t('providerForm.create')) }}
       </Button>
     </template>
   </Dialog>
@@ -343,6 +343,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Dialog,
   Button,
@@ -373,6 +374,7 @@ const props = defineProps<{
   provider?: ProviderWithEndpointsSummary | null  // 编辑模式时传入
   maxPriority?: number  // 当前已有的最大优先级值
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -510,24 +512,24 @@ watch(() => form.value.provider_type, () => {
 // 提交表单
 const handleSubmit = async () => {
   if (!isEditMode.value && form.value.provider_type === 'claude_code') {
-    showError('ClaudeCode OAuth 提供商类型暂时禁用，请使用 Claude Code 兼容 API 接入第三方接口', '验证失败')
+    showError(t('providerForm.claudeOAuthDisabled'), t('providerForm.validationFailed'))
     return
   }
 
   // 月卡类型必须设置周期开始时间
   if (form.value.billing_type === 'monthly_quota' && !form.value.quota_last_reset_at) {
-    showError('月卡类型必须设置周期开始时间', '验证失败')
+    showError(t('providerForm.periodStartRequired'), t('providerForm.validationFailed'))
     return
   }
 
   const quotaLastResetAt = dateTimeLocalToRfc3339(form.value.quota_last_reset_at)
   if (form.value.billing_type === 'monthly_quota' && !quotaLastResetAt) {
-    showError('周期开始时间必须是合法时间', '验证失败')
+    showError(t('providerForm.invalidPeriodStart'), t('providerForm.validationFailed'))
     return
   }
   const quotaExpiresAt = dateTimeLocalToRfc3339(form.value.quota_expires_at)
   if (form.value.quota_expires_at && !quotaExpiresAt) {
-    showError('过期时间必须是合法时间', '验证失败')
+    showError(t('providerForm.invalidExpiry'), t('providerForm.validationFailed'))
     return
   }
 
@@ -572,19 +574,19 @@ const handleSubmit = async () => {
         ...basePayload,
         provider_priority: form.value.provider_priority,
       })
-      success('提供商更新成功')
+      success(t('providerForm.updated'))
       emit('providerUpdated', updated)
     } else {
       // 创建提供商（优先级由后端自动置顶）
       await createProvider(basePayload)
-      success('提供商已创建，请继续添加端点和密钥，或在优先级管理中调整顺序', '创建成功')
+      success(t('providerForm.createdHint'), t('providerForm.created'))
       emit('providerCreated')
     }
 
     emit('update:modelValue', false)
   } catch (error: unknown) {
-    const action = isEditMode.value ? '更新' : '创建'
-    showError(parseApiError(error, `${action}提供商失败`), `${action}失败`)
+    const action = isEditMode.value ? t('providerForm.update') : t('providerForm.create')
+    showError(parseApiError(error, t('providerForm.actionFailed', { action })), t('providerForm.actionFailedTitle', { action }))
   } finally {
     loading.value = false
   }

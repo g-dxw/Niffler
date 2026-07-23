@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    :title="providerName ? `批量管理模型 - ${providerName}` : '批量管理模型'"
-    description="选中的模型将被关联到提供商，取消选中将移除关联"
+    :title="providerName ? t('batchModels.titleWithProvider', { name: providerName }) : t('batchModels.title')"
+    :description="t('batchModels.description')"
     :icon="Layers"
     size="2xl"
     @update:model-value="handleDialogUpdate"
@@ -15,7 +15,7 @@
             <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               v-model="searchQuery"
-              placeholder="搜索模型..."
+              :placeholder="t('batchModels.search')"
               class="pl-8 h-9"
             />
           </div>
@@ -38,7 +38,7 @@
                   class="flex items-center justify-between px-3 py-2 bg-muted sticky top-0 z-10"
                 >
                   <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium">全局模型</span>
+                    <span class="text-xs font-medium">{{ t('batchModels.globalModels') }}</span>
                     <span class="text-xs text-muted-foreground">({{ filteredGlobalModels.length }})</span>
                   </div>
                   <button
@@ -47,7 +47,7 @@
                     class="text-xs text-primary hover:underline shrink-0"
                     @click.stop="toggleAllGlobalModels"
                   >
-                    {{ isAllGlobalModelsSelected ? '取消全选' : '全选' }}
+                    {{ isAllGlobalModelsSelected ? t('batchModels.deselectAll') : t('batchModels.selectAll') }}
                   </button>
                 </div>
                 <div class="space-y-1 p-2">
@@ -85,10 +85,10 @@
               >
                 <Layers class="w-10 h-10 mb-2 opacity-30" />
                 <p class="text-sm">
-                  {{ searchQuery ? '无匹配结果' : '暂无可用全局模型' }}
+                  {{ searchQuery ? t('batchModels.noMatches') : t('batchModels.noModels') }}
                 </p>
                 <p class="text-xs mt-1">
-                  请先前往"模型目录"页面创建全局模型
+                  {{ t('batchModels.createFirstHint') }}
                 </p>
               </div>
             </template>
@@ -99,7 +99,7 @@
     <template #footer>
       <div class="flex items-center justify-between w-full">
         <p class="text-xs text-muted-foreground">
-          {{ hasChanges ? `${pendingChangesCount} 项更改待保存` : '' }}
+          {{ hasChanges ? t('batchModels.pendingChanges', { count: pendingChangesCount }) : '' }}
         </p>
         <div class="flex items-center gap-2">
           <Button
@@ -110,13 +110,13 @@
               v-if="saving"
               class="w-4 h-4 mr-1 animate-spin"
             />
-            {{ saving ? '保存中...' : '保存' }}
+            {{ saving ? t('batchModels.saving') : t('batchModels.save') }}
           </Button>
           <Button
             variant="outline"
             @click="handleClose"
           >
-            关闭
+            {{ t('batchModels.close') }}
           </Button>
         </div>
       </div>
@@ -126,6 +126,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Layers, Loader2, Search, Check } from 'lucide-vue-next'
 import Dialog from '@/components/ui/dialog/Dialog.vue'
 import Button from '@/components/ui/button.vue'
@@ -157,6 +158,7 @@ const emit = defineEmits<{
 
 const { error: showError, success } = useToast()
 const { confirmWarning } = useConfirm()
+const { t } = useI18n()
 
 // 状态
 const loadingGlobalModels = ref(false)
@@ -267,7 +269,7 @@ function toggleAllGlobalModels() {
 // 处理关闭
 async function handleClose() {
   if (hasChanges.value) {
-    const confirmed = await confirmWarning('有未保存的更改，确定要关闭吗？', '放弃更改')
+    const confirmed = await confirmWarning(t('batchModels.unsavedConfirm'), t('batchModels.discard'))
     if (!confirmed) return
   }
   emit('update:open', false)
@@ -276,7 +278,7 @@ async function handleClose() {
 // 处理对话框状态变更
 async function handleDialogUpdate(value: boolean) {
   if (!value && hasChanges.value) {
-    const confirmed = await confirmWarning('有未保存的更改，确定要关闭吗？', '放弃更改')
+    const confirmed = await confirmWarning(t('batchModels.unsavedConfirm'), t('batchModels.discard'))
     if (!confirmed) return
   }
   emit('update:open', value)
@@ -301,7 +303,7 @@ async function handleSave() {
           await deleteModel(props.providerId, existingModel.id)
           totalSuccess++
         } catch (err: unknown) {
-          allErrors.push(parseApiError(err, '移除失败'))
+          allErrors.push(parseApiError(err, t('batchModels.removeFailed')))
         }
       }
     }
@@ -316,22 +318,22 @@ async function handleSave() {
           allErrors.push(...result.errors.map(e => e.error))
         }
       } catch (err: unknown) {
-        allErrors.push(parseApiError(err, '批量添加全局模型失败'))
+        allErrors.push(parseApiError(err, t('batchModels.addFailed')))
       }
     }
 
     if (totalSuccess > 0) {
-      success(`成功处理 ${totalSuccess} 个模型`)
+      success(t('batchModels.processed', { count: totalSuccess }))
     }
 
     if (allErrors.length > 0) {
-      showError(`部分操作失败: ${allErrors.slice(0, 3).join(', ')}${allErrors.length > 3 ? '...' : ''}`, '警告')
+      showError(t('batchModels.partialFailed', { errors: `${allErrors.slice(0, 3).join(', ')}${allErrors.length > 3 ? '...' : ''}` }), t('batchModels.warning'))
     }
 
     emit('changed')
     emit('update:open', false)
   } catch (err: unknown) {
-    showError(parseApiError(err, '保存失败'), '错误')
+    showError(parseApiError(err, t('batchModels.saveFailed')), t('batchModels.error'))
     if (hasAnyOperation) {
       emit('changed')
     }
@@ -371,7 +373,7 @@ async function loadGlobalModels() {
     const response = await getGlobalModels({ limit: 1000 })
     allGlobalModels.value = response.models
   } catch (err: unknown) {
-    showError(parseApiError(err, '加载全局模型失败'), '错误')
+    showError(parseApiError(err, t('batchModels.loadGlobalFailed')), t('batchModels.error'))
   } finally {
     loadingGlobalModels.value = false
   }
@@ -382,7 +384,7 @@ async function loadExistingModels() {
   try {
     existingModels.value = await getProviderModels(props.providerId)
   } catch (err: unknown) {
-    showError(parseApiError(err, '加载已关联模型失败'), '错误')
+    showError(parseApiError(err, t('batchModels.loadLinkedFailed')), t('batchModels.error'))
   }
 }
 </script>

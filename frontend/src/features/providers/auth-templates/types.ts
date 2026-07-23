@@ -76,9 +76,9 @@ export interface BalanceExtraItem {
  */
 export const PROXY_NODE_FIELD: AuthTemplateField = {
   key: 'proxy_node_id',
-  label: '代理节点',
+  label: i18n.global.t('providerUi.proxyNode'),
   type: 'select',
-  placeholder: '选择代理节点...',
+  placeholder: i18n.global.t('providerUi.chooseProxyNode'),
   required: false,
 }
 
@@ -87,7 +87,7 @@ export const PROXY_NODE_FIELD: AuthTemplateField = {
  * 由 ProviderAuthDialog 特殊渲染为代理节点选择器
  */
 export const PROXY_FIELD_GROUP: AuthTemplateFieldGroup = {
-  title: '代理配置',
+  title: i18n.global.t('providerUi.proxyConfig'),
   fields: [PROXY_NODE_FIELD],
   collapsible: true,
   defaultExpanded: false,
@@ -137,3 +137,4 @@ export function parseProxyConfig(config: Record<string, unknown> | null | undefi
     proxy_node_id: '',
   }
 }
+import { i18n } from '@/i18n'

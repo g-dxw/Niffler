@@ -9,6 +9,9 @@ const RESERVED_PARAMS = new Set([
   'stream',
   'partial_images',
 ])
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
 
 export function parseAdvancedParams(value: string): Record<string, unknown> {
   const trimmed = value.trim()
@@ -18,18 +21,18 @@ export function parseAdvancedParams(value: string): Record<string, unknown> {
   try {
     parsed = JSON.parse(trimmed)
   } catch {
-    throw new Error('高级参数不是有效的 JSON')
+    throw new Error(t('imageTaskErrors.advancedJson'))
   }
 
   if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-    throw new Error('高级参数必须是一个 JSON 对象')
+    throw new Error(t('imageTaskErrors.advancedObject'))
   }
 
   const result: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(parsed)) {
     if (key.startsWith('_')) continue
     if (RESERVED_PARAMS.has(key)) {
-      throw new Error(`高级参数不能覆盖 ${key}`)
+      throw new Error(t('imageTaskErrors.reservedParam', { key }))
     }
     result[key] = item
   }

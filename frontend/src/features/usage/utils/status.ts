@@ -1,4 +1,5 @@
 import type { RequestStatus, UsageRecord } from '../types'
+import { i18n } from '@/i18n'
 
 export type TimelineFinalStatus = 'success' | 'failed' | 'streaming' | 'pending' | 'cancelled'
 
@@ -106,8 +107,8 @@ export function formatUsageStreamLabel(
   >
 ): string {
   const { clientRequestedStream, upstreamStream } = resolveUsageStreamModes(record)
-  const clientLabel = clientRequestedStream ? '流式' : '标准'
-  const upstreamLabel = upstreamStream ? '流式' : '标准'
+  const clientLabel = clientRequestedStream ? i18n.global.t('usageUi.streaming') : i18n.global.t('usageUi.standard')
+  const upstreamLabel = upstreamStream ? i18n.global.t('usageUi.streaming') : i18n.global.t('usageUi.standard')
 
   if (clientRequestedStream === upstreamStream) {
     return clientLabel
@@ -117,8 +118,8 @@ export function formatUsageStreamLabel(
 }
 
 export interface UsageStreamLabelSegments {
-  client: '流式' | '标准'
-  upstream: '流式' | '标准'
+  client: string
+  upstream: string
   hasConversion: boolean
 }
 
@@ -135,8 +136,8 @@ export function resolveUsageStreamLabelSegments(
 ): UsageStreamLabelSegments {
   const { clientRequestedStream, upstreamStream } = resolveUsageStreamModes(record)
   return {
-    client: clientRequestedStream ? '流式' : '标准',
-    upstream: upstreamStream ? '流式' : '标准',
+    client: clientRequestedStream ? i18n.global.t('usageUi.streaming') : i18n.global.t('usageUi.standard'),
+    upstream: upstreamStream ? i18n.global.t('usageUi.streaming') : i18n.global.t('usageUi.standard'),
     hasConversion: clientRequestedStream !== upstreamStream,
   }
 }

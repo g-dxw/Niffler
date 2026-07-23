@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue'
 import { useToast } from './useToast'
 import { parseApiError } from '@/utils/errorParser'
+import { useI18n } from 'vue-i18n'
 
 /**
  * 异步操作通用逻辑
@@ -65,6 +66,7 @@ export interface UseAsyncActionReturn {
 }
 
 export function useAsyncAction(): UseAsyncActionReturn {
+  const { t } = useI18n()
   const loading = ref(false)
   const { success, error: showError } = useToast()
 
@@ -76,7 +78,7 @@ export function useAsyncAction(): UseAsyncActionReturn {
       successMessage,
       successTitle,
       errorMessage,
-      errorTitle = '错误',
+      errorTitle = t('common.error'),
       onSuccess,
       onError,
       showErrorToast = true,
@@ -99,7 +101,7 @@ export function useAsyncAction(): UseAsyncActionReturn {
       return result
     } catch (error) {
       // 解析错误消息
-      const message = errorMessage || parseApiError(error, '操作失败')
+      const message = errorMessage || parseApiError(error, t('common.operationFailed'))
 
       // 显示错误消息
       if (showErrorToast) {

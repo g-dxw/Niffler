@@ -7,7 +7,7 @@
     >
       <button
         class="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition"
-        :title="statsExpanded ? '收起用量分析' : '展开用量分析'"
+        :title="statsExpanded ? t('usage.collapse') : t('usage.expand')"
         @click="statsExpanded = !statsExpanded"
       >
         <PanelTopClose
@@ -30,7 +30,7 @@
       <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ActivityHeatmapCard
           :data="activityHeatmapData"
-          :title="isAdminPage ? '总体活跃天数' : '我的活跃天数'"
+          :title="isAdminPage ? t('usage.allActiveDays') : t('usage.myActiveDays')"
           :is-loading="isLoadingHeatmap"
           :has-error="heatmapError"
         />
@@ -132,6 +132,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useLocalStorage } from '@vueuse/core'
 import { useAuthStore } from '@/stores/auth'
@@ -166,6 +167,7 @@ import type { ActivityHeatmap } from '@/types/activity'
 import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
+const { t } = useI18n()
 const { warning } = useToast()
 const authStore = useAuthStore()
 
@@ -227,9 +229,9 @@ function getIntervalTimelineHours(dateRange: DateRangeParams): number {
 }
 
 function formatIntervalTimelineWindow(hours: number): string {
-  if (hours === 24) return '最近24小时'
-  if (hours % 24 === 0) return `最近${hours / 24}天`
-  return `最近${hours}小时`
+  if (hours === 24) return t('usage.last24Hours')
+  if (hours % 24 === 0) return t('usage.lastDays', { count: hours / 24 })
+  return t('usage.lastHours', { count: hours })
 }
 
 // 筛选状态
@@ -266,7 +268,7 @@ const isLoadingHeatmap = ref(false)
 const heatmapError = ref(false)
 const intervalTimelineHours = computed(() => getIntervalTimelineHours(timeRange.value))
 const intervalTimelineTitle = computed(() => {
-  const baseTitle = isAdminPage.value ? '请求间隔时间线' : '我的请求间隔'
+  const baseTitle = isAdminPage.value ? t('usage.timeline') : t('usage.myTimeline')
   return `${baseTitle}（${formatIntervalTimelineWindow(intervalTimelineHours.value)}）`
 })
 const ADMIN_ANALYTICS_REFRESH_INTERVAL = 60000
@@ -335,14 +337,14 @@ async function refreshAdminAnalytics(options: { force?: boolean } = {}) {
       }
       hasSuccessfulRefresh = !hadFailure
       if (hadFailure) {
-        warning('统计数据加载失败，请刷新重试')
+    warning(t('usage.statsLoadFailed'))
       }
     } catch (error) {
       if (refreshGeneration !== adminAnalyticsRefreshGeneration) {
         return
       }
       log.error('加载统计数据失败:', error)
-      warning('统计数据加载失败，请刷新重试')
+    warning(t('usage.statsLoadFailed'))
     }
 
     if (hasSuccessfulRefresh && refreshGeneration === adminAnalyticsRefreshGeneration) {
@@ -646,7 +648,7 @@ onMounted(async () => {
     await Promise.allSettled([
       loadStats(timeRange.value).catch(err => {
         log.error('加载统计数据失败:', err)
-        warning('统计数据加载失败，请刷新重试')
+    warning(t('usage.statsLoadFailed'))
       }),
       loadRecords(
         { page: currentPage.value, pageSize: pageSize.value },
@@ -654,7 +656,7 @@ onMounted(async () => {
         timeRange.value
       ).catch(err => {
         log.error('加载记录失败:', err)
-        warning('使用记录加载失败，请刷新重试')
+    warning(t('usage.recordsLoadFailed'))
       }),
       loadHeatmapData().catch(err => {
         log.error('加载热力图数据失败:', err)

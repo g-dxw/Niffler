@@ -18,7 +18,7 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
   important: {
     icon: AlertCircle,
     iconColor: 'text-rose-600 dark:text-rose-400',
-    label: '重要公告',
+  label: i18n.global.t('announcementUi.important'),
     bgColor: 'bg-rose-50 dark:bg-rose-950/30',
     borderColor: 'border-rose-200 dark:border-rose-800',
     textColor: 'text-rose-800 dark:text-rose-200'
@@ -26,7 +26,7 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
   warning: {
     icon: AlertTriangle,
     iconColor: 'text-amber-600 dark:text-amber-400',
-    label: '警告通知',
+  label: i18n.global.t('announcementUi.warning'),
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
     borderColor: 'border-amber-200 dark:border-amber-800',
     textColor: 'text-amber-800 dark:text-amber-200'
@@ -34,7 +34,7 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
   maintenance: {
     icon: Wrench,
     iconColor: 'text-orange-600 dark:text-orange-400',
-    label: '维护通知',
+  label: i18n.global.t('announcementUi.maintenance'),
     bgColor: 'bg-orange-50 dark:bg-orange-950/30',
     borderColor: 'border-orange-200 dark:border-orange-800',
     textColor: 'text-orange-800 dark:text-orange-200'
@@ -42,7 +42,7 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
   info: {
     icon: Info,
     iconColor: 'text-primary dark:text-primary',
-    label: '系统公告',
+  label: i18n.global.t('announcementUi.system'),
     bgColor: 'bg-primary/5',
     borderColor: 'border-primary/20',
     textColor: 'text-foreground'
@@ -118,3 +118,4 @@ export function getPlainTextSummary(content: string, maxLength = 120): string {
 
   return `${cleaned.slice(0, maxLength).trim()}...`
 }
+import { i18n } from '@/i18n'

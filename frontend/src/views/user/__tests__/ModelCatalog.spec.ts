@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, type App } from 'vue'
+import { createApp, nextTick, type App } from '@/test/vue'
 
 import type { PublicGlobalModel } from '@/api/public-models'
 import UserModelDetailDrawer from '../components/UserModelDetailDrawer.vue'

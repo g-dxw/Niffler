@@ -9,22 +9,23 @@
       <div class="px-4 sm:px-6 py-3 sm:py-3.5 border-b border-border/60">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div>
-            <h3 class="text-sm sm:text-base font-semibold">
-              {{ isAdminPage ? '管理令牌' : '访问令牌' }}
+            <h3 v-if="false" class="text-sm sm:text-base font-semibold">
+              {{ isAdminPage ? t('managementTokens.title') : t('managementTokens.accessTitle') }}
             </h3>
+            <h3 class="text-sm sm:text-base font-semibold">{{ isAdminPage ? t('managementTokens.title') : t('managementTokens.accessTitle') }}</h3>
             <p class="text-xs text-muted-foreground mt-0.5">
               <template v-if="quota">
-                已创建 {{ quota.used }}/{{ quota.max }} 个令牌
+                {{ t('managementTokens.created') }} {{ quota.used }}/{{ quota.max }}
                 <span
                   v-if="quota.used >= quota.max"
                   class="text-destructive font-medium"
-                >（已达上限）</span>
+                >（{{ t('managementTokens.limit') }}）</span>
               </template>
               <template v-else-if="canManageTokens">
-                用于程序化访问管理 API 的令牌
+                {{ t('managementTokens.description') }}
               </template>
               <template v-else>
-                仅管理员可以创建和管理此类令牌
+                {{ t('managementTokens.adminOnly') }}
               </template>
             </p>
           </div>
@@ -37,7 +38,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="创建新令牌"
+              :title="t('managementTokens.createNew')"
               :disabled="quota ? quota.used >= quota.max : false"
               @click="openCreateDialog"
             >
@@ -58,7 +59,7 @@
         v-if="loading"
         class="flex items-center justify-center py-12"
       >
-        <LoadingState message="加载中..." />
+        <LoadingState :message="t('managementTokens.loading')" />
       </div>
 
       <!-- 空状态 -->
@@ -67,8 +68,8 @@
         class="flex items-center justify-center py-12"
       >
         <EmptyState
-          title="暂无访问令牌"
-          description="创建你的第一个访问令牌开始使用管理 API"
+          :title="t('managementTokens.empty')"
+          :description="t('managementTokens.emptyHint')"
           :icon="KeyRound"
         >
           <template #actions>
@@ -79,7 +80,7 @@
               @click="openCreateDialog"
             >
               <Plus class="mr-2 h-4 w-4" />
-              创建访问令牌
+              {{ t('managementTokens.create') }}
             </Button>
           </template>
         </EmptyState>
@@ -94,37 +95,37 @@
           <TableHeader>
             <TableRow class="border-b border-border/60 hover:bg-transparent">
               <TableHead class="min-w-[180px] h-12 font-semibold">
-                名称
+                {{ t('managementTokens.name') }}
               </TableHead>
               <TableHead class="min-w-[160px] h-12 font-semibold">
-                令牌
+                {{ t('managementTokens.token') }}
               </TableHead>
               <TableHead
                 v-if="isAdminPage"
                 class="min-w-[160px] h-12 font-semibold"
               >
-                所属用户
+                {{ t('managementTokens.owner') }}
               </TableHead>
               <TableHead class="min-w-[150px] h-12 font-semibold">
-                权限
+                {{ t('managementTokens.permissions') }}
               </TableHead>
               <TableHead class="min-w-[150px] h-12 font-semibold">
-                IP 限制
+                {{ t('managementTokens.ipLimit') }}
               </TableHead>
               <TableHead class="min-w-[80px] h-12 font-semibold text-center">
-                使用次数
+                {{ t('managementTokens.usage') }}
               </TableHead>
               <TableHead class="min-w-[70px] h-12 font-semibold text-center">
-                状态
+                {{ t('managementTokens.status') }}
               </TableHead>
               <TableHead class="min-w-[100px] h-12 font-semibold">
-                时间
+                {{ t('managementTokens.time') }}
               </TableHead>
               <TableHead
                 v-if="canManageTokens"
                 class="min-w-[100px] h-12 font-semibold text-center"
               >
-                操作
+                {{ t('managementTokens.actions') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -164,7 +165,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-6 w-6"
-                    title="重新生成令牌"
+                    :title="t('managementTokens.regenerate')"
                     @click="confirmRegenerate(token)"
                   >
                     <RefreshCw class="h-3.5 w-3.5" />
@@ -198,10 +199,10 @@
 
               <TableCell class="py-4 text-xs text-muted-foreground">
                 <div class="truncate">
-                  {{ token.allowed_ips?.length ? token.allowed_ips.join(', ') : '不限制' }}
+                  {{ token.allowed_ips?.length ? token.allowed_ips.join(', ') : t('managementTokens.unrestricted') }}
                 </div>
                 <div class="mt-1">
-                  {{ token.last_used_ip ? `最后 IP ${token.last_used_ip}` : '暂无最后 IP' }}
+                  {{ token.last_used_ip ? `${t('managementTokens.lastIp')} ${token.last_used_ip}` : t('managementTokens.noLastIp') }}
                 </div>
               </TableCell>
 
@@ -225,10 +226,10 @@
               <!-- 时间 -->
               <TableCell class="py-4 text-sm text-muted-foreground">
                 <div class="text-xs">
-                  创建于 {{ formatDate(token.created_at) }}
+                  {{ t('managementTokens.createdAt') }} {{ formatDate(token.created_at) }}
                 </div>
                 <div class="text-xs mt-1">
-                  {{ token.last_used_at ? `最后使用 ${formatRelativeTime(token.last_used_at)}` : '从未使用' }}
+                  {{ token.last_used_at ? `${t('managementTokens.lastUsed')} ${formatRelativeTime(token.last_used_at)}` : t('managementTokens.neverUsed') }}
                 </div>
               </TableCell>
 
@@ -242,7 +243,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    title="编辑"
+                    :title="t('managementTokens.edit')"
                     @click="openEditDialog(token)"
                   >
                     <Pencil class="h-4 w-4" />
@@ -251,7 +252,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    :title="token.is_active ? '禁用' : '启用'"
+                    :title="token.is_active ? t('managementTokens.disabled') : t('managementTokens.enabled')"
                     @click="toggleToken(token)"
                   >
                     <Power class="h-4 w-4" />
@@ -260,7 +261,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    title="删除"
+                    :title="t('managementTokens.delete')"
                     @click="confirmDelete(token)"
                   >
                     <Trash2 class="h-4 w-4" />
@@ -275,13 +276,13 @@
       <!-- 移动端卡片列表 -->
       <div
         v-if="!loading && tokens.length > 0"
-        class="md:hidden space-y-3 p-4"
+        class="md:hidden space-y-3 overflow-x-auto p-4"
       >
         <Card
           v-for="token in paginatedTokens"
           :key="token.id"
           variant="default"
-          class="group hover:shadow-md hover:border-primary/30 transition-all duration-200"
+          class="group min-w-[460px] hover:shadow-md hover:border-primary/30 transition-all duration-200"
         >
           <div class="p-4">
             <!-- 第一行：名称、状态、操作 -->
@@ -305,7 +306,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  title="编辑"
+                  :title="t('managementTokens.edit')"
                   @click="openEditDialog(token)"
                 >
                   <Pencil class="h-3.5 w-3.5" />
@@ -314,7 +315,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  :title="token.is_active ? '禁用' : '启用'"
+                  :title="token.is_active ? t('managementTokens.disabled') : t('managementTokens.enabled')"
                   @click="toggleToken(token)"
                 >
                   <Power class="h-3.5 w-3.5" />
@@ -323,7 +324,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  title="删除"
+                  :title="t('managementTokens.delete')"
                   @click="confirmDelete(token)"
                 >
                   <Trash2 class="h-3.5 w-3.5" />
@@ -339,7 +340,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-5 w-5"
-                title="重新生成"
+                :title="t('managementTokens.regenerate')"
                 @click="confirmRegenerate(token)"
               >
                 <RefreshCw class="h-3 w-3" />
@@ -348,11 +349,11 @@
 
             <!-- 统计信息 -->
             <div class="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{{ formatNumber(token.usage_count || 0) }} 次使用</span>
+              <span>{{ formatNumber(token.usage_count || 0) }} {{ t('managementTokens.usage') }}</span>
               <span>·</span>
               <span>{{ token.permission_summary || permissionModeText(token.permission_mode) }}</span>
               <span>·</span>
-              <span>{{ token.last_used_at ? formatRelativeTime(token.last_used_at) : '从未使用' }}</span>
+              <span>{{ token.last_used_at ? formatRelativeTime(token.last_used_at) : t('managementTokens.neverUsed') }}</span>
             </div>
           </div>
         </Card>
@@ -383,10 +384,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                {{ editingToken ? '编辑访问令牌' : '创建访问令牌' }}
+                {{ editingToken ? t('managementTokens.edit') : t('managementTokens.create') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                {{ editingToken ? '修改令牌配置' : '创建一个新的令牌用于访问管理 API' }}
+                {{ editingToken ? t('managementTokens.description') : t('managementTokens.description') }}
               </p>
             </div>
           </div>
@@ -399,11 +400,11 @@
           <Label
             for="token-name"
             class="text-sm font-semibold"
-          >名称 *</Label>
+          >{{ t('managementTokens.name') }} *</Label>
           <Input
             id="token-name"
             v-model="formData.name"
-            placeholder="例如：CI/CD 自动化"
+            :placeholder="t('managementTokens.namePlaceholder')"
             class="h-11 border-border/60"
             autocomplete="off"
             required
@@ -415,11 +416,11 @@
           <Label
             for="token-description"
             class="text-sm font-semibold"
-          >描述</Label>
+          >{{ t('managementTokens.description') }}</Label>
           <Input
             id="token-description"
             v-model="formData.description"
-            placeholder="用途说明（可选）"
+            :placeholder="t('managementTokens.descriptionPlaceholder')"
             class="h-11 border-border/60"
             autocomplete="off"
           />
@@ -431,16 +432,16 @@
           <Label
             for="token-ips"
             class="text-sm font-semibold"
-          >IP 白名单</Label>
+          >{{ t('managementTokens.ipLimit') }}</Label>
           <Input
             id="token-ips"
             v-model="formData.allowedIpsText"
-            placeholder="例如：192.168.1.0/24, 10.0.0.1（逗号分隔，留空不限制）"
+            :placeholder="t('managementTokens.ipPlaceholder')"
             class="h-11 border-border/60"
             autocomplete="off"
           />
           <p class="text-xs text-muted-foreground">
-            限制只能从指定 IP 地址使用此令牌，支持 CIDR 格式
+            {{ t('managementTokens.ipHint') }}
           </p>
         </div>
 
@@ -449,7 +450,7 @@
           <Label
             for="token-expires"
             class="text-sm font-semibold"
-          >过期时间</Label>
+          >{{ t('managementTokens.time') }}</Label>
           <Input
             id="token-expires"
             v-model="formData.expiresAt"
@@ -457,13 +458,13 @@
             class="h-11 border-border/60"
           />
           <p class="text-xs text-muted-foreground">
-            留空表示永不过期
+            {{ t('managementTokens.neverExpiresHint') }}
           </p>
         </div>
 
         <!-- 权限 -->
         <div class="space-y-3">
-          <Label class="text-sm font-semibold">权限</Label>
+          <Label class="text-sm font-semibold">{{ t('managementTokens.permissions') }}</Label>
           <div class="grid grid-cols-3 gap-2">
             <Button
               type="button"
@@ -471,7 +472,7 @@
               class="h-9"
               @click="setPermissionMode('full')"
             >
-              全权
+              {{ t('managementTokens.fullAccess') }}
             </Button>
             <Button
               type="button"
@@ -479,7 +480,7 @@
               class="h-9"
               @click="setPermissionMode('read_only')"
             >
-              只读
+              {{ t('managementTokens.readOnly') }}
             </Button>
             <Button
               type="button"
@@ -487,7 +488,7 @@
               class="h-9"
               @click="setPermissionMode('custom')"
             >
-              自定义
+              {{ t('managementTokens.custom') }}
             </Button>
           </div>
 
@@ -501,7 +502,7 @@
               class="h-8 px-3 text-xs"
               @click="setCustomPermissions('none')"
             >
-              全部禁用
+              {{ t('managementTokens.disableAll') }}
             </Button>
             <Button
               type="button"
@@ -509,7 +510,7 @@
               class="h-8 px-3 text-xs"
               @click="setCustomPermissions('read_only')"
             >
-              全部只读
+              {{ t('managementTokens.readOnlyAll') }}
             </Button>
             <Button
               type="button"
@@ -517,7 +518,7 @@
               class="h-8 px-3 text-xs"
               @click="setCustomPermissions('full')"
             >
-              全部全权
+              {{ t('managementTokens.fullAccessAll') }}
             </Button>
           </div>
 
@@ -540,7 +541,7 @@
                       :checked="isPermissionGroupDenied(group)"
                       @update:checked="togglePermissionGroupDenied(group, $event)"
                     />
-                    <span>禁止</span>
+                    <span>{{ t('managementTokens.deny') }}</span>
                   </label>
                   <label
                     v-for="item in group.items"
@@ -566,7 +567,7 @@
           class="h-11 px-6"
           @click="closeDialog"
         >
-          取消
+          {{ t('managementTokens.cancel') }}
         </Button>
         <Button
           class="h-11 px-6 shadow-lg shadow-primary/20"
@@ -577,7 +578,7 @@
             v-if="saving"
             class="animate-spin h-4 w-4 mr-2"
           />
-          {{ saving ? '保存中...' : (editingToken ? '保存' : '创建') }}
+          {{ saving ? t('managementTokens.saving') : (editingToken ? t('managementTokens.save') : t('managementTokens.createAction')) }}
         </Button>
       </template>
     </Dialog>
@@ -596,10 +597,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                {{ isRegenerating ? '令牌已重新生成' : '创建成功' }}
+                {{ isRegenerating ? t('managementTokens.regenerated') : t('managementTokens.createdSuccess') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                请妥善保管，此令牌只会显示一次
+                {{ t('managementTokens.keepSecure') }}
               </p>
             </div>
           </div>
@@ -608,7 +609,7 @@
 
       <div class="space-y-4">
         <div class="space-y-2">
-          <Label class="text-sm font-medium">访问令牌</Label>
+          <Label class="text-sm font-medium">{{ t('managementTokens.accessToken') }}</Label>
           <div class="flex items-center gap-2">
             <Input
               type="text"
@@ -621,7 +622,7 @@
               class="h-11"
               @click="copyToken(newTokenValue)"
             >
-              复制
+              {{ t('common.copy') }}
             </Button>
           </div>
         </div>
@@ -629,7 +630,7 @@
           <div class="flex gap-2">
             <AlertTriangle class="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <p class="text-sm text-amber-800 dark:text-amber-200">
-              此令牌只会显示一次，关闭后将无法再次查看，请妥善保管。
+              {{ t('managementTokens.oneTimeWarning') }}
             </p>
           </div>
         </div>
@@ -640,7 +641,7 @@
           class="h-10 px-5"
           @click="showTokenDialog = false"
         >
-          我已安全保存
+          {{ t('managementTokens.confirmSaved') }}
         </Button>
       </template>
     </Dialog>
@@ -649,9 +650,9 @@
     <AlertDialog
       v-model="showDeleteDialog"
       type="danger"
-      title="确认删除"
-      :description="`确定要删除令牌「${tokenToDelete?.name}」吗？此操作不可恢复。`"
-      confirm-text="删除"
+      :title="t('managementTokens.deleteTitle')"
+      :description="t('managementTokens.deleteConfirm', { name: tokenToDelete?.name || '' })"
+      :confirm-text="t('managementTokens.delete')"
       :loading="deleting"
       @confirm="deleteToken"
       @cancel="showDeleteDialog = false"
@@ -661,9 +662,9 @@
     <AlertDialog
       v-model="showRegenerateDialog"
       type="warning"
-      title="确认重新生成"
-      :description="`重新生成后，原令牌将立即失效。确定要重新生成「${tokenToRegenerate?.name}」吗？`"
-      confirm-text="重新生成"
+      :title="t('managementTokens.regenerateTitle')"
+      :description="t('managementTokens.regenerateConfirm', { name: tokenToRegenerate?.name || '' })"
+      :confirm-text="t('managementTokens.regenerateAction')"
       :loading="regenerating"
       @confirm="regenerateToken"
       @cancel="showRegenerateDialog = false"
@@ -673,6 +674,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import {
   adminManagementTokenApi,
@@ -718,6 +720,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const isAdminPage = computed(() => route.path.startsWith('/admin'))
+const { t, locale } = useI18n()
 const canManageTokens = computed(() => authStore.isAdmin)
 
 // 数据
@@ -808,9 +811,9 @@ function getStatusVariant(token: ManagementToken): 'success' | 'secondary' | 'de
 
 function getStatusText(token: ManagementToken): string {
   if (token.expires_at && isExpired(token.expires_at)) {
-    return '已过期'
+    return t('managementTokens.expired')
   }
-  return token.is_active ? '活跃' : '禁用'
+  return token.is_active ? t('managementTokens.active') : t('managementTokens.disabled')
 }
 
 function isExpired(dateString: string): boolean {
@@ -851,7 +854,7 @@ async function loadTokens() {
     }
   } catch (err: unknown) {
     log.error('加载 Management Tokens 失败:', err)
-    showError(parseApiError(err, '加载失败'))
+    showError(parseApiError(err, t('managementTokens.loadFailed')))
   } finally {
     loading.value = false
   }
@@ -869,7 +872,7 @@ async function loadPermissionCatalog() {
     }
   } catch (err: unknown) {
     log.error('加载 Management Token 权限目录失败:', err)
-    showError(parseApiError(err, '权限目录加载失败'))
+    showError(parseApiError(err, t('managementTokens.catalogLoadFailed')))
   }
 }
 
@@ -978,7 +981,7 @@ async function resolveFormPermissions(): Promise<string[]> {
     await loadPermissionCatalog()
   }
   if (allPermissionKeys.value.length === 0) {
-    throw new Error('权限目录不可用')
+    throw new Error(t('managementTokens.catalogUnavailable'))
   }
   if (permissionMode.value === 'full') {
     return [...allPermissionKeys.value]
@@ -992,15 +995,15 @@ async function resolveFormPermissions(): Promise<string[]> {
 function permissionModeText(mode?: ManagementToken['permission_mode']): string {
   switch (mode) {
     case 'legacy_full':
-      return '旧版全权限'
+      return t('managementTokens.legacyFull')
     case 'full':
-      return '全权限'
+      return t('managementTokens.fullPermission')
     case 'read_only':
-      return '只读'
+      return t('managementTokens.readOnly')
     case 'custom':
-      return '自定义'
+      return t('managementTokens.custom')
     default:
-      return '未配置'
+      return t('managementTokens.notConfigured')
   }
 }
 
@@ -1044,7 +1047,7 @@ async function saveToken() {
       if (index !== -1) {
         tokens.value[index] = result.data
       }
-      success('令牌更新成功')
+      success(t('managementTokens.updated'))
     } else {
       // 创建
       const payload = {
@@ -1060,14 +1063,14 @@ async function saveToken() {
       newTokenValue.value = result.token
       isRegenerating.value = false
       showTokenDialog.value = true
-      success('令牌创建成功')
+      success(t('managementTokens.createdToken'))
       await loadTokens()
     }
 
     closeDialog()
   } catch (err: unknown) {
     log.error('保存 Token 失败:', err)
-    showError(parseApiError(err, '保存失败'))
+    showError(parseApiError(err, t('managementTokens.saveFailed')))
   } finally {
     saving.value = false
   }
@@ -1085,10 +1088,10 @@ async function toggleToken(token: ManagementToken) {
     if (index !== -1) {
       tokens.value[index] = result.data
     }
-    success(result.data.is_active ? '令牌已启用' : '令牌已禁用')
+    success(result.data.is_active ? t('managementTokens.enabledSuccess') : t('managementTokens.disabledSuccess'))
   } catch (err: unknown) {
     log.error('切换状态失败:', err)
-    showError('操作失败')
+    showError(t('managementTokens.operationFailed'))
   }
 }
 
@@ -1111,11 +1114,11 @@ async function deleteToken() {
     }
 
     showDeleteDialog.value = false
-    success('令牌已删除')
+    success(t('managementTokens.deleted'))
     await loadTokens()
   } catch (err: unknown) {
     log.error('删除 Token 失败:', err)
-    showError('删除失败')
+    showError(t('managementTokens.deleteFailed'))
   } finally {
     deleting.value = false
     tokenToDelete.value = null
@@ -1142,10 +1145,10 @@ async function regenerateToken() {
     showRegenerateDialog.value = false
     showTokenDialog.value = true
     await loadTokens()
-    success('令牌已重新生成')
+    success(t('managementTokens.regenerated'))
   } catch (err: unknown) {
     log.error('重新生成失败:', err)
-    showError('重新生成失败')
+    showError(t('managementTokens.regenerateFailed'))
   } finally {
     regenerating.value = false
     tokenToRegenerate.value = null
@@ -1157,7 +1160,7 @@ async function copyToken(text: string) {
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text)
-      success('已复制到剪贴板')
+      success(t('managementTokens.copied'))
     } else {
       const textArea = document.createElement('textarea')
       textArea.value = text
@@ -1167,17 +1170,17 @@ async function copyToken(text: string) {
       textArea.select()
       document.execCommand('copy')
       document.body.removeChild(textArea)
-      success('已复制到剪贴板')
+      success(t('managementTokens.copied'))
     }
   } catch (err) {
     log.error('复制失败:', err)
-    showError('复制失败')
+    showError(t('managementTokens.copyFailed'))
   }
 }
 
 // 格式化
 function formatNumber(num: number): string {
-  return num.toLocaleString('zh-CN')
+  return num.toLocaleString(locale.value)
 }
 
 function toLocalDatetimeString(date: Date): string {
@@ -1191,7 +1194,7 @@ function toLocalDatetimeString(date: Date): string {
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString)
-  return date.toLocaleDateString('zh-CN', {
+  return date.toLocaleDateString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
@@ -1206,10 +1209,10 @@ function formatRelativeTime(dateString: string): string {
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins}分钟前`
-  if (diffHours < 24) return `${diffHours}小时前`
-  if (diffDays < 7) return `${diffDays}天前`
+  if (diffMins < 1) return t('managementTokens.justNow')
+  if (diffMins < 60) return t('managementTokens.minutesAgo', { count: diffMins })
+  if (diffHours < 24) return t('managementTokens.hoursAgo', { count: diffHours })
+  if (diffDays < 7) return t('managementTokens.daysAgo', { count: diffDays })
 
   return formatDate(dateString)
 }

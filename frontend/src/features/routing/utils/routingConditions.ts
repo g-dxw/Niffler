@@ -15,19 +15,19 @@ export interface RoutingConditionGroup {
 export type RoutingCondition = RoutingConditionLeaf | RoutingConditionGroup
 
 export const routingConditionFieldLabels: Record<string, string> = {
-  model: '模型',
-  api_format: 'API 格式',
-  user_id: '用户',
+  model: i18n.global.t('routingUi.model'),
+  api_format: i18n.global.t('routingUi.apiFormat'),
+  user_id: i18n.global.t('routingUi.user'),
   api_key_id: 'API Key',
 }
 
 export const routingConditionOpLabels: Record<RoutingConditionOp, string> = {
-  eq: '等于',
-  ne: '不等于',
-  in: '包含于',
-  contains: '包含',
-  exists: '存在',
-  matches: '匹配',
+  eq: i18n.global.t('routingUi.eq'),
+  ne: i18n.global.t('routingUi.neq'),
+  in: i18n.global.t('routingUi.in'),
+  contains: i18n.global.t('routingUi.contains'),
+  exists: i18n.global.t('routingUi.exists'),
+  matches: i18n.global.t('routingUi.matches'),
 }
 
 export function isConditionLeaf(condition: RoutingCondition): condition is RoutingConditionLeaf {
@@ -42,18 +42,18 @@ export function summarizeRoutingCondition(condition: RoutingCondition): string {
   }
 
   if (condition.all?.length) {
-    return condition.all.map(summarizeRoutingCondition).join(' 且 ')
+    return condition.all.map(summarizeRoutingCondition).join(` ${i18n.global.t('routingUi.and')} `)
   }
 
   if (condition.any?.length) {
-    return condition.any.map(summarizeRoutingCondition).join(' 或 ')
+    return condition.any.map(summarizeRoutingCondition).join(` ${i18n.global.t('routingUi.or')} `)
   }
 
   if (condition.not) {
-    return `非 ${summarizeRoutingCondition(condition.not)}`
+    return `${i18n.global.t('routingUi.not')} ${summarizeRoutingCondition(condition.not)}`
   }
 
-  return '无条件'
+  return i18n.global.t('routingUi.noCondition')
 }
 
 function formatConditionValue(value: unknown): string {
@@ -71,3 +71,4 @@ function formatConditionValue(value: unknown): string {
 
   return String(value)
 }
+import { i18n } from '@/i18n'

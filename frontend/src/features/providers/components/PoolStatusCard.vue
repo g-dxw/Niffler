@@ -5,35 +5,35 @@
       <div class="flex items-center justify-between">
         <div class="flex flex-wrap items-center gap-2">
           <h3 class="text-sm font-semibold">
-            号池状态
+            {{ t('poolStatus.title') }}
           </h3>
           <Badge
             v-if="poolStatus"
             variant="secondary"
             class="text-xs"
           >
-            {{ poolStatus.total_keys }} 个密钥
+            {{ t('poolStatus.keyCount', { count: poolStatus.total_keys }) }}
           </Badge>
           <Badge
             v-if="poolStatus && poolStatus.total_sticky_sessions > 0"
             variant="outline"
             class="text-xs"
           >
-            {{ poolStatus.total_sticky_sessions }} 个粘性会话
+            {{ t('poolStatus.stickyCount', { count: poolStatus.total_sticky_sessions }) }}
           </Badge>
           <Badge
             v-if="poolStatus && poolStatus.provider_desired_hot > 0"
             variant="outline"
             class="text-xs"
           >
-            热池 {{ poolStatus.provider_hot_count }} / {{ poolStatus.provider_desired_hot }}
+            {{ t('poolStatus.hotPool', { current: poolStatus.provider_hot_count, desired: poolStatus.provider_desired_hot }) }}
           </Badge>
           <Badge
             v-if="poolStatus && poolStatus.provider_in_flight > 0"
             variant="outline"
             class="text-xs"
           >
-            处理中 {{ poolStatus.provider_in_flight }}
+            {{ t('poolStatus.processing', { count: poolStatus.provider_in_flight }) }}
           </Badge>
           <Badge
             v-if="poolStatus && poolStatus.provider_desired_hot > 0"
@@ -47,12 +47,12 @@
             variant="secondary"
             class="text-xs"
           >
-            补热中
+            {{ t('poolStatus.replenishing') }}
           </Badge>
         </div>
         <RefreshButton
           :loading="refreshing"
-          title="刷新号池状态"
+          :title="t('poolStatus.refresh')"
           @click="refresh"
         />
       </div>
@@ -72,10 +72,10 @@
       class="p-6 text-center text-muted-foreground"
     >
       <p class="text-sm">
-        号池未启用
+        {{ t('poolStatus.disabled') }}
       </p>
       <p class="text-xs mt-1">
-        请在提供商编辑中配置号池参数
+        {{ t('poolStatus.disabledHint') }}
       </p>
     </div>
 
@@ -96,7 +96,7 @@
             <button
               type="button"
               class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
-              :title="`${getPoolStatusAccountDisplayName(key)}\n点击复制`"
+              :title="`${getPoolStatusAccountDisplayName(key)}\n${t('poolStatus.clickCopy')}`"
               @click.stop="copyPoolStatusAccountDisplay(key)"
             >
               {{ getPoolStatusAccountDisplayName(key) }}
@@ -121,7 +121,7 @@
               variant="ghost"
               size="icon"
               class="h-7 w-7 text-muted-foreground hover:text-green-600"
-              title="清除冷却"
+              :title="t('poolStatus.clearCooldown')"
               :disabled="actionLoading === key.key_id"
               @click="handleClearCooldown(key.key_id)"
             >
@@ -135,7 +135,7 @@
               variant="ghost"
               size="icon"
               class="h-7 w-7 text-muted-foreground hover:text-foreground"
-              title="重置成本窗口"
+              :title="t('poolStatus.resetCost')"
               :disabled="actionLoading === key.key_id"
               @click="handleResetCost(key.key_id)"
             >
@@ -151,7 +151,7 @@
             v-if="key.cost_limit != null"
             class="flex items-center gap-1.5 flex-1 min-w-0"
           >
-            <span class="shrink-0">成本</span>
+            <span class="shrink-0">{{ t('poolStatus.cost') }}</span>
             <div class="flex-1 h-1.5 bg-border rounded-full overflow-hidden max-w-[120px]">
               <div
                 class="h-full transition-all duration-300 rounded-full"
@@ -170,7 +170,7 @@
             v-else-if="key.cost_window_usage > 0"
             class="flex items-center gap-1"
           >
-            <span>成本</span>
+            <span>{{ t('poolStatus.cost') }}</span>
             <span class="tabular-nums">{{ formatTokens(key.cost_window_usage) }}</span>
           </div>
 
@@ -181,7 +181,7 @@
 
           <!-- Sticky sessions -->
           <span v-if="key.sticky_sessions > 0">
-            {{ key.sticky_sessions }} 粘性会话
+            {{ t('poolStatus.stickyCount', { count: key.sticky_sessions }) }}
           </span>
 
           <!-- LRU score -->
@@ -199,7 +199,7 @@
       class="p-6 text-center text-muted-foreground"
     >
       <p class="text-sm">
-        暂无密钥数据
+        {{ t('poolStatus.noKeys') }}
       </p>
     </div>
   </Card>
@@ -207,6 +207,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RefreshCw, RotateCcw } from 'lucide-vue-next'
 
 import { getPoolStatus, clearPoolCooldown, resetPoolCost } from '@/api/endpoints/pool'
@@ -228,6 +229,7 @@ const props = defineProps<{
 
 const { error: showError, success } = useToast()
 const { copyToClipboard } = useClipboard()
+const { t } = useI18n()
 
 const poolStatus = ref<PoolStatusResponse | null>(null)
 const initialLoading = ref(true)
@@ -277,21 +279,14 @@ async function handleResetCost(keyId: string) {
   }
 }
 
-const COOLDOWN_REASON_MAP: Record<string, string> = {
-  rate_limited_429: '429 限流',
-  forbidden_403: '403 禁止',
-  overloaded_529: '529 过载',
-  auth_failed_401: '401 认证失败',
-  payment_required_402: '402 欠费',
-  server_error_500: '500 错误',
-}
-
 function formatCooldownReason(reason: string): string {
-  return COOLDOWN_REASON_MAP[reason] || reason
+  const key = `poolStatus.reasons.${reason}`
+  const translated = t(key)
+  return translated === key ? reason : translated
 }
 
 function getPoolStatusAccountDisplayName(key: PoolKeyStatus): string {
-  return getAccountDisplayName(key, '未命名账号')
+  return getAccountDisplayName(key, t('poolStatus.unnamedAccount'))
 }
 
 async function copyPoolStatusAccountDisplay(key: PoolKeyStatus): Promise<void> {
@@ -328,10 +323,10 @@ function getCostBarColor(usage: number, limit: number): string {
 function formatLruScore(score: number): string {
   const now = Date.now() / 1000
   const diff = now - score
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m 前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h 前`
-  return `${Math.floor(diff / 86400)}d 前`
+  if (diff < 60) return t('poolStatus.justNow')
+  if (diff < 3600) return t('poolStatus.minutesAgo', { count: Math.floor(diff / 60) })
+  if (diff < 86400) return t('poolStatus.hoursAgo', { count: Math.floor(diff / 3600) })
+  return t('poolStatus.daysAgo', { count: Math.floor(diff / 86400) })
 }
 
 onMounted(async () => {

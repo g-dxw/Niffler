@@ -11,6 +11,7 @@ import {
   isOAuthManagedCredential,
   type ProviderKeyAuthCarrier,
 } from './providerKeyAuth'
+import { i18n } from '@/i18n'
 
 export interface ProviderKeyStatusCarrier extends ProviderKeyAuthCarrier {
   oauth_expires_at?: number | null
@@ -87,7 +88,7 @@ function getSnapshotOAuthState(
   if (code === 'reauth_required') {
     const countdown = expiresAt == null ? null : getOAuthExpiresCountdown(expiresAt, tick, null, null)
     return {
-      text: countdown?.text ? `续期失败 ${countdown.text}` : '续期失败',
+      text: countdown?.text ? `${i18n.global.t('oauthUi.refreshFailed')} ${countdown.text}` : i18n.global.t('oauthUi.refreshFailed'),
       isExpired: false,
       isExpiringSoon: countdown?.isExpiringSoon ?? false,
       isInvalid: false,
@@ -99,7 +100,7 @@ function getSnapshotOAuthState(
 
   if (code === 'invalid') {
     return {
-      text: '已失效',
+      text: i18n.global.t('oauthUi.invalid'),
       isExpired: false,
       isExpiringSoon: false,
       isInvalid: true,
@@ -108,7 +109,7 @@ function getSnapshotOAuthState(
   }
 
   if (code === 'expired') {
-    return { text: '已过期', isExpired: true, isExpiringSoon: false, isInvalid: false }
+    return { text: i18n.global.t('oauthUi.expired'), isExpired: true, isExpiringSoon: false, isInvalid: false }
   }
 
   if (code === 'check_failed') {
@@ -131,7 +132,7 @@ function getReauthRequiredOAuthState(
 ): OAuthStatusInfo {
   const countdown = expiresAt == null ? null : getOAuthExpiresCountdown(expiresAt, tick, null, null)
   return {
-    text: countdown?.text ? `续期失败 ${countdown.text}` : '续期失败',
+    text: countdown?.text ? `${i18n.global.t('oauthUi.refreshFailed')} ${countdown.text}` : i18n.global.t('oauthUi.refreshFailed'),
     isExpired: false,
     isExpiringSoon: countdown?.isExpiringSoon ?? false,
     isInvalid: false,
@@ -207,7 +208,7 @@ function isOAuthCredentialWithoutRefreshToken(input: ProviderKeyStatusCarrier): 
 
 function getMissingRefreshTokenStatus(): OAuthStatusInfo {
   return {
-    text: '未添加',
+    text: i18n.global.t('oauthUi.notAdded'),
     isExpired: false,
     isExpiringSoon: false,
     isInvalid: false,
@@ -237,7 +238,7 @@ export function getOAuthStatusDisplayWithFallback(
   if (!isOAuthManagedCredential(input)) return null
 
   return {
-    text: '有效期未知',
+    text: i18n.global.t('oauthUi.unknownExpiry'),
     isExpired: false,
     isExpiringSoon: false,
     isInvalid: false,
@@ -249,28 +250,28 @@ export function getOAuthStatusTitle(
   tick: number,
 ): string {
   if (isOAuthCredentialWithoutRefreshToken(input)) {
-    return 'Refresh Token 未添加，无法自动刷新'
+    return i18n.global.t('oauthUi.refreshTokenNotAdded')
   }
 
   const status = getOAuthStatusDisplay(input, tick)
   if (!status) {
-    return isOAuthManagedCredential(input) ? 'Token 有效期未知' : ''
+    return isOAuthManagedCredential(input) ? i18n.global.t('oauthUi.tokenExpiryUnknown') : ''
   }
   if (status.isInvalid) {
     const reason = normalizeText(status.invalidReason)
-    return reason ? `Token 已失效: ${reason}` : 'Token 已失效'
+    return reason ? `${i18n.global.t('oauthUi.tokenInvalid')}: ${reason}` : i18n.global.t('oauthUi.tokenInvalid')
   }
   const snapshotCode = normalizeText(input.status_snapshot?.oauth?.code)
   if (snapshotCode === 'reauth_required' || status.requiresReauth) {
     const reason = normalizeText(status.invalidReason)
     return reason
-      ? `Refresh Token 续期失败，当前 Access Token 未到期仍可使用: ${reason}`
-      : 'Refresh Token 续期失败，当前 Access Token 未到期仍可使用'
+      ? `${i18n.global.t('oauthUi.refreshStillUsable')}: ${reason}`
+      : i18n.global.t('oauthUi.refreshStillUsable')
   }
   if (status.isExpired) {
-    return 'Access Token 已过期，等待自动续期'
+    return i18n.global.t('oauthUi.accessExpired')
   }
-  return `Token 剩余有效期: ${status.text}`
+  return i18n.global.t('oauthUi.tokenRemaining', { value: status.text })
 }
 
 export function getOAuthRefreshButtonTitle(
@@ -279,16 +280,16 @@ export function getOAuthRefreshButtonTitle(
 ): string {
   if (isOAuthManagedCredential(input) && !canRefreshOAuthCredential(input)) {
     if (input.oauth_temporary === true) {
-      return '仅 Access Token 导入，无法自动刷新，到期后需要重新导入'
+      return i18n.global.t('oauthUi.accessOnly')
     }
-    return '当前 OAuth 凭据无法自动刷新，到期后需要重新导入'
+    return i18n.global.t('oauthUi.cannotRefresh')
   }
 
   const status = getOAuthStatusDisplay(input, tick)
   if (status?.isInvalid || status?.isExpired || status?.requiresReauth) {
-    return '重新授权'
+    return i18n.global.t('oauthUi.reauthorize')
   }
-  return '刷新 Token'
+  return i18n.global.t('oauthUi.refreshToken')
 }
 
 export function getAccountStatusTitle(input: ProviderKeyStatusCarrier): string {

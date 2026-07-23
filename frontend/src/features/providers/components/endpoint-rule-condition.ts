@@ -20,20 +20,20 @@ export interface EditableConditionGroup {
 export type EditableConditionNode = EditableConditionLeaf | EditableConditionGroup
 
 export const CONDITION_OP_OPTIONS: Array<{ value: BodyRuleConditionOp; label: string }> = [
-  { value: 'eq', label: '等于' },
-  { value: 'neq', label: '不等于' },
-  { value: 'gt', label: '大于' },
-  { value: 'lt', label: '小于' },
-  { value: 'gte', label: '大于等于' },
-  { value: 'lte', label: '小于等于' },
-  { value: 'starts_with', label: '开头匹配' },
-  { value: 'ends_with', label: '结尾匹配' },
-  { value: 'contains', label: '包含' },
-  { value: 'matches', label: '正则匹配' },
-  { value: 'exists', label: '存在' },
-  { value: 'not_exists', label: '不存在' },
-  { value: 'in', label: '在列表中' },
-  { value: 'type_is', label: '类型是' },
+  { value: 'eq', label: i18n.global.t('endpointRuleUi.eq') },
+  { value: 'neq', label: i18n.global.t('endpointRuleUi.neq') },
+  { value: 'gt', label: i18n.global.t('endpointRuleUi.gt') },
+  { value: 'lt', label: i18n.global.t('endpointRuleUi.lt') },
+  { value: 'gte', label: i18n.global.t('endpointRuleUi.gte') },
+  { value: 'lte', label: i18n.global.t('endpointRuleUi.lte') },
+  { value: 'starts_with', label: i18n.global.t('endpointRuleUi.startsWith') },
+  { value: 'ends_with', label: i18n.global.t('endpointRuleUi.endsWith') },
+  { value: 'contains', label: i18n.global.t('endpointRuleUi.contains') },
+  { value: 'matches', label: i18n.global.t('endpointRuleUi.matches') },
+  { value: 'exists', label: i18n.global.t('endpointRuleUi.exists') },
+  { value: 'not_exists', label: i18n.global.t('endpointRuleUi.notExists') },
+  { value: 'in', label: i18n.global.t('endpointRuleUi.in') },
+  { value: 'type_is', label: i18n.global.t('endpointRuleUi.typeIs') },
 ]
 
 const NUMERIC_OPS = new Set(['gt', 'lt', 'gte', 'lte'])
@@ -156,11 +156,11 @@ export function isConditionValueRequired(op: BodyRuleConditionOp): boolean {
 export function getConditionValuePlaceholder(op: BodyRuleConditionOp): string {
   if (op === 'in') return '["a", "b"]'
   if (op === 'type_is') return 'string/number/boolean/...'
-  return '值'
+  return i18n.global.t('endpointRuleUi.value')
 }
 
 export function getBodyRuleConditionPathPlaceholder(path: string): string {
-  return path.includes('[*]') || /\[\d+-\d+\]/.test(path) ? '$item.字段名' : '字段路径'
+  return path.includes('[*]') || /\[\d+-\d+\]/.test(path) ? `$item.${i18n.global.t('endpointRuleUi.fieldName')}` : i18n.global.t('endpointRuleUi.fieldPath')
 }
 
 export function conditionEquals(
@@ -191,16 +191,16 @@ export function validateEditableCondition(node: EditableConditionNode | null): s
   if (!node) return null
 
   if (node.kind === 'group') {
-    if (!node.children.length) return '组合条件至少需要一个子条件'
+    if (!node.children.length) return i18n.global.t('endpointRuleUi.childRequired')
     for (let i = 0; i < node.children.length; i += 1) {
       const err = validateEditableCondition(node.children[i])
-      if (err) return `子条件 ${i + 1}: ${err}`
+      if (err) return i18n.global.t('endpointRuleUi.childError', { index: i + 1, error: err })
     }
     return null
   }
 
   const path = node.path.trim()
-  if (!path) return '条件路径不能为空'
+  if (!path) return i18n.global.t('endpointRuleUi.pathRequired')
 
   if (!isConditionValueRequired(node.op)) return null
 
@@ -215,35 +215,36 @@ export function validateEditableCondition(node: EditableConditionNode | null): s
   }
 
   if (NUMERIC_OPS.has(node.op)) {
-    if (typeof parsed !== 'number' || Number.isNaN(parsed)) return '数值条件必须填写数字'
+    if (typeof parsed !== 'number' || Number.isNaN(parsed)) return i18n.global.t('endpointRuleUi.numberRequired')
     return null
   }
 
   if (STRING_OPS.has(node.op)) {
-    if (typeof parsed !== 'string') return '该条件值必须为字符串'
+    if (typeof parsed !== 'string') return i18n.global.t('endpointRuleUi.stringRequired')
     return null
   }
 
   if (node.op === 'matches') {
-    if (typeof parsed !== 'string' || !parsed) return '正则条件值不能为空'
+    if (typeof parsed !== 'string' || !parsed) return i18n.global.t('endpointRuleUi.regexRequired')
     try {
       new RegExp(parsed)
       return null
     } catch (error: unknown) {
-      return `正则表达式无效：${error instanceof Error ? error.message : String(error)}`
+      return i18n.global.t('endpointRuleUi.invalidRegex', { error: error instanceof Error ? error.message : String(error) })
     }
   }
 
   if (node.op === 'in') {
-    if (!Array.isArray(parsed)) return 'in 条件值必须是 JSON 数组'
+    if (!Array.isArray(parsed)) return i18n.global.t('endpointRuleUi.arrayRequired')
     return null
   }
 
   if (node.op === 'type_is') {
     if (typeof parsed !== 'string' || !TYPE_IS_VALUES.has(parsed)) {
-      return 'type_is 仅支持 string/number/boolean/array/object/null'
+      return i18n.global.t('endpointRuleUi.typeIsAllowed')
     }
   }
 
   return null
 }
+import { i18n } from '@/i18n'

@@ -69,7 +69,7 @@
       class="shrink-0 p-1 rounded transition-colors opacity-40 hover:opacity-100"
       :class="closeClasses"
       type="button"
-      aria-label="关闭"
+      :aria-label="t('common.close')"
       @click="$emit('remove')"
     >
       <X class="w-3.5 h-3.5" />
@@ -79,6 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-vue-next'
 
 interface Toast {
@@ -92,6 +93,8 @@ interface Toast {
 const props = defineProps<{
   toast: Toast
 }>()
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   remove: []

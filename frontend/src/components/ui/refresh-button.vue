@@ -4,7 +4,7 @@
     size="icon"
     class="h-8 w-8"
     :disabled="loading"
-    :title="title"
+    :title="title || t('common.refresh')"
     @click="handleClick"
   >
     <RefreshCcw
@@ -17,6 +17,7 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui'
 import { RefreshCcw } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
   loading?: boolean
@@ -29,8 +30,10 @@ interface Emits {
 
 withDefaults(defineProps<Props>(), {
   loading: false,
-  title: '刷新'
+  title: ''
 })
+
+const { t } = useI18n()
 
 const emit = defineEmits<Emits>()
 

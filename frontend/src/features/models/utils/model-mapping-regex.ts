@@ -106,22 +106,22 @@ export function createLRURegexCache(maxSize: number): LRURegexCache {
 
 export function validateModelMappingPattern(pattern: string): ValidationResult {
   if (!pattern || !pattern.trim()) {
-    return { valid: false, error: '规则不能为空' }
+    return { valid: false, error: i18n.global.t('modelMappingValidation.empty') }
   }
 
   if (pattern.length > MAX_MAPPING_LENGTH) {
-    return { valid: false, error: `规则过长 (最大 ${MAX_MAPPING_LENGTH} 字符)` }
+    return { valid: false, error: i18n.global.t('modelMappingValidation.tooLong', { count: MAX_MAPPING_LENGTH }) }
   }
 
   if (isPotentiallyDangerousRegex(pattern)) {
-    return { valid: false, error: '规则包含潜在危险的正则构造' }
+    return { valid: false, error: i18n.global.t('modelMappingValidation.dangerous') }
   }
 
   try {
     new RegExp(`^${pattern}$`, 'i')
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
-    return { valid: false, error: `正则表达式语法错误: ${message}` }
+    return { valid: false, error: i18n.global.t('modelMappingValidation.syntax', { message }) }
   }
 
   return { valid: true }
@@ -182,3 +182,4 @@ export function safeTestModelMappingPattern(
     return false
   }
 }
+import { i18n } from '@/i18n'

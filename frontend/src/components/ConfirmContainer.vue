@@ -1,10 +1,10 @@
 <template>
   <AlertDialog
     :model-value="state.isOpen"
-    :title="state.title || '确认操作'"
+    :title="state.title || t('confirmContainer.title')"
     :description="state.message"
-    :confirm-text="state.confirmText || '确认'"
-    :cancel-text="state.cancelText || '取消'"
+    :confirm-text="state.confirmText || t('confirmContainer.confirm')"
+    :cancel-text="state.cancelText || t('common.cancel')"
     :type="state.variant || 'question'"
     @update:model-value="handleClose"
     @confirm="handleConfirm"
@@ -13,10 +13,12 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import AlertDialog from './common/AlertDialog.vue'
 import { useConfirm } from '@/composables/useConfirm'
 
 const { state, handleConfirm, handleCancel } = useConfirm()
+const { t } = useI18n()
 
 function handleClose(value: boolean) {
   if (!value) {

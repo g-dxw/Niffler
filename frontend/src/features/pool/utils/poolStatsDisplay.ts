@@ -1,5 +1,6 @@
 import type { QuotaWindowUsageSnapshot } from '@/api/endpoints/types/statusSnapshot'
 import type { PoolManagementStatsMode } from '@/features/pool/utils/poolManagementState'
+import { i18n } from '@/i18n'
 
 export type PoolStatsMetricKey = 'request_count' | 'total_tokens' | 'total_cost_usd'
 export type PoolStatsDisplayKind = 'account_total' | 'codex_cycle'
@@ -47,7 +48,7 @@ export type PoolStatsDisplay = PoolAccountTotalStatsDisplay | PoolCodexCycleStat
 const MISSING_STAT_VALUE = '—'
 const CODEX_CYCLE_WINDOWS: Array<{ code: PoolCodexCycleWindowCode, label: string }> = [
   { code: '5h', label: '5H' },
-  { code: 'weekly', label: '周' },
+  { code: 'weekly', label: i18n.global.t('commonUi.weekly') },
 ]
 
 export function isCodexProviderType(providerType: string | null | undefined): boolean {
@@ -130,17 +131,17 @@ function getQuotaWindowUsage(
 
 function buildAccountTotalMetrics(key: PoolStatsKeyInput): PoolStatsMetric[] {
   return [
-    createMetric('request_count', '请求', formatPoolStatInteger(key.request_count)),
+    createMetric('request_count', i18n.global.t('commonUi.request'), formatPoolStatInteger(key.request_count)),
     createMetric('total_tokens', 'Token', formatPoolTokenCount(key.total_tokens)),
-    createMetric('total_cost_usd', '基础费用', formatPoolStatUsd(key.total_cost_usd)),
+    createMetric('total_cost_usd', i18n.global.t('commonUi.baseCost'), formatPoolStatUsd(key.total_cost_usd)),
   ]
 }
 
 function buildCycleMetrics(usage: QuotaWindowUsageSnapshot | null): PoolStatsMetric[] {
   return [
-    createMetric('request_count', '请求', formatCycleInteger(usage?.request_count)),
+    createMetric('request_count', i18n.global.t('commonUi.request'), formatCycleInteger(usage?.request_count)),
     createMetric('total_tokens', 'Token', formatCycleTokenCount(usage?.total_tokens)),
-    createMetric('total_cost_usd', '基础费用', formatCycleUsd(usage?.total_cost_usd)),
+    createMetric('total_cost_usd', i18n.global.t('commonUi.baseCost'), formatCycleUsd(usage?.total_cost_usd)),
   ]
 }
 

@@ -28,6 +28,7 @@ import {
   createToolResultBlock as createToolResultRenderBlock,
   createEmptyRenderResult,
 } from './render'
+import { conversationText } from './i18n'
 
 /** Raw JSON object from API (loosely typed) */
 type RawObject = Record<string, unknown>
@@ -78,7 +79,7 @@ export class GeminiParser implements ApiFormatParser {
    */
   parseRequest(requestBody: unknown): ParsedConversation {
     if (!requestBody) {
-      return createEmptyConversation('gemini', '无请求体')
+      return createEmptyConversation('gemini', conversationText('noRequest'))
     }
 
     try {
@@ -111,7 +112,7 @@ export class GeminiParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('gemini', `解析失败: ${e}`)
+      return createEmptyConversation('gemini', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -120,7 +121,7 @@ export class GeminiParser implements ApiFormatParser {
    */
   parseResponse(responseBody: unknown): ParsedConversation {
     if (!responseBody) {
-      return createEmptyConversation('gemini', '无响应体')
+      return createEmptyConversation('gemini', conversationText('noResponse'))
     }
 
     try {
@@ -149,7 +150,7 @@ export class GeminiParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('gemini', `解析失败: ${e}`)
+      return createEmptyConversation('gemini', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -158,7 +159,7 @@ export class GeminiParser implements ApiFormatParser {
    */
   parseStreamResponse(chunks: unknown[]): ParsedConversation {
     if (!chunks || chunks.length === 0) {
-      return createEmptyConversation('gemini', '无响应数据')
+      return createEmptyConversation('gemini', conversationText('noResponseData'))
     }
 
     try {
@@ -214,7 +215,7 @@ export class GeminiParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('gemini', `解析失败: ${e}`)
+      return createEmptyConversation('gemini', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -314,7 +315,7 @@ export class GeminiParser implements ApiFormatParser {
    */
   renderRequest(requestBody: unknown): RenderResult {
     if (!requestBody) {
-      return createEmptyRenderResult('无请求体')
+      return createEmptyRenderResult(conversationText('noRequest'))
     }
 
     try {
@@ -347,7 +348,7 @@ export class GeminiParser implements ApiFormatParser {
 
       return { blocks, isStream: false }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -356,7 +357,7 @@ export class GeminiParser implements ApiFormatParser {
    */
   renderResponse(responseBody: unknown): RenderResult {
     if (!responseBody) {
-      return createEmptyRenderResult('无响应体')
+      return createEmptyRenderResult(conversationText('noResponse'))
     }
 
     // 检查是否为流式响应
@@ -388,7 +389,7 @@ export class GeminiParser implements ApiFormatParser {
 
       return { blocks, isStream: false }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -397,7 +398,7 @@ export class GeminiParser implements ApiFormatParser {
    */
   private renderStreamResponse(chunks: unknown[]): RenderResult {
     if (!chunks || chunks.length === 0) {
-      return createEmptyRenderResult('无响应数据')
+      return createEmptyRenderResult(conversationText('noResponseData'))
     }
 
     try {
@@ -423,7 +424,7 @@ export class GeminiParser implements ApiFormatParser {
 
       return { blocks, isStream: true }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -487,7 +488,7 @@ export class GeminiParser implements ApiFormatParser {
     if (part.functionCall) {
       const fc = part.functionCall as RawObject
       return createToolUseRenderBlock(
-        String(fc.name || '函数调用'),
+        String(fc.name || conversationText('functionCall')),
         this.formatJson(fc.args)
       )
     }
@@ -529,7 +530,7 @@ export class GeminiParser implements ApiFormatParser {
 
       case 'tool_use':
         return createToolUseRenderBlock(
-          block.toolName || '函数调用',
+          block.toolName || conversationText('functionCall'),
           this.formatJson(block.input)
         )
 
@@ -546,7 +547,7 @@ export class GeminiParser implements ApiFormatParser {
             ? `data:${block.mimeType || 'image/png'};base64,${block.data}`
             : block.url,
           mimeType: block.mimeType,
-          alt: block.alt || '图片',
+          alt: block.alt || conversationText('image'),
         })
 
       default:
@@ -577,13 +578,13 @@ export class GeminiParser implements ApiFormatParser {
     const hasToolResult = parts.some((p: RawObject) => p.functionResponse)
 
     if (hasToolCall) {
-      badges.push(createBadgeBlock('函数调用', 'outline'))
+      badges.push(createBadgeBlock(conversationText('functionCall'), 'outline'))
     }
     if (hasToolResult) {
-      badges.push(createBadgeBlock('函数结果', 'outline'))
+      badges.push(createBadgeBlock(conversationText('functionResult'), 'outline'))
     }
     if (hasImage) {
-      badges.push(createBadgeBlock('图片', 'secondary'))
+      badges.push(createBadgeBlock(conversationText('image'), 'secondary'))
     }
 
     return badges
@@ -708,13 +709,13 @@ export class GeminiParser implements ApiFormatParser {
     const types = new Set(content.map(b => b.type))
 
     if (types.has('tool_use')) {
-      badges.push(createBadgeBlock('函数调用', 'outline'))
+      badges.push(createBadgeBlock(conversationText('functionCall'), 'outline'))
     }
     if (types.has('tool_result')) {
-      badges.push(createBadgeBlock('函数结果', 'outline'))
+      badges.push(createBadgeBlock(conversationText('functionResult'), 'outline'))
     }
     if (types.has('image')) {
-      badges.push(createBadgeBlock('图片', 'secondary'))
+      badges.push(createBadgeBlock(conversationText('image'), 'secondary'))
     }
 
     return badges
@@ -742,8 +743,8 @@ export class GeminiParser implements ApiFormatParser {
     return content
       .map(block => {
         if (block.type === 'text') return block.text
-        if (block.type === 'image') return '[图片]'
-        if (block.type === 'error') return `[错误: ${block.message}]`
+        if (block.type === 'image') return `[${conversationText('image')}]`
+        if (block.type === 'error') return conversationText('error', { error: block.message })
         return ''
       })
       .filter(Boolean)

@@ -26,12 +26,12 @@
                     :variant="model.is_active ? 'default' : 'secondary'"
                     class="text-xs"
                   >
-                    {{ model.is_active ? '可用' : '停用' }}
+                    {{ model.is_active ? t('modelDetail.active') : t('modelDetail.disabled') }}
                   </Badge>
                   <span class="text-sm text-muted-foreground font-mono">{{ model.name }}</span>
                   <button
                     class="p-0.5 rounded hover:bg-muted transition-colors"
-                    title="复制模型 ID"
+                    :title="t('modelDetail.copyId')"
                     @click="copyToClipboard(model.name)"
                   >
                     <Copy class="w-3 h-3 text-muted-foreground" />
@@ -47,7 +47,7 @@
               <Button
                 variant="ghost"
                 size="icon"
-                title="关闭"
+                :title="t('modelDetail.close')"
                 @click="handleClose"
               >
                 <X class="w-4 h-4" />
@@ -59,7 +59,7 @@
             <!-- 模型能力 -->
             <div class="space-y-3">
               <h4 class="font-semibold text-sm">
-                模型能力
+                {{ t('modelDetail.capabilities') }}
               </h4>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="flex items-center gap-2 p-3 rounded-lg border">
@@ -69,14 +69,14 @@
                       Streaming
                     </p>
                     <p class="text-xs text-muted-foreground">
-                      流式输出
+                      {{ t('modelDetail.streaming') }}
                     </p>
                   </div>
                   <Badge
                     :variant="model.config?.streaming !== false ? 'default' : 'secondary'"
                     class="text-xs"
                   >
-                    {{ model.config?.streaming !== false ? '支持' : '不支持' }}
+                    {{ model.config?.streaming !== false ? t('modelDetail.supported') : t('modelDetail.unsupported') }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-2 p-3 rounded-lg border">
@@ -86,14 +86,14 @@
                       Image Generation
                     </p>
                     <p class="text-xs text-muted-foreground">
-                      图像生成
+                      {{ t('modelDetail.imageGeneration') }}
                     </p>
                   </div>
                   <Badge
                     :variant="model.config?.image_generation === true ? 'default' : 'secondary'"
                     class="text-xs"
                   >
-                    {{ model.config?.image_generation === true ? '支持' : '不支持' }}
+                    {{ model.config?.image_generation === true ? t('modelDetail.supported') : t('modelDetail.unsupported') }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-2 p-3 rounded-lg border">
@@ -103,14 +103,14 @@
                       Embedding
                     </p>
                     <p class="text-xs text-muted-foreground">
-                      向量嵌入
+                      {{ t('modelDetail.embedding') }}
                     </p>
                   </div>
                   <Badge
                     :variant="supportsEmbedding(model) ? 'default' : 'secondary'"
                     class="text-xs"
                   >
-                    {{ supportsEmbedding(model) ? '支持' : '不支持' }}
+                    {{ supportsEmbedding(model) ? t('modelDetail.supported') : t('modelDetail.unsupported') }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-2 p-3 rounded-lg border">
@@ -120,14 +120,14 @@
                       Vision
                     </p>
                     <p class="text-xs text-muted-foreground">
-                      视觉理解
+                      {{ t('modelDetail.vision') }}
                     </p>
                   </div>
                   <Badge
                     :variant="model.config?.vision === true ? 'default' : 'secondary'"
                     class="text-xs"
                   >
-                    {{ model.config?.vision === true ? '支持' : '不支持' }}
+                    {{ model.config?.vision === true ? t('modelDetail.supported') : t('modelDetail.unsupported') }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-2 p-3 rounded-lg border">
@@ -137,14 +137,14 @@
                       Tool Use
                     </p>
                     <p class="text-xs text-muted-foreground">
-                      工具调用
+                      {{ t('modelDetail.toolUse') }}
                     </p>
                   </div>
                   <Badge
                     :variant="model.config?.function_calling === true ? 'default' : 'secondary'"
                     class="text-xs"
                   >
-                    {{ model.config?.function_calling === true ? '支持' : '不支持' }}
+                    {{ model.config?.function_calling === true ? t('modelDetail.supported') : t('modelDetail.unsupported') }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-2 p-3 rounded-lg border">
@@ -154,14 +154,14 @@
                       Extended Thinking
                     </p>
                     <p class="text-xs text-muted-foreground">
-                      深度思考
+                      {{ t('modelDetail.extendedThinking') }}
                     </p>
                   </div>
                   <Badge
                     :variant="model.config?.extended_thinking === true ? 'default' : 'secondary'"
                     class="text-xs"
                   >
-                    {{ model.config?.extended_thinking === true ? '支持' : '不支持' }}
+                    {{ model.config?.extended_thinking === true ? t('modelDetail.supported') : t('modelDetail.unsupported') }}
                   </Badge>
                 </div>
               </div>
@@ -170,7 +170,7 @@
             <!-- 定价信息 -->
             <div class="space-y-3">
               <h4 class="font-semibold text-sm">
-                定价信息
+                {{ t('modelDetail.pricing') }}
               </h4>
 
               <!-- 单阶梯（固定价格）展示 -->
@@ -180,25 +180,25 @@
               >
                 <div class="grid grid-cols-2 gap-3">
                   <div class="p-3 rounded-lg border">
-                    <Label class="text-xs text-muted-foreground">输入价格 ($/M)</Label>
+                    <Label class="text-xs text-muted-foreground">{{ t('modelDetail.inputPrice') }}</Label>
                     <p class="text-lg font-semibold mt-1">
                       {{ getFirstTierPrice(model.default_tiered_pricing, 'input_price_per_1m') }}
                     </p>
                   </div>
                   <div class="p-3 rounded-lg border">
-                    <Label class="text-xs text-muted-foreground">输出价格 ($/M)</Label>
+                    <Label class="text-xs text-muted-foreground">{{ t('modelDetail.outputPrice') }}</Label>
                     <p class="text-lg font-semibold mt-1">
                       {{ getFirstTierPrice(model.default_tiered_pricing, 'output_price_per_1m') }}
                     </p>
                   </div>
                   <div class="p-3 rounded-lg border">
-                    <Label class="text-xs text-muted-foreground">缓存创建 ($/M)</Label>
+                    <Label class="text-xs text-muted-foreground">{{ t('modelDetail.cacheCreation') }}</Label>
                     <p class="text-sm font-mono mt-1">
                       {{ getFirstTierPrice(model.default_tiered_pricing, 'cache_creation_price_per_1m') }}
                     </p>
                   </div>
                   <div class="p-3 rounded-lg border">
-                    <Label class="text-xs text-muted-foreground">缓存读取 ($/M)</Label>
+                    <Label class="text-xs text-muted-foreground">{{ t('modelDetail.cacheRead') }}</Label>
                     <p class="text-sm font-mono mt-1">
                       {{ getFirstTierPrice(model.default_tiered_pricing, 'cache_read_price_per_1m') }}
                     </p>
@@ -209,7 +209,7 @@
                   v-if="getFirst1hCachePrice(model.default_tiered_pricing) !== '-'"
                   class="flex items-center gap-3 p-3 rounded-lg border bg-muted/20"
                 >
-                  <Label class="text-xs text-muted-foreground whitespace-nowrap">1h 缓存</Label>
+                  <Label class="text-xs text-muted-foreground whitespace-nowrap">{{ t('modelDetail.cache1h') }}</Label>
                   <span class="text-sm font-mono">{{ getFirst1hCachePrice(model.default_tiered_pricing) }}</span>
                 </div>
                 <!-- 按次计费 -->
@@ -217,8 +217,8 @@
                   v-if="model.default_price_per_request && model.default_price_per_request > 0"
                   class="flex items-center gap-3 p-3 rounded-lg border bg-muted/20"
                 >
-                  <Label class="text-xs text-muted-foreground whitespace-nowrap">按次计费</Label>
-                  <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}/次</span>
+                  <Label class="text-xs text-muted-foreground whitespace-nowrap">{{ t('modelDetail.perRequest') }}</Label>
+                  <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}{{ t('modelDetail.perRequestSuffix') }}</span>
                 </div>
               </div>
 
@@ -229,7 +229,7 @@
               >
                 <div class="flex items-center gap-2 text-sm text-muted-foreground">
                   <Layers class="w-4 h-4" />
-                  <span>阶梯计费 ({{ getTierCount(model.default_tiered_pricing) }} 档)</span>
+                  <span>{{ t('modelDetail.tieredPricing', { count: getTierCount(model.default_tiered_pricing) }) }}</span>
                 </div>
 
                 <!-- 阶梯价格表格 -->
@@ -238,22 +238,22 @@
                     <TableHeader>
                       <TableRow class="bg-muted/30">
                         <TableHead class="text-xs h-9">
-                          阶梯
+                          {{ t('modelDetail.tier') }}
                         </TableHead>
                         <TableHead class="text-xs h-9 text-right">
-                          输入 ($/M)
+                          {{ t('modelDetail.inputShort') }}
                         </TableHead>
                         <TableHead class="text-xs h-9 text-right">
-                          输出 ($/M)
+                          {{ t('modelDetail.outputShort') }}
                         </TableHead>
                         <TableHead class="text-xs h-9 text-right">
-                          缓存创建
+                          {{ t('modelDetail.cacheCreationShort') }}
                         </TableHead>
                         <TableHead class="text-xs h-9 text-right">
-                          缓存读取
+                          {{ t('modelDetail.cacheReadShort') }}
                         </TableHead>
                         <TableHead class="text-xs h-9 text-right">
-                          1h 缓存
+                          {{ t('modelDetail.cache1h') }}
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -268,7 +268,7 @@
                             v-if="tier.up_to === null"
                             class="text-muted-foreground"
                           >
-                            {{ index === 0 ? '所有' : `> ${formatTierLimit((model.default_tiered_pricing?.tiers || [])[index - 1]?.up_to)}` }}
+                            {{ index === 0 ? t('modelDetail.all') : `> ${formatTierLimit((model.default_tiered_pricing?.tiers || [])[index - 1]?.up_to)}` }}
                           </span>
                           <span v-else>
                             {{ index === 0 ? '0' : formatTierLimit((model.default_tiered_pricing?.tiers || [])[index - 1]?.up_to) }} - {{ formatTierLimit(tier.up_to) }}
@@ -299,8 +299,8 @@
                   v-if="model.default_price_per_request && model.default_price_per_request > 0"
                   class="flex items-center gap-3 p-3 rounded-lg border bg-muted/20"
                 >
-                  <Label class="text-xs text-muted-foreground whitespace-nowrap">按次计费</Label>
-                  <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}/次</span>
+                  <Label class="text-xs text-muted-foreground whitespace-nowrap">{{ t('modelDetail.perRequest') }}</Label>
+                  <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}{{ t('modelDetail.perRequestSuffix') }}</span>
                 </div>
               </div>
             </div>
@@ -325,6 +325,7 @@ import {
 } from 'lucide-vue-next'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 import { useClipboard } from '@/composables/useClipboard'
+import { useI18n } from 'vue-i18n'
 import Card from '@/components/ui/card.vue'
 import Badge from '@/components/ui/badge.vue'
 import Button from '@/components/ui/button.vue'
@@ -341,6 +342,7 @@ import type { TieredPricingConfig, PricingTier } from '@/api/endpoints/types'
 import { getCapabilityNames } from '../model-catalog-helpers'
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]

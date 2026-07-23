@@ -83,11 +83,14 @@
 import { computed, ref, watch } from 'vue'
 import { Upload } from 'lucide-vue-next'
 import { Label, Textarea } from '@/components/ui'
+import { useI18n } from 'vue-i18n'
 
 interface ImportInputErrorPayload {
   message: string
   title?: string
 }
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -108,13 +111,13 @@ const props = withDefaults(defineProps<{
   resetKey: '',
   accept: '.json,.txt',
   multiple: true,
-  dropTitle: '拖入导入文件或点击选择',
-  dropHint: '支持 .json / .txt，可多选',
+  dropTitle: 'Drop files here or click to upload',
+  dropHint: 'Supports JSON or text files',
   manualLabel: '',
   manualPlaceholder: '',
   manualDescription: '',
-  pasteToggleText: '或手动粘贴 JSON',
-  fileToggleText: '或选择 JSON 文件导入',
+  pasteToggleText: 'Paste JSON instead',
+  fileToggleText: 'Upload files instead',
   textareaClass: 'min-h-[220px] text-xs font-mono break-all !rounded-xl',
 })
 
@@ -180,9 +183,9 @@ function readFileAsText(file: File): Promise<string> {
         resolve(content)
         return
       }
-      reject(new Error('读取失败'))
+    reject(new Error(t('jsonImport.readFailed')))
     }
-    reader.onerror = () => reject(new Error('读取失败'))
+  reader.onerror = () => reject(new Error(t('jsonImport.readFailed')))
     reader.readAsText(file)
   })
 }
@@ -223,16 +226,16 @@ async function readFiles(files: File[]) {
   const sourceFiles = props.multiple ? files : files.slice(0, 1)
 
   if (!props.multiple && files.length > 1) {
-    emitError('仅支持选择 1 个文件，已读取第一个文件', '提示')
+    emitError(t('jsonImport.singleFileOnly'), t('common.notice'))
   }
 
   const validFiles = sourceFiles.filter(isValidFileType)
   if (validFiles.length === 0) {
-    emitError('仅支持 .json 或 .txt 文件', '格式错误')
+    emitError(t('jsonImport.invalidType'), t('common.formatError'))
     return
   }
   if (validFiles.length < sourceFiles.length) {
-    emitError(`已忽略 ${sourceFiles.length - validFiles.length} 个不支持的文件`, '提示')
+    emitError(t('jsonImport.ignoredFiles', { count: sourceFiles.length - validFiles.length }), t('common.notice'))
   }
 
   try {
@@ -241,7 +244,7 @@ async function readFiles(files: File[]) {
     emit('update:modelValue', merged)
     showManualInput.value = true
   } catch {
-    emitError('文件读取失败', '错误')
+    emitError(t('jsonImport.fileReadFailed'), t('common.error'))
   } finally {
     if (fileInputRef.value) {
       fileInputRef.value.value = ''

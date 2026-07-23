@@ -49,7 +49,7 @@
         class="absolute right-3 top-3"
         variant="secondary"
       >
-        图生图
+        {{ t('imageTask.imageToImage') }}
       </Badge>
     </div>
 
@@ -65,15 +65,15 @@
           variant="ghost"
           size="sm"
           class="h-8 shrink-0 px-2 text-muted-foreground"
-          title="复制提示词"
-          aria-label="复制提示词"
+          :title="t('imageTask.copyPrompt')"
+          :aria-label="t('imageTask.copyPrompt')"
           @click="copyToClipboard(task.prompt)"
         >
           <Copy class="h-3.5 w-3.5" />
         </Button>
       </div>
       <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-        <span>{{ task.model }}</span><span>{{ task.size }}</span><span v-if="duration">耗时 {{ duration }}</span>
+        <span>{{ task.model }}</span><span>{{ task.size }}</span><span v-if="duration">{{ t('imageTask.duration', { duration }) }}</span>
       </div>
       <p
         v-if="task.error"
@@ -88,7 +88,7 @@
           size="sm"
           @click="emit('cancel', task.id)"
         >
-          <X class="mr-1 h-4 w-4" />取消
+          <X class="mr-1 h-4 w-4" />{{ t('common.cancel') }}
         </Button>
         <Button
           v-if="task.status === 'error' || task.status === 'cancelled'"
@@ -96,7 +96,7 @@
           size="sm"
           @click="emit('retry', task.id)"
         >
-          <RotateCcw class="mr-1 h-3.5 w-3.5" />重试
+          <RotateCcw class="mr-1 h-3.5 w-3.5" />{{ t('common.retry') }}
         </Button>
         <Button
           v-if="task.status === 'success' && task.imageUrl"
@@ -104,7 +104,7 @@
           size="sm"
           @click="emit('download', task)"
         >
-          <Download class="mr-1 h-3.5 w-3.5" />下载
+          <Download class="mr-1 h-3.5 w-3.5" />{{ t('imageTask.download') }}
         </Button>
         <Button
           variant="ghost"
@@ -121,11 +121,14 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Ban, CircleX, Clock3, Copy, Download, Loader2, RotateCcw, Trash2, X } from 'lucide-vue-next'
 import { Badge, Button, Card } from '@/components/ui'
 import { useClipboard } from '@/composables/useClipboard'
 import type { ImageTask } from '../types'
 import { formatTaskDuration } from '../utils/task-duration'
+
+const { t } = useI18n()
 
 const props = defineProps<{ task: ImageTask }>()
 const emit = defineEmits<{
@@ -160,9 +163,9 @@ watch(
 
 onBeforeUnmount(stopTimer)
 
-const statusLabel = computed(() => ({ pending: '等待中', running: '生成中', success: '已完成', error: '失败', cancelled: '已取消' })[props.task.status])
+const statusLabel = computed(() => ({ pending: t('imageTask.pending'), running: t('imageTask.running'), success: t('imageTask.success'), error: t('imageTask.error'), cancelled: t('imageTask.cancelled') })[props.task.status])
 const statusVariant = computed(() => ({ pending: 'secondary', running: 'warning', success: 'success', error: 'destructive', cancelled: 'outline' })[props.task.status])
-const emptyLabel = computed(() => props.task.status === 'running' ? '正在生成图片…' : props.task.status === 'pending' ? '等待执行' : props.task.error || '暂无图片')
+const emptyLabel = computed(() => props.task.status === 'running' ? t('imageTask.generating') : props.task.status === 'pending' ? t('imageTask.waiting') : props.task.error || t('imageTask.noImage'))
 const duration = computed(() => formatTaskDuration(
   props.task.startedAt,
   props.task.finishedAt,

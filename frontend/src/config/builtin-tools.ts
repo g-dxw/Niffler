@@ -1,5 +1,6 @@
 import { Mail, Shield, AlertTriangle } from 'lucide-vue-next'
 import type { LucideIcon } from 'lucide-vue-next'
+import { i18n } from '@/i18n'
 
 export interface BuiltinTool {
   name: string
@@ -10,20 +11,20 @@ export interface BuiltinTool {
 
 export const BUILTIN_TOOLS: BuiltinTool[] = [
   {
-    name: '邮件配置',
-    description: '配置 SMTP 邮件服务，管理邮件模板和发送设置',
+    name: i18n.global.t('staticUi.emailConfig'),
+    description: i18n.global.t('staticUi.emailConfigDesc'),
     href: '/admin/email',
     icon: Mail,
   },
   {
-    name: 'IP 安全',
-    description: '管理 IP 黑白名单，控制系统访问权限',
+    name: i18n.global.t('staticUi.ipSecurity'),
+    description: i18n.global.t('staticUi.ipSecurityDesc'),
     href: '/admin/ip-security',
     icon: Shield,
   },
   {
-    name: '审计日志',
-    description: '查看系统操作日志，追踪安全事件与变更记录',
+    name: i18n.global.t('staticUi.auditLogs'),
+    description: i18n.global.t('staticUi.auditLogsDesc'),
     href: '/admin/audit-logs',
     icon: AlertTriangle,
   },

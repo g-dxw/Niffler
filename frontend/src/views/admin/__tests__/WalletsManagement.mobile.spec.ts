@@ -1,6 +1,6 @@
 /* eslint-disable vue/one-component-per-file, vue/require-default-prop */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, type App, type Component } from 'vue'
+import { createApp, nextTick, type App, type Component } from '@/test/vue'
 
 import WalletsManagement from '../WalletsManagement.vue'
 

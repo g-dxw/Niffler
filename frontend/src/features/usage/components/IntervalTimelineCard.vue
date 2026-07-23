@@ -23,7 +23,7 @@
           v-if="hiddenLegendCount > 0"
           class="text-muted-foreground"
         >
-          +{{ hiddenLegendCount }} 更多
+          +{{ hiddenLegendCount }} {{ t('intervalTimeline.more') }}
         </span>
       </div>
     </div>
@@ -48,7 +48,7 @@
       v-else
       class="h-[160px] flex items-center justify-center text-sm text-muted-foreground"
     >
-      暂无请求间隔数据
+      {{ t('intervalTimeline.empty') }}
     </div>
   </Card>
 </template>
@@ -62,6 +62,9 @@ import { meApi } from '@/api/me'
 import type { ChartOptions } from 'chart.js'
 import type { TimeScatterData } from '@/components/charts/scatter-types'
 import { log } from '@/utils/logger'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   title: string
@@ -259,7 +262,7 @@ const chartData = computed<TimeScatterData>(() => {
   // 单用户或单模型：使用主题色
   return {
     datasets: [{
-      label: '请求间隔',
+      label: t('intervalTimeline.label'),
       data: points.map(p => ({ x: p.x, y: p.y })),
       backgroundColor: `rgba(${primaryColor.value}, 0.6)`,
       borderColor: `rgba(${primaryColor.value}, 0.8)`,
@@ -281,9 +284,9 @@ const chartOptions = computed<ChartOptions<'scatter'>>(() => ({
           const realY = point._originalY ?? point.y
           const datasetLabel = context.dataset.label || ''
           if (hasMultipleGroups.value) {
-            return `${datasetLabel}: ${realY.toFixed(1)} 分钟`
+            return `${datasetLabel}: ${realY.toFixed(1)} ${t('intervalTimeline.minutes')}`
           }
-          return `间隔: ${realY.toFixed(1)} 分钟`
+          return `${t('intervalTimeline.interval')}: ${realY.toFixed(1)} ${t('intervalTimeline.minutes')}`
         }
       }
     }

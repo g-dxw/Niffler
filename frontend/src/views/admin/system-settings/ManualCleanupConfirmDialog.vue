@@ -2,15 +2,15 @@
   <Dialog
     :open="open"
     size="lg"
-    title="立即清理请求记录"
-    description="默认按当前分级保留策略执行，也可以选择指定范围。操作不可逆。"
+    :title="t('manualCleanup.title')"
+    :description="t('manualCleanup.description')"
     :persistent="isLocked"
     @update:open="handleOpenChange"
   >
     <div class="px-4 sm:px-6 py-4 space-y-4">
       <div>
         <Label class="block text-sm font-medium">
-          清理方式
+          {{ t('manualCleanup.method') }}
         </Label>
         <div class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button
@@ -33,26 +33,26 @@
           for="manual-cleanup-older-than-days"
           class="block text-sm font-medium"
         >
-          清理 N 天前的记录
+          {{ t('manualCleanup.olderThan') }}
         </Label>
         <Input
           id="manual-cleanup-older-than-days"
           :model-value="olderThanDays ?? ''"
           type="number"
           min="1"
-          placeholder="例如 30"
+          :placeholder="t('manualCleanup.placeholderDays')"
           class="mt-1"
           :disabled="isLocked"
           @update:model-value="handleDaysChange"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          该值会与当前策略取更保守的时间点，不会清理比策略更新的数据。
+          {{ t('manualCleanup.conservative') }}
         </p>
       </div>
 
       <div>
         <Label class="block text-sm font-medium">
-          清理范围
+          {{ t('manualCleanup.scope') }}
         </Label>
         <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label
@@ -76,7 +76,7 @@
           v-if="mode === 'before_now'"
           class="mt-2 text-xs text-amber-600"
         >
-          当前时刻之前模式只允许清理详细请求体和压缩请求体，不会清请求头或整条记录。
+          {{ t('manualCleanup.beforeNowHint') }}
         </p>
         <p
           v-if="targetError"
@@ -89,7 +89,7 @@
       <div class="rounded-md border border-border bg-muted/30 px-4 py-3">
         <div class="flex items-center justify-between">
           <h4 class="text-sm font-medium">
-            预计影响
+            {{ t('manualCleanup.impact') }}
           </h4>
           <button
             v-if="!previewLoading"
@@ -98,13 +98,13 @@
             :disabled="isLocked"
             @click="loadPreview"
           >
-            刷新预估
+            {{ t('manualCleanup.refresh') }}
           </button>
           <span
             v-else
             class="text-xs text-muted-foreground"
           >
-            正在计算…
+            {{ t('manualCleanup.calculating') }}
           </span>
         </div>
         <div
@@ -117,19 +117,19 @@
           v-else-if="preview"
           class="mt-2 grid grid-cols-2 gap-y-1 gap-x-4 text-xs text-muted-foreground"
         >
-          <div>详细记录待压缩</div>
+          <div>{{ t('manualCleanup.detail') }}</div>
           <div class="text-right text-foreground">
             {{ formatCount(preview.counts.detail) }}
           </div>
-          <div>压缩记录待清体</div>
+          <div>{{ t('manualCleanup.compressed') }}</div>
           <div class="text-right text-foreground">
             {{ formatCount(preview.counts.compressed) }}
           </div>
-          <div>请求头待清空</div>
+          <div>{{ t('manualCleanup.headers') }}</div>
           <div class="text-right text-foreground">
             {{ formatCount(preview.counts.header) }}
           </div>
-          <div>整条记录待删除</div>
+          <div>{{ t('manualCleanup.records') }}</div>
           <div class="text-right text-destructive font-medium">
             {{ formatCount(preview.counts.log) }}
           </div>
@@ -138,7 +138,7 @@
           v-else-if="!previewLoading"
           class="mt-2 text-xs text-muted-foreground"
         >
-          尚未计算预估数据
+          {{ t('manualCleanup.noEstimate') }}
         </div>
       </div>
 
@@ -149,7 +149,7 @@
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
             <div class="text-sm font-medium">
-              {{ activeTask?.message || '请求记录清理失败' }}
+              {{ activeTask?.message || t('manualCleanup.startFailed') }}
             </div>
             <div class="mt-1 text-xs text-muted-foreground">
               {{ activeTask ? cleanupStatusLabel(activeTask.status) : taskError }}
@@ -186,7 +186,7 @@
           for="manual-cleanup-confirm-phrase"
           class="block text-sm font-medium"
         >
-          输入「{{ confirmPhrase }}」以确认清理
+          {{ t('manualCleanup.confirmInput', { phrase: confirmPhrase }) }}
         </Label>
         <Input
           id="manual-cleanup-confirm-phrase"
@@ -199,7 +199,7 @@
           @keydown.enter.prevent="maybeSubmitOnEnter"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          确认后会在当前弹窗中显示执行状态，完成前不能关闭。
+          {{ t('manualCleanup.lockedHint') }}
         </p>
       </div>
     </div>
@@ -211,14 +211,14 @@
         :disabled="!canSubmit"
         @click="handleConfirm"
       >
-        {{ isLocked ? '清理中…' : '确认清理' }}
+        {{ isLocked ? t('manualCleanup.processing') : t('manualCleanup.confirm') }}
       </Button>
       <Button
         variant="outline"
         :disabled="isLocked"
         @click="handleCancel"
       >
-        {{ isFinished ? '关闭' : '取消' }}
+        {{ isFinished ? t('manualCleanup.close') : t('manualCleanup.cancel') }}
       </Button>
     </template>
   </Dialog>
@@ -226,6 +226,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { Dialog } from '@/components/ui'
 import Button from '@/components/ui/button.vue'
 import Checkbox from '@/components/ui/checkbox.vue'
@@ -277,23 +280,23 @@ let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let previewSeq = 0
 let taskPollTimer: ReturnType<typeof window.setInterval> | null = null
 
-const modeOptions: Array<{ value: ManualCleanupMode; label: string; description: string }> = [
-  { value: 'policy', label: '按当前策略', description: '沿用页面上配置的保留天数' },
-  { value: 'older_than_days', label: '指定天数前', description: '在策略内取更保守时间点' },
-  { value: 'before_now', label: '当前时刻之前', description: '只清已选请求体内容' },
-]
+const modeOptions = computed<Array<{ value: ManualCleanupMode; label: string; description: string }>>(() => [
+  { value: 'policy', label: t('manualCleanup.modes.policy'), description: t('manualCleanup.modeHints.policy') },
+  { value: 'older_than_days', label: t('manualCleanup.modes.olderThanDays'), description: t('manualCleanup.modeHints.olderThanDays') },
+  { value: 'before_now', label: t('manualCleanup.modes.beforeNow'), description: t('manualCleanup.modeHints.beforeNow') },
+])
 
-const targetLabels: Record<ManualCleanupTarget, { label: string; description: string }> = {
-  detail_body: { label: '详细请求体', description: '把详细 body 移入压缩/外置存储' },
-  compressed_body: { label: '压缩请求体', description: '删除已压缩或外置的 body 内容' },
-  headers: { label: '请求头', description: '清空请求/响应 headers 字段' },
-  records: { label: '整条记录', description: '删除超过记录保留期的 usage 行' },
-}
+const targetLabels = computed<Record<ManualCleanupTarget, { label: string; description: string }>>(() => ({
+  detail_body: { label: t('manualCleanup.targets.detailLabel'), description: t('manualCleanup.targets.detailDescription') },
+  compressed_body: { label: t('manualCleanup.targets.compressedLabel'), description: t('manualCleanup.targets.compressedDescription') },
+  headers: { label: t('manualCleanup.targets.headersLabel'), description: t('manualCleanup.targets.headersDescription') },
+  records: { label: t('manualCleanup.targets.recordsLabel'), description: t('manualCleanup.targets.recordsDescription') },
+}))
 
 const targetOptions = computed(() =>
   allowedTargetsForMode(mode.value).map(value => ({
     value,
-    ...targetLabels[value],
+    ...targetLabels.value[value],
   }))
 )
 
@@ -302,7 +305,7 @@ const normalizedTargets = computed(() =>
 )
 
 const targetError = computed(() => {
-  if (normalizedTargets.value.length === 0) return '至少选择一个清理范围'
+  if (normalizedTargets.value.length === 0) return t('manualCleanup.targetRequired')
   return null
 })
 
@@ -471,7 +474,7 @@ async function handleConfirm() {
       return
     }
     if (!('task' in response)) {
-      taskError.value = '清理任务启动失败'
+    taskError.value = t('manualCleanup.startFailed')
       emit('running-change', false)
       return
     }
@@ -524,9 +527,9 @@ async function pollTask(taskId: string) {
 }
 
 function cleanupStatusLabel(status: string): string {
-  if (status === 'processing') return '执行中'
-  if (status === 'failed') return '失败'
-  return '完成'
+  if (status === 'processing') return t('manualCleanup.status.processing')
+  if (status === 'failed') return t('manualCleanup.status.failed')
+  return t('manualCleanup.status.completed')
 }
 
 function cleanupStatusClass(status: string): string {
@@ -537,21 +540,21 @@ function cleanupStatusClass(status: string): string {
 
 function cleanupSummaryText(summary: Record<string, unknown>): string {
   const total = typeof summary.total === 'number' ? summary.total : null
-  if (total !== null && total > 0) return `影响 ${total} 项`
+  if (total !== null && total > 0) return t('manualCleanup.affectedCount', { count: total })
   const entries = Object.entries(summary)
     .filter(([key, value]) => key !== 'progress_percent' && typeof value === 'number' && value > 0)
     .map(([key, value]) => `${summaryLabel(key)} ${value}`)
-  return entries.length > 0 ? entries.join(' / ') : '等待后台返回结果'
+  return entries.length > 0 ? entries.join(' / ') : t('manualCleanup.waiting')
 }
 
 function summaryLabel(key: string): string {
   const labels: Record<string, string> = {
-    body_externalized: '详细体',
-    legacy_body_refs_migrated: '迁移',
-    body_cleaned: '清体',
-    header_cleaned: '清头',
+    body_externalized: t('manualCleanup.events.bodyExternalized'),
+    legacy_body_refs_migrated: t('manualCleanup.events.migrated'),
+    body_cleaned: t('manualCleanup.events.bodyCleaned'),
+    header_cleaned: t('manualCleanup.events.headersCleaned'),
     keys_cleaned: 'Key',
-    records_deleted: '删记录',
+    records_deleted: t('manualCleanup.events.recordsDeleted'),
   }
   return labels[key] || key
 }

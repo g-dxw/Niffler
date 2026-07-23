@@ -14,7 +14,7 @@
             class="text-[10px] px-1.5 py-0 shrink-0"
             :title="provider.legacy_read_only_reason"
           >
-            Niffler Core 只读
+            {{ t('providerCard.coreReadOnly') }}
           </Badge>
           <a
             v-if="provider.website"
@@ -31,7 +31,7 @@
             :variant="provider.is_active ? 'success' : 'secondary'"
             class="text-xs shrink-0"
           >
-            {{ provider.is_active ? '活跃' : '停用' }}
+            {{ provider.is_active ? t('providerCard.active') : t('providerCard.disabled') }}
           </Badge>
         </div>
         <!-- 内联编辑备注 (移动端) -->
@@ -45,19 +45,19 @@
             v-model="localDescriptionValue"
             v-auto-focus
             class="flex-1 min-w-0 text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-            placeholder="输入备注..."
+            :placeholder="t('providerCard.notePlaceholder')"
             @keydown="handleDescriptionKeydown"
           >
           <button
             class="shrink-0 p-0.5 rounded hover:bg-muted text-primary"
-            title="保存"
+            :title="t('providerCard.save')"
             @click="handleSave"
           >
             <Check class="w-3.5 h-3.5" />
           </button>
           <button
             class="shrink-0 p-0.5 rounded hover:bg-muted text-muted-foreground"
-            title="取消"
+            :title="t('providerCard.cancel')"
             @click="handleCancel"
           >
             <X class="w-3.5 h-3.5" />
@@ -76,7 +76,7 @@
           :class="provider.legacy_read_only ? 'cursor-default' : 'cursor-pointer hover:text-foreground/70'"
           :title="provider.legacy_read_only_reason"
           @click="handleStartEdit"
-        >{{ provider.legacy_read_only ? '已迁移到 Niffler Core' : '添加备注' }}</span>
+        >{{ provider.legacy_read_only ? t('providerCard.migrated') : t('providerCard.addNote') }}</span>
       </div>
       <div
         class="flex items-center gap-0.5 shrink-0"
@@ -86,7 +86,7 @@
           variant="ghost"
           size="icon"
           class="h-7 w-7"
-          title="查看详情"
+          :title="t('providerCard.viewDetails')"
           @click="$emit('viewDetail', provider.id)"
         >
           <Eye class="h-3.5 w-3.5" />
@@ -96,7 +96,7 @@
           size="icon"
           class="h-7 w-7"
           :disabled="provider.legacy_read_only"
-          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : '编辑'"
+          :title="provider.legacy_read_only ? t('providerCard.editInCore') : t('providerCard.edit')"
           @click="$emit('editProvider', provider)"
         >
           <Edit class="h-3.5 w-3.5" />
@@ -106,7 +106,7 @@
           size="icon"
           class="h-7 w-7"
           :disabled="provider.legacy_read_only"
-          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : '扩展操作配置'"
+          :title="provider.legacy_read_only ? t('providerCard.editInCore') : t('providerCard.opsConfig')"
           @click="$emit('openOpsConfig', provider)"
         >
           <KeyRound class="h-3.5 w-3.5" />
@@ -116,7 +116,7 @@
           size="icon"
           class="h-7 w-7"
           :disabled="provider.legacy_read_only"
-          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : provider.is_active ? '停用提供商' : '启用提供商'"
+          :title="provider.legacy_read_only ? t('providerCard.editInCore') : provider.is_active ? t('providerCard.disableProvider') : t('providerCard.enableProvider')"
           @click="$emit('toggleStatus', provider)"
         >
           <Power class="h-3.5 w-3.5" />
@@ -126,7 +126,7 @@
           size="icon"
           class="h-7 w-7"
           :disabled="provider.legacy_read_only"
-          :title="provider.legacy_read_only ? '请到 Niffler Core 修改' : '删除提供商'"
+          :title="provider.legacy_read_only ? t('providerCard.editInCore') : t('providerCard.deleteProvider')"
           @click="$emit('deleteProvider', provider)"
         >
           <Trash2 class="h-3.5 w-3.5" />
@@ -148,31 +148,31 @@
         class="text-muted-foreground flex items-center gap-1"
       >
         <Loader2 class="h-3 w-3 animate-spin" />
-        加载中...
+        {{ t('providerCard.loading') }}
       </span>
       <!-- 余额（从上游 API 查询） -->
       <span
         v-else-if="provider.ops_configured && getProviderBalance(provider.id)"
         class="text-muted-foreground"
       >
-        余额 <span class="font-semibold text-foreground/90">{{ formatBalanceDisplay(getProviderBalance(provider.id)) }}</span>
+        {{ t('providerCard.balance') }} <span class="font-semibold text-foreground/90">{{ formatBalanceDisplay(getProviderBalance(provider.id)) }}</span>
         <!-- Cookie 失效警告 -->
         <span
           v-if="getProviderCookieExpired(provider.id)"
           class="ml-1 text-amber-600 dark:text-amber-500"
           :title="getProviderCookieExpired(provider.id)?.message"
-        >签到 Cookie 已失效</span>
+        >{{ t('providerCard.cookieExpired') }}</span>
         <!-- 签到状态显示 -->
         <span
           v-else-if="getProviderCheckin(provider.id) && getProviderCheckin(provider.id)?.success !== false"
           class="ml-1 text-muted-foreground"
           :title="getProviderCheckin(provider.id)?.message"
-        >已签到</span>
+        >{{ t('providerCard.checkedIn') }}</span>
         <span
           v-else-if="getProviderCheckin(provider.id)?.success === false"
           class="ml-1 text-destructive/70"
           :title="getProviderCheckin(provider.id)?.message"
-        >签到失败</span>
+        >{{ t('providerCard.checkinFailed') }}</span>
       </span>
       <!-- 余额查询失败时显示错误 -->
       <span
@@ -187,19 +187,19 @@
         v-else-if="provider.billing_type === 'monthly_quota'"
         class="text-muted-foreground"
       >
-        配额 <span
+        {{ t('providerCard.quota') }} <span
           class="font-semibold"
           :class="getQuotaUsedColorClass(provider)"
         >${{ (provider.monthly_used_usd ?? 0).toFixed(2) }}</span>/<span class="font-medium">${{ (provider.monthly_quota_usd ?? 0).toFixed(2) }}</span>
       </span>
       <span class="text-muted-foreground">
-        端点 {{ provider.active_endpoints }}/{{ provider.total_endpoints }}
+        {{ t('providerCard.endpoints') }} {{ provider.active_endpoints }}/{{ provider.total_endpoints }}
       </span>
       <span class="text-muted-foreground">
         {{ getCredentialLabel(provider) }} {{ provider.active_keys }}/{{ provider.total_keys }}
       </span>
       <span class="text-muted-foreground">
-        模型 {{ provider.active_models }}/{{ provider.total_models }}
+        {{ t('providerCard.models') }} {{ provider.active_models }}/{{ provider.total_models }}
       </span>
     </div>
 
@@ -239,6 +239,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Edit,
   Eye,
@@ -270,6 +271,7 @@ const props = defineProps<{
   formatBalanceDisplay: (balance: { available: number | null; currency: string } | null) => string
   getQuotaUsedColorClass: (provider: ProviderWithEndpointsSummary) => string
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'viewDetail': [providerId: string]
@@ -322,7 +324,7 @@ function handleDescriptionKeydown(event: KeyboardEvent) {
   }
 }
 
-function getCredentialLabel(provider: ProviderWithEndpointsSummary): '账号' | '密钥' {
-  return isKeyManagedProviderType(provider.provider_type) ? '密钥' : '账号'
+function getCredentialLabel(provider: ProviderWithEndpointsSummary): string {
+  return isKeyManagedProviderType(provider.provider_type) ? t('providerCard.keys') : t('providerCard.accounts')
 }
 </script>

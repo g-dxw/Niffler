@@ -5,6 +5,7 @@ import type {
   NifflerUpstreamService,
   NifflerUpstreamServiceCapability,
 } from '@/api/niffler-core'
+import { i18n } from '@/i18n'
 
 export type NifflerServiceTemplateKey =
   | 'codex_oauth'
@@ -71,12 +72,12 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'codex_oauth',
     label: 'Codex / ChatGPT OAuth',
-    description: '用于接入 Codex 或 ChatGPT OAuth 账号池，默认开启对话和 Responses 生图工具能力。',
+    description: i18n.global.t('upstreamTemplateUi.codexDesc'),
     serviceKind: 'codex',
     protocolKind: 'codex',
     defaultApiFormat: 'codex',
     defaultBaseUrl: '',
-    baseUrlPlaceholder: 'OAuth 账号通常不需要填写',
+    baseUrlPlaceholder: i18n.global.t('upstreamTemplateUi.oauthPlaceholder'),
     baseUrlRequired: false,
     defaultAuthKind: 'oauth',
     capabilities: {
@@ -87,12 +88,12 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'claude_oauth',
     label: 'Claude OAuth',
-    description: '用于接入 Claude OAuth 账号池，默认按 Anthropic 协议登记文本和流式能力。',
+    description: i18n.global.t('upstreamTemplateUi.claudeDesc'),
     serviceKind: 'claude',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
     defaultBaseUrl: '',
-    baseUrlPlaceholder: 'OAuth 账号通常不需要填写',
+    baseUrlPlaceholder: i18n.global.t('upstreamTemplateUi.oauthPlaceholder'),
     baseUrlRequired: false,
     defaultAuthKind: 'oauth',
     capabilities: { ...textModelCapabilities },
@@ -100,7 +101,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'openai_api_key',
     label: 'OpenAI API Key',
-    description: '用于接入官方 OpenAI API Key，默认填入官方地址和 OpenAI 协议能力。',
+    description: i18n.global.t('upstreamTemplateUi.openaiDesc'),
     serviceKind: 'openai',
     protocolKind: 'openai',
     defaultApiFormat: 'openai',
@@ -117,7 +118,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'claude_api_key',
     label: 'Claude API Key',
-    description: '用于接入官方 Anthropic Claude API Key，默认按 Anthropic 协议登记。',
+    description: i18n.global.t('upstreamTemplateUi.anthropicDesc'),
     serviceKind: 'claude',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
@@ -130,7 +131,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'gemini_service_account',
     label: 'Gemini Service Account',
-    description: '用于登记 Gemini 服务账号类接入。当前只记录服务形态，不保存真实凭证。',
+    description: i18n.global.t('upstreamTemplateUi.geminiDesc'),
     serviceKind: 'gemini',
     protocolKind: 'gemini',
     defaultApiFormat: 'gemini',
@@ -142,8 +143,8 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'openai_compatible',
-    label: 'OpenAI 兼容接口',
-    description: '用于接入第三方 OpenAI 兼容服务，可手动声明图片接口和 Responses 生图工具能力。',
+    label: i18n.global.t('upstreamTemplateUi.openaiCompatible'),
+    description: i18n.global.t('upstreamTemplateUi.openaiCompatibleDesc'),
     serviceKind: 'openai_compatible',
     protocolKind: 'openai',
     defaultApiFormat: 'openai',
@@ -155,8 +156,8 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'anthropic_compatible',
-    label: 'Anthropic 兼容接口',
-    description: '用于接入第三方 Anthropic 兼容服务，不显示 OpenAI Responses 生图工具能力。',
+    label: i18n.global.t('upstreamTemplateUi.anthropicCompatible'),
+    description: i18n.global.t('upstreamTemplateUi.anthropicCompatibleDesc'),
     serviceKind: 'anthropic_compatible',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
@@ -168,8 +169,8 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'custom',
-    label: '自定义接口',
-    description: '用于暂时无法归类的上游服务，需要管理员自行确认协议和能力。',
+    label: i18n.global.t('upstreamTemplateUi.custom'),
+    description: i18n.global.t('upstreamTemplateUi.customDesc'),
     serviceKind: 'custom',
     protocolKind: 'custom',
     defaultApiFormat: 'custom',
@@ -224,9 +225,9 @@ export function getServiceKindLabel(serviceKind: string): string {
     claude: 'Claude',
     openai: 'OpenAI',
     gemini: 'Gemini',
-    openai_compatible: 'OpenAI 兼容接口',
-    anthropic_compatible: 'Anthropic 兼容接口',
-    custom: '自定义接口',
+    openai_compatible: i18n.global.t('upstreamTemplateUi.openaiCompatible'),
+    anthropic_compatible: i18n.global.t('upstreamTemplateUi.anthropicCompatible'),
+    custom: i18n.global.t('upstreamTemplateUi.custom'),
   }
   return labels[normalized] ?? serviceKind
 }
@@ -295,7 +296,7 @@ export function validateNifflerServiceCapabilities(
     && form.protocol_kind !== 'openai'
     && form.protocol_kind !== 'codex'
   ) {
-    issues.push('OpenAI Responses 生图工具只能用于 OpenAI 或 Codex 协议。')
+    issues.push(i18n.global.t('upstreamTemplateUi.imageToolIssue'))
   }
   if (
     form.capabilities.images_endpoint
@@ -303,7 +304,7 @@ export function validateNifflerServiceCapabilities(
     && form.protocol_kind !== 'codex'
     && form.protocol_kind !== 'custom'
   ) {
-    issues.push('图片接口只适用于 OpenAI、Codex 或自定义协议。')
+    issues.push(i18n.global.t('upstreamTemplateUi.imageEndpointIssue'))
   }
   return issues
 }

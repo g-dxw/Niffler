@@ -1,4 +1,5 @@
 import type { EndpointHealthDetail } from '@/api/endpoints'
+import { i18n } from '@/i18n'
 
 // 端点状态枚举
 export type EndpointStatus = 'disabled' | 'no_keys' | 'keys_disabled' | 'available'
@@ -80,17 +81,17 @@ export function getEndpointTooltip(endpoint: EndpointHealthDetail): string {
 
   switch (status) {
     case 'disabled':
-      return `${format}: 端点禁用`
+      return `${format}: ${i18n.global.t('providerUi.endpointDisabled')}`
     case 'no_keys':
-      return `${format}: 未配置密钥`
+      return `${format}: ${i18n.global.t('providerUi.noKeys')}`
     case 'keys_disabled':
-      return `${format}: 无可用密钥`
+      return `${format}: ${i18n.global.t('providerUi.noAvailableKeys')}`
     case 'available': {
       const score = endpoint.health_score
       if (score === undefined || score === null) {
-        return `${format}: 暂无健康数据`
+        return `${format}: ${i18n.global.t('providerUi.noHealthData')}`
       }
-      return `${format}: 健康度 ${(score * 100).toFixed(0)}%`
+      return `${format}: ${i18n.global.t('providerUi.healthScore', { value: `${(score * 100).toFixed(0)}%` })}`
     }
   }
 }

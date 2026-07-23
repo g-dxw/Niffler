@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="支付配置"
-      description="配置易支付和 DoDoPay 的收款信息、回调地址、汇率和启用状态"
+      :title="t('paymentGateway.title')"
+      :description="t('paymentGateway.description')"
     >
       <template #actions>
         <div class="flex items-center gap-2">
@@ -13,7 +13,7 @@
             @click="testGateway"
           >
             <PlugZap class="mr-2 h-4 w-4" />
-            {{ testing ? '测试中...' : '测试配置' }}
+            {{ testing ? t('paymentGateway.testing') : t('paymentGateway.test') }}
           </Button>
           <Button
             size="sm"
@@ -21,7 +21,7 @@
             @click="saveConfig"
           >
             <Save class="mr-2 h-4 w-4" />
-            {{ saving ? '保存中...' : '保存' }}
+            {{ saving ? t('paymentGateway.saving') : t('paymentGateway.save') }}
           </Button>
         </div>
       </template>
@@ -45,35 +45,35 @@
         v-if="loading"
         class="py-16"
       >
-        <LoadingState message="正在加载支付配置..." />
+        <LoadingState :message="t('paymentGateway.loading')" />
       </div>
 
       <template v-else>
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card class="p-5">
             <div class="text-xs uppercase tracking-wider text-muted-foreground">
-              网关状态
+              {{ t('paymentGateway.gatewayStatus') }}
             </div>
             <div class="mt-3 flex items-center gap-3">
               <Badge :variant="form.enabled ? 'success' : 'secondary'">
-                {{ form.enabled ? '已启用' : '未启用' }}
+                {{ form.enabled ? t('paymentGateway.enabled') : t('paymentGateway.disabled') }}
               </Badge>
               <Switch v-model="form.enabled" />
             </div>
           </Card>
           <Card class="p-5">
             <div class="text-xs uppercase tracking-wider text-muted-foreground">
-              密钥状态
+              {{ t('paymentGateway.secretStatus') }}
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               <Badge :variant="hasSecret ? 'success' : 'warning'">
-                {{ activeProviderMeta.secretLabel }}：{{ hasSecret ? '已保存' : '未设置' }}
+                {{ activeProviderMeta.secretLabel }}：{{ hasSecret ? t('paymentGateway.saved') : t('paymentGateway.notSet') }}
               </Badge>
             </div>
           </Card>
           <Card class="p-5">
             <div class="text-xs uppercase tracking-wider text-muted-foreground">
-              汇率
+              {{ t('paymentGateway.currency') }}
             </div>
             <div class="mt-2 text-2xl font-semibold tabular-nums">
               1 USD = {{ Number(form.usd_exchange_rate || 0).toFixed(4) }} {{ form.pay_currency }}
@@ -82,7 +82,7 @@
         </div>
 
         <CardSection
-          :title="`${activeProviderMeta.name} 收款信息`"
+          :title="`${activeProviderMeta.name} ${t('paymentGateway.paymentInfo')}`"
           :description="activeProviderMeta.description"
         >
           <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -96,14 +96,14 @@
             </div>
 
             <div class="space-y-1.5">
-              <Label for="gateway-callback-base">回调站点根地址</Label>
+              <Label for="gateway-callback-base">{{ t('paymentGateway.callbackBase') }}</Label>
               <Input
                 id="gateway-callback-base"
                 v-model="form.callback_base_url"
                 :placeholder="defaultCallbackBaseUrl || 'https://aether.example.com'"
               />
               <p class="text-xs text-muted-foreground">
-                留空保存为空配置；下单时默认使用当前 API 地址或 AETHER_PUBLIC_BASE_URL。
+                {{ t('paymentGateway.callbackHint') }}
               </p>
             </div>
 
@@ -121,26 +121,26 @@
               <Label for="gateway-merchant-key">
                 {{ activeProviderMeta.secretLabel }}
                 <span class="text-xs font-normal text-muted-foreground">
-                  {{ hasSecret ? '（留空保持不变）' : '' }}
+                  {{ hasSecret ? t('paymentGateway.keepSecret') : '' }}
                 </span>
               </Label>
               <Input
                 id="gateway-merchant-key"
                 v-model="form.merchant_key"
                 masked
-                :placeholder="hasSecret ? '已设置，输入新密钥后覆盖' : activeProviderMeta.secretPlaceholder"
+                :placeholder="hasSecret ? t('paymentGateway.secretOverridePlaceholder') : activeProviderMeta.secretPlaceholder"
               />
             </div>
           </div>
         </CardSection>
 
         <CardSection
-          title="计费参数"
-          description="用户充值按美元金额下单，支付网关按这里的币种和汇率收款"
+          :title="t('paymentGateway.billing')"
+          :description="t('paymentGateway.billingHint')"
         >
           <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
             <div class="space-y-1.5">
-              <Label for="gateway-currency">支付币种</Label>
+              <Label for="gateway-currency">{{ t('paymentGateway.paymentCurrency') }}</Label>
               <Input
                 id="gateway-currency"
                 v-model="form.pay_currency"
@@ -149,7 +149,7 @@
               />
             </div>
             <div class="space-y-1.5">
-              <Label for="gateway-rate">USD 汇率</Label>
+              <Label for="gateway-rate">{{ t('paymentGateway.usdRate') }}</Label>
               <Input
                 id="gateway-rate"
                 v-model.number="form.usd_exchange_rate"
@@ -159,7 +159,7 @@
               />
             </div>
             <div class="space-y-1.5">
-              <Label for="gateway-min">最低充值金额 (USD)</Label>
+              <Label for="gateway-min">{{ t('paymentGateway.minimum') }}</Label>
               <Input
                 id="gateway-min"
                 v-model.number="form.min_recharge_usd"
@@ -173,8 +173,8 @@
 
         <CardSection
           v-if="activeProvider === 'epay'"
-          title="支付通道"
-          description="通道值会传给易支付 type 字段"
+          :title="t('paymentGateway.channels')"
+          :description="t('paymentGateway.channelsHint')"
         >
           <template #actions>
             <Button
@@ -183,7 +183,7 @@
               @click="addChannel"
             >
               <Plus class="mr-2 h-4 w-4" />
-              添加通道
+                {{ t('paymentGateway.addChannel') }}
             </Button>
           </template>
 
@@ -194,7 +194,7 @@
               class="grid grid-cols-1 gap-3 rounded-lg border border-border/60 bg-muted/20 p-3 md:grid-cols-[1fr_1fr_auto]"
             >
               <div class="space-y-1.5">
-                <Label :for="`epay-channel-${index}`">通道值</Label>
+                <Label :for="`epay-channel-${index}`">{{ t('paymentGateway.channel') }}</Label>
                 <Input
                   :id="`epay-channel-${index}`"
                   v-model="channel.channel"
@@ -202,18 +202,18 @@
                 />
               </div>
               <div class="space-y-1.5">
-                <Label :for="`epay-channel-name-${index}`">显示名称</Label>
+                <Label :for="`epay-channel-name-${index}`">{{ t('paymentGateway.displayName') }}</Label>
                 <Input
                   :id="`epay-channel-name-${index}`"
                   v-model="channel.display_name"
-                  placeholder="支付宝"
+                  :placeholder="t('paymentGateway.alipayDisplayName')"
                 />
               </div>
               <div class="flex items-end">
                 <Button
                   variant="ghost"
                   size="icon"
-                  title="移除通道"
+                  :title="t('paymentGateway.remove')"
                   :disabled="form.channels.length <= 1"
                   @click="removeChannel(index)"
                 >
@@ -228,7 +228,7 @@
           v-if="updatedAtText"
           class="text-xs text-muted-foreground"
         >
-          最后更新：{{ updatedAtText }}
+          {{ t('paymentGateway.updated') }}：{{ updatedAtText }}
         </p>
       </template>
     </div>
@@ -237,6 +237,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { PlugZap, Plus, Save, Trash2 } from 'lucide-vue-next'
 import {
   dodopayGatewayApi,
@@ -264,11 +265,12 @@ const { success, error: showError } = useToast()
 const loading = ref(true)
 const saving = ref(false)
 const testing = ref(false)
+const { t, locale } = useI18n()
 const hasSecret = ref(false)
 const updatedAt = ref<number | null>(null)
 const activeProvider = ref<PaymentGatewayProvider>('epay')
 
-const providerTabs: Array<{
+const providerTabs = computed<Array<{
   id: PaymentGatewayProvider
   name: string
   endpointLabel: string
@@ -278,30 +280,30 @@ const providerTabs: Array<{
   secretLabel: string
   secretPlaceholder: string
   description: string
-}> = [
+}>>(() => [
   {
     id: 'epay',
-    name: '易支付',
-    endpointLabel: '易支付接口地址',
+    name: t('paymentGateway.epayName'),
+    endpointLabel: t('paymentGateway.epayEndpoint'),
     endpointPlaceholder: 'https://pay.example.com/submit.php',
-    merchantIdLabel: '商户 ID',
+    merchantIdLabel: t('paymentGateway.merchantId'),
     merchantIdPlaceholder: '1000',
-    secretLabel: '商户密钥',
-    secretPlaceholder: '请输入商户密钥',
-    description: '密钥留空会保留原密钥；回调地址留空时后端会使用当前 API 访问地址，生产环境建议显式填写公网根地址',
+    secretLabel: t('paymentGateway.merchantSecret'),
+    secretPlaceholder: t('paymentGateway.merchantSecretPlaceholder'),
+    description: t('paymentGateway.epayDescription'),
   },
   {
     id: 'dodopay',
     name: 'DoDoPay',
-    endpointLabel: 'DoDoPay 服务地址',
+    endpointLabel: t('paymentGateway.dodopayEndpoint'),
     endpointPlaceholder: 'https://pay.dodododo.org',
     merchantIdLabel: 'App ID',
     merchantIdPlaceholder: 'app_xxxxx',
     secretLabel: 'App Secret',
-    secretPlaceholder: '请输入 DoDoPay App Secret',
-    description: 'App Secret 用于创建订单、取消订单和验证支付成功回调；配置后用户可以选择支付宝或微信支付钱包充值和套餐订单',
+    secretPlaceholder: t('paymentGateway.dodopaySecretPlaceholder'),
+    description: t('paymentGateway.dodopayDescription'),
   },
-]
+])
 
 const activeProviderMeta = computed(
   () => providerTabs.find((provider) => provider.id === activeProvider.value) || providerTabs[0]
@@ -317,8 +319,8 @@ const form = reactive({
   usd_exchange_rate: 7.2,
   min_recharge_usd: 1,
   channels: [
-    { channel: 'alipay', display_name: '支付宝' },
-    { channel: 'wxpay', display_name: '微信支付' },
+    { channel: 'alipay', display_name: t('paymentGateway.alipay') },
+    { channel: 'wxpay', display_name: t('paymentGateway.wechatPay') },
   ] as EpayChannelConfig[],
 })
 
@@ -328,7 +330,7 @@ function activeGatewayApi() {
 
 const updatedAtText = computed(() => {
   if (!updatedAt.value) return ''
-  return new Date(updatedAt.value * 1000).toLocaleString('zh-CN')
+  return new Date(updatedAt.value * 1000).toLocaleString(locale.value === 'en-US' ? 'en-US' : 'zh-CN')
 })
 
 const defaultCallbackBaseUrl = computed(() => {
@@ -362,15 +364,15 @@ async function loadConfig() {
       ? config.channels.map((item) => ({ ...item }))
       : activeProvider.value === 'epay'
         ? [
-            { channel: 'alipay', display_name: '支付宝' },
-            { channel: 'wxpay', display_name: '微信支付' },
+            { channel: 'alipay', display_name: t('paymentGateway.alipay') },
+            { channel: 'wxpay', display_name: t('paymentGateway.wechatPay') },
           ]
         : []
     hasSecret.value = config.has_secret
     updatedAt.value = config.updated_at ?? null
   } catch (err) {
-    log.error(`加载${activeProviderMeta.value.name}配置失败:`, err)
-    showError(parseApiError(err, `加载${activeProviderMeta.value.name}配置失败`))
+    log.error(`Failed to load ${activeProviderMeta.value.name} configuration:`, err)
+    showError(parseApiError(err, t('paymentGateway.loadFailed', { provider: activeProviderMeta.value.name })))
   } finally {
     loading.value = false
   }
@@ -386,19 +388,19 @@ function normalizeChannels(): EpayChannelConfig[] {
 }
 
 function validateForm(): string | null {
-  if (!form.endpoint_url.trim()) return `请输入${activeProviderMeta.value.endpointLabel}`
-  if (!form.merchant_id.trim()) return `请输入${activeProviderMeta.value.merchantIdLabel}`
+  if (!form.endpoint_url.trim()) return t('paymentGateway.requiredField', { field: activeProviderMeta.value.endpointLabel })
+  if (!form.merchant_id.trim()) return t('paymentGateway.requiredField', { field: activeProviderMeta.value.merchantIdLabel })
   if (!hasSecret.value && !form.merchant_key.trim()) {
-    return `首次配置需要填写${activeProviderMeta.value.secretLabel}`
+    return t('paymentGateway.secretRequired', { field: activeProviderMeta.value.secretLabel })
   }
-  if (!form.pay_currency.trim()) return '请输入支付币种'
+  if (!form.pay_currency.trim()) return t('paymentGateway.currencyRequired')
   if (!Number.isFinite(Number(form.usd_exchange_rate)) || Number(form.usd_exchange_rate) <= 0) {
-    return 'USD 汇率必须大于 0'
+    return t('paymentGateway.ratePositive')
   }
   if (!Number.isFinite(Number(form.min_recharge_usd)) || Number(form.min_recharge_usd) <= 0) {
-    return '最低充值金额必须大于 0'
+    return t('paymentGateway.minimumPositive')
   }
-  if (activeProvider.value === 'epay' && normalizeChannels().length === 0) return '至少需要一个支付通道'
+  if (activeProvider.value === 'epay' && normalizeChannels().length === 0) return t('paymentGateway.channelRequired')
   return null
 }
 
@@ -428,10 +430,10 @@ async function saveConfig() {
     updatedAt.value = config.updated_at ?? null
     form.callback_base_url = config.callback_base_url || ''
     form.merchant_key = ''
-    success(`${activeProviderMeta.value.name}配置已保存`)
+    success(t('paymentGateway.savedProvider', { provider: activeProviderMeta.value.name }))
   } catch (err) {
-    log.error(`保存${activeProviderMeta.value.name}配置失败:`, err)
-    showError(parseApiError(err, `保存${activeProviderMeta.value.name}配置失败`))
+    log.error(`Failed to save ${activeProviderMeta.value.name} configuration:`, err)
+    showError(parseApiError(err, t('paymentGateway.saveFailedProvider', { provider: activeProviderMeta.value.name })))
   } finally {
     saving.value = false
   }
@@ -441,10 +443,10 @@ async function testGateway() {
   testing.value = true
   try {
     await activeGatewayApi().test()
-    success(`${activeProviderMeta.value.name}配置可用`)
+    success(t('paymentGateway.testPassed', { provider: activeProviderMeta.value.name }))
   } catch (err) {
-    log.error(`测试${activeProviderMeta.value.name}配置失败:`, err)
-    showError(parseApiError(err, `测试${activeProviderMeta.value.name}配置失败`))
+    log.error(`Failed to test ${activeProviderMeta.value.name} configuration:`, err)
+    showError(parseApiError(err, t('paymentGateway.testFailed', { provider: activeProviderMeta.value.name })))
   } finally {
     testing.value = false
   }

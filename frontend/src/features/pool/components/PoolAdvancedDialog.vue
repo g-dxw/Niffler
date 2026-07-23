@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="modelValue"
-    title="高级设置"
-    description="冷却、健康、成本控制与其他高级参数"
+    :title="t('poolAdvanced.title')"
+    :description="t('poolAdvanced.description')"
     size="3xl"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -11,14 +11,14 @@
         <div class="space-y-1">
           <div class="flex flex-wrap items-center gap-2">
             <h3 class="text-sm font-semibold">
-              冷却与健康
+              {{ t('poolAdvanced.healthSection') }}
             </h3>
             <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-              核心策略
+              {{ t('poolAdvanced.corePolicy') }}
             </span>
           </div>
           <p class="text-xs leading-5 text-muted-foreground">
-            控制自动冷却、自适应热池、异常清理和全局调度优先级。
+            {{ t('poolAdvanced.healthHint') }}
           </p>
         </div>
 
@@ -39,7 +39,7 @@
                       <button
                         type="button"
                         :title="item.description"
-                        :aria-label="`${item.label} 说明`"
+                        :aria-label="t('poolAdvanced.explanation', { label: item.label })"
                         class="hidden lg:inline-flex items-center justify-center rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                       >
                         <CircleHelp class="h-3.5 w-3.5" />
@@ -74,8 +74,8 @@
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
               <Label>
-                自检间隔
-                <span class="text-xs text-muted-foreground">(分钟)</span>
+                {{ t('poolAdvanced.selfCheckInterval') }}
+                <span class="text-xs text-muted-foreground">({{ t('poolAdvanced.minutes') }})</span>
               </Label>
               <Input
                 :model-value="form.account_self_check_interval_minutes ?? ''"
@@ -88,7 +88,7 @@
             </div>
             <div class="space-y-1.5">
               <Label>
-                自检并发
+                {{ t('poolAdvanced.selfCheckConcurrency') }}
               </Label>
               <Input
                 :model-value="form.account_self_check_concurrency ?? ''"
@@ -108,8 +108,8 @@
         >
           <div class="space-y-1.5">
             <Label>
-              429 冷却
-              <span class="text-xs text-muted-foreground">(秒)</span>
+              {{ t('poolAdvanced.cooldown429') }}
+              <span class="text-xs text-muted-foreground">({{ t('poolAdvanced.seconds') }})</span>
             </Label>
             <Input
               :model-value="form.rate_limit_cooldown_seconds ?? ''"
@@ -122,8 +122,8 @@
           </div>
           <div class="space-y-1.5">
             <Label>
-              529 冷却
-              <span class="text-xs text-muted-foreground">(秒)</span>
+              {{ t('poolAdvanced.cooldown529') }}
+              <span class="text-xs text-muted-foreground">({{ t('poolAdvanced.seconds') }})</span>
             </Label>
             <Input
               :model-value="form.overload_cooldown_seconds ?? ''"
@@ -136,28 +136,28 @@
           </div>
           <div class="space-y-1.5">
             <Label>
-              粘性会话 TTL
-              <span class="text-xs text-muted-foreground">(秒)</span>
+              {{ t('poolAdvanced.stickyTtl') }}
+              <span class="text-xs text-muted-foreground">({{ t('poolAdvanced.seconds') }})</span>
             </Label>
             <Input
               :model-value="form.sticky_session_ttl_seconds ?? ''"
               type="number"
               min="60"
               max="86400"
-              placeholder="3600 (留空禁用)"
+              :placeholder="t('poolAdvanced.stickyPlaceholder')"
               @update:model-value="(v) => form.sticky_session_ttl_seconds = parseNum(v)"
             />
           </div>
           <div class="space-y-1.5">
             <Label>
-              全局优先级
+              {{ t('poolAdvanced.globalPriority') }}
             </Label>
             <Input
               :model-value="form.global_priority ?? ''"
               type="number"
               min="0"
               max="999999"
-              placeholder="留空回退 provider_priority"
+              :placeholder="t('poolAdvanced.priorityPlaceholder')"
               @update:model-value="(v) => form.global_priority = parseNum(v)"
             />
           </div>
@@ -169,14 +169,14 @@
           <div class="space-y-1">
             <div class="flex flex-wrap items-center gap-2">
               <h3 class="text-sm font-semibold">
-                成本控制
+                {{ t('poolAdvanced.costControl') }}
               </h3>
               <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                额度保护
+                {{ t('poolAdvanced.quotaProtection') }}
               </span>
             </div>
             <p class="text-xs leading-5 text-muted-foreground">
-              控制窗口期、Key 限额与软阈值，防止个别账号短时间内过度消耗。
+              {{ t('poolAdvanced.costHint') }}
             </p>
           </div>
 
@@ -186,34 +186,34 @@
           >
             <div class="space-y-1.5">
               <Label>
-                成本窗口
-                <span class="text-xs text-muted-foreground">(秒)</span>
+                {{ t('poolAdvanced.costWindow') }}
+                <span class="text-xs text-muted-foreground">({{ t('poolAdvanced.seconds') }})</span>
               </Label>
               <Input
                 :model-value="form.cost_window_seconds ?? ''"
                 type="number"
                 min="3600"
                 max="86400"
-                placeholder="18000 (5 小时)"
+                :placeholder="t('poolAdvanced.costWindowPlaceholder')"
                 @update:model-value="(v) => form.cost_window_seconds = parseNum(v)"
               />
             </div>
             <div class="space-y-1.5">
               <Label>
-                Key 窗口限额
+                {{ t('poolAdvanced.keyWindowLimit') }}
                 <span class="text-xs text-muted-foreground">(tokens)</span>
               </Label>
               <Input
                 :model-value="form.cost_limit_per_key_tokens ?? ''"
                 type="number"
                 min="0"
-                placeholder="留空 = 不限"
+                :placeholder="t('poolAdvanced.unlimitedPlaceholder')"
                 @update:model-value="(v) => form.cost_limit_per_key_tokens = parseNum(v)"
               />
             </div>
             <div class="space-y-1.5">
               <Label>
-                软阈值
+                {{ t('poolAdvanced.softThreshold') }}
                 <span class="text-xs text-muted-foreground">(%)</span>
               </Label>
               <Input
@@ -232,21 +232,21 @@
           <div class="space-y-1">
             <div class="flex flex-wrap items-center gap-2">
               <h3 class="text-sm font-semibold">
-                批量操作
+                {{ t('poolAdvanced.batchOperations') }}
               </h3>
               <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                任务效率
+                {{ t('poolAdvanced.taskEfficiency') }}
               </span>
             </div>
             <p class="text-xs leading-5 text-muted-foreground">
-              控制刷新 OAuth、自适应热池和批量额度处理时的并行请求数。
+              {{ t('poolAdvanced.batchHint') }}
             </p>
           </div>
 
           <div class="grid gap-3 rounded-xl bg-muted/30 p-4 sm:grid-cols-2">
             <div class="space-y-1.5">
               <Label>
-                并发数
+                {{ t('poolAdvanced.concurrency') }}
               </Label>
               <Input
                 :model-value="form.batch_concurrency ?? ''"
@@ -257,12 +257,12 @@
                 @update:model-value="(v) => form.batch_concurrency = parseNum(v)"
               />
               <p class="text-[11px] leading-5 text-muted-foreground">
-                为空时沿用默认值；数值越大，批量操作越快，但会增加瞬时请求压力。
+                {{ t('poolAdvanced.concurrencyHint') }}
               </p>
             </div>
             <div class="space-y-1.5">
               <Label>
-                探测并发
+                {{ t('poolAdvanced.probeConcurrency') }}
               </Label>
               <Input
                 :model-value="form.probe_concurrency ?? ''"
@@ -275,7 +275,7 @@
             </div>
             <div class="space-y-1.5">
               <Label>
-                评分 Top-N
+                {{ t('poolAdvanced.scoreTopN') }}
               </Label>
               <Input
                 :model-value="form.score_top_n ?? ''"
@@ -288,7 +288,7 @@
             </div>
             <div class="space-y-1.5">
               <Label>
-                回退扫描
+                {{ t('poolAdvanced.fallbackScan') }}
               </Label>
               <Input
                 :model-value="form.score_fallback_scan_limit ?? ''"
@@ -307,20 +307,20 @@
         <div class="space-y-1">
           <div class="flex flex-wrap items-center gap-2">
             <h3 class="text-sm font-semibold">
-              分数规则
+              {{ t('poolAdvanced.scoreRules') }}
             </h3>
             <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-              候选排序
+              {{ t('poolAdvanced.candidateRanking') }}
             </span>
           </div>
           <p class="text-xs leading-5 text-muted-foreground">
-            调整探测结果、健康、额度、延迟和使用成本进入号池候选排序时的权重。
+            {{ t('poolAdvanced.scoreHint') }}
           </p>
         </div>
 
         <div class="grid gap-3 lg:grid-cols-3">
           <div class="space-y-1.5">
-            <Label>优先级权重</Label>
+            <Label>{{ t('poolAdvanced.priorityWeight') }}</Label>
             <Input
               :model-value="form.score_weight_manual_priority ?? ''"
               type="number"
@@ -332,7 +332,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>健康权重</Label>
+            <Label>{{ t('poolAdvanced.healthWeight') }}</Label>
             <Input
               :model-value="form.score_weight_health ?? ''"
               type="number"
@@ -344,7 +344,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>探测新鲜度权重</Label>
+            <Label>{{ t('poolAdvanced.freshnessWeight') }}</Label>
             <Input
               :model-value="form.score_weight_probe_freshness ?? ''"
               type="number"
@@ -356,7 +356,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>额度剩余权重</Label>
+            <Label>{{ t('poolAdvanced.quotaWeight') }}</Label>
             <Input
               :model-value="form.score_weight_quota_remaining ?? ''"
               type="number"
@@ -368,7 +368,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>延迟权重</Label>
+            <Label>{{ t('poolAdvanced.latencyWeight') }}</Label>
             <Input
               :model-value="form.score_weight_latency ?? ''"
               type="number"
@@ -380,7 +380,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>成本/LRU 权重</Label>
+            <Label>{{ t('poolAdvanced.costLruWeight') }}</Label>
             <Input
               :model-value="form.score_weight_cost_lru ?? ''"
               type="number"
@@ -396,8 +396,8 @@
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div class="space-y-1.5">
             <Label>
-              探测新鲜度 TTL
-              <span class="text-xs text-muted-foreground">(秒)</span>
+              {{ t('poolAdvanced.freshnessTtl') }}
+              <span class="text-xs text-muted-foreground">({{ t('poolAdvanced.seconds') }})</span>
             </Label>
             <Input
               :model-value="form.probe_freshness_ttl_seconds ?? ''"
@@ -409,7 +409,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>探测失败惩罚</Label>
+            <Label>{{ t('poolAdvanced.probeFailurePenalty') }}</Label>
             <Input
               :model-value="form.probe_failure_penalty ?? ''"
               type="number"
@@ -421,7 +421,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>请求失败惩罚</Label>
+            <Label>{{ t('poolAdvanced.requestFailurePenalty') }}</Label>
             <Input
               :model-value="form.request_failure_penalty ?? ''"
               type="number"
@@ -433,7 +433,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>探测失败冷却阈值</Label>
+            <Label>{{ t('poolAdvanced.probeCooldownThreshold') }}</Label>
             <Input
               :model-value="form.probe_failure_cooldown_threshold ?? ''"
               type="number"
@@ -444,7 +444,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>不可调度分数上限</Label>
+            <Label>{{ t('poolAdvanced.unschedulableCap') }}</Label>
             <Input
               :model-value="form.unschedulable_score_cap ?? ''"
               type="number"
@@ -468,20 +468,20 @@
               Claude Code
             </h3>
             <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-              请求约束
+              {{ t('poolAdvanced.requestConstraints') }}
             </span>
           </div>
           <p class="text-xs leading-5 text-muted-foreground">
-            管理 CLI 请求限制、会话控制和 metadata / cache 相关的兼容行为。
+            {{ t('poolAdvanced.claudeHint') }}
           </p>
         </div>
 
         <div class="grid gap-3 lg:grid-cols-2">
           <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="space-y-1">
-              <span class="text-sm font-medium">Session ID 伪装</span>
+              <span class="text-sm font-medium">{{ t('poolAdvanced.sessionMasking') }}</span>
               <p class="text-xs leading-5 text-muted-foreground">
-                固定 metadata.user_id 中 session 片段。
+                {{ t('poolAdvanced.sessionMaskingHint') }}
               </p>
             </div>
             <Switch
@@ -493,9 +493,9 @@
 
           <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="space-y-1">
-              <span class="text-sm font-medium">仅限 CLI 客户端</span>
+              <span class="text-sm font-medium">{{ t('poolAdvanced.cliOnly') }}</span>
               <p class="text-xs leading-5 text-muted-foreground">
-                仅允许 Claude Code CLI 格式请求。
+                {{ t('poolAdvanced.cliOnlyHint') }}
               </p>
             </div>
             <Switch
@@ -507,9 +507,9 @@
 
           <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="space-y-1">
-              <span class="text-sm font-medium">Cache TTL 统一</span>
+              <span class="text-sm font-medium">{{ t('poolAdvanced.cacheTtlOverride') }}</span>
               <p class="text-xs leading-5 text-muted-foreground">
-                强制所有 cache_control 使用同一种 TTL 类型。
+                {{ t('poolAdvanced.cacheTtlHint') }}
               </p>
             </div>
             <Switch
@@ -521,9 +521,9 @@
 
           <div class="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="space-y-1">
-              <span class="text-sm font-medium">会话数量控制</span>
+              <span class="text-sm font-medium">{{ t('poolAdvanced.sessionLimit') }}</span>
               <p class="text-xs leading-5 text-muted-foreground">
-                限制单 Key 同时活跃会话数，降低长期占用风险。
+                {{ t('poolAdvanced.sessionLimitHint') }}
               </p>
             </div>
             <Switch
@@ -539,7 +539,7 @@
           class="rounded-xl border border-dashed border-primary/25 bg-primary/5 p-4"
         >
           <div class="space-y-1.5">
-            <Label>TTL 类型</Label>
+            <Label>{{ t('poolAdvanced.ttlType') }}</Label>
             <div class="flex w-fit gap-0.5 rounded-md bg-muted/40 p-0.5">
               <button
                 v-for="opt in ['ephemeral']"
@@ -566,21 +566,21 @@
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
               <Label>
-                最大会话数
+                {{ t('poolAdvanced.maxSessions') }}
               </Label>
               <Input
                 :model-value="claudeForm.max_sessions ?? ''"
                 type="number"
                 min="1"
                 max="100"
-                placeholder="留空 = 不限"
+                :placeholder="t('poolAdvanced.unlimitedPlaceholder')"
                 @update:model-value="(v) => claudeForm.max_sessions = parseNum(v)"
               />
             </div>
             <div class="space-y-1.5">
               <Label>
-                空闲超时
-                <span class="text-xs text-muted-foreground">(分钟)</span>
+                {{ t('poolAdvanced.idleTimeout') }}
+                <span class="text-xs text-muted-foreground">({{ t('poolAdvanced.minutes') }})</span>
               </Label>
               <Input
                 :model-value="claudeForm.session_idle_timeout_minutes ?? ''"
@@ -603,14 +603,14 @@
         :disabled="loading"
         @click="emit('update:modelValue', false)"
       >
-        取消
+        {{ t('poolAdvanced.cancel') }}
       </Button>
       <Button
         class="min-w-[96px] flex-1 sm:flex-none"
         :disabled="loading"
         @click="handleSave"
       >
-        {{ loading ? '保存中...' : '保存' }}
+        {{ loading ? t('poolAdvanced.saving') : t('poolAdvanced.save') }}
       </Button>
     </template>
   </Dialog>
@@ -618,6 +618,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { CircleHelp } from 'lucide-vue-next'
 import { Dialog, Button, Input, Label, Switch, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import { useToast } from '@/composables/useToast'
@@ -626,7 +627,6 @@ import { updateProvider } from '@/api/endpoints'
 import {
   buildPoolCooldownFieldLayout,
   buildPoolCostFieldLayout,
-  buildPoolHealthToggleCards,
   buildPoolSecondarySectionLayout,
   type PoolHealthToggleKey,
 } from '@/features/pool/utils/poolAdvancedDialog'
@@ -643,6 +643,7 @@ const props = defineProps<{
   currentConfig: PoolAdvancedConfig | null
   currentClaudeConfig?: ClaudeCodeAdvancedConfig | null
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -656,7 +657,13 @@ const isClaudeCode = computed(() => {
   return (props.providerType || '').trim().toLowerCase() === 'claude_code'
 })
 
-const healthToggleCards = buildPoolHealthToggleCards()
+const healthToggleCards = computed(() => [
+  { key: 'health_policy_enabled' as PoolHealthToggleKey, label: t('poolAdvanced.healthPolicy'), description: t('poolAdvanced.healthPolicyHint') },
+  { key: 'probing_enabled' as PoolHealthToggleKey, label: t('poolAdvanced.adaptivePool'), description: t('poolAdvanced.adaptivePoolHint') },
+  { key: 'account_self_check_enabled' as PoolHealthToggleKey, label: t('poolAdvanced.accountSelfCheck'), description: t('poolAdvanced.accountSelfCheckHint') },
+  { key: 'auto_remove_banned_keys' as PoolHealthToggleKey, label: t('poolAdvanced.autoRemove'), description: t('poolAdvanced.autoRemoveHint') },
+  { key: 'skip_exhausted_accounts' as PoolHealthToggleKey, label: t('poolAdvanced.skipExhausted'), description: t('poolAdvanced.skipExhaustedHint') },
+])
 const cooldownFieldLayout = buildPoolCooldownFieldLayout()
 const costFieldLayout = buildPoolCostFieldLayout()
 const secondarySectionLayout = buildPoolSecondarySectionLayout()
@@ -882,7 +889,7 @@ async function handleSave() {
       }
     }
     const updatedProvider = await updateProvider(props.providerId, payload)
-    success('高级设置已保存')
+    success(t('poolAdvanced.saved'))
     emit('saved', updatedProvider)
     emit('update:modelValue', false)
   } catch (err) {

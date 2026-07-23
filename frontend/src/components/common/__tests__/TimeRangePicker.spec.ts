@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, type App } from 'vue'
+import { createApp, defineComponent, h, type App } from '@/test/vue'
 import TimeRangePicker from '../TimeRangePicker.vue'
 
 vi.mock('@/components/ui', async () => {

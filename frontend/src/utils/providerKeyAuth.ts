@@ -111,8 +111,8 @@ export function canEditOAuthCredential(input: ProviderKeyAuthCarrier): boolean {
 
 export function getProviderAuthLabel(input: ProviderKeyAuthCarrier): string {
   if (isOAuthManagedCredential(input)) return 'OAuth'
-  if (isServiceAccountCredential(input)) return '服务账号'
-  if (getProviderRuntimeAuthKind(input) === 'mixed') return '混合'
+  if (isServiceAccountCredential(input)) return i18n.global.t('providerAuthFeedback.serviceAccount')
+  if (getProviderRuntimeAuthKind(input) === 'mixed') return i18n.global.t('providerAuthFeedback.mixed')
   return getProviderRuntimeAuthKind(input) === 'bearer' ? 'Bearer' : 'API Key'
 }
 
@@ -126,3 +126,4 @@ export function getProviderMaskedSecretLabel(
   if (getProviderRuntimeAuthKind(input) === 'mixed') return '[Key]'
   return getProviderRuntimeAuthKind(input) === 'bearer' ? '[Bearer Token]' : '[Key]'
 }
+import { i18n } from '@/i18n'

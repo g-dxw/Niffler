@@ -10,7 +10,7 @@
         <div class="flex flex-col gap-3 sm:hidden">
           <div class="flex items-center justify-between">
             <h3 class="text-base font-semibold">
-              代理节点
+              {{ t('proxyNodes.title') }}
             </h3>
             <div class="flex items-center gap-2">
               <Button
@@ -19,7 +19,7 @@
                 class="h-7 text-xs"
                 @click="showBatchUpgradeDialog = true"
               >
-                升级
+                {{ t('proxyNodes.upgrade') }}
               </Button>
               <Button
                 size="sm"
@@ -27,7 +27,7 @@
                 @click="openAddDialog"
               >
                 <Plus class="w-3 h-3 mr-1" />
-                添加
+                {{ t('proxyNodes.add') }}
               </Button>
               <RefreshButton
                 :loading="store.loading"
@@ -41,24 +41,24 @@
               <Input
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索..."
+                  :placeholder="t('proxyNodes.search')"
                 class="w-full pl-8 pr-3 h-8 text-sm bg-background/50 border-border/60"
               />
             </div>
             <div class="min-w-0 flex-1">
               <Select v-model="filterStatus">
                 <SelectTrigger class="w-full h-8 text-xs border-border/60">
-                  <SelectValue placeholder="状态" />
+                  <SelectValue :placeholder="t('proxyNodes.status')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部
+                    {{ t('proxyNodes.all') }}
                   </SelectItem>
                   <SelectItem value="online">
-                    在线
+                    {{ t('proxyNodes.online') }}
                   </SelectItem>
                   <SelectItem value="offline">
-                    离线
+                    {{ t('proxyNodes.offline') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -69,7 +69,7 @@
         <!-- 桌面端 -->
         <div class="hidden sm:flex items-center justify-between gap-4">
           <h3 class="text-base font-semibold">
-            代理节点
+            {{ t('proxyNodes.title') }}
           </h3>
           <div class="flex items-center gap-2">
             <div class="relative">
@@ -77,7 +77,7 @@
               <Input
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索..."
+                :placeholder="t('proxyNodes.search')"
                 class="w-48 pl-8 pr-3 h-8 text-sm bg-background/50 border-border/60"
               />
             </div>
@@ -85,17 +85,17 @@
             <div class="xl:hidden">
               <Select v-model="filterStatus">
                 <SelectTrigger class="w-28 h-8 text-xs border-border/60">
-                  <SelectValue placeholder="全部状态" />
+                  <SelectValue :placeholder="t('proxyNodes.allStatus')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部状态
+                    {{ t('proxyNodes.allStatus') }}
                   </SelectItem>
                   <SelectItem value="online">
-                    在线
+                    {{ t('proxyNodes.online') }}
                   </SelectItem>
                   <SelectItem value="offline">
-                    离线
+                    {{ t('proxyNodes.offline') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -107,13 +107,13 @@
               class="h-8 text-xs"
               @click="showBatchUpgradeDialog = true"
             >
-              批量升级
+              {{ t('proxyNodes.batchUpgrade') }}
             </Button>
             <Button
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="手动添加"
+              :title="t('proxyNodes.manualAdd')"
               @click="openAddDialog"
             >
               <Plus class="w-3.5 h-3.5" />
@@ -133,13 +133,13 @@
             <TableRow class="border-b border-border/60 hover:bg-transparent">
               <TableHead class="w-[28px] min-w-[28px] max-w-[28px] h-12 p-0 pl-2" />
               <TableHead class="w-[160px] h-12 font-semibold">
-                名称
+                {{ t('proxyNodes.name') }}
               </TableHead>
               <TableHead class="w-[180px] h-12 font-semibold">
-                地址
+                {{ t('proxyNodes.address') }}
               </TableHead>
               <TableHead class="w-[100px] h-12 font-semibold">
-                区域
+                {{ t('proxyNodes.region') }}
               </TableHead>
               <SortableTableHead
                 class="w-[90px] h-12 font-semibold text-center"
@@ -147,10 +147,10 @@
                 :sortable="false"
                 align="center"
                 :filter-active="filterStatus !== 'all'"
-                filter-title="筛选状态"
+                :filter-title="t('proxyNodes.filterStatus')"
                 filter-content-class="w-36 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
               >
-                状态
+                {{ t('proxyNodes.status') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     v-model="filterStatus"
@@ -160,22 +160,22 @@
                 </template>
               </SortableTableHead>
               <TableHead class="w-[100px] h-12 font-semibold text-center">
-                总请求
+                {{ t('proxyNodes.totalRequests') }}
               </TableHead>
               <TableHead class="w-[100px] h-12 font-semibold text-center">
-                失败率
+                {{ t('proxyNodes.failureRate') }}
               </TableHead>
               <TableHead class="w-[100px] h-12 font-semibold text-center">
-                延迟
+                {{ t('proxyNodes.latency') }}
               </TableHead>
               <TableHead class="w-[120px] h-12 font-semibold text-center">
-                版本
+                {{ t('proxyNodes.version') }}
               </TableHead>
               <TableHead class="w-[160px] h-12 font-semibold">
-                最后心跳
+                {{ t('proxyNodes.lastHeartbeat') }}
               </TableHead>
               <TableHead class="w-[140px] h-12 font-semibold text-center">
-                操作
+                {{ t('proxyNodes.actions') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -192,7 +192,7 @@
                   <button
                     type="button"
                     class="inline-flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                    :title="isNodeExpanded(node.id) ? '收起数据' : '展开数据'"
+                    :title="isNodeExpanded(node.id) ? t('proxyNodes.collapse') : t('proxyNodes.expand')"
                     @click="toggleNodeDetails(node)"
                   >
                     <ChevronDown
@@ -213,7 +213,7 @@
                       variant="outline"
                       class="text-[10px] px-1.5 py-0"
                     >
-                      手动
+                      {{ t('proxyNodes.manual') }}
                     </Badge>
                     <Badge
                       v-if="node.tunnel_mode"
@@ -271,7 +271,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
-                      :title="testingNodes.has(node.id) ? '测试中...' : '测试连通性'"
+                      :title="testingNodes.has(node.id) ? t('proxyNodes.testing') : t('proxyNodes.test')"
                       :disabled="testingNodes.has(node.id)"
                       @click="handleTest(node)"
                     >
@@ -289,7 +289,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
-                      title="编辑"
+                      :title="t('proxyNodes.edit')"
                       @click="handleEdit(node)"
                     >
                       <SquarePen class="h-4 w-4" />
@@ -299,7 +299,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
-                      title="远程配置"
+                      :title="t('proxyNodes.remoteConfig')"
                       @click="handleConfig(node)"
                     >
                       <Settings class="h-4 w-4" />
@@ -309,7 +309,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
-                      title="连接事件"
+                      :title="t('proxyNodes.connectionEvents')"
                       @click="handleViewEvents(node)"
                     >
                       <History class="h-4 w-4" />
@@ -318,7 +318,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-8 w-8"
-                      title="删除"
+                      :title="t('proxyNodes.delete')"
                       @click="handleDelete(node)"
                     >
                       <Trash2 class="h-4 w-4" />
@@ -347,7 +347,7 @@
                 colspan="11"
                 class="py-12 text-center text-muted-foreground text-sm"
               >
-                {{ store.loading ? '加载中...' : '暂无代理节点' }}
+                {{ store.loading ? t('proxyNodes.loading') : t('proxyNodes.empty') }}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -367,7 +367,7 @@
                 <button
                   type="button"
                   class="inline-flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 shrink-0"
-                  :title="isNodeExpanded(node.id) ? '收起数据' : '展开数据'"
+                  :title="isNodeExpanded(node.id) ? t('proxyNodes.collapse') : t('proxyNodes.expand')"
                   @click="toggleNodeDetails(node)"
                 >
                   <ChevronDown
@@ -385,7 +385,7 @@
                   variant="outline"
                   class="text-[10px] px-1.5 py-0"
                 >
-                  手动
+                  {{ t('proxyNodes.manual') }}
                 </Badge>
                 <Badge
                   v-if="node.tunnel_mode"
@@ -408,7 +408,7 @@
                 v-if="!node.is_manual"
                 class="text-[11px] text-muted-foreground mt-1"
               >
-                版本: {{ nodeProxyVersion(node) }}
+                {{ t('proxyNodes.version') }}: {{ nodeProxyVersion(node) }}
               </div>
             </div>
             <Badge
@@ -421,22 +421,22 @@
           </div>
           <div class="grid grid-cols-4 gap-2 text-xs text-muted-foreground mb-3">
             <div>
-              <span class="block text-foreground/60">区域</span>
+              <span class="block text-foreground/60">{{ t('proxyNodes.region') }}</span>
               <span>{{ formatRegion(node.region) }}</span>
             </div>
             <div>
-              <span class="block text-foreground/60">总请求</span>
+              <span class="block text-foreground/60">{{ t('proxyNodes.totalRequests') }}</span>
               <span class="tabular-nums">{{ formatNumber(node.total_requests) }}</span>
             </div>
             <div>
-              <span class="block text-foreground/60">失败率</span>
+              <span class="block text-foreground/60">{{ t('proxyNodes.failureRate') }}</span>
               <span
                 class="tabular-nums"
                 :class="failureRate(node) > 5 ? 'text-destructive font-medium' : ''"
               >{{ formatFailureRate(node) }}</span>
             </div>
             <div>
-              <span class="block text-foreground/60">延迟</span>
+              <span class="block text-foreground/60">{{ t('proxyNodes.latency') }}</span>
               <span class="tabular-nums">{{ node.avg_latency_ms != null ? `${node.avg_latency_ms.toFixed(0)}ms` : '-' }}</span>
             </div>
           </div>
@@ -458,7 +458,7 @@
                   v-else
                   class="h-3 w-3 mr-1"
                 />
-                {{ testingNodes.has(node.id) ? '测试中' : '测试' }}
+                {{ testingNodes.has(node.id) ? t('proxyNodes.testingShort') : t('proxyNodes.testShort') }}
               </Button>
               <Button
                 v-if="node.is_manual"
@@ -468,7 +468,7 @@
                 @click="handleEdit(node)"
               >
                 <SquarePen class="h-3 w-3 mr-1" />
-                编辑
+                {{ t('proxyNodes.edit') }}
               </Button>
               <Button
                 v-if="!node.is_manual"
@@ -478,7 +478,7 @@
                 @click="handleConfig(node)"
               >
                 <Settings class="h-3 w-3 mr-1" />
-                配置
+                {{ t('proxyNodes.config') }}
               </Button>
               <Button
                 variant="ghost"
@@ -487,7 +487,7 @@
                 @click="handleDelete(node)"
               >
                 <Trash2 class="h-3 w-3 mr-1" />
-                删除
+                {{ t('proxyNodes.delete') }}
               </Button>
             </div>
           </div>
@@ -506,7 +506,7 @@
           v-if="paginatedNodes.length === 0"
           class="p-8 text-center text-muted-foreground text-sm"
         >
-          {{ store.loading ? '加载中...' : '暂无代理节点' }}
+          {{ store.loading ? t('proxyNodes.loading') : t('proxyNodes.empty') }}
         </div>
       </div>
 
@@ -523,8 +523,8 @@
     <!-- 手动添加/编辑代理节点对话框 -->
     <Dialog
       :model-value="showAddDialog"
-      :title="editingNode ? '编辑代理节点' : '添加代理节点'"
-      :description="editingNode ? '修改手动代理节点的配置' : '推荐使用一键脚本部署 aether-tunnel，也可手动添加已有 HTTP/SOCKS 代理'"
+      :title="editingNode ? t('proxyNodes.editTitle') : t('proxyNodes.addTitle')"
+      :description="editingNode ? t('proxyNodes.editDescription') : t('proxyNodes.addDescription')"
       :icon="editingNode ? SquarePen : Plus"
       size="lg"
       @update:model-value="handleDialogClose"
@@ -540,7 +540,7 @@
           @click="addMode = 'script'"
         >
           <Terminal class="w-3.5 h-3.5 mr-1.5" />
-          脚本自动添加
+          {{ t('proxyNodes.scriptAdd') }}
         </Button>
         <Button
           type="button"
@@ -549,7 +549,7 @@
           @click="addMode = 'manual'"
         >
           <Plus class="w-3.5 h-3.5 mr-1.5" />
-          手动添加
+          {{ t('proxyNodes.manualAdd') }}
         </Button>
       </div>
 
@@ -558,20 +558,20 @@
         class="space-y-4"
       >
         <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          输入节点名称后生成一次性安装命令，有效期 15 分钟。复制的命令不含敏感授权信息，只能在目标机器使用一次，避免 Token 暴露在页面或聊天记录中。
+          {{ t('proxyNodes.installHint') }}
         </div>
 
         <div class="space-y-1.5">
-          <Label>节点名称 *</Label>
+          <Label>{{ t('proxyNodes.nodeName') }} *</Label>
           <Input
             v-model="installForm.node_name"
-            placeholder="例如: jp-proxy-01"
+            :placeholder="t('proxyNodes.nodeNamePlaceholder')"
             @keyup.enter="refreshProxyInstallCommand"
           />
         </div>
 
         <div class="space-y-2">
-          <Label class="text-sm font-semibold">目标系统</Label>
+          <Label class="text-sm font-semibold">{{ t('proxyNodes.targetSystem') }}</Label>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Button
               type="button"
@@ -594,7 +594,7 @@
 
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-2">
-            <Label class="text-sm font-semibold">复制到代理节点机器执行</Label>
+            <Label class="text-sm font-semibold">{{ t('proxyNodes.copyToMachine') }}</Label>
             <div class="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -611,7 +611,7 @@
                   v-else
                   class="h-3.5 w-3.5"
                 />
-                {{ installCopied ? '已复制' : '一键复制' }}
+                {{ installCopied ? t('proxyNodes.copied') : t('proxyNodes.copyOneClick') }}
               </Button>
               <Button
                 variant="ghost"
@@ -619,12 +619,12 @@
                 :disabled="installLoading || !installForm.node_name.trim()"
                 @click="refreshProxyInstallCommand"
               >
-                {{ installLoading ? '生成中...' : (proxyInstallSession ? '重新生成' : '生成命令') }}
+                {{ installLoading ? t('proxyNodes.generating') : (proxyInstallSession ? t('proxyNodes.regenerate') : t('proxyNodes.generateCommand')) }}
               </Button>
             </div>
           </div>
           <div class="rounded-lg border border-border/60 bg-background overflow-hidden">
-            <pre class="max-h-32 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ proxyInstallCommand || '输入节点名称后点击“生成命令”' }}</pre>
+            <pre class="max-h-32 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ proxyInstallCommand || t('proxyNodes.commandPlaceholder') }}</pre>
           </div>
           <p class="text-xs text-muted-foreground">
             {{ proxyInstallHint }}
@@ -638,25 +638,25 @@
         @submit.prevent="handleAddManualNode"
       >
         <div class="space-y-1.5">
-          <Label>名称 *</Label>
+          <Label>{{ t('proxyNodes.name') }} *</Label>
           <Input
             v-model="addForm.name"
-            placeholder="例如: 美西 VPN 代理"
+            :placeholder="t('proxyNodes.namePlaceholder')"
           />
         </div>
         <div class="space-y-1.5">
-          <Label>代理地址 *</Label>
+          <Label>{{ t('proxyNodes.proxyAddress') }} *</Label>
           <Input
             v-model="addForm.proxy_url"
-            placeholder="http://proxy:port 或 socks5://proxy:port"
+            :placeholder="t('proxyNodes.addressPlaceholder')"
           />
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label>用户名</Label>
+            <Label>{{ t('proxyNodes.username') }}</Label>
             <Input
               v-model="addForm.username"
-              placeholder="可选"
+              :placeholder="t('proxyNodes.optional')"
               autocomplete="off"
               data-form-type="other"
               data-lpignore="true"
@@ -664,12 +664,12 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>密码</Label>
+            <Label>{{ t('proxyNodes.password') }}</Label>
             <Input
               v-model="addForm.password"
               type="text"
               masked
-              placeholder="可选"
+              :placeholder="t('proxyNodes.optional')"
               autocomplete="new-password"
               data-form-type="other"
               data-lpignore="true"
@@ -678,10 +678,10 @@
           </div>
         </div>
         <div class="space-y-1.5">
-          <Label>区域</Label>
+          <Label>{{ t('proxyNodes.region') }}</Label>
           <Input
             v-model="addForm.region"
-            placeholder="可选，例如: US-West"
+            :placeholder="t('proxyNodes.regionPlaceholder')"
           />
         </div>
       </form>
@@ -695,13 +695,13 @@
             variant="outline"
             @click="handleDialogClose(false)"
           >
-            关闭
+            {{ t('proxyNodes.close') }}
           </Button>
           <Button
             :disabled="installLoading || !proxyInstallCommand"
             @click="copyProxyInstallCommand"
           >
-            {{ installCopied ? '已复制' : '复制命令' }}
+            {{ installCopied ? t('proxyNodes.copied') : t('proxyNodes.copyCommand') }}
           </Button>
         </div>
         <div
@@ -713,20 +713,20 @@
             :disabled="testingUrl || !addForm.proxy_url"
             @click="handleTestUrl"
           >
-            {{ testingUrl ? '测试中...' : '测试' }}
+            {{ testingUrl ? t('proxyNodes.testing') : t('proxyNodes.testShort') }}
           </Button>
           <div class="flex items-center gap-2">
             <Button
               variant="outline"
               @click="handleDialogClose(false)"
             >
-              取消
+              {{ t('proxyNodes.cancel') }}
             </Button>
             <Button
               :disabled="addingNode || !addForm.name || !addForm.proxy_url"
               @click="editingNode ? handleUpdateManualNode() : handleAddManualNode()"
             >
-              {{ addingNode ? (editingNode ? '保存中...' : '添加中...') : (editingNode ? '保存' : '添加') }}
+              {{ addingNode ? (editingNode ? t('proxyNodes.saving') : t('proxyNodes.adding')) : (editingNode ? t('proxyNodes.save') : t('proxyNodes.add')) }}
             </Button>
           </div>
         </div>
@@ -736,8 +736,8 @@
     <!-- 远程配置对话框 (aether-tunnel 节点) -->
     <Dialog
       :model-value="showConfigDialog"
-      title="远程配置"
-      description="修改后将在下次心跳时自动下发到 aether-tunnel 节点"
+      :title="t('proxyNodes.remoteConfig')"
+      :description="t('proxyNodes.remoteConfigHint')"
       :icon="Settings"
       size="md"
       @update:model-value="handleConfigDialogClose"
@@ -747,17 +747,17 @@
         @submit.prevent
       >
         <div class="space-y-1.5">
-          <Label>允许的端口</Label>
+          <Label>{{ t('proxyNodes.allowedPorts') }}</Label>
           <Input
             v-model="configForm.allowed_ports"
             placeholder="80, 443, 8080, 8443"
           />
           <p class="text-xs text-muted-foreground">
-            逗号分隔的目标端口白名单
+            {{ t('proxyNodes.allowedPortsHint') }}
           </p>
         </div>
         <div class="space-y-1.5">
-          <Label>日志级别</Label>
+          <Label>{{ t('proxyNodes.logLevel') }}</Label>
           <Select v-model="configForm.log_level">
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -781,7 +781,7 @@
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div class="space-y-1.5">
-            <Label>心跳间隔 (秒)</Label>
+            <Label>{{ t('proxyNodes.heartbeatInterval') }}</Label>
             <Input
               v-model="configForm.heartbeat_interval"
               type="number"
@@ -790,7 +790,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>接单状态</Label>
+            <Label>{{ t('proxyNodes.schedulingState') }}</Label>
             <Select v-model="configForm.scheduling_state">
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -806,25 +806,25 @@
               </SelectContent>
             </Select>
             <p class="text-xs text-muted-foreground">
-              draining/cordoned 都会停止新隧道请求；draining 用于排空，cordoned 用于人工隔离。
+              {{ t('proxyNodes.schedulingStateHint') }}
             </p>
           </div>
         </div>
         <div class="space-y-1.5">
-          <Label>升级到版本</Label>
+          <Label>{{ t('proxyNodes.upgradeTo') }}</Label>
           <Input
             v-model="configForm.upgrade_to"
-            placeholder="例如 0.2.3"
+            :placeholder="t('proxyNodes.versionPlaceholder')"
           />
           <p class="text-xs text-muted-foreground">
-            留空可清除已有升级指令
+            {{ t('proxyNodes.clearUpgradeHint') }}
           </p>
         </div>
         <div
           v-if="configNode"
           class="text-xs text-muted-foreground"
         >
-          配置版本: v{{ configNode.config_version }}
+          {{ t('proxyNodes.configVersion') }}: v{{ configNode.config_version }}
         </div>
       </form>
       <template #footer>
@@ -832,13 +832,13 @@
           variant="outline"
           @click="handleConfigDialogClose(false)"
         >
-          取消
+          {{ t('proxyNodes.cancel') }}
         </Button>
         <Button
           :disabled="savingConfig"
           @click="handleSaveConfig"
         >
-          {{ savingConfig ? '保存中...' : '保存' }}
+          {{ savingConfig ? t('proxyNodes.saving') : t('proxyNodes.save') }}
         </Button>
       </template>
     </Dialog>
@@ -846,8 +846,8 @@
     <!-- 批量升级对话框 -->
     <Dialog
       :model-value="showBatchUpgradeDialog"
-      title="批量升级"
-      description="给所有 tunnel 节点写入升级目标，节点会在下次心跳自动领取"
+      :title="t('proxyNodes.batchUpgrade')"
+      :description="t('proxyNodes.batchUpgradeHint')"
       :icon="Settings"
       size="sm"
       @update:model-value="(open: boolean) => { if (!open) { resetBatchUpgradeDialog() } }"
@@ -857,13 +857,13 @@
         @submit.prevent="handleBatchUpgrade"
       >
         <div class="space-y-1.5">
-          <Label>目标版本</Label>
+          <Label>{{ t('proxyNodes.targetVersion') }}</Label>
           <Input
             v-model="batchUpgradeVersion"
-            placeholder="例如 0.2.3"
+            :placeholder="t('proxyNodes.versionPlaceholder')"
           />
           <p class="text-xs text-muted-foreground">
-            gateway 只会写入 `upgrade_to` 目标版本，不再维护分波 rollout 或确认状态。
+            {{ t('proxyNodes.batchUpgradeDetails') }}
           </p>
         </div>
       </form>
@@ -872,13 +872,13 @@
           variant="outline"
           @click="resetBatchUpgradeDialog()"
         >
-          取消
+          {{ t('proxyNodes.cancel') }}
         </Button>
         <Button
           :disabled="batchUpgrading || !batchUpgradeVersion.trim()"
           @click="handleBatchUpgrade"
         >
-          {{ batchUpgrading ? '下发中...' : '确认下发' }}
+          {{ batchUpgrading ? t('proxyNodes.dispatching') : t('proxyNodes.confirmDispatch') }}
         </Button>
       </template>
     </Dialog>
@@ -886,8 +886,8 @@
     <!-- 连接事件对话框 -->
     <Dialog
       :open="showEventsDialog"
-      title="连接事件"
-      :description="eventsNode ? `${eventsNode.name} 的连接历史` : ''"
+      :title="t('proxyNodes.connectionEvents')"
+      :description="eventsNode ? t('proxyNodes.connectionHistory', { name: eventsNode.name }) : ''"
       size="lg"
       @update:open="(v: boolean) => { if (!v) { showEventsDialog = false; eventsNode = null; nodeEvents = [] } }"
     >
@@ -898,15 +898,15 @@
           class="grid grid-cols-3 gap-3 text-sm"
         >
           <div class="bg-muted/40 rounded-lg px-3 py-2 text-center">
-            <span class="block text-foreground/60 text-xs">失败请求</span>
+            <span class="block text-foreground/60 text-xs">{{ t('proxyNodes.failedRequests') }}</span>
             <span class="tabular-nums font-medium">{{ formatNumber(eventsNode.failed_requests || 0) }}</span>
           </div>
           <div class="bg-muted/40 rounded-lg px-3 py-2 text-center">
-            <span class="block text-foreground/60 text-xs">DNS 失败</span>
+            <span class="block text-foreground/60 text-xs">{{ t('proxyNodes.dnsFailures') }}</span>
             <span class="tabular-nums font-medium">{{ formatNumber(eventsNode.dns_failures || 0) }}</span>
           </div>
           <div class="bg-muted/40 rounded-lg px-3 py-2 text-center">
-            <span class="block text-foreground/60 text-xs">流错误</span>
+            <span class="block text-foreground/60 text-xs">{{ t('proxyNodes.streamErrors') }}</span>
             <span class="tabular-nums font-medium">{{ formatNumber(eventsNode.stream_errors || 0) }}</span>
           </div>
         </div>
@@ -916,13 +916,13 @@
           v-if="loadingEvents"
           class="py-8 text-center text-muted-foreground text-sm"
         >
-          加载中...
+          {{ t('proxyNodes.loading') }}
         </div>
         <div
           v-else-if="nodeEvents.length === 0"
           class="py-8 text-center text-muted-foreground text-sm"
         >
-          暂无连接事件记录
+          {{ t('proxyNodes.noEvents') }}
         </div>
         <div
           v-else
@@ -949,7 +949,7 @@
           variant="outline"
           @click="showEventsDialog = false; eventsNode = null; nodeEvents = []"
         >
-          关闭
+          {{ t('proxyNodes.close') }}
         </Button>
       </template>
     </Dialog>
@@ -958,6 +958,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useProxyNodesStore } from '@/stores/proxy-nodes'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
@@ -1006,15 +1007,16 @@ import ProxyNodeDataPanel from './components/ProxyNodeDataPanel.vue'
 const { success, error: toastError } = useToast()
 const { confirmDanger } = useConfirm()
 const { copyToClipboard } = useClipboard()
+const { t, locale } = useI18n()
 const store = useProxyNodesStore()
 
 const searchQuery = ref('')
 const filterStatus = ref('all')
-const proxyNodeStatusFilterOptions = [
-  { value: 'all', label: '全部状态' },
-  { value: 'online', label: '在线' },
-  { value: 'offline', label: '离线' },
-]
+const proxyNodeStatusFilterOptions = computed(() => [
+  { value: 'all', label: t('proxyNodes.allStatus') },
+  { value: 'online', label: t('proxyNodes.online') },
+  { value: 'offline', label: t('proxyNodes.offline') },
+])
 const currentPage = ref(1)
 const pageSize = ref(20)
 
@@ -1048,9 +1050,9 @@ const proxyInstallCommand = computed(() => {
 
 const proxyInstallHint = computed(() => {
   if (!proxyInstallSession.value) {
-    return '脚本会自动安装或更新代理程序，并保留已有配置。'
+    return t('proxyNodes.installDefaultHint')
   }
-  return `这条命令将在 ${Math.floor(proxyInstallSession.value.expires_in_seconds / 60)} 分钟内有效，成功使用后立即失效。`
+  return t('proxyNodes.installExpiryHint', { minutes: Math.floor(proxyInstallSession.value.expires_in_seconds / 60) })
 })
 
 // 远程配置对话框 (aether-tunnel 节点)
@@ -1140,11 +1142,11 @@ async function refresh() {
 
 function formatConnectivityTestParts(result: ProxyNodeTestResult): string[] {
   const parts = [
-    `探测: ${formatConnectivityProbe(result.probe_url)}`,
-    `超时: ${result.timeout_secs}s`,
-    `延迟: ${result.latency_ms != null ? `${result.latency_ms}ms` : '暂无样本'}`,
+    t('proxyNodes.probeDetail', { value: formatConnectivityProbe(result.probe_url) }),
+    t('proxyNodes.timeoutDetail', { value: `${result.timeout_secs}s` }),
+    t('proxyNodes.latencyDetail', { value: result.latency_ms != null ? `${result.latency_ms}ms` : t('proxyNodes.noSample') }),
   ]
-  if (result.exit_ip) parts.push(`出口IP: ${result.exit_ip}`)
+  if (result.exit_ip) parts.push(t('proxyNodes.exitIpDetail', { value: result.exit_ip }))
   return parts
 }
 
@@ -1167,12 +1169,12 @@ async function handleTestUrl() {
       password: addForm.value.password || undefined,
     })
     if (result.success) {
-      success(`连通性测试通过，${formatConnectivityTestParts(result).join('，')}`)
+      success(t('proxyNodes.testPassed', { details: formatConnectivityTestParts(result).join(t('proxyNodes.detailsSeparator')) }))
     } else {
-      toastError(`连通性测试失败（${formatConnectivityTestParts(result).join('，')}）: ${result.error || '未知错误'}`)
+      toastError(t('proxyNodes.testFailed', { details: formatConnectivityTestParts(result).join(t('proxyNodes.detailsSeparator')), error: result.error || t('common.unknown') }))
     }
   } catch (err: unknown) {
-    toastError(parseApiError(err, '测试请求失败'))
+    toastError(parseApiError(err, t('proxyNodes.testRequestFailed')))
   } finally {
     testingUrl.value = false
   }
@@ -1207,9 +1209,9 @@ async function refreshProxyInstallCommand() {
   resetProxyInstallState()
   try {
     proxyInstallSession.value = await store.createInstallSession({ node_name: nodeName })
-    success('代理节点安装命令已生成')
+    success(t('proxyNodes.installGenerated'))
   } catch (err: unknown) {
-    toastError(parseApiError(err, '生成代理节点安装命令失败'))
+    toastError(parseApiError(err, t('proxyNodes.installGenerateFailed')))
   } finally {
     installLoading.value = false
   }
@@ -1220,7 +1222,7 @@ async function copyProxyInstallCommand() {
   const copied = await copyToClipboard(proxyInstallCommand.value, false)
   if (!copied) return
   installCopied.value = true
-  success('安装命令已复制到剪贴板')
+  success(t('proxyNodes.installCopied'))
   clearInstallCopiedResetTimer()
   installCopiedResetTimer = setTimeout(() => {
     installCopied.value = false
@@ -1243,7 +1245,7 @@ async function handleEdit(node: ProxyNode) {
     resetProxyInstallState()
     showAddDialog.value = true
   } catch (err: unknown) {
-    toastError(parseApiError(err, '读取代理节点详情失败'))
+    toastError(parseApiError(err, t('proxyNodes.loadDetailsFailed')))
   }
 }
 
@@ -1271,11 +1273,11 @@ async function handleUpdateManualNode() {
       password: addForm.value.password || undefined,
       region: addForm.value.region || undefined,
     })
-    success('代理节点已更新')
+    success(t('proxyNodes.updated'))
     handleDialogClose(false)
     await store.fetchNodes()
   } catch (err: unknown) {
-    toastError(parseApiError(err, '更新失败'))
+    toastError(parseApiError(err, t('proxyNodes.updateFailed')))
   } finally {
     addingNode.value = false
   }
@@ -1293,10 +1295,10 @@ async function handleAddManualNode() {
       password: addForm.value.password || undefined,
       region: addForm.value.region || undefined,
     })
-    success('代理节点已添加')
+    success(t('proxyNodes.added'))
     handleDialogClose(false)
   } catch (err: unknown) {
-    toastError(parseApiError(err, '添加失败'))
+    toastError(parseApiError(err, t('proxyNodes.addFailed')))
   } finally {
     addingNode.value = false
   }
@@ -1352,11 +1354,11 @@ async function handleSaveConfig() {
       data.upgrade_to = null
     }
     await proxyNodesApi.updateNodeConfig(configNode.value.id, data)
-    success('远程配置已保存，将在下次心跳时生效')
+    success(t('proxyNodes.remoteConfigSaved'))
     handleConfigDialogClose(false)
     await store.fetchNodes()
   } catch (err: unknown) {
-    toastError(parseApiError(err, '保存失败'))
+    toastError(parseApiError(err, t('proxyNodes.saveFailed')))
   } finally {
     savingConfig.value = false
   }
@@ -1369,14 +1371,14 @@ async function handleBatchUpgrade() {
   try {
     const result = await proxyNodesApi.batchUpgrade(version)
     if (result.updated > 0) {
-      success(`已向 ${result.updated} 个节点写入升级目标 ${result.version}，${result.skipped} 个节点无需变更`)
+      success(t('proxyNodes.batchUpgradeSuccess', { updated: result.updated, version: result.version, skipped: result.skipped }))
     } else {
-      success(`当前没有需要变更的 tunnel 节点，目标版本仍为 ${result.version}`)
+      success(t('proxyNodes.batchUpgradeNoChanges', { version: result.version }))
     }
     resetBatchUpgradeDialog()
     await store.fetchNodes()
   } catch (err: unknown) {
-    toastError(parseApiError(err, '批量升级下发失败'))
+    toastError(parseApiError(err, t('proxyNodes.batchUpgradeFailed')))
   } finally {
     batchUpgrading.value = false
   }
@@ -1389,8 +1391,8 @@ function resetBatchUpgradeDialog() {
 
 async function handleDelete(node: ProxyNode) {
   const confirmed = await confirmDanger(
-    `确定要删除代理节点 "${node.name}" (${node.tunnel_mode ? node.ip : `${node.ip}:${node.port}`}) 吗？`,
-    '删除节点'
+    t('proxyNodes.deleteConfirm', { name: node.name, address: node.tunnel_mode ? node.ip : `${node.ip}:${node.port}` }),
+    t('proxyNodes.deleteTitle')
   )
   if (!confirmed) return
 
@@ -1398,12 +1400,12 @@ async function handleDelete(node: ProxyNode) {
     const result = await proxyNodesApi.deleteProxyNode(node.id)
     await store.fetchNodes()
     if (result.cleared_system_proxy) {
-      success('代理节点已删除，系统默认代理已自动清除')
+      success(t('proxyNodes.deletedAndCleared'))
     } else {
-      success('代理节点已删除')
+      success(t('proxyNodes.deleted'))
     }
   } catch (err: unknown) {
-    toastError(parseApiError(err, '删除失败'))
+    toastError(parseApiError(err, t('proxyNodes.deleteFailed')))
   }
 }
 
@@ -1414,12 +1416,12 @@ async function handleTest(node: ProxyNode) {
   try {
     const result = await proxyNodesApi.testNode(node.id)
     if (result.success) {
-      success(`连通性测试通过，${formatConnectivityTestParts(result).join('，')}`)
+      success(t('proxyNodes.testPassed', { details: formatConnectivityTestParts(result).join(t('proxyNodes.detailsSeparator')) }))
     } else {
-      toastError(`连通性测试失败（${formatConnectivityTestParts(result).join('，')}）: ${result.error || '未知错误'}`)
+      toastError(t('proxyNodes.testFailed', { details: formatConnectivityTestParts(result).join(t('proxyNodes.detailsSeparator')), error: result.error || t('common.unknown') }))
     }
   } catch (err: unknown) {
-    toastError(parseApiError(err, '测试请求失败'))
+    toastError(parseApiError(err, t('proxyNodes.testRequestFailed')))
   } finally {
     testingNodes.value.delete(node.id)
   }
@@ -1490,7 +1492,7 @@ async function loadNodeDetails(node: ProxyNode) {
   } catch (err: unknown) {
     updateNodeDetailState(node.id, {
       loading: false,
-      error: parseApiError(err, '加载节点数据失败'),
+      error: parseApiError(err, t('proxyNodes.loadNodeDataFailed')),
     })
   }
 }
@@ -1503,7 +1505,7 @@ async function handleViewEvents(node: ProxyNode) {
     const res = await proxyNodesApi.listNodeEvents(node.id, { limit: 50 })
     nodeEvents.value = res.items
   } catch (err: unknown) {
-    toastError(parseApiError(err, '加载事件失败'))
+    toastError(parseApiError(err, t('proxyNodes.loadEventsFailed')))
   } finally {
     loadingEvents.value = false
   }
@@ -1511,9 +1513,9 @@ async function handleViewEvents(node: ProxyNode) {
 
 function eventTypeLabel(type: string) {
   switch (type) {
-    case 'connected': return '连接'
-    case 'disconnected': return '断开'
-    case 'error': return '错误'
+    case 'connected': return t('proxyNodes.eventConnected')
+    case 'disconnected': return t('proxyNodes.eventDisconnected')
+    case 'error': return t('common.error')
     default: return type
   }
 }
@@ -1538,15 +1540,15 @@ function statusVariant(status: string) {
 function statusLabel(node: ProxyNode) {
   if (node.tunnel_mode && !node.is_manual) {
     switch (node.status) {
-      case 'online': return '隧道在线'
-      case 'offline': return '隧道离线'
+      case 'online': return t('proxyNodes.tunnelOnline')
+      case 'offline': return t('proxyNodes.tunnelOffline')
       default: return node.status
     }
   }
 
   switch (node.status) {
-    case 'online': return '在线'
-    case 'offline': return '离线'
+    case 'online': return t('proxyNodes.online')
+    case 'offline': return t('proxyNodes.offline')
     default: return node.status
   }
 }
@@ -1554,14 +1556,14 @@ function statusLabel(node: ProxyNode) {
 function statusTitle(node: ProxyNode) {
   if (node.tunnel_mode && !node.is_manual) {
     if (node.status === 'online') {
-      return '表示 gateway 仍能看到 tunnel/heartbeat，不代表默认探测站点一定可达'
+      return t('proxyNodes.tunnelOnlineHint')
     }
-    return 'gateway 当前未检测到可用 tunnel 连接'
+    return t('proxyNodes.tunnelOfflineHint')
   }
 
   switch (node.status) {
-    case 'online': return '节点当前被标记为在线'
-    case 'offline': return '节点当前被标记为离线'
+    case 'online': return t('proxyNodes.onlineHint')
+    case 'offline': return t('proxyNodes.offlineHint')
     default: return node.status
   }
 }
@@ -1577,10 +1579,10 @@ function formatTime(iso: string | null) {
   const d = new Date(iso)
   const now = new Date()
   const diff = (now.getTime() - d.getTime()) / 1000
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
-  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  if (diff < 60) return t('proxyNodes.justNow')
+  if (diff < 3600) return t('proxyNodes.minutesAgo', { count: Math.floor(diff / 60) })
+  if (diff < 86400) return t('proxyNodes.hoursAgo', { count: Math.floor(diff / 3600) })
+  return d.toLocaleDateString(locale.value, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function failureRate(node: ProxyNode) {
@@ -1617,9 +1619,9 @@ type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'succe
 function nodeSchedulingBadge(node: ProxyNode): { label: string; variant: BadgeVariant } | null {
   switch (node.remote_config?.scheduling_state) {
     case 'draining':
-      return { label: '排空中', variant: 'warning' }
+      return { label: t('proxyNodes.draining'), variant: 'warning' }
     case 'cordoned':
-      return { label: '已封锁', variant: 'dark' }
+      return { label: t('proxyNodes.cordoned'), variant: 'dark' }
     default:
       return null
   }

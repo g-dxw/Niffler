@@ -11,7 +11,7 @@
       :disabled="disabled || modelValue === 'local'"
       @click="$emit('update:modelValue', 'local')"
     >
-      账号密码
+      {{ t('authCommon.accountPassword') }}
     </button>
     <button
       type="button"
@@ -29,20 +29,23 @@
     v-else-if="showExclusiveSwitch"
     class="exclusive-switch"
   >
-    <span>{{ modelValue === 'ldap' ? '企业账号登录' : '管理员本地登录' }}</span>
+    <span>{{ modelValue === 'ldap' ? t('authCommon.enterpriseLogin') : t('authCommon.adminLocalLogin') }}</span>
     <button
       type="button"
       class="exclusive-switch__button"
       :disabled="disabled"
       @click="$emit('update:modelValue', modelValue === 'ldap' ? 'local' : 'ldap')"
     >
-      {{ modelValue === 'ldap' ? '管理员入口' : '返回 LDAP' }}
+      {{ modelValue === 'ldap' ? t('authCommon.adminEntry') : t('authCommon.backToLdap') }}
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: 'local' | 'ldap'

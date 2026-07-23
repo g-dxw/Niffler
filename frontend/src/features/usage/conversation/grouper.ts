@@ -115,11 +115,11 @@ function generateMessageSummary(message: ParsedMessage | undefined): string | un
   const hasError = message.content.some(b => b.type === 'error')
 
   const parts: string[] = []
-  if (hasThinking) parts.push('思考过程')
-  if (hasToolUse) parts.push('工具调用')
-  if (hasToolResult) parts.push('工具结果')
-  if (hasImage) parts.push('图片')
-  if (hasError) parts.push('错误')
+  if (hasThinking) parts.push(conversationText('thinking'))
+  if (hasToolUse) parts.push(conversationText('toolCall'))
+  if (hasToolResult) parts.push(conversationText('toolResult'))
+  if (hasImage) parts.push(conversationText('image'))
+  if (hasError) parts.push(conversationText('plainError'))
 
   return parts.length > 0 ? `[${parts.join(', ')}]` : undefined
 }
@@ -381,7 +381,7 @@ function renderBlockToMessage(block: MessageRenderBlock): ParsedMessage {
       }
       case 'collapsible': {
         const collapsibleBlock = child as CollapsibleRenderBlock
-        if (collapsibleBlock.title?.includes('思考')) {
+      if (collapsibleBlock.title?.includes(conversationText('thinking'))) {
           const codeBlock = collapsibleBlock.content.find(
             (b): b is CodeRenderBlock => b.type === 'code'
           )
@@ -447,3 +447,4 @@ function finalizeTurnFromRenderBlocks(
 ): ConversationTurn {
   return finalizeTurn(partial, index)
 }
+import { conversationText } from './i18n'

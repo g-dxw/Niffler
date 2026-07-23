@@ -20,7 +20,7 @@
         <span
           v-if="invalidItems.length"
           class="text-destructive"
-        >({{ invalidItems.length }} 个已失效)</span>
+        >{{ t('multiSelect.invalidCount', { count: invalidItems.length }) }}</span>
       </span>
       <ChevronDown
         class="h-4 w-4 shrink-0 text-muted-foreground transition-transform"
@@ -47,7 +47,7 @@
           />
           <Input
             v-model="searchQuery"
-            :placeholder="searchPlaceholder"
+            :placeholder="resolvedSearchPlaceholder"
             class="h-9 rounded-xl border-border/60 bg-background/80 pl-9 pr-3 text-sm"
             @keydown.stop
           />
@@ -64,12 +64,12 @@
             type="checkbox"
             :checked="isAllSelected"
             :indeterminate="isPartiallySelected"
-            aria-label="全选"
+            :aria-label="t('multiSelect.selectAll')"
             class="h-4 w-4 shrink-0 cursor-pointer rounded border-border/60 bg-card/80 text-primary shadow-sm accent-primary focus:ring-2 focus:ring-primary/40 focus:ring-offset-1"
             @click.stop
             @change="toggleAll"
           >
-          <span class="min-w-0 truncate text-sm">全选</span>
+          <span class="min-w-0 truncate text-sm">{{ t('multiSelect.selectAll') }}</span>
           <span class="ml-auto shrink-0 text-xs text-muted-foreground">
             {{ selectedOptionCount }}/{{ options.length }}
           </span>
@@ -89,7 +89,7 @@
             @change="remove(item)"
           >
           <span class="min-w-0 truncate text-sm text-destructive">{{ item }}</span>
-          <span class="shrink-0 text-xs text-destructive/70">(已失效)</span>
+          <span class="shrink-0 text-xs text-destructive/70">{{ t('multiSelect.invalid') }}</span>
         </div>
 
         <div
@@ -111,7 +111,7 @@
           v-if="filteredOptions.length === 0 && filteredInvalidItems.length === 0"
           class="px-3 py-2 text-sm text-muted-foreground"
         >
-          {{ searchQuery.trim() ? noResultsText : emptyText }}
+          {{ searchQuery.trim() ? resolvedNoResultsText : resolvedEmptyText }}
         </div>
       </div>
     </div>
@@ -120,10 +120,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ChevronDown, Search } from 'lucide-vue-next'
 import { Input } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { matchesSearchQuery } from '@/utils/search'
+
+const { t } = useI18n()
 
 export interface MultiSelectOption {
   value: string
@@ -145,15 +148,15 @@ const props = withDefaults(
     searchPlaceholder?: string
   }>(),
   {
-    placeholder: '请选择',
-    emptyText: '暂无选项',
-    noResultsText: '未找到匹配项',
+    placeholder: undefined,
+    emptyText: undefined,
+    noResultsText: undefined,
     triggerClass: '',
     dropdownMinWidth: undefined,
     disabled: false,
     searchable: true,
     searchThreshold: 8,
-    searchPlaceholder: '输入关键词搜索...',
+    searchPlaceholder: undefined,
   },
 )
 
@@ -163,6 +166,10 @@ const emit = defineEmits<{
 
 const isOpen = ref(false)
 const searchQuery = ref('')
+const resolvedPlaceholder = computed(() => props.placeholder ?? t('multiSelect.placeholder'))
+const resolvedEmptyText = computed(() => props.emptyText ?? t('multiSelect.empty'))
+const resolvedNoResultsText = computed(() => props.noResultsText ?? t('multiSelect.noResults'))
+const resolvedSearchPlaceholder = computed(() => props.searchPlaceholder ?? t('multiSelect.searchPlaceholder'))
 
 const validValues = computed(() => new Set(props.options.map(o => o.value)))
 
@@ -210,13 +217,13 @@ const filteredOptions = computed(() => {
 })
 
 const displayText = computed(() => {
-  if (props.modelValue.length === 0) return props.placeholder
+  if (props.modelValue.length === 0) return resolvedPlaceholder.value
   if (props.modelValue.length <= 2) {
     return props.modelValue
       .map((v) => props.options.find((o) => o.value === v)?.label ?? v)
       .join(', ')
   }
-  return `已选择 ${props.modelValue.length} 项`
+  return t('multiSelect.selectedCount', { count: props.modelValue.length })
 })
 
 watch(isOpen, (open) => {

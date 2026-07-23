@@ -21,6 +21,7 @@ mod shared;
 
 pub(crate) use self::auth::maybe_build_local_admin_security_response;
 pub(crate) use self::endpoint::build_admin_endpoint_health_status_payload;
+pub(crate) use self::model::build_admin_global_model_routing_payload;
 pub(crate) use self::features::maybe_build_local_admin_video_tasks_response;
 pub(crate) use self::observability::{
     admin_stats_bad_request_response, maybe_build_local_admin_usage_response, parse_bounded_u32,

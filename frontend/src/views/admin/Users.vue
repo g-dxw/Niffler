@@ -11,7 +11,7 @@
         <div class="flex flex-col gap-3 sm:hidden">
           <div class="flex items-center justify-between">
             <h3 class="text-base font-semibold">
-              用户管理
+              {{ t('userManagement.title') }}
             </h3>
             <div class="flex items-center gap-2">
               <!-- 新增用户按钮 -->
@@ -19,7 +19,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8"
-                title="分组管理"
+                :title="t('userManagement.groups')"
                 @click="showUserGroupsDialog = true"
               >
                 <FolderKanban class="w-3.5 h-3.5" />
@@ -28,7 +28,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8"
-                title="新增用户"
+                :title="t('userManagement.add')"
                 @click="openCreateDialog"
               >
                 <Plus class="w-3.5 h-3.5" />
@@ -48,7 +48,7 @@
                 id="users-search-mobile"
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索..."
+                :placeholder="t('userManagement.search')"
                 class="w-full pl-8 pr-3 h-8 text-sm bg-background/50 border-border/60"
               />
             </div>
@@ -56,20 +56,20 @@
               v-model="filterRole"
             >
               <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
-                <SelectValue placeholder="角色" />
+                <SelectValue :placeholder="t('userManagement.role')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部
+                  {{ t('userManagement.all') }}
                 </SelectItem>
                 <SelectItem value="admin">
-                  管理员
+                  {{ t('userManagement.admin') }}
                 </SelectItem>
                 <SelectItem value="audit_admin">
-                  审计管理员
+                  {{ t('userManagement.auditAdmin') }}
                 </SelectItem>
                 <SelectItem value="user">
-                  用户
+                  {{ t('userManagement.user') }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -77,11 +77,11 @@
               v-model="filterGroup"
             >
               <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
-                <SelectValue placeholder="分组" />
+                <SelectValue :placeholder="t('userManagement.group')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部
+                  {{ t('userManagement.allGroups') }}
                 </SelectItem>
                 <SelectItem
                   v-for="group in userGroups"
@@ -96,11 +96,11 @@
               v-model="filterApiKeyGroup"
             >
               <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
-                <SelectValue placeholder="Key 分组" />
+                <SelectValue :placeholder="t('userManagement.keyGroup')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部 Key
+                  {{ t('userManagement.allKeys') }}
                 </SelectItem>
                 <SelectItem
                   v-for="group in userGroups"
@@ -115,17 +115,17 @@
               v-model="filterStatus"
             >
               <SelectTrigger class="w-[calc(50vw-1.75rem)] min-w-28 h-8 text-xs border-border/60">
-                <SelectValue placeholder="状态" />
+                <SelectValue :placeholder="t('userManagement.status')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部
+                  {{ t('userManagement.allGroups') }}
                 </SelectItem>
                 <SelectItem value="active">
-                  活跃
+                  {{ t('userManagement.active') }}
                 </SelectItem>
                 <SelectItem value="inactive">
-                  禁用
+                  {{ t('userManagement.disabled') }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -135,7 +135,7 @@
         <!-- 桌面端：单行布局 -->
         <div class="hidden sm:flex items-center justify-between gap-4">
           <h3 class="text-base font-semibold">
-            用户管理
+            {{ t('userManagement.title') }}
           </h3>
 
           <!-- 筛选器和操作按钮 -->
@@ -147,7 +147,7 @@
                 id="users-search"
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索用户名或邮箱..."
+                :placeholder="t('userManagement.searchDetail')"
                 class="w-48 pl-8 pr-3 h-8 text-sm bg-background/50 border-border/60 focus:border-primary/40 transition-colors"
               />
             </div>
@@ -161,20 +161,20 @@
                 v-model="filterRole"
               >
                 <SelectTrigger class="w-32 h-8 text-xs border-border/60">
-                  <SelectValue placeholder="全部角色" />
+                  <SelectValue :placeholder="t('userManagement.allRoles')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部角色
+                    {{ t('userManagement.allRoles') }}
                   </SelectItem>
                   <SelectItem value="admin">
-                    管理员
+                    {{ t('userManagement.admin') }}
                   </SelectItem>
                   <SelectItem value="audit_admin">
-                    审计管理员
+                    {{ t('userManagement.auditAdmin') }}
                   </SelectItem>
                   <SelectItem value="user">
-                    普通用户
+                    {{ t('userManagement.normalUser') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -186,17 +186,17 @@
                 v-model="filterStatus"
               >
                 <SelectTrigger class="w-28 h-8 text-xs border-border/60">
-                  <SelectValue placeholder="全部状态" />
+                  <SelectValue :placeholder="t('userManagement.allStatus')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部状态
+                    {{ t('userManagement.allStatus') }}
                   </SelectItem>
                   <SelectItem value="active">
-                    活跃
+                    {{ t('userManagement.active') }}
                   </SelectItem>
                   <SelectItem value="inactive">
-                    禁用
+                    {{ t('userManagement.disabled') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -204,11 +204,11 @@
 
             <Select v-model="filterGroup">
               <SelectTrigger class="w-32 h-8 text-xs border-border/60">
-                <SelectValue placeholder="全部分组" />
+                <SelectValue :placeholder="t('userManagement.allGroups')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部分组
+                  {{ t('userManagement.allGroups') }}
                 </SelectItem>
                 <SelectItem
                   v-for="group in userGroups"
@@ -221,11 +221,11 @@
             </Select>
             <Select v-model="filterApiKeyGroup">
               <SelectTrigger class="w-36 h-8 text-xs border-border/60">
-                <SelectValue placeholder="全部 Key 分组" />
+                <SelectValue :placeholder="t('userManagement.allKeyGroups')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部 Key 分组
+                  {{ t('userManagement.allKeyGroups') }}
                 </SelectItem>
                 <SelectItem
                   v-for="group in userGroups"
@@ -246,7 +246,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="分组管理"
+              :title="t('userManagement.groups')"
               @click="showUserGroupsDialog = true"
             >
               <FolderKanban class="w-3.5 h-3.5" />
@@ -258,7 +258,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="新增用户"
+              :title="t('userManagement.add')"
               @click="openCreateDialog"
             >
               <Plus class="w-3.5 h-3.5" />
@@ -282,9 +282,9 @@
               :disabled="filteredUsers.length === 0 || usersStore.loading"
               @update:checked="toggleSelectFiltered"
             />
-            <span>全选筛选结果</span>
+            <span>{{ t('userManagement.selectAll') }}</span>
           </label>
-          <span>匹配 {{ filteredUsers.length }} 个，当前页 {{ paginatedUsers.length }} 个，已选 {{ selectedCount }} 个</span>
+          <span>{{ t('userManagement.matchSummary', { filtered: filteredUsers.length, page: paginatedUsers.length, selected: selectedCount }) }}</span>
         </div>
         <div class="flex flex-wrap items-center gap-1.5">
           <Button
@@ -294,7 +294,7 @@
             :disabled="paginatedUsers.length === 0 || selectAllFiltered || usersStore.loading"
             @click="toggleSelectCurrentPage"
           >
-            {{ isCurrentPageFullySelected ? '取消本页全选' : '本页全选' }}
+            {{ isCurrentPageFullySelected ? t('userManagement.deselectPage') : t('userManagement.selectPage') }}
           </Button>
           <Button
             variant="ghost"
@@ -303,7 +303,7 @@
             :disabled="!canClearSelection || usersStore.loading"
             @click="clearSelection"
           >
-            清空选择
+            {{ t('userManagement.clearSelection') }}
           </Button>
           <Button
             v-if="authStore.canOperateAdmin"
@@ -312,7 +312,7 @@
             :disabled="(selectedCount === 0 && userGroups.length === 0) || usersStore.loading"
             @click="openUserBatchDialog"
           >
-            批量操作
+            {{ t('userManagement.bulkActions') }}
           </Button>
         </div>
       </div>
@@ -349,11 +349,11 @@
                 resize-column-key="user"
                 :resizable="true"
                 :filter-active="filterRole !== 'all'"
-                filter-title="筛选角色"
+                :filter-title="t('userManagement.filterRole')"
                 filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                 @resize-start="handleUserTableColumnResizeStart"
               >
-                用户信息
+                {{ t('userManagement.userInfo') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     v-model="filterRole"
@@ -369,7 +369,7 @@
                 :resizable="true"
                 @resize-start="handleUserTableColumnResizeStart"
               >
-                钱包
+                {{ t('userManagement.wallet') }}
               </SortableTableHead>
               <SortableTableHead
                 class="h-11 px-3 font-semibold"
@@ -378,7 +378,7 @@
                 :resizable="true"
                 @resize-start="handleUserTableColumnResizeStart"
               >
-                统计/限速
+                {{ t('userManagement.statsRate') }}
               </SortableTableHead>
               <SortableTableHead
                 class="h-11 px-3 font-semibold"
@@ -387,7 +387,7 @@
                 :resizable="true"
                 @resize-start="handleUserTableColumnResizeStart"
               >
-                创建时间
+                {{ t('userManagement.createdAt') }}
               </SortableTableHead>
               <SortableTableHead
                 class="h-11 px-3 font-semibold"
@@ -396,11 +396,11 @@
                 resize-column-key="status"
                 :resizable="true"
                 :filter-active="filterStatus !== 'all'"
-                filter-title="筛选状态"
+                :filter-title="t('userManagement.filterStatus')"
                 filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                 @resize-start="handleUserTableColumnResizeStart"
               >
-                状态
+                {{ t('userManagement.status') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     v-model="filterStatus"
@@ -417,7 +417,7 @@
                 :resizable="true"
                 @resize-start="handleUserTableColumnResizeStart"
               >
-                操作
+                {{ t('userManagement.actions') }}
               </SortableTableHead>
             </TableRow>
           </TableHeader>
@@ -482,13 +482,13 @@
               <TableCell class="px-3 py-3">
                 <div class="space-y-1.5">
                   <div class="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <span>总可用：</span>
+                    <span>{{ t('userManagement.totalAvailable') }}</span>
                     <Badge
                       v-if="isUserUnlimited(user)"
                       variant="secondary"
                       class="h-5 px-1.5 py-0 text-[10px] font-medium"
                     >
-                      无限额度
+                      {{ t('userManagement.unlimited') }}
                     </Badge>
                     <span
                       v-else
@@ -502,12 +502,12 @@
                     v-if="!isUserUnlimited(user) && getUserWallet(user.id)"
                     class="text-[11px] text-muted-foreground"
                   >
-                    套餐 {{ formatCurrencyValue(getUserPackageBalance(user), '$0.00') }}
-                    · 钱包 {{ formatCurrencyValue(getUserWalletBalance(user), '$0.00') }}
+                    {{ t('userManagement.package') }} {{ formatCurrencyValue(getUserPackageBalance(user), '$0.00') }}
+                    · {{ t('userManagement.wallet') }} {{ formatCurrencyValue(getUserWalletBalance(user), '$0.00') }}
                   </div>
                   <div class="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
                     <span>
-                      已消费：
+                      {{ t('userManagement.consumed') }}
                       <span class="font-medium tabular-nums text-foreground">${{ getUserWalletConsumed(user).toFixed(2) }}</span>
                     </span>
                   </div>
@@ -516,7 +516,7 @@
               <TableCell class="px-3 py-3">
                 <div class="space-y-1 text-xs">
                   <div class="flex items-center text-muted-foreground">
-                    <span class="w-14">请求:</span>
+                    <span class="w-14">{{ t('userManagement.requests') }}</span>
                     <span class="font-medium text-foreground">{{ formatNumber(user.request_count) }}</span>
                   </div>
                   <div class="flex items-center text-muted-foreground">
@@ -524,7 +524,7 @@
                     <span class="font-medium text-foreground">{{ formatTokens(user.total_tokens ?? 0) }}</span>
                   </div>
                   <div class="flex items-center text-muted-foreground">
-                    <span class="w-14">限速:</span>
+                    <span class="w-14">{{ t('userManagement.rateLimit') }}</span>
                     <Badge
                       v-if="isRateLimitInherited(user.rate_limit) || isRateLimitUnlimited(user.rate_limit)"
                       variant="secondary"
@@ -550,7 +550,7 @@
                     :variant="user.is_active ? 'success' : 'destructive'"
                     class="h-5 px-1.5 py-0 text-[10px] font-medium"
                   >
-                    {{ user.is_active ? '活跃' : '禁用' }}
+                    {{ user.is_active ? t('userManagement.active') : t('userManagement.disabled') }}
                   </Badge>
                   <Badge
                     v-if="getUserWallet(user.id)"
@@ -568,7 +568,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="编辑用户"
+                    :title="t('userManagement.edit')"
                     @click="editUser(user)"
                   >
                     <SquarePen class="h-3.5 w-3.5" />
@@ -578,7 +578,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="资金与套餐"
+                    :title="t('userManagement.funds')"
                     @click="openWalletActionDialog(user)"
                   >
                     <DollarSign class="h-3.5 w-3.5" />
@@ -597,7 +597,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="套餐"
+                    :title="t('userManagement.plans')"
                     @click="manageUserPlans(user)"
                   >
                     <PackageCheck class="h-3.5 w-3.5" />
@@ -607,7 +607,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    title="登录设备"
+                    :title="t('userManagement.sessions')"
                     @click="manageUserSessions(user)"
                   >
                     <MonitorSmartphone class="h-3.5 w-3.5" />
@@ -617,7 +617,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7"
-                    :title="user.is_active ? '禁用用户' : '启用用户'"
+                    :title="user.is_active ? t('userManagement.disable') : t('userManagement.enable')"
                     @click="toggleUserStatus(user)"
                   >
                     <PauseCircle
@@ -634,7 +634,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 text-destructive hover:text-destructive"
-                    title="删除用户"
+                    :title="t('userManagement.delete')"
                     @click="deleteUser(user)"
                   >
                     <Trash2 class="h-3.5 w-3.5" />
@@ -658,13 +658,13 @@
             </AvatarFallback>
           </Avatar>
           <p class="text-sm font-medium text-foreground">
-            {{ hasActiveUserFilter ? '未找到匹配的用户' : '暂无用户' }}
+            {{ hasActiveUserFilter ? t('userManagement.noMatch') : t('userManagement.empty') }}
           </p>
           <p
             v-if="hasActiveUserFilter"
             class="mt-1 text-xs text-muted-foreground"
           >
-            尝试调整筛选条件
+            {{ t('userManagement.adjustFilters') }}
           </p>
         </div>
 
@@ -719,7 +719,7 @@
                   :variant="user.is_active ? 'success' : 'destructive'"
                   class="h-5 px-1.5 py-0 text-[10px] font-medium"
                 >
-                  {{ user.is_active ? '活跃' : '禁用' }}
+                  {{ user.is_active ? t('userManagement.active') : t('userManagement.disabled') }}
                 </Badge>
                 <Badge
                   v-if="getUserWallet(user.id)"
@@ -749,14 +749,14 @@
                 <div class="flex items-start justify-between gap-3">
                   <div class="space-y-1">
                     <p class="text-[11px] text-muted-foreground">
-                      总可用：
+                      {{ t('userManagement.totalAvailable') }}
                     </p>
                     <Badge
                       v-if="isUserUnlimited(user)"
                       variant="secondary"
                       class="h-5 px-1.5 py-0 text-[10px] font-medium"
                     >
-                      无限额度
+                      {{ t('userManagement.unlimited') }}
                     </Badge>
                     <p
                       v-else
@@ -769,13 +769,13 @@
                       v-if="!isUserUnlimited(user) && getUserWallet(user.id)"
                       class="text-[11px] text-muted-foreground"
                     >
-                      套餐 {{ formatCurrencyValue(getUserPackageBalance(user), '$0.00') }}
-                      · 钱包 {{ formatCurrencyValue(getUserWalletBalance(user), '$0.00') }}
+                      {{ t('userManagement.package') }} {{ formatCurrencyValue(getUserPackageBalance(user), '$0.00') }}
+                      · {{ t('userManagement.wallet') }} {{ formatCurrencyValue(getUserWalletBalance(user), '$0.00') }}
                     </p>
                   </div>
                   <div class="text-right">
                     <p class="text-[11px] text-muted-foreground">
-                      已消费：
+                      {{ t('userManagement.consumed') }}
                     </p>
                     <p class="text-sm font-medium tabular-nums text-foreground">
                       ${{ getUserWalletConsumed(user).toFixed(2) }}
@@ -787,7 +787,7 @@
               <div class="grid grid-cols-2 gap-2.5 text-xs">
                 <div class="rounded-lg border border-border/50 bg-background/70 p-2.5">
                   <div class="mb-1 text-muted-foreground">
-                    请求次数
+                    {{ t('userManagement.requestsCount') }}
                   </div>
                   <div class="font-semibold text-foreground">
                     {{ formatNumber(user.request_count) }}
@@ -805,7 +805,7 @@
 
               <div class="rounded-lg bg-muted/35 p-2.5 text-[11px] text-muted-foreground">
                 <div class="flex items-center justify-between gap-2">
-                  <span>创建时间</span>
+                  <span>{{ t('userManagement.createdAt') }}</span>
                   <span class="font-medium text-foreground">{{ formatDateTime(user.created_at) }}</span>
                 </div>
               </div>
@@ -819,7 +819,7 @@
                   @click="editUser(user)"
                 >
                   <SquarePen class="mr-1.5 h-3.5 w-3.5" />
-                  编辑
+                  {{ t('userManagement.edit') }}
                 </Button>
                 <Button
                   variant="outline"
@@ -828,7 +828,7 @@
                   @click="openWalletActionDialog(user)"
                 >
                   <DollarSign class="mr-1.5 h-3.5 w-3.5" />
-                  资金与套餐
+                  {{ t('userManagement.funds') }}
                 </Button>
                 <Button
                   v-if="authStore.canOperateAdmin"
@@ -838,7 +838,7 @@
                   @click="manageUserPlans(user)"
                 >
                   <PackageCheck class="mr-1.5 h-3.5 w-3.5" />
-                  套餐
+                  {{ t('userManagement.plans') }}
                 </Button>
                 <Button
                   v-if="authStore.canOperateAdmin"
@@ -858,7 +858,7 @@
                   @click="manageUserSessions(user)"
                 >
                   <MonitorSmartphone class="mr-1.5 h-3.5 w-3.5" />
-                  设备
+                  {{ t('userManagement.sessions') }}
                 </Button>
                 <Button
                   v-if="authStore.canOperateAdmin"
@@ -875,7 +875,7 @@
                     v-else
                     class="mr-1.5 h-3.5 w-3.5"
                   />
-                  {{ user.is_active ? '禁用' : '启用' }}
+                  {{ user.is_active ? t('userManagement.disabled') : t('userManagement.active') }}
                 </Button>
                 <Button
                   v-if="authStore.canOperateAdmin"
@@ -885,7 +885,7 @@
                   @click="deleteUser(user)"
                 >
                   <Trash2 class="mr-1.5 h-3.5 w-3.5" />
-                  删除
+                  {{ t('userManagement.delete') }}
                 </Button>
               </div>
             </div>
@@ -945,10 +945,10 @@
             </div>
             <div class="min-w-0 flex-1">
               <h3 class="text-lg font-semibold leading-tight text-foreground">
-                用户套餐
+                {{ t('userPlans.title') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                {{ selectedUser?.username || '-' }} · 查看当前套餐并手动发放
+                {{ selectedUser?.username || '-' }} · {{ t('userPlans.description') }}
               </p>
             </div>
           </div>
@@ -957,13 +957,13 @@
 
       <div class="max-h-[64vh] space-y-4 overflow-y-auto">
         <div class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100/90">
-          后台发放会立即生效；取消套餐会立即停用额度和会员权益，不删除历史订单。
+          {{ t('userPlans.notice') }}
         </div>
 
         <section class="space-y-2.5">
           <div class="flex items-center justify-between gap-3">
             <h4 class="text-sm font-semibold text-foreground">
-              当前有效套餐
+              {{ t('userPlans.activePlans') }}
             </h4>
             <Button
               variant="ghost"
@@ -972,7 +972,7 @@
               :disabled="loadingUserPlans || !selectedUser"
               @click="selectedUser && loadUserPlanEntitlements(selectedUser.id)"
             >
-              {{ loadingUserPlans ? '加载中...' : '刷新' }}
+              {{ loadingUserPlans ? t('userPlans.loading') : t('userPlans.refresh') }}
             </Button>
           </div>
 
@@ -980,13 +980,13 @@
             v-if="loadingUserPlans"
             class="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground"
           >
-            正在加载用户套餐...
+            {{ t('userPlans.loadingPlans') }}
           </div>
           <div
             v-else-if="activeUserPlanEntitlements.length === 0"
             class="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground"
           >
-            当前没有有效套餐
+            {{ t('userPlans.noActivePlans') }}
           </div>
           <div
             v-else
@@ -1007,7 +1007,7 @@
                       :variant="item.active ? 'success' : 'secondary'"
                       class="h-5 px-1.5 py-0 text-[10px]"
                     >
-                      {{ item.active ? '生效中' : item.status }}
+                      {{ item.active ? t('userPlans.active') : item.status }}
                     </Badge>
                   </div>
                   <div class="mt-2 flex flex-wrap gap-1.5">
@@ -1022,9 +1022,9 @@
                   </div>
                 </div>
                 <div class="space-y-2 text-left text-[11px] text-muted-foreground sm:text-right">
-                  <div>获得：{{ formatDateTime(item.created_at) }}</div>
-                  <div>开始：{{ formatDateTime(item.starts_at) }}</div>
-                  <div>到期：{{ formatDateTime(item.expires_at) }}</div>
+                  <div>{{ t('userPlans.obtained') }}：{{ formatDateTime(item.created_at) }}</div>
+                  <div>{{ t('userPlans.starts') }}：{{ formatDateTime(item.starts_at) }}</div>
+                  <div>{{ t('userPlans.expires') }}：{{ formatDateTime(item.expires_at) }}</div>
                   <div class="flex flex-wrap justify-start gap-2 sm:justify-end">
                     <Button
                       v-if="item.active"
@@ -1034,7 +1034,7 @@
                       :disabled="updatingUserPlanEntitlement"
                       @click="openEditUserPlanEntitlement(item)"
                     >
-                      编辑
+                      {{ t('userPlans.edit') }}
                     </Button>
                     <Button
                       v-if="item.active"
@@ -1044,7 +1044,7 @@
                       :disabled="cancellingUserPlanEntitlementId === item.id"
                       @click="cancelUserPlanEntitlement(item)"
                     >
-                      {{ cancellingUserPlanEntitlementId === item.id ? '取消中...' : '取消套餐' }}
+                      {{ cancellingUserPlanEntitlementId === item.id ? t('userPlans.cancelling') : t('userPlans.cancelPlan') }}
                     </Button>
                   </div>
                 </div>
@@ -1056,10 +1056,10 @@
         <section class="space-y-3 rounded-lg border border-border bg-card/70 p-4">
           <div class="space-y-1">
             <h4 class="text-sm font-semibold text-foreground">
-              发放套餐
+              {{ t('userPlans.grantPlan') }}
             </h4>
             <p class="text-xs text-muted-foreground">
-              仅发放套餐权益，不产生用户付款；同一个套餐会从当前到期时间后继续。
+              {{ t('userPlans.grantHint') }}
             </p>
           </div>
 
@@ -1068,7 +1068,7 @@
               class="h-9 rounded-md bg-muted/50 px-3"
               :disabled="loadingBillingPlans || grantableBillingPlans.length === 0"
             >
-              <SelectValue :placeholder="loadingBillingPlans ? '加载套餐中...' : '选择要发放的套餐'" />
+              <SelectValue :placeholder="loadingBillingPlans ? t('userPlans.loadingOptions') : t('userPlans.choosePlan')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -1085,7 +1085,7 @@
                     v-if="!plan.enabled"
                     class="shrink-0 text-[10px] text-amber-400"
                   >
-                    已下架
+                    {{ t('userPlans.unlisted') }}
                   </span>
                 </div>
               </SelectItem>
@@ -1096,12 +1096,12 @@
             v-model="grantReason"
             class="min-h-[60px] resize-y rounded-md bg-muted/50 text-sm"
             maxlength="512"
-            placeholder="备注（可选，例如：人工补偿、活动赠送）"
+            :placeholder="t('userPlans.notePlaceholder')"
           />
 
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-muted-foreground">开始时间（可选）</Label>
+              <Label class="text-xs font-medium text-muted-foreground">{{ t('userPlans.optionalStart') }}</Label>
               <input
                 v-model="grantStartsAt"
                 type="datetime-local"
@@ -1111,11 +1111,11 @@
                 @change="handleGrantStartsAtChanged"
               />
               <p class="text-[11px] text-muted-foreground">
-                默认填当前时间；修改后，额度周期从这个时间开始算。
+                {{ t('userPlans.startHint') }}
               </p>
             </div>
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-muted-foreground">到期时间（可选）</Label>
+              <Label class="text-xs font-medium text-muted-foreground">{{ t('userPlans.optionalExpiry') }}</Label>
               <input
                 v-model="grantExpiresAt"
                 type="datetime-local"
@@ -1125,23 +1125,23 @@
                 @change="handleGrantExpiresAtChanged"
               />
               <p class="text-[11px] text-muted-foreground">
-                默认按套餐有效期自动计算，也可以手动修改。
+                {{ t('userPlans.expiryHint') }}
               </p>
             </div>
           </div>
 
           <div class="space-y-1.5">
-            <Label class="text-xs font-medium text-muted-foreground">迁移额度上限 USD（可选）</Label>
+            <Label class="text-xs font-medium text-muted-foreground">{{ t('userPlans.migrationQuota') }}</Label>
             <Input
               v-model="grantInitialRemainingQuotaUsd"
               type="number"
               min="0"
               step="0.01"
               class="h-9 rounded-md bg-muted/50 text-sm"
-              placeholder="例如：35.5"
+              :placeholder="t('userPlans.quotaPlaceholder')"
             />
             <p class="text-[11px] text-muted-foreground">
-              用于迁移旧套餐时限制可用额度；系统只会降低套餐里的额度上限，不会重新计算已经用掉的额度。
+              {{ t('userPlans.migrationQuotaHint') }}
             </p>
           </div>
 
@@ -1151,7 +1151,7 @@
               :disabled="grantingUserPlan || !selectedUser || !selectedGrantPlanId"
               @click="grantPlanToSelectedUser"
             >
-              {{ grantingUserPlan ? '发放中...' : '发放套餐' }}
+              {{ grantingUserPlan ? t('userPlans.granting') : t('userPlans.grantPlan') }}
             </Button>
           </div>
         </section>
@@ -1163,7 +1163,7 @@
           class="h-10 px-5"
           @click="showUserPlansDialog = false"
         >
-          关闭
+          {{ t('userPlans.close') }}
         </Button>
       </template>
     </Dialog>
@@ -1180,7 +1180,7 @@
             </div>
             <div class="min-w-0 flex-1">
               <h3 class="text-lg font-semibold leading-tight text-foreground">
-                编辑套餐
+                {{ t('userPlans.editPlan') }}
               </h3>
               <p class="text-xs text-muted-foreground">
                 {{ selectedUser?.username || '-' }} · {{ editingUserPlanEntitlement?.plan_title || editingUserPlanEntitlement?.plan?.title || editingUserPlanEntitlement?.plan_id || '-' }}
@@ -1192,12 +1192,12 @@
 
       <div class="space-y-4">
         <div class="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100/90">
-          这里只调整已有套餐记录的时间和额度上限；如果要换套餐类型，请取消后重新发放。
+          {{ t('userPlans.editNotice') }}
         </div>
 
         <div class="grid gap-3 sm:grid-cols-2">
           <div class="space-y-1.5">
-            <Label class="text-xs font-medium text-muted-foreground">开始时间</Label>
+            <Label class="text-xs font-medium text-muted-foreground">{{ t('userPlans.startTime') }}</Label>
             <input
               v-model="editUserPlanStartsAt"
               type="datetime-local"
@@ -1206,7 +1206,7 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-xs font-medium text-muted-foreground">到期时间</Label>
+            <Label class="text-xs font-medium text-muted-foreground">{{ t('userPlans.expiryTime') }}</Label>
             <input
               v-model="editUserPlanExpiresAt"
               type="datetime-local"
@@ -1217,17 +1217,17 @@
         </div>
 
         <div class="space-y-1.5">
-          <Label class="text-xs font-medium text-muted-foreground">额度上限 USD（可选）</Label>
+          <Label class="text-xs font-medium text-muted-foreground">{{ t('userPlans.quotaLimit') }}</Label>
           <Input
             v-model="editUserPlanQuotaUsd"
             type="number"
             min="0"
             step="0.01"
             class="h-9 rounded-md bg-muted/50 text-sm"
-            placeholder="留空则不调整额度上限"
+            :placeholder="t('userPlans.quotaLimitPlaceholder')"
           />
           <p class="text-[11px] text-muted-foreground">
-            只用于降低套餐额度上限，不会把原套餐里更低的额度调高。
+            {{ t('userPlans.quotaLimitHint') }}
           </p>
         </div>
       </div>
@@ -1239,14 +1239,14 @@
           :disabled="updatingUserPlanEntitlement"
           @click="showEditUserPlanDialog = false"
         >
-          取消
+          {{ t('userPlans.cancel') }}
         </Button>
         <Button
           class="h-10 px-5"
           :disabled="updatingUserPlanEntitlement"
           @click="updateUserPlanEntitlement"
         >
-          {{ updatingUserPlanEntitlement ? '保存中...' : '保存' }}
+          {{ updatingUserPlanEntitlement ? t('userPlans.saving') : t('userPlans.save') }}
         </Button>
       </template>
     </Dialog>
@@ -1264,10 +1264,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                管理 API Keys
+                {{ t('userApiKeys.title') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                查看和管理用户的 API 密钥
+                {{ t('userApiKeys.description') }}
               </p>
             </div>
           </div>
@@ -1287,33 +1287,33 @@
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2 flex-wrap">
                     <span class="font-semibold text-foreground">
-                      {{ apiKey.name || '未命名 API Key' }}
+                      {{ apiKey.name || t('userApiKeys.unnamed') }}
                     </span>
                     <Badge
                       :variant="apiKey.is_active ? 'success' : 'secondary'"
                       class="text-xs"
                     >
-                      {{ apiKey.is_active ? '活跃' : '禁用' }}
+                      {{ apiKey.is_active ? t('userApiKeys.active') : t('userApiKeys.disabled') }}
                     </Badge>
                     <Badge
                       v-if="apiKey.is_locked"
                       variant="secondary"
                       class="text-xs"
                     >
-                      已锁定
+                      {{ t('userApiKeys.locked') }}
                     </Badge>
                     <Badge
                       v-if="apiKey.is_standalone"
                       variant="default"
                       class="text-xs bg-purple-500"
                     >
-                      独立余额
+                      {{ t('userApiKeys.standaloneBalance') }}
                     </Badge>
                     <Badge
                       variant="secondary"
                       class="text-xs"
                     >
-                      分组：{{ apiKey.group_name || apiKeyGroupName(apiKey.group_id) }}
+                      {{ t('userApiKeys.group') }}：{{ apiKey.group_name || apiKeyGroupName(apiKey.group_id) }}
                     </Badge>
                     <Badge
                       v-if="apiKey.legacy_group_binding_read_only"
@@ -1321,7 +1321,7 @@
                       class="text-xs"
                       :title="apiKey.legacy_group_binding_read_only_reason"
                     >
-                      产品策略只读
+                      {{ t('userApiKeys.productPolicyReadOnly') }}
                     </Badge>
                     <Badge
                       variant="secondary"
@@ -1342,7 +1342,7 @@
                     </code>
                     <button
                       class="p-0.5 hover:bg-muted rounded transition-colors"
-                      title="复制完整密钥"
+                      :title="t('userApiKeys.copyFullKey')"
                       @click="copyFullKey(apiKey)"
                     >
                       <Copy class="w-3 h-3 text-muted-foreground" />
@@ -1354,7 +1354,7 @@
               <div class="flex items-center gap-4 flex-shrink-0">
                 <div class="text-right text-sm">
                   <div class="text-muted-foreground">
-                    {{ (apiKey.total_requests || 0).toLocaleString() }} 次
+                    {{ t('userApiKeys.requestCount', { count: (apiKey.total_requests || 0).toLocaleString() }) }}
                   </div>
                   <div class="font-semibold text-rose-600">
                     ${{ (apiKey.total_cost_usd || 0).toFixed(4) }}
@@ -1364,7 +1364,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-8 w-8"
-                  title="编辑"
+                  :title="t('userApiKeys.edit')"
                   @click="openEditUserApiKeyDialog(apiKey)"
                 >
                   <SquarePen class="h-4 w-4" />
@@ -1373,7 +1373,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-8 w-8"
-                  :title="apiKey.is_locked ? '解锁' : '锁定'"
+                  :title="apiKey.is_locked ? t('userApiKeys.unlock') : t('userApiKeys.lock')"
                   @click="toggleLockApiKey(apiKey)"
                 >
                   <Lock
@@ -1389,7 +1389,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-8 w-8"
-                  title="删除"
+                  :title="t('userApiKeys.delete')"
                   @click="deleteApiKey(apiKey)"
                 >
                   <Trash2 class="h-4 w-4" />
@@ -1408,10 +1408,10 @@
             </div>
             <div>
               <p class="mb-1 text-base font-semibold text-foreground">
-                {{ filterApiKeyGroup === 'all' ? '暂无 API Keys' : '这个用户没有绑定该 Key 分组的 API Key' }}
+                {{ filterApiKeyGroup === 'all' ? t('userApiKeys.empty') : t('userApiKeys.emptyGroup') }}
               </p>
               <p class="text-sm text-muted-foreground">
-                {{ filterApiKeyGroup === 'all' ? '点击下方按钮创建' : '可以切换 Key 分组筛选，或编辑其它用户的 API Key' }}
+                {{ filterApiKeyGroup === 'all' ? t('userApiKeys.createHint') : t('userApiKeys.groupHint') }}
               </p>
             </div>
           </div>
@@ -1424,14 +1424,14 @@
           class="h-10 px-5"
           @click="showApiKeysDialog = false"
         >
-          取消
+          {{ t('userApiKeys.cancel') }}
         </Button>
         <Button
           class="h-10 px-5"
           :disabled="creatingApiKey"
           @click="openCreateUserApiKeyDialog"
         >
-          {{ creatingApiKey ? '创建中...' : '创建' }}
+          {{ creatingApiKey ? t('userApiKeys.creating') : t('userApiKeys.create') }}
         </Button>
       </template>
     </Dialog>
@@ -1448,10 +1448,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                {{ editingUserApiKey ? '编辑 API Key' : '创建 API Key' }}
+                {{ editingUserApiKey ? t('userApiKeys.editTitle') : t('userApiKeys.createTitle') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                {{ editingUserApiKey ? '更新用户 API Key 的名称、速率限制和并发限制' : '为用户创建新的 API Key' }}
+                {{ editingUserApiKey ? t('userApiKeys.editDescription') : t('userApiKeys.createDescription') }}
               </p>
             </div>
           </div>
@@ -1463,19 +1463,19 @@
           <Label
             for="admin-user-key-name"
             class="text-sm font-medium"
-          >密钥名称</Label>
+          >{{ t('userApiKeys.name') }}</Label>
           <Input
             id="admin-user-key-name"
             v-model="userApiKeyForm.name"
             class="h-10"
-            placeholder="例如：生产环境 Key"
+            :placeholder="t('userApiKeys.namePlaceholder')"
           />
         </div>
         <div class="space-y-2">
           <Label
             for="admin-user-key-group"
             class="text-sm font-medium"
-          >使用分组</Label>
+          >{{ t('userApiKeys.useGroup') }}</Label>
           <select
             id="admin-user-key-group"
             v-model="userApiKeyForm.group_id"
@@ -1486,31 +1486,31 @@
               v-if="apiKeyGroupOptions.length === 0"
               value=""
             >
-              暂无可用分组
+              {{ t('userApiKeys.noGroups') }}
             </option>
             <option
               v-for="group in apiKeyGroupOptions"
               :key="group.id"
               :value="group.id"
             >
-              {{ group.name }}{{ group.visibility === 'internal' ? '（内部分组）' : '' }}
+              {{ group.name }}{{ group.visibility === 'internal' ? t('userApiKeys.internalSuffix') : '' }}
             </option>
           </select>
           <p
             v-if="editingUserApiKeyGroupBindingReadOnly"
             class="text-xs text-amber-700 dark:text-amber-300"
           >
-            {{ editingUserApiKey?.legacy_group_binding_read_only_reason || '这把 Key 已绑定 Niffler Core 产品策略，旧分组绑定只读。' }}
+            {{ editingUserApiKey?.legacy_group_binding_read_only_reason || t('userApiKeys.readOnlyReason') }}
           </p>
           <p class="text-xs text-muted-foreground">
-            分组决定这个 API Key 的按量可用范围、并发上限和钱包扣费倍率；套餐按套餐自己的模型范围使用。
+            {{ t('userApiKeys.groupHintDetail') }}
           </p>
         </div>
         <div class="space-y-2">
           <Label
             for="admin-user-key-rate-limit"
             class="text-sm font-medium"
-          >速率限制 (请求/分钟)</Label>
+          >{{ t('userApiKeys.rateLimit') }}</Label>
           <Input
             id="admin-user-key-rate-limit"
             :model-value="userApiKeyForm.rate_limit ?? ''"
@@ -1518,18 +1518,18 @@
             min="0"
             max="10000"
             class="h-10"
-            placeholder="留空不限"
+            :placeholder="t('userApiKeys.unlimitedPlaceholder')"
             @update:model-value="(v) => userApiKeyForm.rate_limit = parseNumberInput(v, { min: 0, max: 10000 })"
           />
           <p class="text-xs text-muted-foreground">
-            留空表示不限制
+            {{ t('userApiKeys.unlimitedHint') }}
           </p>
         </div>
         <div class="space-y-2">
           <Label
             for="admin-user-key-concurrent-limit"
             class="text-sm font-medium"
-          >并发限制</Label>
+          >{{ t('userApiKeys.concurrency') }}</Label>
           <Input
             id="admin-user-key-concurrent-limit"
             :model-value="userApiKeyForm.concurrent_limit ?? ''"
@@ -1537,21 +1537,21 @@
             min="0"
             max="10000"
             class="h-10"
-            placeholder="0 = 不限并发"
+            :placeholder="t('userApiKeys.concurrencyPlaceholder')"
             @update:model-value="(v) => userApiKeyForm.concurrent_limit = parseNumberInput(v, { min: 0, max: 10000 })"
           />
           <p class="text-xs text-muted-foreground">
-            {{ editingUserApiKey ? '留空表示保持当前值，填 0 表示不限并发' : '留空表示不限并发，填 0 也表示不限并发' }}
+            {{ editingUserApiKey ? t('userApiKeys.editConcurrencyHint') : t('userApiKeys.createConcurrencyHint') }}
           </p>
         </div>
 
         <div class="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
           <div class="flex items-center justify-between gap-3">
-            <Label class="text-sm font-medium">敏感信息保护</Label>
+            <Label class="text-sm font-medium">{{ t('userApiKeys.piiProtection') }}</Label>
             <Switch v-model="userApiKeyForm.chat_pii_redaction_enabled" />
           </div>
           <div class="flex items-center justify-between gap-3">
-            <Label class="text-sm font-medium">占位符说明</Label>
+            <Label class="text-sm font-medium">{{ t('userApiKeys.placeholderNotice') }}</Label>
             <Switch
               v-model="userApiKeyForm.chat_pii_redaction_placeholder_notice"
               :disabled="!userApiKeyForm.chat_pii_redaction_enabled"
@@ -1566,14 +1566,14 @@
           class="h-10 px-5"
           @click="closeUserApiKeyFormDialog"
         >
-          取消
+          {{ t('userApiKeys.cancel') }}
         </Button>
         <Button
           class="h-10 px-5"
           :disabled="creatingApiKey"
           @click="submitUserApiKeyForm"
         >
-          {{ creatingApiKey ? (editingUserApiKey ? '保存中...' : '创建中...') : (editingUserApiKey ? '保存' : '创建') }}
+          {{ creatingApiKey ? (editingUserApiKey ? t('userApiKeys.saving') : t('userApiKeys.creating')) : (editingUserApiKey ? t('userApiKeys.save') : t('userApiKeys.create')) }}
         </Button>
       </template>
     </Dialog>
@@ -1590,10 +1590,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                登录设备
+                {{ t('userSessions.title') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                查看并强制下线该用户的设备会话
+                {{ t('userSessions.description') }}
               </p>
             </div>
           </div>
@@ -1605,13 +1605,13 @@
           v-if="loadingUserSessions"
           class="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground"
         >
-          正在加载设备会话...
+          {{ t('userSessions.loading') }}
         </div>
         <div
           v-else-if="userSessions.length === 0"
           class="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-10 text-center text-sm text-muted-foreground"
         >
-          暂无在线设备
+          {{ t('userSessions.empty') }}
         </div>
         <div
           v-else
@@ -1631,7 +1631,7 @@
                   {{ formatSessionMeta(session) }}
                 </div>
                 <div class="mt-1 text-xs text-muted-foreground">
-                  最近活跃 {{ formatDate(session.last_seen_at || session.created_at) }}
+                  {{ t('userSessions.lastActive') }} {{ formatDate(session.last_seen_at || session.created_at) }}
                   <span v-if="session.ip_address"> · IP {{ session.ip_address }}</span>
                 </div>
               </div>
@@ -1641,7 +1641,7 @@
                 :disabled="sessionDialogActionLoading === session.id"
                 @click="revokeSelectedUserSession(session.id)"
               >
-                {{ sessionDialogActionLoading === session.id ? '处理中...' : '强制下线' }}
+                {{ sessionDialogActionLoading === session.id ? t('userSessions.processing') : t('userSessions.forceLogout') }}
               </Button>
             </div>
           </div>
@@ -1654,14 +1654,14 @@
           class="h-10 px-5"
           @click="showUserSessionsDialog = false"
         >
-          关闭
+          {{ t('userSessions.close') }}
         </Button>
         <Button
           class="h-10 px-5"
           :disabled="loadingUserSessions || userSessions.length === 0 || sessionDialogActionLoading === 'all'"
           @click="revokeAllSelectedUserSessions"
         >
-          {{ sessionDialogActionLoading === 'all' ? '处理中...' : '全部下线' }}
+          {{ sessionDialogActionLoading === 'all' ? t('userSessions.processing') : t('userSessions.logoutAll') }}
         </Button>
       </template>
     </Dialog>
@@ -1670,9 +1670,9 @@
       :open="showWalletActionDialogState"
       :wallet="walletActionTarget?.wallet || null"
       :owner-name="walletActionTarget?.user.username || ''"
-      :owner-subtitle="walletActionTarget?.user.email || '未设置邮箱'"
+      :owner-subtitle="walletActionTarget?.user.email || t('userSessions.noEmail')"
       :user-id="walletActionTarget?.user.id || null"
-      context-label="资金与套餐"
+      :context-label="t('userManagement.funds')"
       accent="emerald"
       @close="closeWalletActionDrawer"
       @changed="handleWalletDrawerChanged"
@@ -1691,10 +1691,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                创建成功
+                {{ t('userApiKeys.created') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                请妥善保管, 切勿泄露给他人.
+                {{ t('userApiKeys.secretNotice') }}
               </p>
             </div>
           </div>
@@ -1717,7 +1717,7 @@
               class="h-11"
               @click="copyApiKey"
             >
-              复制
+              {{ t('userApiKeys.copy') }}
             </Button>
           </div>
         </div>
@@ -1728,7 +1728,7 @@
           class="h-10 px-5"
           @click="closeNewApiKeyDialog"
         >
-          确定
+          {{ t('userApiKeys.confirm') }}
         </Button>
       </template>
     </Dialog>
@@ -1737,6 +1737,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUsersStore } from '@/stores/users'
 import { useAuthStore } from '@/stores/auth'
 import { usersApi, type User, type ApiKey, type UserSession, type UserBatchActionResponse, type UserBatchSelectionFilters, type UserGroup, type AdminUserPlanEntitlement, type UpsertUserApiKeyRequest } from '@/api/users'
@@ -1827,6 +1828,7 @@ import {
 } from '@/features/users/utils/grantPlanTime'
 
 const { success, error, warning } = useToast()
+const { t } = useI18n()
 const { confirmDanger } = useConfirm()
 const { copyToClipboard } = useClipboard()
 const usersStore = useUsersStore()
@@ -1897,17 +1899,17 @@ const filterGroup = ref('all')
 const filterApiKeyGroup = ref('all')
 const userGroups = ref<UserGroup[]>([])
 const defaultUserGroupId = ref<string | null>(null)
-const userRoleFilterOptions = [
-  { value: 'all', label: '全部角色' },
-  { value: 'admin', label: '管理员' },
-  { value: 'audit_admin', label: '审计管理员' },
-  { value: 'user', label: '普通用户' },
-]
-const userStatusFilterOptions = [
-  { value: 'all', label: '全部状态' },
-  { value: 'active', label: '活跃' },
-  { value: 'inactive', label: '禁用' },
-]
+const userRoleFilterOptions = computed(() => [
+  { value: 'all', label: t('userManagement.allRoles') },
+  { value: 'admin', label: t('userManagement.admin') },
+  { value: 'audit_admin', label: t('userManagement.auditAdmin') },
+  { value: 'user', label: t('userManagement.normalUser') },
+])
+const userStatusFilterOptions = computed(() => [
+  { value: 'all', label: t('userManagement.allStatus') },
+  { value: 'active', label: t('userManagement.active') },
+  { value: 'inactive', label: t('userManagement.disabled') },
+])
 type UserTableColumnKey = 'select' | 'user' | 'wallet' | 'stats' | 'created' | 'status' | 'actions'
 const userTableColumns: ResizableTableColumn<UserTableColumnKey>[] = [
   { key: 'select', width: '40px', minWidth: 40 },
@@ -2071,9 +2073,9 @@ watch(selectedGrantPlanId, () => {
 })
 
 function formatUserRole(role: string) {
-  if (role === 'admin') return '管理员'
-  if (role === 'audit_admin') return '审计管理员'
-  return '普通用户'
+  if (role === 'admin') return t('userManagement.admin')
+  if (role === 'audit_admin') return t('userManagement.auditAdmin')
+  return t('userManagement.normalUser')
 }
 
 function userRoleBadgeVariant(role: string) {
@@ -2112,7 +2114,7 @@ async function loadUserGroups(): Promise<void> {
       filterApiKeyGroup.value = 'all'
     }
   } catch (err) {
-    log.error('加载用户分组失败:', err)
+    log.error(t('userManagement.loadGroupsFailed'), err)
   }
 }
 
@@ -2167,27 +2169,27 @@ function formatPlanPrice(plan: BillingPlan): string {
 
 function formatPlanDuration(plan: BillingPlan): string {
   const labels: Record<string, string> = {
-    day: '天',
-    month: '个月',
-    year: '年',
-    custom: '天',
+    day: t('userManagement.day'),
+    month: t('userManagement.month'),
+    year: t('userManagement.year'),
+    custom: t('userManagement.day'),
   }
-  const unit = labels[plan.duration_unit] || '天'
+  const unit = labels[plan.duration_unit] || t('userManagement.day')
   return `${Number(plan.duration_value || 1)}${unit}`
 }
 
 function entitlementLabels(items: BillingEntitlementsInput): string[] {
   return normalizeBillingEntitlements(items).map((item) => {
     if (item.type === 'wallet_credit') {
-      return `附赠余额 $${Number(item.amount_usd || 0).toFixed(2)}`
+      return t('userManagement.bonusBalance', { amount: Number(item.amount_usd || 0).toFixed(2) })
     }
     if (item.type === 'daily_quota') {
       return quotaEntitlementLabel(item)
     }
     if (item.type === 'membership_group') {
-      return '会员权益'
+      return t('userManagement.membershipBenefit')
     }
-    return '未知权益'
+    return t('userManagement.unknownBenefit')
   })
 }
 
@@ -2202,11 +2204,11 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   const fiveHour = Number(item.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
   const weekly = Number(item.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
   const monthly = Number(item.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
-  if (daily > 0) parts.push(`每日 $${daily.toFixed(2)}`)
+  if (daily > 0) parts.push(t('userManagement.dailyQuota', { amount: daily.toFixed(2) }))
   if (fiveHour > 0) parts.push(`5H $${fiveHour.toFixed(2)}`)
-  if (weekly > 0) parts.push(`每周 $${weekly.toFixed(2)}`)
-  if (monthly > 0) parts.push(`每月 $${monthly.toFixed(2)}`)
-  const quotaText = parts.join(' / ') || '用量额度'
+  if (weekly > 0) parts.push(t('userManagement.weeklyQuota', { amount: weekly.toFixed(2) }))
+  if (monthly > 0) parts.push(t('userManagement.monthlyQuota', { amount: monthly.toFixed(2) }))
+  const quotaText = parts.join(' / ') || t('userManagement.usageQuota')
   const labels = [quotaModelScopeLabel(item.allowed_global_model_ids)]
   const multiplierLabel = quotaConsumptionMultiplierLabel(item)
   if (multiplierLabel) labels.push(multiplierLabel)
@@ -2215,9 +2217,9 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
 
 function quotaModelScopeLabel(modelIds?: string[]): string {
   if (!Array.isArray(modelIds) || modelIds.length === 0) {
-    return '全部模型'
+    return t('userManagement.allModels')
   }
-  return `可用模型 ${modelIds.length} 个`
+  return t('userManagement.availableModels', { count: modelIds.length })
 }
 
 function planModelScopeLabel(plan: BillingPlan): string {
@@ -2228,7 +2230,7 @@ function planModelScopeLabel(plan: BillingPlan): string {
       if (modelId.trim()) modelIds.add(modelId)
     }
   }
-  return modelIds.size > 0 ? `${modelIds.size} 个模型` : '全部模型'
+  return modelIds.size > 0 ? t('userManagement.modelCount', { count: modelIds.size }) : t('userManagement.allModels')
 }
 
 async function loadUserWallets(options: { cacheTtlMs?: number } = {}) {
@@ -2247,7 +2249,7 @@ async function loadUserWallets(options: { cacheTtlMs?: number } = {}) {
       }, {})
   } catch (err) {
     if (requestId !== userWalletsRequestId) return
-    log.error('加载用户钱包失败:', err)
+    log.error(t('userManagement.loadWalletsFailed'), err)
   }
 }
 
@@ -2310,14 +2312,14 @@ function formatCurrencyValue(value: number | null, nullLabel = '-'): string {
 
 function formatConcurrentLimitSimple(concurrentLimit?: number | null): string {
   if (concurrentLimit == null || concurrentLimit === 0) {
-    return '不限并发'
+    return t('userManagement.unlimitedConcurrency')
   }
-  return `${concurrentLimit} 并发`
+  return t('userManagement.concurrency', { count: concurrentLimit })
 }
 
 function apiKeyGroupName(groupId?: string | null): string {
-  if (!groupId) return '默认分组'
-  return userGroups.value.find((group) => group.id === groupId)?.name || '未知分组'
+  if (!groupId) return t('userManagement.defaultGroup')
+  return userGroups.value.find((group) => group.id === groupId)?.name || t('userManagement.unknownGroup')
 }
 
 function defaultApiKeyGroupId(): string {
@@ -2332,16 +2334,16 @@ function formatUserEffectiveRateLimitSource(user: User): string {
   const source = user.effective_policy?.rate_limit
   if (!source) return ''
   if (source.source === 'group' && source.group_name) {
-    return `继承自分组：${source.group_name}`
+    return t('userManagement.inheritedFromGroup', { group: source.group_name })
   }
   if (source.source === 'combined') {
     const groupNames = Array.isArray(source.group_names) ? source.group_names.join('、') : ''
-    return groupNames ? `用户额外限制与分组叠加：${groupNames}` : '用户额外限制与分组叠加'
+    return groupNames ? t('userManagement.combinedWithGroups', { groups: groupNames }) : t('userManagement.combinedLimits')
   }
   if (source.source === 'user') {
-    return '用户单独配置'
+    return t('userManagement.userConfigured')
   }
-  return '系统默认'
+  return t('userManagement.systemDefault')
 }
 
 function isNegativeWalletValue(value: number | null): boolean {
@@ -2349,10 +2351,10 @@ function isNegativeWalletValue(value: number | null): boolean {
 }
 
 async function toggleUserStatus(user: User) {
-  const action = user.is_active ? '禁用' : '启用'
+  const action = user.is_active ? t('userManagement.disable') : t('userManagement.enable')
   const confirmed = await confirmDanger(
-    `确定要${action}用户 ${user.username} 吗？`,
-    `${action}用户`,
+    t('userManagement.statusConfirm', { action, user: user.username }),
+    t('userManagement.statusActionTitle', { action }),
     action
   )
 
@@ -2360,9 +2362,9 @@ async function toggleUserStatus(user: User) {
 
   try {
     await usersStore.updateUser(user.id, { is_active: !user.is_active })
-    success(`用户已${action}`)
+    success(t('userManagement.statusUpdated', { action }))
   } catch (err: unknown) {
-    error(parseApiError(err, '未知错误'), `${action}用户失败`)
+    error(parseApiError(err, t('userManagement.unknownError')), t('userManagement.statusUpdateFailed', { action }))
   }
 }
 
@@ -2411,7 +2413,7 @@ async function handleUserFormSubmit(data: UserFormData & { password?: string; un
       }
       await usersStore.updateUser(data.id, updateData)
       await loadUserWallets()
-      success('用户信息已更新')
+       success(t('userManagement.userUpdated'))
     } else {
       // 创建用户
       const newUser = await usersStore.createUser({
@@ -2429,12 +2431,12 @@ async function handleUserFormSubmit(data: UserFormData & { password?: string; un
         await usersStore.updateUser(newUser.id, { is_active: false })
       }
       await loadUserWallets()
-      success('用户创建成功')
+       success(t('userManagement.userCreated'))
     }
     closeUserFormDialog()
   } catch (err: unknown) {
-    const title = data.id ? '更新用户失败' : '创建用户失败'
-    error(parseApiError(err, '未知错误'), title)
+    const title = data.id ? t('userManagement.updateUserFailed') : t('userManagement.createUserFailed')
+    error(parseApiError(err, t('userManagement.unknownError')), title)
   } finally {
     userFormDialogRef.value?.setSaving(false)
   }
@@ -2456,7 +2458,7 @@ async function manageUserSessions(user: User) {
   try {
     userSessions.value = await usersStore.getUserSessions(user.id)
   } catch (err) {
-    error(parseApiError(err, '加载用户设备会话失败'))
+    error(parseApiError(err, t('userManagement.loadSessionsFailed')))
   } finally {
     loadingUserSessions.value = false
   }
@@ -2487,7 +2489,7 @@ async function loadUserPlanEntitlements(userId: string) {
     const response = await usersApi.listUserPlanEntitlements(userId)
     userPlanEntitlements.value = response.items
   } catch (err) {
-    error(parseApiError(err, '加载用户套餐失败'))
+    error(parseApiError(err, t('userManagement.loadPlansFailed')))
     userPlanEntitlements.value = []
   } finally {
     loadingUserPlans.value = false
@@ -2506,7 +2508,7 @@ async function loadAvailableBillingPlans() {
       selectedGrantPlanId.value = ''
     }
   } catch (err) {
-    error(parseApiError(err, '加载套餐列表失败'))
+    error(parseApiError(err, t('userManagement.loadPlanListFailed')))
     availableBillingPlans.value = []
   } finally {
     loadingBillingPlans.value = false
@@ -2569,22 +2571,22 @@ async function grantPlanToSelectedUser() {
   const expiresAt = datetimeLocalToIso(grantExpiresAt.value)
   const initialRemainingQuotaUsd = optionalUsdAmount(grantInitialRemainingQuotaUsd.value)
   if (startsAt === undefined || expiresAt === undefined) {
-    error('时间格式不正确')
+    error(t('userManagement.invalidTime'))
     return
   }
   if (initialRemainingQuotaUsd === undefined) {
-    error('迁移额度上限必须是大于等于 0 的数字')
+    error(t('userManagement.quotaLimitInvalid'))
     return
   }
   const now = Date.now()
   if (startsAt && new Date(startsAt).getTime() > now) {
-    error('开始时间不能晚于现在')
+    error(t('userManagement.startAfterNow'))
     return
   }
   if (expiresAt) {
     const startsAtMs = startsAt ? new Date(startsAt).getTime() : now
     if (new Date(expiresAt).getTime() <= startsAtMs) {
-      error('到期时间必须晚于开始时间')
+      error(t('userManagement.endBeforeStart'))
       return
     }
   }
@@ -2601,9 +2603,9 @@ async function grantPlanToSelectedUser() {
     grantReason.value = ''
     grantInitialRemainingQuotaUsd.value = ''
     applyDefaultGrantPlanTimeWindow()
-    success('套餐已发放')
+    success(t('userManagement.planGranted'))
   } catch (err) {
-    error(parseApiError(err, '发放套餐失败'))
+    error(parseApiError(err, t('userManagement.grantPlanFailed')))
   } finally {
     grantingUserPlan.value = false
   }
@@ -2623,24 +2625,24 @@ async function updateUserPlanEntitlement(): Promise<void> {
   const expiresAt = datetimeLocalToIso(editUserPlanExpiresAt.value)
   const quotaUsd = optionalUsdAmount(editUserPlanQuotaUsd.value)
   if (startsAt === undefined || expiresAt === undefined) {
-    error('时间格式不正确')
+    error(t('userManagement.invalidTime'))
     return
   }
   if (!startsAt || !expiresAt) {
-    error('开始时间和到期时间不能为空')
+    error(t('userManagement.timeRangeRequired'))
     return
   }
   if (quotaUsd === undefined) {
-    error('额度上限必须是大于等于 0 的数字')
+    error(t('userManagement.quotaLimitInvalid'))
     return
   }
   const now = Date.now()
   if (new Date(startsAt).getTime() > now) {
-    error('开始时间不能晚于现在')
+    error(t('userManagement.startAfterNow'))
     return
   }
   if (new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) {
-    error('到期时间必须晚于开始时间')
+      error(t('userManagement.endBeforeStart'))
     return
   }
 
@@ -2658,9 +2660,9 @@ async function updateUserPlanEntitlement(): Promise<void> {
     userPlanEntitlements.value = response.items
     showEditUserPlanDialog.value = false
     editingUserPlanEntitlement.value = null
-    success('套餐已保存')
+    success(t('userManagement.planSaved'))
   } catch (err) {
-    error(parseApiError(err, '保存套餐失败'))
+    error(parseApiError(err, t('userManagement.savePlanFailed')))
   } finally {
     updatingUserPlanEntitlement.value = false
   }
@@ -2670,9 +2672,9 @@ async function cancelUserPlanEntitlement(item: AdminUserPlanEntitlement): Promis
   if (!selectedUser.value || !item.active) return
   const planName = item.plan_title || item.plan?.title || item.plan_id
   const confirmed = await confirmDanger(
-    `确定取消 ${selectedUser.value.username} 的「${planName}」吗？取消后额度和会员权益会立即停用，历史订单仍会保留。`,
-    '取消套餐',
-    '确认取消'
+    t('userManagement.cancelPlanConfirm', { user: selectedUser.value.username, plan: planName }),
+    t('userManagement.cancelPlanTitle'),
+    t('userManagement.confirmCancel')
   )
   if (!confirmed) return
 
@@ -2680,9 +2682,9 @@ async function cancelUserPlanEntitlement(item: AdminUserPlanEntitlement): Promis
   try {
     const response = await usersApi.cancelUserPlanEntitlement(selectedUser.value.id, item.id)
     userPlanEntitlements.value = response.items
-    success('套餐已取消')
+    success(t('userManagement.planCancelled'))
   } catch (err) {
-    error(parseApiError(err, '取消套餐失败'))
+    error(parseApiError(err, t('userManagement.cancelPlanFailed')))
   } finally {
     cancellingUserPlanEntitlementId.value = null
   }
@@ -2741,11 +2743,11 @@ function closeUserApiKeyFormDialog() {
 async function submitUserApiKeyForm() {
   if (!selectedUser.value) return
   if (!userApiKeyForm.value.name.trim()) {
-    error('请输入密钥名称', editingUserApiKey.value ? '更新 API Key 失败' : '创建 API Key 失败')
+    error(t('userManagement.keyNameRequired'), editingUserApiKey.value ? t('userManagement.updateKeyFailed') : t('userManagement.createKeyFailed'))
     return
   }
   if (!userApiKeyForm.value.group_id) {
-    error('请选择使用分组', editingUserApiKey.value ? '更新 API Key 失败' : '创建 API Key 失败')
+    error(t('userManagement.keyGroupRequired'), editingUserApiKey.value ? t('userManagement.updateKeyFailed') : t('userManagement.createKeyFailed'))
     return
   }
 
@@ -2764,10 +2766,10 @@ async function submitUserApiKeyForm() {
       if (!editingUserApiKeyGroupBindingReadOnly.value) {
         updatePayload.group_id = userApiKeyForm.value.group_id
       } else {
-        warning(editingUserApiKey.value.legacy_group_binding_read_only_reason || '这把 Key 已绑定 Niffler Core 产品策略，本次只更新 Key 其他配置')
+        warning(editingUserApiKey.value.legacy_group_binding_read_only_reason || t('userManagement.keyReadOnly'))
       }
       await usersStore.updateApiKey(selectedUser.value.id, editingUserApiKey.value.id, updatePayload)
-      success('API Key已更新')
+      success(t('userManagement.keyUpdated'))
     } else {
       const response = await usersStore.createApiKey(selectedUser.value.id, {
         name: userApiKeyForm.value.name,
@@ -2781,12 +2783,12 @@ async function submitUserApiKeyForm() {
       })
       newApiKey.value = response.key || ''
       showNewApiKeyDialog.value = true
-      success('API Key创建成功')
+      success(t('userManagement.keyCreated'))
     }
     await loadUserApiKeys(selectedUser.value.id)
     closeUserApiKeyFormDialog()
   } catch (err: unknown) {
-    error(parseApiError(err, '未知错误'), editingUserApiKey.value ? '更新 API Key 失败' : '创建 API Key 失败')
+    error(parseApiError(err, t('userManagement.unknownError')), editingUserApiKey.value ? t('userManagement.updateKeyFailed') : t('userManagement.createKeyFailed'))
   } finally {
     creatingApiKey.value = false
   }
@@ -2798,9 +2800,9 @@ async function revokeSelectedUserSession(sessionId: string) {
   try {
     await usersStore.revokeUserSession(selectedUser.value.id, sessionId)
     userSessions.value = userSessions.value.filter((session) => session.id !== sessionId)
-    success('设备已强制下线')
+    success(t('userManagement.deviceRevoked'))
   } catch (err) {
-    error(parseApiError(err, '强制下线失败'))
+    error(parseApiError(err, t('userManagement.revokeDeviceFailed')))
   } finally {
     sessionDialogActionLoading.value = null
   }
@@ -2812,9 +2814,9 @@ async function revokeAllSelectedUserSessions() {
   try {
     const result = await usersStore.revokeAllUserSessions(selectedUser.value.id)
     userSessions.value = []
-    success(result.revoked_count > 0 ? `已强制下线 ${result.revoked_count} 个设备` : '没有可下线的设备')
+    success(result.revoked_count > 0 ? t('userManagement.devicesRevoked', { count: result.revoked_count }) : t('userManagement.noDevicesToRevoke'))
   } catch (err) {
-    error(parseApiError(err, '强制下线全部设备失败'))
+    error(parseApiError(err, t('userManagement.revokeAllDevicesFailed')))
   } finally {
     sessionDialogActionLoading.value = null
   }
@@ -2838,8 +2840,8 @@ async function deleteApiKey(apiKey: ApiKey) {
   if (!user) return
 
   const confirmed = await confirmDanger(
-    `确定要删除这个API Key吗？\n\n${apiKey.key_display || '****'}\n\n此操作无法撤销。`,
-    '删除 API Key'
+    t('userManagement.deleteKeyConfirm', { key: apiKey.key_display || '****' }),
+    t('userManagement.deleteKeyTitle')
   )
 
   if (!confirmed) return
@@ -2847,9 +2849,9 @@ async function deleteApiKey(apiKey: ApiKey) {
   try {
     await usersStore.deleteApiKey(user.id, apiKey.id)
     await loadUserApiKeys(user.id)
-    success('API Key已删除')
+    success(t('userManagement.keyDeleted'))
   } catch (err: unknown) {
-    error(parseApiError(err, '未知错误'), '删除 API Key 失败')
+    error(parseApiError(err, t('userManagement.unknownError')), t('userManagement.deleteKeyFailed'))
   }
 }
 
@@ -2865,7 +2867,7 @@ async function toggleLockApiKey(apiKey: ApiKey) {
     success(response.message)
   } catch (err: unknown) {
     log.error('切换密钥锁定状态失败:', err)
-    error(parseApiError(err, '操作失败'), '锁定/解锁失败')
+    error(parseApiError(err, t('userManagement.operationFailed')), t('userManagement.lockToggleFailed'))
   }
 }
 
@@ -2876,14 +2878,14 @@ async function copyFullKey(apiKey: ApiKey) {
     await copyToClipboard(response.key)
   } catch (err: unknown) {
     log.error('复制密钥失败:', err)
-    error(parseApiError(err, '未知错误'), '复制密钥失败')
+    error(parseApiError(err, t('userManagement.unknownError')), t('userManagement.copyKeyFailed'))
   }
 }
 
 function openWalletActionDialog(user: User) {
   const wallet = getUserWallet(user.id)
   if (!wallet) {
-    error('该用户的钱包尚未初始化，暂时无法进行资金操作')
+    error(t('userManagement.walletNotInitialized'))
     return
   }
 
@@ -2909,17 +2911,17 @@ async function handleWalletDrawerChanged() {
 
 async function deleteUser(user: User) {
   const confirmed = await confirmDanger(
-    `确定要删除用户 ${user.username} 吗？\n\n此操作将删除：\n• 用户账户\n• 所有API密钥\n• 所有使用记录\n\n此操作无法撤销！`,
-    '删除用户'
+    t('userManagement.deleteUserConfirm', { user: user.username }),
+    t('userManagement.deleteUserTitle')
   )
 
   if (!confirmed) return
 
   try {
     await usersStore.deleteUser(user.id)
-    success('用户已删除')
+    success(t('userManagement.userDeleted'))
   } catch (err: unknown) {
-    error(parseApiError(err, '未知错误'), '删除用户失败')
+    error(parseApiError(err, t('userManagement.unknownError')), t('userManagement.deleteUserFailed'))
   }
 }
 </script>

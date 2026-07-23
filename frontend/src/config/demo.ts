@@ -15,23 +15,25 @@ export function isDemoMode(): boolean {
   )
 }
 
+import { i18n } from '@/i18n'
+
 // Demo 账号配置
 export const DEMO_ACCOUNTS = {
   admin: {
     email: 'admin@demo.aether.io',
     password: 'demo123',
-    hint: '管理员账号'
+    hint: i18n.global.t('staticUi.adminAccount')
   },
   user: {
     email: 'user@demo.aether.io',
     password: 'demo123',
-    hint: '普通用户'
+    hint: i18n.global.t('staticUi.userAccount')
   }
 } as const
 
 // Demo 模式提示信息
 export const DEMO_MODE_INFO = {
-  title: '演示模式',
-  description: '当前处于演示模式，所有数据均为模拟数据，不会产生实际调用。',
-  accountHint: '可使用以下演示账号登录：'
+  title: i18n.global.t('staticUi.demoMode'),
+  description: i18n.global.t('staticUi.demoDescription'),
+  accountHint: i18n.global.t('staticUi.demoAccounts')
 } as const

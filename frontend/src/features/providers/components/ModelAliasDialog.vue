@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    title="管理模型名称映射"
-    description="配置 Provider 对此模型使用的名称变体，系统会按优先级顺序选择"
+    :title="t('modelAlias.title')"
+    :description="t('modelAlias.description')"
     :icon="Tag"
     size="lg"
     @update:model-value="handleClose"
@@ -14,14 +14,14 @@
           {{ model?.global_model_display_name || model?.provider_model_name }}
         </p>
         <p class="text-sm text-muted-foreground font-mono">
-          主名称: {{ model?.provider_model_name }}
+          {{ t('modelAlias.primaryName', { name: model?.provider_model_name }) }}
         </p>
       </div>
 
       <!-- 映射列表 -->
       <div class="space-y-3">
         <div class="flex items-center justify-between">
-          <Label class="text-sm font-medium">名称映射</Label>
+          <Label class="text-sm font-medium">{{ t('modelAlias.nameMappings') }}</Label>
           <Button
             type="button"
             variant="outline"
@@ -29,7 +29,7 @@
             @click="addAlias"
           >
             <Plus class="w-4 h-4 mr-1" />
-            添加
+            {{ t('modelAlias.add') }}
           </Button>
         </div>
 
@@ -39,7 +39,7 @@
           class="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/30 rounded-md"
         >
           <Info class="w-3.5 h-3.5 shrink-0" />
-          <span>拖拽调整顺序，点击序号可编辑（相同数字为同级，负载均衡）</span>
+          <span>{{ t('modelAlias.orderHint') }}</span>
         </div>
 
         <div
@@ -85,7 +85,7 @@
               <div
                 v-else
                 class="w-6 h-6 rounded-md bg-muted/50 flex items-center justify-center text-xs font-medium text-muted-foreground cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors"
-                title="点击编辑优先级，相同数字为同级（负载均衡）"
+                :title="t('modelAlias.priorityHint')"
                 @click.stop="startEditPriority(index)"
               >
                 {{ alias.priority }}
@@ -95,7 +95,7 @@
             <!-- 映射输入框 -->
             <Input
               v-model="alias.name"
-              placeholder="映射名称，如 Claude-Sonnet-4.5"
+              :placeholder="t('modelAlias.mappingPlaceholder')"
               class="flex-1"
             />
 
@@ -118,10 +118,10 @@
         >
           <Tag class="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p class="text-sm">
-            未配置映射
+            {{ t('modelAlias.empty') }}
           </p>
           <p class="text-xs mt-1">
-            将只使用主模型名称
+            {{ t('modelAlias.emptyHint') }}
           </p>
         </div>
       </div>
@@ -132,7 +132,7 @@
         variant="outline"
         @click="handleClose(false)"
       >
-        取消
+        {{ t('modelAlias.cancel') }}
       </Button>
       <Button
         :disabled="submitting"
@@ -142,7 +142,7 @@
           v-if="submitting"
           class="w-4 h-4 mr-2 animate-spin"
         />
-        保存
+        {{ t('modelAlias.save') }}
       </Button>
     </template>
   </Dialog>
@@ -150,6 +150,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Tag, Plus, X, Loader2, GripVertical, Info } from 'lucide-vue-next'
 import { Dialog, Button, Input, Label } from '@/components/ui'
 import { useToast } from '@/composables/useToast'
@@ -171,6 +172,7 @@ const emit = defineEmits<{
 }>()
 
 const { error: showError, success: showSuccess } = useToast()
+const { t } = useI18n()
 
 const submitting = ref(false)
 const aliases = ref<ProviderModelAlias[]>([])
@@ -323,11 +325,11 @@ async function handleSubmit() {
       provider_model_mappings: validAliases.length > 0 ? validAliases : null
     })
 
-    showSuccess('映射配置已保存')
+    showSuccess(t('modelAlias.saved'))
     emit('update:open', false)
     emit('saved')
   } catch (err: unknown) {
-    showError(parseApiError(err, '保存失败'), '错误')
+    showError(parseApiError(err, t('modelAlias.saveFailed')), t('modelAlias.error'))
   } finally {
     submitting.value = false
   }

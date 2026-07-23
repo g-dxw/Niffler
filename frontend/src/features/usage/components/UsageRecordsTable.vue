@@ -1,5 +1,5 @@
 <template>
-  <TableCard title="使用记录">
+  <TableCard :title="t('usageRecords.title')">
     <template #actions>
       <!-- 时间范围筛选 -->
       <TimeRangePicker
@@ -17,7 +17,7 @@
         <Input
           id="usage-records-search"
           v-model="localSearch"
-          :placeholder="isAdmin ? '搜索用户/密钥' : '搜索密钥/模型'"
+          :placeholder="isAdmin ? t('usageRecords.searchAdmin') : t('usageRecords.searchUser')"
           class="w-[7.5rem] sm:w-48 h-8 text-xs border-border/60 pl-8"
         />
       </div>
@@ -40,11 +40,11 @@
           @update:model-value="$emit('update:filterApiKeyGroup', $event)"
         >
           <SelectTrigger class="flex-1 min-w-0 sm:flex-none sm:w-36 h-8 text-xs border-border/60">
-            <SelectValue placeholder="Key 分组" />
+            <SelectValue :placeholder="t('usageRecords.keyGroup')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">
-              全部 Key 分组
+              {{ t('usageRecords.allKeyGroups') }}
             </SelectItem>
             <SelectItem
               v-for="group in availableApiKeyGroups"
@@ -62,11 +62,11 @@
           @update:model-value="$emit('update:filterModel', $event)"
         >
           <SelectTrigger class="flex-1 min-w-0 sm:flex-none sm:w-40 h-8 text-xs border-border/60">
-            <SelectValue placeholder="模型" />
+            <SelectValue :placeholder="t('usageRecords.model')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">
-              全部模型
+              {{ t('usageRecords.allModels') }}
             </SelectItem>
             <SelectItem
               v-for="model in availableModels"
@@ -85,11 +85,11 @@
           @update:model-value="$emit('update:filterProvider', $event)"
         >
           <SelectTrigger class="flex-1 min-w-0 sm:flex-none sm:w-32 h-8 text-xs border-border/60">
-            <SelectValue placeholder="提供商" />
+            <SelectValue :placeholder="t('usageRecords.provider')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">
-              全部提供商
+              {{ t('usageRecords.allProviders') }}
             </SelectItem>
             <SelectItem
               v-for="provider in availableProviders"
@@ -107,11 +107,11 @@
           @update:model-value="$emit('update:filterApiFormat', $event)"
         >
           <SelectTrigger class="flex-1 min-w-0 sm:flex-none sm:w-32 h-8 text-xs border-border/60">
-            <SelectValue placeholder="格式" />
+            <SelectValue :placeholder="t('usageRecords.format')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">
-              全部格式
+              {{ t('usageRecords.allFormats') }}
             </SelectItem>
             <SelectItem
               v-for="format in availableApiFormats"
@@ -129,32 +129,32 @@
           @update:model-value="$emit('update:filterStatus', $event)"
         >
           <SelectTrigger class="flex-1 min-w-0 sm:flex-none sm:w-28 h-8 text-xs border-border/60">
-            <SelectValue placeholder="状态" />
+            <SelectValue :placeholder="t('usageRecords.status')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">
-              全部状态
+              {{ t('usageRecords.allStatuses') }}
             </SelectItem>
             <SelectItem value="stream">
-              流式
+              {{ t('usageRecords.streaming') }}
             </SelectItem>
             <SelectItem value="standard">
-              标准
+              {{ t('usageRecords.standard') }}
             </SelectItem>
             <SelectItem value="active">
-              活跃
+              {{ t('usageRecords.active') }}
             </SelectItem>
             <SelectItem value="failed">
-              失败
+              {{ t('usageRecords.failed') }}
             </SelectItem>
             <SelectItem value="cancelled">
-              已取消
+              {{ t('usageRecords.cancelled') }}
             </SelectItem>
             <SelectItem value="has_retry">
-              发生重试
+              {{ t('usageRecords.hasRetry') }}
             </SelectItem>
             <SelectItem value="has_fallback">
-              发生转移
+              {{ t('usageRecords.hasFallback') }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -170,11 +170,11 @@
         @update:model-value="$emit('update:filterApiKeyGroup', $event)"
       >
         <SelectTrigger class="hidden md:flex w-36 h-8 text-xs border-border/60">
-          <SelectValue placeholder="Key 分组" />
+          <SelectValue :placeholder="t('usageRecords.keyGroup')" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__all__">
-            全部 Key 分组
+            {{ t('usageRecords.allKeyGroups') }}
           </SelectItem>
           <SelectItem
             v-for="group in availableApiKeyGroups"
@@ -196,7 +196,7 @@
       <MultiSelect
         v-model="visibleColumnIds"
         :options="columnSelectOptions"
-        placeholder="显示列"
+        :placeholder="t('usageRecords.visibleColumns')"
         trigger-class="hidden md:flex w-40 h-8 text-xs border-border/60"
         dropdown-min-width="14rem"
         :searchable="false"
@@ -211,7 +211,7 @@
         size="icon"
         class="h-8 w-8"
         :class="autoRefresh ? 'text-primary' : ''"
-        :title="autoRefresh ? '点击关闭自动刷新' : '点击开启自动刷新'"
+        :title="autoRefresh ? t('usageRecords.disableAutoRefresh') : t('usageRecords.enableAutoRefresh')"
         @click="$emit('update:autoRefresh', !autoRefresh)"
       >
         <RefreshCcw
@@ -227,7 +227,7 @@
         v-if="records.length === 0"
         class="text-center py-12 text-muted-foreground"
       >
-        暂无请求记录
+        {{ t('usageRecords.empty') }}
       </div>
       <div
         v-for="record in records"
@@ -251,27 +251,27 @@
             :title="getRecordCostTitle(record)"
           >
             <span class="text-xs text-primary font-medium">
-              官方 {{ formatCurrency(getOfficialCost(record)) }}
+              {{ t('usageRecords.officialCost', { amount: formatCurrency(getOfficialCost(record)) }) }}
             </span>
             <span
               v-for="line in getChargeLines(record)"
               :key="line.label"
               class="text-[10px] text-muted-foreground"
             >
-              {{ line.label }}扣除 {{ formatCurrency(line.amount) }} · {{ formatMultiplier(line.multiplier) }}
+              {{ t('usageRecords.deductedCost', { label: formatChargeLabel(line.label), amount: formatCurrency(line.amount), multiplier: formatMultiplier(line.multiplier) }) }}
             </span>
             <span
               v-if="hasModerationCost(record)"
               class="text-[10px] text-muted-foreground"
-            >模型扣费 {{ formatCurrency(getModelCost(record)) }}</span>
+            >{{ t('usageRecords.modelCharge', { amount: formatCurrency(getModelCost(record)) }) }}</span>
             <span
               v-if="hasModerationCost(record)"
               class="text-[10px] text-muted-foreground"
-            >审查成本 {{ formatCurrency(getModerationCost(record)) }}</span>
+            >{{ t('usageRecords.moderationCost', { amount: formatCurrency(getModerationCost(record)) }) }}</span>
             <span
               v-if="showActualCost && hasPlatformCost(record)"
               class="text-[10px] text-muted-foreground"
-            >平台 {{ formatCurrency(getPlatformCost(record)) }}</span>
+            >{{ t('usageRecords.platformCostShort', { amount: formatCurrency(getPlatformCost(record)) }) }}</span>
             <span
               v-if="showActualCost && hasPlatformCost(record)"
               class="text-[10px] text-muted-foreground"
@@ -288,28 +288,28 @@
               variant="destructive"
               class="whitespace-nowrap text-[10px] px-1.5 h-4 leading-4 inline-flex items-center"
             >
-              失败
+              {{ t('usageRecords.failed') }}
             </Badge>
             <Badge
               v-else-if="getDisplayStatus(record) === 'pending'"
               variant="outline"
               class="whitespace-nowrap animate-pulse border-muted-foreground/30 text-muted-foreground text-[10px] px-1.5 h-4 leading-4 inline-flex items-center"
             >
-              等待
+              {{ t('usageRecords.pending') }}
             </Badge>
             <Badge
               v-else-if="getDisplayStatus(record) === 'streaming'"
               variant="outline"
               class="whitespace-nowrap animate-pulse border-primary/50 text-primary text-[10px] px-1.5 h-4 leading-4 inline-flex items-center"
             >
-              传输
+              {{ t('usageRecords.streamingShort') }}
             </Badge>
             <Badge
               v-else-if="record.status === 'cancelled'"
               variant="outline"
               class="whitespace-nowrap border-amber-500/50 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 h-4 leading-4 inline-flex items-center"
             >
-              取消
+              {{ t('usageRecords.cancelled') }}
             </Badge>
             <Badge
               v-else-if="getStreamModeSegments(record).hasConversion"
@@ -318,9 +318,9 @@
                 ? 'whitespace-nowrap text-[10px] px-1.5 h-4 leading-4 inline-flex items-center gap-0.5'
                 : 'whitespace-nowrap border-border/60 text-muted-foreground text-[10px] px-1.5 h-4 leading-4 inline-flex items-center gap-0.5'"
             >
-              <span>{{ getStreamModeSegments(record).client }}</span>
+              <span>{{ translateStreamMode(getStreamModeSegments(record).client) }}</span>
               <span class="opacity-60">→</span>
-              <span>{{ getStreamModeSegments(record).upstream }}</span>
+              <span>{{ translateStreamMode(getStreamModeSegments(record).upstream) }}</span>
             </Badge>
             <Badge
               v-else
@@ -329,7 +329,7 @@
                 ? 'whitespace-nowrap text-[10px] px-1.5 h-4 leading-4 inline-flex items-center'
                 : 'whitespace-nowrap border-border/60 text-muted-foreground text-[10px] px-1.5 h-4 leading-4 inline-flex items-center'"
             >
-              {{ getStreamModeLabel(record) }}
+              {{ translateStreamMode(getStreamModeLabel(record)) }}
             </Badge>
             <span class="text-muted-foreground/50">|</span>
             <div class="flex flex-col leading-tight tabular-nums">
@@ -424,7 +424,7 @@
             :resizable="true"
             @resize-start="handleUsageColumnResizeStart"
           >
-            时间
+            {{ t('usageRecords.time') }}
           </SortableTableHead>
           <SortableTableHead
             v-if="isAdmin && isColumnVisible('user')"
@@ -434,11 +434,11 @@
             resize-column-key="user"
             :resizable="true"
             :filter-active="filterUser !== '__all__'"
-            filter-title="筛选用户"
+            :filter-title="t('usageRecords.filterUser')"
             filter-content-class="w-64 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
             @resize-start="handleUsageColumnResizeStart"
           >
-            用户
+            {{ t('usageRecords.user') }}
             <template #filter="{ close }">
               <ServerUserSelector
                 :model-value="filterUser"
@@ -456,7 +456,7 @@
             :resizable="true"
             @resize-start="handleUsageColumnResizeStart"
           >
-            密钥
+            {{ t('usageRecords.key') }}
           </SortableTableHead>
           <SortableTableHead
             v-if="isColumnVisible('model')"
@@ -466,11 +466,11 @@
             resize-column-key="model"
             :resizable="true"
             :filter-active="filterModel !== '__all__'"
-            filter-title="筛选模型"
+            :filter-title="t('usageRecords.filterModel')"
             filter-content-class="w-64 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
             @resize-start="handleUsageColumnResizeStart"
           >
-            模型
+            {{ t('usageRecords.model') }}
             <template #filter="{ close }">
               <TableFilterMenu
                 :model-value="filterModel"
@@ -488,11 +488,11 @@
             resize-column-key="provider"
             :resizable="true"
             :filter-active="filterProvider !== '__all__'"
-            filter-title="筛选提供商"
+            :filter-title="t('usageRecords.filterProvider')"
             filter-content-class="w-48 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
             @resize-start="handleUsageColumnResizeStart"
           >
-            提供商
+            {{ t('usageRecords.provider') }}
             <template #filter="{ close }">
               <TableFilterMenu
                 :model-value="filterProvider"
@@ -510,11 +510,11 @@
             resize-column-key="api_format"
             :resizable="true"
             :filter-active="filterApiFormat !== '__all__'"
-            filter-title="筛选 API 格式"
+            :filter-title="t('usageRecords.filterApiFormat')"
             filter-content-class="w-72 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
             @resize-start="handleUsageColumnResizeStart"
           >
-            API格式
+            {{ t('usageRecords.apiFormat') }}
             <template #filter="{ close }">
               <TableFilterMenu
                 :model-value="filterApiFormat"
@@ -533,11 +533,11 @@
             resize-column-key="status"
             :resizable="true"
             :filter-active="filterStatus !== '__all__'"
-            filter-title="筛选类型"
+            :filter-title="t('usageRecords.filterType')"
             filter-content-class="w-44 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
             @resize-start="handleUsageColumnResizeStart"
           >
-            类型
+            {{ t('usageRecords.type') }}
             <template #filter="{ close }">
               <TableFilterMenu
                 :model-value="filterStatus"
@@ -567,7 +567,7 @@
             :resizable="true"
             @resize-start="handleUsageColumnResizeStart"
           >
-            费用/倍率
+            {{ t('usageRecords.costMultiplier') }}
           </SortableTableHead>
           <SortableTableHead
             v-if="isColumnVisible('performance')"
@@ -579,8 +579,8 @@
             @resize-start="handleUsageColumnResizeStart"
           >
             <div class="flex flex-col items-end text-xs gap-0.5">
-              <span class="whitespace-nowrap">首字/总耗时</span>
-              <span class="text-muted-foreground font-normal">输出速度</span>
+              <span class="whitespace-nowrap">{{ t('usageRecords.firstByteTotal') }}</span>
+              <span class="text-muted-foreground font-normal">{{ t('usageRecords.outputSpeed') }}</span>
             </div>
           </SortableTableHead>
           <SortableTableHead
@@ -591,11 +591,11 @@
             resize-column-key="client_family"
             :resizable="true"
             :filter-active="filterClientFamily !== '__all__'"
-            filter-title="筛选客户端"
+            :filter-title="t('usageRecords.filterClient')"
             filter-content-class="w-44 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
             @resize-start="handleUsageColumnResizeStart"
           >
-            客户端
+            {{ t('usageRecords.client') }}
             <template #filter="{ close }">
               <TableFilterMenu
                 :model-value="filterClientFamily"
@@ -613,7 +613,7 @@
             :resizable="true"
             @resize-start="handleUsageColumnResizeStart"
           >
-            IP 地址
+            {{ t('usageRecords.ipAddress') }}
           </SortableTableHead>
           <SortableTableHead
             v-if="isColumnVisible('user_agent')"
@@ -633,7 +633,7 @@
             :colspan="visibleColumnCount"
             class="text-center py-12 text-muted-foreground"
           >
-            暂无请求记录
+            {{ t('usageRecords.empty') }}
           </TableCell>
         </TableRow>
         <TableRow
@@ -749,7 +749,7 @@
                   v-if="getProviderAccountDisplay(record)"
                   type="button"
                   class="break-words text-left text-muted-foreground transition-colors hover:text-foreground"
-                  :title="`${getProviderAccountDisplay(record)}\n点击复制`"
+                  :title="t('usageRecords.clickToCopy', { value: getProviderAccountDisplay(record) })"
                   @click.stop="copyProviderAccountDisplay(record)"
                 >
                   {{ getProviderAccountDisplay(record) }}
@@ -788,7 +788,7 @@
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 class="w-3.5 h-3.5 text-primary flex-shrink-0"
-                title="此请求发生了亲和缓存重试"
+                :title="t('usageRecords.cacheAffinityRetry')"
               >
                 <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
                 <path d="M21 21v-5h-5" />
@@ -841,28 +841,28 @@
               variant="outline"
               class="whitespace-nowrap animate-pulse border-muted-foreground/30 text-muted-foreground"
             >
-              等待中
+              {{ t('usageRecords.pendingLong') }}
             </Badge>
             <Badge
               v-else-if="getDisplayStatus(record) === 'streaming'"
               variant="outline"
               class="whitespace-nowrap animate-pulse border-primary/50 text-primary"
             >
-              传输中
+              {{ t('usageRecords.streamingLong') }}
             </Badge>
             <Badge
               v-else-if="isUsageRecordFailed(record)"
               variant="destructive"
               class="whitespace-nowrap"
             >
-              失败
+              {{ t('usageRecords.failed') }}
             </Badge>
             <Badge
               v-else-if="record.status === 'cancelled'"
               variant="outline"
               class="whitespace-nowrap border-amber-500/50 text-amber-600 dark:text-amber-400"
             >
-              已取消
+              {{ t('usageRecords.cancelledLong') }}
             </Badge>
             <Badge
               v-else-if="getStreamModeSegments(record).hasConversion"
@@ -871,9 +871,9 @@
                 ? 'whitespace-nowrap inline-flex items-center gap-1'
                 : 'whitespace-nowrap border-border/60 text-muted-foreground inline-flex items-center gap-1'"
             >
-              <span>{{ getStreamModeSegments(record).client }}</span>
+              <span>{{ translateStreamMode(getStreamModeSegments(record).client) }}</span>
               <span class="opacity-60">→</span>
-              <span>{{ getStreamModeSegments(record).upstream }}</span>
+              <span>{{ translateStreamMode(getStreamModeSegments(record).upstream) }}</span>
             </Badge>
             <Badge
               v-else
@@ -882,7 +882,7 @@
                 ? 'whitespace-nowrap'
                 : 'whitespace-nowrap border-border/60 text-muted-foreground'"
             >
-              {{ getStreamModeLabel(record) }}
+              {{ translateStreamMode(getStreamModeLabel(record)) }}
             </Badge>
           </TableCell>
           <TableCell v-if="isColumnVisible('tokens')" class="py-4 align-top">
@@ -926,32 +926,32 @@
           >
             <div class="flex flex-col items-end text-xs gap-0.5">
               <span class="text-primary font-medium">
-                官方 {{ formatCurrency(getOfficialCost(record)) }}
+                {{ t('usageRecords.officialCost', { amount: formatCurrency(getOfficialCost(record)) }) }}
               </span>
               <span
                 v-for="line in getChargeLines(record)"
                 :key="line.label"
                 class="text-muted-foreground"
               >
-                {{ line.label }}扣除 {{ formatCurrency(line.amount) }} · {{ formatMultiplier(line.multiplier) }}
+                {{ t('usageRecords.deductedCost', { label: formatChargeLabel(line.label), amount: formatCurrency(line.amount), multiplier: formatMultiplier(line.multiplier) }) }}
               </span>
               <span
                 v-if="hasModerationCost(record)"
                 class="text-muted-foreground"
               >
-                模型扣费 {{ formatCurrency(getModelCost(record)) }}
+                {{ t('usageRecords.modelCharge', { amount: formatCurrency(getModelCost(record)) }) }}
               </span>
               <span
                 v-if="hasModerationCost(record)"
                 class="text-muted-foreground"
               >
-                审查成本 {{ formatCurrency(getModerationCost(record)) }}
+                {{ t('usageRecords.moderationCost', { amount: formatCurrency(getModerationCost(record)) }) }}
               </span>
               <span
                 v-if="showActualCost && hasPlatformCost(record)"
                 class="text-muted-foreground"
               >
-                平台 {{ formatCurrency(getPlatformCost(record)) }}
+                {{ t('usageRecords.platformCostShort', { amount: formatCurrency(getPlatformCost(record)) }) }}
               </span>
               <span
                 v-if="showActualCost && hasPlatformCost(record)"
@@ -1042,6 +1042,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useDebounceFn, useLocalStorage } from '@vueuse/core'
 import {
   TableCard,
@@ -1088,6 +1089,8 @@ import type { MultiSelectOption } from '@/components/common/MultiSelect.vue'
 import ElapsedTimeText from './ElapsedTimeText.vue'
 import ServerUserSelector from './ServerUserSelector.vue'
 
+const { t } = useI18n()
+
 export interface UserOption {
   id: string
   username: string
@@ -1127,21 +1130,21 @@ interface UsageRecordColumnOption {
   userOnly?: boolean
 }
 
-const USAGE_RECORD_COLUMN_OPTIONS: UsageRecordColumnOption[] = [
-  { id: 'time', label: '时间' },
-  { id: 'user', label: '用户', adminOnly: true },
-  { id: 'key', label: '密钥', userOnly: true },
-  { id: 'model', label: '模型' },
-  { id: 'provider', label: '提供商', adminOnly: true },
-  { id: 'api_format', label: 'API格式' },
-  { id: 'status', label: '类型/状态' },
+const USAGE_RECORD_COLUMN_OPTIONS = computed<UsageRecordColumnOption[]>(() => [
+  { id: 'time', label: t('usageRecords.time') },
+  { id: 'user', label: t('usageRecords.user'), adminOnly: true },
+  { id: 'key', label: t('usageRecords.key'), userOnly: true },
+  { id: 'model', label: t('usageRecords.model') },
+  { id: 'provider', label: t('usageRecords.provider'), adminOnly: true },
+  { id: 'api_format', label: t('usageRecords.apiFormat') },
+  { id: 'status', label: t('usageRecords.typeStatus') },
   { id: 'tokens', label: 'Tokens' },
-  { id: 'cost', label: '费用/倍率' },
-  { id: 'performance', label: '耗时/速度' },
-  { id: 'client_family', label: '客户端类型' },
-  { id: 'client_ip', label: 'IP 地址' },
+  { id: 'cost', label: t('usageRecords.costMultiplier') },
+  { id: 'performance', label: t('usageRecords.latencySpeed') },
+  { id: 'client_family', label: t('usageRecords.clientType') },
+  { id: 'client_ip', label: t('usageRecords.ipAddress') },
   { id: 'user_agent', label: 'User-Agent' },
-]
+])
 
 const DEFAULT_ADMIN_COLUMNS: UsageRecordColumnId[] = [
   'time',
@@ -1235,9 +1238,9 @@ function getProviderRouteDisplay(record: UsageRecord): string[] {
 function getProviderTransferTitle(record: UsageRecord): string {
   const route = getProviderRouteDisplay(record)
   if (route.length > 1) {
-    return `服务切换：${route.join(' → ')}`
+    return t('usageRecords.serviceTransfer', { route: route.join(' → ') })
   }
-  return '此请求发生过服务切换'
+  return t('usageRecords.serviceTransferOccurred')
 }
 
 function hasProviderTransfer(record: UsageRecord): boolean {
@@ -1257,8 +1260,8 @@ function getProviderAccountDisplay(record: UsageRecord): string {
 function getUsageRecordUserDisplay(record: UsageRecord): string {
   if (record.username) return record.username
   if (record.user_email) return record.user_email
-  if (record.user_id) return '已删除用户'
-  return '未认证请求'
+  if (record.user_id) return t('usageRecords.deletedUser')
+  return t('usageRecords.unauthenticatedRequest')
 }
 
 async function copyProviderAccountDisplay(record: UsageRecord): Promise<void> {
@@ -1294,7 +1297,7 @@ const userVisibleColumnIds = useLocalStorage<UsageRecordColumnId[]>(
   { window: browserWindow },
 )
 
-const roleColumnOptions = computed(() => USAGE_RECORD_COLUMN_OPTIONS.filter((column) => {
+const roleColumnOptions = computed(() => USAGE_RECORD_COLUMN_OPTIONS.value.filter((column) => {
   if (column.adminOnly && !props.isAdmin) return false
   if (column.userOnly && props.isAdmin) return false
   return true
@@ -1416,7 +1419,7 @@ const columnSelectOptions = computed<MultiSelectOption[]>(() => roleColumnOption
 const COST_EPSILON = 0.0000001
 
 interface ChargeLine {
-  label: '套餐' | '钱包'
+  label: 'package' | 'wallet'
   amount: number
   multiplier: number | null
 }
@@ -1519,21 +1522,21 @@ function getChargeLines(record: UsageRecord): ChargeLine[] {
   const lines: ChargeLine[] = []
   if (breakdown.packageDebit > COST_EPSILON) {
     lines.push({
-      label: '套餐',
+      label: 'package',
       amount: breakdown.packageDebit,
       multiplier: breakdown.packageMultiplier,
     })
   }
   if (breakdown.walletDebit > COST_EPSILON) {
     lines.push({
-      label: '钱包',
+      label: 'wallet',
       amount: breakdown.walletDebit,
       multiplier: breakdown.walletMultiplier,
     })
   }
   if (lines.length === 0 && breakdown.userDebit > COST_EPSILON) {
     lines.push({
-      label: '钱包',
+      label: 'wallet',
       amount: breakdown.userDebit,
       multiplier: breakdown.walletMultiplier,
     })
@@ -1563,37 +1566,41 @@ function formatMultiplier(value: number | null): string {
 }
 
 function formatCostMultiplier(record: UsageRecord): string {
-  return `成本倍率 ${formatMultiplier(getCostMultiplier(record))}`
+  return t('usageRecords.costMultiplierValue', { value: formatMultiplier(getCostMultiplier(record)) })
+}
+
+function formatChargeLabel(label: ChargeLine['label']): string {
+  return label === 'package' ? t('usageRecords.package') : t('usageRecords.wallet')
 }
 
 function getRecordCostTitle(record: UsageRecord): string {
   const chargeLines = getChargeLines(record)
   const lines = [
-    `官方价格: ${formatCurrency(getOfficialCost(record))}`,
-    ...chargeLines.map(line => `${line.label}扣除: ${formatCurrency(line.amount)} · ${formatMultiplier(line.multiplier)}`),
+    t('usageRecords.officialPriceTooltip', { amount: formatCurrency(getOfficialCost(record)) }),
+    ...chargeLines.map(line => t('usageRecords.deductedTooltip', { label: formatChargeLabel(line.label), amount: formatCurrency(line.amount), multiplier: formatMultiplier(line.multiplier) })),
   ]
-  if (chargeLines.length === 0) lines.push('本次没有产生用户扣费')
+  if (chargeLines.length === 0) lines.push(t('usageRecords.noUserCharge'))
   if (hasModerationCost(record)) {
-    lines.push(`模型扣费: ${formatCurrency(getModelCost(record))}`)
-    lines.push(`审查成本: ${formatCurrency(getModerationCost(record))}`)
+    lines.push(t('usageRecords.modelChargeTooltip', { amount: formatCurrency(getModelCost(record)) }))
+    lines.push(t('usageRecords.moderationCostTooltip', { amount: formatCurrency(getModerationCost(record)) }))
   }
   if (props.showActualCost && hasPlatformCost(record)) {
-    lines.push(`平台成本: ${formatCurrency(getPlatformCost(record))}`)
+    lines.push(t('usageRecords.platformCostTooltip', { amount: formatCurrency(getPlatformCost(record)) }))
     const actualModelCost = getActualModelCost(record)
     const actualModerationCost = getActualModerationCost(record)
     if (actualModelCost !== null) {
-      lines.push(`平台模型成本: ${formatCurrency(actualModelCost)}`)
+      lines.push(t('usageRecords.platformModelCostTooltip', { amount: formatCurrency(actualModelCost) }))
     }
     if (actualModerationCost !== null) {
-      lines.push(`平台审查成本: ${formatCurrency(actualModerationCost)}`)
+      lines.push(t('usageRecords.platformModerationCostTooltip', { amount: formatCurrency(actualModerationCost) }))
     }
-    lines.push(`成本倍率: ${formatMultiplier(getCostMultiplier(record))}`)
+    lines.push(t('usageRecords.costMultiplierTooltip', { value: formatMultiplier(getCostMultiplier(record)) }))
   }
   return lines.join('\n')
 }
 
 const modelFilterOptions = computed<FilterOption[]>(() => [
-  { value: '__all__', label: '全部模型' },
+  { value: '__all__', label: t('usageRecords.allModels') },
   ...props.availableModels.map((model) => ({
     value: model,
     label: model.replace('claude-', ''),
@@ -1601,7 +1608,7 @@ const modelFilterOptions = computed<FilterOption[]>(() => [
 ])
 
 const providerFilterOptions = computed<FilterOption[]>(() => [
-  { value: '__all__', label: '全部提供商' },
+  { value: '__all__', label: t('usageRecords.allProviders') },
   ...props.availableProviders.map((provider) => ({
     value: provider,
     label: provider,
@@ -1617,7 +1624,7 @@ function formatClientFamily(value: string | null | undefined): string {
   if (normalized === 'opencode') return 'OpenCode'
   if (normalized === 'gemini_cli') return 'Gemini CLI'
   if (normalized === 'openai_js_sdk') return 'OpenAI JS SDK'
-  if (normalized === 'generic') return '通用客户端'
+  if (normalized === 'generic') return t('usageRecords.genericClient')
   return value?.trim() || '-'
 }
 
@@ -1628,7 +1635,7 @@ const clientFamilyFilterOptions = computed<FilterOption[]>(() => {
     if (family) families.add(family)
   })
   return [
-    { value: '__all__', label: '全部客户端' },
+    { value: '__all__', label: t('usageRecords.allClients') },
     ...Array.from(families).sort().map((family) => ({
       value: family,
       label: formatClientFamily(family),
@@ -1637,23 +1644,23 @@ const clientFamilyFilterOptions = computed<FilterOption[]>(() => {
 })
 
 const apiFormatFilterOptions = computed<FilterOption[]>(() => [
-  { value: '__all__', label: '全部格式' },
+  { value: '__all__', label: t('usageRecords.allFormats') },
   ...availableApiFormats.map((format) => ({
     value: format.value,
     label: format.label,
   })),
 ])
 
-const statusFilterOptions: FilterOption[] = [
-  { value: '__all__', label: '全部状态' },
-  { value: 'stream', label: '流式' },
-  { value: 'standard', label: '标准' },
-  { value: 'active', label: '活跃' },
-  { value: 'failed', label: '失败' },
-  { value: 'cancelled', label: '已取消' },
-  { value: 'has_retry', label: '发生重试' },
-  { value: 'has_fallback', label: '发生转移' },
-]
+const statusFilterOptions = computed<FilterOption[]>(() => [
+  { value: '__all__', label: t('usageRecords.allStatuses') },
+  { value: 'stream', label: t('usageRecords.streaming') },
+  { value: 'standard', label: t('usageRecords.standard') },
+  { value: 'active', label: t('usageRecords.active') },
+  { value: 'failed', label: t('usageRecords.failed') },
+  { value: 'cancelled', label: t('usageRecords.cancelledLong') },
+  { value: 'has_retry', label: t('usageRecords.hasRetry') },
+  { value: 'has_fallback', label: t('usageRecords.hasFallback') },
+])
 
 const timeRangeModel = computed({
   get: () => props.timeRange,
@@ -1672,6 +1679,12 @@ function getDisplayStatus(record: UsageRecord) {
 
 function getStreamModeLabel(record: UsageRecord): string {
   return formatUsageStreamLabel(record)
+}
+
+function translateStreamMode(label: string): string {
+  return label
+    .replaceAll('流式', t('usageRecords.streaming'))
+    .replaceAll('标准', t('usageRecords.standard'))
 }
 
 function getStreamModeSegments(record: UsageRecord) {
@@ -1774,10 +1787,10 @@ function getRecordDisplayOutputRate(record: UsageRecord): number | null {
 function getRecordPerformanceTitle(record: UsageRecord): string {
   const outputRate = getRecordDisplayOutputRate(record)
   return [
-    `首字: ${formatRecordDurationSeconds(record.first_byte_time_ms)}`,
-    `总耗时: ${formatRecordDurationSeconds(record.response_time_ms)}`,
-    `生成耗时: ${formatRecordDurationSeconds(getGenerationTimeMs(record))}`,
-    `输出速度: ${formatOutputRateTokensPerSecond(outputRate)}`,
+    t('usageRecords.firstByteTooltip', { value: formatRecordDurationSeconds(record.first_byte_time_ms) }),
+    t('usageRecords.totalLatencyTooltip', { value: formatRecordDurationSeconds(record.response_time_ms) }),
+    t('usageRecords.generationLatencyTooltip', { value: formatRecordDurationSeconds(getGenerationTimeMs(record)) }),
+    t('usageRecords.outputSpeedTooltip', { value: formatOutputRateTokensPerSecond(outputRate) }),
   ].join('\n')
 }
 
@@ -1820,8 +1833,8 @@ function getApiFormatTooltip(record: UsageRecord): string {
   if (shouldShowFormatConversion(record)) {
     const endpointApiFormat = record.endpoint_api_format ?? record.api_format
     const endpointDisplayFormat = formatApiFormat(endpointApiFormat)
-    const conversionType = record.has_format_conversion ? '格式转换' : '格式兼容（无需转换）'
-    return `用户请求格式: ${displayFormat}\n端点原生格式: ${endpointDisplayFormat}\n${conversionType}`
+    const conversionType = record.has_format_conversion ? t('usageRecords.formatConversion') : t('usageRecords.formatCompatible')
+    return t('usageRecords.formatTooltip', { request: displayFormat, endpoint: endpointDisplayFormat, conversion: conversionType })
   }
 
   return record.api_format

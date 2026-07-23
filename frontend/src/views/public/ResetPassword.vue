@@ -8,7 +8,7 @@
           class="mb-4 h-14 w-14"
         >
         <h1 class="text-2xl font-semibold">
-          重置密码
+          {{ t('resetPassword.title') }}
         </h1>
       </div>
 
@@ -22,7 +22,7 @@
             for="new-password"
             class="text-sm"
           >
-            新密码
+            {{ t('resetPassword.newPassword') }}
           </Label>
           <Input
             id="new-password"
@@ -30,7 +30,7 @@
             type="password"
             required
             autocomplete="new-password"
-            placeholder="输入新密码"
+            :placeholder="t('resetPassword.newPasswordPlaceholder')"
           />
         </div>
         <div class="space-y-1.5">
@@ -38,7 +38,7 @@
             for="confirm-password"
             class="text-sm"
           >
-            确认新密码
+            {{ t('resetPassword.confirmPassword') }}
           </Label>
           <Input
             id="confirm-password"
@@ -46,7 +46,7 @@
             type="password"
             required
             autocomplete="new-password"
-            placeholder="再次输入新密码"
+            :placeholder="t('resetPassword.confirmPasswordPlaceholder')"
           />
         </div>
         <p
@@ -60,7 +60,7 @@
           :disabled="submitting"
           class="h-11 w-full"
         >
-          {{ submitting ? '重置中...' : '重置密码' }}
+          {{ submitting ? t('resetPassword.submitting') : t('resetPassword.title') }}
         </Button>
       </form>
 
@@ -69,7 +69,7 @@
         class="rounded-xl border border-border bg-card p-6 text-center shadow-sm"
       >
         <p class="text-sm text-muted-foreground">
-          {{ resetDone ? successMessage : '重置链接无效或缺少重置凭证，请重新申请。' }}
+          {{ resetDone ? successMessage : t('resetPassword.invalidMissing') }}
         </p>
       </div>
 
@@ -78,24 +78,28 @@
         class="mt-5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         @click="goHome"
       >
-        返回首页登录
+        {{ t('resetPassword.backHome') }}
       </button>
     </div>
   </main>
+  <PublicFooter />
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
+import PublicFooter from '@/components/common/PublicFooter.vue'
 import { useSiteInfo } from '@/composables/useSiteInfo'
 import { getErrorMessage } from '@/types/api-error'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const { siteName } = useSiteInfo()
 
 const token = computed(() => {
@@ -109,20 +113,20 @@ const confirmPassword = ref('')
 const submitting = ref(false)
 const resetDone = ref(false)
 const errorMessage = ref('')
-const successMessage = ref('密码已重置，请使用新密码登录')
+const successMessage = ref(t('resetPassword.success'))
 
 async function handleResetPassword() {
   errorMessage.value = ''
   if (!hasToken.value) {
-    errorMessage.value = '重置链接无效或已过期，请重新申请'
+    errorMessage.value = t('resetPassword.invalidExpired')
     return
   }
   if (!password.value || !confirmPassword.value) {
-    errorMessage.value = '请输入新密码'
+    errorMessage.value = t('resetPassword.enterPassword')
     return
   }
   if (password.value !== confirmPassword.value) {
-    errorMessage.value = '两次输入的密码不一致'
+    errorMessage.value = t('resetPassword.mismatch')
     return
   }
 
@@ -132,7 +136,7 @@ async function handleResetPassword() {
     successMessage.value = response.message || successMessage.value
     resetDone.value = true
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '重置失败，请重新申请')
+    errorMessage.value = getErrorMessage(error, t('resetPassword.failed'))
   } finally {
     submitting.value = false
   }

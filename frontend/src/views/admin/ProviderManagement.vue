@@ -8,10 +8,10 @@
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
             <div class="text-sm font-semibold text-foreground">
-              正在删除提供商：{{ providerDeleteProgress.providerName }}
+              {{ t('providerManagement.deletingProvider', { name: providerDeleteProgress.providerName }) }}
             </div>
             <div class="mt-1 text-xs text-muted-foreground">
-              {{ providerDeleteStageLabel }} · {{ providerDeleteProgress.message || '后台处理中' }}
+              {{ providerDeleteStageLabel }} · {{ providerDeleteProgress.message || t('providerManagement.processingInBackground') }}
             </div>
           </div>
           <div class="shrink-0 text-right">
@@ -26,7 +26,7 @@
 
         <div class="space-y-2">
           <div class="flex items-center justify-between text-xs text-muted-foreground">
-            <span>总体进度</span>
+            <span>{{ t('providerManagement.overallProgress') }}</span>
             <span>{{ providerDeleteCompletedUnits }}/{{ providerDeleteTotalUnits }}</span>
           </div>
           <div class="h-2 rounded-full bg-primary/10 overflow-hidden">
@@ -40,7 +40,7 @@
         <div class="grid gap-3 md:grid-cols-2">
           <div class="space-y-2">
             <div class="flex items-center justify-between text-xs text-muted-foreground">
-              <span>账号删除</span>
+              <span>{{ t('providerManagement.accountDeletion') }}</span>
               <span>{{ providerDeleteProgress.deletedKeys }}/{{ providerDeleteProgress.totalKeys || '...' }}</span>
             </div>
             <div class="h-2 rounded-full bg-primary/10 overflow-hidden">
@@ -53,7 +53,7 @@
 
           <div class="space-y-2">
             <div class="flex items-center justify-between text-xs text-muted-foreground">
-              <span>端点删除</span>
+              <span>{{ t('providerManagement.endpointDeletion') }}</span>
               <span>{{ providerDeleteProgress.deletedEndpoints }}/{{ providerDeleteProgress.totalEndpoints || '...' }}</span>
             </div>
             <div class="h-2 rounded-full bg-primary/10 overflow-hidden">
@@ -108,10 +108,10 @@
       >
         <div class="text-muted-foreground mb-2">
           <template v-if="hasActiveFilters">
-            未找到匹配当前筛选条件的提供商
+            {{ t('providerManagement.noMatches') }}
           </template>
           <template v-else>
-            暂无提供商，点击右上角添加
+            {{ t('providerManagement.empty') }}
           </template>
         </div>
         <Button
@@ -120,7 +120,7 @@
           size="sm"
           @click="resetFilters"
         >
-          清除筛选
+          {{ t('providerManagement.clearFilters') }}
         </Button>
       </div>
 
@@ -147,7 +147,7 @@
                 :resizable="true"
                 @resize-start="handleProviderTableColumnResizeStart"
               >
-                提供商信息
+                {{ t('providerManagement.providerInfo') }}
               </SortableTableHead>
               <SortableTableHead
                 class="font-semibold"
@@ -156,7 +156,7 @@
                 :resizable="true"
                 @resize-start="handleProviderTableColumnResizeStart"
               >
-                余额监控
+                {{ t('providerManagement.balanceMonitor') }}
               </SortableTableHead>
               <SortableTableHead
                 class="text-center"
@@ -166,11 +166,11 @@
                 resize-column-key="resources"
                 :resizable="true"
                 :filter-active="filterModel !== 'all'"
-                filter-title="筛选模型"
+                :filter-title="t('providerManagement.filterModels')"
                 filter-content-class="w-64 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                 @resize-start="handleProviderTableColumnResizeStart"
               >
-                资源统计
+                {{ t('providerManagement.resourceStats') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     v-model="filterModel"
@@ -186,11 +186,11 @@
                 resize-column-key="health"
                 :resizable="true"
                 :filter-active="filterApiFormat !== 'all'"
-                filter-title="筛选 API 格式"
+                :filter-title="t('providerManagement.filterApiFormat')"
                 filter-content-class="w-72 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                 @resize-start="handleProviderTableColumnResizeStart"
               >
-                端点健康
+                {{ t('providerManagement.endpointHealth') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     v-model="filterApiFormat"
@@ -207,11 +207,11 @@
                 resize-column-key="status"
                 :resizable="true"
                 :filter-active="filterStatus !== 'all'"
-                filter-title="筛选状态"
+                :filter-title="t('providerManagement.filterStatus')"
                 filter-content-class="w-40 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                 @resize-start="handleProviderTableColumnResizeStart"
               >
-                状态
+                {{ t('providerManagement.status') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     v-model="filterStatus"
@@ -228,7 +228,7 @@
                 :resizable="true"
                 @resize-start="handleProviderTableColumnResizeStart"
               >
-                操作
+                {{ t('providerManagement.actions') }}
               </SortableTableHead>
             </TableRow>
           </TableHeader>
@@ -338,6 +338,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/ui/button.vue'
 import Card from '@/components/ui/card.vue'
 import Table from '@/components/ui/table.vue'
@@ -385,6 +386,7 @@ interface ProviderDeleteProgressState {
 
 const { error: showError, success: showSuccess, info: showInfo } = useToast()
 const { confirmDanger } = useConfirm()
+const { t } = useI18n()
 
 // 状态
 const loading = ref(false)
@@ -473,23 +475,23 @@ async function pollProviderDeleteTask(providerId: string, taskId: string) {
 const providerDeleteStageLabel = computed(() => {
   switch (providerDeleteProgress.value?.stage) {
     case 'preparing':
-      return '准备删除'
+      return t('providerManagement.stagePreparing')
     case 'disabling':
-      return '停用提供商'
+      return t('providerManagement.stageDisabling')
     case 'cleaning_restrictions':
-      return '清理访问限制'
+      return t('providerManagement.stageRestrictions')
     case 'cleaning_provider_refs':
-      return '清理历史引用'
+      return t('providerManagement.stageReferences')
     case 'deleting_keys':
-      return '删除号池账号'
+      return t('providerManagement.stageKeys')
     case 'deleting_endpoints':
-      return '删除端点'
+      return t('providerManagement.stageEndpoints')
     case 'completed':
-      return '删除完成'
+      return t('providerManagement.stageCompleted')
     case 'failed':
-      return '删除失败'
+      return t('providerManagement.stageFailed')
     default:
-      return '等待执行'
+      return t('providerManagement.stageQueued')
   }
 })
 
@@ -594,7 +596,7 @@ function isLegacyProviderReadOnly(provider: ProviderWithEndpointsSummary): boole
 }
 
 function showLegacyProviderReadOnly(provider: ProviderWithEndpointsSummary) {
-  showInfo(provider.legacy_read_only_reason || '这个提供商已迁移到 Niffler Core，旧入口只读')
+  showInfo(provider.legacy_read_only_reason || t('providerManagement.coreReadOnly'))
 }
 
 function startEditDescription(_event: Event, provider: ProviderWithEndpointsSummary) {
@@ -631,14 +633,14 @@ async function saveDescription(_event: Event, provider: ProviderWithEndpointsSum
     }
     cancelEditDescription()
   } catch (err: unknown) {
-    showError(parseApiError(err, '更新备注失败'), '错误')
+    showError(parseApiError(err, t('providerManagement.updateNoteFailed')), t('common.error'))
   }
 }
 
 // 优先级模式配置
 const priorityModeConfig = computed(() => {
   return {
-    label: priorityMode.value === 'global_key' ? '全局 Key 优先' : '提供商优先',
+    label: priorityMode.value === 'global_key' ? t('providerManagement.globalKeyPriority') : t('providerManagement.providerPriority'),
   }
 })
 
@@ -693,7 +695,7 @@ async function loadProviders(options: { cacheTtlMs?: number } = {}) {
     loadBalances(providers.value)
   } catch (err: unknown) {
     if (requestId !== providersRequestId) return
-    showError(parseApiError(err, '加载提供商列表失败'), '错误')
+    showError(parseApiError(err, t('providerManagement.loadFailed')), t('common.error'))
   } finally {
     if (requestId === providersRequestId) {
       loading.value = false
@@ -757,14 +759,14 @@ function mergeUpdatedProvider(updated: ProviderWithEndpointsSummary) {
 
 async function refreshProviderSnapshot(
   providerId: string,
-  fallbackErrorMessage = '刷新提供商数据失败',
+  fallbackErrorMessage = t('providerManagement.refreshFailed'),
 ): Promise<ProviderWithEndpointsSummary | null> {
   try {
     const updated = await getProvider(providerId)
     mergeUpdatedProvider(updated)
     return updated
   } catch (err) {
-    showError(parseApiError(err, fallbackErrorMessage), '错误')
+    showError(parseApiError(err, fallbackErrorMessage), t('common.error'))
     return null
   }
 }
@@ -775,7 +777,7 @@ async function openEditProviderDialog(provider: ProviderWithEndpointsSummary) {
     showLegacyProviderReadOnly(provider)
     return
   }
-  const latest = await refreshProviderSnapshot(provider.id, '刷新提供商状态失败')
+  const latest = await refreshProviderSnapshot(provider.id, t('providerManagement.refreshStatusFailed'))
   if (latest && isLegacyProviderReadOnly(latest)) {
     showLegacyProviderReadOnly(latest)
     return
@@ -830,8 +832,8 @@ async function handleDeleteProvider(provider: ProviderWithEndpointsSummary) {
     return
   }
   const confirmed = await confirmDanger(
-    '删除提供商',
-    `确定要删除提供商 "${provider.name}" 吗？\n\n这将同时删除其所有端点、密钥和配置。此操作不可恢复！`,
+    t('providerManagement.deleteTitle'),
+    t('providerManagement.deleteConfirm', { name: provider.name }),
   )
 
   if (!confirmed) return
@@ -848,9 +850,9 @@ async function handleDeleteProvider(provider: ProviderWithEndpointsSummary) {
       deletedKeys: 0,
       totalEndpoints: provider.total_endpoints || 0,
       deletedEndpoints: 0,
-      message: result.message || '删除任务已提交，后台处理中',
+      message: result.message || t('providerManagement.deleteSubmitted'),
     }
-    showInfo(result.message || '删除任务已提交，后台处理中')
+    showInfo(result.message || t('providerManagement.deleteSubmitted'))
 
     const task = await pollProviderDeleteTask(provider.id, result.task_id)
     if (!task) return // aborted
@@ -858,12 +860,12 @@ async function handleDeleteProvider(provider: ProviderWithEndpointsSummary) {
       throw new Error(task.message || 'provider delete task failed')
     }
 
-    showSuccess('提供商已删除')
+    showSuccess(t('providerManagement.deleted'))
     providerDeleteProgress.value = null
     void loadProviders()
   } catch (err: unknown) {
     providerDeleteProgress.value = null
-    showError(parseApiError(err, '删除提供商失败'), '错误')
+    showError(parseApiError(err, t('providerManagement.deleteFailed')), t('common.error'))
   }
 }
 
@@ -886,9 +888,9 @@ async function toggleProviderStatus(provider: ProviderWithEndpointsSummary) {
       targetProvider.is_active = newStatus
     }
 
-    showSuccess(newStatus ? '提供商已启用' : '提供商已停用')
+    showSuccess(newStatus ? t('providerManagement.enabled') : t('providerManagement.disabled'))
   } catch (err: unknown) {
-    showError(parseApiError(err, '操作失败'), '错误')
+    showError(parseApiError(err, t('providerManagement.operationFailed')), t('common.error'))
   }
 }
 

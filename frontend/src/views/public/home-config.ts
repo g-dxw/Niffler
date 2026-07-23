@@ -1,6 +1,7 @@
 import { computed, type Ref } from 'vue'
 import { Apple, Box, Layers, Monitor, Puzzle, Terminal, Users } from 'lucide-vue-next'
 import type { Component } from 'vue'
+import { i18n } from '@/i18n'
 
 // Section index constants
 export const SECTIONS = {
@@ -15,11 +16,11 @@ export type SectionIndex = (typeof SECTIONS)[keyof typeof SECTIONS]
 
 // Section navigation configuration
 export const sections = [
-  { name: '首页' },
+  { name: i18n.global.t('staticUi.home') },
   { name: 'Claude' },
   { name: 'OpenAI' },
   { name: 'Gemini' },
-  { name: '更多' }
+  { name: i18n.global.t('staticUi.more') }
 ] as const
 
 // Feature cards data
@@ -27,19 +28,19 @@ export const featureCards = [
   {
     icon: Layers,
     title: 'Claude / OpenAI / Gemini',
-    desc: '已完整接入三大主流 AI 编程助手的标准 API',
+    desc: i18n.global.t('staticUi.integratedAssistants'),
     status: 'completed' as const
   },
   {
     icon: Puzzle,
-    title: '格式转换',
-    desc: '开启/关闭API格式相互转换、自定义请求头',
+    title: i18n.global.t('staticUi.formatConversion'),
+    desc: i18n.global.t('staticUi.formatConversionDesc'),
     status: 'completed' as const
   },
   {
     icon: Users,
-    title: '协同开发',
-    desc: '远程开发、Skill分享、Playground等功能即将到来',
+    title: i18n.global.t('staticUi.collaboration'),
+    desc: i18n.global.t('staticUi.collaborationDesc'),
     status: 'in-progress' as const
   }
 ]

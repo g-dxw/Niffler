@@ -16,7 +16,6 @@ export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, path.resolve(__dirname, '..'), '')
   const appPort = rootEnv.APP_PORT || process.env.APP_PORT || '8084'
   const gatewayTarget = `http://127.0.0.1:${appPort}`
-
   return {
     // GitHub Pages 部署时使用仓库名作为 base
     base: process.env.GITHUB_PAGES === 'true' ? '/Niffler/' : '/',

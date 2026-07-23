@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, type App } from '@/test/vue'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 
 import MainLayout from '../MainLayout.vue'
@@ -128,6 +128,8 @@ vi.mock('lucide-vue-next', () => {
     AlertTriangle: Icon,
     BarChart3: Icon,
     Box: Icon,
+    Check: Icon,
+    ChevronDown: Icon,
     ChevronRight: Icon,
     Cog: Icon,
     CreditCard: Icon,
@@ -139,9 +141,11 @@ vi.mock('lucide-vue-next', () => {
     Home: Icon,
     Key: Icon,
     KeyRound: Icon,
+    Languages: Icon,
     Layers: Icon,
     LogOut: Icon,
     Megaphone: Icon,
+    MessageCircle: Icon,
     Menu: Icon,
     Moon: Icon,
     Package: Icon,
@@ -150,6 +154,7 @@ vi.mock('lucide-vue-next', () => {
     Settings: Icon,
     Shield: Icon,
     SlidersHorizontal: Icon,
+    Sun: Icon,
     SunMedium: Icon,
     SunMoon: Icon,
     Users: Icon,

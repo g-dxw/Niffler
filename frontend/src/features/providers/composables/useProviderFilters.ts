@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import type { ProviderSummaryQuery } from '@/api/endpoints'
+import { i18n } from '@/i18n'
 
 export interface FilterOption {
   value: string
@@ -16,13 +17,13 @@ export function useProviderFilters(
   const filterModel = ref('all')
 
   const statusFilters: FilterOption[] = [
-    { value: 'all', label: '全部状态' },
-    { value: 'active', label: '活跃' },
-    { value: 'inactive', label: '停用' },
+    { value: 'all', label: i18n.global.t('providerUi.allStatuses') },
+    { value: 'active', label: i18n.global.t('providerUi.active') },
+    { value: 'inactive', label: i18n.global.t('providerUi.inactive') },
   ]
 
   const apiFormatFilters: FilterOption[] = [
-    { value: 'all', label: '全部格式' },
+    { value: 'all', label: i18n.global.t('providerUi.allFormats') },
     { value: 'claude:messages', label: 'Claude Messages' },
     { value: 'openai:chat', label: 'OpenAI Chat' },
     { value: 'openai:responses', label: 'OpenAI Responses' },
@@ -40,7 +41,7 @@ export function useProviderFilters(
     const items = globalModels()
       .map(m => ({ value: m.id, label: m.name }))
       .sort((a, b) => a.label.localeCompare(b.label))
-    return [{ value: 'all', label: '全部模型' }, ...items]
+    return [{ value: 'all', label: i18n.global.t('providerUi.allModels') }, ...items]
   })
 
   const hasActiveFilters = computed(() => {
