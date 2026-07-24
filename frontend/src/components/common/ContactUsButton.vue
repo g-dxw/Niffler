@@ -8,14 +8,14 @@
         :aria-label="t('publicContent.contactUs')"
         @click="open"
       >
-        <MessageCircle class="h-4 w-4" />
+        <UsersRound class="h-4 w-4" />
       </button>
     </template>
   </ContactUsDialog>
 </template>
 
 <script setup lang="ts">
-import { MessageCircle } from 'lucide-vue-next'
+import { UsersRound } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import ContactUsDialog from '@/components/common/ContactUsDialog.vue'
 

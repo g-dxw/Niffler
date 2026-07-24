@@ -159,6 +159,7 @@ vi.mock('lucide-vue-next', () => {
     SunMedium: Icon,
     SunMoon: Icon,
     Users: Icon,
+    UsersRound: Icon,
     Wallet: Icon,
     X: Icon,
     Zap: Icon,
