@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: app-image-${{ github.ref }}
@@ -111,3 +112,30 @@ jobs:
           path: /tmp/niffler-app-linux-amd64.tar
           if-no-files-found: error
           retention-days: 7
+
+  deploy:
+    name: Deploy to mylingweave test
+    needs: image
+    if: github.ref_name == 'test'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.MYLINGWEAVE_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.MYLINGWEAVE_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy image artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APP_IMAGE: niffler-app:${{ github.sha }}
+        run: |
+          scripts/deploy-ci-artifact.sh \
+            --host "${{ secrets.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
+            --remote-dir "${{ secrets.MYLINGWEAVE_REMOTE_DIR }}" \
+            --run-id "${{ github.run_id }}"

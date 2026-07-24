@@ -34,34 +34,35 @@
           </div>
 
           <div class="mt-6">
-            <div class="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{{ t('models.group') }}</div>
+            <div class="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{{ t('models.manufacturer') }}</div>
             <div class="mt-3 flex flex-wrap gap-2 lg:flex-col">
               <button
-                v-for="group in groups"
-                :key="group"
-                class="flex items-center justify-between border px-3 py-2 text-left text-sm transition"
-                :class="selectedGroup === group ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/60 hover:border-primary/40'"
-                @click="selectedGroup = group"
+                v-for="manufacturer in manufacturers"
+                :key="manufacturer.id"
+                class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border px-3 py-2 text-left text-sm transition"
+                :class="selectedManufacturer === manufacturer.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/60 hover:border-primary/40'"
+                @click="selectedManufacturer = manufacturer.id"
               >
-                <span class="truncate">{{ group === ALL_GROUP ? t('common.all') : group }}</span>
-                <span v-if="group !== ALL_GROUP" class="ml-2 text-xs font-mono text-muted-foreground">×{{ formatMultiplier(groupMultiplier(group)) }}</span>
-                <span class="ml-3 text-xs tabular-nums text-muted-foreground">{{ groupCount(group) }}</span>
+                <span class="min-w-0 truncate">{{ manufacturer.id === ALL_MANUFACTURERS ? t('common.all') : manufacturer.label }}</span>
+                <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{{ manufacturerCount(manufacturer.id) }}</span>
               </button>
             </div>
           </div>
 
           <div class="mt-6">
-            <div class="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{{ t('models.provider') }}</div>
+            <div class="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{{ t('models.group') }}</div>
             <div class="mt-3 flex flex-wrap gap-2 lg:flex-col">
               <button
-                v-for="provider in providers"
-                :key="provider"
-                class="flex items-center justify-between border px-3 py-2 text-left text-sm transition"
-                :class="selectedProvider === provider ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/60 hover:border-primary/40'"
-                @click="selectedProvider = provider"
+                v-for="group in groups"
+                :key="group.id"
+                class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border px-3 py-2 text-left text-sm transition"
+                :class="selectedGroup === group.id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background/60 hover:border-primary/40'"
+                @click="selectedGroup = group.id"
               >
-                <span class="truncate">{{ provider === ALL_PROVIDER ? t('common.all') : provider }}</span>
-                <span class="ml-3 text-xs tabular-nums text-muted-foreground">{{ providerCount(provider) }}</span>
+                <span class="min-w-0 truncate">{{ group.id === ALL_GROUP ? t('common.all') : group.name }}</span>
+                <span v-if="group.id !== ALL_GROUP" class="shrink-0 text-xs font-mono text-muted-foreground">×{{ formatMultiplier(groupMultiplier(group.id)) }}</span>
+                <span v-else aria-hidden="true"></span>
+                <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{{ groupCount(group.id) }}</span>
               </button>
             </div>
           </div>
@@ -133,18 +134,18 @@
                   <div class="min-w-0">
                     <div class="text-xs text-muted-foreground">{{ t('models.input') }}</div>
                     <div class="mt-1 break-all font-mono font-semibold">{{ formatPrice(firstTierPrice(model, 'input')) }}</div>
-                    <div v-if="officialTierPrice(model, 'input') !== null" class="mt-1 flex items-baseline gap-1 text-[11px] text-muted-foreground">
-                      <span>{{ t('models.official') }}</span>
-                      <span class="line-through">{{ formatPrice(officialTierPrice(model, 'input')) }}</span>
+                    <div v-if="originalTierPrice(model, 'input') !== null" class="mt-1 flex items-baseline gap-1 text-[11px] text-muted-foreground">
+                      <span>{{ t('models.original') }}</span>
+                      <span class="line-through">{{ formatPrice(originalTierPrice(model, 'input')) }}</span>
                     </div>
                     <span v-if="discountPercent(model, 'input') !== null" class="mt-1 inline-flex rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">{{ discountLabel(model, 'input') }}</span>
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs text-muted-foreground">{{ t('models.output') }}</div>
                     <div class="mt-1 break-all font-mono font-semibold">{{ formatPrice(firstTierPrice(model, 'output')) }}</div>
-                    <div v-if="officialTierPrice(model, 'output') !== null" class="mt-1 flex items-baseline gap-1 text-[11px] text-muted-foreground">
-                      <span>{{ t('models.official') }}</span>
-                      <span class="line-through">{{ formatPrice(officialTierPrice(model, 'output')) }}</span>
+                    <div v-if="originalTierPrice(model, 'output') !== null" class="mt-1 flex items-baseline gap-1 text-[11px] text-muted-foreground">
+                      <span>{{ t('models.original') }}</span>
+                      <span class="line-through">{{ formatPrice(originalTierPrice(model, 'output')) }}</span>
                     </div>
                     <span v-if="discountPercent(model, 'output') !== null" class="mt-1 inline-flex rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">{{ discountLabel(model, 'output') }}</span>
                   </div>
@@ -160,6 +161,9 @@
               </div>
 
               <div class="mt-4 flex flex-wrap gap-1.5">
+                <span class="border border-foreground/15 bg-foreground/[0.04] px-2 py-1 text-[10px] font-semibold">
+                  {{ modelManufacturerLabel(model, t('models.otherManufacturer')) }}
+                </span>
                 <span
                   v-for="group in modelGroups(model)"
                   :key="group.id"
@@ -167,7 +171,13 @@
                 >
                   {{ group.name }} <span class="font-mono text-muted-foreground">×{{ formatMultiplier(groupModelMultiplier(group, model)) }}</span>
                 </span>
-                <span class="max-w-full break-all border border-border bg-muted/35 px-2 py-1 text-[10px] font-medium">{{ providerName(model) }}</span>
+                <span
+                  v-for="provider in modelProviderNames(model)"
+                  :key="provider"
+                  class="max-w-full break-all border border-border bg-muted/35 px-2 py-1 text-[10px] font-medium"
+                >
+                  {{ provider }}
+                </span>
                 <span v-if="modelHealth(model)" class="border px-2 py-1 text-[10px] font-semibold" :class="modelHealth(model)?.status === 'healthy' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : modelHealth(model)?.status === 'degraded' ? 'border-amber-500/30 bg-amber-500/10 text-amber-600' : 'border-red-500/30 bg-red-500/10 text-red-600'">
                   {{ modelHealth(model)?.status === 'healthy' ? t('models.healthHealthy') : modelHealth(model)?.status === 'degraded' ? t('models.healthDegraded') : t('models.healthUnavailable') }}
                   <span v-if="modelHealth(model)?.score !== null"> {{ Math.round((modelHealth(model)?.score || 0) * 100) }}%</span>
@@ -199,40 +209,48 @@ import { Boxes, CircleDollarSign, Copy, RefreshCw, Search } from 'lucide-vue-nex
 import { useI18n } from 'vue-i18n'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPublicModelGroupCatalog, type PublicGlobalModel, type PublicModelGroup, type PublicModelGroupCatalog } from '@/api/public-models'
+import { MODEL_MANUFACTURERS, modelManufacturerId, modelManufacturerLabel } from './model-manufacturers'
 
-const ALL_PROVIDER = '__all__'
+const ALL_MANUFACTURERS = '__all__'
 const ALL_GROUP = '__all__'
 const { t, locale } = useI18n()
 const { copyToClipboard } = useClipboard()
 
 const models = ref<PublicGlobalModel[]>([])
-const publicGroups = ref<PublicModelGroup[]>([])
 const groupCatalog = ref<PublicModelGroupCatalog[]>([])
 const loading = ref(true)
 const loadError = ref(false)
 const searchQuery = ref('')
-const selectedProvider = ref(ALL_PROVIDER)
+const selectedManufacturer = ref(ALL_MANUFACTURERS)
 const selectedGroup = ref(ALL_GROUP)
 
-const providers = computed(() => [
-  ALL_PROVIDER,
-  ...Array.from(new Set(models.value.map(providerName))).sort((a, b) => a.localeCompare(b)),
-])
+const manufacturers = computed(() => {
+  const present = new Set(models.value.map(modelManufacturerId))
+  return [
+    { id: ALL_MANUFACTURERS, label: '' },
+    ...MODEL_MANUFACTURERS.filter(manufacturer => present.has(manufacturer.id)),
+    ...(present.has('other') ? [{ id: 'other', label: t('models.otherManufacturer') }] : []),
+  ]
+})
 
 const groups = computed(() => [
-  ALL_GROUP,
-  ...((groupCatalog.value.length ? groupCatalog.value : publicGroups.value).length
-    ? (groupCatalog.value.length ? groupCatalog.value : publicGroups.value).map(group => group.name)
-    : Array.from(new Set(models.value.flatMap(model => modelGroups(model).map(group => group.name)))).sort((a, b) => a.localeCompare(b))),
+  { id: ALL_GROUP, name: '' },
+  ...groupCatalog.value.map(group => ({ id: group.id, name: group.name })),
 ])
 
 const filteredModels = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
   const result = models.value.filter(model => {
+    if (selectedManufacturer.value !== ALL_MANUFACTURERS && modelManufacturerId(model) !== selectedManufacturer.value) return false
     if (selectedGroup.value !== ALL_GROUP && !groupAllowsModel(selectedGroup.value, model)) return false
-    if (selectedProvider.value !== ALL_PROVIDER && providerName(model) !== selectedProvider.value) return false
     if (!query) return true
-    const haystack = [model.name, model.display_name, providerName(model), ...capabilities(model)]
+    const haystack = [
+      model.name,
+      model.display_name,
+      modelManufacturerLabel(model, t('models.otherManufacturer')),
+      ...modelProviderNames(model),
+      ...capabilities(model),
+    ]
       .filter(Boolean)
       .join(' ')
       .toLocaleLowerCase()
@@ -241,14 +259,10 @@ const filteredModels = computed(() => {
   return [...result].sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name))
 })
 
-function providerName(model: PublicGlobalModel): string {
-  const config = model.config || {}
-  for (const key of ['provider_name', 'provider', 'vendor']) {
-    const value = config[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  const prefix = model.name.split(/[-/:]/)[0]
-  return prefix ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : 'Other'
+function modelProviderNames(model: PublicGlobalModel): string[] {
+  return Array.isArray(model.health?.providers)
+    ? model.health.providers.map(String).filter(Boolean)
+    : []
 }
 
 function modelGroups(model: PublicGlobalModel): PublicModelGroupCatalog[] {
@@ -264,7 +278,11 @@ function groupModelMultiplier(group: PublicModelGroup, model: PublicGlobalModel)
 
 function modelMultiplier(model: PublicGlobalModel): number {
   const memberships = modelGroups(model)
-  // 展示价格始终取模型所属公开分组中的最低倍率，避免切换筛选分组时价格跳变。
+  if (selectedGroup.value !== ALL_GROUP) {
+    const selectedMembership = memberships.find(group => group.id === selectedGroup.value)
+    if (selectedMembership) return groupModelMultiplier(selectedMembership, model)
+  }
+  // 未指定分组时展示所有公开方案中的最低可用价格。
   if (memberships.length) return Math.min(...memberships.map(group => groupModelMultiplier(group, model)))
   const config = model.config || {}
   const billing = config.billing
@@ -279,8 +297,8 @@ function modelMultiplier(model: PublicGlobalModel): number {
   return typeof value === 'number' ? value : 1
 }
 
-function groupMultiplier(groupName: string): number {
-  return (groupCatalog.value.find(group => group.name === groupName) || publicGroups.value.find(group => group.name === groupName))?.sales_multiplier ?? 1
+function groupMultiplier(groupId: string): number {
+  return groupCatalog.value.find(group => group.id === groupId)?.sales_multiplier ?? 1
 }
 
 function modelHealth(model: PublicGlobalModel) {
@@ -290,13 +308,9 @@ function modelHealth(model: PublicGlobalModel) {
   return item?.health || null
 }
 
-function groupAllowsModel(groupName: string, model: PublicGlobalModel): boolean {
-  const group = groupCatalog.value.find(item => item.name === groupName)
-  if (group) return group.models.some(candidate => candidate.id === model.id || candidate.name === model.name)
-  const configured = publicGroups.value.find(item => item.name === groupName)
-  if (!configured?.allowed_models?.length) return true
-  const matched = configured.allowed_models.some(name => name === model.name || name === model.display_name || name === model.id)
-  return configured.allowed_models_mode === 'deny' ? !matched : matched
+function groupAllowsModel(groupId: string, model: PublicGlobalModel): boolean {
+  const group = groupCatalog.value.find(item => item.id === groupId)
+  return group?.models.some(candidate => candidate.id === model.id || candidate.name === model.name) ?? false
 }
 
 function formatMultiplier(value: number): string {
@@ -381,28 +395,22 @@ function baseTierPrice(model: PublicGlobalModel, type: 'input' | 'output'): numb
   return type === 'input' ? tier.input_price_per_1m ?? null : tier.output_price_per_1m ?? null
 }
 
-const OFFICIAL_PRICES: Record<string, { input?: number; output?: number }> = {
-  'claude-haiku': { input: 1, output: 5 },
-  'claude-sonnet': { input: 3, output: 15 },
-  'claude-opus': { input: 5, output: 25 },
-  'gemini-3-pro-preview': { input: 2, output: 12 },
-  'gpt-5.1': { input: 1.25, output: 10 },
-  'text-embedding-3-small': { input: 0.02, output: 0 },
-}
-
-function officialTierPrice(model: PublicGlobalModel, type: 'input' | 'output'): number | null {
+function originalTierPrice(model: PublicGlobalModel, type: 'input' | 'output'): number | null {
+  const current = firstTierPrice(model, type)
+  if (current === null) return null
   const config = model.config || {}
   const configured = config[`official_${type}_price_per_1m`]
-  if (typeof configured === 'number' && Number.isFinite(configured)) return configured
-  const matched = Object.entries(OFFICIAL_PRICES).find(([key]) => model.name.toLowerCase().startsWith(key))?.[1]
-  return matched?.[type] ?? null
+  const original = typeof configured === 'number' && Number.isFinite(configured)
+    ? configured
+    : baseTierPrice(model, type)
+  return original !== null && original > current ? original : null
 }
 
 function discountPercent(model: PublicGlobalModel, type: 'input' | 'output'): number | null {
   const current = firstTierPrice(model, type)
-  const official = officialTierPrice(model, type)
-  if (current === null || official === null || official <= 0 || current >= official) return null
-  return Math.round((1 - current / official) * 100)
+  const original = originalTierPrice(model, type)
+  if (current === null || original === null || original <= 0) return null
+  return Math.round((1 - current / original) * 100)
 }
 
 function discountLabel(model: PublicGlobalModel, type: 'input' | 'output'): string {
@@ -410,8 +418,16 @@ function discountLabel(model: PublicGlobalModel, type: 'input' | 'output'): stri
   return percent === null ? '' : t('models.discount', { percent })
 }
 
-function groupCount(group: string) {
-  return group === ALL_GROUP ? models.value.length : models.value.filter(model => groupAllowsModel(group, model)).length
+function groupCount(groupId: string) {
+  return groupId === ALL_GROUP
+    ? models.value.length
+    : models.value.filter(model => groupAllowsModel(groupId, model)).length
+}
+
+function manufacturerCount(manufacturerId: string) {
+  return manufacturerId === ALL_MANUFACTURERS
+    ? models.value.length
+    : models.value.filter(model => modelManufacturerId(model) === manufacturerId).length
 }
 
 function hasTokenPricing(model: PublicGlobalModel) {
@@ -423,17 +439,12 @@ function formatPrice(value: number | null) {
   return new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'USD', maximumFractionDigits: 6 }).format(value)
 }
 
-function providerCount(provider: string) {
-  return provider === ALL_PROVIDER ? models.value.length : models.value.filter(model => providerName(model) === provider).length
-}
-
 async function loadModels() {
   loading.value = true
   loadError.value = false
   try {
     const catalogResponse = await getPublicModelGroupCatalog()
     groupCatalog.value = catalogResponse.groups || []
-    publicGroups.value = groupCatalog.value
     const modelsById = new Map<string, PublicGlobalModel>()
     for (const group of groupCatalog.value) {
       for (const model of group.models) {

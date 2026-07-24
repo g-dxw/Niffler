@@ -306,7 +306,7 @@ const providerTabs = computed<Array<{
 ])
 
 const activeProviderMeta = computed(
-  () => providerTabs.find((provider) => provider.id === activeProvider.value) || providerTabs[0]
+  () => providerTabs.value.find((provider) => provider.id === activeProvider.value) || providerTabs.value[0]
 )
 
 const form = reactive({

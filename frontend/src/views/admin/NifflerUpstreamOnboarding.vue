@@ -554,16 +554,16 @@
           <p class="mt-1 text-xs text-muted-foreground">
             {{ t('upstreamOnboarding.defaultCapabilitiesHint') }}
           </p>
-          <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <div class="mt-3 grid gap-3 md:grid-cols-2">
             <label
               v-for="item in visibleCapabilityOptions"
               :key="item.key"
-              class="flex items-start gap-3 rounded-lg border border-border/50 p-3"
+              class="flex min-w-0 items-start gap-3 rounded-lg border border-border/50 p-3"
             >
-              <Checkbox v-model:checked="serviceCapabilities[item.key]" />
-              <span>
-                <span class="block text-sm font-medium">{{ item.label }}</span>
-                <span class="block text-xs text-muted-foreground">{{ item.description }}</span>
+              <Checkbox v-model:checked="serviceCapabilities[item.key]" class="mt-0.5 shrink-0" />
+              <span class="min-w-0">
+                <span class="block break-words text-sm font-medium leading-5">{{ item.label }}</span>
+                <span class="mt-1 block break-words text-xs leading-5 text-muted-foreground">{{ item.description }}</span>
               </span>
             </label>
           </div>
@@ -809,12 +809,12 @@ const capabilityOptions = computed<Array<{
   label: string
   description: string
 }>>(() => [
-  { key: 'text', label: t('upstreamOnboarding.capabilityText'), description: t('upstreamOnboarding.capabilityTextHint') },
-  { key: 'streaming', label: t('upstreamOnboarding.capabilityStreaming'), description: t('upstreamOnboarding.capabilityStreamingHint') },
-  { key: 'images_endpoint', label: t('upstreamOnboarding.capabilityImages'), description: t('upstreamOnboarding.capabilityImagesHint') },
-  { key: 'openai_responses_image_tool', label: t('upstreamOnboarding.capabilityImageTool'), description: t('upstreamOnboarding.capabilityImageToolHint') },
-  { key: 'model_list', label: t('upstreamOnboarding.capabilityModelList'), description: t('upstreamOnboarding.capabilityModelListHint') },
-  { key: 'model_test', label: t('upstreamOnboarding.capabilityModelTest'), description: t('upstreamOnboarding.capabilityModelTestHint') },
+  { key: 'text', label: t('upstreamCapabilities.text'), description: t('upstreamCapabilities.textHint') },
+  { key: 'streaming', label: t('upstreamCapabilities.streaming'), description: t('upstreamCapabilities.streamingHint') },
+  { key: 'images_endpoint', label: t('upstreamCapabilities.images'), description: t('upstreamCapabilities.imagesHint') },
+  { key: 'openai_responses_image_tool', label: t('upstreamCapabilities.imageTool'), description: t('upstreamCapabilities.imageToolHint') },
+  { key: 'model_list', label: t('upstreamCapabilities.modelList'), description: t('upstreamCapabilities.modelListHint') },
+  { key: 'model_test', label: t('upstreamCapabilities.modelTest'), description: t('upstreamCapabilities.modelTestHint') },
 ])
 
 const services = ref<NifflerUpstreamService[]>([])

@@ -1173,6 +1173,83 @@ async fn gateway_handles_public_global_models_without_proxying_upstream() {
 }
 
 #[tokio::test]
+async fn public_model_group_catalog_applies_legacy_group_modes_strictly() {
+    let global_model_repository = Arc::new(InMemoryGlobalModelReadRepository::seed(vec![
+        sample_public_global_model("gm-1", "gpt-5", "GPT 5", true),
+        sample_public_global_model("gm-2", "claude-sonnet-4-5", "Claude Sonnet 4.5", true),
+        sample_public_global_model("gm-disabled", "disabled-model", "Disabled", false),
+    ]));
+    let user_repository: Arc<dyn UserReadRepository> =
+        Arc::new(InMemoryUserReadRepository::seed_auth_users(Vec::new()));
+
+    for (name, mode, allowed_models) in [
+        ("By ID", "specific", Some(vec!["gm-1".to_string()])),
+        ("Empty", "specific", Some(Vec::new())),
+        ("Denied", "deny_all", None),
+        ("Unlimited", "unrestricted", None),
+    ] {
+        user_repository
+            .create_user_group(UpsertUserGroupRecord {
+                name: name.to_string(),
+                description: None,
+                visibility: "public".to_string(),
+                priority: 0,
+                sales_multiplier: 1.0,
+                model_sales_multipliers: None,
+                allowed_providers: None,
+                allowed_providers_mode: "unrestricted".to_string(),
+                allowed_api_formats: None,
+                allowed_api_formats_mode: "unrestricted".to_string(),
+                allowed_models,
+                allowed_models_mode: mode.to_string(),
+                rate_limit: None,
+                rate_limit_mode: "system".to_string(),
+                concurrent_limit: None,
+                concurrent_limit_mode: "inherit".to_string(),
+            })
+            .await
+            .expect("group should create")
+            .expect("group should exist");
+    }
+
+    let data_state =
+        crate::data::GatewayDataState::with_global_model_reader_for_tests(global_model_repository)
+            .with_user_reader(user_repository);
+    let gateway = build_router_with_state(
+        AppState::new()
+            .expect("gateway should build")
+            .with_data_state_for_tests(data_state),
+    );
+    let (gateway_url, gateway_handle) = start_server(gateway).await;
+
+    let response = reqwest::Client::new()
+        .get(format!("{gateway_url}/api/public/model-groups/catalog"))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: serde_json::Value = response.json().await.expect("json body should parse");
+    let groups = payload["groups"]
+        .as_array()
+        .expect("groups should be an array");
+    let model_count = |group_name: &str| {
+        groups
+            .iter()
+            .find(|group| group.get("name").and_then(serde_json::Value::as_str) == Some(group_name))
+            .and_then(|group| group["models"].as_array())
+            .map(Vec::len)
+            .expect("group should be present")
+    };
+    assert_eq!(model_count("By ID"), 1);
+    assert_eq!(model_count("Empty"), 0);
+    assert_eq!(model_count("Denied"), 0);
+    assert_eq!(model_count("Unlimited"), 2);
+
+    gateway_handle.abort();
+}
+
+#[tokio::test]
 async fn gateway_handles_public_health_api_formats_without_proxying_upstream() {
     let upstream_hits = Arc::new(Mutex::new(0usize));
     let upstream_hits_clone = Arc::clone(&upstream_hits);

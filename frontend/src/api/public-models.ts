@@ -20,6 +20,15 @@ export interface PublicGlobalModel {
   config: Record<string, unknown> | null
   // 调用次数
   usage_count: number
+  health?: PublicModelHealth | null
+}
+
+export interface PublicModelHealth {
+  status: 'healthy' | 'degraded' | 'unavailable'
+  score: number | null
+  active_providers: number
+  active_endpoints: number
+  providers: string[]
 }
 
 export interface PublicGlobalModelListResponse {
@@ -41,23 +50,7 @@ export interface PublicModelGroupListResponse {
 }
 
 export interface PublicModelGroupCatalog extends PublicModelGroup {
-  models: Array<{
-    id: string
-    name: string
-    display_name: string | null
-    is_active: boolean
-    default_price_per_request: number | null
-    default_tiered_pricing: TieredPricingConfig | null
-    supported_capabilities: string[] | Record<string, unknown> | null
-    config: Record<string, unknown> | null
-    usage_count: number
-    health: {
-      status: 'healthy' | 'degraded' | 'unavailable'
-      score: number | null
-      active_providers: number
-      active_endpoints: number
-    }
-  }>
+  models: Array<PublicGlobalModel & { health: PublicModelHealth }>
 }
 
 export interface PublicModelGroupCatalogResponse {
