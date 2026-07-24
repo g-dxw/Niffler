@@ -180,25 +180,43 @@
                     {{ group.title }}
                   </div>
                   <div class="grid grid-cols-2 gap-2">
-                    <RouterLink
+                    <template
                       v-for="item in group.items"
                       :key="item.href"
-                      :to="item.href"
-                      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
-                      :class="isNavActive(item.href)
-                        ? 'bg-[#cc785c]/10 dark:bg-[#cc785c]/20 text-[#cc785c] dark:text-[#d4a27f]'
-                        : 'text-[#666663] dark:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-[#191919] dark:hover:text-white'"
-                      @mouseenter="prefetchNavigationItem(item.href)"
-                      @focus="prefetchNavigationItem(item.href)"
-                      @pointerdown="prefetchNavigationItem(item.href)"
-                      @click="mobileMenuOpen = false"
                     >
-                      <component
-                        :is="item.icon"
-                        class="h-4 w-4 shrink-0"
-                      />
-                      <span class="truncate">{{ item.name }}</span>
-                    </RouterLink>
+                      <a
+                        v-if="item.external"
+                        :href="item.href"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-[#666663] dark:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-[#191919] dark:hover:text-white"
+                        @click="mobileMenuOpen = false"
+                      >
+                        <component
+                          :is="item.icon"
+                          class="h-4 w-4 shrink-0"
+                        />
+                        <span class="truncate">{{ item.name }}</span>
+                      </a>
+                      <RouterLink
+                        v-else
+                        :to="item.href"
+                        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
+                        :class="isNavActive(item.href)
+                          ? 'bg-[#cc785c]/10 dark:bg-[#cc785c]/20 text-[#cc785c] dark:text-[#d4a27f]'
+                          : 'text-[#666663] dark:text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-[#191919] dark:hover:text-white'"
+                        @mouseenter="prefetchNavigationItem(item.href)"
+                        @focus="prefetchNavigationItem(item.href)"
+                        @pointerdown="prefetchNavigationItem(item.href)"
+                        @click="mobileMenuOpen = false"
+                      >
+                        <component
+                          :is="item.icon"
+                          class="h-4 w-4 shrink-0"
+                        />
+                        <span class="truncate">{{ item.name }}</span>
+                      </RouterLink>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -449,6 +467,7 @@ import UpdateDialog from '@/components/common/UpdateDialog.vue'
 import TopBarActions from '@/components/common/TopBarActions.vue'
 import VersionButton from '@/components/common/VersionButton.vue'
 import { buildUpdateErrorStatus } from '@/utils/updateStatus'
+import { getInfiniteCanvasUrl } from '@/utils/infiniteCanvasUrl'
 import {
   Home,
   Users,
@@ -476,6 +495,7 @@ import {
   Package,
   Gift,
   Menu,
+  Maximize2,
   X,
   Puzzle,
   Zap,
@@ -742,6 +762,8 @@ function prefetchNavigationItem(href: string) {
 }
 
 // Navigation Data
+const infiniteCanvasCanvasUrl = getInfiniteCanvasUrl('canvas')
+
 const navigation = computed(() => {
   const baseNavigation = [
     {
@@ -758,12 +780,13 @@ const navigation = computed(() => {
         { name: t('console.nav.apiKeys'), href: '/dashboard/api-keys', icon: Key },
       ]
     },
-    {
-      title: t('console.nav.tools'),
-      items: [
-        { name: t('console.nav.imageStudio'), href: '/dashboard/image-studio', icon: Zap },
-      ]
-    },
+      {
+        title: t('console.nav.tools'),
+        items: [
+          { name: t('console.nav.imageStudio'), href: '/dashboard/image-studio', icon: Zap },
+          { name: t('console.nav.infiniteCanvas'), href: infiniteCanvasCanvasUrl, icon: Maximize2, external: true },
+        ]
+      },
     {
       title: t('console.nav.account'),
       items: [
@@ -842,12 +865,13 @@ const navigation = computed(() => {
         { name: t('console.nav.usage'), href: '/admin/usage', icon: BarChart3 },
       ]
     },
-    {
-      title: t('console.nav.tools'),
-      items: [
-        { name: t('console.nav.imageStudio'), href: '/admin/image-studio', icon: Zap },
-      ]
-    },
+      {
+        title: t('console.nav.tools'),
+        items: [
+          { name: t('console.nav.imageStudio'), href: '/admin/image-studio', icon: Zap },
+          { name: t('console.nav.infiniteCanvas'), href: infiniteCanvasCanvasUrl, icon: Maximize2, external: true },
+        ]
+      },
     {
       title: t('console.nav.system'),
       items: systemItems

@@ -115,7 +115,7 @@ export default {
     nav: {
       overview: '概览', resources: '资源', tools: '工具', account: '账户', management: '管理', system: '系统',
       dashboard: '仪表盘', healthMonitor: '健康监控', userStats: '用户统计', costAnalysis: '成本分析', performanceAnalysis: '性能分析',
-      modelCatalog: '模型目录', apiKeys: 'API 密钥', imageStudio: '生图工作台', wallet: '钱包中心', billing: '套餐中心', referrals: '我的邀请', usage: '使用统计',
+      modelCatalog: '模型目录', apiKeys: 'API 密钥', imageStudio: '生图工作台', infiniteCanvas: '无限画布', wallet: '钱包中心', billing: '套餐中心', referrals: '我的邀请', usage: '使用统计',
       announcements: '公告管理', core: '核心对账', migration: '迁移观察', cache: '缓存监控', modules: '模块管理', settings: '系统设置',
       users: '用户管理', upstreams: '上游接入', productPlans: '产品策略', errorMessages: '错误提示', providers: '提供商', models: '模型管理', routing: '调度策略', pool: '号池管理', keys: '独立密钥', wallets: '钱包管理', payment: '支付配置', billingPlans: '套餐管理', asyncTasks: '异步任务',
     },

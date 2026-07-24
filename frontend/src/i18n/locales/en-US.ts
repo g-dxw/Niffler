@@ -115,7 +115,7 @@ export default {
     nav: {
       overview: 'Overview', resources: 'Resources', tools: 'Tools', account: 'Account', management: 'Management', system: 'System',
       dashboard: 'Dashboard', healthMonitor: 'Health monitor', userStats: 'User stats', costAnalysis: 'Cost analysis', performanceAnalysis: 'Performance analysis',
-      modelCatalog: 'Model catalog', apiKeys: 'API keys', imageStudio: 'Image studio', wallet: 'Wallet', billing: 'Plans', referrals: 'Referrals', usage: 'Usage',
+      modelCatalog: 'Model catalog', apiKeys: 'API keys', imageStudio: 'Image studio', infiniteCanvas: 'Infinite canvas', wallet: 'Wallet', billing: 'Plans', referrals: 'Referrals', usage: 'Usage',
       announcements: 'Announcements', core: 'Core reconciliation', migration: 'Migration monitor', cache: 'Cache monitor', modules: 'Module management', settings: 'System settings',
       users: 'Users', upstreams: 'Upstreams', productPlans: 'Product plans', errorMessages: 'Error messages', providers: 'Providers', models: 'Models', routing: 'Routing', pool: 'Pool management', keys: 'Standalone keys', wallets: 'Wallets', payment: 'Payment settings', billingPlans: 'Billing plans', asyncTasks: 'Async tasks',
     },
