@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 use serde_json::json;
 
-use crate::handlers::admin::{build_admin_global_model_routing_payload, request::AdminAppState};
+use crate::admin_api::{build_admin_global_model_routing_payload, AdminAppState};
 use crate::AppState;
 
 #[derive(Clone, Serialize)]

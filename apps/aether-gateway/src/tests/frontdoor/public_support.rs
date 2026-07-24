@@ -1579,6 +1579,10 @@ async fn gateway_handles_auth_registration_settings_without_proxying_upstream() 
                 "content": "<p>Policy</p>",
                 "version": "2026-05-16",
             },
+            "contact_us": {
+                "format": "markdown",
+                "content": "",
+            },
         })
     );
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
