@@ -79,4 +79,4 @@
 - SQLite 集成测试确认手动重置后只统计重置时间之后的已结算请求。
 - 确认窗口统计不再写入持久化的 `status_snapshot.quota.windows[].usage`。
 - 确认本地重置边界不再写入持久化的 `status_snapshot.quota.windows[].usage_reset_at`。
-- 生产队列表索引使用 PostgreSQL 并发索引迁移，避免滚动发布时阻塞旧实例写入。
+- 生产队列表索引使用 PostgreSQL 并发索引迁移，避免滚动发布时阻塞旧实例写入；创建和删除并发索引拆成独立迁移，确保每条语句都在事务外执行。

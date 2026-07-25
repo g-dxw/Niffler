@@ -538,19 +538,26 @@ fn provider_api_key_window_usage_migration_defines_required_tables_and_queue_kin
 }
 
 #[test]
-fn provider_api_key_window_usage_ready_index_migration_is_concurrent() {
-    let migration = POSTGRES_MIGRATOR
+fn provider_api_key_window_usage_index_migrations_are_concurrent_and_single_statement() {
+    let create_migration = POSTGRES_MIGRATOR
         .iter()
         .find(|migration| migration.version == 20260723121000)
         .expect("provider key window ready-index migration should be embedded");
+    let drop_migration = POSTGRES_MIGRATOR
+        .iter()
+        .find(|migration| migration.version == 20260723122000)
+        .expect("provider key window old-index cleanup migration should be embedded");
 
-    assert!(migration.no_tx);
-    assert!(migration
+    assert!(create_migration.no_tx);
+    assert!(create_migration
         .sql
         .contains("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_usage_counter_deltas_ready"));
-    assert!(migration
+    assert!(!create_migration.sql.contains("DROP INDEX CONCURRENTLY"));
+    assert!(drop_migration.no_tx);
+    assert!(drop_migration
         .sql
         .contains("DROP INDEX CONCURRENTLY IF EXISTS public.ix_usage_counter_deltas_unprocessed"));
+    assert!(!drop_migration.sql.contains("CREATE INDEX CONCURRENTLY"));
 }
 
 #[tokio::test]
@@ -1960,6 +1967,7 @@ fn pending_migrations_from_applied_skips_versions_already_applied() {
             20260622100000,
             20260723120000,
             20260723121000,
+            20260723122000,
             20260725100000,
         ]
     );
@@ -2000,6 +2008,7 @@ fn pending_migrations_from_applied_after_empty_database_snapshot_stamp_returns_p
             20260622100000,
             20260723120000,
             20260723121000,
+            20260723122000,
             20260725100000,
         ],
         "empty database snapshot-stamped databases should run only post-snapshot incrementals on first startup"
