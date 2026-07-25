@@ -30,6 +30,8 @@ export default {
   nav: {
     home: '首页',
     models: '模型广场',
+    infiniteCanvas: '无限画布',
+    imageStudio: '生图工作台',
     docs: '使用文档',
     dashboard: '控制台',
     login: '登录',

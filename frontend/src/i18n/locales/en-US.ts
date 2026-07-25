@@ -30,6 +30,8 @@ export default {
   nav: {
     home: 'Home',
     models: 'Models',
+    infiniteCanvas: 'Infinite Canvas',
+    imageStudio: 'Image Studio',
     docs: 'Usage docs',
     dashboard: 'Dashboard',
     login: 'Log in',
