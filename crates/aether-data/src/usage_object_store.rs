@@ -142,6 +142,7 @@ impl UsageObjectStore {
             .expect("hashed usage object directory must be valid")
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn put(
         &self,
         object_key: &str,

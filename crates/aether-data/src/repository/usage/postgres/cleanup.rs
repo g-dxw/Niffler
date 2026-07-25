@@ -768,12 +768,12 @@ async fn cleanup_usage_compressed_body_fields(
             .map_err(postgres_error)?
             .rows_affected();
         sqlx::query(DELETE_USAGE_BODY_BLOBS_SQL)
-            .bind(&cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
         sqlx::query(CLEAR_USAGE_HTTP_AUDIT_BODY_REFS_SQL)
-            .bind(&cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
@@ -1301,12 +1301,12 @@ async fn cleanup_usage_stale_body_fields(
             .map_err(postgres_error)?
             .rows_affected();
         sqlx::query(DELETE_USAGE_BODY_BLOBS_SQL)
-            .bind(&cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
         sqlx::query(CLEAR_USAGE_HTTP_AUDIT_BODY_REFS_SQL)
-            .bind(&cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;

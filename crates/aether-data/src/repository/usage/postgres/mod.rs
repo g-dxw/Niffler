@@ -8307,7 +8307,7 @@ ORDER BY "usage".user_id ASC
                     )
                     .await?;
                     if let Some(state) = sync_usage_body_object_storage(
-                        &mut **tx,
+                        tx,
                         &usage.request_id,
                         UsageBodyField::RequestBody,
                         &request_body_storage,
@@ -8325,7 +8325,7 @@ ORDER BY "usage".user_id ASC
                     )
                     .await?;
                     if let Some(state) = sync_usage_body_object_storage(
-                        &mut **tx,
+                        tx,
                         &usage.request_id,
                         UsageBodyField::ProviderRequestBody,
                         &provider_request_body_storage,
@@ -8343,7 +8343,7 @@ ORDER BY "usage".user_id ASC
                     )
                     .await?;
                     if let Some(state) = sync_usage_body_object_storage(
-                        &mut **tx,
+                        tx,
                         &usage.request_id,
                         UsageBodyField::ResponseBody,
                         &response_body_storage,
@@ -8361,7 +8361,7 @@ ORDER BY "usage".user_id ASC
                     )
                     .await?;
                     if let Some(state) = sync_usage_body_object_storage(
-                        &mut **tx,
+                        tx,
                         &usage.request_id,
                         UsageBodyField::ClientResponseBody,
                         &client_response_body_storage,
