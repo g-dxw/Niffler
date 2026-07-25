@@ -1392,10 +1392,6 @@ CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_counters (
         window_start_unix_secs,
         window_end_unix_secs
     ),
-    CONSTRAINT provider_api_key_window_usage_counters_key_fkey
-        FOREIGN KEY (provider_api_key_id)
-        REFERENCES public.provider_api_keys(id)
-        ON DELETE CASCADE,
     CONSTRAINT provider_api_key_window_usage_counters_range_check
         CHECK (window_start_unix_secs < window_end_unix_secs),
     CONSTRAINT provider_api_key_window_usage_counters_nonnegative_check
@@ -1421,10 +1417,6 @@ CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_resets (
         window_start_unix_secs,
         window_end_unix_secs
     ),
-    CONSTRAINT provider_api_key_window_usage_resets_key_fkey
-        FOREIGN KEY (provider_api_key_id)
-        REFERENCES public.provider_api_keys(id)
-        ON DELETE CASCADE,
     CONSTRAINT provider_api_key_window_usage_resets_range_check
         CHECK (
             window_start_unix_secs < window_end_unix_secs
@@ -1454,15 +1446,7 @@ CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_applications (
         window_code,
         window_start_unix_secs,
         window_end_unix_secs
-    ),
-    CONSTRAINT provider_api_key_window_usage_applications_delta_fkey
-        FOREIGN KEY (delta_id)
-        REFERENCES public.usage_counter_deltas(id)
-        ON DELETE CASCADE,
-    CONSTRAINT provider_api_key_window_usage_applications_key_fkey
-        FOREIGN KEY (provider_api_key_id)
-        REFERENCES public.provider_api_keys(id)
-        ON DELETE CASCADE
+    )
 );
 
 
