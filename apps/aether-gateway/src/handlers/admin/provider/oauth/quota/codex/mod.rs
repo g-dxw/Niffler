@@ -26,7 +26,61 @@ use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey, StoredProviderCatalogProvider,
 };
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+fn enrich_codex_wham_usage_response_from_headers(
+    body: &serde_json::Value,
+    headers: &BTreeMap<String, String>,
+) -> serde_json::Value {
+    let normalized_headers = headers
+        .iter()
+        .map(|(key, value)| (key.trim().to_ascii_lowercase(), value.trim()))
+        .collect::<BTreeMap<_, _>>();
+    let mut enriched = body.clone();
+    let Some(rate_limit) = enriched
+        .get_mut("rate_limit")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return enriched;
+    };
+
+    for (role, window_key) in [
+        ("primary", "primary_window"),
+        ("secondary", "secondary_window"),
+    ] {
+        let Some(window) = rate_limit
+            .get_mut(window_key)
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            continue;
+        };
+        for (header_suffix, field) in [
+            ("used-percent", "used_percent"),
+            ("reset-after-seconds", "reset_after_seconds"),
+            ("reset-at", "reset_at"),
+            ("window-minutes", "window_minutes"),
+        ] {
+            if window.get(field).is_some_and(|value| !value.is_null()) {
+                continue;
+            }
+            let header_key = format!("x-codex-{role}-{header_suffix}");
+            let Some(raw_value) = normalized_headers.get(&header_key) else {
+                continue;
+            };
+            let value = if field == "used_percent" {
+                raw_value.parse::<f64>().ok().map(|value| json!(value))
+            } else {
+                raw_value.parse::<u64>().ok().map(|value| json!(value))
+            };
+            if let Some(value) = value {
+                window.insert(field.to_string(), value);
+            }
+        }
+    }
+
+    enriched
+}
 
 fn merge_codex_quota_metadata(
     header_metadata: Option<&serde_json::Value>,
@@ -138,7 +192,10 @@ pub(crate) async fn refresh_codex_provider_quota_locally(
                 .as_ref()
                 .and_then(|body| body.json_body.as_ref())
             {
-                if let Some(parsed) = parse_codex_wham_usage_response(body_json, now_unix_secs) {
+                let enriched_body =
+                    enrich_codex_wham_usage_response_from_headers(body_json, &result.headers);
+                if let Some(parsed) = parse_codex_wham_usage_response(&enriched_body, now_unix_secs)
+                {
                     metadata_update = Some(json!({
                         "codex": merge_codex_quota_metadata(header_metadata.as_ref(), &parsed)
                     }));
@@ -346,4 +403,53 @@ pub(crate) async fn refresh_codex_provider_quota_locally(
         "results": results,
         "auto_removed": auto_removed_count,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::enrich_codex_wham_usage_response_from_headers;
+    use serde_json::json;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn codex_wham_headers_fill_missing_window_fields_without_overwriting_body() {
+        let body = json!({
+            "rate_limit": {
+                "primary_window": {
+                    "used_percent": 12.5,
+                    "window_minutes": 300
+                },
+                "secondary_window": {
+                    "used_percent": 55.0,
+                    "window_minutes": 10_080
+                }
+            }
+        });
+        let headers = BTreeMap::from([
+            ("X-Codex-Primary-Used-Percent".to_string(), "99".to_string()),
+            (
+                "x-codex-primary-reset-at".to_string(),
+                "1900000000".to_string(),
+            ),
+            (
+                "x-codex-secondary-reset-after-seconds".to_string(),
+                "604800".to_string(),
+            ),
+        ]);
+
+        let enriched = enrich_codex_wham_usage_response_from_headers(&body, &headers);
+
+        assert_eq!(
+            enriched["rate_limit"]["primary_window"]["used_percent"],
+            json!(12.5)
+        );
+        assert_eq!(
+            enriched["rate_limit"]["primary_window"]["reset_at"],
+            json!(1_900_000_000u64)
+        );
+        assert_eq!(
+            enriched["rate_limit"]["secondary_window"]["reset_after_seconds"],
+            json!(604_800u64)
+        );
+    }
 }

@@ -116,6 +116,25 @@ impl<'a> AdminAppState<'a> {
             .await
     }
 
+    pub(crate) async fn ensure_provider_api_key_codex_window_usage_stats(
+        &self,
+        provider_api_key_id: &str,
+    ) -> Result<bool, GatewayError> {
+        self.app
+            .ensure_provider_api_key_codex_window_usage_stats(provider_api_key_id)
+            .await
+    }
+
+    pub(crate) async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[aether_data_contracts::repository::usage::ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, GatewayError> {
+        self.app
+            .reset_provider_api_key_codex_window_usage_stats(windows, reset_at_unix_secs)
+            .await
+    }
+
     pub(crate) async fn summarize_usage_cache_affinity_hit_summary(
         &self,
         query: &aether_data_contracts::repository::usage::UsageCacheAffinityHitSummaryQuery,

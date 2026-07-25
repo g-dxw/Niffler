@@ -21,19 +21,22 @@ use aether_data_contracts::repository::usage::{
     UsageTimeSeriesGranularity, UsageTimeSeriesQuery,
 };
 use async_trait::async_trait;
+use base64::Engine as _;
 use chrono::{DateTime, Utc};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use futures_util::future::BoxFuture;
 use futures_util::TryStreamExt;
-use serde_json::Map;
-use serde_json::Value;
+use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use sqlx::{
     postgres::{PgArguments, PgRow},
     query::Query,
     PgPool, Postgres, QueryBuilder, Row,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::{Read, Write};
+use std::sync::Arc;
+use tracing::warn;
 use uuid::Uuid;
 
 use super::{
@@ -49,7 +52,7 @@ use super::{
 use crate::driver::postgres::PostgresTransactionRunner;
 use crate::{
     error::{postgres_error, SqlxResultExt},
-    DataLayerError,
+    DataLayerError, UsageObjectStore,
 };
 
 pub mod cleanup;
@@ -60,8 +63,53 @@ const MAX_INLINE_USAGE_BODY_BYTES: usize = 0;
 const MAX_SUPPORTED_UNIX_SECS: u64 = 253_402_300_799;
 const FIND_USAGE_BODY_BLOB_BY_REF_SQL: &str =
     r#"SELECT payload_gzip FROM usage_body_blobs WHERE body_ref = $1 LIMIT 1"#;
+const FIND_USAGE_BODY_OBJECT_BY_REF_SQL: &str = r#"
+SELECT
+    object_key,
+    payload_format,
+    content_type,
+    content_encoding,
+    size_bytes,
+    sha256,
+    storage_status,
+    error_message
+FROM usage_body_objects
+WHERE body_ref = $1
+LIMIT 1
+"#;
 const UPSERT_USAGE_BODY_BLOB_SQL: &str = include_str!("queries/upsert_usage_body_blob_sql.sql");
 const DELETE_USAGE_BODY_BLOB_SQL: &str = include_str!("queries/delete_usage_body_blob_sql.sql");
+const UPSERT_USAGE_BODY_OBJECT_SQL: &str = r#"
+INSERT INTO usage_body_objects (
+    body_ref,
+    request_id,
+    body_field,
+    object_key,
+    payload_format,
+    content_type,
+    content_encoding,
+    size_bytes,
+    sha256,
+    storage_status,
+    error_message,
+    created_at,
+    updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+ON CONFLICT (body_ref)
+DO UPDATE SET
+    object_key = EXCLUDED.object_key,
+    payload_format = EXCLUDED.payload_format,
+    content_type = EXCLUDED.content_type,
+    content_encoding = EXCLUDED.content_encoding,
+    size_bytes = EXCLUDED.size_bytes,
+    sha256 = EXCLUDED.sha256,
+    storage_status = EXCLUDED.storage_status,
+    error_message = EXCLUDED.error_message,
+    updated_at = NOW()
+WHERE usage_body_objects.storage_status <> 'available'
+   OR EXCLUDED.storage_status = 'available'
+"#;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct AggregateRangeSplit {
@@ -1345,6 +1393,12 @@ const APPLY_PROVIDER_API_KEY_USAGE_DELTA_SQL: &str =
     include_str!("queries/apply_provider_api_key_usage_delta_sql.sql");
 const APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL: &str =
     include_str!("queries/apply_provider_api_key_codex_window_usage_delta_sql.sql");
+const PROVIDER_API_KEY_CODEX_WINDOW_USAGE_MISSING_SQL: &str =
+    include_str!("queries/provider_api_key_codex_window_usage_missing_sql.sql");
+const REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL: &str =
+    include_str!("queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql");
+const RESET_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_SQL: &str =
+    include_str!("queries/reset_provider_api_key_codex_window_usage_sql.sql");
 
 const INSERT_USAGE_COUNTER_DELTA_SQL: &str = r#"
 INSERT INTO usage_counter_deltas (
@@ -1368,9 +1422,12 @@ INSERT INTO usage_counter_deltas (
   last_used_ip,
   candidate_last_used_at_unix_secs,
   removed_last_used_at_unix_secs,
-  usage_created_at_unix_secs
+  usage_created_at_unix_secs,
+  created_at,
+  available_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
+  NOW(), NOW()
 )
 "#;
 
@@ -1379,7 +1436,8 @@ WITH claimed AS (
   SELECT id
   FROM usage_counter_deltas
   WHERE processed_at IS NULL
-  ORDER BY created_at ASC, id ASC
+    AND available_at <= NOW()
+  ORDER BY available_at ASC, created_at ASC, id ASC
   LIMIT $1
   FOR UPDATE SKIP LOCKED
 )
@@ -1406,7 +1464,7 @@ SELECT
   delta.usage_created_at_unix_secs
 FROM usage_counter_deltas AS delta
 JOIN claimed ON claimed.id = delta.id
-ORDER BY delta.created_at ASC, delta.id ASC
+ORDER BY delta.available_at ASC, delta.created_at ASC, delta.id ASC
 "#;
 
 const READ_USAGE_COUNTER_HEALTH_SQL: &str = r#"
@@ -1433,6 +1491,15 @@ UPDATE usage_counter_deltas
 SET processed_at = NOW()
 WHERE id = ANY($1::TEXT[])
 "#;
+const DEFER_USAGE_COUNTER_DELTAS_SQL: &str = r#"
+UPDATE usage_counter_deltas
+SET available_at = GREATEST(
+  available_at,
+  NOW() + INTERVAL '30 seconds'
+)
+WHERE id = ANY($1::TEXT[])
+  AND processed_at IS NULL
+"#;
 const DELETE_PROCESSED_USAGE_COUNTER_DELTAS_SQL: &str = r#"
 WITH doomed AS (
   SELECT id
@@ -1451,6 +1518,7 @@ const TRY_LOCK_USAGE_COUNTER_FLUSH_SQL: &str =
 
 const USAGE_COUNTER_KIND_API_KEY: &str = "api_key";
 const USAGE_COUNTER_KIND_PROVIDER_API_KEY: &str = "provider_api_key";
+const USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW: &str = "provider_api_key_window";
 const USAGE_COUNTER_KIND_MODEL: &str = "model";
 const USAGE_COUNTER_KIND_PROVIDER_MONTHLY: &str = "provider_monthly";
 const USAGE_COUNTER_KIND_PROXY_NODE: &str = "proxy_node";
@@ -1500,9 +1568,6 @@ const RESET_PROVIDER_API_KEY_USAGE_STATS_SQL: &str =
 
 const REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL: &str =
     include_str!("queries/rebuild_provider_api_key_usage_stats_sql.sql");
-
-const REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL: &str =
-    include_str!("queries/rebuild_provider_api_key_codex_window_usage_stats_sql.sql");
 
 const LIST_USAGE_AUDITS_PREFIX: &str = include_str!("queries/list_usage_audits_prefix.sql");
 const USAGE_RESERVED_PROVIDER_LABELS_FILTER_SQL: &str = " AND BTRIM(COALESCE(\"usage\".provider_name, '')) <> '' AND lower(BTRIM(COALESCE(\"usage\".provider_name, ''))) NOT IN ('unknown', 'unknow', 'pending')";
@@ -1757,12 +1822,24 @@ WHERE request_id = $1
 pub struct SqlxUsageReadRepository {
     pool: PgPool,
     tx_runner: PostgresTransactionRunner,
+    usage_object_store: Option<Arc<UsageObjectStore>>,
 }
 
 impl SqlxUsageReadRepository {
     pub fn new(pool: PgPool) -> Self {
+        Self::with_usage_object_store(pool, None)
+    }
+
+    pub fn with_usage_object_store(
+        pool: PgPool,
+        usage_object_store: Option<Arc<UsageObjectStore>>,
+    ) -> Self {
         let tx_runner = PostgresTransactionRunner::new(pool.clone());
-        Self { pool, tx_runner }
+        Self {
+            pool,
+            tx_runner,
+            usage_object_store,
+        }
     }
 
     pub fn pool(&self) -> &PgPool {
@@ -2246,6 +2323,104 @@ ORDER BY request_count DESC, "usage".provider_name ASC
     }
 
     pub async fn resolve_body_ref(&self, body_ref: &str) -> Result<Option<Value>, DataLayerError> {
+        let object_row = sqlx::query(FIND_USAGE_BODY_OBJECT_BY_REF_SQL)
+            .bind(body_ref)
+            .fetch_optional(&self.pool)
+            .await
+            .map_postgres_err()?;
+        if let Some(row) = object_row.as_ref() {
+            let storage_status = row
+                .try_get::<String, _>("storage_status")
+                .map_postgres_err()?;
+            if storage_status != "available" {
+                return Ok(None);
+            }
+            let object_key = row
+                .try_get::<Option<String>, _>("object_key")
+                .map_postgres_err()?
+                .ok_or_else(|| {
+                    DataLayerError::UnexpectedValue(format!(
+                        "usage body object {body_ref} is available without an object key"
+                    ))
+                })?;
+            let object_store = self.usage_object_store.as_ref().ok_or_else(|| {
+                DataLayerError::UnexpectedValue(format!(
+                    "usage body object {body_ref} requires the usage object store"
+                ))
+            })?;
+            let payload = object_store.get(&object_key).await?;
+            let content_encoding = row
+                .try_get::<Option<String>, _>("content_encoding")
+                .map_postgres_err()?;
+            let json_bytes = if content_encoding
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case("gzip"))
+            {
+                let mut decoder = GzDecoder::new(payload.as_ref());
+                let mut json_bytes = Vec::new();
+                decoder.read_to_end(&mut json_bytes).map_err(|err| {
+                    DataLayerError::UnexpectedValue(format!(
+                        "failed to decompress usage object {body_ref}: {err}"
+                    ))
+                })?;
+                json_bytes
+            } else {
+                payload.to_vec()
+            };
+            if let Some(size_bytes) = row
+                .try_get::<Option<i64>, _>("size_bytes")
+                .map_postgres_err()?
+            {
+                if size_bytes >= 0 && json_bytes.len() as i64 != size_bytes {
+                    return Err(DataLayerError::UnexpectedValue(format!(
+                        "usage body object {body_ref} size verification failed"
+                    )));
+                }
+            }
+            if let Some(expected_sha256) = row
+                .try_get::<Option<String>, _>("sha256")
+                .map_postgres_err()?
+            {
+                let actual_sha256 = format!("{:x}", Sha256::digest(&json_bytes));
+                if actual_sha256 != expected_sha256 {
+                    return Err(DataLayerError::UnexpectedValue(format!(
+                        "usage body object {body_ref} hash verification failed"
+                    )));
+                }
+            }
+            let payload_format = row
+                .try_get::<String, _>("payload_format")
+                .map_postgres_err()?;
+            if payload_format == "json" {
+                return serde_json::from_slice(&json_bytes)
+                    .map(Some)
+                    .map_err(|err| {
+                        DataLayerError::UnexpectedValue(format!(
+                            "failed to parse usage body object {body_ref}: {err}"
+                        ))
+                    });
+            }
+            if payload_format == "raw" {
+                if let Ok(value) = serde_json::from_slice::<Value>(&json_bytes) {
+                    return Ok(Some(value));
+                }
+                if let Ok(text) = String::from_utf8(json_bytes.clone()) {
+                    return Ok(Some(Value::String(text)));
+                }
+                let content_type = row
+                    .try_get::<Option<String>, _>("content_type")
+                    .map_postgres_err()?;
+                return Ok(Some(json!({
+                    "content_type": content_type.unwrap_or_else(|| "application/octet-stream".to_string()),
+                    "encoding": "base64",
+                    "data": base64::engine::general_purpose::STANDARD.encode(json_bytes),
+                })));
+            }
+            return Err(DataLayerError::UnexpectedValue(format!(
+                "unsupported usage body object format for {body_ref}: {payload_format}"
+            )));
+        }
+
         let blob_row = sqlx::query(FIND_USAGE_BODY_BLOB_BY_REF_SQL)
             .bind(body_ref)
             .fetch_optional(&self.pool)
@@ -7753,6 +7928,7 @@ ORDER BY "usage".user_id ASC
         }
 
         let mut provider_api_key_ids = Vec::with_capacity(requests.len());
+        let mut window_scopes = Vec::with_capacity(requests.len());
         let mut window_codes = Vec::with_capacity(requests.len());
         let mut start_unix_secs = Vec::with_capacity(requests.len());
         let mut end_unix_secs = Vec::with_capacity(requests.len());
@@ -7770,6 +7946,12 @@ ORDER BY "usage".user_id ASC
                     "provider api key window usage window_code cannot be empty".to_string(),
                 ));
             }
+            let window_scope = request.window_scope.trim();
+            if window_scope.is_empty() {
+                return Err(DataLayerError::InvalidInput(
+                    "provider api key window usage window_scope cannot be empty".to_string(),
+                ));
+            }
             if request.start_unix_secs >= request.end_unix_secs {
                 return Err(DataLayerError::InvalidInput(
                     "provider api key window usage range must be non-empty".to_string(),
@@ -7777,6 +7959,7 @@ ORDER BY "usage".user_id ASC
             }
 
             provider_api_key_ids.push(provider_api_key_id.to_string());
+            window_scopes.push(window_scope.to_ascii_lowercase());
             window_codes.push(window_code.to_string());
             start_unix_secs.push(i64::try_from(request.start_unix_secs).map_err(|_| {
                 DataLayerError::InvalidInput(
@@ -7792,6 +7975,7 @@ ORDER BY "usage".user_id ASC
 
         let mut rows = sqlx::query(SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL)
             .bind(&provider_api_key_ids)
+            .bind(&window_scopes)
             .bind(&window_codes)
             .bind(&start_unix_secs)
             .bind(&end_unix_secs)
@@ -7810,7 +7994,28 @@ ORDER BY "usage".user_id ASC
                 provider_api_key_id: row
                     .try_get::<String, _>("provider_api_key_id")
                     .map_postgres_err()?,
+                window_scope: row
+                    .try_get::<String, _>("window_scope")
+                    .map_postgres_err()?,
                 window_code: row.try_get::<String, _>("window_code").map_postgres_err()?,
+                start_unix_secs: row
+                    .try_get::<i64, _>("start_unix_secs")
+                    .map_postgres_err()?
+                    .try_into()
+                    .map_err(|_| {
+                        DataLayerError::UnexpectedValue(
+                            "usage.start_unix_secs window aggregate is negative".to_string(),
+                        )
+                    })?,
+                end_unix_secs: row
+                    .try_get::<i64, _>("end_unix_secs")
+                    .map_postgres_err()?
+                    .try_into()
+                    .map_err(|_| {
+                        DataLayerError::UnexpectedValue(
+                            "usage.end_unix_secs window aggregate is negative".to_string(),
+                        )
+                    })?,
                 request_count: row
                     .try_get::<i64, _>("request_count")
                     .map_postgres_err()?
@@ -7842,7 +8047,78 @@ ORDER BY "usage".user_id ASC
     ) -> Result<StoredRequestUsageAudit, DataLayerError> {
         usage.validate()?;
         let usage = strip_deprecated_usage_display_fields(usage);
-        self.tx_runner
+        let object_store = self.usage_object_store.clone();
+        let request_headers_json = json_bind_text(usage.request_headers.as_ref())?;
+        let mut request_body_storage = prepare_usage_body_storage(
+            usage.request_body.as_ref(),
+            object_store.as_deref(),
+            &usage.request_id,
+            UsageBodyField::RequestBody,
+        )?;
+        apply_usage_body_object_metadata(
+            usage.request_metadata.as_ref(),
+            &usage.request_id,
+            UsageBodyField::RequestBody,
+            &mut request_body_storage,
+        );
+        let provider_request_headers_json =
+            json_bind_text(usage.provider_request_headers.as_ref())?;
+        let mut provider_request_body_storage = prepare_usage_body_storage(
+            usage.provider_request_body.as_ref(),
+            object_store.as_deref(),
+            &usage.request_id,
+            UsageBodyField::ProviderRequestBody,
+        )?;
+        apply_usage_body_object_metadata(
+            usage.request_metadata.as_ref(),
+            &usage.request_id,
+            UsageBodyField::ProviderRequestBody,
+            &mut provider_request_body_storage,
+        );
+        let response_headers_json = json_bind_text(usage.response_headers.as_ref())?;
+        let mut response_body_storage = prepare_usage_body_storage(
+            usage.response_body.as_ref(),
+            object_store.as_deref(),
+            &usage.request_id,
+            UsageBodyField::ResponseBody,
+        )?;
+        apply_usage_body_object_metadata(
+            usage.request_metadata.as_ref(),
+            &usage.request_id,
+            UsageBodyField::ResponseBody,
+            &mut response_body_storage,
+        );
+        let client_response_headers_json = json_bind_text(usage.client_response_headers.as_ref())?;
+        let mut client_response_body_storage = prepare_usage_body_storage(
+            usage.client_response_body.as_ref(),
+            object_store.as_deref(),
+            &usage.request_id,
+            UsageBodyField::ClientResponseBody,
+        )?;
+        apply_usage_body_object_metadata(
+            usage.request_metadata.as_ref(),
+            &usage.request_id,
+            UsageBodyField::ClientResponseBody,
+            &mut client_response_body_storage,
+        );
+        tokio::join!(
+            upload_usage_body_object(object_store.as_deref(), &mut request_body_storage),
+            upload_usage_body_object(object_store.as_deref(), &mut provider_request_body_storage,),
+            upload_usage_body_object(object_store.as_deref(), &mut response_body_storage),
+            upload_usage_body_object(object_store.as_deref(), &mut client_response_body_storage,),
+        );
+        let owned_object_keys = [
+            request_body_storage.owned_object_key.clone(),
+            provider_request_body_storage.owned_object_key.clone(),
+            response_body_storage.owned_object_key.clone(),
+            client_response_body_storage.owned_object_key.clone(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        let request_id = usage.request_id.clone();
+        let transaction_result = self
+            .tx_runner
             .run_read_write(|tx| {
                 Box::pin(async move {
                     lock_usage_request_id_in_tx(tx, &usage.request_id).await?;
@@ -7865,21 +8141,9 @@ ORDER BY "usage".user_id ASC
 
                     let previous_usage =
                         find_usage_by_request_id_in_tx(tx, &usage.request_id).await?;
+                    let previous_object_keys =
+                        find_usage_body_object_keys_in_tx(tx, &usage.request_id).await?;
 
-                    let request_headers_json = json_bind_text(usage.request_headers.as_ref())?;
-                    let request_body_storage =
-                        prepare_usage_body_storage(usage.request_body.as_ref())?;
-                    let provider_request_headers_json =
-                        json_bind_text(usage.provider_request_headers.as_ref())?;
-                    let provider_request_body_storage =
-                        prepare_usage_body_storage(usage.provider_request_body.as_ref())?;
-                    let response_headers_json = json_bind_text(usage.response_headers.as_ref())?;
-                    let response_body_storage =
-                        prepare_usage_body_storage(usage.response_body.as_ref())?;
-                    let client_response_headers_json =
-                        json_bind_text(usage.client_response_headers.as_ref())?;
-                    let client_response_body_storage =
-                        prepare_usage_body_storage(usage.client_response_body.as_ref())?;
                     let http_audit_refs = UsageHttpAuditRefs {
                         request_body_ref: resolved_write_usage_body_ref(
                             usage.request_body_ref.as_deref(),
@@ -7910,7 +8174,7 @@ ORDER BY "usage".user_id ASC
                             None,
                         ),
                     };
-                    let http_audit_states = UsageHttpAuditStates {
+                    let mut http_audit_states = UsageHttpAuditStates {
                         request_body_state: usage.request_body_state,
                         provider_request_body_state: usage.provider_request_body_state,
                         response_body_state: usage.response_body_state,
@@ -8042,6 +8306,16 @@ ORDER BY "usage".user_id ASC
                         &request_body_storage,
                     )
                     .await?;
+                    if let Some(state) = sync_usage_body_object_storage(
+                        &mut **tx,
+                        &usage.request_id,
+                        UsageBodyField::RequestBody,
+                        &request_body_storage,
+                    )
+                    .await?
+                    {
+                        http_audit_states.request_body_state = Some(state);
+                    }
                     sync_usage_body_blob_storage(
                         &mut **tx,
                         &usage.request_id,
@@ -8050,6 +8324,16 @@ ORDER BY "usage".user_id ASC
                         &provider_request_body_storage,
                     )
                     .await?;
+                    if let Some(state) = sync_usage_body_object_storage(
+                        &mut **tx,
+                        &usage.request_id,
+                        UsageBodyField::ProviderRequestBody,
+                        &provider_request_body_storage,
+                    )
+                    .await?
+                    {
+                        http_audit_states.provider_request_body_state = Some(state);
+                    }
                     sync_usage_body_blob_storage(
                         &mut **tx,
                         &usage.request_id,
@@ -8058,6 +8342,16 @@ ORDER BY "usage".user_id ASC
                         &response_body_storage,
                     )
                     .await?;
+                    if let Some(state) = sync_usage_body_object_storage(
+                        &mut **tx,
+                        &usage.request_id,
+                        UsageBodyField::ResponseBody,
+                        &response_body_storage,
+                    )
+                    .await?
+                    {
+                        http_audit_states.response_body_state = Some(state);
+                    }
                     sync_usage_body_blob_storage(
                         &mut **tx,
                         &usage.request_id,
@@ -8066,6 +8360,16 @@ ORDER BY "usage".user_id ASC
                         &client_response_body_storage,
                     )
                     .await?;
+                    if let Some(state) = sync_usage_body_object_storage(
+                        &mut **tx,
+                        &usage.request_id,
+                        UsageBodyField::ClientResponseBody,
+                        &client_response_body_storage,
+                    )
+                    .await?
+                    {
+                        http_audit_states.client_response_body_state = Some(state);
+                    }
                     let http_audit_headers = UsageHttpAuditHeaders {
                         request_headers_json: request_headers_json.as_deref(),
                         provider_request_headers_json: provider_request_headers_json.as_deref(),
@@ -8102,20 +8406,20 @@ ORDER BY "usage".user_id ASC
                                 usage.request_id
                             ))
                         })?;
-                    if request_body_storage.has_detached_blob() {
+                    if request_body_storage.has_persisted_body() {
                         stored.request_body = usage.request_body.clone();
                     }
                     stored.request_headers = usage.request_headers.clone();
                     stored.provider_request_headers = usage.provider_request_headers.clone();
-                    if provider_request_body_storage.has_detached_blob() {
+                    if provider_request_body_storage.has_persisted_body() {
                         stored.provider_request_body = usage.provider_request_body.clone();
                     }
                     stored.response_headers = usage.response_headers.clone();
-                    if response_body_storage.has_detached_blob() {
+                    if response_body_storage.has_persisted_body() {
                         stored.response_body = usage.response_body.clone();
                     }
                     stored.client_response_headers = usage.client_response_headers.clone();
-                    if client_response_body_storage.has_detached_blob() {
+                    if client_response_body_storage.has_persisted_body() {
                         stored.client_response_body = usage.client_response_body.clone();
                     }
                     stored.request_body_ref = resolved_write_usage_body_ref(
@@ -8146,14 +8450,16 @@ ORDER BY "usage".user_id ASC
                         client_response_body_storage.has_detached_blob(),
                         http_audit_refs.client_response_body_ref.as_deref(),
                     );
-                    stored.request_body_state =
-                        usage.request_body_state.or(stored.request_body_state);
-                    stored.provider_request_body_state = usage
+                    stored.request_body_state = http_audit_states
+                        .request_body_state
+                        .or(stored.request_body_state);
+                    stored.provider_request_body_state = http_audit_states
                         .provider_request_body_state
                         .or(stored.provider_request_body_state);
-                    stored.response_body_state =
-                        usage.response_body_state.or(stored.response_body_state);
-                    stored.client_response_body_state = usage
+                    stored.response_body_state = http_audit_states
+                        .response_body_state
+                        .or(stored.response_body_state);
+                    stored.client_response_body_state = http_audit_states
                         .client_response_body_state
                         .or(stored.client_response_body_state);
                     stored.candidate_id = routing_snapshot.candidate_id.clone();
@@ -8291,10 +8597,64 @@ ORDER BY "usage".user_id ASC
                             }
                         }
                     }
-                    Ok(stored)
-                }) as BoxFuture<'_, Result<StoredRequestUsageAudit, DataLayerError>>
+                    Ok((stored, previous_object_keys))
+                })
+                    as BoxFuture<'_, Result<(StoredRequestUsageAudit, Vec<String>), DataLayerError>>
             })
-            .await
+            .await;
+
+        match transaction_result {
+            Ok((stored, previous_object_keys)) => {
+                let current_object_keys =
+                    find_usage_body_object_keys(&self.pool, &request_id).await;
+                match current_object_keys {
+                    Ok(current_object_keys) => {
+                        let current_object_keys =
+                            current_object_keys.into_iter().collect::<HashSet<_>>();
+                        if let Some(object_store) = object_store.as_deref() {
+                            delete_unreferenced_usage_body_objects(
+                                object_store,
+                                &owned_object_keys,
+                                &current_object_keys,
+                            )
+                            .await;
+                        }
+                        for object_key in previous_object_keys {
+                            if current_object_keys.contains(&object_key) {
+                                continue;
+                            }
+                            if let Some(object_store) = object_store.as_deref() {
+                                if let Err(err) = object_store.delete(&object_key).await {
+                                    warn!(
+                                        request_id = %request_id,
+                                        object_key = %object_key,
+                                        error = %err,
+                                        "failed to delete superseded usage body object"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        warn!(
+                            request_id = %request_id,
+                            error = %err,
+                            "failed to inspect current usage body objects after commit"
+                        );
+                    }
+                }
+                Ok(stored)
+            }
+            Err(err) => {
+                cleanup_uncommitted_usage_body_objects(
+                    &self.pool,
+                    object_store.as_deref(),
+                    &owned_object_keys,
+                )
+                .await;
+                Err(err)
+            }
+        }
     }
 
     pub async fn flush_usage_counter_deltas(
@@ -8321,9 +8681,14 @@ ORDER BY "usage".user_id ASC
                     if rows.is_empty() {
                         return Ok(UsageCounterFlushSummary::default());
                     }
+                    let rows_claimed = rows.len();
 
-                    let row_ids = rows.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
                     let aggregates = UsageCounterDeltaAggregates::from_rows(&rows)?;
+                    let mut processed_row_ids = rows
+                        .iter()
+                        .filter(|row| row.kind != USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW)
+                        .map(|row| row.id.clone())
+                        .collect::<Vec<_>>();
 
                     for (api_key_id, delta) in &aggregates.api_keys {
                         apply_api_key_usage_delta_in_tx(tx, api_key_id.as_str(), delta).await?;
@@ -8335,12 +8700,20 @@ ORDER BY "usage".user_id ASC
                         apply_provider_api_key_main_usage_delta_in_tx(tx, key_id.as_str(), delta)
                             .await?;
                     }
-                    for row in rows
+                    processed_row_ids.extend(
+                        apply_provider_api_key_codex_window_usage_deltas_in_tx(tx, &rows).await?,
+                    );
+                    let processed_row_id_set =
+                        processed_row_ids.iter().cloned().collect::<HashSet<_>>();
+                    let deferred_window_row_ids = rows
                         .iter()
-                        .filter(|row| row.kind == USAGE_COUNTER_KIND_PROVIDER_API_KEY)
-                    {
-                        apply_provider_api_key_codex_window_usage_delta_in_tx(tx, row).await?;
-                    }
+                        .filter(|row| {
+                            row.kind == USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW
+                                && !processed_row_id_set.contains(&row.id)
+                        })
+                        .map(|row| row.id.clone())
+                        .collect::<Vec<_>>();
+                    defer_usage_counter_deltas_in_tx(tx, &deferred_window_row_ids).await?;
                     for (provider_id, delta) in &aggregates.provider_monthly {
                         apply_provider_monthly_usage_delta_in_tx(tx, provider_id.as_str(), *delta)
                             .await?;
@@ -8356,10 +8729,10 @@ ORDER BY "usage".user_id ASC
                         apply_api_key_last_used_delta_in_tx(tx, api_key_id.as_str(), delta).await?;
                     }
 
-                    mark_usage_counter_deltas_processed_in_tx(tx, &row_ids).await?;
+                    mark_usage_counter_deltas_processed_in_tx(tx, &processed_row_ids).await?;
 
                     Ok(UsageCounterFlushSummary {
-                        rows_claimed: rows.len(),
+                        rows_claimed,
                         api_key_targets: aggregates.api_keys.len(),
                         provider_api_key_targets: aggregates.provider_api_keys.len(),
                         model_targets: aggregates.models.len(),
@@ -8727,14 +9100,66 @@ ORDER BY "usage".user_id ASC
                         .await
                         .map_postgres_err()?
                         .rows_affected();
-                    sqlx::query(REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL)
-                        .execute(&mut **tx)
-                        .await
-                        .map_postgres_err()?;
                     Ok(rows_affected)
                 }) as BoxFuture<'_, Result<u64, DataLayerError>>
             })
             .await
+    }
+
+    pub async fn ensure_provider_api_key_codex_window_usage_stats(
+        &self,
+        provider_api_key_id: &str,
+    ) -> Result<bool, DataLayerError> {
+        let provider_api_key_id = provider_api_key_id.trim();
+        if provider_api_key_id.is_empty() {
+            return Ok(false);
+        }
+
+        for _ in 0..3 {
+            match rebuild_provider_api_key_codex_window_usage_for_key_once(
+                &self.pool,
+                provider_api_key_id,
+            )
+            .await
+            {
+                Ok(rebuilt) => return Ok(rebuilt),
+                Err(error) if is_postgres_serialization_failure(&error) => continue,
+                Err(error) => return Err(postgres_error(error)),
+            }
+        }
+
+        Err(DataLayerError::TimedOut(format!(
+            "provider api key window usage rebuild was retried too many times: {provider_api_key_id}"
+        )))
+    }
+
+    pub async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, DataLayerError> {
+        if windows.is_empty() {
+            return Ok(0);
+        }
+        let reset_at = i64::try_from(reset_at_unix_secs).map_err(|_| {
+            DataLayerError::InvalidInput(
+                "provider api key window usage reset time is out of range".to_string(),
+            )
+        })?;
+
+        for _ in 0..3 {
+            match reset_provider_api_key_codex_window_usage_once(&self.pool, windows, reset_at)
+                .await
+            {
+                Ok(reset_windows) => return Ok(reset_windows),
+                Err(error) if is_postgres_serialization_failure(&error) => continue,
+                Err(error) => return Err(postgres_error(error)),
+            }
+        }
+
+        Err(DataLayerError::TimedOut(
+            "provider api key window usage reset was retried too many times".to_string(),
+        ))
     }
 }
 
@@ -8992,6 +9417,22 @@ impl UsageWriteRepository for SqlxUsageReadRepository {
         Self::rebuild_provider_api_key_usage_stats(self).await
     }
 
+    async fn ensure_provider_api_key_codex_window_usage_stats(
+        &self,
+        provider_api_key_id: &str,
+    ) -> Result<bool, DataLayerError> {
+        Self::ensure_provider_api_key_codex_window_usage_stats(self, provider_api_key_id).await
+    }
+
+    async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, DataLayerError> {
+        Self::reset_provider_api_key_codex_window_usage_stats(self, windows, reset_at_unix_secs)
+            .await
+    }
+
     async fn cleanup_stale_pending_requests(
         &self,
         cutoff_unix_secs: u64,
@@ -9199,6 +9640,7 @@ impl UsageCounterDeltaAggregates {
                         row.usage_created_at_unix_secs,
                     );
                 }
+                USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW => {}
                 USAGE_COUNTER_KIND_MODEL => {
                     let entry = aggregates.models.entry(row.target_id.clone()).or_default();
                     entry.request_count += row.request_count_delta;
@@ -9433,13 +9875,47 @@ async fn enqueue_provider_api_key_usage_delta_in_tx(
             total_tokens_delta: delta.total_tokens,
             total_cost_usd_delta,
             total_response_time_ms_delta: delta.total_response_time_ms,
+            window_request_count_delta: 0,
+            window_total_tokens_delta: 0,
+            window_total_cost_usd_delta: 0.0,
+            last_used_at_unix_secs: None,
+            last_used_ip: None,
+            candidate_last_used_at_unix_secs: delta.candidate_last_used_at_unix_secs,
+            removed_last_used_at_unix_secs: delta.removed_last_used_at_unix_secs,
+            usage_created_at_unix_secs: None,
+        },
+    )
+    .await?;
+
+    if delta.window_request_count == 0
+        && delta.window_total_tokens == 0
+        && delta.window_total_cost_usd == 0.0
+    {
+        return Ok(());
+    }
+
+    insert_usage_counter_delta_in_tx(
+        tx,
+        UsageCounterDeltaInsert {
+            request_id,
+            kind: USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW,
+            target_id: key_id,
+            request_count_delta: 0,
+            total_requests_delta: 0,
+            success_count_delta: 0,
+            error_count_delta: 0,
+            dns_failures_delta: 0,
+            stream_errors_delta: 0,
+            total_tokens_delta: 0,
+            total_cost_usd_delta: 0.0,
+            total_response_time_ms_delta: 0,
             window_request_count_delta: delta.window_request_count,
             window_total_tokens_delta: delta.window_total_tokens,
             window_total_cost_usd_delta: delta.window_total_cost_usd,
             last_used_at_unix_secs: None,
             last_used_ip: None,
-            candidate_last_used_at_unix_secs: delta.candidate_last_used_at_unix_secs,
-            removed_last_used_at_unix_secs: delta.removed_last_used_at_unix_secs,
+            candidate_last_used_at_unix_secs: None,
+            removed_last_used_at_unix_secs: None,
             usage_created_at_unix_secs: delta.usage_created_at_unix_secs,
         },
     )
@@ -9547,6 +10023,134 @@ async fn try_lock_usage_counter_flush_in_tx(
         .fetch_one(&mut **tx)
         .await
         .map_postgres_err()
+}
+
+async fn defer_usage_counter_deltas_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    ids: &[String],
+) -> Result<(), DataLayerError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(DEFER_USAGE_COUNTER_DELTAS_SQL)
+        .bind(ids)
+        .execute(&mut **tx)
+        .await
+        .map_postgres_err()?;
+    Ok(())
+}
+
+fn is_postgres_serialization_failure(error: &sqlx::Error) -> bool {
+    matches!(
+        error,
+        sqlx::Error::Database(database_error)
+            if database_error.code().as_deref() == Some("40001")
+    )
+}
+
+async fn rebuild_provider_api_key_codex_window_usage_for_key_once(
+    pool: &PgPool,
+    provider_api_key_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let missing = sqlx::query_scalar::<_, bool>(PROVIDER_API_KEY_CODEX_WINDOW_USAGE_MISSING_SQL)
+        .bind(provider_api_key_id)
+        .fetch_one(pool)
+        .await?;
+    if !missing {
+        return Ok(false);
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('usage_counter_flush')::BIGINT)")
+        .execute(&mut *tx)
+        .await?;
+
+    let missing = sqlx::query_scalar::<_, bool>(PROVIDER_API_KEY_CODEX_WINDOW_USAGE_MISSING_SQL)
+        .bind(provider_api_key_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if !missing {
+        tx.commit().await?;
+        return Ok(false);
+    }
+
+    sqlx::query(REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL)
+        .bind(provider_api_key_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+async fn reset_provider_api_key_codex_window_usage_once(
+    pool: &PgPool,
+    windows: &[ProviderApiKeyWindowUsageRequest],
+    reset_at_unix_secs: i64,
+) -> Result<u64, sqlx::Error> {
+    let mut provider_api_key_ids = Vec::with_capacity(windows.len());
+    let mut window_scopes = Vec::with_capacity(windows.len());
+    let mut window_start_unix_secs = Vec::with_capacity(windows.len());
+    let mut window_end_unix_secs = Vec::with_capacity(windows.len());
+    let mut key_ids = HashSet::new();
+
+    for window in windows {
+        let provider_api_key_id = window.provider_api_key_id.trim();
+        let window_scope = window.window_scope.trim();
+        if provider_api_key_id.is_empty()
+            || window_scope.is_empty()
+            || window.start_unix_secs >= window.end_unix_secs
+        {
+            continue;
+        }
+        let Ok(window_start) = i64::try_from(window.start_unix_secs) else {
+            continue;
+        };
+        let Ok(window_end) = i64::try_from(window.end_unix_secs) else {
+            continue;
+        };
+        provider_api_key_ids.push(provider_api_key_id.to_string());
+        window_scopes.push(window_scope.to_ascii_lowercase());
+        window_start_unix_secs.push(window_start);
+        window_end_unix_secs.push(window_end);
+        key_ids.insert(provider_api_key_id.to_string());
+    }
+    if provider_api_key_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('usage_counter_flush')::BIGINT)")
+        .execute(&mut *tx)
+        .await?;
+
+    let reset_windows = sqlx::query_scalar::<_, i64>(RESET_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_SQL)
+        .bind(&provider_api_key_ids)
+        .bind(&window_scopes)
+        .bind(&window_start_unix_secs)
+        .bind(&window_end_unix_secs)
+        .bind(reset_at_unix_secs)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    if reset_windows > 0 {
+        let mut key_ids = key_ids.into_iter().collect::<Vec<_>>();
+        key_ids.sort();
+        for key_id in key_ids {
+            sqlx::query(REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL)
+                .bind(key_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+
+    tx.commit().await?;
+    Ok(u64::try_from(reset_windows).unwrap_or_default())
 }
 
 fn map_usage_counter_delta_row(row: &PgRow) -> Result<UsageCounterDeltaRow, DataLayerError> {
@@ -9762,46 +10366,81 @@ async fn apply_provider_api_key_main_usage_delta_in_tx(
     Ok(())
 }
 
-async fn apply_provider_api_key_codex_window_usage_delta_in_tx(
+async fn apply_provider_api_key_codex_window_usage_deltas_in_tx(
     tx: &mut sqlx::Transaction<'_, Postgres>,
-    row: &UsageCounterDeltaRow,
-) -> Result<(), DataLayerError> {
-    let key_id = row.target_id.trim();
-    if key_id.is_empty() || row.usage_created_at_unix_secs.is_none() {
-        return Ok(());
-    }
-    if row.window_request_count_delta == 0
-        && row.window_total_tokens_delta == 0
-        && row.window_total_cost_usd_delta == 0.0
+    rows: &[UsageCounterDeltaRow],
+) -> Result<Vec<String>, DataLayerError> {
+    let mut completed_ids = Vec::new();
+    let mut delta_ids = Vec::new();
+    let mut provider_api_key_ids = Vec::new();
+    let mut request_count_deltas = Vec::new();
+    let mut total_tokens_deltas = Vec::new();
+    let mut total_cost_usd_deltas = Vec::new();
+    let mut usage_created_at_unix_secs = Vec::new();
+
+    for row in rows
+        .iter()
+        .filter(|row| row.kind == USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW)
     {
-        return Ok(());
-    }
-    if !row.window_total_cost_usd_delta.is_finite() {
-        return Err(DataLayerError::UnexpectedValue(format!(
-            "usage_counter_deltas.window_total_cost_usd_delta is not finite for {}",
-            row.id
-        )));
-    }
-    let usage_created_at_unix_secs = row
-        .usage_created_at_unix_secs
-        .and_then(|value| i64::try_from(value).ok())
-        .ok_or_else(|| {
+        let key_id = row.target_id.trim();
+        let Some(created_at) = row.usage_created_at_unix_secs else {
+            completed_ids.push(row.id.clone());
+            continue;
+        };
+        if key_id.is_empty()
+            || (row.window_request_count_delta == 0
+                && row.window_total_tokens_delta == 0
+                && row.window_total_cost_usd_delta == 0.0)
+        {
+            completed_ids.push(row.id.clone());
+            continue;
+        }
+        if !row.window_total_cost_usd_delta.is_finite() {
+            return Err(DataLayerError::UnexpectedValue(format!(
+                "usage_counter_deltas.window_total_cost_usd_delta is not finite for {}",
+                row.id
+            )));
+        }
+        let created_at = i64::try_from(created_at).map_err(|_| {
             DataLayerError::UnexpectedValue(format!(
                 "usage_counter_deltas.usage_created_at_unix_secs exceeds i64 for {}",
                 row.id
             ))
         })?;
 
-    sqlx::query(APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL)
-        .bind(key_id)
-        .bind(row.window_request_count_delta)
-        .bind(row.window_total_tokens_delta)
-        .bind(row.window_total_cost_usd_delta)
-        .bind(usage_created_at_unix_secs)
-        .execute(&mut **tx)
+        delta_ids.push(row.id.clone());
+        provider_api_key_ids.push(key_id.to_string());
+        request_count_deltas.push(row.window_request_count_delta);
+        total_tokens_deltas.push(row.window_total_tokens_delta);
+        total_cost_usd_deltas.push(row.window_total_cost_usd_delta);
+        usage_created_at_unix_secs.push(created_at);
+    }
+
+    if delta_ids.is_empty() {
+        return Ok(completed_ids);
+    }
+
+    let result_rows = sqlx::query(APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL)
+        .bind(&delta_ids)
+        .bind(&provider_api_key_ids)
+        .bind(&request_count_deltas)
+        .bind(&total_tokens_deltas)
+        .bind(&total_cost_usd_deltas)
+        .bind(&usage_created_at_unix_secs)
+        .fetch_all(&mut **tx)
         .await
         .map_postgres_err()?;
-    Ok(())
+
+    for result in result_rows {
+        if result
+            .try_get::<bool, _>("ready_to_complete")
+            .map_postgres_err()?
+        {
+            completed_ids.push(result.try_get::<String, _>("delta_id").map_postgres_err()?);
+        }
+    }
+
+    Ok(completed_ids)
 }
 
 async fn apply_provider_monthly_usage_delta_in_tx(
@@ -10119,12 +10758,48 @@ fn to_u64(value: i32, field_name: &str) -> Result<u64, DataLayerError> {
 struct UsageBodyStorage {
     inline_json: Option<String>,
     detached_blob_bytes: Option<Vec<u8>>,
+    object_upload: Option<UsageBodyObjectUpload>,
+    object_record: Option<UsageBodyObjectRecord>,
+    owned_object_key: Option<String>,
 }
 
 impl UsageBodyStorage {
     fn has_detached_blob(&self) -> bool {
         self.detached_blob_bytes.is_some()
+            || self.object_upload.is_some()
+            || self.object_record.is_some()
     }
+
+    fn has_persisted_body(&self) -> bool {
+        self.detached_blob_bytes.is_some()
+            || self
+                .object_record
+                .as_ref()
+                .is_some_and(|record| record.storage_status == "available")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UsageBodyObjectUpload {
+    object_key: String,
+    payload: Vec<u8>,
+    payload_format: String,
+    content_type: String,
+    content_encoding: Option<String>,
+    size_bytes: u64,
+    sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UsageBodyObjectRecord {
+    object_key: Option<String>,
+    payload_format: String,
+    content_type: Option<String>,
+    content_encoding: Option<String>,
+    size_bytes: Option<u64>,
+    sha256: Option<String>,
+    storage_status: String,
+    error_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -10286,11 +10961,19 @@ impl UsageSettlementPricingSnapshot {
     }
 }
 
-fn prepare_usage_body_storage(value: Option<&Value>) -> Result<UsageBodyStorage, DataLayerError> {
+fn prepare_usage_body_storage(
+    value: Option<&Value>,
+    object_store: Option<&UsageObjectStore>,
+    request_id: &str,
+    field: UsageBodyField,
+) -> Result<UsageBodyStorage, DataLayerError> {
     let Some(value) = value else {
         return Ok(UsageBodyStorage {
             inline_json: None,
             detached_blob_bytes: None,
+            object_upload: None,
+            object_record: None,
+            owned_object_key: None,
         });
     };
     let bytes = serde_json::to_vec(value).map_err(|err| {
@@ -10304,9 +10987,14 @@ fn prepare_usage_body_storage(value: Option<&Value>) -> Result<UsageBodyStorage,
                 ))
             })?),
             detached_blob_bytes: None,
+            object_upload: None,
+            object_record: None,
+            owned_object_key: None,
         });
     }
 
+    let size_bytes = bytes.len() as u64;
+    let sha256 = format!("{:x}", sha2::Sha256::digest(&bytes));
     let mut encoder = GzEncoder::new(Vec::new(), Compression::new(6));
     encoder.write_all(&bytes).map_err(|err| {
         DataLayerError::UnexpectedValue(format!("failed to compress usage json: {err}"))
@@ -10314,10 +11002,214 @@ fn prepare_usage_body_storage(value: Option<&Value>) -> Result<UsageBodyStorage,
     let detached_blob_bytes = encoder.finish().map_err(|err| {
         DataLayerError::UnexpectedValue(format!("failed to finish usage json compression: {err}"))
     })?;
+    if let Some(object_store) = object_store {
+        let object_key = object_store.content_object_key(
+            request_id,
+            field.as_storage_field(),
+            &sha256,
+            "json.gz",
+        );
+        return Ok(UsageBodyStorage {
+            inline_json: None,
+            detached_blob_bytes: None,
+            object_upload: Some(UsageBodyObjectUpload {
+                object_key,
+                payload: detached_blob_bytes,
+                payload_format: "json".to_string(),
+                content_type: "application/json".to_string(),
+                content_encoding: Some("gzip".to_string()),
+                size_bytes,
+                sha256,
+            }),
+            object_record: None,
+            owned_object_key: None,
+        });
+    }
+
     Ok(UsageBodyStorage {
         inline_json: None,
         detached_blob_bytes: Some(detached_blob_bytes),
+        object_upload: None,
+        object_record: None,
+        owned_object_key: None,
     })
+}
+
+fn apply_usage_body_object_metadata(
+    metadata: Option<&Value>,
+    request_id: &str,
+    field: UsageBodyField,
+    storage: &mut UsageBodyStorage,
+) {
+    if storage.object_upload.is_some() || storage.object_record.is_some() {
+        return;
+    }
+    let descriptor = metadata
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("usage_body_objects"))
+        .and_then(Value::as_object)
+        .and_then(|objects| objects.get(field.as_storage_field()))
+        .and_then(Value::as_object);
+    let Some(descriptor) = descriptor else {
+        return;
+    };
+
+    let expected_body_ref = usage_body_ref(request_id, field);
+    let descriptor_body_ref = descriptor
+        .get("body_ref")
+        .and_then(Value::as_str)
+        .map(str::trim);
+    if descriptor_body_ref != Some(expected_body_ref.as_str()) {
+        storage.object_record = Some(UsageBodyObjectRecord {
+            object_key: None,
+            payload_format: "raw".to_string(),
+            content_type: None,
+            content_encoding: None,
+            size_bytes: None,
+            sha256: None,
+            storage_status: "unavailable".to_string(),
+            error_message: Some("usage body object reference mismatch".to_string()),
+        });
+        return;
+    }
+
+    let storage_status = descriptor
+        .get("storage_status")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| matches!(*value, "available" | "unavailable"))
+        .unwrap_or("unavailable")
+        .to_string();
+    let object_key = descriptor
+        .get("object_key")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let payload_format = descriptor
+        .get("payload_format")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("raw")
+        .to_string();
+    let content_type = descriptor
+        .get("content_type")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let content_encoding = descriptor
+        .get("content_encoding")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let size_bytes = descriptor.get("size_bytes").and_then(Value::as_u64);
+    let sha256 = descriptor
+        .get("sha256")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| value.len() == 64)
+        .map(ToOwned::to_owned);
+    let error_message = descriptor
+        .get("error_message")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    if descriptor
+        .get("owned_by_current_capture")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        storage.owned_object_key = object_key.clone();
+    }
+    let invalid_available = storage_status == "available"
+        && (object_key.is_none() || size_bytes.is_none() || sha256.is_none());
+    storage.object_record = Some(UsageBodyObjectRecord {
+        object_key,
+        payload_format,
+        content_type,
+        content_encoding,
+        size_bytes,
+        sha256,
+        storage_status: if invalid_available {
+            "unavailable".to_string()
+        } else {
+            storage_status
+        },
+        error_message: if invalid_available {
+            Some("usage body object descriptor is incomplete".to_string())
+        } else {
+            error_message
+        },
+    });
+}
+
+async fn upload_usage_body_object(
+    object_store: Option<&UsageObjectStore>,
+    storage: &mut UsageBodyStorage,
+) {
+    let Some(upload) = storage.object_upload.take() else {
+        return;
+    };
+    let Some(object_store) = object_store else {
+        storage.object_record = Some(UsageBodyObjectRecord {
+            object_key: Some(upload.object_key),
+            payload_format: upload.payload_format,
+            content_type: Some(upload.content_type),
+            content_encoding: upload.content_encoding,
+            size_bytes: Some(upload.size_bytes),
+            sha256: Some(upload.sha256),
+            storage_status: "unavailable".to_string(),
+            error_message: Some("usage object store is not configured".to_string()),
+        });
+        return;
+    };
+
+    let object_key = upload.object_key.clone();
+    storage.owned_object_key = Some(object_key.clone());
+    let payload_format = upload.payload_format.clone();
+    let content_type = upload.content_type.clone();
+    let content_encoding = upload.content_encoding.clone();
+    let size_bytes = upload.size_bytes;
+    let sha256 = upload.sha256.clone();
+    storage.object_record = Some(
+        match object_store
+            .put(
+                &upload.object_key,
+                upload.payload,
+                upload.size_bytes,
+                upload.sha256,
+                &upload.content_type,
+                upload.content_encoding.as_deref(),
+                &upload.payload_format,
+            )
+            .await
+        {
+            Ok(stored) => UsageBodyObjectRecord {
+                object_key: Some(stored.object_key),
+                payload_format: stored.payload_format,
+                content_type: Some(stored.content_type),
+                content_encoding: stored.content_encoding,
+                size_bytes: Some(stored.size_bytes),
+                sha256: Some(stored.sha256),
+                storage_status: "available".to_string(),
+                error_message: None,
+            },
+            Err(err) => UsageBodyObjectRecord {
+                object_key: Some(object_key),
+                payload_format,
+                content_type: Some(content_type),
+                content_encoding,
+                size_bytes: Some(size_bytes),
+                sha256: Some(sha256),
+                storage_status: "unavailable".to_string(),
+                error_message: Some(err.to_string()),
+            },
+        },
+    );
 }
 
 fn json_bind_text(value: Option<&Value>) -> Result<Option<String>, DataLayerError> {
@@ -10399,6 +11291,101 @@ fn resolved_write_usage_body_ref(
                 .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned)
         })
+}
+
+async fn find_usage_body_object_keys_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    request_id: &str,
+) -> Result<Vec<String>, DataLayerError> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+SELECT object_key
+FROM usage_body_objects
+WHERE request_id = $1
+  AND storage_status = 'available'
+  AND object_key IS NOT NULL
+"#,
+    )
+    .bind(request_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_postgres_err()
+}
+
+async fn find_usage_body_object_keys(
+    pool: &PgPool,
+    request_id: &str,
+) -> Result<Vec<String>, DataLayerError> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+SELECT object_key
+FROM usage_body_objects
+WHERE request_id = $1
+  AND storage_status = 'available'
+  AND object_key IS NOT NULL
+"#,
+    )
+    .bind(request_id)
+    .fetch_all(pool)
+    .await
+    .map_postgres_err()
+}
+
+async fn cleanup_uncommitted_usage_body_objects(
+    pool: &PgPool,
+    object_store: Option<&UsageObjectStore>,
+    object_keys: &[String],
+) {
+    let Some(object_store) = object_store else {
+        return;
+    };
+    if object_keys.is_empty() {
+        return;
+    }
+
+    let referenced = match sqlx::query_scalar::<_, String>(
+        r#"
+SELECT object_key
+FROM usage_body_objects
+WHERE storage_status = 'available'
+  AND object_key = ANY($1)
+"#,
+    )
+    .bind(object_keys)
+    .fetch_all(pool)
+    .await
+    .map_postgres_err()
+    {
+        Ok(keys) => keys.into_iter().collect::<HashSet<_>>(),
+        Err(err) => {
+            warn!(
+                error = %err,
+                "failed to inspect usage body object references after transaction failure"
+            );
+            return;
+        }
+    };
+
+    delete_unreferenced_usage_body_objects(object_store, object_keys, &referenced).await;
+}
+
+async fn delete_unreferenced_usage_body_objects(
+    object_store: &UsageObjectStore,
+    object_keys: &[String],
+    referenced: &HashSet<String>,
+) {
+    for object_key in object_keys {
+        if referenced.contains(object_key) {
+            continue;
+        }
+        if let Err(err) = object_store.delete(object_key).await {
+            warn!(
+                object_key = %object_key,
+                error = %err,
+                "failed to delete uncommitted usage body object"
+            );
+        }
+    }
 }
 
 fn metadata_ref_value(
@@ -11134,6 +12121,15 @@ fn prepare_request_metadata_for_body_storage<const N: usize>(
         return None;
     }
 
+    if let Some(objects) = metadata
+        .get_mut("usage_body_objects")
+        .and_then(Value::as_object_mut)
+    {
+        for descriptor in objects.values_mut().filter_map(Value::as_object_mut) {
+            descriptor.remove("owned_by_current_capture");
+        }
+    }
+
     for (field, storage, value, explicit_ref) in body_fields {
         if storage.has_detached_blob() || value.is_some() || explicit_ref.is_some() {
             let ref_key = field.as_ref_key();
@@ -11176,6 +12172,55 @@ where
     }
 
     Ok(())
+}
+
+async fn sync_usage_body_object_storage(
+    executor: &mut sqlx::PgConnection,
+    request_id: &str,
+    field: UsageBodyField,
+    storage: &UsageBodyStorage,
+) -> Result<Option<UsageBodyCaptureState>, DataLayerError> {
+    let Some(record) = storage.object_record.as_ref() else {
+        return Ok(None);
+    };
+    let body_ref = usage_body_ref(request_id, field);
+    let size_bytes = record
+        .size_bytes
+        .map(i64::try_from)
+        .transpose()
+        .map_err(|_| {
+            DataLayerError::UnexpectedValue(format!(
+                "usage body object size exceeds PostgreSQL bigint: {body_ref}"
+            ))
+        })?;
+    sqlx::query(UPSERT_USAGE_BODY_OBJECT_SQL)
+        .bind(&body_ref)
+        .bind(request_id)
+        .bind(field.as_storage_field())
+        .bind(record.object_key.as_deref())
+        .bind(&record.payload_format)
+        .bind(record.content_type.as_deref())
+        .bind(record.content_encoding.as_deref())
+        .bind(size_bytes)
+        .bind(record.sha256.as_deref())
+        .bind(&record.storage_status)
+        .bind(record.error_message.as_deref())
+        .execute(&mut *executor)
+        .await
+        .map_postgres_err()?;
+
+    let status = sqlx::query_scalar::<_, String>(
+        "SELECT storage_status FROM usage_body_objects WHERE body_ref = $1 LIMIT 1",
+    )
+    .bind(&body_ref)
+    .fetch_one(&mut *executor)
+    .await
+    .map_postgres_err()?;
+    Ok(Some(if status == "available" {
+        UsageBodyCaptureState::Reference
+    } else {
+        UsageBodyCaptureState::Unavailable
+    }))
 }
 
 async fn sync_usage_http_audit_storage<'e, E>(

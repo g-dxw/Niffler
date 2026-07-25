@@ -15,6 +15,7 @@ mod error;
 pub mod lifecycle;
 pub mod maintenance;
 pub mod repository;
+mod usage_object_store;
 
 pub use backend::{
     DataBackends, DataLeaseBackends, DataReadRepositories, DataTransactionBackends,
@@ -27,4 +28,7 @@ pub use maintenance::{
     DatabaseMaintenanceSummary, DatabasePoolSummary, StatsDailyAggregationInput,
     StatsDailyAggregationSummary, StatsHourlyAggregationInput, StatsHourlyAggregationSummary,
     WalletDailyUsageAggregationInput, WalletDailyUsageAggregationResult,
+};
+pub use usage_object_store::{
+    StoredUsageObject, UsageObjectStore, UsageObjectStoreConfig, UsageObjectStoreWriter,
 };

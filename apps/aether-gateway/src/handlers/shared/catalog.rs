@@ -671,14 +671,7 @@ fn normalize_elapsed_codex_quota_windows_at(quota: &mut Value, now_unix_secs: u6
         window.insert("remaining_ratio".to_string(), json!(1.0));
         window.insert("is_exhausted".to_string(), json!(false));
         window.insert("reset_seconds".to_string(), json!(0u64));
-        window.insert(
-            "usage".to_string(),
-            json!({
-                "request_count": 0,
-                "total_tokens": 0,
-                "total_cost_usd": "0.00000000",
-            }),
-        );
+        window.remove("usage");
     }
 }
 
@@ -763,7 +756,7 @@ fn normalize_codex_quota_windows_for_display_at(quota: &mut Value, now_unix_secs
     refresh_codex_quota_summary_from_windows(quota);
 }
 
-fn preserve_quota_window_usage_state(current_status_snapshot: Option<&Value>, quota: &mut Value) {
+fn preserve_quota_window_duration(current_status_snapshot: Option<&Value>, quota: &mut Value) {
     let Some(current_windows) = current_status_snapshot
         .and_then(Value::as_object)
         .and_then(|snapshot| snapshot.get("quota"))
@@ -822,15 +815,6 @@ fn preserve_quota_window_usage_state(current_status_snapshot: Option<&Value>, qu
             {
                 next_window.insert("window_minutes".to_string(), json!(window_minutes));
             }
-        }
-        if let Some(usage_reset_at) = current_window
-            .get("usage_reset_at")
-            .and_then(admin_provider_quota_pure::coerce_json_u64)
-        {
-            next_window.insert("usage_reset_at".to_string(), json!(usage_reset_at));
-        }
-        if let Some(usage) = current_window.get("usage") {
-            next_window.insert("usage".to_string(), usage.clone());
         }
     }
 }
@@ -1638,7 +1622,7 @@ pub(crate) fn sync_provider_key_quota_status_snapshot(
         _ => None,
     }?;
     if normalized_provider_type == "codex" {
-        preserve_quota_window_usage_state(status_snapshot, &mut quota);
+        preserve_quota_window_duration(status_snapshot, &mut quota);
         normalize_codex_quota_windows_for_display_at(
             &mut quota,
             provider_key_status_snapshot_now_unix_secs(),
@@ -2894,28 +2878,11 @@ mod tests {
         assert_eq!(five_h.get("remaining_ratio"), Some(&json!(1.0)));
         assert_eq!(five_h.get("is_exhausted"), Some(&json!(false)));
         assert_eq!(five_h.get("reset_seconds"), Some(&json!(0u64)));
-        assert_eq!(
-            five_h
-                .get("usage")
-                .and_then(|usage| usage.get("request_count")),
-            Some(&json!(0))
-        );
-        assert_eq!(
-            five_h
-                .get("usage")
-                .and_then(|usage| usage.get("total_tokens")),
-            Some(&json!(0))
-        );
-        assert_eq!(
-            five_h
-                .get("usage")
-                .and_then(|usage| usage.get("total_cost_usd")),
-            Some(&json!("0.00000000"))
-        );
+        assert!(five_h.get("usage").is_none());
     }
 
     #[test]
-    fn sync_provider_key_quota_status_snapshot_preserves_codex_usage_state() {
+    fn sync_provider_key_quota_status_snapshot_drops_legacy_codex_usage_state() {
         let current_status_snapshot = json!({
             "quota": {
                 "version": 2,
@@ -2983,44 +2950,10 @@ mod tests {
             .find(|window| window.get("code") == Some(&json!("5h")))
             .expect("5h window should exist");
 
-        assert_eq!(weekly.get("usage_reset_at"), Some(&json!(1_775_600_000u64)));
-        assert_eq!(
-            weekly
-                .get("usage")
-                .and_then(|usage| usage.get("request_count")),
-            Some(&json!(3))
-        );
-        assert_eq!(
-            weekly
-                .get("usage")
-                .and_then(|usage| usage.get("total_tokens")),
-            Some(&json!(375))
-        );
-        assert_eq!(
-            weekly
-                .get("usage")
-                .and_then(|usage| usage.get("total_cost_usd")),
-            Some(&json!("0.60000000"))
-        );
-        assert_eq!(five_h.get("usage_reset_at"), Some(&json!(1_775_700_000u64)));
-        assert_eq!(
-            five_h
-                .get("usage")
-                .and_then(|usage| usage.get("request_count")),
-            Some(&json!(2))
-        );
-        assert_eq!(
-            five_h
-                .get("usage")
-                .and_then(|usage| usage.get("total_tokens")),
-            Some(&json!(225))
-        );
-        assert_eq!(
-            five_h
-                .get("usage")
-                .and_then(|usage| usage.get("total_cost_usd")),
-            Some(&json!("0.30000000"))
-        );
+        assert!(weekly.get("usage_reset_at").is_none());
+        assert!(weekly.get("usage").is_none());
+        assert!(five_h.get("usage_reset_at").is_none());
+        assert!(five_h.get("usage").is_none());
     }
 
     #[test]

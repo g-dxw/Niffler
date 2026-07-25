@@ -65,6 +65,12 @@ WITH aggregated AS (
           ELSE NULL
         END,
         CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
           WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
                ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
           THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
@@ -76,6 +82,12 @@ WITH aggregated AS (
           WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
                ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
           THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
+          ELSE NULL
+        END,
+        CASE
+          WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}', ''))
+               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+          THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}' AS DOUBLE PRECISION)
           ELSE NULL
         END,
         CASE

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildPoolStatsDisplay,
+  hasPendingCodexCycleStats,
   type PoolStatsKeyInput,
 } from '@/features/pool/utils/poolStatsDisplay'
 
@@ -60,7 +61,7 @@ describe('poolStatsDisplay', () => {
     })
   })
 
-  it('renders missing cycle usage as dashes instead of account-total fallback', () => {
+  it('renders missing cycle usage as pending without inventing absent windows', () => {
     const display = buildPoolStatsDisplay(
       createCodexKey({
         status_snapshot: {
@@ -77,14 +78,77 @@ describe('poolStatsDisplay', () => {
     if (display.kind !== 'codex_cycle') throw new Error('expected codex cycle display')
 
     expect(metricValues(display.groups[0].metrics)).toEqual({
-      request_count: '—',
-      total_tokens: '—',
-      total_cost_usd: '—',
+      request_count: '统计中',
+      total_tokens: '统计中',
+      total_cost_usd: '统计中',
     })
-    expect(metricValues(display.groups[1].metrics)).toEqual({
-      request_count: '—',
-      total_tokens: '—',
-      total_cost_usd: '—',
+    expect(display.groups.map(group => group.label)).toEqual(['5H'])
+  })
+
+  it('detects only missing account-window stats as pending', () => {
+    expect(hasPendingCodexCycleStats(
+      createCodexKey({
+        status_snapshot: {
+          quota: {
+            windows: [
+              { code: 'weekly', scope: 'account', usage: null },
+              { code: 'weekly', scope: 'feature', usage: null },
+            ],
+          },
+        },
+      }),
+      'codex',
+    )).toBe(true)
+
+    expect(hasPendingCodexCycleStats(
+      createCodexKey({
+        status_snapshot: {
+          quota: {
+            windows: [
+              { code: 'weekly', scope: 'feature', usage: null },
+              {
+                code: '5h',
+                scope: 'account',
+                usage: { request_count: 0, total_tokens: 0, total_cost_usd: 0 },
+              },
+            ],
+          },
+        },
+      }),
+      'codex',
+    )).toBe(false)
+  })
+
+  it('renders only the weekly window when upstream exposes only weekly quota', () => {
+    const display = buildPoolStatsDisplay(
+      createCodexKey({
+        status_snapshot: {
+          quota: {
+            windows: [{
+              code: 'weekly',
+              window_minutes: 10_080,
+              usage: {
+                request_count: 4,
+                total_tokens: 800,
+                total_cost_usd: '0.25',
+              },
+            }],
+          },
+        },
+      }),
+      'codex',
+      'current_cycle',
+    )
+
+    expect(display.kind).toBe('codex_cycle')
+    if (display.kind !== 'codex_cycle') throw new Error('expected codex cycle display')
+
+    expect(display.groups.map(group => group.code)).toEqual(['weekly'])
+    expect(display.groups.map(group => group.label)).toEqual(['1周'])
+    expect(metricValues(display.groups[0].metrics)).toEqual({
+      request_count: '4',
+      total_tokens: '800',
+      total_cost_usd: '$0.250',
     })
   })
 

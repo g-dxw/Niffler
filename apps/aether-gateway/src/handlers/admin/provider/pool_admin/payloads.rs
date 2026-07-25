@@ -12,7 +12,9 @@ use aether_data_contracts::repository::pool_scores::StoredPoolMemberScore;
 use aether_data_contracts::repository::provider_catalog::{
     StoredProviderCatalogEndpoint, StoredProviderCatalogKey,
 };
-use aether_data_contracts::repository::usage::StoredProviderApiKeyWindowUsageSummary;
+use aether_data_contracts::repository::usage::{
+    ProviderApiKeyWindowUsageRequest, StoredProviderApiKeyWindowUsageSummary,
+};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -399,14 +401,7 @@ fn admin_pool_prune_expired_codex_window_usage_at(
         if now_unix_secs < reset_at {
             continue;
         }
-        window.insert(
-            "usage".to_string(),
-            json!({
-                "request_count": 0,
-                "total_tokens": 0,
-                "total_cost_usd": "0.00000000",
-            }),
-        );
+        window.remove("usage");
     }
 }
 
@@ -416,11 +411,8 @@ fn admin_pool_prune_expired_codex_window_usage(status_snapshot: &mut serde_json:
 
 fn admin_pool_apply_codex_window_usage_summaries(
     status_snapshot: &mut serde_json::Value,
-    usage_by_code: Option<&BTreeMap<String, StoredProviderApiKeyWindowUsageSummary>>,
+    usage_by_identity: Option<&BTreeMap<String, StoredProviderApiKeyWindowUsageSummary>>,
 ) {
-    let Some(usage_by_code) = usage_by_code else {
-        return;
-    };
     let Some(windows) = status_snapshot
         .get_mut("quota")
         .and_then(serde_json::Value::as_object_mut)
@@ -434,13 +426,22 @@ fn admin_pool_apply_codex_window_usage_summaries(
         .iter_mut()
         .filter_map(serde_json::Value::as_object_mut)
     {
-        let Some(summary) = window
-            .get("code")
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .map(str::to_ascii_lowercase)
-            .and_then(|code| usage_by_code.get(&code))
+        window.remove("usage");
+    }
+    let Some(usage_by_identity) = usage_by_identity else {
+        return;
+    };
+
+    for window in windows
+        .iter_mut()
+        .filter_map(serde_json::Value::as_object_mut)
+    {
+        let Some(identity) = admin_pool_codex_window_usage_request_from_snapshot("", window)
+            .map(|request| admin_pool_codex_window_usage_identity(&request))
         else {
+            continue;
+        };
+        let Some(summary) = usage_by_identity.get(&identity) else {
             continue;
         };
         let total_cost_usd = if summary.total_cost_usd.is_finite() {
@@ -457,6 +458,98 @@ fn admin_pool_apply_codex_window_usage_summaries(
             }),
         );
     }
+}
+
+fn admin_pool_codex_window_usage_request_from_snapshot(
+    provider_api_key_id: &str,
+    window: &serde_json::Map<String, serde_json::Value>,
+) -> Option<ProviderApiKeyWindowUsageRequest> {
+    let scope = window
+        .get("scope")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .unwrap_or("account")
+        .to_ascii_lowercase();
+    if matches!(scope.as_str(), "feature" | "model" | "workspace") {
+        return None;
+    }
+    let code = window
+        .get("code")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|code| !code.is_empty())?
+        .to_ascii_lowercase();
+    let reset_at = admin_pool_json_to_u64(window.get("reset_at"))?;
+    let window_seconds = admin_pool_json_to_u64(window.get("window_seconds"))
+        .or_else(|| {
+            admin_pool_json_to_u64(window.get("window_minutes"))
+                .and_then(|minutes| minutes.checked_mul(60))
+        })
+        .or_else(|| match code.as_str() {
+            "5h" => Some(18_000),
+            "7d" | "weekly" => Some(604_800),
+            "1m" | "monthly" => Some(2_592_000),
+            _ => None,
+        })?;
+    let window_start = reset_at.checked_sub(window_seconds)?;
+    if window_start >= reset_at {
+        return None;
+    }
+    Some(ProviderApiKeyWindowUsageRequest {
+        provider_api_key_id: provider_api_key_id.to_string(),
+        window_scope: scope,
+        window_code: code,
+        start_unix_secs: window_start,
+        end_unix_secs: reset_at,
+    })
+}
+
+pub(crate) fn admin_pool_codex_window_usage_identity(
+    request: &ProviderApiKeyWindowUsageRequest,
+) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        request.window_scope.trim().to_ascii_lowercase(),
+        request.window_code.trim().to_ascii_lowercase(),
+        request.start_unix_secs,
+        request.end_unix_secs
+    )
+}
+
+pub(crate) fn admin_pool_codex_window_usage_summary_identity(
+    summary: &StoredProviderApiKeyWindowUsageSummary,
+) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        summary.window_scope.trim().to_ascii_lowercase(),
+        summary.window_code.trim().to_ascii_lowercase(),
+        summary.start_unix_secs,
+        summary.end_unix_secs
+    )
+}
+
+pub(crate) fn admin_pool_codex_window_usage_requests(
+    key: &StoredProviderCatalogKey,
+    provider_type: &str,
+) -> Vec<ProviderApiKeyWindowUsageRequest> {
+    if !provider_type.trim().eq_ignore_ascii_case("codex") {
+        return Vec::new();
+    }
+    let status_snapshot = provider_key_status_snapshot_payload(key, provider_type);
+    let Some(windows) = status_snapshot
+        .get("quota")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|quota| quota.get("windows"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Vec::new();
+    };
+
+    windows
+        .iter()
+        .filter_map(serde_json::Value::as_object)
+        .filter_map(|window| admin_pool_codex_window_usage_request_from_snapshot(&key.id, window))
+        .collect()
 }
 
 fn admin_pool_quota_windows<'a>(
@@ -1355,7 +1448,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn expired_codex_window_usage_is_zeroed_for_display() {
+    fn expired_codex_window_usage_is_removed_for_display() {
         let mut snapshot = json!({
             "quota": {
                 "windows": [
@@ -1374,10 +1467,7 @@ mod tests {
 
         admin_pool_prune_expired_codex_window_usage(&mut snapshot);
 
-        let usage = &snapshot["quota"]["windows"][0]["usage"];
-        assert_eq!(usage["request_count"], json!(0));
-        assert_eq!(usage["total_tokens"], json!(0));
-        assert_eq!(usage["total_cost_usd"], json!("0.00000000"));
+        assert!(snapshot["quota"]["windows"][0].get("usage").is_none());
     }
 
     #[test]
@@ -1404,6 +1494,57 @@ mod tests {
         assert_eq!(usage["request_count"], json!(3));
         assert_eq!(usage["total_tokens"], json!(375));
         assert_eq!(usage["total_cost_usd"], json!("0.60000000"));
+    }
+
+    #[test]
+    fn codex_account_usage_matches_scope_and_window_bounds_not_code_only() {
+        let mut snapshot = json!({
+            "quota": {
+                "windows": [
+                    {
+                        "code": "weekly",
+                        "scope": "account",
+                        "reset_at": 604_800,
+                        "window_seconds": 604_800
+                    },
+                    {
+                        "code": "weekly",
+                        "scope": "feature",
+                        "reset_at": 604_800,
+                        "window_seconds": 604_800
+                    },
+                    {
+                        "code": "weekly",
+                        "scope": "account",
+                        "reset_at": 1_209_600,
+                        "window_seconds": 604_800
+                    }
+                ]
+            }
+        });
+        let summary = StoredProviderApiKeyWindowUsageSummary {
+            provider_api_key_id: "key-1".to_string(),
+            window_scope: "account".to_string(),
+            window_code: "weekly".to_string(),
+            start_unix_secs: 0,
+            end_unix_secs: 604_800,
+            request_count: 2,
+            total_tokens: 200,
+            total_cost_usd: 0.25,
+        };
+        let summaries = BTreeMap::from([(
+            admin_pool_codex_window_usage_summary_identity(&summary),
+            summary,
+        )]);
+
+        admin_pool_apply_codex_window_usage_summaries(&mut snapshot, Some(&summaries));
+
+        assert_eq!(
+            snapshot["quota"]["windows"][0]["usage"]["request_count"],
+            json!(2)
+        );
+        assert!(snapshot["quota"]["windows"][1].get("usage").is_none());
+        assert!(snapshot["quota"]["windows"][2].get("usage").is_none());
     }
 
     #[test]

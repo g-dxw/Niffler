@@ -74,20 +74,32 @@ use crate::repository::video_tasks::{
 use crate::repository::wallet::{
     SqlxWalletRepository, WalletReadRepository, WalletWriteRepository,
 };
-use crate::DataLayerError;
+use crate::{DataLayerError, UsageObjectStore};
 
 #[derive(Debug, Clone)]
 pub struct PostgresBackend {
     config: PostgresPoolConfig,
     pool: PostgresPool,
+    usage_object_store: Option<Arc<UsageObjectStore>>,
 }
 
 impl PostgresBackend {
     pub fn from_config(config: PostgresPoolConfig) -> Result<Self, DataLayerError> {
+        Self::from_config_with_usage_object_store(config, None)
+    }
+
+    pub fn from_config_with_usage_object_store(
+        config: PostgresPoolConfig,
+        usage_object_store: Option<Arc<UsageObjectStore>>,
+    ) -> Result<Self, DataLayerError> {
         let factory = PostgresPoolFactory::new(config.clone())?;
         let pool = factory.connect_lazy()?;
 
-        Ok(Self { config, pool })
+        Ok(Self {
+            config,
+            pool,
+            usage_object_store,
+        })
     }
 
     pub fn config(&self) -> &PostgresPoolConfig {
@@ -100,6 +112,10 @@ impl PostgresBackend {
 
     pub fn pool_clone(&self) -> PostgresPool {
         self.pool.clone()
+    }
+
+    pub fn usage_object_store(&self) -> Option<Arc<UsageObjectStore>> {
+        self.usage_object_store.clone()
     }
 
     pub fn auth_api_key_read_repository(&self) -> Arc<dyn AuthApiKeyReadRepository> {
@@ -253,7 +269,10 @@ impl PostgresBackend {
     }
 
     pub fn usage_read_repository(&self) -> Arc<dyn UsageReadRepository> {
-        Arc::new(SqlxUsageReadRepository::new(self.pool_clone()))
+        Arc::new(SqlxUsageReadRepository::with_usage_object_store(
+            self.pool_clone(),
+            self.usage_object_store.clone(),
+        ))
     }
 
     pub fn user_read_repository(&self) -> Arc<dyn UserReadRepository> {
@@ -261,7 +280,10 @@ impl PostgresBackend {
     }
 
     pub fn usage_write_repository(&self) -> Arc<dyn UsageWriteRepository> {
-        Arc::new(SqlxUsageReadRepository::new(self.pool_clone()))
+        Arc::new(SqlxUsageReadRepository::with_usage_object_store(
+            self.pool_clone(),
+            self.usage_object_store.clone(),
+        ))
     }
 
     pub fn wallet_read_repository(&self) -> Arc<dyn WalletReadRepository> {

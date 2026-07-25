@@ -133,11 +133,52 @@ CREATE TABLE IF NOT EXISTS usage_counter_deltas (
     removed_last_used_at_unix_secs INTEGER,
     usage_created_at_unix_secs INTEGER,
     created_at INTEGER NOT NULL,
-    processed_at INTEGER
+    processed_at INTEGER,
+    available_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_unprocessed ON usage_counter_deltas (created_at, id);
+CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_ready ON usage_counter_deltas (available_at, created_at, id);
 CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_processed ON usage_counter_deltas (processed_at, created_at, id);
 CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_request_kind ON usage_counter_deltas (request_id, kind, target_id);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_window_usage_counters (
+    provider_api_key_id TEXT NOT NULL,
+    window_scope TEXT NOT NULL DEFAULT 'account',
+    window_code TEXT NOT NULL,
+    window_start_unix_secs INTEGER NOT NULL,
+    window_end_unix_secs INTEGER NOT NULL,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd REAL NOT NULL DEFAULT 0,
+    rebuilt_at INTEGER,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (provider_api_key_id, window_scope, window_code, window_start_unix_secs, window_end_unix_secs),
+    CONSTRAINT provider_api_key_window_usage_counters_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES provider_api_keys (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_window_usage_resets (
+    provider_api_key_id TEXT NOT NULL,
+    window_scope TEXT NOT NULL DEFAULT 'account',
+    window_start_unix_secs INTEGER NOT NULL,
+    window_end_unix_secs INTEGER NOT NULL,
+    usage_reset_at_unix_secs INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (provider_api_key_id, window_scope, window_start_unix_secs, window_end_unix_secs),
+    CONSTRAINT provider_api_key_window_usage_resets_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES provider_api_keys (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_window_usage_applications (
+    delta_id TEXT NOT NULL,
+    provider_api_key_id TEXT NOT NULL,
+    window_scope TEXT NOT NULL,
+    window_code TEXT NOT NULL,
+    window_start_unix_secs INTEGER NOT NULL,
+    window_end_unix_secs INTEGER NOT NULL,
+    applied_at INTEGER NOT NULL,
+    PRIMARY KEY (delta_id, provider_api_key_id, window_scope, window_code, window_start_unix_secs, window_end_unix_secs),
+    CONSTRAINT provider_api_key_window_usage_applications_delta_fkey FOREIGN KEY (delta_id) REFERENCES usage_counter_deltas (id) ON DELETE CASCADE,
+    CONSTRAINT provider_api_key_window_usage_applications_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES provider_api_keys (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_window_usage_applications_key ON provider_api_key_window_usage_applications (provider_api_key_id, window_code, window_end_unix_secs);
 
 CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (
     request_id TEXT PRIMARY KEY NOT NULL,

@@ -1,9 +1,8 @@
 use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_provider_key_write;
+use crate::handlers::admin::provider::pool_admin::payloads::admin_pool_codex_window_usage_requests;
 use crate::handlers::admin::provider::shared::paths::admin_reset_cycle_stats_key_id;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
-use crate::handlers::admin::shared::{
-    attach_admin_audit_response, provider_key_status_snapshot_payload,
-};
+use crate::handlers::admin::shared::attach_admin_audit_response;
 use crate::GatewayError;
 use axum::{
     body::{Body, Bytes},
@@ -11,7 +10,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::{json, Value};
+use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) async fn maybe_handle(
@@ -39,7 +38,7 @@ pub(super) async fn maybe_handle(
     if let Some(response) = maybe_freeze_migrated_legacy_provider_key_write(state, &key_id).await? {
         return Ok(Some(response));
     }
-    let Some(mut key) = state
+    let Some(key) = state
         .read_provider_catalog_keys_by_ids(std::slice::from_ref(&key_id))
         .await?
         .into_iter()
@@ -65,17 +64,13 @@ pub(super) async fn maybe_handle(
     }
 
     let now_unix_secs = current_unix_secs();
-    let mut status_snapshot = provider_key_status_snapshot_payload(&key, &provider.provider_type);
-    let reset_windows = reset_codex_cycle_usage_windows(&mut status_snapshot, now_unix_secs);
+    let windows = admin_pool_codex_window_usage_requests(&key, &provider.provider_type);
+    let reset_windows = state
+        .reset_provider_api_key_codex_window_usage_stats(&windows, now_unix_secs)
+        .await?;
     if reset_windows == 0 {
         return Ok(Some(bad_request_response("当前账号没有可重置的周期窗口")));
     }
-
-    key.status_snapshot = Some(status_snapshot);
-    key.updated_at_unix_secs = Some(now_unix_secs);
-    let Some(_) = state.update_provider_catalog_key(&key).await? else {
-        return Ok(None);
-    };
 
     Ok(Some(attach_admin_audit_response(
         Json(json!({
@@ -99,44 +94,6 @@ fn current_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn reset_codex_cycle_usage_windows(status_snapshot: &mut Value, now_unix_secs: u64) -> usize {
-    let Some(windows) = status_snapshot
-        .get_mut("quota")
-        .and_then(Value::as_object_mut)
-        .and_then(|quota| quota.get_mut("windows"))
-        .and_then(Value::as_array_mut)
-    else {
-        return 0;
-    };
-
-    let mut reset_count = 0;
-    for window in windows.iter_mut().filter_map(Value::as_object_mut) {
-        let scope = window
-            .get("scope")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or("account");
-        if scope.eq_ignore_ascii_case("feature")
-            || scope.eq_ignore_ascii_case("model")
-            || scope.eq_ignore_ascii_case("workspace")
-        {
-            continue;
-        }
-        window.insert("usage_reset_at".to_string(), json!(now_unix_secs));
-        window.insert(
-            "usage".to_string(),
-            json!({
-                "request_count": 0,
-                "total_tokens": 0,
-                "total_cost_usd": "0.00000000",
-            }),
-        );
-        reset_count += 1;
-    }
-
-    reset_count
-}
-
 fn bad_request_response(detail: impl Into<String>) -> Response<Body> {
     (
         http::StatusCode::BAD_REQUEST,
@@ -151,66 +108,4 @@ fn not_found_response(detail: impl Into<String>) -> Response<Body> {
         Json(json!({ "detail": detail.into() })),
     )
         .into_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::reset_codex_cycle_usage_windows;
-    use serde_json::json;
-
-    #[test]
-    fn reset_cycle_usage_marks_codex_windows_and_removes_stale_usage() {
-        let mut snapshot = json!({
-            "quota": {
-                "windows": [
-                    {
-                        "code": "5h",
-                        "usage": {
-                            "request_count": 9,
-                            "total_tokens": 100,
-                            "total_cost_usd": "1.00000000"
-                        }
-                    },
-                    {
-                        "code": "weekly",
-                        "usage": {
-                            "request_count": 10,
-                            "total_tokens": 200,
-                            "total_cost_usd": "2.00000000"
-                        }
-                    },
-                    {
-                        "code": "monthly",
-                        "usage": {
-                            "request_count": 11
-                        }
-                    },
-                    {
-                        "code": "spark:5h",
-                        "scope": "feature",
-                        "usage": {
-                            "request_count": 12
-                        }
-                    }
-                ]
-            }
-        });
-
-        assert_eq!(reset_codex_cycle_usage_windows(&mut snapshot, 1_234), 3);
-        let windows = snapshot["quota"]["windows"].as_array().expect("windows");
-        assert_eq!(windows[0]["usage_reset_at"], json!(1_234));
-        assert_eq!(windows[0]["usage"]["request_count"], json!(0));
-        assert_eq!(windows[0]["usage"]["total_tokens"], json!(0));
-        assert_eq!(windows[0]["usage"]["total_cost_usd"], json!("0.00000000"));
-        assert_eq!(windows[1]["usage_reset_at"], json!(1_234));
-        assert_eq!(windows[1]["usage"]["request_count"], json!(0));
-        assert_eq!(windows[1]["usage"]["total_tokens"], json!(0));
-        assert_eq!(windows[1]["usage"]["total_cost_usd"], json!("0.00000000"));
-        assert_eq!(windows[2]["usage_reset_at"], json!(1_234));
-        assert_eq!(windows[2]["usage"]["request_count"], json!(0));
-        assert_eq!(windows[2]["usage"]["total_tokens"], json!(0));
-        assert_eq!(windows[2]["usage"]["total_cost_usd"], json!("0.00000000"));
-        assert!(windows[3].get("usage_reset_at").is_none());
-        assert_eq!(windows[3]["usage"]["request_count"], json!(12));
-    }
 }

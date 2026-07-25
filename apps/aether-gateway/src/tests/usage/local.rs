@@ -874,7 +874,7 @@ async fn gateway_truncates_deep_request_echo_for_local_openai_chat_sync_usage_im
 }
 
 #[tokio::test]
-async fn gateway_applies_system_max_request_body_size_to_local_openai_chat_sync_usage() {
+async fn gateway_preserves_full_request_body_despite_legacy_size_setting() {
     let usage_repository = Arc::new(InMemoryUsageReadRepository::default());
     let request_candidate_repository = Arc::new(InMemoryRequestCandidateRepository::default());
 
@@ -991,19 +991,21 @@ async fn gateway_applies_system_max_request_body_size_to_local_openai_chat_sync_
     assert_eq!(stored_usage.total_tokens, 5);
     assert_eq!(
         stored_usage.request_body_state,
-        Some(UsageBodyCaptureState::Truncated)
+        Some(UsageBodyCaptureState::Inline)
     );
     assert_eq!(
         stored_usage.provider_request_body_state,
-        Some(UsageBodyCaptureState::Truncated)
+        Some(UsageBodyCaptureState::Inline)
     );
+    let request_body = stored_usage
+        .request_body
+        .as_ref()
+        .expect("full request body should be preserved");
     assert_eq!(
-        stored_usage
-            .request_body
-            .as_ref()
-            .and_then(|value| value.get("truncated"))
-            .and_then(|value| value.as_bool()),
-        Some(true)
+        request_body["messages"][0]["content"]
+            .as_str()
+            .map(str::len),
+        Some(2048)
     );
 
     gateway_handle.abort();
@@ -1802,7 +1804,7 @@ async fn gateway_handles_local_openai_chat_stream_report_with_local_reporting_wh
 }
 
 #[tokio::test]
-async fn gateway_preserves_stream_usage_when_max_response_body_size_truncates_capture() {
+async fn gateway_marks_full_stream_body_unavailable_without_object_store() {
     let usage_repository = Arc::new(InMemoryUsageReadRepository::default());
     let request_candidate_repository = Arc::new(InMemoryRequestCandidateRepository::default());
 
@@ -1954,20 +1956,14 @@ async fn gateway_preserves_stream_usage_when_max_response_body_size_truncates_ca
     assert_eq!(stored_usage.total_tokens, 6);
     assert_eq!(
         stored_usage.response_body_state,
-        Some(UsageBodyCaptureState::Truncated)
+        Some(UsageBodyCaptureState::Unavailable)
     );
     assert_eq!(
         stored_usage.client_response_body_state,
-        Some(UsageBodyCaptureState::Truncated)
+        Some(UsageBodyCaptureState::Unavailable)
     );
-    assert_eq!(
-        stored_usage
-            .response_body
-            .as_ref()
-            .and_then(|value| value.get("truncated"))
-            .and_then(|value| value.as_bool()),
-        Some(true)
-    );
+    assert!(stored_usage.response_body.is_none());
+    assert!(stored_usage.client_response_body.is_none());
 
     gateway_handle.abort();
     execution_runtime_handle.abort();

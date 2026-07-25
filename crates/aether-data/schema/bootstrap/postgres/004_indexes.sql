@@ -596,10 +596,18 @@ CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_processed ON public.usage_cou
 
 
 --
--- Name: ix_usage_counter_deltas_unprocessed; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_usage_counter_deltas_ready; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_unprocessed ON public.usage_counter_deltas USING btree (created_at, id) WHERE processed_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_ready ON public.usage_counter_deltas USING btree (available_at, created_at, id) WHERE processed_at IS NULL;
+
+
+
+--
+-- Name: ix_provider_api_key_window_usage_applications_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_window_usage_applications_key ON public.provider_api_key_window_usage_applications USING btree (provider_api_key_id, window_code, window_end_unix_secs);
 
 
 

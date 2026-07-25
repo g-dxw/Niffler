@@ -605,6 +605,7 @@ afterEach(() => {
     app.unmount()
     root.remove()
   }
+  vi.useRealTimers()
 })
 
 describe('PoolManagement Codex cycle stats mode', () => {
@@ -625,8 +626,8 @@ describe('PoolManagement Codex cycle stats mode', () => {
     expect(root.querySelectorAll('[data-testid="pool-stats-cycle-group-weekly"]').length).toBeGreaterThan(0)
     expect(root.querySelector('[data-testid="pool-stats-5h-request_count"]')?.textContent?.trim()).toBe('7')
     expect(root.querySelector('[data-testid="pool-stats-weekly-total_tokens"]')?.textContent?.trim()).toBe('0')
-    expect(root.querySelector('[data-testid="pool-stats-cycle-grid"]')?.className).toContain('grid-cols-[38px_64px_10px_64px]')
-    expect(root.querySelector('[data-testid="pool-stats-cycle-grid"]')?.className).toContain('w-[188px]')
+    expect(root.querySelector('[data-testid="pool-stats-cycle-grid"]')?.getAttribute('style')).toContain('38px repeat(2, minmax(0, 1fr))')
+    expect(root.querySelector('[data-testid="pool-stats-cycle-grid"]')?.className).toContain('min-w-[188px]')
     expect(root.querySelector('[data-testid="pool-stats-cycle-grid"]')?.className).toContain('min-h-16')
     expect(root.querySelector('[data-testid="pool-stats-5h-request_count"]')?.className).toContain('text-center')
     expect(root.querySelector('[data-testid="pool-stats-weekly-total_tokens"]')?.className).toContain('text-center')
@@ -640,6 +641,121 @@ describe('PoolManagement Codex cycle stats mode', () => {
     )
     expect(root.textContent).not.toContain('累计')
     expect(root.textContent).not.toContain('总计')
+  })
+
+  it('renders every upstream Codex quota window including monthly', async () => {
+    const codexKey = createPoolKey('codex', {
+      status_snapshot: {
+        oauth: { code: 'none' },
+        account: { code: 'ok', blocked: false },
+        quota: {
+          code: 'ok',
+          exhausted: false,
+          provider_type: 'codex',
+          windows: [{
+            code: '5h',
+            label: '5H',
+            scope: 'account',
+            remaining_ratio: 0.8,
+            reset_at: 2_000_000_000,
+            window_minutes: 300,
+            usage: { request_count: 1, total_tokens: 100, total_cost_usd: '0.01' },
+          }, {
+            code: 'weekly',
+            label: '7D',
+            scope: 'account',
+            remaining_ratio: 0.7,
+            reset_at: 2_000_000_000,
+            window_minutes: 10_080,
+            usage: { request_count: 2, total_tokens: 200, total_cost_usd: '0.02' },
+          }, {
+            code: '1m',
+            label: '1M',
+            scope: 'account',
+            remaining_ratio: 0.6,
+            reset_at: 2_000_000_000,
+            window_minutes: 43_200,
+            usage: { request_count: 3, total_tokens: 300, total_cost_usd: '0.03' },
+          }],
+        },
+      },
+    })
+    endpointMocks.getPoolOverview.mockResolvedValue({ items: [createOverview('codex')] })
+    endpointMocks.listPoolKeys.mockResolvedValue(createKeyPage(codexKey))
+    endpointMocks.getProvider.mockResolvedValue(createProvider('codex'))
+
+    const root = mountPoolManagement()
+    await settle()
+
+    const labels = Array.from(
+      root.querySelectorAll('[data-testid="pool-quota-progress-label"]'),
+      element => element.textContent?.trim(),
+    )
+    expect(labels).toContain('5H')
+    expect(labels).toContain('周')
+    expect(labels).toContain('月')
+  })
+
+  it('briefly reloads the current page until pending Codex cycle stats are ready', async () => {
+    vi.useFakeTimers()
+    const pendingKey = createPoolKey('codex', {
+      status_snapshot: {
+        oauth: { code: 'none' },
+        account: { code: 'ok', blocked: false },
+        quota: {
+          code: 'ok',
+          exhausted: false,
+          provider_type: 'codex',
+          windows: [{
+            code: 'weekly',
+            scope: 'account',
+            reset_at: 2_000_000_000,
+            window_minutes: 10_080,
+            usage: null,
+          }],
+        },
+      },
+    })
+    const readyKey = createPoolKey('codex', {
+      status_snapshot: {
+        oauth: { code: 'none' },
+        account: { code: 'ok', blocked: false },
+        quota: {
+          code: 'ok',
+          exhausted: false,
+          provider_type: 'codex',
+          windows: [{
+            code: 'weekly',
+            scope: 'account',
+            reset_at: 2_000_000_000,
+            window_minutes: 10_080,
+            usage: { request_count: 3, total_tokens: 600, total_cost_usd: '0.12' },
+          }],
+        },
+      },
+    })
+    endpointMocks.getPoolOverview.mockResolvedValue({ items: [createOverview('codex')] })
+    endpointMocks.listPoolKeys
+      .mockResolvedValueOnce(createKeyPage(pendingKey))
+      .mockResolvedValueOnce(createKeyPage(readyKey))
+    endpointMocks.getProvider.mockResolvedValue(createProvider('codex'))
+
+    const root = mountPoolManagement()
+    await settle()
+
+    expect(endpointMocks.listPoolKeys).toHaveBeenCalledTimes(1)
+    expect(root.textContent).toContain('统计中')
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await settle()
+
+    expect(endpointMocks.listPoolKeys).toHaveBeenCalledTimes(2)
+    expect(root.textContent).toContain('600')
+    expect(root.textContent).not.toContain('统计中')
+
+    await vi.advanceTimersByTimeAsync(6_000)
+    await settle()
+    expect(endpointMocks.listPoolKeys).toHaveBeenCalledTimes(2)
   })
 
   it('renders unified pool score in the key list with a calculation entry point', async () => {

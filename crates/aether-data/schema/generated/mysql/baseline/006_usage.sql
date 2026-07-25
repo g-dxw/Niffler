@@ -135,10 +135,51 @@ CREATE TABLE IF NOT EXISTS usage_counter_deltas (
     `usage_created_at_unix_secs` BIGINT,
     `created_at` BIGINT NOT NULL,
     `processed_at` BIGINT,
+    `available_at` BIGINT NOT NULL,
     PRIMARY KEY (`id`),
-    KEY ix_usage_counter_deltas_unprocessed (`created_at`, `id`),
+    KEY ix_usage_counter_deltas_ready (`available_at`, `created_at`, `id`),
     KEY ix_usage_counter_deltas_processed (`processed_at`, `created_at`, `id`),
     KEY ix_usage_counter_deltas_request_kind (`request_id`, `kind`, `target_id`)
+);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_window_usage_counters (
+    `provider_api_key_id` VARCHAR(64) NOT NULL,
+    `window_scope` VARCHAR(64) NOT NULL DEFAULT 'account',
+    `window_code` VARCHAR(128) NOT NULL,
+    `window_start_unix_secs` BIGINT NOT NULL,
+    `window_end_unix_secs` BIGINT NOT NULL,
+    `request_count` BIGINT NOT NULL DEFAULT 0,
+    `total_tokens` BIGINT NOT NULL DEFAULT 0,
+    `total_cost_usd` DECIMAL(20,8) NOT NULL DEFAULT 0,
+    `rebuilt_at` BIGINT,
+    `updated_at` BIGINT NOT NULL,
+    PRIMARY KEY (`provider_api_key_id`, `window_scope`, `window_code`, `window_start_unix_secs`, `window_end_unix_secs`),
+    CONSTRAINT provider_api_key_window_usage_counters_key_fkey FOREIGN KEY (`provider_api_key_id`) REFERENCES provider_api_keys (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_window_usage_resets (
+    `provider_api_key_id` VARCHAR(64) NOT NULL,
+    `window_scope` VARCHAR(64) NOT NULL DEFAULT 'account',
+    `window_start_unix_secs` BIGINT NOT NULL,
+    `window_end_unix_secs` BIGINT NOT NULL,
+    `usage_reset_at_unix_secs` BIGINT NOT NULL,
+    `updated_at` BIGINT NOT NULL,
+    PRIMARY KEY (`provider_api_key_id`, `window_scope`, `window_start_unix_secs`, `window_end_unix_secs`),
+    CONSTRAINT provider_api_key_window_usage_resets_key_fkey FOREIGN KEY (`provider_api_key_id`) REFERENCES provider_api_keys (`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_window_usage_applications (
+    `delta_id` VARCHAR(36) NOT NULL,
+    `provider_api_key_id` VARCHAR(64) NOT NULL,
+    `window_scope` VARCHAR(64) NOT NULL,
+    `window_code` VARCHAR(128) NOT NULL,
+    `window_start_unix_secs` BIGINT NOT NULL,
+    `window_end_unix_secs` BIGINT NOT NULL,
+    `applied_at` BIGINT NOT NULL,
+    PRIMARY KEY (`delta_id`, `provider_api_key_id`, `window_scope`, `window_code`, `window_start_unix_secs`, `window_end_unix_secs`),
+    KEY ix_provider_api_key_window_usage_applications_key (`provider_api_key_id`, `window_code`, `window_end_unix_secs`),
+    CONSTRAINT provider_api_key_window_usage_applications_delta_fkey FOREIGN KEY (`delta_id`) REFERENCES usage_counter_deltas (`id`) ON DELETE CASCADE,
+    CONSTRAINT provider_api_key_window_usage_applications_key_fkey FOREIGN KEY (`provider_api_key_id`) REFERENCES provider_api_keys (`id`) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (

@@ -13,6 +13,12 @@ fn current_system_config_updated_at_unix_secs() -> u64 {
 }
 
 impl GatewayDataState {
+    pub(crate) fn usage_object_store(&self) -> Option<Arc<aether_data::UsageObjectStore>> {
+        self.backends
+            .as_ref()
+            .and_then(DataBackends::usage_object_store)
+    }
+
     pub(crate) fn disabled() -> Self {
         Self::default()
     }

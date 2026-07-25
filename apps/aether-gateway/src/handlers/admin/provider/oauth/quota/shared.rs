@@ -253,10 +253,27 @@ pub(crate) async fn persist_provider_quota_refresh_state(
         .duration_since(UNIX_EPOCH)
         .ok()
         .map(|duration| duration.as_secs());
-    Ok(state
+    let updated = state
         .update_provider_catalog_key(&latest_key)
         .await?
-        .is_some())
+        .is_some();
+    if updated
+        && quota_snapshot_provider_type
+            .as_deref()
+            .is_some_and(|provider_type| provider_type.eq_ignore_ascii_case("codex"))
+    {
+        if let Err(error) = state
+            .ensure_provider_api_key_codex_window_usage_stats(key_id)
+            .await
+        {
+            warn!(
+                provider_api_key_id = %key_id,
+                error = ?error,
+                "failed to initialize codex window usage counters after quota refresh"
+            );
+        }
+    }
+    Ok(updated)
 }
 
 pub(super) async fn execute_provider_quota_plan(

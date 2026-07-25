@@ -10,8 +10,11 @@ use aether_contracts::{
     ExecutionPlan, ExecutionStreamTerminalSummary, ExecutionTelemetry, StandardizedUsage,
     StreamFrame, StreamFramePayload,
 };
+use aether_data::UsageObjectStore;
 use aether_data_contracts::repository::candidates::RequestCandidateStatus;
-use aether_data_contracts::repository::usage::UsageBodyCaptureState;
+use aether_data_contracts::repository::usage::{
+    usage_body_ref, UsageBodyCaptureState, UsageBodyField,
+};
 use aether_scheduler_core::{
     parse_request_candidate_report_context, SchedulerRequestCandidateStatusUpdate,
 };
@@ -220,20 +223,202 @@ fn record_stream_terminal_usage(
     );
 }
 
+struct StreamObjectCapture {
+    store: Option<Arc<UsageObjectStore>>,
+    request_id: String,
+    field: UsageBodyField,
+    object_key: Option<String>,
+    content_type: String,
+    enabled: bool,
+    seen_bytes: u64,
+    writer: Option<aether_data::UsageObjectStoreWriter>,
+    error_message: Option<String>,
+}
+
+impl StreamObjectCapture {
+    fn new(
+        store: Option<Arc<UsageObjectStore>>,
+        request_id: &str,
+        field: UsageBodyField,
+        content_type: Option<&str>,
+        enabled: bool,
+    ) -> Self {
+        let object_key = store
+            .as_ref()
+            .map(|store| store.object_key(request_id, field.as_storage_field(), "raw"));
+        Self {
+            store,
+            request_id: request_id.to_string(),
+            field,
+            object_key,
+            content_type: content_type
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("application/octet-stream")
+                .to_string(),
+            enabled,
+            seen_bytes: 0,
+            writer: None,
+            error_message: None,
+        }
+    }
+
+    async fn write(&mut self, bytes: &[u8]) {
+        if bytes.is_empty() {
+            return;
+        }
+        self.seen_bytes = self.seen_bytes.saturating_add(bytes.len() as u64);
+        if !self.enabled || self.error_message.is_some() {
+            return;
+        }
+
+        if self.writer.is_none() {
+            let Some(store) = self.store.as_ref() else {
+                self.error_message = Some("usage object store is not configured".to_string());
+                return;
+            };
+            let Some(object_key) = self.object_key.as_deref() else {
+                self.error_message = Some("usage object key could not be built".to_string());
+                return;
+            };
+            match store.start_multipart(object_key).await {
+                Ok(writer) => self.writer = Some(writer),
+                Err(err) => {
+                    self.error_message = Some(err.to_string());
+                    return;
+                }
+            }
+        }
+
+        let write_result = self
+            .writer
+            .as_mut()
+            .expect("stream object writer should exist after initialization")
+            .write(bytes)
+            .await;
+        if let Err(err) = write_result {
+            self.error_message = Some(err.to_string());
+            if let Some(writer) = self.writer.take() {
+                let _ = writer.abort().await;
+            }
+        }
+    }
+
+    async fn finish(self) -> (Option<Value>, UsageBodyCaptureState) {
+        if !self.enabled || self.seen_bytes == 0 {
+            return (None, UsageBodyCaptureState::None);
+        }
+
+        let body_ref = usage_body_ref(&self.request_id, self.field);
+        if let Some(error_message) = self.error_message {
+            return (
+                Some(json!({
+                    "body_ref": body_ref,
+                    "object_key": self.object_key.clone(),
+                    "payload_format": "raw",
+                    "content_type": self.content_type,
+                    "storage_status": "unavailable",
+                    "size_bytes": self.seen_bytes,
+                    "error_message": error_message,
+                    "owned_by_current_capture": self.object_key.is_some(),
+                })),
+                UsageBodyCaptureState::Unavailable,
+            );
+        }
+
+        let Some(mut writer) = self.writer else {
+            return (
+                Some(json!({
+                    "body_ref": body_ref,
+                    "object_key": self.object_key.clone(),
+                    "payload_format": "raw",
+                    "content_type": self.content_type,
+                    "storage_status": "unavailable",
+                    "size_bytes": self.seen_bytes,
+                    "error_message": "usage object upload did not start",
+                    "owned_by_current_capture": self.object_key.is_some(),
+                })),
+                UsageBodyCaptureState::Unavailable,
+            );
+        };
+        match writer.complete(&self.content_type, "raw").await {
+            Ok(stored) => (
+                Some(json!({
+                    "body_ref": body_ref,
+                    "object_key": stored.object_key,
+                    "payload_format": stored.payload_format,
+                    "content_type": stored.content_type,
+                    "storage_status": "available",
+                    "size_bytes": stored.size_bytes,
+                    "sha256": stored.sha256,
+                    "owned_by_current_capture": true,
+                })),
+                UsageBodyCaptureState::Reference,
+            ),
+            Err(err) => (
+                Some(json!({
+                    "body_ref": body_ref,
+                    "object_key": self.object_key.clone(),
+                    "payload_format": "raw",
+                    "content_type": self.content_type,
+                    "storage_status": "unavailable",
+                    "size_bytes": self.seen_bytes,
+                    "error_message": err.to_string(),
+                    "owned_by_current_capture": self.object_key.is_some(),
+                })),
+                UsageBodyCaptureState::Unavailable,
+            ),
+        }
+    }
+}
+
+fn attach_stream_body_object_descriptors(
+    report_context: &mut Option<Value>,
+    provider_descriptor: Option<Value>,
+    client_descriptor: Option<Value>,
+) {
+    if provider_descriptor.is_none() && client_descriptor.is_none() {
+        return;
+    }
+
+    let context = report_context
+        .get_or_insert_with(|| Value::Object(serde_json::Map::new()))
+        .as_object_mut();
+    let Some(context) = context else {
+        return;
+    };
+    let mut objects = serde_json::Map::new();
+    if let Some(descriptor) = provider_descriptor {
+        if let Some(body_ref) = descriptor.get("body_ref").and_then(Value::as_str) {
+            context.insert(
+                "response_body_ref".to_string(),
+                Value::String(body_ref.to_string()),
+            );
+        }
+        objects.insert("response_body".to_string(), descriptor);
+    }
+    if let Some(descriptor) = client_descriptor {
+        if let Some(body_ref) = descriptor.get("body_ref").and_then(Value::as_str) {
+            context.insert(
+                "client_response_body_ref".to_string(),
+                Value::String(body_ref.to_string()),
+            );
+        }
+        objects.insert("client_response_body".to_string(), descriptor);
+    }
+    context.insert("usage_body_objects".to_string(), Value::Object(objects));
+}
+
 fn build_stream_body_capture(
     body: &[u8],
-    truncated: bool,
+    state: UsageBodyCaptureState,
 ) -> (Option<String>, Option<UsageBodyCaptureState>) {
-    let body_base64 =
-        (!body.is_empty()).then(|| base64::engine::general_purpose::STANDARD.encode(body));
-    let body_state = Some(if truncated {
-        UsageBodyCaptureState::Truncated
-    } else if body.is_empty() {
-        UsageBodyCaptureState::None
-    } else {
-        UsageBodyCaptureState::Inline
-    });
-    (body_base64, body_state)
+    let body_base64 = (!body.is_empty()
+        && matches!(
+            state,
+            UsageBodyCaptureState::Inline | UsageBodyCaptureState::Truncated
+        ))
+    .then(|| base64::engine::general_purpose::STANDARD.encode(body));
+    (body_base64, Some(state))
 }
 
 fn wrap_non_json_binary_stream_error_for_client(
@@ -296,16 +481,16 @@ fn build_stream_usage_payload(
     status_code: u16,
     headers: BTreeMap<String, String>,
     provider_body: &[u8],
-    provider_body_truncated: bool,
+    provider_body_state: UsageBodyCaptureState,
     client_body: &[u8],
-    client_body_truncated: bool,
+    client_body_state: UsageBodyCaptureState,
     terminal_summary: Option<ExecutionStreamTerminalSummary>,
     telemetry: Option<ExecutionTelemetry>,
 ) -> GatewayStreamReportRequest {
     let (provider_body_base64, provider_body_state) =
-        build_stream_body_capture(provider_body, provider_body_truncated);
+        build_stream_body_capture(provider_body, provider_body_state);
     let (client_body_base64, client_body_state) =
-        build_stream_body_capture(client_body, client_body_truncated);
+        build_stream_body_capture(client_body, client_body_state);
     GatewayStreamReportRequest {
         trace_id,
         report_kind,
@@ -2452,11 +2637,21 @@ async fn execute_stream_from_frame_stream(
             .max_response_body_bytes
             .unwrap_or(DEFAULT_USAGE_RESPONSE_BODY_CAPTURE_LIMIT_BYTES)
     };
+    let full_stream_body_capture = matches!(
+        body_capture_policy.record_level,
+        UsageRequestRecordLevel::Full
+    );
+    let usage_object_store_for_report = full_stream_body_capture
+        .then(|| state.data.usage_object_store())
+        .flatten();
+    let provider_stream_content_type = upstream_headers.get("content-type").cloned();
+    let client_stream_content_type = headers.get("content-type").cloned();
     let plan_kind_for_report = plan_kind.to_string();
     let stream_started_at_for_report = stream_started_at;
     let provider_pool_in_flight_guard_for_report = in_flight_guard;
     tokio::spawn(async move {
         let _provider_pool_in_flight_guard = provider_pool_in_flight_guard_for_report;
+        let mut report_context_owned = report_context_owned;
         let mut provider_buffered_body = Vec::new();
         let mut buffered_body = Vec::new();
         let mut provider_body_truncated = false;
@@ -2483,6 +2678,26 @@ async fn execute_stream_from_frame_stream(
             .filter(|_| !sync_json_stream_bridge_active_for_report)
             .map(|_| StreamingStandardTerminalObserver::default());
         let mut stream_usage_observer_buffered = Vec::new();
+        let mut provider_object_capture = StreamObjectCapture::new(
+            usage_object_store_for_report.clone(),
+            &request_id_for_report,
+            UsageBodyField::ResponseBody,
+            provider_stream_content_type.as_deref(),
+            full_stream_body_capture,
+        );
+        let mut client_object_capture = StreamObjectCapture::new(
+            usage_object_store_for_report,
+            &request_id_for_report,
+            UsageBodyField::ClientResponseBody,
+            client_stream_content_type.as_deref(),
+            full_stream_body_capture,
+        );
+        provider_object_capture
+            .write(&provider_prefetched_body_for_report)
+            .await;
+        client_object_capture
+            .write(&prefetched_body_for_report)
+            .await;
         append_stream_capture_bytes(
             &mut provider_buffered_body,
             &provider_prefetched_body_for_report,
@@ -2818,6 +3033,7 @@ async fn execute_stream_from_frame_stream(
                             u64::try_from(chunk.len()).unwrap_or(u64::MAX),
                             Ordering::Relaxed,
                         );
+                        provider_object_capture.write(&chunk).await;
                         append_stream_capture_bytes(
                             &mut provider_buffered_body,
                             &chunk,
@@ -2923,6 +3139,7 @@ async fn execute_stream_from_frame_stream(
                             max_stream_body_buffer_bytes,
                             &mut client_body_truncated,
                         );
+                        client_object_capture.write(&rewritten_chunk).await;
                         image_terminal_tracker.push(&rewritten_chunk);
                         let rewritten_chunk_len =
                             u64::try_from(rewritten_chunk.len()).unwrap_or(u64::MAX);
@@ -3053,6 +3270,7 @@ async fn execute_stream_from_frame_stream(
                                 max_stream_body_buffer_bytes,
                                 &mut client_body_truncated,
                             );
+                            client_object_capture.write(&rewritten_chunk).await;
                             image_terminal_tracker.push(&rewritten_chunk);
                             let rewritten_chunk_len =
                                 u64::try_from(rewritten_chunk.len()).unwrap_or(u64::MAX);
@@ -3114,6 +3332,7 @@ async fn execute_stream_from_frame_stream(
                                 max_stream_body_buffer_bytes,
                                 &mut client_body_truncated,
                             );
+                            client_object_capture.write(&flushed_chunk).await;
                             image_terminal_tracker.push(&flushed_chunk);
                             let flushed_chunk_len =
                                 u64::try_from(flushed_chunk.len()).unwrap_or(u64::MAX);
@@ -3206,6 +3425,7 @@ async fn execute_stream_from_frame_stream(
                                 max_stream_body_buffer_bytes,
                                 &mut client_body_truncated,
                             );
+                            client_object_capture.write(error_event.as_ref()).await;
                             if tx.send(Ok(error_event)).await.is_err() {
                                 warn!(
                                 event_name = "stream_execution_downstream_terminal_error_disconnected",
@@ -3247,6 +3467,18 @@ async fn execute_stream_from_frame_stream(
         drop(tx);
         idle_monitor_done.store(true, Ordering::Relaxed);
         idle_monitor_handle.abort();
+
+        let (provider_capture_result, client_capture_result) = tokio::join!(
+            provider_object_capture.finish(),
+            client_object_capture.finish(),
+        );
+        let (provider_descriptor, provider_body_state) = provider_capture_result;
+        let (client_descriptor, client_body_state) = client_capture_result;
+        attach_stream_body_object_descriptors(
+            &mut report_context_owned,
+            provider_descriptor,
+            client_descriptor,
+        );
 
         stream_terminal_summary = merge_stream_terminal_summary(
             stream_terminal_summary,
@@ -3292,9 +3524,9 @@ async fn execute_stream_from_frame_stream(
                 499,
                 headers_for_report,
                 &provider_buffered_body,
-                provider_body_truncated,
+                provider_body_state,
                 &buffered_body,
-                client_body_truncated,
+                client_body_state,
                 stream_terminal_summary,
                 terminal_telemetry,
             );
@@ -3370,9 +3602,9 @@ async fn execute_stream_from_frame_stream(
             status_code,
             headers_for_report,
             &provider_buffered_body,
-            provider_body_truncated,
+            provider_body_state,
             &buffered_body,
-            client_body_truncated,
+            client_body_state,
             stream_terminal_summary,
             terminal_telemetry,
         );
@@ -3502,10 +3734,13 @@ mod tests {
     };
     use aether_data::repository::candidates::InMemoryRequestCandidateRepository;
     use aether_data::repository::usage::InMemoryUsageReadRepository;
+    use aether_data::{UsageObjectStore, UsageObjectStoreConfig};
     use aether_data_contracts::repository::candidates::{
         RequestCandidateReadRepository, RequestCandidateStatus,
     };
-    use aether_data_contracts::repository::usage::UsageReadRepository;
+    use aether_data_contracts::repository::usage::{
+        UsageBodyCaptureState, UsageBodyField, UsageReadRepository,
+    };
     use aether_usage_runtime::UsageRuntimeConfig;
     use async_stream::stream;
     use axum::body::{to_bytes, Body, Bytes};
@@ -3515,6 +3750,7 @@ mod tests {
     use axum::{http::header, http::HeaderValue, Router};
     use futures_util::StreamExt as _;
     use serde_json::{json, Value};
+    use sha2::Digest as _;
     use tokio::sync::{mpsc, watch, Notify};
 
     use super::{
@@ -3523,6 +3759,7 @@ mod tests {
         maybe_apply_kiro_prompt_cache_usage_to_stream_summary, merge_stream_terminal_summary,
         should_limit_direct_finalize_prefetch, should_probe_success_failover_before_stream,
         should_skip_direct_finalize_prefetch, OpenAiResponsesImageTerminalTracker,
+        StreamObjectCapture,
     };
     use crate::control::GatewayControlDecision;
     use crate::request_candidate_runtime::flush_request_candidate_status_writes;
@@ -3538,6 +3775,63 @@ mod tests {
             Some("openai:chat".to_string()),
         )
         .with_execution_runtime_candidate(true)
+    }
+
+    #[tokio::test]
+    async fn stream_object_capture_preserves_large_body_and_hash() {
+        let root = std::env::temp_dir().join(format!(
+            "aether-gateway-stream-object-capture-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create stream object store");
+        let store = Arc::new(
+            UsageObjectStore::from_config(&UsageObjectStoreConfig::new(
+                format!("file://{}", root.display()),
+                "usage-test",
+            ))
+            .expect("build stream object store"),
+        );
+        let mut capture = StreamObjectCapture::new(
+            Some(Arc::clone(&store)),
+            "request-stream-object-1",
+            UsageBodyField::ResponseBody,
+            Some("text/event-stream"),
+            true,
+        );
+        let first = vec![b'a'; 5 * 1024 * 1024];
+        let second = vec![b'b'; 1024 * 1024 + 17];
+        capture.write(&first).await;
+        capture.write(&second).await;
+
+        let (descriptor, state) = capture.finish().await;
+        assert_eq!(state, UsageBodyCaptureState::Reference);
+        let descriptor = descriptor.expect("stream object descriptor should exist");
+        let object_key = descriptor["object_key"]
+            .as_str()
+            .expect("descriptor should contain object key");
+        assert_eq!(
+            descriptor["size_bytes"].as_u64(),
+            Some((first.len() + second.len()) as u64)
+        );
+
+        let mut expected = first;
+        expected.extend_from_slice(&second);
+        let expected_hash = format!("{:x}", sha2::Sha256::digest(&expected));
+        assert_eq!(descriptor["sha256"].as_str(), Some(expected_hash.as_str()));
+        assert_eq!(
+            store
+                .get(object_key)
+                .await
+                .expect("read stream object")
+                .as_ref(),
+            expected.as_slice()
+        );
+
+        store
+            .delete(object_key)
+            .await
+            .expect("delete stream object");
+        std::fs::remove_dir_all(root).expect("remove stream object store");
     }
 
     #[test]
