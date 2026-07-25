@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
   const gatewayTarget = rootEnv.NIFFLER_DEV_PROXY_TARGET
     || process.env.NIFFLER_DEV_PROXY_TARGET
     || `http://127.0.0.1:${appPort}`
+  const infiniteCanvasTarget = rootEnv.INFINITE_CANVAS_DEV_PROXY_TARGET
+    || process.env.INFINITE_CANVAS_DEV_PROXY_TARGET
+    || 'http://127.0.0.1:3001'
   return {
     // GitHub Pages 部署时使用仓库名作为 base
     base: process.env.GITHUB_PAGES === 'true' ? '/Niffler/' : '/',
@@ -78,6 +81,12 @@ export default defineConfig(({ mode }) => {
           target: gatewayTarget,
           changeOrigin: true,
           secure: false,
+        },
+        '/InfiniteCanvas/': {
+          target: infiniteCanvasTarget,
+          changeOrigin: true,
+          secure: false,
+          ws: true,
         },
       },
     },
