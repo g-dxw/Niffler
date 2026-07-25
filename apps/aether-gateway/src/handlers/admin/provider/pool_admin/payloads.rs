@@ -485,7 +485,7 @@ fn admin_pool_codex_window_usage_request_from_snapshot(
             admin_pool_json_to_u64(window.get("window_minutes"))
                 .and_then(|minutes| minutes.checked_mul(60))
         })
-        .or_else(|| match code.as_str() {
+        .or(match code.as_str() {
             "5h" => Some(18_000),
             "7d" | "weekly" => Some(604_800),
             "1m" | "monthly" => Some(2_592_000),

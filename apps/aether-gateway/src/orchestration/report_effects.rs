@@ -166,7 +166,7 @@ fn codex_window_usage_identity(status_snapshot: Option<&Value>) -> Option<String
                         .and_then(admin_provider_quota_pure::coerce_json_u64)
                         .and_then(|minutes| minutes.checked_mul(60))
                 })
-                .or_else(|| match code.as_str() {
+                .or(match code.as_str() {
                     "5h" => Some(18_000),
                     "7d" | "weekly" => Some(604_800),
                     "1m" | "monthly" => Some(2_592_000),
