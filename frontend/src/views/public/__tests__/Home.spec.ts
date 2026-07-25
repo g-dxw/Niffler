@@ -117,6 +117,8 @@ describe('home quick start and FAQ', () => {
 
     expect(root.querySelectorAll('.tool-flow-step')).toHaveLength(3)
     expect(root.querySelectorAll('.model-chip')).toHaveLength(5)
+    expect(root.querySelectorAll('.model-benefit')).toHaveLength(4)
+    expect(root.querySelector('.model-benefit')?.textContent).toContain('一个密钥，所有模型')
     expect(root.querySelector('.home-scene-cta')).toBeNull()
     expect(root.querySelector('.quick-panel')?.textContent).toContain('充值、拿 Key、直接用')
     expect(root.textContent).toContain('DeepSeek')

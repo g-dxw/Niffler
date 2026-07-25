@@ -380,6 +380,28 @@
               </div>
             </div>
           </div>
+
+          <div
+            class="mt-3 grid border border-border/80 bg-background/70 sm:grid-cols-2 lg:grid-cols-4"
+            data-motion
+            style="--motion-order: 3"
+          >
+            <article
+              v-for="(benefit, index) in modelBenefits"
+              :key="benefit.title"
+              class="model-benefit border-b border-border/70 p-6 transition-colors hover:bg-primary/[0.045] sm:[&:nth-child(odd)]:border-r sm:[&:nth-child(n+3)]:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0"
+            >
+              <div class="text-[10px] font-bold tracking-[0.18em] text-primary">
+                0{{ index + 1 }}
+              </div>
+              <h3 class="mt-3 text-base font-semibold leading-6">
+                {{ benefit.title }}
+              </h3>
+              <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                {{ benefit.description }}
+              </p>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -655,6 +677,13 @@ const heroFeatures = computed(() => [
   { title: t('home.featurePaygTitle'), description: t('home.featurePaygDescription') },
   { title: t('home.featureOneKeyTitle'), description: t('home.featureOneKeyDescription') },
   { title: t('home.featureToolsTitle'), description: t('home.featureToolsDescription') },
+])
+
+const modelBenefits = computed(() => [
+  { title: t('home.modelsBenefitOneKeyTitle'), description: t('home.modelsBenefitOneKeyDescription') },
+  { title: t('home.modelsBenefitRoutingTitle'), description: t('home.modelsBenefitRoutingDescription') },
+  { title: t('home.modelsBenefitQuotaTitle'), description: t('home.modelsBenefitQuotaDescription') },
+  { title: t('home.modelsBenefitTraceTitle'), description: t('home.modelsBenefitTraceDescription') },
 ])
 
 const faqItems = computed(() => [1, 2, 3, 4, 5].map(id => ({
