@@ -8,27 +8,35 @@ function getPasswordByteLength(password: string): number {
   return textEncoder.encode(password).length
 }
 
-export const PASSWORD_POLICY_OPTIONS: Array<{
+export const PASSWORD_POLICY_OPTION_DEFINITIONS: Array<{
   value: PasswordPolicyLevel
-  label: string
-  description: string
+  labelKey: string
+  descriptionKey: string
 }> = [
   {
     value: 'weak',
-    label: i18n.global.t('basicConfig.weak').split(' - ')[0],
-    description: i18n.global.t('passwordPolicy.hintWeak'),
+    labelKey: 'basicConfig.weak',
+    descriptionKey: 'passwordPolicy.hintWeak',
   },
   {
     value: 'medium',
-    label: i18n.global.t('basicConfig.medium').split(' - ')[0],
-    description: i18n.global.t('passwordPolicy.hintMedium'),
+    labelKey: 'basicConfig.medium',
+    descriptionKey: 'passwordPolicy.hintMedium',
   },
   {
     value: 'strong',
-    label: i18n.global.t('basicConfig.strong').split(' - ')[0],
-    description: i18n.global.t('passwordPolicy.hintStrong'),
+    labelKey: 'basicConfig.strong',
+    descriptionKey: 'passwordPolicy.hintStrong',
   },
 ]
+
+export function createPasswordPolicyOptions(translate: PasswordPolicyTranslator) {
+  return PASSWORD_POLICY_OPTION_DEFINITIONS.map(option => ({
+    value: option.value,
+    label: translate(option.labelKey).split(' - ')[0],
+    description: translate(option.descriptionKey),
+  }))
+}
 
 export function normalizePasswordPolicyLevel(value: unknown): PasswordPolicyLevel {
   if (value === 'medium' || value === 'strong') {

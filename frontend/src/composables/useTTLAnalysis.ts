@@ -15,15 +15,24 @@ import type { TimeScatterData } from '@/components/charts/scatter-types'
 import { useI18n } from 'vue-i18n'
 import { i18n } from '@/i18n'
 
-// 时间范围选项
+// 时间范围选项只保存稳定数据，显示文案在组件/计算属性中生成。
 export const ANALYSIS_HOURS_OPTIONS = [
-  { value: '12', label: i18n.global.t('commonUi.hours', { value: 12 }) },
-  { value: '24', label: i18n.global.t('commonUi.hours', { value: 24 }) },
-  { value: '72', label: i18n.global.t('commonUi.days', { value: 3 }) },
-  { value: '168', label: i18n.global.t('commonUi.days', { value: 7 }) },
-  { value: '336', label: i18n.global.t('commonUi.days', { value: 14 }) },
-  { value: '720', label: i18n.global.t('commonUi.days', { value: 30 }) }
+  { value: '12', unit: 'hours', count: 12 },
+  { value: '24', unit: 'hours', count: 24 },
+  { value: '72', unit: 'days', count: 3 },
+  { value: '168', unit: 'days', count: 7 },
+  { value: '336', unit: 'days', count: 14 },
+  { value: '720', unit: 'days', count: 30 }
 ] as const
+
+export function createAnalysisHoursOptions(
+  translate: (key: string, params: { count: number }) => string
+) {
+  return ANALYSIS_HOURS_OPTIONS.map(option => ({
+    value: option.value,
+    label: translate(`ttlAnalysis.${option.unit}`, { count: option.count }),
+  }))
+}
 
 // 间隔颜色配置
 export const INTERVAL_COLORS = {

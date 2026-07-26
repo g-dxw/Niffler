@@ -408,20 +408,36 @@ impl GlobalModelReadRepository for InMemoryGlobalModelReadRepository {
         &self,
         global_model_id: &str,
     ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        self.list_admin_provider_models_by_global_model_ids(&[global_model_id.to_string()])
+            .await
+    }
+
+    async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        let global_model_ids = global_model_ids
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
         let items = self
             .admin_provider_model_items
             .read()
             .expect("admin provider model repository lock");
         let mut filtered = items
             .iter()
-            .filter(|item| item.global_model_id == global_model_id)
+            .filter(|item| global_model_ids.contains(&item.global_model_id))
             .cloned()
             .collect::<Vec<_>>();
         filtered.sort_by(|left, right| {
-            right
-                .created_at_unix_ms
-                .unwrap_or_default()
-                .cmp(&left.created_at_unix_ms.unwrap_or_default())
+            left.global_model_id
+                .cmp(&right.global_model_id)
+                .then_with(|| {
+                    right
+                        .created_at_unix_ms
+                        .unwrap_or_default()
+                        .cmp(&left.created_at_unix_ms.unwrap_or_default())
+                })
                 .then_with(|| left.id.cmp(&right.id))
         });
         Ok(filtered)
@@ -643,7 +659,7 @@ mod tests {
     use crate::repository::global_models::{
         CreateAdminGlobalModelRecord, GlobalModelReadRepository, GlobalModelWriteRepository,
         PublicCatalogModelListQuery, PublicCatalogModelSearchQuery, PublicGlobalModelQuery,
-        StoredPublicCatalogModel, StoredPublicGlobalModel,
+        StoredAdminProviderModel, StoredPublicCatalogModel, StoredPublicGlobalModel,
     };
 
     fn sample_model(
@@ -694,6 +710,68 @@ mod tests {
             true,
         )
         .expect("public catalog model should build")
+    }
+
+    fn sample_admin_provider_model(
+        id: &str,
+        provider_id: &str,
+        global_model_id: &str,
+        created_at_unix_ms: u64,
+    ) -> StoredAdminProviderModel {
+        StoredAdminProviderModel::new(
+            id.to_string(),
+            provider_id.to_string(),
+            global_model_id.to_string(),
+            format!("{global_model_id}-upstream"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+            true,
+            None,
+            Some(created_at_unix_ms),
+            Some(created_at_unix_ms / 1000),
+            Some(global_model_id.to_string()),
+            Some(global_model_id.to_string()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("provider model should build")
+    }
+
+    #[tokio::test]
+    async fn lists_admin_provider_models_for_multiple_global_models_in_one_call() {
+        let repository = InMemoryGlobalModelReadRepository::seed(Vec::new())
+            .with_admin_provider_models(vec![
+                sample_admin_provider_model("pm-2", "provider-2", "gm-2", 2000),
+                sample_admin_provider_model("pm-1-old", "provider-1", "gm-1", 1000),
+                sample_admin_provider_model("pm-3", "provider-3", "gm-3", 3000),
+                sample_admin_provider_model("pm-1-new", "provider-1", "gm-1", 4000),
+            ]);
+
+        let items = repository
+            .list_admin_provider_models_by_global_model_ids(&[
+                "gm-2".to_string(),
+                "gm-1".to_string(),
+                "gm-1".to_string(),
+            ])
+            .await
+            .expect("batch list should succeed");
+
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["pm-1-new", "pm-1-old", "pm-2"]
+        );
     }
 
     #[tokio::test]

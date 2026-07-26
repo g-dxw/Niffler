@@ -15,25 +15,23 @@ export function isDemoMode(): boolean {
   )
 }
 
-import { i18n } from '@/i18n'
-
 // Demo 账号配置
 export const DEMO_ACCOUNTS = {
   admin: {
     email: 'admin@demo.aether.io',
     password: 'demo123',
-    hint: i18n.global.t('staticUi.adminAccount')
   },
   user: {
     email: 'user@demo.aether.io',
     password: 'demo123',
-    hint: i18n.global.t('staticUi.userAccount')
   }
 } as const
 
 // Demo 模式提示信息
-export const DEMO_MODE_INFO = {
-  title: i18n.global.t('staticUi.demoMode'),
-  description: i18n.global.t('staticUi.demoDescription'),
-  accountHint: i18n.global.t('staticUi.demoAccounts')
-} as const
+export function createDemoModeInfo(translate: (key: string) => string) {
+  return {
+    title: translate('staticUi.demoMode'),
+    description: translate('staticUi.demoDescription'),
+    accountHint: translate('staticUi.demoAccounts'),
+  }
+}

@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export type PoolHealthToggleKey =
   | 'health_policy_enabled'
   | 'probing_enabled'
@@ -29,28 +31,28 @@ export function buildPoolHealthToggleCards(): PoolHealthToggleCard[] {
   return [
     {
       key: 'health_policy_enabled',
-    label: i18n.global.t('poolAdvancedUi.healthPolicy'),
-    description: i18n.global.t('poolAdvancedUi.healthPolicyDesc'),
+      label: i18n.global.t('poolAdvancedUi.healthPolicy'),
+      description: i18n.global.t('poolAdvancedUi.healthPolicyDesc'),
     },
     {
       key: 'probing_enabled',
-    label: i18n.global.t('poolAdvancedUi.adaptiveHotPool'),
-    description: i18n.global.t('poolAdvancedUi.adaptiveHotPoolDesc'),
+      label: i18n.global.t('poolAdvancedUi.adaptiveHotPool'),
+      description: i18n.global.t('poolAdvancedUi.adaptiveHotPoolDesc'),
     },
     {
       key: 'account_self_check_enabled',
-    label: i18n.global.t('poolAdvancedUi.accountCheck'),
-    description: i18n.global.t('poolAdvancedUi.accountCheckDesc'),
+      label: i18n.global.t('poolAdvancedUi.accountCheck'),
+      description: i18n.global.t('poolAdvancedUi.accountCheckDesc'),
     },
     {
       key: 'auto_remove_banned_keys',
-    label: i18n.global.t('poolAdvancedUi.autoRemove'),
-    description: i18n.global.t('poolAdvancedUi.autoRemoveDesc'),
+      label: i18n.global.t('poolAdvancedUi.autoRemove'),
+      description: i18n.global.t('poolAdvancedUi.autoRemoveDesc'),
     },
     {
       key: 'skip_exhausted_accounts',
-    label: i18n.global.t('poolAdvancedUi.skipExhausted'),
-    description: i18n.global.t('poolAdvancedUi.skipExhaustedDesc'),
+      label: i18n.global.t('poolAdvancedUi.skipExhausted'),
+      description: i18n.global.t('poolAdvancedUi.skipExhaustedDesc'),
     },
   ]
 }
@@ -83,4 +85,3 @@ export function buildPoolCostFieldLayout(): PoolCostFieldLayout {
     desktopColumnsClass: 'xl:grid-cols-3',
   }
 }
-import { i18n } from '@/i18n'

@@ -16,13 +16,13 @@ export function useProviderFilters(
   const filterApiFormat = ref('all')
   const filterModel = ref('all')
 
-  const statusFilters: FilterOption[] = [
+  const statusFilters = computed<FilterOption[]>(() => [
     { value: 'all', label: i18n.global.t('providerUi.allStatuses') },
     { value: 'active', label: i18n.global.t('providerUi.active') },
     { value: 'inactive', label: i18n.global.t('providerUi.inactive') },
-  ]
+  ])
 
-  const apiFormatFilters: FilterOption[] = [
+  const apiFormatFilters = computed<FilterOption[]>(() => [
     { value: 'all', label: i18n.global.t('providerUi.allFormats') },
     { value: 'claude:messages', label: 'Claude Messages' },
     { value: 'openai:chat', label: 'OpenAI Chat' },
@@ -35,7 +35,7 @@ export function useProviderFilters(
     { value: 'jina:embedding', label: 'Jina Embedding' },
     { value: 'jina:rerank', label: 'Jina Rerank' },
     { value: 'doubao:embedding', label: 'Doubao Embedding' },
-  ]
+  ])
 
   const modelFilters = computed<FilterOption[]>(() => {
     const items = globalModels()

@@ -16,7 +16,7 @@ use super::{build_auth_error_response, sanitize_public_model_config_for_user, Ap
 #[path = "model_group_catalog/health.rs"]
 mod health;
 
-use self::health::{load_public_model_health, PublicModelHealthSummary};
+use self::health::{load_public_model_health_snapshot, PublicModelHealthSummary};
 
 const PAGE_SIZE: usize = 1000;
 
@@ -128,19 +128,12 @@ pub(super) async fn build_public_model_group_catalog_response(state: &AppState) 
         group.normalize_model_multiplier_keys(&models);
     }
 
-    let mut health_by_model = BTreeMap::<String, PublicModelHealthSummary>::new();
+    let health_by_model = load_public_model_health_snapshot(state, &models).await;
     let mut group_payloads = Vec::with_capacity(groups.len());
     for group in groups {
         let mut model_payloads = Vec::new();
         for model in models.iter().filter(|model| group.allows_model(model)) {
-            let health = match health_by_model.get(&model.id) {
-                Some(health) => health.clone(),
-                None => {
-                    let health = load_public_model_health(state, &model.id).await;
-                    health_by_model.insert(model.id.clone(), health.clone());
-                    health
-                }
-            };
+            let health = health_by_model.get(&model.id).cloned().unwrap_or_default();
             model_payloads.push(public_model_payload(model, health));
         }
         group_payloads.push(json!({
@@ -163,10 +156,7 @@ async fn load_catalog_groups(state: &AppState) -> Result<Vec<PublicModelGroupCat
     } else {
         Vec::new()
     };
-    let shadowed_legacy_group_ids = product_plans
-        .iter()
-        .map(|plan| plan.id.clone())
-        .collect::<BTreeSet<_>>();
+    let shadowed_legacy_group_ids = public_active_product_plan_ids(&product_plans);
 
     let mut groups = Vec::new();
     for plan in product_plans
@@ -191,6 +181,14 @@ async fn load_catalog_groups(state: &AppState) -> Result<Vec<PublicModelGroupCat
     }
 
     Ok(groups)
+}
+
+fn public_active_product_plan_ids(product_plans: &[StoredNifflerProductPlan]) -> BTreeSet<String> {
+    product_plans
+        .iter()
+        .filter(|plan| plan.is_public && plan.is_active)
+        .map(|plan| plan.id.clone())
+        .collect()
 }
 
 async fn list_all_active_models(state: &AppState) -> Result<Vec<StoredPublicGlobalModel>, ()> {
@@ -320,6 +318,19 @@ mod tests {
         }
     }
 
+    fn product_plan(id: &str, is_public: bool, is_active: bool) -> StoredNifflerProductPlan {
+        StoredNifflerProductPlan {
+            id: id.to_string(),
+            display_name: id.to_string(),
+            is_public,
+            is_active,
+            sales_multiplier: 1.0,
+            description: None,
+            created_at_unix_ms: 1,
+            updated_at_unix_ms: 1,
+        }
+    }
+
     #[test]
     fn restrictive_empty_catalog_does_not_expose_models() {
         assert!(!source("specific", Some(Vec::new())).allows_model(&model()));
@@ -367,5 +378,20 @@ mod tests {
         assert_eq!(catalog.sales_multiplier, 0.5);
         assert_eq!(catalog.model_sales_multipliers.get("gpt-5"), Some(&0.25));
         assert!(catalog.allows_model(&model()));
+    }
+
+    #[test]
+    fn only_public_active_product_plans_shadow_legacy_groups() {
+        let plans = vec![
+            product_plan("active-public", true, true),
+            product_plan("inactive-public", true, false),
+            product_plan("active-private", false, true),
+        ];
+
+        let shadowed = public_active_product_plan_ids(&plans);
+
+        assert_eq!(shadowed, BTreeSet::from(["active-public".to_string()]));
+        assert!(!shadowed.contains("inactive-public"));
+        assert!(!shadowed.contains("active-private"));
     }
 }

@@ -684,17 +684,26 @@ LIMIT 1
         &self,
         global_model_id: &str,
     ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
-        let rows = sqlx::query(&format!(
-            r#"
-{LIST_ADMIN_PROVIDER_MODELS_PREFIX}
-WHERE m.global_model_id = ?
-ORDER BY m.created_at DESC, m.id ASC
-            "#
-        ))
-        .bind(global_model_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_sql_err()?;
+        self.list_admin_provider_models_by_global_model_ids(&[global_model_id.to_string()])
+            .await
+    }
+
+    async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        if global_model_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut builder = QueryBuilder::<Sqlite>::new(LIST_ADMIN_PROVIDER_MODELS_PREFIX);
+        builder.push(" WHERE m.global_model_id IN (");
+        let mut separated = builder.separated(", ");
+        for global_model_id in global_model_ids {
+            separated.push_bind(global_model_id.trim().to_string());
+        }
+        separated.push_unseparated(") ORDER BY m.global_model_id ASC, m.created_at DESC, m.id ASC");
+        let rows = builder.build().fetch_all(&self.pool).await.map_sql_err()?;
         rows.iter().map(map_admin_provider_model_row).collect()
     }
 

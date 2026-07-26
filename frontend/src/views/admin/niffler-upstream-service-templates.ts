@@ -41,6 +41,19 @@ export interface NifflerServiceTemplate {
   capabilities: CapabilityDefaults
 }
 
+type Translate = (key: string) => string
+
+interface NifflerServiceTemplateDefinition extends Omit<
+  NifflerServiceTemplate,
+  'label' | 'description' | 'baseUrlPlaceholder'
+> {
+  label: string
+  labelKey?: string
+  descriptionKey: string
+  baseUrlPlaceholder: string
+  baseUrlPlaceholderKey?: string
+}
+
 export interface NifflerServiceCapabilityOption {
   key: NifflerServiceCapabilityKey
   label: string
@@ -68,16 +81,17 @@ const textModelCapabilities = {
   model_test: true,
 } satisfies CapabilityDefaults
 
-export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
+const NIFFLER_SERVICE_TEMPLATE_DEFINITIONS: NifflerServiceTemplateDefinition[] = [
   {
     key: 'codex_oauth',
     label: 'Codex / ChatGPT OAuth',
-    description: i18n.global.t('upstreamTemplateUi.codexDesc'),
+    descriptionKey: 'upstreamTemplateUi.codexDesc',
     serviceKind: 'codex',
     protocolKind: 'codex',
     defaultApiFormat: 'codex',
     defaultBaseUrl: '',
-    baseUrlPlaceholder: i18n.global.t('upstreamTemplateUi.oauthPlaceholder'),
+    baseUrlPlaceholder: '',
+    baseUrlPlaceholderKey: 'upstreamTemplateUi.oauthPlaceholder',
     baseUrlRequired: false,
     defaultAuthKind: 'oauth',
     capabilities: {
@@ -88,12 +102,13 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'claude_oauth',
     label: 'Claude OAuth',
-    description: i18n.global.t('upstreamTemplateUi.claudeDesc'),
+    descriptionKey: 'upstreamTemplateUi.claudeDesc',
     serviceKind: 'claude',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
     defaultBaseUrl: '',
-    baseUrlPlaceholder: i18n.global.t('upstreamTemplateUi.oauthPlaceholder'),
+    baseUrlPlaceholder: '',
+    baseUrlPlaceholderKey: 'upstreamTemplateUi.oauthPlaceholder',
     baseUrlRequired: false,
     defaultAuthKind: 'oauth',
     capabilities: { ...textModelCapabilities },
@@ -101,7 +116,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'openai_api_key',
     label: 'OpenAI API Key',
-    description: i18n.global.t('upstreamTemplateUi.openaiDesc'),
+    descriptionKey: 'upstreamTemplateUi.openaiDesc',
     serviceKind: 'openai',
     protocolKind: 'openai',
     defaultApiFormat: 'openai',
@@ -118,7 +133,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'claude_api_key',
     label: 'Claude API Key',
-    description: i18n.global.t('upstreamTemplateUi.anthropicDesc'),
+    descriptionKey: 'upstreamTemplateUi.anthropicDesc',
     serviceKind: 'claude',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
@@ -131,7 +146,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'gemini_service_account',
     label: 'Gemini Service Account',
-    description: i18n.global.t('upstreamTemplateUi.geminiDesc'),
+    descriptionKey: 'upstreamTemplateUi.geminiDesc',
     serviceKind: 'gemini',
     protocolKind: 'gemini',
     defaultApiFormat: 'gemini',
@@ -143,8 +158,9 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'openai_compatible',
-    label: i18n.global.t('upstreamTemplateUi.openaiCompatible'),
-    description: i18n.global.t('upstreamTemplateUi.openaiCompatibleDesc'),
+    label: '',
+    labelKey: 'upstreamTemplateUi.openaiCompatible',
+    descriptionKey: 'upstreamTemplateUi.openaiCompatibleDesc',
     serviceKind: 'openai_compatible',
     protocolKind: 'openai',
     defaultApiFormat: 'openai',
@@ -156,8 +172,9 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'anthropic_compatible',
-    label: i18n.global.t('upstreamTemplateUi.anthropicCompatible'),
-    description: i18n.global.t('upstreamTemplateUi.anthropicCompatibleDesc'),
+    label: '',
+    labelKey: 'upstreamTemplateUi.anthropicCompatible',
+    descriptionKey: 'upstreamTemplateUi.anthropicCompatibleDesc',
     serviceKind: 'anthropic_compatible',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
@@ -169,8 +186,9 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'custom',
-    label: i18n.global.t('upstreamTemplateUi.custom'),
-    description: i18n.global.t('upstreamTemplateUi.customDesc'),
+    label: '',
+    labelKey: 'upstreamTemplateUi.custom',
+    descriptionKey: 'upstreamTemplateUi.customDesc',
     serviceKind: 'custom',
     protocolKind: 'custom',
     defaultApiFormat: 'custom',
@@ -182,12 +200,66 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
 ]
 
-const templatesByKey = new Map(nifflerServiceTemplates.map(template => [template.key, template]))
+/**
+ * Compatibility export: translated fields are getters, so existing callers
+ * continue to receive the current locale instead of a module-load snapshot.
+ */
+export const nifflerServiceTemplates: NifflerServiceTemplate[] =
+  NIFFLER_SERVICE_TEMPLATE_DEFINITIONS.map((definition) => {
+    const template = { ...definition } as NifflerServiceTemplate
+    Object.defineProperties(template, {
+      label: {
+        enumerable: true,
+        get: () => definition.labelKey ? i18n.global.t(definition.labelKey) : definition.label,
+      },
+      description: {
+        enumerable: true,
+        get: () => i18n.global.t(definition.descriptionKey),
+      },
+      baseUrlPlaceholder: {
+        enumerable: true,
+        get: () => definition.baseUrlPlaceholderKey
+          ? i18n.global.t(definition.baseUrlPlaceholderKey)
+          : definition.baseUrlPlaceholder,
+      },
+    })
+    return template
+  })
+
+const templateDefinitionsByKey = new Map(
+  NIFFLER_SERVICE_TEMPLATE_DEFINITIONS.map(template => [template.key, template])
+)
+
+function translateNifflerServiceTemplate(
+  template: NifflerServiceTemplateDefinition,
+  translate: Translate
+): NifflerServiceTemplate {
+  const { labelKey, descriptionKey, baseUrlPlaceholderKey, ...stable } = template
+  return {
+    ...stable,
+    label: labelKey ? translate(labelKey) : template.label,
+    description: translate(descriptionKey),
+    baseUrlPlaceholder: baseUrlPlaceholderKey
+      ? translate(baseUrlPlaceholderKey)
+      : template.baseUrlPlaceholder,
+  }
+}
+
+export function createNifflerServiceTemplates(
+  translate: Translate = i18n.global.t
+): NifflerServiceTemplate[] {
+  return NIFFLER_SERVICE_TEMPLATE_DEFINITIONS.map(template =>
+    translateNifflerServiceTemplate(template, translate)
+  )
+}
 
 export function getNifflerServiceTemplate(
-  key: NifflerServiceTemplateKey
+  key: NifflerServiceTemplateKey,
+  translate: Translate = i18n.global.t
 ): NifflerServiceTemplate {
-  return templatesByKey.get(key) ?? templatesByKey.get(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)!
+  const template = templateDefinitionsByKey.get(key)
+    ?? templateDefinitionsByKey.get(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)!
+  return translateNifflerServiceTemplate(template, translate)
 }
 
 export function buildNifflerServiceFormFromTemplate(

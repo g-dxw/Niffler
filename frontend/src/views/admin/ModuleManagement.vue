@@ -222,7 +222,7 @@ import Input from '@/components/ui/input.vue'
 import { PageHeader, PageContainer } from '@/components/layout'
 import { useToast } from '@/composables/useToast'
 import { useModuleStore } from '@/stores/modules'
-import { BUILTIN_TOOLS } from '@/config/builtin-tools'
+import { createBuiltinTools } from '@/config/builtin-tools'
 import { log } from '@/utils/logger'
 import { getErrorMessage } from '@/types/api-error'
 
@@ -234,13 +234,14 @@ const moduleStore = useModuleStore()
 const loading = ref(false)
 const toggling = ref<Record<string, boolean>>({})
 const searchQuery = ref('')
+const builtinTools = computed(() => createBuiltinTools(t))
 
 // 过滤后的内置工具
 const filteredBuiltinTools = computed(() => {
-  if (!searchQuery.value.trim()) return BUILTIN_TOOLS
+  if (!searchQuery.value.trim()) return builtinTools.value
   const query = searchQuery.value.toLowerCase()
-  return BUILTIN_TOOLS.filter(
-    t => t.name.toLowerCase().includes(query) || t.description.toLowerCase().includes(query)
+  return builtinTools.value.filter(
+    tool => tool.name.toLowerCase().includes(query) || tool.description.toLowerCase().includes(query)
   )
 })
 

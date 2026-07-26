@@ -2,6 +2,8 @@
  * 提供商认证模板类型定义
  */
 
+import { i18n } from '@/i18n'
+
 /**
  * 表单字段类型
  */
@@ -74,25 +76,29 @@ export interface BalanceExtraItem {
 /**
  * 代理节点 ID 字段
  */
-export const PROXY_NODE_FIELD: AuthTemplateField = {
-  key: 'proxy_node_id',
-  label: i18n.global.t('providerUi.proxyNode'),
-  type: 'select',
-  placeholder: i18n.global.t('providerUi.chooseProxyNode'),
-  required: false,
+export function createProxyNodeField(): AuthTemplateField {
+  return {
+    key: 'proxy_node_id',
+    label: i18n.global.t('providerUi.proxyNode'),
+    type: 'select',
+    placeholder: i18n.global.t('providerUi.chooseProxyNode'),
+    required: false,
+  }
 }
 
 /**
  * 通用代理配置字段组（可折叠，带启用开关）
  * 由 ProviderAuthDialog 特殊渲染为代理节点选择器
  */
-export const PROXY_FIELD_GROUP: AuthTemplateFieldGroup = {
-  title: i18n.global.t('providerUi.proxyConfig'),
-  fields: [PROXY_NODE_FIELD],
-  collapsible: true,
-  defaultExpanded: false,
-  hasToggle: true,
-  toggleKey: 'proxy_enabled',
+export function createProxyFieldGroup(): AuthTemplateFieldGroup {
+  return {
+    title: i18n.global.t('providerUi.proxyConfig'),
+    fields: [createProxyNodeField()],
+    collapsible: true,
+    defaultExpanded: false,
+    hasToggle: true,
+    toggleKey: 'proxy_enabled',
+  }
 }
 
 /**
@@ -137,4 +143,3 @@ export function parseProxyConfig(config: Record<string, unknown> | null | undefi
     proxy_node_id: '',
   }
 }
-import { i18n } from '@/i18n'

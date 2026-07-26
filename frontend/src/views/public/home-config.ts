@@ -1,7 +1,6 @@
 import { computed, type Ref } from 'vue'
 import { Apple, Box, Layers, Monitor, Puzzle, Terminal, Users } from 'lucide-vue-next'
 import type { Component } from 'vue'
-import { i18n } from '@/i18n'
 
 // Section index constants
 export const SECTIONS = {
@@ -15,35 +14,39 @@ export const SECTIONS = {
 export type SectionIndex = (typeof SECTIONS)[keyof typeof SECTIONS]
 
 // Section navigation configuration
-export const sections = [
-  { name: i18n.global.t('staticUi.home') },
-  { name: 'Claude' },
-  { name: 'OpenAI' },
-  { name: 'Gemini' },
-  { name: i18n.global.t('staticUi.more') }
-] as const
+export function createHomeSections(translate: (key: string) => string) {
+  return [
+    { name: translate('staticUi.home') },
+    { name: 'Claude' },
+    { name: 'OpenAI' },
+    { name: 'Gemini' },
+    { name: translate('staticUi.more') },
+  ] as const
+}
 
 // Feature cards data
-export const featureCards = [
-  {
-    icon: Layers,
-    title: 'Claude / OpenAI / Gemini',
-    desc: i18n.global.t('staticUi.integratedAssistants'),
-    status: 'completed' as const
-  },
-  {
-    icon: Puzzle,
-    title: i18n.global.t('staticUi.formatConversion'),
-    desc: i18n.global.t('staticUi.formatConversionDesc'),
-    status: 'completed' as const
-  },
-  {
-    icon: Users,
-    title: i18n.global.t('staticUi.collaboration'),
-    desc: i18n.global.t('staticUi.collaborationDesc'),
-    status: 'in-progress' as const
-  }
-]
+export function createFeatureCards(translate: (key: string) => string) {
+  return [
+    {
+      icon: Layers,
+      title: 'Claude / OpenAI / Gemini',
+      desc: translate('staticUi.integratedAssistants'),
+      status: 'completed' as const,
+    },
+    {
+      icon: Puzzle,
+      title: translate('staticUi.formatConversion'),
+      desc: translate('staticUi.formatConversionDesc'),
+      status: 'completed' as const,
+    },
+    {
+      icon: Users,
+      title: translate('staticUi.collaboration'),
+      desc: translate('staticUi.collaborationDesc'),
+      status: 'in-progress' as const,
+    },
+  ]
+}
 
 // CLI configuration generators
 export function useCliConfigs(baseUrl: Ref<string>) {

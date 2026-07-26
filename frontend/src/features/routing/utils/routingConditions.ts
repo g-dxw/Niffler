@@ -14,20 +14,19 @@ export interface RoutingConditionGroup {
 
 export type RoutingCondition = RoutingConditionLeaf | RoutingConditionGroup
 
-export const routingConditionFieldLabels: Record<string, string> = {
-  model: i18n.global.t('routingUi.model'),
-  api_format: i18n.global.t('routingUi.apiFormat'),
-  user_id: i18n.global.t('routingUi.user'),
-  api_key_id: 'API Key',
+export const routingConditionFieldLabelKeys: Record<string, string> = {
+  model: 'routingUi.model',
+  api_format: 'routingUi.apiFormat',
+  user_id: 'routingUi.user',
 }
 
-export const routingConditionOpLabels: Record<RoutingConditionOp, string> = {
-  eq: i18n.global.t('routingUi.eq'),
-  ne: i18n.global.t('routingUi.neq'),
-  in: i18n.global.t('routingUi.in'),
-  contains: i18n.global.t('routingUi.contains'),
-  exists: i18n.global.t('routingUi.exists'),
-  matches: i18n.global.t('routingUi.matches'),
+export const routingConditionOpLabelKeys: Record<RoutingConditionOp, string> = {
+  eq: 'routingUi.eq',
+  ne: 'routingUi.neq',
+  in: 'routingUi.in',
+  contains: 'routingUi.contains',
+  exists: 'routingUi.exists',
+  matches: 'routingUi.matches',
 }
 
 export function isConditionLeaf(condition: RoutingCondition): condition is RoutingConditionLeaf {
@@ -36,8 +35,10 @@ export function isConditionLeaf(condition: RoutingCondition): condition is Routi
 
 export function summarizeRoutingCondition(condition: RoutingCondition): string {
   if (isConditionLeaf(condition)) {
-    const field = routingConditionFieldLabels[condition.field] ?? condition.field
-    const op = routingConditionOpLabels[condition.op] ?? condition.op
+    const fieldKey = routingConditionFieldLabelKeys[condition.field]
+    const opKey = routingConditionOpLabelKeys[condition.op]
+    const field = fieldKey ? i18n.global.t(fieldKey) : condition.field === 'api_key_id' ? 'API Key' : condition.field
+    const op = opKey ? i18n.global.t(opKey) : condition.op
     return `${field} ${op} ${formatConditionValue(condition.value)}`
   }
 

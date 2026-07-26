@@ -114,7 +114,7 @@ vi.mock('@/components/icons/GithubIcon.vue', () => ({
 }))
 
 vi.mock('@/config/builtin-tools', () => ({
-  BUILTIN_TOOL_BREADCRUMBS: {},
+  createBuiltinToolBreadcrumbs: () => ({}),
 }))
 
 vi.mock('@/utils/adminNavigationPrefetch', () => ({

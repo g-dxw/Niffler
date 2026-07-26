@@ -60,35 +60,34 @@ function localizeLegacyFallback(message: string): string {
 /**
  * 字段名称映射（中文化）
  */
-const fieldNameMap: Record<string, string> = {
-  'api_key': i18n.global.t('errorUi.apiKey'),
-  'priority': i18n.global.t('errorUi.priority'),
-  'rpm_limit': i18n.global.t('errorUi.rpmLimit'),
-  'rate_limit': i18n.global.t('errorUi.rateLimit'),
-  'daily_limit': i18n.global.t('errorUi.dailyLimit'),
-  'monthly_limit': i18n.global.t('errorUi.monthlyLimit'),
-  'allowed_models': i18n.global.t('errorUi.allowedModels'),
-  'note': i18n.global.t('errorUi.note'),
-  'is_active': i18n.global.t('errorUi.active'),
-  'endpoint_id': 'Endpoint ID',
-  'base_url': i18n.global.t('errorUi.baseUrl'),
-  'timeout': i18n.global.t('errorUi.timeout'),
-  'max_retries': i18n.global.t('errorUi.maxRetries'),
-  'weight': i18n.global.t('errorUi.weight'),
-  'email': i18n.global.t('errorUi.email'),
-  'username': i18n.global.t('errorUi.username'),
-  'password': i18n.global.t('errorUi.password'),
-  'name': i18n.global.t('errorUi.name'),
-  'display_name': i18n.global.t('errorUi.displayName'),
-  'description': i18n.global.t('errorUi.description'),
-  'website': i18n.global.t('errorUi.website'),
-  'provider_priority': i18n.global.t('errorUi.providerPriority'),
-  'billing_type': i18n.global.t('errorUi.billingType'),
-  'monthly_quota_usd': i18n.global.t('errorUi.monthlyQuota'),
-  'quota_reset_day': i18n.global.t('errorUi.quotaResetDay'),
-  'quota_expires_at': i18n.global.t('errorUi.quotaExpiresAt'),
-  'cache_ttl_minutes': i18n.global.t('errorUi.cacheTtl'),
-  'max_probe_interval_minutes': i18n.global.t('errorUi.maxProbeInterval'),
+const fieldNameKeyMap: Record<string, string> = {
+  'api_key': 'errorUi.apiKey',
+  'priority': 'errorUi.priority',
+  'rpm_limit': 'errorUi.rpmLimit',
+  'rate_limit': 'errorUi.rateLimit',
+  'daily_limit': 'errorUi.dailyLimit',
+  'monthly_limit': 'errorUi.monthlyLimit',
+  'allowed_models': 'errorUi.allowedModels',
+  'note': 'errorUi.note',
+  'is_active': 'errorUi.active',
+  'base_url': 'errorUi.baseUrl',
+  'timeout': 'errorUi.timeout',
+  'max_retries': 'errorUi.maxRetries',
+  'weight': 'errorUi.weight',
+  'email': 'errorUi.email',
+  'username': 'errorUi.username',
+  'password': 'errorUi.password',
+  'name': 'errorUi.name',
+  'display_name': 'errorUi.displayName',
+  'description': 'errorUi.description',
+  'website': 'errorUi.website',
+  'provider_priority': 'errorUi.providerPriority',
+  'billing_type': 'errorUi.billingType',
+  'monthly_quota_usd': 'errorUi.monthlyQuota',
+  'quota_reset_day': 'errorUi.quotaResetDay',
+  'quota_expires_at': 'errorUi.quotaExpiresAt',
+  'cache_ttl_minutes': 'errorUi.cacheTtl',
+  'max_probe_interval_minutes': 'errorUi.maxProbeInterval',
 }
 
 /**
@@ -157,7 +156,10 @@ function getFieldName(loc: (string | number)[]): string {
   const fieldPath = loc.filter(item => item !== 'body').join('.')
   const fieldKey = String(loc[loc.length - 1])
 
-  return fieldNameMap[fieldKey] || fieldPath || i18n.global.t('errorParserUi.field')
+  const fieldNameKey = fieldNameKeyMap[fieldKey]
+  return (fieldNameKey ? i18n.global.t(fieldNameKey) : fieldKey === 'endpoint_id' ? 'Endpoint ID' : '')
+    || fieldPath
+    || i18n.global.t('errorParserUi.field')
 }
 
 /**

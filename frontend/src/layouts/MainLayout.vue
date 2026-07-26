@@ -506,7 +506,7 @@ import {
 } from 'lucide-vue-next'
 
 import GithubIcon from '@/components/icons/GithubIcon.vue'
-import { BUILTIN_TOOL_BREADCRUMBS } from '@/config/builtin-tools'
+import { createBuiltinToolBreadcrumbs } from '@/config/builtin-tools'
 import { prefetchAdminNavigationTarget } from '@/utils/adminNavigationPrefetch'
 import { useBillingSummary } from '@/composables/useBillingSummary'
 import { sanitizeMarkdown } from '@/utils/sanitize'
@@ -893,6 +893,8 @@ interface BreadcrumbItem {
   href?: string
 }
 
+const builtinToolBreadcrumbs = computed(() => createBuiltinToolBreadcrumbs(t))
+
 const breadcrumbs = computed((): BreadcrumbItem[] => {
   // Special case: personal settings page accessed by admin
   if (route.path === '/dashboard/settings') {
@@ -915,11 +917,11 @@ const breadcrumbs = computed((): BreadcrumbItem[] => {
   }
 
   // Special case: built-in tools under module management
-  if (BUILTIN_TOOL_BREADCRUMBS[route.path]) {
+  if (builtinToolBreadcrumbs.value[route.path]) {
     return [
       { label: t('console.nav.system') },
       { label: t('console.breadcrumbs.modules'), href: '/admin/modules' },
-      { label: BUILTIN_TOOL_BREADCRUMBS[route.path] }
+      { label: builtinToolBreadcrumbs.value[route.path] }
     ]
   }
 

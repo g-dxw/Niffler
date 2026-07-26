@@ -46,10 +46,7 @@ export interface PoolCodexCycleStatsDisplay {
 export type PoolStatsDisplay = PoolAccountTotalStatsDisplay | PoolCodexCycleStatsDisplay
 
 const MISSING_STAT_VALUE = '—'
-const CODEX_CYCLE_WINDOWS: Array<{ code: PoolCodexCycleWindowCode, label: string }> = [
-  { code: '5h', label: '5H' },
-  { code: 'weekly', label: i18n.global.t('commonUi.weekly') },
-]
+const CODEX_CYCLE_WINDOW_CODES: PoolCodexCycleWindowCode[] = ['5h', 'weekly']
 
 export function isCodexProviderType(providerType: string | null | undefined): boolean {
   return String(providerType || '').trim().toLowerCase() === 'codex'
@@ -159,9 +156,10 @@ export function buildCodexCycleStatsDisplay(
 ): PoolCodexCycleStatsDisplay {
   return {
     kind: 'codex_cycle',
-    groups: CODEX_CYCLE_WINDOWS.map(window => ({
-      ...window,
-      metrics: buildCycleMetrics(getQuotaWindowUsage(key, window.code)),
+    groups: CODEX_CYCLE_WINDOW_CODES.map(code => ({
+      code,
+      label: code === 'weekly' ? i18n.global.t('commonUi.weekly') : '5H',
+      metrics: buildCycleMetrics(getQuotaWindowUsage(key, code)),
     })),
   }
 }

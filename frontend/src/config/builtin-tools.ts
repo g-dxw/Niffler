@@ -1,6 +1,7 @@
 import { Mail, Shield, AlertTriangle } from 'lucide-vue-next'
 import type { LucideIcon } from 'lucide-vue-next'
-import { i18n } from '@/i18n'
+
+type Translate = (key: string) => string
 
 export interface BuiltinTool {
   name: string
@@ -9,28 +10,37 @@ export interface BuiltinTool {
   icon: LucideIcon
 }
 
-export const BUILTIN_TOOLS: BuiltinTool[] = [
+const BUILTIN_TOOL_DEFINITIONS = [
   {
-    name: i18n.global.t('staticUi.emailConfig'),
-    description: i18n.global.t('staticUi.emailConfigDesc'),
+    nameKey: 'staticUi.emailConfig',
+    descriptionKey: 'staticUi.emailConfigDesc',
     href: '/admin/email',
     icon: Mail,
   },
   {
-    name: i18n.global.t('staticUi.ipSecurity'),
-    description: i18n.global.t('staticUi.ipSecurityDesc'),
+    nameKey: 'staticUi.ipSecurity',
+    descriptionKey: 'staticUi.ipSecurityDesc',
     href: '/admin/ip-security',
     icon: Shield,
   },
   {
-    name: i18n.global.t('staticUi.auditLogs'),
-    description: i18n.global.t('staticUi.auditLogsDesc'),
+    nameKey: 'staticUi.auditLogs',
+    descriptionKey: 'staticUi.auditLogsDesc',
     href: '/admin/audit-logs',
     icon: AlertTriangle,
   },
-]
+] as const
+
+export function createBuiltinTools(translate: Translate): BuiltinTool[] {
+  return BUILTIN_TOOL_DEFINITIONS.map(tool => ({
+    name: translate(tool.nameKey),
+    description: translate(tool.descriptionKey),
+    href: tool.href,
+    icon: tool.icon,
+  }))
+}
 
 /** href → display name mapping for breadcrumbs */
-export const BUILTIN_TOOL_BREADCRUMBS: Record<string, string> = Object.fromEntries(
-  BUILTIN_TOOLS.map(t => [t.href, t.name])
-)
+export function createBuiltinToolBreadcrumbs(translate: Translate): Record<string, string> {
+  return Object.fromEntries(createBuiltinTools(translate).map(tool => [tool.href, tool.name]))
+}

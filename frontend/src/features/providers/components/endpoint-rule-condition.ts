@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import type { BodyRuleCondition, BodyRuleConditionLeaf, BodyRuleConditionOp } from '@/api/endpoints'
 
 export type ConditionSource = 'body' | 'original' | 'request_headers'
@@ -19,21 +20,21 @@ export interface EditableConditionGroup {
 
 export type EditableConditionNode = EditableConditionLeaf | EditableConditionGroup
 
-export const CONDITION_OP_OPTIONS: Array<{ value: BodyRuleConditionOp; label: string }> = [
-  { value: 'eq', label: i18n.global.t('endpointRuleUi.eq') },
-  { value: 'neq', label: i18n.global.t('endpointRuleUi.neq') },
-  { value: 'gt', label: i18n.global.t('endpointRuleUi.gt') },
-  { value: 'lt', label: i18n.global.t('endpointRuleUi.lt') },
-  { value: 'gte', label: i18n.global.t('endpointRuleUi.gte') },
-  { value: 'lte', label: i18n.global.t('endpointRuleUi.lte') },
-  { value: 'starts_with', label: i18n.global.t('endpointRuleUi.startsWith') },
-  { value: 'ends_with', label: i18n.global.t('endpointRuleUi.endsWith') },
-  { value: 'contains', label: i18n.global.t('endpointRuleUi.contains') },
-  { value: 'matches', label: i18n.global.t('endpointRuleUi.matches') },
-  { value: 'exists', label: i18n.global.t('endpointRuleUi.exists') },
-  { value: 'not_exists', label: i18n.global.t('endpointRuleUi.notExists') },
-  { value: 'in', label: i18n.global.t('endpointRuleUi.in') },
-  { value: 'type_is', label: i18n.global.t('endpointRuleUi.typeIs') },
+export const CONDITION_OP_OPTIONS: Array<{ value: BodyRuleConditionOp }> = [
+  { value: 'eq' },
+  { value: 'neq' },
+  { value: 'gt' },
+  { value: 'lt' },
+  { value: 'gte' },
+  { value: 'lte' },
+  { value: 'starts_with' },
+  { value: 'ends_with' },
+  { value: 'contains' },
+  { value: 'matches' },
+  { value: 'exists' },
+  { value: 'not_exists' },
+  { value: 'in' },
+  { value: 'type_is' },
 ]
 
 const NUMERIC_OPS = new Set(['gt', 'lt', 'gte', 'lte'])
@@ -247,4 +248,3 @@ export function validateEditableCondition(node: EditableConditionNode | null): s
 
   return null
 }
-import { i18n } from '@/i18n'

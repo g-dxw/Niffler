@@ -1,6 +1,5 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { i18n } from '@/i18n'
 
 export type ConfirmVariant = 'danger' | 'destructive' | 'warning' | 'info' | 'question'
 
@@ -20,9 +19,9 @@ interface ConfirmState extends ConfirmOptions {
 const state = ref<ConfirmState>({
   isOpen: false,
   message: '',
-  title: i18n.global.t('confirm.defaults.title'),
-  confirmText: i18n.global.t('confirm.defaults.confirm'),
-  cancelText: i18n.global.t('confirm.defaults.cancel'),
+  title: '',
+  confirmText: '',
+  cancelText: '',
   variant: 'question'
 })
 

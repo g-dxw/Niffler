@@ -16,10 +16,13 @@ export interface RollbackEvidenceHint {
   description: string
 }
 
-const ROLLBACK_EVIDENCE_FIELDS: Array<{ key: RollbackEvidenceRequirement['key']; label: string }> = [
-  { key: 'backup_reference', label: i18n.global.t('rollbackUi.backup') },
-  { key: 'rollback_image_tag', label: i18n.global.t('rollbackUi.imageTag') },
-  { key: 'drill_summary', label: i18n.global.t('rollbackUi.summary') },
+const ROLLBACK_EVIDENCE_FIELD_KEYS: Array<{
+  key: RollbackEvidenceRequirement['key']
+  labelKey: string
+}> = [
+  { key: 'backup_reference', labelKey: 'rollbackUi.backup' },
+  { key: 'rollback_image_tag', labelKey: 'rollbackUi.imageTag' },
+  { key: 'drill_summary', labelKey: 'rollbackUi.summary' },
 ]
 
 function hasText(value?: string | null): boolean {
@@ -34,7 +37,11 @@ export function normalizeRollbackEvidenceStatus(payload: NifflerRollbackDrillEvi
 export function getRollbackEvidenceRequirements(payload: NifflerRollbackDrillEvidencePayload | null): RollbackEvidenceRequirement[] {
   const evidence = payload?.evidence
   const requiresProof = normalizeRollbackEvidenceStatus(payload) === 'passed'
-  return ROLLBACK_EVIDENCE_FIELDS.map(field => ({ ...field, missing: requiresProof && !hasText(evidence?.[field.key]) }))
+  return ROLLBACK_EVIDENCE_FIELD_KEYS.map(field => ({
+    key: field.key,
+    label: i18n.global.t(field.labelKey),
+    missing: requiresProof && !hasText(evidence?.[field.key]),
+  }))
 }
 
 export function getRollbackEvidenceMissingLabels(payload: NifflerRollbackDrillEvidencePayload | null): string[] {

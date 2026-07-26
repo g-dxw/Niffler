@@ -767,12 +767,12 @@ import {
   DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY,
   buildNifflerServiceCapabilityForm,
   buildNifflerServiceFormFromTemplate,
+  createNifflerServiceTemplates,
   enabledCapabilityLabels,
   filterCapabilityOptionsForProtocol,
   getDefaultAuthKindForService,
   getNifflerServiceTemplate,
   getServiceKindLabel,
-  nifflerServiceTemplates,
   validateNifflerServiceCapabilities,
   type NifflerServiceCapabilityForm,
   type NifflerServiceCapabilityKey,
@@ -803,6 +803,8 @@ const onboardingSteps = computed(() => [
     description: t('upstreamOnboarding.stepSaveCapabilitiesHint'),
   },
 ])
+
+const nifflerServiceTemplates = computed(() => createNifflerServiceTemplates(t))
 
 const capabilityOptions = computed<Array<{
   key: NifflerServiceCapabilityKey
@@ -877,7 +879,7 @@ const selectedService = computed(() =>
 )
 
 const selectedServiceTemplate = computed(() =>
-  getNifflerServiceTemplate(selectedServiceTemplateKey.value)
+  getNifflerServiceTemplate(selectedServiceTemplateKey.value, t)
 )
 
 const visibleCapabilityOptions = computed(() =>
