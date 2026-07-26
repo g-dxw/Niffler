@@ -268,7 +268,7 @@ mod tests {
             GROK_OAUTH_TEMPLATE.token_url,
             "https://auth.x.ai/oauth2/token"
         );
-        assert!(GROK_OAUTH_TEMPLATE.use_pkce);
+        const { assert!(GROK_OAUTH_TEMPLATE.use_pkce) };
         assert!(GROK_OAUTH_TEMPLATE.client_secret.is_empty());
         assert!(GROK_OAUTH_TEMPLATE.scopes.contains(&"grok-cli:access"));
     }
