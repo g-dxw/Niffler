@@ -11,6 +11,7 @@ import {
 } from '@/api/endpoints/providers'
 import { requestTraceApi, type RequestTrace } from '@/api/requestTrace'
 import { parseApiError } from '@/utils/errorParser'
+import { useI18n } from 'vue-i18n'
 
 export interface StartTestParams {
   mode: 'global' | 'direct' | 'pool'
@@ -39,6 +40,7 @@ export interface UseModelTestOptions {
 export function useModelTest(options: UseModelTestOptions) {
   const { providerId, pollInterval = 800 } = options
   const { success: showSuccess, error: showError } = useToast()
+  const { t } = useI18n()
   const LOCAL_FAILOVER_UNCONFIGURED_MESSAGE = 'Rust local provider-query failover simulation is not configured'
 
   const testing = ref(false)
@@ -294,7 +296,7 @@ export function useModelTest(options: UseModelTestOptions) {
           ? ` -> ${successAttempt.effective_model}`
           : ''
         params.onSuccess?.(result)
-        showSuccess(`${params.displayLabel}${mapped} 测试成功${latency}`)
+      showSuccess(t('modelTestToast.success', { label: `${params.displayLabel}${mapped}`, latency }))
         return
       }
 
@@ -315,7 +317,7 @@ export function useModelTest(options: UseModelTestOptions) {
       stopPolling()
       const handled = params.onError?.(err)
       if (!handled) {
-        showError(`模型测试失败: ${parseApiError(err, '测试请求失败')}`)
+        showError(t('modelTestToast.failed', { error: parseApiError(err, t('modelTestToast.requestFailed')) }))
         resetState()
       }
     } finally {

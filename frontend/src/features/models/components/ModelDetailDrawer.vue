@@ -26,14 +26,14 @@
                     :variant="model.is_active ? 'default' : 'secondary'"
                     class="text-xs shrink-0"
                   >
-                    {{ model.is_active ? '活跃' : '停用' }}
+                    {{ model.is_active ? t('modelDetail.active') : t('modelDetail.disabled') }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
                   <span class="font-mono shrink-0">{{ model.name }}</span>
                   <button
                     class="p-0.5 rounded hover:bg-muted transition-colors shrink-0"
-                    title="复制模型 ID"
+                    :title="t('modelDetail.copyId')"
                     @click="copyToClipboard(model.name)"
                   >
                     <Copy class="w-3 h-3" />
@@ -51,7 +51,7 @@
                 <Button
                   variant="ghost"
                   size="icon"
-                  title="编辑模型"
+                  :title="t('modelDetail.editModel')"
                   @click="$emit('editModel', model)"
                 >
                   <Edit class="w-4 h-4" />
@@ -59,7 +59,7 @@
                 <Button
                   variant="ghost"
                   size="icon"
-                  :title="model.is_active ? '点击停用' : '点击启用'"
+                  :title="model.is_active ? t('modelDetail.clickDisable') : t('modelDetail.clickEnable')"
                   @click="$emit('toggleModelStatus', model)"
                 >
                   <Power class="w-4 h-4" />
@@ -67,7 +67,7 @@
                 <Button
                   variant="ghost"
                   size="icon"
-                  title="关闭"
+                  :title="t('modelDetail.close')"
                   @click="handleClose"
                 >
                   <X class="w-4 h-4" />
@@ -89,7 +89,7 @@
                 ]"
                 @click="detailTab = 'basic'"
               >
-                基本信息
+                {{ t('modelDetail.basicInfo') }}
               </button>
               <button
                 type="button"
@@ -101,8 +101,8 @@
                 ]"
                 @click="detailTab = 'routing'"
               >
-                <span class="hidden sm:inline">提供商链路</span>
-                <span class="sm:hidden">链路</span>
+                <span class="hidden sm:inline">{{ t('modelDetail.providerRouting') }}</span>
+                <span class="sm:hidden">{{ t('modelDetail.routingShort') }}</span>
               </button>
               <button
                 type="button"
@@ -114,8 +114,8 @@
                 ]"
                 @click="detailTab = 'mappings'"
               >
-                <span class="hidden sm:inline">别名匹配</span>
-                <span class="sm:hidden">别名</span>
+                <span class="hidden sm:inline">{{ t('modelDetail.aliasMatching') }}</span>
+                <span class="sm:hidden">{{ t('modelDetail.aliasShort') }}</span>
               </button>
             </div>
 
@@ -127,11 +127,11 @@
               <!-- 基础属性 -->
               <div class="space-y-4">
                 <h4 class="font-semibold text-sm">
-                  基础属性
+                  {{ t('modelDetail.basicProperties') }}
                 </h4>
                 <div class="grid grid-cols-2 gap-4">
                   <div>
-                    <Label class="text-xs text-muted-foreground">创建时间</Label>
+                    <Label class="text-xs text-muted-foreground">{{ t('modelDetail.createdAt') }}</Label>
                     <p class="text-sm mt-1">
                       {{ formatDate(model.created_at) }}
                     </p>
@@ -143,7 +143,7 @@
               <!-- 默认定价 -->
               <div class="space-y-3">
                 <h4 class="font-semibold text-sm">
-                  默认定价
+                  {{ t('modelDetail.defaultPricing') }}
                 </h4>
 
                 <!-- 图片输出计费 -->
@@ -153,26 +153,26 @@
                 >
                   <div class="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                     <div class="flex items-center gap-2">
-                      <span>图片输出计费</span>
+                      <span>{{ t('modelDetail.imageOutputPricing') }}</span>
                       <Badge
                         v-if="imagePricingEntries.length > 0"
                         variant="outline"
                         class="text-[10px] h-5 px-1.5"
                       >
-                        矩阵
+                        {{ t('modelDetail.matrix') }}
                       </Badge>
                       <Badge
                         v-if="imagePriceRangeEntries.length > 0"
                         variant="outline"
                         class="text-[10px] h-5 px-1.5"
                       >
-                        区间
+                        {{ t('modelDetail.range') }}
                       </Badge>
                     </div>
                     <span
                       v-if="imageOutputDefaultPrice !== null"
                       class="text-xs font-mono"
-                    >默认 ${{ imageOutputDefaultPrice.toFixed(6) }}/张</span>
+                    >{{ t('modelDetail.defaultImagePrice', { price: imageOutputDefaultPrice.toFixed(6) }) }}</span>
                   </div>
                   <div
                     v-if="imagePricingEntries.length > 0"
@@ -182,7 +182,7 @@
                       <TableHeader>
                         <TableRow class="bg-muted/30">
                           <TableHead class="text-xs h-9">
-                            分辨率
+                            {{ t('modelDetail.resolution') }}
                           </TableHead>
                           <TableHead
                             v-for="quality in IMAGE_OUTPUT_QUALITIES"
@@ -221,7 +221,7 @@
                       <TableHeader>
                         <TableRow class="bg-muted/30">
                           <TableHead class="text-xs h-9">
-                            上限像素
+                            {{ t('modelDetail.maxPixels') }}
                           </TableHead>
                           <TableHead
                             v-for="quality in IMAGE_OUTPUT_QUALITIES"
@@ -262,25 +262,25 @@
                   <div class="grid grid-cols-2 sm:grid-cols-2 gap-3">
                     <!-- 按 Token 计费 -->
                     <div class="p-3 rounded-lg border">
-                      <Label class="text-xs text-muted-foreground">输入价格 ($/M)</Label>
+                      <Label class="text-xs text-muted-foreground">{{ t('modelDetail.inputPrice') }}</Label>
                       <p class="text-lg font-semibold mt-1">
                         {{ getFirstTierPrice(model.default_tiered_pricing, 'input_price_per_1m') }}
                       </p>
                     </div>
                     <div class="p-3 rounded-lg border">
-                      <Label class="text-xs text-muted-foreground">输出价格 ($/M)</Label>
+                      <Label class="text-xs text-muted-foreground">{{ t('modelDetail.outputPrice') }}</Label>
                       <p class="text-lg font-semibold mt-1">
                         {{ getFirstTierPrice(model.default_tiered_pricing, 'output_price_per_1m') }}
                       </p>
                     </div>
                     <div class="p-3 rounded-lg border">
-                      <Label class="text-xs text-muted-foreground">{{ getFirst1hCachePrice(model.default_tiered_pricing) !== '-' ? '5min 缓存创建 ($/M)' : '缓存创建 ($/M)' }}</Label>
+                      <Label class="text-xs text-muted-foreground">{{ getFirst1hCachePrice(model.default_tiered_pricing) !== '-' ? t('modelDetail.cacheCreation5m') : t('modelDetail.cacheCreation') }}</Label>
                       <p class="text-sm font-mono mt-1">
                         {{ getFirstTierPrice(model.default_tiered_pricing, 'cache_creation_price_per_1m') }}
                       </p>
                     </div>
                     <div class="p-3 rounded-lg border">
-                      <Label class="text-xs text-muted-foreground">缓存读取 ($/M)</Label>
+                      <Label class="text-xs text-muted-foreground">{{ t('modelDetail.cacheRead') }}</Label>
                       <p class="text-sm font-mono mt-1">
                         {{ getFirstTierPrice(model.default_tiered_pricing, 'cache_read_price_per_1m') }}
                       </p>
@@ -291,7 +291,7 @@
                     v-if="getFirst1hCachePrice(model.default_tiered_pricing) !== '-'"
                     class="flex items-center gap-3 p-3 rounded-lg border bg-muted/20"
                   >
-                    <Label class="text-xs text-muted-foreground whitespace-nowrap">1h 缓存创建</Label>
+                    <Label class="text-xs text-muted-foreground whitespace-nowrap">{{ t('modelDetail.cache1hCreation') }}</Label>
                     <span class="text-sm font-mono">{{ getFirst1hCachePrice(model.default_tiered_pricing) }}</span>
                   </div>
                   <!-- 按次计费 -->
@@ -299,8 +299,8 @@
                     v-if="model.default_price_per_request && model.default_price_per_request > 0"
                     class="flex items-center gap-3 p-3 rounded-lg border bg-muted/20"
                   >
-                    <Label class="text-xs text-muted-foreground whitespace-nowrap">按次计费</Label>
-                    <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}/次</span>
+                    <Label class="text-xs text-muted-foreground whitespace-nowrap">{{ t('modelDetail.perRequest') }}</Label>
+                    <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}{{ t('modelDetail.perRequestSuffix') }}</span>
                   </div>
                   <!-- 视频分辨率计费 -->
                   <div
@@ -309,17 +309,17 @@
                   >
                     <div class="flex items-center gap-2 text-sm text-muted-foreground">
                       <Video class="w-4 h-4" />
-                      <span>视频分辨率计费 ({{ videoPricingEntries.length }} 种)</span>
+                      <span>{{ t('modelDetail.videoPricing', { count: videoPricingEntries.length }) }}</span>
                     </div>
                     <div class="border rounded-lg overflow-hidden">
                       <Table>
                         <TableHeader>
                           <TableRow class="bg-muted/30">
                             <TableHead class="text-xs h-9">
-                              分辨率
+                              {{ t('modelDetail.resolution') }}
                             </TableHead>
                             <TableHead class="text-xs h-9 text-right">
-                              单价 ($/秒)
+                              {{ t('modelDetail.pricePerSecond') }}
                             </TableHead>
                           </TableRow>
                         </TableHeader>
@@ -349,7 +349,7 @@
                 >
                   <div class="flex items-center gap-2 text-sm text-muted-foreground">
                     <Layers class="w-4 h-4" />
-                    <span>阶梯计费 ({{ getTierCount(model.default_tiered_pricing) }} 档)</span>
+                    <span>{{ t('modelDetail.tieredPricing', { count: getTierCount(model.default_tiered_pricing) }) }}</span>
                   </div>
 
                   <!-- 阶梯价格表格 -->
@@ -358,22 +358,22 @@
                       <TableHeader>
                         <TableRow class="bg-muted/30">
                           <TableHead class="text-xs h-9">
-                            阶梯
+                            {{ t('modelDetail.tier') }}
                           </TableHead>
                           <TableHead class="text-xs h-9 text-right">
-                            输入 ($/M)
+                            {{ t('modelDetail.inputShort') }}
                           </TableHead>
                           <TableHead class="text-xs h-9 text-right">
-                            输出 ($/M)
+                            {{ t('modelDetail.outputShort') }}
                           </TableHead>
                           <TableHead class="text-xs h-9 text-right">
-                            缓存创建
+                            {{ t('modelDetail.cacheCreationShort') }}
                           </TableHead>
                           <TableHead class="text-xs h-9 text-right">
-                            缓存读取
+                            {{ t('modelDetail.cacheReadShort') }}
                           </TableHead>
                           <TableHead class="text-xs h-9 text-right">
-                            1h 缓存
+                            {{ t('modelDetail.cache1h') }}
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -388,7 +388,7 @@
                               v-if="tier.up_to === null"
                               class="text-muted-foreground"
                             >
-                              {{ index === 0 ? '所有' : `> ${formatTierLimit((model.default_tiered_pricing?.tiers || [])[index - 1]?.up_to)}` }}
+                              {{ index === 0 ? t('modelDetail.all') : `> ${formatTierLimit((model.default_tiered_pricing?.tiers || [])[index - 1]?.up_to)}` }}
                             </span>
                             <span v-else>
                               {{ index === 0 ? '0' : formatTierLimit((model.default_tiered_pricing?.tiers || [])[index - 1]?.up_to) }} - {{ formatTierLimit(tier.up_to) }}
@@ -419,8 +419,8 @@
                     v-if="model.default_price_per_request && model.default_price_per_request > 0"
                     class="flex items-center gap-3 p-3 rounded-lg border bg-muted/20"
                   >
-                    <Label class="text-xs text-muted-foreground whitespace-nowrap">按次计费</Label>
-                    <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}/次</span>
+                    <Label class="text-xs text-muted-foreground whitespace-nowrap">{{ t('modelDetail.perRequest') }}</Label>
+                    <span class="text-sm font-mono">${{ model.default_price_per_request.toFixed(3) }}{{ t('modelDetail.perRequestSuffix') }}</span>
                   </div>
                   <!-- 视频分辨率计费（多阶梯时也显示） -->
                   <div
@@ -429,17 +429,17 @@
                   >
                     <div class="flex items-center gap-2 text-sm text-muted-foreground">
                       <Video class="w-4 h-4" />
-                      <span>视频分辨率计费 ({{ videoPricingEntries.length }} 种)</span>
+                      <span>{{ t('modelDetail.videoPricing', { count: videoPricingEntries.length }) }}</span>
                     </div>
                     <div class="border rounded-lg overflow-hidden">
                       <Table>
                         <TableHeader>
                           <TableRow class="bg-muted/30">
                             <TableHead class="text-xs h-9">
-                              分辨率
+                              {{ t('modelDetail.resolution') }}
                             </TableHead>
                             <TableHead class="text-xs h-9 text-right">
-                              单价 ($/秒)
+                              {{ t('modelDetail.pricePerSecond') }}
                             </TableHead>
                           </TableRow>
                         </TableHeader>
@@ -466,32 +466,32 @@
               <!-- 统计信息 -->
               <div class="space-y-3">
                 <h4 class="font-semibold text-sm">
-                  统计信息
+                  {{ t('modelDetail.statistics') }}
                 </h4>
                 <div class="grid grid-cols-2 gap-3">
                   <div
                     role="button"
                     tabindex="0"
                     class="p-3 rounded-lg border bg-muted/20 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    title="查看具体提供商和上游模型"
+                    :title="t('modelDetail.viewProviderDetails')"
                     @click="detailTab = 'routing'"
                     @keydown.enter="detailTab = 'routing'"
                     @keydown.space.prevent="detailTab = 'routing'"
                   >
                     <div class="flex items-center justify-between">
-                      <span class="text-xs text-muted-foreground">关联提供商</span>
+                      <span class="text-xs text-muted-foreground">{{ t('modelDetail.linkedProviders') }}</span>
                       <Building2 class="w-4 h-4 text-muted-foreground" />
                     </div>
                     <p class="text-2xl font-bold mt-1">
                       {{ model.active_provider_count || 0 }}<span class="text-sm text-muted-foreground font-normal">/{{ model.provider_count || 0 }}</span>
                     </p>
                     <p class="text-xs text-muted-foreground mt-1">
-                      点击查看明细
+                      {{ t('modelDetail.clickForDetails') }}
                     </p>
                   </div>
                   <div class="p-3 rounded-lg border bg-muted/20">
                     <div class="flex items-center justify-between">
-                      <Label class="text-xs text-muted-foreground">调用次数</Label>
+                      <Label class="text-xs text-muted-foreground">{{ t('modelDetail.usageCount') }}</Label>
                       <BarChart3 class="w-4 h-4 text-muted-foreground" />
                     </div>
                     <p class="text-2xl font-bold mt-1">
@@ -544,6 +544,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   X,
   Building2,
@@ -583,6 +584,7 @@ const props = withDefaults(defineProps<Props>(), {
   hasBlockingDialogOpen: false,
   initialTab: 'basic',
 })
+const { t, locale } = useI18n()
 const emit = defineEmits<{
   'update:open': [value: boolean]
   'editModel': [model: GlobalModelResponse]
@@ -639,7 +641,7 @@ async function loadRoutingData() {
   try {
     routingData.value = await getGlobalModelRoutingPreview(props.model.id)
   } catch (err: unknown) {
-    routingError.value = parseApiError(err, '加载失败')
+    routingError.value = parseApiError(err, t('modelDetail.loadFailed'))
   } finally {
     routingLoading.value = false
   }
@@ -762,7 +764,7 @@ function formatImageSize(value: string): string {
 }
 
 function formatPixelLimit(value: number | null): string {
-  return value === null ? '无上限' : `<= ${formatPixels(value)}`
+  return value === null ? t('modelDetail.unlimited') : `<= ${formatPixels(value)}`
 }
 
 function formatPixels(value: number): string {
@@ -795,7 +797,7 @@ function handleClose() {
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-'
   const date = new Date(dateStr)
-  return date.toLocaleDateString('zh-CN', {
+  return date.toLocaleDateString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'

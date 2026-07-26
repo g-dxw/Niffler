@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref, type App } from '@/test/vue'
 import { useImageTasks } from '../composables/useImageTasks'
 import type { ImageGenerationForm, ImageStudioSettings } from '../types'
 import { IMAGE_TASK_LIMIT } from '../utils/storage'

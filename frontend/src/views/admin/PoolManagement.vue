@@ -10,7 +10,7 @@
         <div class="flex flex-col gap-3 xl:hidden">
           <div class="min-w-0">
             <h3 class="text-base font-semibold">
-              号池管理
+              {{ t('poolManagement.title') }}
             </h3>
             <p
               v-if="poolHeaderMetaText"
@@ -30,7 +30,7 @@
                 class="h-9 text-xs border-border/60"
                 :disabled="providerSelectDisabled"
               >
-                <SelectValue placeholder="选择 Provider" />
+                <SelectValue :placeholder="t('poolManagement.selectProvider')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -43,17 +43,17 @@
                   <span
                     v-if="!item.pool_enabled"
                     class="ml-1 text-[10px] text-amber-600"
-                  >未启用</span>
+                  >{{ t('poolManagement.disabled') }}</span>
                 </SelectItem>
               </SelectContent>
             </Select>
             <Select v-model="statusFilter">
               <SelectTrigger class="h-9 w-full text-xs border-border/60">
-                <SelectValue placeholder="状态" />
+                <SelectValue :placeholder="t('poolManagement.status')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
-                  全部
+                  {{ t('poolManagement.all') }}
                 </SelectItem>
                 <SelectItem
                   v-for="option in poolKeyStatusFilterOptions.filter((item) => item.value !== 'all')"
@@ -69,7 +69,7 @@
               <Input
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索账号..."
+                :placeholder="t('poolManagement.search')"
                 class="w-full pl-8 pr-3 h-9 text-sm bg-background/50 border-border/60"
               />
             </div>
@@ -83,7 +83,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 shrink-0"
-                title="添加账号"
+                :title="t('poolManagement.add')"
                 @click="showImportDialog = true"
               >
                 <Upload class="w-3.5 h-3.5" />
@@ -105,7 +105,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 shrink-0"
-                title="号池调度"
+                :title="t('poolManagement.scheduling')"
                 @click="openSchedulingDialog()"
               >
                 <SlidersHorizontal class="w-3.5 h-3.5" />
@@ -116,7 +116,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 shrink-0"
-                title="账号批量操作"
+                :title="t('poolManagement.bulk')"
                 @click="showAccountBatchDialog = true"
               >
                 <Users class="w-3.5 h-3.5" />
@@ -127,7 +127,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 shrink-0"
-                title="编辑提供商"
+                :title="t('poolManagement.editProvider')"
                 @click="openProviderEditDialog"
               >
                 <Edit class="w-3.5 h-3.5" />
@@ -138,7 +138,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 shrink-0"
-                title="编辑端点"
+                :title="t('poolManagement.editEndpoint')"
                 @click="openEndpointEditDialog"
               >
                 <Plug class="w-3.5 h-3.5" />
@@ -153,7 +153,7 @@
                 size="icon"
                 class="h-8 w-8 shrink-0"
                 data-testid="pool-demand-metrics-button"
-                title="查看自适应热池指标"
+                :title="t('poolManagement.metrics')"
                 @click="showDemandMetricsDialog = true"
               >
                 <Activity class="w-3.5 h-3.5" />
@@ -164,7 +164,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 shrink-0"
-                title="高级设置"
+                :title="t('poolManagement.advanced')"
                 @click="showAdvancedDialog = true"
               >
                 <Settings2 class="w-3.5 h-3.5" />
@@ -197,7 +197,7 @@
         <div class="hidden xl:flex items-center justify-between gap-4">
           <div class="flex items-center gap-2">
             <h3 class="text-base font-semibold">
-              号池管理
+              {{ t('poolManagement.title') }}
               <span
                 v-if="poolHeaderMetaText"
                 class="ml-2 text-xs font-normal text-muted-foreground"
@@ -218,7 +218,7 @@
                 class="w-36 h-8 text-xs border-border/60"
                 :disabled="providerSelectDisabled"
               >
-                <SelectValue placeholder="选择 Provider" />
+                <SelectValue :placeholder="t('poolManagement.selectProvider')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -231,7 +231,7 @@
                   <span
                     v-if="!item.pool_enabled"
                     class="ml-1 text-[10px] text-amber-600"
-                  >未启用</span>
+                  >{{ t('poolManagement.disabled') }}</span>
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -244,7 +244,7 @@
               <Input
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索账号..."
+                :placeholder="t('poolManagement.search')"
                 class="w-40 pl-8 pr-2 h-8 text-xs bg-background/50 border-border/60"
               />
             </div>
@@ -255,10 +255,10 @@
             <button
               v-if="selectedProviderId"
               class="group inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md border border-border/50 bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-all duration-200 text-xs"
-              title="点击调整号池调度"
+              :title="t('poolManagement.scheduling')"
               @click="openSchedulingDialog()"
             >
-              <span class="text-muted-foreground/80 hidden lg:inline">调度:</span>
+              <span class="text-muted-foreground/80 hidden lg:inline">{{ t('poolManagement.schedulingLabel') }}:</span>
               <span class="font-medium text-foreground/90">{{ poolSchedulingLabel }}</span>
               <ChevronDown class="w-3 h-3 text-muted-foreground/70 group-hover:text-foreground transition-colors" />
             </button>
@@ -271,7 +271,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="添加账号"
+              :title="t('poolManagement.add')"
               @click="showImportDialog = true"
             >
               <Upload class="w-3.5 h-3.5" />
@@ -291,7 +291,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="编辑提供商"
+              :title="t('poolManagement.editProvider')"
               @click="openProviderEditDialog"
             >
               <Edit class="w-3.5 h-3.5" />
@@ -301,7 +301,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="编辑端点"
+              :title="t('poolManagement.editEndpoint')"
               @click="openEndpointEditDialog"
             >
               <Plug class="w-3.5 h-3.5" />
@@ -312,7 +312,7 @@
               size="icon"
               class="h-8 w-8"
               data-testid="pool-demand-metrics-button"
-              title="查看自适应热池指标"
+              :title="t('poolManagement.metrics')"
               @click="showDemandMetricsDialog = true"
             >
               <Activity class="w-3.5 h-3.5" />
@@ -322,7 +322,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="高级设置"
+              :title="t('poolManagement.advanced')"
               @click="showAdvancedDialog = true"
             >
               <Settings2 class="w-3.5 h-3.5" />
@@ -332,7 +332,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="账号批量操作"
+              :title="t('poolManagement.bulk')"
               @click="showAccountBatchDialog = true"
             >
               <Users class="w-3.5 h-3.5" />
@@ -375,10 +375,10 @@
           <Database class="h-8 w-8 text-muted-foreground" />
         </div>
         <p class="text-sm text-muted-foreground mt-4">
-          暂无 Provider
+          {{ t('poolManagement.noProvider') }}
         </p>
         <p class="text-xs text-muted-foreground mt-1">
-          请先添加 Provider
+          {{ t('poolManagement.addProviderHint') }}
         </p>
       </div>
 
@@ -391,7 +391,7 @@
           <Database class="h-8 w-8 text-muted-foreground" />
         </div>
         <p class="text-sm text-muted-foreground mt-4">
-          请选择一个 Provider 查看账号
+          {{ t('poolManagement.selectProviderHint') }}
         </p>
       </div>
 
@@ -410,7 +410,7 @@
         >
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="mr-1 text-xs font-medium text-muted-foreground">订阅类型</span>
+              <span class="mr-1 text-xs font-medium text-muted-foreground">{{ t('poolManagement.subscription') }}</span>
               <Button
                 variant="outline"
                 size="sm"
@@ -418,7 +418,7 @@
                 :class="planTypeFilter === 'all' ? 'border-primary/60 bg-primary/10 text-primary' : ''"
                 @click="planTypeFilter = 'all'"
               >
-                全部 {{ poolSummaryTotal }}
+                {{ t('poolManagement.allCount', { count: poolSummaryTotal }) }}
               </Button>
               <Button
                 v-for="item in poolPlanSummaryItems"
@@ -433,7 +433,7 @@
               </Button>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <span class="mr-1 text-xs font-medium text-muted-foreground">账号状态</span>
+              <span class="mr-1 text-xs font-medium text-muted-foreground">{{ t('poolManagement.accountStatus') }}</span>
               <Button
                 variant="outline"
                 size="sm"
@@ -441,7 +441,7 @@
                 :class="statusFilter === 'all' ? 'border-primary/60 bg-primary/10 text-primary' : ''"
                 @click="statusFilter = 'all'"
               >
-                全部 {{ poolSummaryTotal }}
+                {{ t('poolManagement.allCount', { count: poolSummaryTotal }) }}
               </Button>
               <Button
                 v-for="item in poolStatusSummaryItems"
@@ -470,7 +470,7 @@
               data-testid="pool-select-current-page"
               @update:checked="toggleSelectCurrentPageKeys"
             />
-            <span>当前页 {{ keyPage.keys.length }} 个，已选 {{ selectedPoolKeyCount }} 个</span>
+            <span>{{ t('poolManagement.currentPage') }} {{ keyPage.keys.length }}，{{ t('poolManagement.selected') }} {{ selectedPoolKeyCount }}</span>
           </label>
           <div class="flex flex-wrap items-center gap-2">
             <Button
@@ -482,7 +482,7 @@
               data-testid="pool-select-filtered-results"
               @click="selectAllFilteredPoolKeys"
             >
-              选择全部 {{ keyPage.total }} 个筛选结果
+              {{ t('poolManagement.selectAll') }} {{ keyPage.total }}
             </Button>
             <Button
               variant="ghost"
@@ -491,7 +491,7 @@
               :disabled="selectedPoolKeyCount === 0 || poolSelectionActionBusy"
               @click="clearPoolKeySelection"
             >
-              清空选择
+              {{ t('poolManagement.clear') }}
             </Button>
             <Button
               v-if="showBulkClearCooldownAction"
@@ -502,7 +502,7 @@
               data-testid="pool-bulk-clear-cooldown-selected"
               @click="clearCooldownSelectedPoolKeys"
             >
-              {{ clearingSelectedCooldown ? '清除中...' : `清除冷却 ${selectedPoolKeyCount}` }}
+              {{ clearingSelectedCooldown ? t('poolManagement.clearing') : `${t('poolManagement.clearCooldown')} ${selectedPoolKeyCount}` }}
             </Button>
             <Button
               v-if="showBulkEnableAction"
@@ -513,7 +513,7 @@
               data-testid="pool-bulk-enable-selected"
               @click="enableSelectedPoolKeys"
             >
-              {{ updatingSelectedKeyStatus === 'enable' ? '启用中...' : `启用已选 ${selectedPoolKeyCount}` }}
+              {{ updatingSelectedKeyStatus === 'enable' ? t('poolManagement.enabling') : `${t('poolManagement.enableSelected')} ${selectedPoolKeyCount}` }}
             </Button>
             <Button
               variant="outline"
@@ -523,7 +523,7 @@
               data-testid="pool-bulk-disable-selected"
               @click="disableSelectedPoolKeys"
             >
-              {{ updatingSelectedKeyStatus === 'disable' ? '停用中...' : `停用已选 ${selectedPoolKeyCount}` }}
+              {{ updatingSelectedKeyStatus === 'disable' ? t('poolManagement.disabling') : `${t('poolManagement.disableSelected')} ${selectedPoolKeyCount}` }}
             </Button>
             <Button
               variant="destructive"
@@ -533,7 +533,7 @@
               data-testid="pool-bulk-delete-selected"
               @click="deleteSelectedPoolKeys"
             >
-              {{ deletingSelectedKeys ? '删除中...' : `删除已选 ${selectedPoolKeyCount}` }}
+              {{ deletingSelectedKeys ? t('poolManagement.deleting') : `${t('poolManagement.deleteSelected')} ${selectedPoolKeyCount}` }}
             </Button>
           </div>
         </div>
@@ -554,7 +554,7 @@
                     :checked="isCurrentPageFullySelected"
                     :indeterminate="isCurrentPagePartiallySelected"
                     :disabled="keyPage.keys.length === 0 || keysLoading || poolSelectionActionBusy || allFilteredPoolKeysSelected"
-                    title="勾选或取消当前页所有账号"
+                    :title="t('poolManagement.selectPageAccounts')"
                     @update:checked="toggleSelectCurrentPageKeys"
                   />
                 </TableHead>
@@ -566,7 +566,7 @@
                   :style="{ width: desktopColumnWidths.name }"
                   @resize-start="handlePoolColumnResizeStart"
                 >
-                  账号
+                  {{ t('poolManagement.account') }}
                 </SortableTableHead>
                 <SortableTableHead
                   v-if="showAccountQuotaColumn"
@@ -577,7 +577,7 @@
                   :style="{ width: desktopColumnWidths.quota }"
                   @resize-start="handlePoolColumnResizeStart"
                 >
-                  配额
+                  {{ t('poolManagement.quota') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="px-2 font-semibold text-center whitespace-nowrap"
@@ -592,15 +592,15 @@
                       v-if="showCodexStatsModeToggle"
                       type="button"
                       class="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-                      :title="poolStatsMode === 'current_cycle' ? '切换为账号总计' : '切换为本地周期用量'"
-                      :aria-label="poolStatsMode === 'current_cycle' ? '切换为账号总计' : '切换为本地周期用量'"
+                      :title="poolStatsMode === 'current_cycle' ? t('poolManagement.switchAccountTotal') : t('poolManagement.switchLocalCycle')"
+                      :aria-label="poolStatsMode === 'current_cycle' ? t('poolManagement.switchAccountTotal') : t('poolManagement.switchLocalCycle')"
                       :aria-pressed="poolStatsMode === 'current_cycle'"
                       data-testid="pool-stats-mode-control"
                       @click.stop="togglePoolStatsMode"
                     >
                       <Repeat2 class="h-3.5 w-3.5" />
                     </button>
-                    <span>{{ poolStatsMode === 'current_cycle' && selectedProviderType === 'codex' ? '本地用量' : '统计' }}</span>
+                    <span>{{ t('poolManagement.stats') }}</span>
                   </div>
                 </SortableTableHead>
                 <SortableTableHead
@@ -613,11 +613,11 @@
                   resize-column-key="imported"
                   :resizable="true"
                   :style="{ width: desktopColumnWidths.imported }"
-                  title="按导入时间排序"
+                  :title="t('poolManagement.sortImported')"
                   @resize-start="handlePoolColumnResizeStart"
                   @sort="handleTableSort"
                 >
-                  导入时间
+                  {{ t('poolManagement.importedAt') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="font-semibold text-center whitespace-nowrap"
@@ -629,11 +629,11 @@
                   resize-column-key="lastUsed"
                   :resizable="true"
                   :style="{ width: desktopColumnWidths.lastUsed }"
-                  title="按最后使用时间排序"
+                  :title="t('poolManagement.sortLastUsed')"
                   @resize-start="handlePoolColumnResizeStart"
                   @sort="handleTableSort"
                 >
-                  最后使用
+                  {{ t('poolManagement.lastUsed') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="font-semibold text-center whitespace-nowrap"
@@ -645,11 +645,11 @@
                   resize-column-key="score"
                   :resizable="true"
                   :style="{ width: desktopColumnWidths.score }"
-                  title="按分数排序"
+                  :title="t('poolManagement.sortScore')"
                   @resize-start="handlePoolColumnResizeStart"
                   @sort="handleTableSort"
                 >
-                  分数
+                  {{ t('poolManagement.score') }}
                 </SortableTableHead>
                 <SortableTableHead
                   class="font-semibold text-center whitespace-nowrap"
@@ -657,14 +657,14 @@
                   :sortable="false"
                   align="center"
                   :filter-active="statusFilter !== 'all'"
-                  filter-title="筛选状态"
+                  :filter-title="t('poolManagement.filterStatus')"
                   filter-content-class="w-44 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
                   resize-column-key="status"
                   :resizable="true"
                   :style="{ width: desktopColumnWidths.status }"
                   @resize-start="handlePoolColumnResizeStart"
                 >
-                  状态
+                  {{ t('poolManagement.status') }}
                   <template #filter="{ close }">
                     <TableFilterMenu
                       v-model="statusFilter"
@@ -681,7 +681,7 @@
                   :style="{ width: desktopColumnWidths.actions }"
                   @resize-start="handlePoolColumnResizeStart"
                 >
-                  操作
+                  {{ t('poolManagement.actions') }}
                 </SortableTableHead>
               </TableRow>
             </TableHeader>
@@ -697,7 +697,7 @@
                     :checked="isPoolKeySelected(key.key_id)"
                     :disabled="poolSelectionActionBusy || allFilteredPoolKeysSelected"
                     :data-testid="`pool-key-select-${key.key_id}`"
-                    :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
+                    :aria-label="t('poolManagement.selectAccount', { name: getPoolAccountDisplayName(key) })"
                     @update:checked="(checked: boolean) => togglePoolKeySelection(key.key_id, checked)"
                   />
                 </TableCell>
@@ -709,7 +709,7 @@
                       <button
                         type="button"
                         class="min-w-0 truncate text-left text-sm transition-colors hover:text-primary"
-                        :title="`${getPoolAccountDisplayName(key)}\n点击复制`"
+                    :title="t('poolManagement.copyAccount', { name: getPoolAccountDisplayName(key) })"
                         @click.stop="copyPoolAccountDisplay(key)"
                       >
                         {{ getPoolAccountDisplayName(key) }}
@@ -733,7 +733,7 @@
                         v-else
                         type="button"
                         class="h-4 px-1 rounded text-[10px] tabular-nums text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors shrink-0"
-                        title="点击编辑优先级"
+                        :title="t('poolManagement.editPriority')"
                         @click="startEditInternalPriority(key)"
                       >
                         P{{ key.internal_priority ?? 50 }}
@@ -743,7 +743,7 @@
                         variant="ghost"
                         size="icon"
                         class="h-4 w-4 shrink-0"
-                        title="下载 OAuth 授权文件"
+                        :title="t('poolManagement.downloadOAuth')"
                         @click.stop="downloadRefreshToken(key)"
                       >
                         <Download class="w-2.5 h-2.5" />
@@ -753,7 +753,7 @@
                         variant="ghost"
                         size="icon"
                         class="h-4 w-4 shrink-0"
-                        title="复制密钥"
+                        :title="t('poolManagement.copyKey')"
                         @click.stop="copyFullKey(key)"
                       >
                         <Copy class="w-2.5 h-2.5" />
@@ -898,7 +898,7 @@
                       v-else
                       class="flex min-h-16 items-center justify-center text-muted-foreground"
                     >
-                      暂无额度窗口
+                      {{ t('quotaUi.noWindows') }}
                     </div>
                   </div>
                   <div
@@ -952,8 +952,8 @@
                           variant="ghost"
                           size="icon"
                           class="h-5 w-5 rounded-full border border-transparent text-muted-foreground/80 hover:border-border/60 hover:bg-muted/60 hover:text-foreground"
-                          title="查看评分计算结果"
-                          aria-label="查看评分计算结果"
+                    :title="t('poolManagement.scoreDetails')"
+                    :aria-label="t('poolManagement.scoreDetails')"
                           @click.stop
                         >
                           <CircleHelp class="h-3.5 w-3.5" />
@@ -968,7 +968,7 @@
                       >
                         <div class="text-left">
                           <div class="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-3 py-2.5">
-                            <span class="text-xs font-semibold text-foreground">评分计算结果</span>
+                            <span class="text-xs font-semibold text-foreground">{{ t('poolManagement.scoreDetails') }}</span>
                             <span class="font-mono text-xs tabular-nums text-foreground/90">
                               {{ formatPoolScore(key.pool_score?.score) }}
                             </span>
@@ -988,7 +988,7 @@
                                 {{ getPoolScoreProbeStatusLabel(key.pool_score?.probe_status) }}
                               </Badge>
                               <span class="text-[10px] text-muted-foreground">
-                                更新 {{ formatUnixSeconds(key.pool_score?.updated_at) }}
+                                {{ t('poolManagement.updatedAt', { time: formatUnixSeconds(key.pool_score?.updated_at) }) }}
                               </span>
                             </div>
                             <pre class="max-h-56 overflow-auto rounded-md border border-border/50 bg-muted/30 px-3 py-2 font-mono text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap break-words">{{ formatPoolScoreReason(key.pool_score?.score_reason) }}</pre>
@@ -1014,7 +1014,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7 text-muted-foreground hover:text-green-600"
-                      title="清除冷却"
+                      :title="t('poolManagement.clearCooldown')"
                       @click="clearCooldown(key.key_id)"
                     >
                       <RefreshCw class="w-3.5 h-3.5" />
@@ -1025,7 +1025,7 @@
                       size="icon"
                       class="h-7 w-7 text-muted-foreground hover:text-foreground"
                       :disabled="resettingCycleKeyId === key.key_id"
-                      title="重置周期统计"
+                      :title="t('poolManagement.resetCycle')"
                       data-testid="pool-reset-cycle-stats"
                       @click="handleResetCycleStats(key)"
                     >
@@ -1038,7 +1038,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="模型权限"
+                      :title="t('poolManagement.modelPermissions')"
                       @click="handleKeyPermissions(key)"
                     >
                       <Shield class="w-3.5 h-3.5" />
@@ -1054,7 +1054,7 @@
                           class="h-7 w-7"
                           :class="key.proxy?.node_id ? 'text-blue-500' : ''"
                           :disabled="savingProxyKeyId === key.key_id"
-                          :title="key.proxy?.node_id ? `代理: ${getKeyProxyNodeName(key)}` : '设置代理节点'"
+                    :title="key.proxy?.node_id ? t('poolManagement.proxyValue', { name: getKeyProxyNodeName(key) }) : t('poolManagement.setProxy')"
                           @click.stop
                         >
                           <Globe class="w-3.5 h-3.5" />
@@ -1067,7 +1067,7 @@
                       >
                         <div class="space-y-2">
                           <div class="flex items-center justify-between">
-                            <span class="text-xs font-medium">代理节点</span>
+                            <span class="text-xs font-medium">{{ t('poolManagement.proxyNode') }}</span>
                             <Button
                               v-if="key.proxy?.node_id"
                               variant="ghost"
@@ -1076,7 +1076,7 @@
                               :disabled="savingProxyKeyId === key.key_id"
                               @click="clearKeyProxy(key)"
                             >
-                              清除
+                              {{ t('poolManagement.clear') }}
                             </Button>
                           </div>
                           <ProxyNodeSelect
@@ -1085,7 +1085,7 @@
                             @update:model-value="(v: string) => setKeyProxy(key, v)"
                           />
                           <p class="text-[10px] text-muted-foreground">
-                            {{ key.proxy?.node_id ? '当前使用独立代理' : '未设置，使用提供商级别代理' }}
+                            {{ key.proxy?.node_id ? t('poolManagement.independentProxy') : t('poolManagement.providerProxyFallback') }}
                           </p>
                         </div>
                       </PopoverContent>
@@ -1094,7 +1094,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="编辑账号"
+                      :title="t('poolManagement.editAccount')"
                       @click="handleEditKey(key)"
                     >
                       <SquarePen class="w-3.5 h-3.5" />
@@ -1104,7 +1104,7 @@
                       size="icon"
                       class="h-7 w-7 text-foreground hover:text-foreground"
                       :disabled="togglingKeyId === key.key_id"
-                      :title="key.is_active ? '禁用' : '启用'"
+                      :title="key.is_active ? t('poolManagement.disable') : t('poolManagement.enable')"
                       @click="toggleKeyActive(key)"
                     >
                       <Power class="w-3.5 h-3.5" />
@@ -1114,7 +1114,7 @@
                       size="icon"
                       class="h-7 w-7 text-destructive hover:text-destructive"
                       :disabled="deletingKeyId === key.key_id"
-                      title="删除账号"
+                      :title="t('poolManagement.deleteAccount')"
                       @click="handleDeleteKey(key)"
                     >
                       <Trash2 class="w-3.5 h-3.5" />
@@ -1143,14 +1143,14 @@
                   :checked="isPoolKeySelected(key.key_id)"
                   :disabled="poolSelectionActionBusy || allFilteredPoolKeysSelected"
                   :data-testid="`pool-key-select-mobile-${key.key_id}`"
-                  :aria-label="`选择账号 ${getPoolAccountDisplayName(key)}`"
+                    :aria-label="t('poolManagement.selectAccount', { name: getPoolAccountDisplayName(key) })"
                   class="mt-0.5 shrink-0"
                   @update:checked="(checked: boolean) => togglePoolKeySelection(key.key_id, checked)"
                 />
                 <button
                   type="button"
                   class="min-w-0 flex-1 truncate text-left text-sm font-medium transition-colors hover:text-primary"
-                  :title="`${getPoolAccountDisplayName(key)}\n点击复制`"
+                    :title="t('poolManagement.copyAccount', { name: getPoolAccountDisplayName(key) })"
                   @click.stop="copyPoolAccountDisplay(key)"
                 >
                   {{ getPoolAccountDisplayName(key) }}
@@ -1169,7 +1169,7 @@
                   v-if="key.cooldown_ttl_seconds"
                   class="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium leading-4 text-red-700 dark:text-red-300"
                 >
-                  冷却 {{ formatTTL(key.cooldown_ttl_seconds) }}
+                    {{ t('poolManagement.cooldownValue', { value: formatTTL(key.cooldown_ttl_seconds) }) }}
                 </span>
                 <template
                   v-for="item in keyUiStateMap[key.key_id]?.mobileTagItems || []"
@@ -1180,7 +1180,7 @@
                     type="button"
                     class="inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[10px] font-medium leading-4"
                     :class="`${getMobileTagClass(item)} hover:border-primary/40 hover:text-foreground`"
-                    :title="`${item.label}，点击编辑优先级`"
+                    :title="t('poolManagement.editPriorityValue', { name: item.label })"
                     @click="quickEditInternalPriority(key)"
                   >
                     {{ item.label }}
@@ -1247,7 +1247,7 @@
                       v-else
                       class="flex min-h-16 items-center justify-center text-muted-foreground"
                     >
-                      暂无额度窗口
+                      {{ t('quotaUi.noWindows') }}
                     </div>
                   </template>
                   <template v-else>
@@ -1270,15 +1270,15 @@
                     </div>
                   </template>
                   <div class="flex items-center justify-between gap-2 border-t border-border/40 pt-1 mt-1">
-                    <span class="text-muted-foreground">导入</span>
+                    <span class="text-muted-foreground">{{ t('poolManagement.importedAt') }}</span>
                     <span class="font-medium text-foreground/90">{{ keyUiStateMap[key.key_id]?.importedAtRelative || '-' }}</span>
                   </div>
                   <div class="flex items-center justify-between gap-2">
-                    <span class="text-muted-foreground">最后使用</span>
+                    <span class="text-muted-foreground">{{ t('poolManagement.lastUsed') }}</span>
                     <span class="font-medium text-foreground/90">{{ keyUiStateMap[key.key_id]?.lastUsedRelative || '-' }}</span>
                   </div>
                   <div class="flex items-center justify-between gap-2">
-                    <span class="text-muted-foreground">分数</span>
+                    <span class="text-muted-foreground">{{ t('poolManagement.score') }}</span>
                     <div class="flex items-center gap-1">
                       <span class="font-mono font-medium text-foreground/90 tabular-nums">
                         {{ formatPoolScore(key.pool_score?.score) }}
@@ -1293,8 +1293,8 @@
                             variant="ghost"
                             size="icon"
                             class="h-5 w-5 rounded-full border border-transparent text-muted-foreground/80 hover:border-border/60 hover:bg-muted/60 hover:text-foreground"
-                            title="查看评分计算结果"
-                            aria-label="查看评分计算结果"
+                    :title="t('poolManagement.scoreDetails')"
+                    :aria-label="t('poolManagement.scoreDetails')"
                             @click.stop
                           >
                             <CircleHelp class="h-3.5 w-3.5" />
@@ -1309,7 +1309,7 @@
                         >
                           <div class="text-left">
                             <div class="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-3 py-2.5">
-                              <span class="text-xs font-semibold text-foreground">评分计算结果</span>
+                              <span class="text-xs font-semibold text-foreground">{{ t('poolManagement.scoreDetails') }}</span>
                               <span class="font-mono text-xs tabular-nums text-foreground/90">
                                 {{ formatPoolScore(key.pool_score?.score) }}
                               </span>
@@ -1329,7 +1329,7 @@
                                   {{ getPoolScoreProbeStatusLabel(key.pool_score?.probe_status) }}
                                 </Badge>
                                 <span class="text-[10px] text-muted-foreground">
-                                  更新 {{ formatUnixSeconds(key.pool_score?.updated_at) }}
+                                  {{ t('poolManagement.updatedAt', { time: formatUnixSeconds(key.pool_score?.updated_at) }) }}
                                 </span>
                               </div>
                               <pre class="max-h-56 overflow-auto rounded-md border border-border/50 bg-muted/30 px-3 py-2 font-mono text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap break-words">{{ formatPoolScoreReason(key.pool_score?.score_reason) }}</pre>
@@ -1347,7 +1347,7 @@
                 class="rounded-xl border border-border/50 bg-muted/30 px-3 py-2 text-xs"
               >
                 <div class="text-muted-foreground mb-1">
-                  配额
+                  {{ t('poolManagement.quota') }}
                 </div>
                 <div
                   v-if="quotaProgressMap[key.key_id]?.length"
@@ -1411,7 +1411,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 shrink-0"
-                    title="下载 OAuth 授权文件"
+                    :title="t('poolManagement.downloadOAuth')"
                     @click.stop="downloadRefreshToken(key)"
                   >
                     <Download class="w-3.5 h-3.5" />
@@ -1421,7 +1421,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 shrink-0"
-                    title="复制密钥"
+                    :title="t('poolManagement.copyKey')"
                     @click.stop="copyFullKey(key)"
                   >
                     <Copy class="w-3.5 h-3.5" />
@@ -1445,7 +1445,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 shrink-0 text-muted-foreground hover:text-green-600"
-                    title="清除冷却"
+                    :title="t('poolManagement.clearCooldown')"
                     @click="clearCooldown(key.key_id)"
                   >
                     <RefreshCw class="w-3.5 h-3.5" />
@@ -1455,7 +1455,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 shrink-0"
-                    title="模型权限"
+                    :title="t('poolManagement.modelPermissions')"
                     @click="handleKeyPermissions(key)"
                   >
                     <Shield class="w-3.5 h-3.5" />
@@ -1472,7 +1472,7 @@
                         class="h-7 w-7 shrink-0"
                         :class="key.proxy?.node_id ? 'text-blue-500' : ''"
                         :disabled="savingProxyKeyId === key.key_id"
-                        :title="key.proxy?.node_id ? `代理: ${getKeyProxyNodeName(key)}` : '设置代理节点'"
+                        :title="key.proxy?.node_id ? t('poolManagement.proxyValue', { name: getKeyProxyNodeName(key) }) : t('poolManagement.setProxy')"
                         @click.stop
                       >
                         <Globe class="w-3.5 h-3.5" />
@@ -1485,7 +1485,7 @@
                     >
                       <div class="space-y-2">
                         <div class="flex items-center justify-between">
-                          <span class="text-xs font-medium">代理节点</span>
+                          <span class="text-xs font-medium">{{ t('poolManagement.proxyNode') }}</span>
                           <Button
                             v-if="key.proxy?.node_id"
                             variant="ghost"
@@ -1494,7 +1494,7 @@
                             :disabled="savingProxyKeyId === key.key_id"
                             @click="clearKeyProxy(key)"
                           >
-                            清除
+                            {{ t('poolManagement.clear') }}
                           </Button>
                         </div>
                         <ProxyNodeSelect
@@ -1503,7 +1503,7 @@
                           @update:model-value="(v: string) => setKeyProxy(key, v)"
                         />
                         <p class="text-[10px] text-muted-foreground">
-                          {{ key.proxy?.node_id ? '当前使用独立代理' : '未设置，使用提供商级别代理' }}
+                          {{ key.proxy?.node_id ? t('poolManagement.independentProxy') : t('poolManagement.providerProxyFallback') }}
                         </p>
                       </div>
                     </PopoverContent>
@@ -1514,7 +1514,7 @@
                     size="icon"
                     class="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
                     :disabled="resettingCycleKeyId === key.key_id"
-                    title="重置周期统计"
+                    :title="t('poolManagement.resetCycle')"
                     @click="handleResetCycleStats(key)"
                   >
                     <RotateCcw
@@ -1527,7 +1527,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 shrink-0"
-                    title="编辑账号"
+                    :title="t('poolManagement.editAccount')"
                     @click="handleEditKey(key)"
                   >
                     <SquarePen class="w-3.5 h-3.5" />
@@ -1538,7 +1538,7 @@
                     size="icon"
                     class="h-7 w-7 shrink-0 text-foreground hover:text-foreground"
                     :disabled="togglingKeyId === key.key_id"
-                    :title="key.is_active ? '禁用' : '启用'"
+                    :title="key.is_active ? t('poolManagement.disable') : t('poolManagement.enable')"
                     @click="toggleKeyActive(key)"
                   >
                     <Power class="w-3.5 h-3.5" />
@@ -1549,7 +1549,7 @@
                     size="icon"
                     class="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
                     :disabled="deletingKeyId === key.key_id"
-                    title="删除账号"
+                    :title="t('poolManagement.deleteAccount')"
                     @click="handleDeleteKey(key)"
                   >
                     <Trash2 class="w-3.5 h-3.5" />
@@ -1569,7 +1569,7 @@
             <KeyRound class="h-8 w-8 text-muted-foreground" />
           </div>
           <p class="text-sm text-muted-foreground mt-4">
-            {{ hasPoolKeyFilters ? '未找到匹配账号' : '暂无账号' }}
+            {{ hasPoolKeyFilters ? t('poolManagement.noMatches') : t('poolManagement.noAccounts') }}
           </p>
           <Button
             v-if="hasPoolKeyFilters"
@@ -1578,7 +1578,7 @@
             class="mt-3"
             @click="clearPoolKeyFilters"
           >
-            清除筛选
+            {{ t('poolManagement.clearFilters') }}
           </Button>
           <Button
             v-else
@@ -1588,7 +1588,7 @@
             @click="showImportDialog = true"
           >
             <Upload class="w-3.5 h-3.5 mr-1.5" />
-            添加账号
+            {{ t('poolManagement.addAccount') }}
           </Button>
         </div>
 
@@ -1689,6 +1689,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Search,
   Upload,
@@ -1846,6 +1847,7 @@ import {
 type PoolKeyScore = NonNullable<PoolKeyDetail['pool_score']>
 
 const { success, error: showError, warning: showWarning } = useToast()
+const { t } = useI18n()
 const { confirm } = useConfirm()
 const { copyToClipboard } = useClipboard()
 const { tick: countdownTick, start: startCountdownTimer } = useCountdownTimer()
@@ -1920,33 +1922,33 @@ interface PoolDemandMetricSample {
 
 const showDemandMetricsDialog = ref(false)
 const providerDemandMetricSamples = ref<PoolDemandMetricSample[]>([])
-const poolKeyStatusFilterOptions: Array<{ value: PoolManagementViewState['status'], label: string }> = [
-  { value: 'all', label: '全部状态' },
-  { value: 'available', label: '可用' },
-  { value: 'invalid', label: '已失效' },
-  { value: 'disabled', label: '禁用' },
-  { value: 'quota_exhausted', label: '额度耗尽' },
-  { value: 'temporary_unavailable', label: '暂时不可用' },
-  { value: 'blocked', label: '异常' },
-]
-const poolScoreHardStateOptions = [
-  { value: 'all', label: '全部状态' },
-  { value: 'available', label: '可用' },
-  { value: 'unknown', label: '未知' },
-  { value: 'cooldown', label: '冷却' },
-  { value: 'quota_exhausted', label: '额度耗尽' },
-  { value: 'auth_invalid', label: '授权无效' },
-  { value: 'banned', label: '封禁' },
-  { value: 'inactive', label: '禁用' },
-]
-const poolScoreProbeStatusOptions = [
-  { value: 'all', label: '全部探测' },
-  { value: 'never', label: '未探测' },
-  { value: 'ok', label: '正常' },
-  { value: 'failed', label: '失败' },
-  { value: 'stale', label: '过期' },
-  { value: 'in_progress', label: '探测中' },
-]
+const poolKeyStatusFilterOptions = computed<Array<{ value: PoolManagementViewState['status'], label: string }>>(() => [
+  { value: 'all', label: t('poolManagement.statusAll') },
+  { value: 'available', label: t('poolManagement.available') },
+  { value: 'invalid', label: t('poolManagement.invalid') },
+  { value: 'disabled', label: t('poolManagement.disable') },
+  { value: 'quota_exhausted', label: t('poolManagement.quotaExhausted') },
+  { value: 'temporary_unavailable', label: t('poolManagement.temporaryUnavailable') },
+  { value: 'blocked', label: t('poolManagement.abnormal') },
+])
+const poolScoreHardStateOptions = computed(() => [
+  { value: 'all', label: t('poolManagement.statusAll') },
+  { value: 'available', label: t('poolManagement.available') },
+  { value: 'unknown', label: t('poolManagement.unknown') },
+  { value: 'cooldown', label: t('poolManagement.cooldown') },
+  { value: 'quota_exhausted', label: t('poolManagement.quotaExhausted') },
+  { value: 'auth_invalid', label: t('poolManagement.authInvalid') },
+  { value: 'banned', label: t('poolManagement.banned') },
+  { value: 'inactive', label: t('poolManagement.disable') },
+])
+const poolScoreProbeStatusOptions = computed(() => [
+  { value: 'all', label: t('poolManagement.probeAll') },
+  { value: 'never', label: t('poolManagement.neverProbed') },
+  { value: 'ok', label: t('poolManagement.normal') },
+  { value: 'failed', label: t('poolManagement.failed') },
+  { value: 'stale', label: t('poolManagement.stale') },
+  { value: 'in_progress', label: t('poolManagement.probing') },
+])
 
 async function loadOverview(options: { cacheTtlMs?: number, silent?: boolean } = {}) {
   const requestId = ++overviewRequestId
@@ -2063,10 +2065,10 @@ const DEFAULT_PRESET_LABELS: Record<string, string> = {
   team_first: 'Team',
   plus_first: 'Plus',
   pro_first: 'Pro',
-  recent_refresh: '刷新优先',
-  priority_first: '优先级',
-  quota_balanced: '额度均衡',
-  single_account: '单号优先',
+  recent_refresh: t('poolManagement.recentRefresh'),
+  priority_first: t('poolManagement.priorityFirst'),
+  quota_balanced: t('poolManagement.quotaBalanced'),
+  single_account: t('poolManagement.singleAccount'),
 }
 const presetLabelsByName = ref<Record<string, string>>({ ...DEFAULT_PRESET_LABELS })
 
@@ -2191,13 +2193,13 @@ function startDemandMetricsPolling(): void {
 
 const poolSchedulingLabel = computed(() => {
   if (!selectedProviderConfig.value && selectedProviderOverview.value?.pool_enabled === false) {
-    return '未启用'
+    return t('poolManagement.disabled')
   }
 
   const cfg = selectedProviderConfig.value
 
   // No pool_advanced config at all: use default enabled presets count
-  if (!cfg) return `${DEFAULT_ENABLED_PRESETS.size} 维度`
+  if (!cfg) return t('poolManagement.dimensionCount', { count: DEFAULT_ENABLED_PRESETS.size })
 
   const presets = Array.isArray(cfg.scheduling_presets) ? cfg.scheduling_presets : []
   const presetLabels = presetLabelsByName.value
@@ -2209,7 +2211,7 @@ const poolSchedulingLabel = computed(() => {
       const enabledCount = (presets as Array<{ preset: string; enabled?: boolean }>)
         .filter(p => p.enabled !== false)
         .length
-      return enabledCount > 0 ? `${enabledCount} 维度` : '无启用维度'
+      return enabledCount > 0 ? t('poolManagement.dimensionCount', { count: enabledCount }) : t('poolManagement.noEnabledDimensions')
     }
 
     // Legacy string list format
@@ -2217,26 +2219,26 @@ const poolSchedulingLabel = computed(() => {
       const labels = (presets as string[])
         .map(p => presetLabels[normalizePresetName(p)])
         .filter(Boolean)
-      if (labels.length > 0) return `${labels.length} 维度`
+      if (labels.length > 0) return t('poolManagement.dimensionCount', { count: labels.length })
     }
   }
 
   // Fallback: legacy scheduling_mode field
   if (cfg.scheduling_mode === 'multi_score') {
-    return '多维评分'
+    return t('poolManagement.multiScore')
   }
 
   const lruEnabled = cfg.scheduling_mode === 'lru' || cfg.lru_enabled === true
   const stickyTtl = Number(cfg.sticky_session_ttl_seconds ?? 3600)
   const stickyEnabled = Number.isFinite(stickyTtl) && stickyTtl > 0
 
-  if (lruEnabled && stickyEnabled) return 'LRU + 粘性'
+  if (lruEnabled && stickyEnabled) return t('poolManagement.lruSticky')
   if (lruEnabled) return 'LRU'
   if (!cfg.scheduling_mode && (cfg.lru_enabled === null || cfg.lru_enabled === undefined)) {
-    return `${DEFAULT_ENABLED_PRESETS.size} 维度`
+    return t('poolManagement.dimensionCount', { count: DEFAULT_ENABLED_PRESETS.size })
   }
-  if (stickyEnabled) return '粘性'
-  return '随机'
+  if (stickyEnabled) return t('poolManagement.sticky')
+  return t('poolManagement.random')
 })
 
 const selectedProviderType = computed<ProviderType | ''>(() => {
@@ -2250,10 +2252,10 @@ const showCodexStatsModeToggle = computed(() => selectedProviderType.value === '
 const selectedProviderStatusText = computed(() => {
   if (!selectedProviderId.value) return ''
   const providerActive = selectedProviderData.value?.is_active
-  if (providerActive === false) return '禁用'
-  if (providerActive === true) return '启用'
-  if (selectedProviderOverview.value?.pool_enabled === false) return '禁用'
-  if (selectedProviderOverview.value?.pool_enabled === true) return '启用'
+  if (providerActive === false) return t('poolManagement.disabled')
+  if (providerActive === true) return t('poolManagement.enabled')
+  if (selectedProviderOverview.value?.pool_enabled === false) return t('poolManagement.disabled')
+  if (selectedProviderOverview.value?.pool_enabled === true) return t('poolManagement.enabled')
   return ''
 })
 
@@ -2271,14 +2273,14 @@ const selectedProviderDemandMetaText = computed(() => {
   const hotCount = Number(overview.provider_hot_count ?? 0)
   const inFlight = Number(overview.provider_in_flight ?? 0)
   if (Number.isFinite(desiredHot) && desiredHot > 0) {
-    segments.push(`热池 ${hotCount} / ${desiredHot}`)
-    segments.push(`EMA ${formatDemandEma(overview.provider_ema_in_flight)}`)
+    segments.push(t('poolManagement.hotPoolValue', { current: hotCount, desired: desiredHot }))
+    segments.push(t('poolManagement.emaValue', { value: formatDemandEma(overview.provider_ema_in_flight) }))
   }
   if (Number.isFinite(inFlight) && inFlight > 0) {
-    segments.push(`处理中 ${inFlight}`)
+    segments.push(t('poolManagement.processingValue', { count: inFlight }))
   }
   if (overview.provider_burst_pending) {
-    segments.push('补热中')
+    segments.push(t('poolManagement.replenishing'))
   }
   return segments.join(' | ')
 })
@@ -2637,9 +2639,9 @@ interface PoolCodexCycleStatsRow {
 
 const CODEX_CYCLE_STAT_KEYS: Array<PoolStatsMetric['key']> = ['request_count', 'total_tokens', 'total_cost_usd']
 const CODEX_CYCLE_STAT_LABELS: Record<PoolStatsMetric['key'], string> = {
-  request_count: '请求',
+  request_count: t('poolManagement.requestCount'),
   total_tokens: 'Token',
-  total_cost_usd: '基础费用',
+  total_cost_usd: t('poolManagement.baseCost'),
 }
 
 type PoolKeyUiState = {
@@ -2733,7 +2735,7 @@ function createMissingCycleMetric(key: PoolStatsMetric['key']): PoolStatsMetric 
   return {
     key,
     label: CODEX_CYCLE_STAT_LABELS[key],
-    value: '统计中',
+    value: t('commonUi.statisticsPending'),
     missing: true,
   }
 }
@@ -2936,8 +2938,8 @@ async function refreshCurrentPageQuotaInBackground(
     if (!options.silent && quotaStats.total > 0 && quotaStats.cooledDownCount > 0) {
       const waitText = quotaStats.minRemainingSeconds > 0
         ? formatTTL(quotaStats.minRemainingSeconds)
-        : '稍后'
-      showWarning(`当前页额度均在冷却中，请 ${waitText} 后再试`)
+        : t('poolManagement.later')
+      showWarning(t('poolManagement.allCooldown', { wait: waitText }))
     }
     return false
   }
@@ -2960,17 +2962,17 @@ async function refreshCurrentPageQuotaInBackground(
     }
 
     if (!options.silent) {
-      const skippedText = skippedCount > 0 ? `，冷却跳过 ${skippedCount}` : ''
+      const skippedText = skippedCount > 0 ? t('poolManagement.cooldownSkipped', { count: skippedCount }) : ''
       const firstFailureMessage = result.results.find(item => item.status !== 'success')?.message?.trim()
       if (successCount === 0 && failedCount > 0 && firstFailureMessage) {
-        showError(`当前页额度刷新失败：${firstFailureMessage}${skippedText}`)
+        showError(t('poolManagement.refreshFailedDetail', { error: firstFailureMessage, skipped: skippedText }))
       } else {
-        success(`当前页额度刷新完成：成功 ${successCount}，失败 ${failedCount}${skippedText}`)
+        success(t('poolManagement.refreshComplete', { success: successCount, failed: failedCount, skipped: skippedText }))
       }
     }
     return true
   } catch (err) {
-    showError(parseApiError(err, '刷新当前页额度失败'))
+    showError(parseApiError(err, t('poolManagement.refreshPageFailed')))
     return false
   } finally {
     refreshingCurrentPageQuota.value = false
@@ -2978,22 +2980,22 @@ async function refreshCurrentPageQuotaInBackground(
 }
 
 const refreshButtonTitle = computed(() => {
-  if (refreshCurrentPageLoading.value) return '刷新中...'
-  if (!selectedProviderId.value) return '刷新'
-  if (!quotaRefreshSupported.value) return '刷新数据'
+  if (refreshCurrentPageLoading.value) return t('poolManagement.refreshing', '刷新中...')
+  if (!selectedProviderId.value) return t('poolManagement.refresh', '刷新')
+  if (!quotaRefreshSupported.value) return t('poolManagement.refreshData', '刷新数据')
 
   const quotaStats = currentPageQuotaRefreshStats.value
-  if (quotaStats.total === 0) return '刷新数据和额度'
+  if (quotaStats.total === 0) return t('poolManagement.refreshDataQuota', '刷新数据和额度')
   if (quotaStats.eligibleIds.length === 0 && quotaStats.cooledDownCount > 0) {
     const waitText = quotaStats.minRemainingSeconds > 0
       ? formatTTL(quotaStats.minRemainingSeconds)
-      : '稍后'
-    return `刷新数据（额度冷却 ${waitText}）`
+      : t('poolManagement.later')
+    return t('poolManagement.refreshDataCooldown', { wait: waitText })
   }
   if (quotaStats.cooledDownCount > 0) {
-    return `刷新数据和额度（可刷新 ${quotaStats.eligibleIds.length}/${quotaStats.total}）`
+    return t('poolManagement.refreshEligible', { eligible: quotaStats.eligibleIds.length, total: quotaStats.total })
   }
-  return '刷新数据和额度'
+  return t('poolManagement.refreshDataQuota', '刷新数据和额度')
 })
 
 async function refreshCurrentPage() {
@@ -3125,7 +3127,7 @@ function toEndpointApiKey(key: PoolKeyDetail): EndpointAPIKey {
     can_refresh_oauth: key.can_refresh_oauth ?? undefined,
     can_export_oauth: key.can_export_oauth ?? undefined,
     can_edit_oauth: key.can_edit_oauth ?? undefined,
-    name: key.key_name || '未命名',
+    name: key.key_name || t('poolManagement.unnamedAccount'),
     rate_multipliers: key.rate_multipliers ?? null,
     internal_priority: key.internal_priority ?? 50,
     rpm_limit: key.rpm_limit ?? null,
@@ -3271,20 +3273,20 @@ async function applyInternalPriority(key: PoolKeyDetail, nextPriority: number) {
     await updateProviderKey(key.key_id, { internal_priority: normalized })
     key.internal_priority = normalized
     sortCurrentPageKeysByPriority()
-    success('账号优先级已更新')
+    success(t('poolManagement.priorityUpdated'))
   } catch (err) {
-    showError(parseApiError(err, '更新优先级失败'))
+    showError(parseApiError(err, t('poolManagement.priorityUpdateFailed')))
   } finally {
     prioritySavingKeyId.value = null
   }
 }
 
 async function quickEditInternalPriority(key: PoolKeyDetail) {
-  const raw = window.prompt('设置账号优先级（1-999999，数字越小越优先）', String(key.internal_priority ?? 50))
+  const raw = window.prompt(t('poolManagement.priorityPrompt'), String(key.internal_priority ?? 50))
   if (raw === null) return
   const parsed = Number(raw)
   if (!Number.isFinite(parsed)) {
-    showWarning('请输入有效数字')
+    showWarning(t('poolManagement.invalidPriority'))
     return
   }
   await applyInternalPriority(key, parsed)
@@ -3386,9 +3388,9 @@ async function setKeyProxy(key: PoolKeyDetail, nodeId: string) {
     key.proxy = { node_id: nodeId, enabled: true }
     proxyDesktopPopoverOpenKeyId.value = null
     proxyMobilePopoverOpenKeyId.value = null
-    success('代理节点已设置')
+    success(t('poolManagement.proxySet'))
   } catch (err) {
-    showError(parseApiError(err, '设置代理失败'))
+    showError(parseApiError(err, t('poolManagement.proxySetFailed')))
   } finally {
     savingProxyKeyId.value = null
   }
@@ -3401,9 +3403,9 @@ async function clearKeyProxy(key: PoolKeyDetail) {
     key.proxy = null
     proxyDesktopPopoverOpenKeyId.value = null
     proxyMobilePopoverOpenKeyId.value = null
-    success('已清除账号代理，将使用提供商级别代理')
+    success(t('poolManagement.proxyCleared'))
   } catch (err) {
-    showError(parseApiError(err, '清除代理失败'))
+    showError(parseApiError(err, t('poolManagement.proxyClearFailed')))
   } finally {
     savingProxyKeyId.value = null
   }
@@ -3411,9 +3413,9 @@ async function clearKeyProxy(key: PoolKeyDetail) {
 
 async function handleDeleteKey(key: PoolKeyDetail) {
   const confirmed = await confirm({
-    title: '删除账号',
-    message: `确定要删除账号 "${getPoolAccountDisplayName(key)}" 吗？`,
-    confirmText: '删除',
+    title: t('poolManagement.deleteAccount'),
+    message: t('poolManagement.deleteAccountConfirm', { name: getPoolAccountDisplayName(key) }),
+    confirmText: t('poolManagement.delete'),
     variant: 'destructive',
   })
   if (!confirmed) return
@@ -3421,7 +3423,7 @@ async function handleDeleteKey(key: PoolKeyDetail) {
   deletingKeyId.value = key.key_id
   try {
     await deleteEndpointKey(key.key_id)
-    success('账号已删除')
+    success(t('poolManagement.accountDeleted'))
     selectedPoolKeyIds.value = selectedPoolKeyIds.value.filter(id => id !== key.key_id)
     // 乐观更新：直接从本地列表移除，避免等待网络重载
     keyPage.value.keys = keyPage.value.keys.filter(k => k.key_id !== key.key_id)
@@ -3432,7 +3434,7 @@ async function handleDeleteKey(key: PoolKeyDetail) {
     }
     refreshOverviewInBackground()
   } catch (err) {
-    showError(parseApiError(err, '删除账号失败'))
+    showError(parseApiError(err, t('poolManagement.deleteAccountFailed')))
   } finally {
     deletingKeyId.value = null
   }
@@ -3493,11 +3495,11 @@ async function updateSelectedPoolKeyActiveStatus(action: 'enable' | 'disable'): 
 
   const enable = action === 'enable'
   const confirmed = await confirm({
-    title: enable ? '启用已选账号' : '停用已选账号',
+    title: enable ? t('poolManagement.enableSelected') : t('poolManagement.disableSelected'),
     message: enable
-      ? `确定要启用已选 ${selectedCount} 个账号吗？启用后这些账号可以重新参与调度。`
-      : `确定要停用已选 ${selectedCount} 个账号吗？停用后这些账号不会参与调度。`,
-    confirmText: enable ? '确认启用' : '确认停用',
+      ? t('poolManagement.enableSelectedConfirm', { count: selectedCount })
+      : t('poolManagement.disableSelectedConfirm', { count: selectedCount }),
+    confirmText: enable ? t('poolManagement.confirmEnable') : t('poolManagement.confirmDisable'),
     variant: enable ? 'question' : 'warning',
   })
   if (!confirmed) return
@@ -3506,7 +3508,7 @@ async function updateSelectedPoolKeyActiveStatus(action: 'enable' | 'disable'): 
   try {
     const keyIds = await resolveSelectedPoolKeyIdsForBatch(providerId)
     if (keyIds.length === 0) {
-      showWarning('没有找到可操作的账号，请刷新后重试')
+      showWarning(t('poolManagement.noActionableAccounts'))
       return
     }
     const result = await batchActionPoolKeys(providerId, {
@@ -3519,10 +3521,10 @@ async function updateSelectedPoolKeyActiveStatus(action: 'enable' | 'disable'): 
     await loadKeys()
     refreshOverviewInBackground()
     success(affected > 0
-      ? `${enable ? '已启用' : '已停用'} ${affected} 个账号`
-      : '没有账号被更新')
+      ? t(enable ? 'poolManagement.enabledCount' : 'poolManagement.disabledCount', { count: affected })
+      : t('poolManagement.noAccountsUpdated'))
   } catch (err) {
-    showError(parseApiError(err, enable ? '批量启用账号失败' : '批量停用账号失败'))
+    showError(parseApiError(err, enable ? t('poolManagement.enableBatchFailed') : t('poolManagement.disableBatchFailed')))
   } finally {
     updatingSelectedKeyStatus.value = null
   }
@@ -3542,9 +3544,9 @@ async function clearCooldownSelectedPoolKeys(): Promise<void> {
   if (!providerId || selectedCount === 0 || poolSelectionActionBusy.value) return
 
   const confirmed = await confirm({
-    title: '清除冷却',
-    message: `确定要清除已选 ${selectedCount} 个账号的冷却状态吗？清除后这些账号会重新参与调度。`,
-    confirmText: '确认清除',
+    title: t('poolManagement.clearCooldown'),
+    message: t('poolManagement.clearCooldownConfirm', { count: selectedCount }),
+    confirmText: t('poolManagement.confirmClear'),
     variant: 'question',
   })
   if (!confirmed) return
@@ -3553,7 +3555,7 @@ async function clearCooldownSelectedPoolKeys(): Promise<void> {
   try {
     const keyIds = await resolveSelectedPoolKeyIdsForBatch(providerId)
     if (keyIds.length === 0) {
-      showWarning('没有找到可清除冷却的账号，请刷新后重试')
+      showWarning(t('poolManagement.noCooldownAccounts'))
       return
     }
     const result = await batchActionPoolKeys(providerId, {
@@ -3565,9 +3567,9 @@ async function clearCooldownSelectedPoolKeys(): Promise<void> {
     clearPoolKeySelection()
     await loadKeys()
     refreshOverviewInBackground()
-    success(affected > 0 ? `已清除 ${affected} 个账号的冷却状态` : '没有账号被更新')
+    success(affected > 0 ? t('poolManagement.cooldownClearedCount', { count: affected }) : t('poolManagement.noAccountsUpdated'))
   } catch (err) {
-    showError(parseApiError(err, '批量清除冷却失败'))
+    showError(parseApiError(err, t('poolManagement.clearCooldownFailed')))
   } finally {
     clearingSelectedCooldown.value = false
   }
@@ -3579,9 +3581,9 @@ async function deleteSelectedPoolKeys(): Promise<void> {
   if (!providerId || selectedCount === 0 || poolSelectionActionBusy.value) return
 
   const confirmed = await confirm({
-    title: '删除已选账号',
-    message: `确定要删除已选 ${selectedCount} 个账号吗？删除后不可恢复。`,
-    confirmText: '确认删除',
+    title: t('poolManagement.deleteSelected'),
+    message: t('poolManagement.deleteSelectedConfirm', { count: selectedCount }),
+    confirmText: t('poolManagement.confirmDelete'),
     variant: 'destructive',
   })
   if (!confirmed) return
@@ -3590,7 +3592,7 @@ async function deleteSelectedPoolKeys(): Promise<void> {
   try {
     const keyIds = await resolveSelectedPoolKeyIdsForBatch(providerId)
     if (keyIds.length === 0) {
-      showWarning('没有找到可删除的账号，请刷新后重试')
+      showWarning(t('poolManagement.noDeletableAccounts'))
       return
     }
 
@@ -3607,7 +3609,7 @@ async function deleteSelectedPoolKeys(): Promise<void> {
       deletedCount = taskResult.deleted
       if (taskResult.status === 'failed') {
         taskFailed = true
-        showWarning(`批量删除任务未完成，已删除 ${deletedCount} 个账号，请刷新后确认`)
+        showWarning(t('poolManagement.batchDeleteIncomplete', { count: deletedCount }))
       }
     }
 
@@ -3616,10 +3618,10 @@ async function deleteSelectedPoolKeys(): Promise<void> {
     await loadKeys()
     refreshOverviewInBackground()
     if (!taskFailed) {
-      success(deletedCount > 0 ? `已删除 ${deletedCount} 个账号` : '没有账号被删除')
+      success(deletedCount > 0 ? t('poolManagement.deletedCount', { count: deletedCount }) : t('poolManagement.noAccountsDeleted'))
     }
   } catch (err) {
-    showError(parseApiError(err, '批量删除账号失败'))
+    showError(parseApiError(err, t('poolManagement.deleteBatchFailed')))
   } finally {
     deletingSelectedKeys.value = false
   }
@@ -3641,13 +3643,13 @@ async function copyFullKey(key: PoolKeyDetail) {
     }
 
     if (!textToCopy) {
-      showError('未获取到可复制内容')
+      showError(t('poolManagement.noCopyContent'))
       return
     }
 
     await copyToClipboard(textToCopy)
   } catch (err) {
-    showError(parseApiError(err, '获取密钥失败'))
+    showError(parseApiError(err, t('poolManagement.getKeyFailed')))
   }
 }
 
@@ -3668,7 +3670,7 @@ async function downloadRefreshToken(key: PoolKeyDetail) {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   } catch (err) {
-    showError(parseApiError(err, '导出失败'))
+    showError(parseApiError(err, t('poolManagement.exportFailed')))
   }
 }
 
@@ -3706,7 +3708,7 @@ async function handleRefreshOAuth(key: PoolKeyDetail) {
       success(feedback.message)
     }
   } catch (err) {
-    showError(parseApiError(err, 'Token 刷新失败'))
+    showError(parseApiError(err, t('poolManagement.tokenRefreshFailed')))
     await loadKeys()
   } finally {
     refreshingOAuthKeyId.value = null
@@ -3730,19 +3732,19 @@ async function handleResetCycleStats(key: PoolKeyDetail) {
   if (resettingCycleKeyId.value || !canResetCycleStats(key)) return
 
   const confirmed = await confirm({
-    title: '重置周期统计',
-    message: `确定要将账号 "${getPoolAccountDisplayName(key)}" 的 5H / 周统计从当前时间重新开始计算吗？`,
-    confirmText: '重置',
+    title: t('poolManagement.resetCycle'),
+    message: t('poolManagement.resetCycleConfirm', { name: getPoolAccountDisplayName(key) }),
+    confirmText: t('poolManagement.reset'),
   })
   if (!confirmed) return
 
   resettingCycleKeyId.value = key.key_id
   try {
     const result = await resetProviderKeyCycleStats(key.key_id)
-    success(result.message || '周期统计已重置')
+    success(result.message || t('poolManagement.cycleReset'))
     await loadKeys()
   } catch (err) {
-    showError(parseApiError(err, '重置周期统计失败'))
+    showError(parseApiError(err, t('poolManagement.resetCycleFailed')))
   } finally {
     resettingCycleKeyId.value = null
   }
@@ -3764,11 +3766,11 @@ async function toggleKeyActive(key: PoolKeyDetail) {
       }
     } else {
       key.scheduling_state = 'disabled'
-      key.scheduling_label = '禁用'
+      key.scheduling_label = t('poolManagement.disabled')
       key.scheduling_status = 'blocked'
       key.scheduling_reason = 'disabled'
     }
-    success(nextStatus ? '账号已启用' : '账号已停用')
+    success(nextStatus ? t('poolManagement.accountEnabled') : t('poolManagement.accountDisabled'))
     await loadKeys()
     refreshOverviewInBackground()
   } catch (err) {
@@ -3809,7 +3811,7 @@ async function openProviderEditDialog(): Promise<void> {
   } catch (err) {
     if (selectedProviderId.value !== providerId) return
     if (!selectedProviderData.value) {
-      showError(parseApiError(err, '刷新提供商状态失败'))
+      showError(parseApiError(err, t('poolManagement.refreshProviderFailed')))
       return
     }
     providerToEdit.value = selectedProviderData.value
@@ -3843,7 +3845,7 @@ async function openEndpointEditDialog(): Promise<void> {
     endpointEditDialogOpen.value = true
   } catch (err) {
     if (requestId !== endpointEditRequestId || selectedProviderId.value !== providerId) return
-    showError(parseApiError(err, '加载端点失败'))
+    showError(parseApiError(err, t('poolManagement.loadEndpointsFailed')))
   }
 }
 
@@ -3863,7 +3865,7 @@ async function handleEndpointEditSaved(): Promise<void> {
     await Promise.all([loadOverview(), loadKeys()])
   } catch (err) {
     if (requestId !== endpointEditRequestId || selectedProviderId.value !== providerId) return
-    showError(parseApiError(err, '刷新端点失败'))
+    showError(parseApiError(err, t('poolManagement.refreshEndpointsFailed')))
   }
 }
 
@@ -3875,7 +3877,7 @@ function getProviderProxyNodeName(): string | null {
 }
 
 function getPoolAccountDisplayName(key: PoolKeyDetail): string {
-  return getAccountDisplayName(key, '未命名账号')
+  return getAccountDisplayName(key, t('poolManagement.unnamedAccount'))
 }
 
 async function copyPoolAccountDisplay(key: PoolKeyDetail): Promise<void> {
@@ -3886,8 +3888,8 @@ async function copyPoolAccountDisplay(key: PoolKeyDetail): Promise<void> {
 
 function getProviderProxyButtonTitle(): string {
   const nodeName = getProviderProxyNodeName()
-  if (nodeName) return `提供商代理（当前: ${nodeName}）`
-  return '提供商代理（未设置）'
+  if (nodeName) return t('poolManagement.providerProxyCurrent', { name: nodeName })
+  return t('poolManagement.providerProxyUnset')
 }
 
 function closeProviderProxyPopovers(): void {
@@ -3926,9 +3928,9 @@ async function setProviderProxy(nodeId: string): Promise<void> {
       selectedProviderData.value = updated
     }
     closeProviderProxyPopovers()
-    success('提供商代理已设置')
+    success(t('poolManagement.providerProxySet'))
   } catch (err) {
-    showError(parseApiError(err, '设置提供商代理失败'))
+    showError(parseApiError(err, t('poolManagement.providerProxySetFailed')))
   } finally {
     savingProviderProxy.value = false
   }
@@ -3944,9 +3946,9 @@ async function clearProviderProxy(): Promise<void> {
       selectedProviderData.value = updated
     }
     closeProviderProxyPopovers()
-    success('提供商代理已清除')
+    success(t('poolManagement.providerProxyCleared'))
   } catch (err) {
-    showError(parseApiError(err, '清除提供商代理失败'))
+    showError(parseApiError(err, t('poolManagement.providerProxyClearFailed')))
   } finally {
     savingProviderProxy.value = false
   }
@@ -3954,7 +3956,7 @@ async function clearProviderProxy(): Promise<void> {
 
 function getProviderToggleButtonTitle(): string {
   const active = selectedProviderData.value?.is_active !== false
-  return active ? '当前状态：已启用，点击禁用提供商' : '当前状态：已禁用，点击启用提供商'
+  return active ? t('poolManagement.providerEnabledTitle') : t('poolManagement.providerDisabledTitle')
 }
 
 function getProviderToggleButtonClass(): string {
@@ -3970,9 +3972,9 @@ async function toggleSelectedProviderStatus(): Promise<void> {
   const nextStatus = !current.is_active
   if (!nextStatus) {
     const confirmed = await confirm({
-      title: '禁用提供商',
-      message: `禁用后该提供商（${current.name}）将不再参与调度，是否继续？`,
-      confirmText: '确认禁用',
+      title: t('poolManagement.disableProvider'),
+      message: t('poolManagement.disableProviderConfirm', { name: current.name }),
+      confirmText: t('poolManagement.confirmDisable'),
       variant: 'destructive',
     })
     if (!confirmed) return
@@ -3984,10 +3986,10 @@ async function toggleSelectedProviderStatus(): Promise<void> {
     if (selectedProviderId.value === providerId) {
       selectedProviderData.value = updated
     }
-    success(nextStatus ? '提供商已启用' : '提供商已禁用')
+    success(nextStatus ? t('poolManagement.providerEnabled') : t('poolManagement.providerDisabled'))
     await loadOverview()
   } catch (err) {
-    showError(parseApiError(err, nextStatus ? '启用提供商失败' : '禁用提供商失败'))
+    showError(parseApiError(err, nextStatus ? t('poolManagement.enableProviderFailed') : t('poolManagement.disableProviderFailed')))
   } finally {
     togglingProviderStatus.value = false
   }
@@ -4006,19 +4008,19 @@ async function handleAccountDialogSaved() {
 
 // --- Formatting ---
 const COOLDOWN_REASON_MAP: Record<string, string> = {
-  rate_limited_429: '429 限流',
-  forbidden_403: '403 禁止',
-  overloaded_529: '529 过载',
-  auth_failed_401: '401 认证失败',
-  payment_required_402: '402 欠费',
-  server_error_500: '500 错误',
-  request_timeout_408: '408 超时',
-  conflict_409: '409 冲突',
-  locked_423: '423 锁定',
+  rate_limited_429: t('poolManagement.reason429'),
+  forbidden_403: t('poolManagement.reason403'),
+  overloaded_529: t('poolManagement.reason529'),
+  auth_failed_401: t('poolManagement.reason401'),
+  payment_required_402: t('poolManagement.reason402'),
+  server_error_500: t('poolManagement.reason500'),
+  request_timeout_408: t('poolManagement.reason408'),
+  conflict_409: t('poolManagement.reason409'),
+  locked_423: t('poolManagement.reason423'),
   too_early_425: '425 Too Early',
-  bad_gateway_502: '502 网关错误',
-  service_unavailable_503: '503 服务不可用',
-  gateway_timeout_504: '504 网关超时',
+  bad_gateway_502: t('poolManagement.reason502'),
+  service_unavailable_503: t('poolManagement.reason503'),
+  gateway_timeout_504: t('poolManagement.reason504'),
 }
 
 function formatCooldownReason(reason: string): string {
@@ -4066,14 +4068,14 @@ function compactPoolStatusLabel(label: string | null | undefined): string | null
   if (!normalized) return null
 
   const mapped: Record<string, string> = {
-    'Token 失效': '已失效',
-    'Token 过期': '已过期',
-    Token失效: '已失效',
-    Token过期: '已过期',
-    账号已封禁: '账号封禁',
-    工作区已停用: '工作区停用',
-    账号访问受限: '访问受限',
-    健康度较低: '健康低',
+    'Token 失效': t('poolManagement.invalid'),
+    'Token 过期': t('poolManagement.expired'),
+    Token失效: t('poolManagement.invalid'),
+    Token过期: t('poolManagement.expired'),
+    账号已封禁: t('poolManagement.banned'),
+    工作区已停用: t('poolManagement.workspaceDisabled'),
+    账号访问受限: t('poolManagement.accessRestricted'),
+    健康度较低: t('poolManagement.healthLow'),
   }
   const labelText = mapped[normalized] || normalized
   return Array.from(labelText).slice(0, 5).join('')
@@ -4081,19 +4083,19 @@ function compactPoolStatusLabel(label: string | null | undefined): string | null
 
 function getOAuthStatusBadgeLabel(status: ReturnType<typeof getVisibleOAuthState>): string | null {
   if (!status) return null
-  if (status.requiresReauth) return '续期失败'
-  if (status.isInvalid) return '已失效'
-  if (status.isExpired) return '已过期'
-  if (status.text === '未添加') return '未添加'
-  if (status.text === '有效期未知') return '未知'
-  if (status.isExpiringSoon) return '将过期'
-  return '有效'
+  if (status.requiresReauth) return t('poolManagement.renewalFailed')
+  if (status.isInvalid) return t('poolManagement.invalid')
+  if (status.isExpired) return t('poolManagement.expired')
+  if (status.text === '未添加') return t('poolManagement.notAdded')
+  if (status.text === '有效期未知') return t('poolManagement.unknown')
+  if (status.isExpiringSoon) return t('poolManagement.expiringSoon')
+  return t('poolManagement.valid')
 }
 
 function getSchedulingBadgeLabel(key: PoolKeyDetail): string {
   const rawLabel = String(key.scheduling_label || '').trim()
   if (rawLabel) {
-    if (rawLabel === '禁用' || rawLabel === '停用') return '禁用'
+    if (rawLabel === '禁用' || rawLabel === '停用') return t('poolManagement.disabled')
     return compactPoolStatusLabel(rawLabel) || rawLabel
   }
 
@@ -4101,12 +4103,12 @@ function getSchedulingBadgeLabel(key: PoolKeyDetail): string {
   if (accountAlert) return compactPoolStatusLabel(accountAlert) || accountAlert
 
   const state = getSchedulingState(key)
-  if (state === 'disabled') return '禁用'
-  if (state === 'invalid') return '已失效'
-  if (state === 'blocked') return '账号异常'
-  if (state === 'quota_exhausted') return '额度耗尽'
-  if (state === 'temporary_unavailable') return '暂不可用'
-  return '可用'
+  if (state === 'disabled') return t('poolManagement.disabled')
+  if (state === 'invalid') return t('poolManagement.invalid')
+  if (state === 'blocked') return t('poolManagement.abnormal')
+  if (state === 'quota_exhausted') return t('poolManagement.quotaExhausted')
+  if (state === 'temporary_unavailable') return t('poolManagement.temporaryUnavailable')
+  return t('poolManagement.available')
 }
 
 function getSchedulingBadgeVariant(key: PoolKeyDetail): PoolStatusVariant {
@@ -4119,7 +4121,7 @@ function getSchedulingBadgeVariant(key: PoolKeyDetail): PoolStatusVariant {
 
 function getSchedulingTitle(key: PoolKeyDetail): string {
   if (!key.is_active || getSchedulingState(key) === 'disabled') {
-    return '已禁用：不会参与调度。这个状态来自手动停用、批量停用或导入时标记为 disabled；当前系统没有历史审计字段，无法从账号数据反推出具体操作者。'
+    return t('poolManagement.disabledSchedulingHint')
   }
 
   const accountAlertTitle = getAccountAlertTitle(key)
@@ -4180,7 +4182,7 @@ function getMobileTagItems(key: PoolKeyDetail): PoolMobileTagItem[] {
     authLabel: getAuthTypeChipLabel(key),
     planLabel: planType ? formatOAuthPlanType(planType) : null,
     orgLabel: orgBadge?.label ?? null,
-    proxyLabel: key.proxy?.node_id ? '独立代理' : null,
+      proxyLabel: key.proxy?.node_id ? t('poolManagement.independentProxy') : null,
   })
 }
 
@@ -4259,9 +4261,9 @@ function getQuotaAlertSnapshotState(key: PoolKeyDetail): { label: string, title:
 
   let label = String(quota.label || '').trim()
   if (!label) {
-    label = code === 'banned' ? '账号封禁' : '访问受限'
+    label = code === 'banned' ? t('poolManagement.banned') : t('poolManagement.accessRestricted')
   } else if (label === '账号已封禁' || label === '封禁') {
-    label = '账号封禁'
+    label = t('poolManagement.banned')
   }
 
   const reason = String(quota.reason || '').trim()
@@ -4280,8 +4282,8 @@ function getAccountAlertLabel(key: PoolKeyDetail): string | null {
   if (!result && quotaAlert) result = quotaAlert.label
   if (!result && !getQuotaSnapshot(key)) {
     const quotaText = getLegacyAccountQuotaText(key)
-    if (quotaText === '账号已封禁' || quotaText === '封禁') result = '账号封禁'
-    else if (quotaText === '访问受限') result = '访问受限'
+    if (quotaText === '账号已封禁' || quotaText === '封禁') result = t('poolManagement.banned')
+    else if (quotaText === '访问受限') result = t('poolManagement.accessRestricted')
   }
 
   _accountAlertCache.set(key, result)
@@ -4305,23 +4307,23 @@ function getAccountAlertTitle(key: PoolKeyDetail): string {
 
 function normalizeQuotaLabel(label: string): string {
   const normalized = label.trim()
-  if (!normalized) return '额度'
+  if (!normalized) return t('poolManagement.quota')
   if (/spark\s*5h/i.test(normalized) || normalized.includes('Spark5H')) return 'Spark5H'
-  if (/spark/i.test(normalized) && normalized.includes('周')) return 'Spark周'
+  if (/spark/i.test(normalized) && normalized.includes('周')) return t('poolManagement.sparkWeek')
   if (normalized.includes('5H')) return '5H'
-  if (normalized.includes('周')) return '周'
-  if (normalized.includes('最低剩余')) return '最低'
-  if (normalized === '剩余' || normalized.includes('剩余')) return '剩余'
+  if (normalized.includes('周')) return t('poolManagement.week')
+  if (normalized.includes('最低剩余')) return t('poolManagement.minimum')
+  if (normalized === '剩余' || normalized.includes('剩余')) return t('poolManagement.remainingLabel')
   return normalized
 }
 
 function getQuotaProgressLabel(label: string): string {
   if (label === '5H') return '5H'
-  if (label === '周') return '周'
+  if (label === '周') return t('poolManagement.week')
   if (label === 'Spark5H') return 'Spark5H'
-  if (label === 'Spark周') return 'Spark周'
-  if (label === '最低') return '最低'
-  if (label === '剩余') return '剩余'
+  if (label === 'Spark周') return t('poolManagement.sparkWeek')
+  if (label === '最低') return t('poolManagement.minimum')
+  if (label === '剩余') return t('poolManagement.remainingLabel')
   return label
 }
 
@@ -4339,7 +4341,7 @@ function getQuotaProgressCountdown(item: QuotaProgressItem) {
 function getQuotaProgressCountdownText(item: QuotaProgressItem): string {
   const status = getQuotaProgressCountdown(item)
   if (!status) return ''
-  return status.isExpired ? '' : `${status.text} 后重置`
+  return status.isExpired ? '' : t('poolManagement.resetAfter', { value: status.text })
 }
 
 function formatCompactQuotaCountdownText(text: string): string {
@@ -4662,7 +4664,7 @@ function buildQuotaProgressItemsFromSnapshot(key: PoolKeyDetail): QuotaProgressI
     return [{
       label: '最低',
       remainingPercent: Math.min(...remainingPercents),
-      detail: `${windows.length} 模型`,
+      detail: t('poolQuotaUi.modelCount', { count: windows.length }),
       resetAtSeconds: null,
       resetSeconds: null,
       updatedAtSeconds: getQuotaSnapshotUpdatedAtSeconds(quota),
@@ -4681,7 +4683,7 @@ function buildQuotaProgressItemsFromSnapshot(key: PoolKeyDetail): QuotaProgressI
     return [{
       label: '最低',
       remainingPercent: Math.min(...remainingPercents),
-      detail: `${windows.length} 模型`,
+      detail: t('poolQuotaUi.modelCount', { count: windows.length }),
       resetAtSeconds: null,
       resetSeconds: null,
       updatedAtSeconds: getQuotaSnapshotUpdatedAtSeconds(quota),
@@ -4703,11 +4705,11 @@ function buildQuotaProgressItemsFromSnapshot(key: PoolKeyDetail): QuotaProgressI
       : remainingValue != null && limitValue != null
         ? `${formatQuotaValue(Math.max(limitValue - remainingValue, 0))}/${formatQuotaValue(limitValue)}`
         : remainingValue != null
-          ? `剩余 ${formatQuotaValue(remainingValue)}`
+        ? t('poolQuotaUi.remainingValue', { value: formatQuotaValue(remainingValue) })
           : undefined
 
     return [{
-      label: '生图',
+      label: t('poolQuotaUi.imageGeneration'),
       remainingPercent,
       detail,
       resetAtSeconds: normalizeUnixSeconds(window?.reset_at ?? null),
@@ -4859,7 +4861,7 @@ function formatPoolScore(value: number | null | undefined): string {
 }
 
 function formatPoolScoreReason(value: PoolKeyScore['score_reason'] | null | undefined): string {
-  if (!value) return '暂无计算结果'
+  if (!value) return t('poolManagementNoCalculation')
   try {
     return JSON.stringify(value, null, 2)
   } catch {
@@ -4869,12 +4871,12 @@ function formatPoolScoreReason(value: PoolKeyScore['score_reason'] | null | unde
 
 function getPoolScoreHardStateLabel(value: PoolKeyScore['hard_state'] | null | undefined): string {
   if (!value) return '-'
-  return poolScoreHardStateOptions.find(item => item.value === value)?.label || value
+  return poolScoreHardStateOptions.value.find(item => item.value === value)?.label || value
 }
 
 function getPoolScoreProbeStatusLabel(value: PoolKeyScore['probe_status'] | null | undefined): string {
   if (!value) return '-'
-  return poolScoreProbeStatusOptions.find(item => item.value === value)?.label || value
+  return poolScoreProbeStatusOptions.value.find(item => item.value === value)?.label || value
 }
 
 function formatUnixSeconds(seconds: number | null | undefined): string {

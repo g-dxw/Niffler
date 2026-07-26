@@ -98,6 +98,7 @@ export interface RegistrationSettingsResponse {
   turnstile_site_key?: string | null
   turnstile_required_actions?: string[]
   privacy_policy?: RegistrationPrivacyPolicySettings
+  contact_us?: ContactUsSettings
 }
 
 export interface RegistrationPrivacyPolicySettings {
@@ -105,6 +106,11 @@ export interface RegistrationPrivacyPolicySettings {
   format: 'markdown' | 'html'
   content: string
   version: string
+}
+
+export interface ContactUsSettings {
+  format: 'markdown' | 'html'
+  content: string
 }
 
 export interface AuthSettingsResponse {

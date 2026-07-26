@@ -1,7 +1,7 @@
 <template>
   <Dialog
     :model-value="modelValue"
-    title="账号批量操作"
+    :title="t('poolBatch.title')"
     :description="dialogDescription"
     size="3xl"
     persistent
@@ -10,7 +10,7 @@
     <div class="space-y-4">
       <div class="space-y-3 rounded-lg border bg-muted/20 px-3 py-2.5">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs font-medium text-foreground">快捷多选</span>
+          <span class="text-xs font-medium text-foreground">{{ t('poolBatch.quickSelect') }}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -18,7 +18,7 @@
             :disabled="loading || executing || !hasActiveFilters"
             @click="clearFilters"
           >
-            重置筛选
+            {{ t('poolBatch.resetFilters') }}
           </Button>
         </div>
 
@@ -41,7 +41,7 @@
           <div class="flex items-center gap-2">
             <Input
               :model-value="searchText"
-              placeholder="搜索账号名 / 套餐 / 额度 / 代理状态"
+              :placeholder="t('poolBatch.searchPlaceholder')"
               class="h-8 flex-1"
               @update:model-value="(v) => searchText = String(v || '')"
             />
@@ -61,7 +61,7 @@
 
           <div class="flex flex-col gap-2 text-xs lg:flex-row lg:items-center lg:justify-between">
             <div class="text-muted-foreground">
-              共 {{ filteredTotal }} 个匹配账号，当前页 {{ pageKeyRows.length }} 个，已选 {{ selectedCount }} 个
+              {{ t('poolBatch.summary', { total: filteredTotal, page: pageKeyRows.length, selected: selectedCount }) }}
             </div>
             <div class="flex flex-wrap items-center gap-1">
               <div class="mr-1 flex items-center gap-2">
@@ -71,7 +71,7 @@
                   :disabled="filteredTotal === 0 || loading || executing"
                   @update:checked="toggleSelectFiltered"
                 />
-                <span class="text-muted-foreground">全选筛选结果</span>
+                <span class="text-muted-foreground">{{ t('poolBatch.selectFiltered') }}</span>
               </div>
               <Button
                 variant="ghost"
@@ -80,7 +80,7 @@
                 :disabled="pageKeyRows.length === 0 || loading || executing || selectAllFiltered"
                 @click="toggleSelectCurrentPage"
               >
-                {{ isCurrentPageFullySelected ? '取消本页全选' : '本页全选' }}
+                {{ isCurrentPageFullySelected ? t('poolBatch.deselectPage') : t('poolBatch.selectPage') }}
               </Button>
               <Button
                 variant="ghost"
@@ -89,7 +89,7 @@
                 :disabled="!canClearSelection || loading || executing"
                 @click="clearSelection"
               >
-                清空选择
+                {{ t('poolBatch.clearSelection') }}
               </Button>
             </div>
           </div>
@@ -103,13 +103,13 @@
               v-if="loading"
               class="py-10 text-center text-sm text-muted-foreground"
             >
-              正在加载账号列表...
+              {{ t('poolBatch.loading') }}
             </div>
             <div
               v-else-if="pageKeyRows.length === 0"
               class="py-10 text-center text-sm text-muted-foreground"
             >
-              无匹配账号
+              {{ t('poolBatch.noMatches') }}
             </div>
             <label
               v-for="row in pageKeyRows"
@@ -126,7 +126,7 @@
                   <button
                     type="button"
                     class="min-w-0 truncate text-left text-xs font-medium transition-colors hover:text-primary"
-                    :title="`${getBatchAccountDisplayName(row.key)}\n点击复制`"
+                    :title="`${getBatchAccountDisplayName(row.key)}\n${t('poolBatch.clickToCopy')}`"
                     @click.stop.prevent="copyBatchAccountDisplay(row.key)"
                   >
                     {{ getBatchAccountDisplayName(row.key) }}
@@ -154,9 +154,9 @@
                   >{{ row.oauthOrgBadge.label }}</Badge>
                 </div>
                 <div class="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
-                  <span :class="row.key.is_active ? '' : 'text-destructive'">{{ row.key.is_active ? '启用' : '禁用' }}</span>
+                  <span :class="row.key.is_active ? '' : 'text-destructive'">{{ row.key.is_active ? t('poolBatch.enabled') : t('poolBatch.disabled') }}</span>
                   <span v-if="row.quotaText">{{ row.quotaTextShort }}</span>
-                  <span v-if="row.key.proxy?.node_id">独立代理</span>
+                  <span v-if="row.key.proxy?.node_id">{{ t('poolBatch.independentProxy') }}</span>
                   <span
                     v-if="row.lastUsedRelative"
                     class="ml-auto shrink-0"
@@ -170,7 +170,7 @@
             v-if="totalPages > 1"
             class="flex items-center justify-between text-xs text-muted-foreground"
           >
-            <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+            <span>{{ t('poolBatch.page', { current: currentPage, total: totalPages }) }}</span>
             <div class="flex items-center gap-1">
               <Button
                 variant="ghost"
@@ -215,10 +215,10 @@
         <div class="space-y-3 lg:sticky lg:top-1 lg:self-start">
           <div class="space-y-2 rounded-lg border bg-background px-3 py-3">
             <div class="text-xs font-medium text-foreground">
-              执行动作
+              {{ t('poolBatch.action') }}
             </div>
             <div class="text-[11px] text-muted-foreground">
-              代理节点（仅“配置代理”动作生效）
+              {{ t('poolBatch.proxyNode') }}
             </div>
             <ProxyNodeSelect
               :model-value="proxyNodeIdForAction"
@@ -270,7 +270,7 @@
         :disabled="executing"
         @click="emit('update:modelValue', false)"
       >
-        关闭
+        {{ t('poolBatch.close') }}
       </Button>
     </template>
   </Dialog>
@@ -278,6 +278,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Dialog, Button, Input, Checkbox, Badge } from '@/components/ui'
 import ProxyNodeSelect from '@/features/providers/components/ProxyNodeSelect.vue'
 import { RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
@@ -364,30 +365,31 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   changed: []
 }>()
+const { t } = useI18n()
 
-const QUICK_SELECT_OPTIONS: Array<{ value: QuickSelectorValue; label: string }> = [
-  { value: 'banned', label: '账号异常' },
-  { value: 'oauth_invalid', label: 'Token 异常' },
-  { value: 'no_5h_limit', label: '无5H限额' },
-  { value: 'no_weekly_limit', label: '无周限额' },
-  { value: 'plan_free', label: '全部 Free' },
-  { value: 'plan_team', label: '全部 Team' },
-  { value: 'proxy_unset', label: '未配置代理' },
-  { value: 'proxy_set', label: '已配置独立代理' },
-  { value: 'disabled', label: '已禁用' },
-  { value: 'enabled', label: '已启用' },
-]
+const QUICK_SELECT_OPTIONS = computed<Array<{ value: QuickSelectorValue; label: string }>>(() => [
+  { value: 'banned', label: t('poolBatch.filters.banned') },
+  { value: 'oauth_invalid', label: t('poolBatch.filters.oauthInvalid') },
+  { value: 'no_5h_limit', label: t('poolBatch.filters.no5h') },
+  { value: 'no_weekly_limit', label: t('poolBatch.filters.noWeekly') },
+  { value: 'plan_free', label: t('poolBatch.filters.free') },
+  { value: 'plan_team', label: t('poolBatch.filters.team') },
+  { value: 'proxy_unset', label: t('poolBatch.filters.proxyUnset') },
+  { value: 'proxy_set', label: t('poolBatch.filters.proxySet') },
+  { value: 'disabled', label: t('poolBatch.filters.disabled') },
+  { value: 'enabled', label: t('poolBatch.filters.enabled') },
+])
 
-const ACTION_OPTIONS: BatchActionOption[] = [
-  { value: 'refresh_quota', label: '刷新额度', hint: '调用额度刷新接口，适合核对最新配额状态。' },
-  { value: 'refresh_oauth', label: '刷新 OAuth', hint: '仅对 OAuth 账号有效，非 OAuth 账号会自动跳过。' },
-  { value: 'set_proxy', label: '配置代理', hint: '为选中账号绑定独立代理节点。' },
-  { value: 'clear_proxy', label: '清除代理', hint: '移除账号独立代理，回退到提供商默认代理。' },
-  { value: 'enable', label: '启用', hint: '批量启用账号，恢复可调度状态。' },
-  { value: 'disable', label: '禁用', hint: '批量禁用账号，保留数据但停止调度。' },
-  { value: 'export', label: '导出凭据', hint: '仅导出 OAuth 凭据，其他类型账号将被跳过。' },
-  { value: 'delete', label: '删除账号', hint: '永久删除账号数据，执行后不可恢复。', destructive: true },
-]
+const ACTION_OPTIONS = computed<BatchActionOption[]>(() => [
+  { value: 'refresh_quota', label: t('poolBatch.actions.refreshQuota'), hint: t('poolBatch.actions.refreshQuotaHint') },
+  { value: 'refresh_oauth', label: t('poolBatch.actions.refreshOAuth'), hint: t('poolBatch.actions.refreshOAuthHint') },
+  { value: 'set_proxy', label: t('poolBatch.actions.setProxy'), hint: t('poolBatch.actions.setProxyHint') },
+  { value: 'clear_proxy', label: t('poolBatch.actions.clearProxy'), hint: t('poolBatch.actions.clearProxyHint') },
+  { value: 'enable', label: t('poolBatch.actions.enable'), hint: t('poolBatch.actions.enableHint') },
+  { value: 'disable', label: t('poolBatch.actions.disable'), hint: t('poolBatch.actions.disableHint') },
+  { value: 'export', label: t('poolBatch.actions.export'), hint: t('poolBatch.actions.exportHint') },
+  { value: 'delete', label: t('poolBatch.actions.delete'), hint: t('poolBatch.actions.deleteHint'), destructive: true },
+])
 
 const { success, warning, error: showError } = useToast()
 const { confirm } = useConfirm()
@@ -420,7 +422,7 @@ let suppressFilterWatch = false
 
 const dialogDescription = computed(() => {
   const name = (props.providerName || '').trim()
-  return name ? `${name} - 选择账号并批量执行动作` : '选择账号并批量执行动作'
+  return name ? t('poolBatch.descriptionWithName', { name }) : t('poolBatch.description')
 })
 
 const selectedIdSet = computed(() => new Set(selectedKeyIds.value))
@@ -500,20 +502,20 @@ function getStatusBadgeLabel(key: PoolKeyDetail): string | null {
   if (account.blocked && account.label) return compactStatusBadgeLabel(account.label)
 
   const oauth = getOAuthStatusDisplay(key, 0)
-  if (oauth?.requiresReauth) return '续期失败'
-  if (oauth?.isInvalid) return '已失效'
-  if (oauth?.isExpired) return '已过期'
+  if (oauth?.requiresReauth) return t('poolBatch.renewalFailed')
+  if (oauth?.isInvalid) return t('poolBatch.invalid')
+  if (oauth?.isExpired) return t('poolBatch.expired')
   return null
 }
 
 function compactStatusBadgeLabel(label: string): string {
   const normalized = label.trim()
   const mapped: Record<string, string> = {
-    'Token 失效': '已失效',
-    'Token 过期': '已过期',
-    账号已封禁: '账号封禁',
-    工作区已停用: '工作区停用',
-    账号访问受限: '访问受限',
+    'Token 失效': t('poolBatch.invalid'),
+    'Token 过期': t('poolBatch.expired'),
+    账号已封禁: t('poolBatch.accountBanned'),
+    工作区已停用: t('poolBatch.workspaceDisabled'),
+    账号访问受限: t('poolBatch.accessRestricted'),
   }
   return Array.from(mapped[normalized] || normalized).slice(0, 5).join('')
 }
@@ -530,7 +532,7 @@ function getStatusBadgeTitle(key: PoolKeyDetail): string {
 }
 
 function getBatchAccountDisplayName(key: PoolKeyDetail): string {
-  return getAccountDisplayName(key, '未命名账号')
+  return getAccountDisplayName(key, t('poolBatch.unnamedAccount'))
 }
 
 async function copyBatchAccountDisplay(key: PoolKeyDetail): Promise<void> {
@@ -543,10 +545,10 @@ function formatRelativeTime(value: string): string {
   const ts = new Date(value).getTime()
   if (!Number.isFinite(ts)) return '-'
   const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时前`
-  return `${Math.floor(diff / 86_400_000)}天前`
+  if (diff < 60_000) return t('poolBatch.justNow')
+  if (diff < 3_600_000) return t('poolBatch.minutesAgo', { count: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('poolBatch.hoursAgo', { count: Math.floor(diff / 3_600_000) })
+  return t('poolBatch.daysAgo', { count: Math.floor(diff / 86_400_000) })
 }
 
 function getQuotaText(key: PoolKeyDetail): string | null {
@@ -630,7 +632,7 @@ async function loadKeysPage(): Promise<void> {
     if (requestId !== loadRequestId) return
     pageKeys.value = []
     filteredTotal.value = 0
-    showError(parseApiError(err, '加载账号列表失败'))
+    showError(parseApiError(err, t('poolBatch.loadFailed')))
   } finally {
     if (requestId === loadRequestId) {
       loading.value = false
@@ -737,22 +739,22 @@ function getActionButtonVariant(option: BatchActionOption): 'default' | 'destruc
 async function confirmAndExecuteAction(action: BatchActionValue): Promise<void> {
   selectedAction.value = action
   if (selectedCount.value === 0) {
-    warning('请先选择账号')
+    warning(t('poolBatch.selectAccountFirst'))
     return
   }
   if (action === 'set_proxy' && !proxyNodeIdForAction.value) {
-    warning('请先选择代理节点')
+    warning(t('poolBatch.selectProxyFirst'))
     return
   }
   if (!canExecuteSpecifiedAction(action)) return
 
-  const actionOption = ACTION_OPTIONS.find((item) => item.value === action)
-  const actionLabel = actionOption?.label || '执行动作'
-  const scopeLabel = selectAllFiltered.value ? '筛选结果' : '已选账号'
+  const actionOption = ACTION_OPTIONS.value.find((item) => item.value === action)
+  const actionLabel = actionOption?.label || t('poolBatch.action')
+  const scopeLabel = selectAllFiltered.value ? t('poolBatch.filteredResults') : t('poolBatch.selectedAccounts')
   const confirmed = await confirm({
     title: actionLabel,
-    message: `将对${scopeLabel}（${selectedCount.value} 个）执行：${actionLabel}，是否继续？`,
-    confirmText: actionOption?.destructive ? '确认删除' : '确认执行',
+    message: t('poolBatch.confirmMessage', { scope: scopeLabel, count: selectedCount.value, action: actionLabel }),
+    confirmText: actionOption?.destructive ? t('poolBatch.confirmDelete') : t('poolBatch.confirmExecute'),
     ...(actionOption?.destructive ? { variant: 'destructive' as const } : {}),
   })
   if (!confirmed) return
@@ -800,7 +802,7 @@ async function resolveSelectedItems(): Promise<PoolKeySelectionItem[]> {
   if (!props.providerId) return []
 
   if (selectAllFiltered.value) {
-    progressLabel.value = '正在解析筛选结果...'
+    progressLabel.value = t('poolBatch.resolving')
     const result = await resolvePoolKeySelection(props.providerId, buildSelectionFilters())
     return Array.isArray(result.items) ? result.items : []
   }
@@ -827,13 +829,13 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
     selectedAction.value = actionOverride
   }
   if (selectedCount.value === 0) {
-    warning('请先选择账号')
+    warning(t('poolBatch.selectAccountFirst'))
     return
   }
 
   const requestedCount = selectedCount.value
   if (selectedAction.value === 'set_proxy' && !proxyNodeIdForAction.value) {
-    warning('请先选择代理节点')
+    warning(t('poolBatch.selectProxyFirst'))
     return
   }
 
@@ -846,23 +848,23 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
   let actionPhaseMs = 0
   let reloadPhaseMs = 0
 
-  const actionLabel = ACTION_OPTIONS.find((item) => item.value === selectedAction.value)?.label || '执行'
+  const actionLabel = ACTION_OPTIONS.value.find((item) => item.value === selectedAction.value)?.label || t('poolBatch.execute')
   progressDone.value = 0
   progressTotal.value = 0
-  progressLabel.value = selectAllFiltered.value ? '正在解析筛选结果...' : `正在${actionLabel}...`
+  progressLabel.value = selectAllFiltered.value ? t('poolBatch.resolving') : t('poolBatch.executingAction', { action: actionLabel })
   lastResultMessage.value = ''
 
   try {
     const selectedKeys = await resolveSelectedItems()
     resolvedCount = selectedKeys.length
     if (selectedKeys.length === 0) {
-      warning('未找到可执行账号，请刷新列表重试')
+      warning(t('poolBatch.noExecutableAccounts'))
       return
     }
 
     progressDone.value = 0
     progressTotal.value = selectedKeys.length
-    progressLabel.value = `正在${actionLabel}...`
+    progressLabel.value = t('poolBatch.executingAction', { action: actionLabel })
 
     if (selectedAction.value === 'refresh_quota') {
       const targetIds = selectedKeys.map((key) => key.key_id)
@@ -872,7 +874,7 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
         chunkSize: BATCH_SIZE,
         runChunk: (batch) => refreshProviderQuota(props.providerId, batch),
         onChunkStart: ({ batchIndex, totalBatches }) => {
-          progressLabel.value = `正在${actionLabel}...（第 ${batchIndex}/${totalBatches} 批）`
+          progressLabel.value = t('poolBatch.executingBatch', { action: actionLabel, current: batchIndex, total: totalBatches })
         },
         onChunkDone: ({ processed }) => {
           progressDone.value = processed
@@ -889,7 +891,7 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
       progressDone.value = 0
       progressTotal.value = exportableKeys.length
       if (skippedCount > 0) {
-        progressLabel.value = `正在${actionLabel}...（跳过 ${skippedCount} 个非 OAuth 账号）`
+        progressLabel.value = t('poolBatch.executingSkipped', { action: actionLabel, count: skippedCount })
       }
 
       let cursor = 0
@@ -930,7 +932,7 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
         const batchIndex = Math.floor(i / BATCH_SIZE) + 1
         const batch = targetIds.slice(i, i + BATCH_SIZE)
         if (totalBatches > 1) {
-          progressLabel.value = `正在${actionLabel}...（第 ${batchIndex}/${totalBatches} 批）`
+          progressLabel.value = t('poolBatch.executingBatch', { action: actionLabel, current: batchIndex, total: totalBatches })
         }
 
         try {
@@ -940,7 +942,7 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
           })
 
           if (result.task_id) {
-            progressLabel.value = `正在${actionLabel}...（后台执行中）`
+            progressLabel.value = t('poolBatch.executingBackground', { action: actionLabel })
             const taskResult = await pollDeleteTask(props.providerId, result.task_id, i)
             successCount += taskResult.deleted
             if (taskResult.status === 'failed') {
@@ -966,7 +968,7 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
         const batchIndex = Math.floor(i / BATCH_SIZE) + 1
         const batch = targetIds.slice(i, i + BATCH_SIZE)
         if (totalBatches > 1) {
-          progressLabel.value = `正在${actionLabel}...（第 ${batchIndex}/${totalBatches} 批）`
+          progressLabel.value = t('poolBatch.executingBatch', { action: actionLabel, current: batchIndex, total: totalBatches })
         }
 
         const payload = selectedAction.value === 'set_proxy'
@@ -1018,7 +1020,7 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
       await Promise.all(workers)
     }
 
-    lastResultMessage.value = `执行完成：成功 ${successCount}，失败 ${failedCount}，跳过 ${skippedCount}`
+    lastResultMessage.value = t('poolBatch.completed', { success: successCount, failed: failedCount, skipped: skippedCount })
     if (failedCount > 0 || (selectedAction.value === 'export' && successCount === 0)) warning(lastResultMessage.value)
     else success(lastResultMessage.value)
 
@@ -1036,7 +1038,7 @@ async function executeAction(actionOverride?: BatchActionValue): Promise<void> {
       emit('changed')
     }
   } catch (err) {
-    showError(parseApiError(err, '批量操作失败'))
+    showError(parseApiError(err, t('poolBatch.batchFailed')))
   } finally {
     // eslint-disable-next-line no-console
     console.info('[PoolAccountBatchDialog] executeAction timing', {

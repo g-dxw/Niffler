@@ -22,7 +22,7 @@
         <Input
           v-model="searchText"
           class="h-8 pl-8 text-xs"
-          placeholder="搜索用户"
+          :placeholder="t('serverUserSelector.search')"
           @keydown.stop
         />
       </div>
@@ -37,7 +37,7 @@
             class="absolute left-2 h-4 w-4"
             :class="modelValue === '__all__' ? 'opacity-100' : 'opacity-0'"
           />
-          <span>全部用户</span>
+          <span>{{ t('serverUserSelector.allUsers') }}</span>
         </button>
 
         <div
@@ -64,13 +64,13 @@
           v-if="loading"
           class="px-3 py-6 text-center text-xs text-muted-foreground"
         >
-          加载中...
+          {{ t('common.loading') }}
         </div>
         <div
           v-else-if="visibleUsers.length === 0"
           class="px-3 py-6 text-center text-xs text-muted-foreground"
         >
-          未找到用户
+          {{ t('serverUserSelector.notFound') }}
         </div>
         <button
           v-for="user in visibleUsers"
@@ -99,12 +99,15 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useDebounceFn } from '@vueuse/core'
 import { Check, ChevronDown, Search } from 'lucide-vue-next'
 
 import { Input } from '@/components/ui'
 import { usersApi } from '@/api/users'
 import type { UserOption } from './UsageRecordsTable.vue'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -131,7 +134,7 @@ let loadedInitialBatch = false
 
 const selectedUser = computed(() => knownUsers.value.get(props.modelValue))
 const selectedLabel = computed(() => {
-  if (props.modelValue === '__all__') return '全部用户'
+  if (props.modelValue === '__all__') return t('serverUserSelector.allUsers')
   const user = selectedUser.value
   return user ? getUserLabel(user) : `User ${props.modelValue}`
 })

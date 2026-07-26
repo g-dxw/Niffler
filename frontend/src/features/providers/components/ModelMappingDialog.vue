@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    :title="editingGroup ? '编辑模型映射' : '添加模型映射'"
-    :description="editingGroup ? '修改映射配置' : '将提供商模型映射到客户端模型'"
+    :title="editingGroup ? t('modelMapping.editTitle') : t('modelMapping.addTitle')"
+    :description="editingGroup ? t('modelMapping.editDescription') : t('modelMapping.addDescription')"
     :icon="Tag"
     size="lg"
     @update:model-value="$emit('update:open', $event)"
@@ -10,14 +10,14 @@
     <div class="space-y-4">
       <!-- 目标模型选择 -->
       <div class="space-y-1.5">
-        <Label class="text-xs">客户端模型</Label>
+        <Label class="text-xs">{{ t('modelMapping.clientModel') }}</Label>
         <Select
           :model-value="formData.modelId"
           :disabled="!!editingGroup"
           @update:model-value="handleModelChange"
         >
           <SelectTrigger class="h-9">
-            <SelectValue placeholder="请选择客户端模型" />
+            <SelectValue :placeholder="t('modelMapping.chooseClientModel')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem
@@ -33,41 +33,41 @@
           </SelectContent>
         </Select>
         <p class="text-xs text-muted-foreground">
-          客户端请求此模型时，将路由到选中的提供商模型
+          {{ t('modelMapping.clientHint') }}
         </p>
       </div>
 
       <!-- 端点限制 -->
       <div class="space-y-1.5">
         <div class="flex items-center justify-between gap-2">
-          <Label class="text-xs">限制端点</Label>
+          <Label class="text-xs">{{ t('modelMapping.endpointLimit') }}</Label>
           <span class="text-xs text-muted-foreground">{{ endpointScopeSummary }}</span>
         </div>
         <MultiSelect
           v-model="selectedEndpointIds"
           :options="endpointOptions"
-          placeholder="全部端点"
-          empty-text="暂无端点"
-          no-results-text="未找到端点"
+          :placeholder="t('modelMapping.allEndpoints')"
+          :empty-text="t('modelMapping.noEndpoints')"
+          :no-results-text="t('modelMapping.noMatchingEndpoints')"
           trigger-class="h-9 rounded-md"
           dropdown-min-width="24rem"
           :search-threshold="4"
         />
         <p class="text-xs text-muted-foreground">
-          默认对全部端点生效；选择端点后，此映射只在选中的端点上生效
+          {{ t('modelMapping.endpointHint') }}
         </p>
       </div>
 
       <!-- 映射名称选择面板 -->
       <div class="space-y-1.5">
-        <Label class="text-xs">提供商模型</Label>
+        <Label class="text-xs">{{ t('modelMapping.providerModel') }}</Label>
         <!-- 搜索栏 -->
         <div class="flex items-center gap-2">
           <div class="flex-1 relative">
             <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               v-model="searchQuery"
-              placeholder="搜索或添加自定义提供商模型..."
+              :placeholder="t('modelMapping.searchPlaceholder')"
               class="pl-8 h-9"
             />
           </div>
@@ -76,13 +76,13 @@
             v-if="selectedNames.length === 0"
             class="h-7 px-2.5 text-xs rounded-md flex items-center bg-muted text-muted-foreground shrink-0"
           >
-            未选择
+            {{ t('modelMapping.noneSelected') }}
           </span>
           <span
             v-else
             class="h-7 px-2.5 text-xs rounded-md flex items-center bg-primary/10 text-primary shrink-0"
           >
-            已选 {{ selectedNames.length }} 个
+            {{ t('modelMapping.selectedCount', { count: selectedNames.length }) }}
           </span>
           <!-- 刷新上游模型按钮 -->
           <button
@@ -90,7 +90,7 @@
             type="button"
             class="p-2 hover:bg-muted rounded-md transition-colors shrink-0"
             :disabled="fetchingUpstreamModels"
-            title="刷新上游模型"
+            :title="t('modelMapping.refreshUpstream')"
             @click="fetchUpstreamModels()"
           >
             <RefreshCw
@@ -102,7 +102,7 @@
             v-else-if="!fetchingUpstreamModels"
             type="button"
             class="p-2 hover:bg-muted rounded-md transition-colors shrink-0"
-            title="从提供商获取模型"
+            :title="t('modelMapping.fetchUpstream')"
             @click="fetchUpstreamModels()"
           >
             <Zap class="w-4 h-4" />
@@ -138,7 +138,7 @@
                     <Plus class="w-4 h-4 text-muted-foreground" />
                     <span class="text-sm font-mono">{{ searchQuery }}</span>
                   </div>
-                  <span class="text-xs text-muted-foreground">添加自定义提供商模型</span>
+                  <span class="text-xs text-muted-foreground">{{ t('modelMapping.addCustom') }}</span>
                 </div>
               </div>
 
@@ -153,7 +153,7 @@
                       class="w-4 h-4 transition-transform shrink-0"
                       :class="collapsedGroups.has('custom') ? '-rotate-90' : ''"
                     />
-                    <span class="text-xs font-medium">自定义模型</span>
+                    <span class="text-xs font-medium">{{ t('modelMapping.customModels') }}</span>
                     <span class="text-xs text-muted-foreground">({{ customNames.length }})</span>
                   </div>
                 </div>
@@ -192,7 +192,7 @@
                       class="w-4 h-4 transition-transform shrink-0"
                       :class="collapsedGroups.has('upstream') ? '-rotate-90' : ''"
                     />
-                    <span class="text-xs font-medium">上游模型</span>
+                    <span class="text-xs font-medium">{{ t('modelMapping.upstreamModels') }}</span>
                     <span class="text-xs text-muted-foreground">({{ upstreamModelNames.length }})</span>
                   </div>
                   <button
@@ -200,7 +200,7 @@
                     class="text-xs text-primary hover:underline"
                     @click.stop="toggleAllUpstreamModels"
                   >
-                    {{ isAllUpstreamModelsSelected ? '取消全选' : '全选' }}
+                    {{ isAllUpstreamModelsSelected ? t('modelMapping.deselectAll') : t('modelMapping.selectAll') }}
                   </button>
                 </div>
                 <div
@@ -234,10 +234,10 @@
               >
                 <Tag class="w-10 h-10 mb-2 opacity-30" />
                 <p class="text-sm">
-                  {{ searchQuery ? '无匹配结果' : '暂无可选模型' }}
+                  {{ searchQuery ? t('modelMapping.noMatch') : t('modelMapping.empty') }}
                 </p>
                 <p class="text-xs mt-1">
-                  输入模型名称后点击添加自定义提供商模型
+                  {{ t('modelMapping.emptyHint') }}
                 </p>
               </div>
             </template>
@@ -251,7 +251,7 @@
         variant="outline"
         @click="$emit('update:open', false)"
       >
-        取消
+        {{ t('modelMapping.cancel') }}
       </Button>
       <Button
         :disabled="submitting || !formData.modelId || selectedNames.length === 0"
@@ -261,7 +261,7 @@
           v-if="submitting"
           class="w-4 h-4 mr-2 animate-spin"
         />
-        {{ editingGroup ? '保存' : '添加' }}
+        {{ editingGroup ? t('modelMapping.save') : t('modelMapping.add') }}
       </Button>
     </template>
   </Dialog>
@@ -269,6 +269,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Tag, Loader2, Plus, Search, Check, ChevronDown, RefreshCw, Zap } from 'lucide-vue-next'
 import {
   Button,
@@ -316,6 +317,7 @@ const props = defineProps<{
   preselectedModelId?: string | null
   hasAutoFetchKey?: boolean
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -363,7 +365,7 @@ const allCustomNames = ref<string[]>([])
 
 const endpointOptions = computed<EndpointOption[]>(() => {
   return (props.endpoints ?? []).map((endpoint) => {
-    const status = endpoint.is_active ? '' : '（停用）'
+    const status = endpoint.is_active ? '' : `（${t('modelMappingFeedback.disabled')}）`
     return {
       value: endpoint.id,
       label: `${formatApiFormat(endpoint.api_format)}${status}`,
@@ -387,8 +389,8 @@ const normalizedSelectedEndpointIds = computed(() => {
 
 const endpointScopeSummary = computed(() => {
   const selected = normalizedSelectedEndpointIds.value
-  if (!selected || selected.length === 0) return '全部端点'
-  return `${selected.length} 个端点`
+  if (!selected || selected.length === 0) return t('modelMapping.allEndpoints')
+  return t('modelMapping.selectedCount', { count: selected.length })
 })
 
 // 所有已知名称集合
@@ -565,10 +567,10 @@ async function fetchUpstreamModels() {
       allCustomNames.value = Array.from(mergedCustom).filter(name => !upstreamIds.has(name))
     }
     if (result.error) {
-      showError(result.error, '获取上游模型失败')
+      showError(result.error, t('modelMappingMessages.fetchUpstreamFailed'))
     }
   } catch (err: unknown) {
-    showError(parseApiError(err, '获取上游模型列表失败'), '错误')
+    showError(parseApiError(err, t('modelMappingMessages.fetchUpstreamListFailed')), t('common.error'))
   } finally {
     loadingModels.value = false
     fetchingUpstreamModels.value = false
@@ -632,7 +634,7 @@ async function handleSubmit() {
   try {
     const targetModel = props.models.find(m => m.id === formData.value.modelId)
     if (!targetModel) {
-      showError('模型不存在', '错误')
+      showError(t('modelMappingMessages.modelNotFound'), t('common.error'))
       return
     }
 
@@ -666,7 +668,7 @@ async function handleSubmit() {
 
       const duplicates = findDuplicateNames(filteredAliases, selectedNames.value, nextEndpointIds)
       if (duplicates.length > 0) {
-        showError(`以下映射名称已存在：${duplicates.join(', ')}`, '错误')
+        showError(t('modelMappingMessages.duplicateNames', { names: duplicates.join(', ') }), t('common.error'))
         return
       }
 
@@ -677,7 +679,7 @@ async function handleSubmit() {
     } else {
       const duplicates = findDuplicateNames(currentAliases, selectedNames.value, nextEndpointIds)
       if (duplicates.length > 0) {
-        showError(`以下映射名称已存在：${duplicates.join(', ')}`, '错误')
+        showError(t('modelMappingMessages.duplicateNames', { names: duplicates.join(', ') }), t('common.error'))
         return
       }
       newAliases = [
@@ -690,11 +692,11 @@ async function handleSubmit() {
       provider_model_mappings: newAliases
     })
 
-    showSuccess(props.editingGroup ? '映射组已更新' : '映射已添加')
+    showSuccess(props.editingGroup ? t('modelMappingFeedback.groupUpdated') : t('modelMappingFeedback.added'))
     emit('update:open', false)
     emit('saved')
   } catch (err: unknown) {
-    showError(parseApiError(err, '操作失败'), '错误')
+    showError(parseApiError(err, t('common.operationFailed')), t('common.error'))
   } finally {
     submitting.value = false
   }

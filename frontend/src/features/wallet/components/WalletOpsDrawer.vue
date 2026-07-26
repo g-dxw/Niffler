@@ -23,7 +23,7 @@
                 <div class="min-w-0">
                   <div class="flex items-center gap-1.5">
                     <h3 class="text-lg font-semibold text-foreground leading-tight">
-                      {{ contextLabel || '钱包详情' }}
+                      {{ contextLabel || t('walletOps.title') }}
                     </h3>
                     <Badge
                       :variant="walletStatusBadge(localWallet.status)"
@@ -41,7 +41,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-9 w-9 shrink-0"
-                title="关闭"
+                :title="t('walletOps.close')"
                 @click="handleClose"
               >
                 <X class="h-4 w-4" />
@@ -54,32 +54,32 @@
               <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div class="rounded-xl bg-background/80 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    总可用额度
+                    {{ t('walletOps.totalAvailable') }}
                   </div>
                   <div
                     class="mt-1 text-lg font-semibold"
                     :class="totalAvailableAmount !== null && totalAvailableAmount < 0 ? 'text-rose-600' : 'text-foreground'"
                   >
-                    {{ totalAvailableAmount === null ? '不限额' : `$${formatFixed(totalAvailableAmount, 2)}` }}
+                    {{ totalAvailableAmount === null ? t('walletOps.unlimited') : `$${formatFixed(totalAvailableAmount, 2)}` }}
                   </div>
                 </div>
                 <div class="rounded-xl bg-background/80 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    套餐今日额度
+                    {{ t('walletOps.todayQuota') }}
                   </div>
                   <div class="mt-1 text-lg font-semibold text-foreground">
-                    {{ isApiKeyWallet ? '不适用' : `$${formatFixed(packageBalanceAmount, 2)}` }}
+                    {{ isApiKeyWallet ? t('walletOps.notApplicable') : `$${formatFixed(packageBalanceAmount, 2)}` }}
                   </div>
                   <div
                     v-if="dailyQuota?.has_active"
                     class="mt-1 text-[11px] text-muted-foreground"
                   >
-                    已用 ${{ formatFixed(dailyQuota.used_usd, 2) }} / ${{ formatFixed(dailyQuota.total_usd, 2) }}
+                    {{ t('walletOps.used') }} ${{ formatFixed(dailyQuota.used_usd, 2) }} / ${{ formatFixed(dailyQuota.total_usd, 2) }}
                   </div>
                 </div>
                 <div class="rounded-xl bg-background/80 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    钱包余额
+                    {{ t('walletOps.walletBalance') }}
                   </div>
                   <div
                     class="mt-1 text-lg font-semibold"
@@ -90,7 +90,7 @@
                 </div>
                 <div class="rounded-xl bg-background/80 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    充值余额
+                    {{ t('walletOps.rechargeBalance') }}
                   </div>
                   <div class="mt-1 text-lg font-semibold text-foreground">
                     ${{ formatFixed(localWallet.recharge_balance, 2) }}
@@ -98,15 +98,15 @@
                 </div>
                 <div class="rounded-xl bg-background/80 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    赠款余额
+                    {{ t('walletOps.giftBalance') }}
                   </div>
                   <div class="mt-1 text-lg font-semibold text-foreground">
-                    {{ isApiKeyWallet ? '不支持' : `$${formatFixed(localWallet.gift_balance, 2)}` }}
+                    {{ isApiKeyWallet ? t('walletOps.unsupported') : `$${formatFixed(localWallet.gift_balance, 2)}` }}
                   </div>
                 </div>
                 <div class="rounded-xl bg-background/80 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    累计消费
+                    {{ t('walletOps.totalConsumed') }}
                   </div>
                   <div class="mt-1 text-lg font-semibold text-foreground">
                     ${{ formatFixed(localWallet.total_consumed, 2) }}
@@ -117,35 +117,35 @@
                 v-if="!isApiKeyWallet"
                 class="mt-3 text-xs text-muted-foreground"
               >
-                实际扣费顺序为套餐每日额度、充值余额、赠款余额；套餐额度不通过资金操作调整，请在用户套餐中发放或替换。
+                {{ t('walletOps.deductionHint') }}
               </p>
             </div>
 
             <Tabs v-model="activeTab">
               <TabsList :class="tabsListClass">
                 <TabsTrigger value="actions">
-                  资金操作
+                  {{ t('walletOps.actionsTab') }}
                 </TabsTrigger>
                 <TabsTrigger value="transactions">
-                  资金流水
+                  {{ t('walletOps.transactionsTab') }}
                 </TabsTrigger>
                 <TabsTrigger
                   v-if="showUsageRecords"
                   value="usage"
                 >
-                  消费记录
+                  {{ t('walletOps.usageTab') }}
                 </TabsTrigger>
                 <TabsTrigger
                   v-if="showPlanRecords"
                   value="plans"
                 >
-                  套餐记录
+                  {{ t('walletOps.plansTab') }}
                 </TabsTrigger>
                 <TabsTrigger
                   v-if="showRefunds"
                   value="refunds"
                 >
-                  退款审批
+                  {{ t('walletOps.refundsTab') }}
                 </TabsTrigger>
               </TabsList>
 
@@ -158,18 +158,18 @@
                   class="space-y-2"
                 >
                   <Label class="text-sm font-medium">
-                    操作类型
+                    {{ t('walletOps.actionType') }}
                   </Label>
                   <Select v-model="moneyActionType">
                     <SelectTrigger class="h-11">
-                      <SelectValue placeholder="选择操作类型" />
+                      <SelectValue :placeholder="t('walletOps.chooseAction')" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="recharge">
-                        人工充值
+                        {{ t('walletOps.manualRecharge') }}
                       </SelectItem>
                       <SelectItem value="adjust">
-                        人工调账
+                        {{ t('walletOps.manualAdjustment') }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -179,21 +179,21 @@
                   <Label
                     for="wallet-action-amount"
                     class="text-sm font-medium"
-                  >金额 (USD)</Label>
+                  >{{ t('walletOps.amount') }}</Label>
                   <Input
                     id="wallet-action-amount"
                     :model-value="actionAmount ?? ''"
                     type="number"
                     step="0.01"
-                    :placeholder="isApiKeyWallet || moneyActionType === 'adjust' ? '正数为入账，负数为调账扣减' : '输入正数金额'"
+                    :placeholder="isApiKeyWallet || moneyActionType === 'adjust' ? t('walletOps.adjustAmountPlaceholder') : t('walletOps.rechargeAmountPlaceholder')"
                     class="h-11"
                     @update:model-value="(value) => actionAmount = parseNumberInput(value, { allowFloat: true })"
                   />
                   <p class="text-xs text-muted-foreground">
                     {{
                       isApiKeyWallet || moneyActionType === 'adjust'
-                        ? '调账扣减会先扣所选账户，不足自动扣另一账户，剩余计入充值余额。'
-                        : '人工充值仅接受正数。'
+                        ? t('walletOps.adjustAmountHint')
+                        : t('walletOps.rechargeAmountHint')
                     }}
                   </p>
                 </div>
@@ -202,12 +202,12 @@
                   <Label
                     for="wallet-action-description"
                     class="text-sm font-medium"
-                  >说明</Label>
+                  >{{ t('walletOps.description') }}</Label>
                   <Input
                     id="wallet-action-description"
                     v-model="actionDescription"
                     type="text"
-                    placeholder="填写备注，便于财务追溯"
+                    :placeholder="t('walletOps.descriptionPlaceholder')"
                     class="h-11"
                   />
                 </div>
@@ -217,21 +217,21 @@
                   class="space-y-2"
                 >
                   <Label class="text-sm font-medium">
-                    调账账户
+                    {{ t('walletOps.adjustAccount') }}
                   </Label>
                   <Select v-model="adjustBalanceType">
                     <SelectTrigger class="h-11">
-                      <SelectValue placeholder="选择调账账户" />
+                      <SelectValue :placeholder="t('walletOps.chooseAdjustAccount')" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="recharge">
-                        充值余额（可退款）
+                        {{ t('walletOps.refundableBalance') }}
                       </SelectItem>
                       <SelectItem
                         v-if="!isApiKeyWallet"
                         value="gift"
                       >
-                        赠款余额（不可退款）
+                        {{ t('walletOps.nonRefundableGift') }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -241,7 +241,7 @@
                   v-if="!isApiKeyWallet"
                   class="rounded-xl border border-border/60 p-3 text-xs text-muted-foreground"
                 >
-                  人工充值等同于用户充值余额，会产生充值订单和记录；调帐为后台调整，无充值订单。赠款余额不可退款。
+                  {{ t('walletOps.actionNotice') }}
                 </div>
 
                 <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -250,14 +250,14 @@
                     class="h-10 px-5"
                     @click="handleClose"
                   >
-                    关闭
+                    {{ t('walletOps.close') }}
                   </Button>
                   <Button
                     class="h-10 px-5"
                     :disabled="submitMoneyDisabled"
                     @click="submitMoneyAction"
                   >
-                    {{ submittingMoneyAction ? '处理中...' : submitMoneyLabel }}
+                    {{ submittingMoneyAction ? t('walletOps.processing') : submitMoneyLabel }}
                   </Button>
                 </div>
               </TabsContent>
@@ -268,7 +268,7 @@
               >
                 <div class="flex items-center justify-between gap-3">
                   <div class="text-sm text-muted-foreground">
-                    共 {{ txTotal }} 条
+                    {{ t('walletOps.totalRecords', { count: txTotal }) }}
                   </div>
                   <RefreshButton
                     :loading="loadingTx"
@@ -289,19 +289,19 @@
                       <TableHeader>
                         <TableRow>
                           <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
-                            时间
+                            {{ t('walletOps.time') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="type" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
-                            类型
+                            {{ t('walletOps.type') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
-                            金额
+                            {{ t('walletOps.amountColumn') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="balance" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
-                            余额变化
+                            {{ t('walletOps.balanceChange') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="description" :resizable="true" @resize-start="handleWalletTxColumnResizeStart">
-                            说明
+                            {{ t('walletOps.description') }}
                           </SortableTableHead>
                         </TableRow>
                       </TableHeader>
@@ -338,8 +338,8 @@
                               v-if="tx.recharge_balance_before !== null && tx.recharge_balance_before !== undefined && tx.gift_balance_before !== null && tx.gift_balance_before !== undefined"
                               class="text-[11px] text-muted-foreground mt-0.5"
                             >
-                              充 {{ formatFixed(tx.recharge_balance_before, 4) }}→{{ formatFixed(tx.recharge_balance_after, 4) }}
-                              · 赠 {{ formatFixed(tx.gift_balance_before, 4) }}→{{ formatFixed(tx.gift_balance_after, 4) }}
+                              {{ t('walletOps.rechargeShort') }} {{ formatFixed(tx.recharge_balance_before, 4) }}→{{ formatFixed(tx.recharge_balance_after, 4) }}
+                              · {{ t('walletOps.giftShort') }} {{ formatFixed(tx.gift_balance_before, 4) }}→{{ formatFixed(tx.gift_balance_after, 4) }}
                             </div>
                           </TableCell>
                           <TableCell
@@ -355,8 +355,8 @@
                             class="py-10"
                           >
                             <EmptyState
-                              title="暂无资金流水"
-                              description="当前钱包没有资金动作记录"
+                              :title="t('walletOps.noTransactions')"
+                              :description="t('walletOps.noTransactionsHint')"
                             />
                           </TableCell>
                         </TableRow>
@@ -381,7 +381,7 @@
               >
                 <div class="flex items-center justify-between gap-3">
                   <div class="text-sm text-muted-foreground">
-                    最近 30 天 · 共 {{ usageTotal }} 条
+                    {{ t('walletOps.recentUsage', { count: usageTotal }) }}
                   </div>
                   <RefreshButton
                     :loading="loadingUsage"
@@ -405,28 +405,28 @@
                       <TableHeader>
                         <TableRow>
                           <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            时间
+                            {{ t('walletOps.time') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="model" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            模型
+                            {{ t('walletOps.model') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            状态
+                            {{ t('walletOps.status') }}
                           </SortableTableHead>
                           <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="official" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            官方价格
+                            {{ t('walletOps.officialPrice') }}
                           </SortableTableHead>
                           <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="packageDebit" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            套餐扣除
+                            {{ t('walletOps.packageDebit') }}
                           </SortableTableHead>
                           <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="walletDebit" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            钱包扣除
+                            {{ t('walletOps.walletDebit') }}
                           </SortableTableHead>
                           <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="platformCost" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            平台成本
+                            {{ t('walletOps.platformCost') }}
                           </SortableTableHead>
                           <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="costMultiplier" :resizable="true" @resize-start="handleWalletUsageColumnResizeStart">
-                            成本倍率
+                            {{ t('walletOps.costMultiplier') }}
                           </SortableTableHead>
                         </TableRow>
                       </TableHeader>
@@ -444,7 +444,7 @@
                               {{ record.model || '-' }}
                             </div>
                             <div class="mt-1 break-words text-[11px] text-muted-foreground">
-                              {{ record.api_key?.name || record.api_key_name || '未命名 Key' }}
+                              {{ record.api_key?.name || record.api_key_name || t('walletOps.unnamedKey') }}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -474,8 +474,8 @@
                             class="py-10"
                           >
                             <EmptyState
-                              title="暂无消费记录"
-                              description="最近 30 天内没有可核账的模型请求"
+                              :title="t('walletOps.noUsage')"
+                              :description="t('walletOps.noUsageHint')"
                             />
                           </TableCell>
                         </TableRow>
@@ -500,7 +500,7 @@
               >
                 <div class="flex items-center justify-between gap-3">
                   <div class="text-sm text-muted-foreground">
-                    共 {{ planItems.length }} 条
+                    {{ t('walletOps.totalRecords', { count: planItems.length }) }}
                   </div>
                   <RefreshButton
                     :loading="loadingPlans"
@@ -523,25 +523,25 @@
                       <TableHeader>
                         <TableRow>
                           <SortableTableHead :sortable="false" resize-column-key="plan" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
-                            套餐
+                            {{ t('walletOps.plan') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
-                            状态
+                            {{ t('walletOps.status') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="entitlements" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
-                            权益
+                            {{ t('walletOps.benefits') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="price" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
-                            价格/额度
+                            {{ t('walletOps.priceQuota') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="created" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
-                            获得时间
+                            {{ t('walletOps.obtainedAt') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="starts" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
-                            开始
+                            {{ t('walletOps.start') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="expires" :resizable="true" @resize-start="handleWalletPlanColumnResizeStart">
-                            到期
+                            {{ t('walletOps.expiry') }}
                           </SortableTableHead>
                         </TableRow>
                       </TableHeader>
@@ -563,7 +563,7 @@
                               :variant="plan.active ? 'success' : 'secondary'"
                               class="whitespace-nowrap"
                             >
-                              {{ plan.active ? '生效中' : planStatusLabel(plan.status) }}
+                              {{ plan.active ? t('walletOps.active') : planStatusLabel(plan.status) }}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -602,8 +602,8 @@
                             class="py-10"
                           >
                             <EmptyState
-                              title="暂无套餐记录"
-                              description="当前用户还没有套餐发放或购买记录"
+                              :title="t('walletOps.noPlans')"
+                              :description="t('walletOps.noPlansHint')"
                             />
                           </TableCell>
                         </TableRow>
@@ -620,7 +620,7 @@
               >
                 <div class="flex items-center justify-between gap-3">
                   <div class="text-sm text-muted-foreground">
-                    共 {{ refundTotal }} 条
+                    {{ t('walletOps.totalRecords', { count: refundTotal }) }}
                   </div>
                   <RefreshButton
                     :loading="loadingRefunds"
@@ -633,24 +633,24 @@
                   class="rounded-xl border border-border/60 p-4 space-y-3"
                 >
                   <div class="text-sm font-semibold">
-                    {{ refundActionType === 'fail' ? '驳回退款' : '完成退款' }} - {{ actionRefund.refund_no }}
+                    {{ refundActionType === 'fail' ? t('walletOps.rejectRefund') : t('walletOps.completeRefund') }} - {{ actionRefund.refund_no }}
                   </div>
                   <template v-if="refundActionType === 'fail'">
                     <div class="space-y-1.5">
-                      <Label>驳回原因</Label>
+                      <Label>{{ t('walletOps.rejectReason') }}</Label>
                       <Input
                         v-model="refundFailReason"
-                        placeholder="请填写驳回原因"
+                        :placeholder="t('walletOps.rejectReasonPlaceholder')"
                       />
                     </div>
                   </template>
                   <template v-else>
                     <div class="space-y-1.5">
-                      <Label>网关退款号（可选）</Label>
+                      <Label>{{ t('walletOps.gatewayRefundId') }}</Label>
                       <Input v-model="refundGatewayRefundId" />
                     </div>
                     <div class="space-y-1.5">
-                      <Label>打款凭证 / 参考号（可选）</Label>
+                      <Label>{{ t('walletOps.payoutReference') }}</Label>
                       <Input v-model="refundPayoutReference" />
                     </div>
                   </template>
@@ -659,7 +659,7 @@
                       variant="outline"
                       @click="resetRefundActionForm"
                     >
-                      取消
+                      {{ t('walletOps.cancel') }}
                     </Button>
                     <Button
                       v-if="refundActionType === 'fail'"
@@ -667,14 +667,14 @@
                       :disabled="submittingRefundAction"
                       @click="submitFailRefund"
                     >
-                      {{ submittingRefundAction ? '提交中...' : '确认驳回' }}
+                      {{ submittingRefundAction ? t('walletOps.submitting') : t('walletOps.confirmReject') }}
                     </Button>
                     <Button
                       v-else
                       :disabled="submittingRefundAction"
                       @click="submitCompleteRefund"
                     >
-                      {{ submittingRefundAction ? '提交中...' : '确认完成' }}
+                      {{ submittingRefundAction ? t('walletOps.submitting') : t('walletOps.confirmComplete') }}
                     </Button>
                   </div>
                 </div>
@@ -693,22 +693,22 @@
                       <TableHeader>
                         <TableRow>
                           <SortableTableHead :sortable="false" resize-column-key="refundNo" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
-                            退款单号
+                            {{ t('walletOps.refundNo') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
-                            金额
+                            {{ t('walletOps.amountColumn') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="mode" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
-                            模式
+                            {{ t('walletOps.mode') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
-                            状态
+                            {{ t('walletOps.status') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="reason" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
-                            原因
+                            {{ t('walletOps.reason') }}
                           </SortableTableHead>
                           <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleWalletRefundColumnResizeStart">
-                            操作
+                            {{ t('walletOps.actions') }}
                           </SortableTableHead>
                         </TableRow>
                       </TableHeader>
@@ -749,7 +749,7 @@
                                 :disabled="submittingRefundAction"
                                 @click="processRefund(refund)"
                               >
-                                处理
+                                {{ t('walletOps.process') }}
                               </Button>
                               <Button
                                 v-if="canCompleteRefund(refund.status)"
@@ -757,7 +757,7 @@
                                 :disabled="submittingRefundAction"
                                 @click="openCompleteRefund(refund)"
                               >
-                                完成
+                                {{ t('walletOps.complete') }}
                               </Button>
                               <Button
                                 v-if="canFailRefund(refund.status)"
@@ -766,7 +766,7 @@
                                 :disabled="submittingRefundAction"
                                 @click="openFailRefund(refund)"
                               >
-                                驳回
+                                {{ t('walletOps.reject') }}
                               </Button>
                             </div>
                           </TableCell>
@@ -777,8 +777,8 @@
                             class="py-10"
                           >
                             <EmptyState
-                              title="暂无退款申请"
-                              description="当前钱包没有退款单"
+                              :title="t('walletOps.noRefunds')"
+                              :description="t('walletOps.noRefundsHint')"
                             />
                           </TableCell>
                         </TableRow>
@@ -805,6 +805,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Badge,
   Button,
@@ -875,12 +876,13 @@ const props = withDefaults(
   {
     ownerName: '',
     ownerSubtitle: '',
-    contextLabel: '钱包详情',
+    contextLabel: '',
     userId: null,
     accent: 'emerald',
     showRefunds: true,
   }
 )
+const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -1036,8 +1038,8 @@ const submitMoneyDisabled = computed(() => {
   return actionAmount.value === 0
 })
 const submitMoneyLabel = computed(() => {
-  if (isApiKeyWallet.value) return '确认调账'
-  return moneyActionType.value === 'recharge' ? '确认充值' : '确认调账'
+  if (isApiKeyWallet.value) return t('walletOps.confirmAdjustment')
+  return moneyActionType.value === 'recharge' ? t('walletOps.confirmRecharge') : t('walletOps.confirmAdjustment')
 })
 
 watch(
@@ -1111,7 +1113,7 @@ async function loadTransactions() {
     txTotal.value = resp.total
   } catch (err) {
     log.error('加载钱包流水失败:', err)
-    error(parseApiError(err, '加载钱包流水失败'))
+    error(parseApiError(err, t('walletOps.loadTransactionsFailed')))
   } finally {
     loadingTx.value = false
   }
@@ -1144,7 +1146,7 @@ async function loadUsageRecords() {
     usageTotal.value = resp.total || 0
   } catch (err) {
     log.error('加载消费记录失败:', err)
-    error(parseApiError(err, '加载消费记录失败'))
+    error(parseApiError(err, t('walletOps.loadUsageFailed')))
     usageItems.value = []
     usageTotal.value = 0
   } finally {
@@ -1163,7 +1165,7 @@ async function loadPlans() {
     planItems.value = resp.items
   } catch (err) {
     log.error('加载套餐记录失败:', err)
-    error(parseApiError(err, '加载套餐记录失败'))
+    error(parseApiError(err, t('walletOps.loadPlansFailed')))
     planItems.value = []
   } finally {
     loadingPlans.value = false
@@ -1192,7 +1194,7 @@ async function loadRefunds() {
     }
   } catch (err) {
     log.error('加载钱包退款失败:', err)
-    error(parseApiError(err, '加载钱包退款失败'))
+    error(parseApiError(err, t('walletOps.loadRefundsFailed')))
   } finally {
     loadingRefunds.value = false
   }
@@ -1252,7 +1254,7 @@ async function refreshDrawerData() {
 async function submitRecharge() {
   if (!localWallet.value) return
   if (!actionAmount.value || actionAmount.value <= 0) {
-    error('人工充值金额必须大于 0')
+    error(t('walletOps.rechargePositive'))
     return
   }
 
@@ -1261,9 +1263,9 @@ async function submitRecharge() {
   const totalBefore = localWallet.value.balance
   const totalAfter = totalBefore + actionAmount.value
   const confirmed = await confirm({
-    title: '确认人工充值',
-    message: `将为 ${props.ownerName || '该钱包'} 充值 **$${formatFixed(actionAmount.value, 4)}**\n该账户**充值余额**将从 **$${formatFixed(rechargeBefore, 4)}** 变为 **$${formatFixed(rechargeAfter, 4)}**，**钱包余额**将从 **$${formatFixed(totalBefore, 4)}** 变为 **$${formatFixed(totalAfter, 4)}**`,
-    confirmText: '确认充值',
+    title: t('walletOps.confirmManualRecharge'),
+    message: t('walletOps.rechargeConfirmMessage', { owner: props.ownerName || t('walletOps.thisWallet'), amount: formatFixed(actionAmount.value, 4), rechargeBefore: formatFixed(rechargeBefore, 4), rechargeAfter: formatFixed(rechargeAfter, 4), totalBefore: formatFixed(totalBefore, 4), totalAfter: formatFixed(totalAfter, 4) }),
+    confirmText: t('walletOps.confirmRecharge'),
     variant: 'warning',
   })
   if (!confirmed) return
@@ -1273,16 +1275,16 @@ async function submitRecharge() {
     const response = await adminWalletApi.rechargeWallet(localWallet.value.id, {
       amount_usd: actionAmount.value,
       payment_method: 'admin_manual',
-      description: actionDescription.value || `管理员为 ${props.ownerName || '钱包'} 人工充值`,
+      description: actionDescription.value || t('walletOps.defaultRechargeDescription', { owner: props.ownerName || t('walletOps.wallet') }),
     })
     localWallet.value = response.wallet
-    success('人工充值已入账')
+    success(t('walletOps.rechargeSuccess'))
     resetActionForm()
     await refreshDrawerData()
     emit('changed')
   } catch (err) {
     log.error('钱包人工充值失败:', err)
-    error(parseApiError(err, '人工充值失败'))
+    error(parseApiError(err, t('walletOps.rechargeFailed')))
   } finally {
     submittingMoneyAction.value = false
   }
@@ -1340,12 +1342,12 @@ function previewAdjustResult(
 async function submitAdjust() {
   if (!localWallet.value) return
   if (!actionAmount.value || actionAmount.value === 0) {
-    error('调账金额不能为 0')
+    error(t('walletOps.adjustNonZero'))
     return
   }
 
   if (isApiKeyWallet.value && adjustBalanceType.value === 'gift') {
-    error('独立密钥钱包不支持赠款调账')
+    error(t('walletOps.keyWalletNoGift'))
     return
   }
 
@@ -1361,15 +1363,15 @@ async function submitAdjust() {
   const afterBalance = adjustBalanceType.value === 'gift' ? preview.giftAfter : preview.rechargeAfter
   const totalBefore = localWallet.value.balance
   const totalAfter = preview.totalAfter
-  const balanceTypeLabel = adjustBalanceType.value === 'gift' ? '赠款余额' : '充值余额'
+  const balanceTypeLabel = adjustBalanceType.value === 'gift' ? t('walletOps.giftBalance') : t('walletOps.rechargeBalance')
   const isDeduct = actionAmount.value < 0
   const detailLine = isDeduct
-    ? `该账户**充值余额**将从 **$${formatFixed(rechargeBefore, 4)}** 变为 **$${formatFixed(preview.rechargeAfter, 4)}**，**赠款余额**将从 **$${formatFixed(giftBefore, 4)}** 变为 **$${formatFixed(preview.giftAfter, 4)}**`
-    : `该账户**${balanceTypeLabel}**将从 **$${formatFixed(currentBucketBalance, 4)}** 变为 **$${formatFixed(afterBalance, 4)}**`
+    ? t('walletOps.adjustDeductDetail', { rechargeBefore: formatFixed(rechargeBefore, 4), rechargeAfter: formatFixed(preview.rechargeAfter, 4), giftBefore: formatFixed(giftBefore, 4), giftAfter: formatFixed(preview.giftAfter, 4) })
+    : t('walletOps.adjustAddDetail', { type: balanceTypeLabel, before: formatFixed(currentBucketBalance, 4), after: formatFixed(afterBalance, 4) })
   const confirmed = await confirm({
-    title: '确认钱包调账',
-    message: `将对 ${props.ownerName || '该钱包'} 的**${balanceTypeLabel}**${actionAmount.value > 0 ? '增加' : '扣减'} **$${formatFixed(Math.abs(actionAmount.value), 4)}**\n${detailLine}，**钱包余额**将从 **$${formatFixed(totalBefore, 4)}** 变为 **$${formatFixed(totalAfter, 4)}**`,
-    confirmText: '确认调账',
+    title: t('walletOps.confirmWalletAdjustment'),
+    message: t('walletOps.adjustConfirmMessage', { owner: props.ownerName || t('walletOps.thisWallet'), type: balanceTypeLabel, action: actionAmount.value > 0 ? t('walletOps.increase') : t('walletOps.decrease'), amount: formatFixed(Math.abs(actionAmount.value), 4), detail: detailLine, totalBefore: formatFixed(totalBefore, 4), totalAfter: formatFixed(totalAfter, 4) }),
+    confirmText: t('walletOps.confirmAdjustment'),
     variant: 'warning',
   })
   if (!confirmed) return
@@ -1379,16 +1381,16 @@ async function submitAdjust() {
     const response = await adminWalletApi.adjustWallet(localWallet.value.id, {
       amount_usd: actionAmount.value,
       balance_type: adjustBalanceType.value,
-      description: actionDescription.value || `管理员为 ${props.ownerName || '钱包'} 执行钱包调账`,
+      description: actionDescription.value || t('walletOps.defaultAdjustDescription', { owner: props.ownerName || t('walletOps.wallet') }),
     })
     localWallet.value = response.wallet
-    success('钱包调账已完成')
+    success(t('walletOps.adjustSuccess'))
     resetActionForm()
     await refreshDrawerData()
     emit('changed')
   } catch (err) {
     log.error('钱包调账失败:', err)
-    error(parseApiError(err, '钱包调账失败'))
+    error(parseApiError(err, t('walletOps.adjustFailed')))
   } finally {
     submittingMoneyAction.value = false
   }
@@ -1420,12 +1422,12 @@ async function processRefund(refund: RefundRequest) {
   try {
     const resp = await adminWalletApi.processRefund(localWallet.value.id, refund.id)
     localWallet.value = resp.wallet
-    success('退款已进入 processing')
+    success(t('walletOps.refundProcessing'))
     await refreshDrawerData()
     emit('changed')
   } catch (err) {
     log.error('处理退款失败:', err)
-    error(parseApiError(err, '处理退款失败'))
+    error(parseApiError(err, t('walletOps.processRefundFailed')))
   } finally {
     submittingRefundAction.value = false
   }
@@ -1447,7 +1449,7 @@ function openCompleteRefund(refund: RefundRequest) {
 async function submitFailRefund() {
   if (!localWallet.value || !actionRefund.value) return
   if (!refundFailReason.value.trim()) {
-    error('请填写驳回原因')
+    error(t('walletOps.rejectReasonRequired'))
     return
   }
 
@@ -1457,13 +1459,13 @@ async function submitFailRefund() {
       reason: refundFailReason.value.trim(),
     })
     localWallet.value = resp.wallet
-    success('退款已驳回')
+    success(t('walletOps.refundRejected'))
     resetRefundActionForm()
     await refreshDrawerData()
     emit('changed')
   } catch (err) {
     log.error('驳回退款失败:', err)
-    error(parseApiError(err, '驳回退款失败'))
+    error(parseApiError(err, t('walletOps.rejectRefundFailed')))
   } finally {
     submittingRefundAction.value = false
   }
@@ -1478,13 +1480,13 @@ async function submitCompleteRefund() {
       gateway_refund_id: refundGatewayRefundId.value || undefined,
       payout_reference: refundPayoutReference.value || undefined,
     })
-    success('退款已完成')
+    success(t('walletOps.refundCompleted'))
     resetRefundActionForm()
     await refreshDrawerData()
     emit('changed')
   } catch (err) {
     log.error('完成退款失败:', err)
-    error(parseApiError(err, '完成退款失败'))
+    error(parseApiError(err, t('walletOps.completeRefundFailed')))
   } finally {
     submittingRefundAction.value = false
   }
@@ -1610,30 +1612,30 @@ function usageCostTitle(record: UsageRecord): string {
   const packageDebit = usagePackageDebit(record)
   const walletDebit = usageWalletDebit(record)
   const lines = [
-    `官方价格: ${formatUsageCurrency(usageOfficialCost(record))}`,
+    `${t('walletOps.officialPrice')}: ${formatUsageCurrency(usageOfficialCost(record))}`,
   ]
   if (packageDebit > USAGE_COST_EPSILON) {
-    lines.push(`套餐扣除: ${formatUsageDebitWithMultiplier(packageDebit, usagePackageMultiplier(record))}`)
+    lines.push(`${t('walletOps.packageDebit')}: ${formatUsageDebitWithMultiplier(packageDebit, usagePackageMultiplier(record))}`)
   }
   if (walletDebit > USAGE_COST_EPSILON) {
-    lines.push(`钱包扣除: ${formatUsageDebitWithMultiplier(walletDebit, usageWalletMultiplier(record))}`)
+    lines.push(`${t('walletOps.walletDebit')}: ${formatUsageDebitWithMultiplier(walletDebit, usageWalletMultiplier(record))}`)
   }
   if (packageDebit <= USAGE_COST_EPSILON && walletDebit <= USAGE_COST_EPSILON) {
-    lines.push('本次没有产生用户扣费')
+    lines.push(t('walletOps.noUserCharge'))
   }
   if (hasUsagePlatformCost(record)) {
-    lines.push(`平台成本: ${formatUsageCurrency(usagePlatformCost(record))}`)
-    lines.push(`成本倍率: ${formatUsageCostMultiplier(record)}`)
+    lines.push(`${t('walletOps.platformCost')}: ${formatUsageCurrency(usagePlatformCost(record))}`)
+    lines.push(`${t('walletOps.costMultiplier')}: ${formatUsageCostMultiplier(record)}`)
   }
   return lines.join('\n')
 }
 
 function usageStatusLabel(record: UsageRecord): string {
-  if (record.status === 'failed' || (record.status_code ?? 0) >= 400) return '失败'
-  if (record.status === 'cancelled') return '已取消'
-  if (record.status === 'pending') return '等待中'
-  if (record.status === 'streaming') return '传输中'
-  return '完成'
+  if (record.status === 'failed' || (record.status_code ?? 0) >= 400) return t('walletOps.failed')
+  if (record.status === 'cancelled') return t('walletOps.cancelled')
+  if (record.status === 'pending') return t('walletOps.pending')
+  if (record.status === 'streaming') return t('walletOps.streaming')
+  return t('walletOps.complete')
 }
 
 function usageStatusBadge(record: UsageRecord): 'default' | 'secondary' | 'outline' | 'destructive' | 'success' {
@@ -1656,9 +1658,9 @@ function formatDateTime(value: string | null | undefined) {
 
 function planStatusLabel(status: string | null | undefined): string {
   const labels: Record<string, string> = {
-    active: '已发放',
-    cancelled: '已取消',
-    expired: '已过期',
+    active: t('walletOps.granted'),
+    cancelled: t('walletOps.cancelled'),
+    expired: t('walletOps.expired'),
   }
   return labels[String(status || '')] || String(status || '-')
 }
@@ -1693,28 +1695,28 @@ function formatPlanPrice(plan: BillingPlan | null | undefined): string {
 
 function formatPlanQuota(plan: BillingPlan | null | undefined): string {
   const quota = planQuotaUsd(plan)
-  return quota === null ? '无用量额度' : `$${quota.toFixed(2)}`
+  return quota === null ? t('walletOps.noQuota') : `$${quota.toFixed(2)}`
 }
 
 function formatPlanEquivalentMultiplier(plan: BillingPlan | null | undefined): string {
   const quota = planQuotaUsd(plan)
-  if (!plan || quota === null || quota <= 0) return '等效倍率 -'
+  if (!plan || quota === null || quota <= 0) return t('walletOps.equivalentMultiplierEmpty')
   const price = Number(plan.price_amount || 0)
-  return `等效倍率 ${formatMultiplier(price / quota)}`
+  return t('walletOps.equivalentMultiplier', { value: formatMultiplier(price / quota) })
 }
 
 function entitlementLabels(items: BillingEntitlementsInput): string[] {
   return normalizeBillingEntitlements(items).map((item) => {
     if (item.type === 'wallet_credit') {
-      return `附赠余额 $${Number(item.amount_usd || 0).toFixed(2)}`
+      return t('walletOps.bonusBalance', { amount: Number(item.amount_usd || 0).toFixed(2) })
     }
     if (item.type === 'daily_quota') {
       return quotaEntitlementLabel(item)
     }
     if (item.type === 'membership_group') {
-      return '会员权益'
+      return t('walletOps.membershipBenefits')
     }
-    return '未知权益'
+    return t('walletOps.unknownBenefit')
   })
 }
 
@@ -1725,13 +1727,13 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   const fiveHour = Number(item.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
   const weekly = Number(item.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
   const monthly = Number(item.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
-  if (daily > 0) parts.push(`每日 $${daily.toFixed(2)}`)
-  if (fiveHour > 0) parts.push(`5小时 $${fiveHour.toFixed(2)}`)
-  if (weekly > 0) parts.push(`每周 $${weekly.toFixed(2)}`)
-  if (monthly > 0) parts.push(`每月 $${monthly.toFixed(2)}`)
-  const quotaText = parts.join(' / ') || '用量额度'
+  if (daily > 0) parts.push(t('walletOps.dailyQuota', { amount: daily.toFixed(2) }))
+  if (fiveHour > 0) parts.push(t('walletOps.fiveHourQuota', { amount: fiveHour.toFixed(2) }))
+  if (weekly > 0) parts.push(t('walletOps.weeklyQuota', { amount: weekly.toFixed(2) }))
+  if (monthly > 0) parts.push(t('walletOps.monthlyQuota', { amount: monthly.toFixed(2) }))
+  const quotaText = parts.join(' / ') || t('walletOps.usageQuota')
   const modelIds = item.allowed_global_model_ids || []
-  const labels = [modelIds.length > 0 ? `${modelIds.length} 个模型` : '全部模型']
+  const labels = [modelIds.length > 0 ? t('walletOps.modelCount', { count: modelIds.length }) : t('walletOps.allModels')]
   const multiplierLabel = quotaConsumptionMultiplierLabel(item)
   if (multiplierLabel) labels.push(multiplierLabel)
   return `${quotaText} · ${labels.join(' · ')}`

@@ -1,4 +1,7 @@
 import { ref, onUnmounted } from 'vue'
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
 
 /**
  * 倒计时定时器 composable
@@ -80,7 +83,7 @@ export function getCodexResetCountdown(
   }
 
   if (remaining <= 0) {
-    return { text: '已重置', isUrgent: false, isCritical: false, isExpired: true }
+    return { text: t('runtimeText.reset'), isUrgent: false, isCritical: false, isExpired: true }
   }
 
   const total = Math.floor(remaining)
@@ -92,7 +95,7 @@ export function getCodexResetCountdown(
 
   let text: string
   if (days > 0) {
-    text = `${days}天 ${hours}:${pad(minutes)}:${pad(seconds)}`
+    text = t('runtimeText.dayClock', { days, time: `${hours}:${pad(minutes)}:${pad(seconds)}` })
   } else if (hours > 0) {
     text = `${hours}:${pad(minutes)}:${pad(seconds)}`
   } else {
@@ -142,7 +145,7 @@ export function getOAuthExpiresCountdown(
   // 优先检查失效状态（失效比过期更严重）
   if (invalidAt != null || normalizedInvalidReason) {
     return {
-      text: '已失效',
+      text: t('runtimeText.invalid'),
       isExpired: false,
       isExpiringSoon: false,
       isInvalid: true,
@@ -156,7 +159,7 @@ export function getOAuthExpiresCountdown(
   const diffSeconds = expiresAt - now
 
   if (diffSeconds <= 0) {
-    return { text: '已过期', isExpired: true, isExpiringSoon: false, isInvalid: false }
+    return { text: t('runtimeText.expired'), isExpired: true, isExpiringSoon: false, isInvalid: false }
   }
 
   // 24 小时内过期视为即将过期
@@ -169,11 +172,11 @@ export function getOAuthExpiresCountdown(
 
   let text: string
   if (days > 0) {
-    text = `${days}天${hours}时`
+    text = t('runtimeText.daysHours', { days, hours })
   } else if (hours > 0) {
-    text = `${hours}时${minutes}分`
+    text = t('runtimeText.hoursMinutes', { hours, minutes })
   } else {
-    text = `${minutes}分钟`
+    text = t('runtimeText.minutes', { minutes })
   }
 
   return { text, isExpired: false, isExpiringSoon, isInvalid: false }

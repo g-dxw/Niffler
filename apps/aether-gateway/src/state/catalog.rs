@@ -280,6 +280,16 @@ impl AppState {
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }
 
+    pub(crate) async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<global_models::StoredAdminProviderModel>, GatewayError> {
+        self.data
+            .list_admin_provider_models_by_global_model_ids(global_model_ids)
+            .await
+            .map_err(|err| GatewayError::Internal(err.to_string()))
+    }
+
     pub(crate) async fn create_admin_provider_model(
         &self,
         record: &global_models::UpsertAdminProviderModelRecord,

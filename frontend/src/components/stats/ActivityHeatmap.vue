@@ -11,10 +11,10 @@
           {{ tooltip.day.date }}
         </p>
         <p class="mt-0.5">
-          {{ tooltip.day.requests }} 次请求 · {{ formatTokens(tooltip.day.total_tokens) }}
+          {{ t('activityHeatmap.requests', { count: tooltip.day.requests }) }} · {{ formatTokens(tooltip.day.total_tokens) }}
         </p>
         <p class="text-[11px] text-muted-foreground">
-          成本 {{ formatCurrency(tooltip.day.total_cost) }}
+          {{ t('activityHeatmap.cost', { value: formatCurrency(tooltip.day.total_cost) }) }}
         </p>
       </div>
     </Teleport>
@@ -38,14 +38,14 @@
         v-if="weekColumns.length > 0"
         class="flex items-center gap-1 text-[11px] text-muted-foreground flex-shrink-0"
       >
-        <span class="flex-shrink-0">少</span>
+        <span class="flex-shrink-0">{{ t('activityHeatmap.less') }}</span>
         <div
           v-for="(level, index) in legendLevels"
           :key="index"
           class="w-3 h-3 rounded-[3px] flex-shrink-0"
           :style="getLegendStyle(level)"
         />
-        <span class="flex-shrink-0">多</span>
+        <span class="flex-shrink-0">{{ t('activityHeatmap.more') }}</span>
       </div>
     </div>
 
@@ -64,31 +64,31 @@
         <span
           :style="dayLabelStyle"
           class="flex items-center invisible"
-        >周日</span>
+        >{{ t('activityHeatmap.sunday') }}</span>
         <span
           :style="dayLabelStyle"
           class="flex items-center"
-        >一</span>
+        >{{ t('activityHeatmap.mondayShort') }}</span>
         <span
           :style="dayLabelStyle"
           class="flex items-center invisible"
-        >周二</span>
+        >{{ t('activityHeatmap.tuesday') }}</span>
         <span
           :style="dayLabelStyle"
           class="flex items-center"
-        >三</span>
+        >{{ t('activityHeatmap.wednesdayShort') }}</span>
         <span
           :style="dayLabelStyle"
           class="flex items-center invisible"
-        >周四</span>
+        >{{ t('activityHeatmap.thursday') }}</span>
         <span
           :style="dayLabelStyle"
           class="flex items-center"
-        >五</span>
+        >{{ t('activityHeatmap.fridayShort') }}</span>
         <span
           :style="dayLabelStyle"
           class="flex items-center invisible"
-        >周六</span>
+        >{{ t('activityHeatmap.saturday') }}</span>
       </div>
       <div class="flex-1 min-w-[200px]">
         <div
@@ -146,15 +146,18 @@
       v-else
       class="text-xs text-muted-foreground"
     >
-      暂无活跃数据
+      {{ t('activityHeatmap.empty') }}
     </p>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { ActivityHeatmap, ActivityHeatmapDay } from '@/types/activity'
 import { formatCurrency, formatTokens } from '@/utils/format'
+
+const { t, locale } = useI18n()
 
 const props = withDefaults(defineProps<{
   data?: ActivityHeatmap | null
@@ -270,7 +273,7 @@ const monthMarkers = computed(() => {
     if (month === lastMonth) {
       return
     }
-    markers[index] = `${month + 1}月`
+    markers[index] = new Intl.DateTimeFormat(locale.value, { month: 'short', timeZone: 'UTC' }).format(firstValid.dateObj)
     lastMonth = month
   })
 
@@ -403,9 +406,9 @@ function getCellStyle(requests: number) {
 function buildTooltip(day: ActivityHeatmapDay): string {
   const dateLabel = day.date
   const costLabel = formatCurrency(day.total_cost || 0)
-  const parts = [`${dateLabel}`, `${day.requests} 次请求`, `${formatTokens(day.total_tokens)} tokens`, costLabel]
+  const parts = [`${dateLabel}`, t('activityHeatmap.requests', { count: day.requests }), `${formatTokens(day.total_tokens)} tokens`, costLabel]
   if (day.actual_total_cost !== undefined) {
-    parts.push(`倍率: ${formatCurrency(day.actual_total_cost)}`)
+    parts.push(t('activityHeatmap.multiplier', { value: formatCurrency(day.actual_total_cost) }))
   }
   return parts.join(' · ')
 }

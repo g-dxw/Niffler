@@ -4,6 +4,9 @@ import type {
   GenerateImageResult,
 } from '../types'
 import { stripInternalParams } from '../utils/advanced-params'
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
 
 export class ImageGenerationError extends Error {
   status?: number
@@ -17,7 +20,7 @@ export class ImageGenerationError extends Error {
 
 export function normalizeImagesBaseUrl(baseUrl: string) {
   const normalized = baseUrl.trim().replace(/\/+$/, '')
-  if (!normalized) throw new Error('API 地址为空')
+  if (!normalized) throw new Error(t('imageGenerationErrors.apiUrlEmpty'))
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
 }
 
@@ -26,22 +29,22 @@ function buildEndpoint(baseUrl: string, path: string) {
 }
 
 function assertParams(params: GenerateImageParams) {
-  if (!params.apiKey.trim()) throw new Error('请选择 API 密钥')
-  if (!params.model.trim()) throw new Error('请选择图片模型')
-  if (!params.prompt.trim()) throw new Error('请输入提示词')
+  if (!params.apiKey.trim()) throw new Error(t('imageGenerationErrors.selectApiKey'))
+  if (!params.model.trim()) throw new Error(t('imageGenerationErrors.selectModel'))
+  if (!params.prompt.trim()) throw new Error(t('imageGenerationErrors.enterPrompt'))
 }
 
 function responseErrorMessage(status: number, fallback: string) {
   if (status === 401) {
-    return `当前 API 密钥无效，或没有调用图片接口的权限${fallback ? `：${fallback}` : ''}`
+    return `${t('imageGenerationErrors.unauthorized')}${fallback ? `: ${fallback}` : ''}`
   }
   if (status === 403) {
-    return `当前 API 密钥无权调用所选图片模型或图片接口${fallback ? `：${fallback}` : ''}`
+    return `${t('imageGenerationErrors.forbidden')}${fallback ? `: ${fallback}` : ''}`
   }
   if (status === 524) {
-    return '生图请求在边缘网关等待超时（524），请稍后重试或降低图片质量/尺寸'
+    return t('imageGenerationErrors.gatewayTimeout')
   }
-  return fallback || `请求失败 (${status})`
+  return fallback || t('imageGenerationErrors.requestFailed', { status })
 }
 
 function parseSseImageResponse(text: string, outputFormat: string): unknown {
@@ -70,7 +73,7 @@ function parseSseImageResponse(text: string, outputFormat: string): unknown {
 
     if (event.type?.endsWith('.failed') || event.type === 'error') {
       const errorMessage = typeof event.error === 'string' ? event.error : event.error?.message
-      throw new ImageGenerationError(errorMessage || event.message || '图片生成失败')
+      throw new ImageGenerationError(errorMessage || event.message || t('imageGenerationErrors.generationFailed'))
     }
     if (typeof event.b64_json === 'string' && event.b64_json) {
       if (event.type?.endsWith('.completed')) {
@@ -84,8 +87,8 @@ function parseSseImageResponse(text: string, outputFormat: string): unknown {
   if (!completedImage) {
     throw new ImageGenerationError(
       sawPartialImage
-        ? '图片生成未完成，已丢弃不完整的预览图'
-        : '图片流已结束，但没有返回完整图片',
+        ? t('imageGenerationErrors.incompletePreview')
+        : t('imageGenerationErrors.incompleteStream'),
     )
   }
   return { data: [{ b64_json: completedImage, output_format: outputFormat }] }
@@ -116,16 +119,16 @@ async function readResponse(response: Response, outputFormat: string): Promise<u
   } catch {
     parsed = undefined
   }
-  if (!parsed) throw new ImageGenerationError('接口返回了空响应或无效 JSON', response.status)
+  if (!parsed) throw new ImageGenerationError(t('imageGenerationErrors.emptyResponse'), response.status)
   return parsed
 }
 
 function toImageResult(value: unknown, fallbackOutputFormat = 'png'): GenerateImageResult {
   if (!value || typeof value !== 'object' || !('data' in value) || !Array.isArray(value.data)) {
-    throw new ImageGenerationError('响应中没有图片数据')
+    throw new ImageGenerationError(t('imageGenerationErrors.missingImageData'))
   }
   const item = value.data[0] as { url?: unknown, b64_json?: unknown, output_format?: unknown } | undefined
-  if (!item) throw new ImageGenerationError('响应中没有图片数据')
+  if (!item) throw new ImageGenerationError(t('imageGenerationErrors.missingImageData'))
 
   const format = typeof item.output_format === 'string' ? item.output_format.toLowerCase() : fallbackOutputFormat
   const mimeType = format === 'jpg' || format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png'
@@ -139,7 +142,7 @@ function toImageResult(value: unknown, fallbackOutputFormat = 'png'): GenerateIm
       mimeType,
     }
   }
-  throw new ImageGenerationError('图片响应格式不受支持')
+  throw new ImageGenerationError(t('imageGenerationErrors.unsupportedResponse'))
 }
 
 export async function generateImage(params: GenerateImageParams): Promise<GenerateImageResult> {
@@ -170,7 +173,7 @@ export async function generateImage(params: GenerateImageParams): Promise<Genera
 
 export async function editImage(params: EditImageParams): Promise<GenerateImageResult> {
   assertParams(params)
-  if (!params.images.length) throw new Error('图生图至少需要一张参考图')
+  if (!params.images.length) throw new Error(t('imageGenerationErrors.imageRequired'))
 
   const extraParams = stripInternalParams(params.extraParams || {})
   const outputFormat = typeof extraParams.output_format === 'string' ? extraParams.output_format : 'png'

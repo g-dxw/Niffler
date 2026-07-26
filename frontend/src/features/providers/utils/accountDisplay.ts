@@ -24,7 +24,7 @@ export function getAccountDisplayParts(source: AccountDisplaySource): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))]
 }
 
-export function getAccountDisplayName(source: AccountDisplaySource, fallback = '未命名账号'): string {
+export function getAccountDisplayName(source: AccountDisplaySource, fallback = i18n.global.t('providerUi.unnamedAccount')): string {
   const parts = getAccountDisplayParts(source)
   if (parts.length > 0) return parts.join(' / ')
   return normalizeAccountText(source.key_name) || normalizeAccountText(source.name) || fallback
@@ -35,3 +35,4 @@ export function getAccountCopyText(source: AccountDisplaySource): string | null 
   if (parts.length > 0) return parts.join('\n')
   return normalizeAccountText(source.key_name) || normalizeAccountText(source.name)
 }
+import { i18n } from '@/i18n'

@@ -1,5 +1,6 @@
 import type { QuotaWindowUsageSnapshot } from '@/api/endpoints/types/statusSnapshot'
 import type { PoolManagementStatsMode } from '@/features/pool/utils/poolManagementState'
+import { i18n } from '@/i18n'
 
 export type PoolStatsMetricKey = 'request_count' | 'total_tokens' | 'total_cost_usd'
 export type PoolStatsDisplayKind = 'account_total' | 'codex_cycle'
@@ -53,8 +54,6 @@ export interface PoolCodexCycleStatsDisplay {
 }
 
 export type PoolStatsDisplay = PoolAccountTotalStatsDisplay | PoolCodexCycleStatsDisplay
-
-const MISSING_STAT_VALUE = '统计中'
 
 export function isCodexProviderType(providerType: string | null | undefined): boolean {
   return String(providerType || '').trim().toLowerCase() === 'codex'
@@ -131,7 +130,7 @@ function createMetric(
   return {
     key,
     label,
-    value: value ?? MISSING_STAT_VALUE,
+    value: value ?? i18n.global.t('commonUi.statisticsPending'),
     missing: value == null,
   }
 }
@@ -142,11 +141,19 @@ function normalizeWindowCode(value: unknown): string {
 
 function formatWindowDuration(totalMinutes: number): string {
   if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return ''
-  if (totalMinutes % (30 * 24 * 60) === 0) return `${totalMinutes / (30 * 24 * 60)}M`
-  if (totalMinutes % (7 * 24 * 60) === 0) return `${totalMinutes / (7 * 24 * 60)}周`
-  if (totalMinutes % (24 * 60) === 0) return `${totalMinutes / (24 * 60)}D`
-  if (totalMinutes % 60 === 0) return `${totalMinutes / 60}H`
-  return `${totalMinutes}分钟`
+  if (totalMinutes % (30 * 24 * 60) === 0) {
+    return i18n.global.t('quotaUi.durationMonths', { value: totalMinutes / (30 * 24 * 60) })
+  }
+  if (totalMinutes % (7 * 24 * 60) === 0) {
+    return i18n.global.t('quotaUi.durationWeeks', { value: totalMinutes / (7 * 24 * 60) })
+  }
+  if (totalMinutes % (24 * 60) === 0) {
+    return i18n.global.t('quotaUi.durationDays', { value: totalMinutes / (24 * 60) })
+  }
+  if (totalMinutes % 60 === 0) {
+    return i18n.global.t('quotaUi.durationHours', { value: totalMinutes / 60 })
+  }
+  return i18n.global.t('quotaUi.durationMinutes', { value: totalMinutes })
 }
 
 function quotaWindowLabel(window: NonNullable<PoolStatsQuotaWindow>): string {
@@ -162,25 +169,25 @@ function quotaWindowLabel(window: NonNullable<PoolStatsQuotaWindow>): string {
   }
   const code = normalizeWindowCode(window?.code)
   if (code === '5h') return '5H'
-  if (code === 'weekly') return '周'
+  if (code === 'weekly') return i18n.global.t('commonUi.weekly')
   if (code === '7d') return '7D'
-  if (code === '1m' || code === 'monthly') return '月'
-  return String(window?.code || '窗口').trim()
+  if (code === '1m' || code === 'monthly') return i18n.global.t('quotaUi.monthly')
+  return String(window?.code || i18n.global.t('quotaUi.window')).trim()
 }
 
 function buildAccountTotalMetrics(key: PoolStatsKeyInput): PoolStatsMetric[] {
   return [
-    createMetric('request_count', '请求', formatPoolStatInteger(key.request_count)),
+    createMetric('request_count', i18n.global.t('commonUi.request'), formatPoolStatInteger(key.request_count)),
     createMetric('total_tokens', 'Token', formatPoolTokenCount(key.total_tokens)),
-    createMetric('total_cost_usd', '基础费用', formatPoolStatUsd(key.total_cost_usd)),
+    createMetric('total_cost_usd', i18n.global.t('commonUi.baseCost'), formatPoolStatUsd(key.total_cost_usd)),
   ]
 }
 
 function buildCycleMetrics(usage: QuotaWindowUsageSnapshot | null): PoolStatsMetric[] {
   return [
-    createMetric('request_count', '请求', formatCycleInteger(usage?.request_count)),
+    createMetric('request_count', i18n.global.t('commonUi.request'), formatCycleInteger(usage?.request_count)),
     createMetric('total_tokens', 'Token', formatCycleTokenCount(usage?.total_tokens)),
-    createMetric('total_cost_usd', '基础费用', formatCycleUsd(usage?.total_cost_usd)),
+    createMetric('total_cost_usd', i18n.global.t('commonUi.baseCost'), formatCycleUsd(usage?.total_cost_usd)),
   ]
 }
 

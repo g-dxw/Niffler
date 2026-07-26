@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="isOpen"
-    :title="isEditMode ? '编辑密钥' : '添加密钥'"
-    :description="isEditMode ? '修改 API 密钥配置' : '为提供商添加新的 API 密钥'"
+    :title="isEditMode ? t('keyForm.editTitle') : t('keyForm.addTitle')"
+    :description="isEditMode ? t('keyForm.editDescription') : t('keyForm.addDescription')"
     :icon="isEditMode ? SquarePen : Key"
     size="xl"
     @update:model-value="handleDialogUpdate"
@@ -15,13 +15,13 @@
       <!-- 基本信息 -->
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <Label :for="keyNameInputId">密钥名称 *</Label>
+          <Label :for="keyNameInputId">{{ t('keyForm.name') }} *</Label>
           <Input
             :id="keyNameInputId"
             v-model="form.name"
             :name="keyNameFieldName"
             required
-            placeholder="例如：主 Key、备用 Key 1"
+            :placeholder="t('keyForm.namePlaceholder')"
             maxlength="100"
             autocomplete="off"
             autocapitalize="none"
@@ -33,10 +33,10 @@
           />
         </div>
         <div v-if="showAuthTypeSelector">
-          <Label :for="authTypeSelectId">认证类型</Label>
+          <Label :for="authTypeSelectId">{{ t('keyForm.authType') }}</Label>
           <Select v-model="form.auth_type">
             <SelectTrigger :id="authTypeSelectId">
-              <SelectValue placeholder="选择认证类型" />
+              <SelectValue :placeholder="t('keyForm.authTypePlaceholder')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -61,9 +61,9 @@
               :reset-key="formNonce"
               accept=".json,.txt,application/json,text/plain"
               :multiple="false"
-              drop-title="拖入 Service Account JSON 或点击选择"
-              drop-hint="支持 .json / .txt，单文件导入"
-              :manual-placeholder="editingKey ? '留空表示不修改，或粘贴完整的 Service Account JSON' : '粘贴完整的 Service Account JSON'"
+              :drop-title="t('keyForm.dropJson')"
+              :drop-hint="t('keyForm.dropJsonHint')"
+              :manual-placeholder="editingKey ? t('keyForm.jsonEditPlaceholder') : t('keyForm.jsonPlaceholder')"
               :manual-description="serviceAccountDescription"
               textarea-class="min-h-[160px] font-mono text-xs break-all !rounded-xl"
               @error="handleServiceAccountImportError"
@@ -83,25 +83,25 @@
             v-if="editingKey && isRawSecretAuthType(form.auth_type)"
             class="text-xs text-muted-foreground mt-1"
           >
-            留空表示不修改
+            {{ t('keyForm.blankNoChange') }}
           </p>
         </div>
       </div>
 
       <!-- 备注 -->
       <div>
-        <Label for="note">备注</Label>
+        <Label for="note">{{ t('keyForm.note') }}</Label>
         <Input
           id="note"
           v-model="form.note"
-          placeholder="可选的备注信息"
+          :placeholder="t('keyForm.notePlaceholder')"
         />
       </div>
 
       <!-- API 格式 & 认证方式 -->
       <div v-if="visibleApiFormats.length > 0">
         <div class="flex items-center gap-1 mb-1.5">
-          <Label>支持的 API 格式 *</Label>
+          <Label>{{ t('keyForm.supportedFormats') }} *</Label>
           <span
             class="relative inline-flex"
             @mouseenter="apiFormatHelpHovered = true"
@@ -110,8 +110,8 @@
             <button
               type="button"
               class="inline-flex items-center justify-center rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              title="API 格式说明"
-              aria-label="API 格式说明"
+              :title="t('keyForm.formatHelp')"
+              :aria-label="t('keyForm.formatHelp')"
               :aria-expanded="apiFormatHelpVisible"
               @click.stop="toggleApiFormatHelp"
               @focus="apiFormatHelpHovered = true"
@@ -125,7 +125,7 @@
               role="tooltip"
               class="absolute left-0 top-full z-[100] mt-1 w-80 rounded-md border bg-popover px-3 py-2 text-xs font-normal normal-case leading-5 tracking-normal text-popover-foreground shadow-md"
             >
-              选择此密钥支持的 API 格式及对应认证方式。OpenAI 格式固定使用 Bearer Token；Claude / Gemini 格式可选 API Key 或 Bearer Token（如 Claude Code 应使用 Bearer Token）。
+              {{ t('keyForm.formatHelpText') }}
             </span>
           </span>
         </div>
@@ -183,7 +183,7 @@
               <div
                 v-if="canToggleAuthChannelMismatch(format)"
                 class="flex items-center gap-1"
-                title="允许客户端认证方式不一致时使用"
+                :title="t('keyForm.allowMismatch')"
                 @click.stop
               >
                 <Switch
@@ -203,7 +203,7 @@
           <Label
             for="internal_priority"
             class="text-xs"
-          >优先级</Label>
+          >{{ t('keyForm.priority') }}</Label>
           <Input
             id="internal_priority"
             v-model.number="form.internal_priority"
@@ -212,51 +212,51 @@
             class="h-8"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            越小越优先
+            {{ t('keyForm.priorityHint') }}
           </p>
         </div>
         <div>
           <Label
             for="rpm_limit"
             class="text-xs"
-          >RPM 限制</Label>
+          >{{ t('keyForm.rpmLimit') }}</Label>
           <Input
             id="rpm_limit"
             :model-value="form.rpm_limit ?? ''"
             type="number"
             min="1"
             max="10000"
-            placeholder="自适应"
+            :placeholder="t('keyForm.adaptive')"
             class="h-8"
             @update:model-value="(v) => form.rpm_limit = parseNullableNumberInput(v, { min: 1, max: 10000 })"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            留空自适应
+            {{ t('keyForm.blankAdaptive') }}
           </p>
         </div>
         <div>
           <Label
             for="concurrent_limit"
             class="text-xs"
-          >并发请求上限</Label>
+          >{{ t('keyForm.concurrentLimit') }}</Label>
           <Input
             id="concurrent_limit"
             :model-value="form.concurrent_limit ?? ''"
             type="number"
             min="0"
-            placeholder="不限制"
+            :placeholder="t('keyForm.unlimited')"
             class="h-8"
             @update:model-value="(v) => form.concurrent_limit = parseNullableNumberInput(v, { min: 0 })"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            留空或 0 表示不限制
+            {{ t('keyForm.unlimitedHint') }}
           </p>
         </div>
         <div>
           <Label
             for="cache_ttl_minutes"
             class="text-xs"
-          >缓存 TTL</Label>
+          >{{ t('keyForm.cacheTtl') }}</Label>
           <Input
             id="cache_ttl_minutes"
             :model-value="form.cache_ttl_minutes ?? ''"
@@ -267,7 +267,7 @@
             @update:model-value="(v) => form.cache_ttl_minutes = parseNumberInput(v, { min: 0, max: 60 }) ?? 60"
           />
           <p class="text-xs text-muted-foreground mt-0.5">
-            分钟，0 禁用，默认 60 分钟
+            {{ t('keyForm.cacheTtlHint') }}
           </p>
         </div>
       </div>
@@ -276,9 +276,9 @@
       <div class="space-y-3 py-2 px-3 rounded-md border border-border/60 bg-muted/30">
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
-            <Label class="text-sm font-medium">自动获取上游可用模型</Label>
+            <Label class="text-sm font-medium">{{ t('keyForm.autoFetch') }}</Label>
             <p class="text-xs text-muted-foreground">
-              定时更新上游模型, 配合模型映射使用
+              {{ t('keyForm.autoFetchHint') }}
             </p>
             <p
               v-if="showAutoFetchWarning"
@@ -297,15 +297,15 @@
         >
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <Label class="text-xs">包含规则</Label>
+              <Label class="text-xs">{{ t('keyForm.includeRules') }}</Label>
               <Input
                 v-model="form.model_include_patterns_text"
-                placeholder="gpt-*, claude-*, 留空包含全部"
+                :placeholder="t('keyForm.includePlaceholder')"
                 class="h-8 text-sm"
               />
             </div>
             <div>
-              <Label class="text-xs">排除规则</Label>
+              <Label class="text-xs">{{ t('keyForm.excludeRules') }}</Label>
               <Input
                 v-model="form.model_exclude_patterns_text"
                 placeholder="*-preview, *-beta"
@@ -314,7 +314,7 @@
             </div>
           </div>
           <p class="text-xs text-muted-foreground">
-            逗号分隔，支持 * ? 通配符，不区分大小写
+            {{ t('keyForm.patternHint') }}
           </p>
         </div>
       </div>
@@ -325,13 +325,13 @@
         variant="outline"
         @click="handleCancel"
       >
-        取消
+        {{ t('keyForm.cancel') }}
       </Button>
       <Button
         :disabled="saving || !canSave"
         @click="handleSave"
       >
-        {{ saving ? (isEditMode ? '保存中...' : '添加中...') : (isEditMode ? '保存' : '添加') }}
+        {{ saving ? (isEditMode ? t('keyForm.saving') : t('keyForm.adding')) : (isEditMode ? t('keyForm.save') : t('keyForm.add')) }}
       </Button>
     </template>
   </Dialog>
@@ -339,6 +339,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Dialog,
   Button,
@@ -357,6 +358,8 @@ import { useFormDialog } from '@/composables/useFormDialog'
 import { parseApiError } from '@/utils/errorParser'
 import { parseNumberInput, parseNullableNumberInput } from '@/utils/form'
 import JsonImportInput from '@/components/common/JsonImportInput.vue'
+
+const { t } = useI18n()
 import {
   addProviderKey,
   updateProviderKey,
@@ -536,7 +539,7 @@ function toggleApiFormatHelp() {
 const authSecretLabel = computed(() => {
   if (form.value.auth_type === 'service_account') return 'Service Account JSON'
   if (form.value.auth_type === 'bearer') return 'Bearer Token'
-  return 'API 密钥'
+  return t('keyForm.apiKey')
 })
 
 const authSecretPlaceholder = computed(() =>
@@ -606,8 +609,8 @@ function buildAllowAuthChannelMismatchFormatsPayload(): string[] {
 
 const serviceAccountDescription = computed(() => (
   props.editingKey
-    ? '留空表示不修改；JSON 格式，包含 project_id、private_key 等字段'
-    : 'JSON 格式，包含 project_id、private_key 等字段'
+    ? t('keyForm.serviceAccountEditDescription')
+    : t('keyForm.serviceAccountDescription')
 ))
 
 // 默认认证类型
@@ -640,7 +643,7 @@ const autoFetchWarningMessage = computed(() => {
     ? props.editingKey.allowed_models
     : []
   if (models.length === 0) return ''
-  return `当前 Key 模型权限存在以下模型：${models.map(model => `“${model}”`).join('、')}，开启自动获取后将被覆盖`
+  return t('keyForm.autoFetchWarning', { models: models.map(model => `“${model}”`).join(t('keyForm.listSeparator')) })
 })
 
 // 检查是否正在切换认证类型
@@ -880,32 +883,32 @@ function parseAuthConfig(): Record<string, unknown> | null {
 }
 
 function handleServiceAccountImportError(payload: { message: string, title?: string }) {
-  showError(payload.message, payload.title || '错误')
+  showError(payload.message, payload.title || t('keyForm.error'))
 }
 
 async function handleSave() {
   // 必须有 providerId
   if (!props.providerId) {
-    showError('无法保存：缺少提供商信息', '错误')
+    showError(t('keyForm.providerMissing'), t('keyForm.error'))
     return
   }
 
   // 验证认证信息
   if (form.value.auth_type === 'service_account') {
     if (!props.editingKey && !form.value.auth_config_text.trim()) {
-      showError('请输入 Service Account JSON', '验证失败')
+      showError(t('keyForm.serviceAccountRequired'), t('keyForm.validationFailed'))
       return
     }
     // 验证 JSON 格式
     if (form.value.auth_config_text.trim()) {
       const parsed = parseAuthConfig()
       if (!parsed) {
-        showError('Service Account JSON 格式无效', '验证失败')
+        showError(t('keyForm.serviceAccountInvalid'), t('keyForm.validationFailed'))
         return
       }
       // 验证必要字段
       if (!parsed.client_email || !parsed.private_key || !parsed.project_id) {
-        showError('Service Account JSON 缺少必要字段 (client_email, private_key, project_id)', '验证失败')
+        showError(t('keyForm.serviceAccountFieldsMissing'), t('keyForm.validationFailed'))
         return
       }
     }
@@ -918,7 +921,7 @@ async function handleSave() {
 
   // 验证至少选择一个 API 格式
   if (form.value.api_formats.length === 0) {
-    showError('请至少选择一个 API 格式', '验证失败')
+    showError(t('keyForm.selectFormat'), t('keyForm.validationFailed'))
     return
   }
 
@@ -973,7 +976,7 @@ async function handleSave() {
       }
 
       await updateProviderKey(props.editingKey.id, updateData)
-      success('密钥已更新', '成功')
+      success(t('keyForm.updated'), t('keyForm.success'))
     } else {
       // 新增模式
       await addProviderKey(props.providerId, {
@@ -995,7 +998,7 @@ async function handleSave() {
         model_exclude_patterns: parsePatternText(form.value.model_exclude_patterns_text)
       })
 
-      success('密钥已添加', '成功')
+      success(t('keyForm.added'), t('keyForm.success'))
       // 添加模式：不关闭对话框，只清除名称和密钥以便继续添加
       emit('saved')
       clearForNextAdd()
@@ -1005,8 +1008,8 @@ async function handleSave() {
     emit('saved')
     emit('close')
   } catch (err: unknown) {
-    const errorMessage = parseApiError(err, '保存密钥失败')
-    showError(errorMessage, '错误')
+    const errorMessage = parseApiError(err, t('keyForm.saveFailed'))
+    showError(errorMessage, t('keyForm.error'))
   } finally {
     saving.value = false
   }

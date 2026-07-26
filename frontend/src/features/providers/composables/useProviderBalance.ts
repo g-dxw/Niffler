@@ -4,6 +4,7 @@ import { batchQueryBalance, getArchitectures, type ActionResultResponse, type Ar
 import { formatBalanceExtraFromSchema, type CredentialsSchema } from '@/features/providers/auth-templates/schema-utils'
 import type { BalanceExtraItem } from '@/features/providers/auth-templates'
 import { log } from '@/utils/logger'
+import { i18n } from '@/i18n'
 
 const MAX_BALANCE_RETRIES = 2
 const PENDING_BALANCE_RETRY_BASE_DELAY_MS = 12_000
@@ -198,14 +199,14 @@ export function useProviderBalance() {
     if (result.status === 'auth_failed' || result.status === 'auth_expired') {
       return {
         status: result.status,
-        message: result.message || '认证失败',
+        message: result.message || i18n.global.t('providerUi.authFailed'),
       }
     }
     // 其他错误
     if (result.status !== 'success') {
       return {
         status: result.status,
-        message: result.message || '查询失败',
+        message: result.message || i18n.global.t('providerUi.queryFailed'),
       }
     }
     return null
@@ -250,7 +251,7 @@ export function useProviderBalance() {
     }
     return {
       expired: true,
-      message: typeof extra.cookie_expired_message === 'string' ? extra.cookie_expired_message : 'Cookie 已失效',
+      message: typeof extra.cookie_expired_message === 'string' ? extra.cookie_expired_message : i18n.global.t('providerUi.cookieExpired'),
     }
   }
 
@@ -271,7 +272,7 @@ export function useProviderBalance() {
     const now = Date.now() / 1000
     const diff = resetsAt - now
 
-    if (diff <= 0) return '即将重置'
+    if (diff <= 0) return i18n.global.t('providerUi.resetting')
 
     const totalHours = Math.floor(diff / 3600)
     const minutes = Math.floor((diff % 3600) / 60)

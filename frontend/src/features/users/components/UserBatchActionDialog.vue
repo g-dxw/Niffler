@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    title="用户批量操作"
-    description="按当前选择批量调整用户状态、角色和额度"
+    :title="t('userBatch.title')"
+    :description="t('userBatch.description')"
     size="2xl"
     persistent
     @update:model-value="handleDialogUpdate"
@@ -13,17 +13,17 @@
           <div class="min-w-0 space-y-1">
             <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
               <UsersRound class="h-4 w-4 text-primary" />
-              <span>影响用户：{{ impactCount }} 个</span>
+              <span>{{ t('userBatch.impactCount', { count: impactCount }) }}</span>
             </div>
             <p class="text-xs leading-relaxed text-muted-foreground">
-              {{ selectAllFiltered ? '目标为当前筛选条件匹配的全部用户，执行前后端会重新解析。' : '目标为当前已勾选的用户，重复 ID 会自动去重。' }}
+              {{ selectAllFiltered ? t('userBatch.filteredTargetHint') : t('userBatch.selectedTargetHint') }}
             </p>
           </div>
           <Badge
             variant="secondary"
             class="shrink-0"
           >
-            {{ selectAllFiltered ? '全选筛选结果' : '手动选择' }}
+            {{ selectAllFiltered ? t('userBatch.allFiltered') : t('userBatch.manualSelection') }}
           </Badge>
         </div>
 
@@ -31,7 +31,7 @@
           v-if="previewLoading"
           class="mt-3 rounded-xl border border-border/60 bg-background/65 px-3 py-2 text-xs text-muted-foreground"
         >
-          正在解析影响范围...
+          {{ t('userBatch.resolving') }}
         </div>
         <div
           v-else-if="previewItems.length > 0"
@@ -49,7 +49,7 @@
             v-if="impactCount > previewItems.length"
             class="text-xs text-muted-foreground"
           >
-            等 {{ impactCount }} 个用户
+            {{ t('userBatch.andMoreUsers', { count: impactCount }) }}
           </span>
         </div>
       </div>
@@ -57,23 +57,23 @@
       <div class="space-y-2.5">
         <div class="grid gap-2 rounded-xl border border-border/70 bg-muted/20 p-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-start">
           <div>
-            <Label class="text-sm font-medium">按分组选择</Label>
+            <Label class="text-sm font-medium">{{ t('userBatch.selectByGroup') }}</Label>
             <p class="mt-1 text-[11px] text-muted-foreground">
-              可与直接用户或筛选条件混合
+              {{ t('userBatch.groupMixHint') }}
             </p>
           </div>
           <MultiSelect
             v-model="selectedGroupIds"
             :options="groupOptions"
             :search-threshold="0"
-            placeholder="选择一个或多个分组"
-            empty-text="暂无用户分组"
+            :placeholder="t('userBatch.groupPlaceholder')"
+            :empty-text="t('userBatch.noGroups')"
           />
         </div>
 
         <div class="flex items-center justify-between gap-3">
-          <Label class="text-sm font-medium">选择批量动作</Label>
-          <span class="text-[11px] text-muted-foreground">只会提交当前动作对应的字段</span>
+          <Label class="text-sm font-medium">{{ t('userBatch.selectAction') }}</Label>
+          <span class="text-[11px] text-muted-foreground">{{ t('userBatch.actionFieldsHint') }}</span>
         </div>
         <div class="grid gap-2 md:grid-cols-4">
           <button
@@ -109,19 +109,19 @@
           </div>
           <div class="min-w-0 space-y-1">
             <h4 class="text-sm font-semibold text-foreground">
-              批量修改用户角色
+              {{ t('userBatch.updateRoleTitle') }}
             </h4>
             <p class="text-xs leading-relaxed text-muted-foreground">
-              将所选用户统一调整为同一个角色。管理员角色拥有后台管理权限，请确认选择范围。
+              {{ t('userBatch.updateRoleHint') }}
             </p>
           </div>
         </div>
 
         <div class="grid gap-3 rounded-xl border border-border/70 bg-muted/25 p-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
           <div>
-            <Label class="text-sm font-medium">目标角色</Label>
+            <Label class="text-sm font-medium">{{ t('userBatch.targetRole') }}</Label>
             <p class="mt-1 text-[11px] text-muted-foreground">
-              对所有目标用户生效
+              {{ t('userBatch.allTargetsHint') }}
             </p>
           </div>
           <Select v-model="targetRole">
@@ -130,20 +130,20 @@
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="user">
-                普通用户
+                {{ t('userBatch.normalUser') }}
               </SelectItem>
               <SelectItem value="admin">
-                管理员
+                {{ t('userBatch.admin') }}
               </SelectItem>
               <SelectItem value="audit_admin">
-                审计管理员
+                {{ t('userBatch.auditAdmin') }}
               </SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div class="rounded-xl border border-amber-200/70 bg-amber-50/70 px-3 py-2.5 text-xs leading-relaxed text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-          {{ targetRole === 'admin' ? '提示：设置为管理员会授予用户完整后台管理能力。' : targetRole === 'audit_admin' ? '提示：设置为审计管理员会授予后台只读查看能力。' : '提示：设置为普通用户会移除目标用户的管理员权限。' }}
+          {{ targetRole === 'admin' ? t('userBatch.adminWarning') : targetRole === 'audit_admin' ? t('userBatch.auditAdminWarning') : t('userBatch.userWarning') }}
         </div>
       </div>
 
@@ -157,10 +157,10 @@
           </div>
           <div class="min-w-0 space-y-1">
             <h4 class="text-sm font-semibold text-foreground">
-              批量设置额度
+              {{ t('userBatch.quotaTitle') }}
             </h4>
             <p class="text-xs leading-relaxed text-muted-foreground">
-              额度仍然属于用户账户属性；模型、端点、提供商和限速请通过用户组管理。
+              {{ t('userBatch.quotaHint') }}
             </p>
           </div>
         </div>
@@ -168,9 +168,9 @@
         <div class="rounded-xl border border-border/70 bg-muted/20 p-3">
           <div class="space-y-2">
             <div>
-              <Label class="text-sm font-medium">额度</Label>
+              <Label class="text-sm font-medium">{{ t('userBatch.quota') }}</Label>
               <p class="mt-1 text-[11px] text-muted-foreground">
-                对所有目标用户生效
+                {{ t('userBatch.allTargetsHint') }}
               </p>
             </div>
             <Select v-model="quotaMode">
@@ -179,13 +179,13 @@
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="skip">
-                  不修改
+                  {{ t('userBatch.noChange') }}
                 </SelectItem>
                 <SelectItem value="wallet">
-                  按钱包余额限制
+                  {{ t('userBatch.walletLimited') }}
                 </SelectItem>
                 <SelectItem value="unlimited">
-                  无限额度
+                  {{ t('userBatch.unlimited') }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -197,7 +197,7 @@
         v-if="lastResult"
         class="rounded-xl border bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
       >
-        成功 {{ lastResult.success }} 个，失败 {{ lastResult.failed }} 个
+        {{ t('userBatch.result', { success: lastResult.success, failed: lastResult.failed }) }}
         <span v-if="lastResult.failures.length > 0">
           ：{{ lastResult.failures.slice(0, 3).map((item) => `${item.user_id} ${item.reason}`).join('；') }}
         </span>
@@ -210,13 +210,13 @@
         :disabled="executing"
         @click="emit('close')"
       >
-        关闭
+        {{ t('userBatch.close') }}
       </Button>
       <Button
         :disabled="!canExecute"
         @click="executeBatchAction"
       >
-        {{ executing ? '执行中...' : executeButtonLabel }}
+        {{ executing ? t('userBatch.executing') : executeButtonLabel }}
       </Button>
     </template>
   </Dialog>
@@ -224,6 +224,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, type Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Ban,
   CheckCircle2,
@@ -285,33 +286,34 @@ const emit = defineEmits<{
 
 const usersStore = useUsersStore()
 const { success, warning, error } = useToast()
+const { t } = useI18n()
 
-const actionOptions: ActionOption[] = [
+const actionOptions = computed<ActionOption[]>(() => [
   {
     value: 'enable',
-    label: '启用',
-    description: '恢复用户登录与调用',
+    label: t('userBatch.enable'),
+    description: t('userBatch.enableHint'),
     icon: CheckCircle2,
   },
   {
     value: 'disable',
-    label: '禁用',
-    description: '暂停用户访问权限',
+    label: t('userBatch.disable'),
+    description: t('userBatch.disableHint'),
     icon: Ban,
   },
   {
     value: 'update_access_control',
-    label: '额度',
-    description: '批量调整用户额度模式',
+    label: t('userBatch.quota'),
+    description: t('userBatch.quotaActionHint'),
     icon: ShieldCheck,
   },
   {
     value: 'update_role',
-    label: '修改角色',
-    description: '批量设为普通用户或管理员',
+    label: t('userBatch.updateRole'),
+    description: t('userBatch.updateRoleActionHint'),
     icon: UserCog,
   },
-]
+])
 
 const selectedAction = ref<UserBatchAction>('enable')
 const targetRole = ref<UserRole>('user')
@@ -324,16 +326,16 @@ const executing = ref(false)
 const lastResult = ref<UserBatchActionResponse | null>(null)
 
 const groupOptions = computed(() => props.groups.map((group) => ({
-  label: `${group.name}${group.is_default ? '（默认）' : ''}`,
+  label: `${group.name}${group.is_default ? t('userBatch.defaultSuffix') : ''}`,
   value: group.id,
 })))
 const hasAnyTarget = computed(() => props.selectedCount > 0 || selectedGroupIds.value.length > 0)
 const impactCount = computed(() => resolvedTotal.value ?? props.selectedCount)
 const canExecute = computed(() => hasAnyTarget.value && !previewLoading.value && !executing.value)
 const selectedActionLabel = computed(() => (
-  actionOptions.find((action) => action.value === selectedAction.value)?.label ?? '批量操作'
+  actionOptions.value.find((action) => action.value === selectedAction.value)?.label ?? t('userBatch.batchAction')
 ))
-const executeButtonLabel = computed(() => `确认${selectedActionLabel.value}（${impactCount.value}）`)
+const executeButtonLabel = computed(() => t('userBatch.confirmAction', { action: selectedActionLabel.value, count: impactCount.value }))
 
 watch(
   () => props.open,
@@ -403,7 +405,7 @@ async function resolvePreview(): Promise<void> {
   } catch (err) {
     resolvedTotal.value = props.selectedCount
     previewItems.value = []
-    error(parseApiError(err, '解析用户选择失败'))
+    error(parseApiError(err, t('userBatch.resolveFailed')))
   } finally {
     previewLoading.value = false
   }
@@ -431,7 +433,7 @@ async function executeBatchAction(): Promise<void> {
   if (selectedAction.value === 'update_access_control') {
     const payload = buildAccessControlPayload()
     if (payload === null) {
-      warning('请选择要修改的额度')
+      warning(t('userBatch.selectQuota'))
       return
     }
     request = { selection, action: 'update_access_control', payload }
@@ -445,7 +447,7 @@ async function executeBatchAction(): Promise<void> {
   try {
     const result = await usersStore.batchAction(request)
     lastResult.value = result
-    const message = `批量操作完成：成功 ${result.success} 个，失败 ${result.failed} 个`
+    const message = t('userBatch.completed', { success: result.success, failed: result.failed })
     if (result.failed > 0) {
       warning(message)
     } else {
@@ -453,7 +455,7 @@ async function executeBatchAction(): Promise<void> {
     }
     emit('completed', result)
   } catch (err) {
-    error(parseApiError(err, '批量操作失败'))
+    error(parseApiError(err, t('userBatch.failed')))
   } finally {
     executing.value = false
   }

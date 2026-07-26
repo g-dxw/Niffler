@@ -9,7 +9,7 @@
       <div class="flex items-center justify-between border-b border-border/60 px-5 py-4">
         <div class="min-w-0">
           <h3 class="font-semibold">
-            图片预览
+            {{ t('imagePreview.title') }}
           </h3>
           <p class="truncate text-xs text-muted-foreground">
             {{ task?.prompt }}
@@ -18,7 +18,7 @@
         <Button
           variant="ghost"
           size="icon"
-          aria-label="关闭预览"
+          :aria-label="t('imagePreview.closePreview')"
           @click="emit('update:open', false)"
         >
           <X class="h-4 w-4" />
@@ -38,22 +38,25 @@
         v-if="task?.imageUrl"
         @click="emit('download', task)"
       >
-        <Download class="mr-2 h-4 w-4" />下载图片
+        <Download class="mr-2 h-4 w-4" />{{ t('imagePreview.download') }}
       </Button>
       <Button
         variant="outline"
         @click="emit('update:open', false)"
       >
-        关闭
+        {{ t('imagePreview.close') }}
       </Button>
     </template>
   </Dialog>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Download, X } from 'lucide-vue-next'
 import { Button, Dialog } from '@/components/ui'
 import type { ImageTask } from '../types'
+
+const { t } = useI18n()
 
 defineProps<{ open: boolean, task: ImageTask | null }>()
 const emit = defineEmits<{

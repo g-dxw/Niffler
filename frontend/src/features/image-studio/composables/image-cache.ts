@@ -1,3 +1,7 @@
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
+
 export interface CachedImageRecord {
   id: string
   userId: string
@@ -30,7 +34,7 @@ function openDatabase(): Promise<IDBDatabase> {
       }
     }
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error || new Error('无法打开图片缓存'))
+    request.onerror = () => reject(request.error || new Error(t('imageCacheErrors.open')))
   })
 }
 
@@ -40,9 +44,9 @@ async function withStore<T>(mode: IDBTransactionMode, action: (store: IDBObjectS
     const transaction = db.transaction(STORE_NAME, mode)
     const request = action(transaction.objectStore(STORE_NAME))
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error || new Error('图片缓存操作失败'))
+    request.onerror = () => reject(request.error || new Error(t('imageCacheErrors.operation')))
     transaction.oncomplete = () => db.close()
-    transaction.onerror = () => reject(transaction.error || new Error('图片缓存事务失败'))
+    transaction.onerror = () => reject(transaction.error || new Error(t('imageCacheErrors.transaction')))
   })
 }
 
@@ -58,7 +62,7 @@ export async function cacheTaskImage(userId: string, taskId: string, imageUrl: s
   const blob = imageUrl.startsWith('data:')
     ? dataUrlToBlob(imageUrl)
     : await fetch(imageUrl).then(response => {
-      if (!response.ok) throw new Error('无法下载图片用于缓存')
+      if (!response.ok) throw new Error(t('imageCacheErrors.download'))
       return response.blob()
     })
   const record: CachedImageRecord = {
@@ -94,9 +98,9 @@ export async function clearUserImages(userId: string) {
       cursor.delete()
       cursor.continue()
     }
-    request.onerror = () => reject(request.error || new Error('清理图片缓存失败'))
+    request.onerror = () => reject(request.error || new Error(t('imageCacheErrors.clear')))
     transaction.oncomplete = () => resolve()
-    transaction.onerror = () => reject(transaction.error || new Error('清理图片缓存失败'))
+    transaction.onerror = () => reject(transaction.error || new Error(t('imageCacheErrors.clear')))
   })
   db.close()
 }
@@ -158,7 +162,7 @@ export async function pruneUserImages(
     }
     request.onerror = () => {
       db.close()
-      reject(request.error || new Error('读取图片缓存失败'))
+      reject(request.error || new Error(t('imageCacheErrors.read')))
     }
     transaction.oncomplete = () => {
       db.close()
@@ -166,11 +170,11 @@ export async function pruneUserImages(
     }
     transaction.onerror = () => {
       db.close()
-      reject(transaction.error || new Error('清理图片缓存失败'))
+      reject(transaction.error || new Error(t('imageCacheErrors.clear')))
     }
     transaction.onabort = () => {
       db.close()
-      reject(transaction.error || new Error('清理图片缓存已中止'))
+      reject(transaction.error || new Error(t('imageCacheErrors.aborted')))
     }
   })
 }

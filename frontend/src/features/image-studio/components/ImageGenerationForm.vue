@@ -4,7 +4,7 @@
       <div class="flex items-center gap-2">
         <WandSparkles class="h-4 w-4 text-primary" />
         <h2 class="font-semibold">
-          生图设置
+          {{ t('imageStudio.formTitle') }}
         </h2>
       </div>
     </div>
@@ -15,20 +15,20 @@
     >
       <div class="space-y-2">
         <div class="flex items-center justify-between gap-2">
-          <Label>API 密钥</Label>
+          <Label>{{ t('imageStudio.apiKey') }}</Label>
           <button
             type="button"
             class="text-xs text-primary hover:underline"
             @click="emit('refresh')"
           >
-            刷新资源
+            {{ t('imageStudio.refreshResources') }}
           </button>
         </div>
         <Select
           :model-value="settings.selectedKeyId"
           @update:model-value="updateSettings({ selectedKeyId: $event })"
         >
-          <SelectTrigger><SelectValue placeholder="选择一个启用的 API Key" /></SelectTrigger>
+          <SelectTrigger><SelectValue :placeholder="t('imageStudio.chooseEnabledKey')" /></SelectTrigger>
           <SelectContent>
             <SelectItem
               v-for="key in apiKeys"
@@ -43,17 +43,17 @@
           v-if="!loading && apiKeys.length === 0"
           class="text-xs text-destructive"
         >
-          没有可用的 API Key，请先在“API 密钥”页面创建。
+          {{ t('imageStudio.noKeys') }}
         </p>
       </div>
 
       <div class="space-y-2">
-        <Label>图片模型</Label>
+        <Label>{{ t('imageStudio.imageModel') }}</Label>
         <Select
           :model-value="settings.model"
           @update:model-value="updateSettings({ model: $event })"
         >
-          <SelectTrigger><SelectValue placeholder="选择图片模型" /></SelectTrigger>
+          <SelectTrigger><SelectValue :placeholder="t('imageStudio.chooseImageModel')" /></SelectTrigger>
           <SelectContent>
             <SelectItem
               v-for="model in models"
@@ -73,24 +73,24 @@
           v-if="!loading && models.length === 0"
           class="text-xs text-destructive"
         >
-          当前账户没有可用的图片模型。
+          {{ t('imageStudio.noImageModels') }}
         </p>
       </div>
 
       <div class="space-y-2">
-        <Label for="image-prompt">提示词</Label>
+        <Label for="image-prompt">{{ t('imageStudio.prompt') }}</Label>
         <Textarea
           id="image-prompt"
           :model-value="form.prompt"
           class="min-h-32 resize-y"
-          placeholder="描述你想生成的画面，或说明如何编辑参考图…"
+          :placeholder="t('imageStudio.promptPlaceholder')"
           @update:model-value="updateForm({ prompt: $event })"
         />
       </div>
 
       <div class="grid grid-cols-2 gap-3">
         <div class="space-y-2">
-          <Label for="image-count">数量</Label>
+          <Label for="image-count">{{ t('imageStudio.count') }}</Label>
           <Input
             id="image-count"
             :model-value="form.count"
@@ -101,7 +101,7 @@
           />
         </div>
         <div class="space-y-2">
-          <Label for="image-concurrency">并发</Label>
+          <Label for="image-concurrency">{{ t('imageStudio.concurrency') }}</Label>
           <Input
             id="image-concurrency"
             :model-value="settings.concurrency"
@@ -114,10 +114,10 @@
       </div>
 
       <div class="space-y-2">
-        <Label>尺寸</Label>
+        <Label>{{ t('imageStudio.size') }}</Label>
         <div>
           <p class="mb-2 text-xs text-muted-foreground">
-            图片比例
+            {{ t('imageStudio.aspectRatio') }}
           </p>
           <div class="grid grid-cols-5 gap-2">
             <button
@@ -134,7 +134,7 @@
           </div>
         </div>
         <p class="text-xs text-muted-foreground">
-          常用分辨率
+          {{ t('imageStudio.commonResolutions') }}
         </p>
         <div class="grid grid-cols-3 gap-2">
           <button
@@ -150,55 +150,55 @@
         </div>
         <Input
           :model-value="form.size"
-          placeholder="自定义，例如 1024x1024"
+          :placeholder="t('imageStudio.customSizePlaceholder')"
           @update:model-value="updateForm({ size: String($event) })"
         />
       </div>
 
       <div class="grid grid-cols-2 gap-3">
         <div class="space-y-2">
-          <Label>质量</Label>
+          <Label>{{ t('imageStudio.quality') }}</Label>
           <select
             :value="form.quality"
             class="native-select"
             @change="updateForm({ quality: selectValue($event) })"
           >
             <option value="auto">
-              自动
+              {{ t('imageStudio.auto') }}
             </option><option value="low">
-              低
+              {{ t('imageStudio.low') }}
             </option><option value="medium">
-              中
+              {{ t('imageStudio.medium') }}
             </option><option value="high">
-              高
+              {{ t('imageStudio.high') }}
             </option>
           </select>
         </div>
         <div class="space-y-2">
-          <Label>背景</Label>
+          <Label>{{ t('imageStudio.background') }}</Label>
           <select
             :value="form.background"
             class="native-select"
             @change="updateForm({ background: selectValue($event) })"
           >
             <option value="auto">
-              自动
+              {{ t('imageStudio.auto') }}
             </option><option value="opaque">
-              不透明
+              {{ t('imageStudio.opaque') }}
             </option><option value="transparent">
-              透明
+              {{ t('imageStudio.transparent') }}
             </option>
           </select>
         </div>
         <div class="space-y-2">
-          <Label>格式</Label>
+          <Label>{{ t('imageStudio.format') }}</Label>
           <select
             :value="form.outputFormat"
             class="native-select"
             @change="updateForm({ outputFormat: selectValue($event) })"
           >
             <option value="auto">
-              自动
+              {{ t('imageStudio.auto') }}
             </option><option value="png">
               PNG
             </option><option value="jpeg">
@@ -209,7 +209,7 @@
           </select>
         </div>
         <div class="space-y-2">
-          <Label>响应</Label>
+          <Label>{{ t('imageStudio.response') }}</Label>
           <select
             :value="settings.responseFormat"
             class="native-select"
@@ -228,14 +228,14 @@
         <div class="flex items-center justify-between gap-2">
           <div>
             <p class="text-sm font-medium">
-              参考图片
+              {{ t('imageStudio.referenceImage') }}
             </p>
             <p class="text-xs text-muted-foreground">
-              添加后自动使用图片编辑接口，支持 PNG/JPEG/WebP
+              {{ t('imageStudio.referenceHint') }}
             </p>
           </div>
           <label class="cursor-pointer rounded-lg border border-border/60 px-3 py-2 text-xs font-medium hover:border-primary/60 hover:text-primary">
-            <Upload class="mr-1 inline h-3.5 w-3.5" />添加图片
+            <Upload class="mr-1 inline h-3.5 w-3.5" />{{ t('imageStudio.addImage') }}
             <input
               class="sr-only"
               type="file"
@@ -264,7 +264,7 @@
             </button>
           </div>
           <label class="flex cursor-pointer items-center justify-center rounded-lg border border-border/60 px-3 py-2 text-xs hover:border-primary/60">
-            <ScanLine class="mr-1.5 h-3.5 w-3.5" />{{ form.maskImage ? `遮罩：${form.maskImage.name}` : '可选：添加遮罩图' }}
+            <ScanLine class="mr-1.5 h-3.5 w-3.5" />{{ form.maskImage ? t('imageStudio.maskFile', { name: form.maskImage.name }) : t('imageStudio.optionalMask') }}
             <input
               class="sr-only"
               type="file"
@@ -277,7 +277,7 @@
 
       <details class="group rounded-2xl border border-border/60">
         <summary class="cursor-pointer list-none px-4 py-3 text-sm font-medium">
-          高级 JSON 参数
+          {{ t('imageStudio.advancedJson') }}
         </summary>
         <div class="border-t border-border/60 p-3">
           <Textarea
@@ -302,7 +302,7 @@
           v-else
           class="mr-2 h-4 w-4"
         />
-        开始生成
+        {{ t('imageStudio.startGeneration') }}
       </Button>
     </form>
   </Card>
@@ -310,6 +310,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Loader2, ScanLine, Upload, WandSparkles, X } from 'lucide-vue-next'
 import { Button, Card, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@/components/ui'
 import { IMAGE_ASPECT_RATIO_PRESETS, IMAGE_SIZE_PRESETS } from '../constants'
@@ -324,6 +325,7 @@ const props = defineProps<{
   models: ImageModelOption[]
   loading: boolean
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   submit: []
@@ -392,7 +394,7 @@ function handleReferenceFiles(event: Event) {
   try {
     updateForm({ inputImages: [...props.form.inputImages, ...validateInputImages(readFiles(event))] })
   } catch (error) {
-    emit('error', error instanceof Error ? error.message : '参考图无效')
+    emit('error', error instanceof Error ? error.message : t('imageStudio.invalidReference'))
   }
 }
 
@@ -400,7 +402,7 @@ function handleMaskFile(event: Event) {
   try {
     updateForm({ maskImage: validateInputImages(readFiles(event))[0] || null })
   } catch (error) {
-    emit('error', error instanceof Error ? error.message : '遮罩图无效')
+    emit('error', error instanceof Error ? error.message : t('imageStudio.invalidMask'))
   }
 }
 

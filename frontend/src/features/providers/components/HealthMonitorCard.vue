@@ -7,10 +7,10 @@
     <div class="px-6 py-3.5 border-b border-border/60">
       <div class="flex items-center justify-between gap-4">
         <h3 class="text-base font-semibold">
-          {{ title }}
+          {{ title || t('healthCard.title') }}
         </h3>
         <div class="flex items-center gap-3">
-          <Label class="text-xs text-muted-foreground">回溯时间：</Label>
+          <Label class="text-xs text-muted-foreground">{{ t('healthCard.lookback') }}</Label>
           <Select
             v-model="lookbackHours"
           >
@@ -19,19 +19,19 @@
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="1">
-                1 小时
+                {{ t('healthCard.hours', { count: 1 }) }}
               </SelectItem>
               <SelectItem value="6">
-                6 小时
+                {{ t('healthCard.hours', { count: 6 }) }}
               </SelectItem>
               <SelectItem value="12">
-                12 小时
+                {{ t('healthCard.hours', { count: 12 }) }}
               </SelectItem>
               <SelectItem value="24">
-                24 小时
+                {{ t('healthCard.hours', { count: 24 }) }}
               </SelectItem>
               <SelectItem value="48">
-                48 小时
+                {{ t('healthCard.hours', { count: 48 }) }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -50,7 +50,7 @@
         class="flex items-center justify-center py-12"
       >
         <Loader2 class="w-6 h-6 animate-spin text-muted-foreground" />
-        <span class="ml-2 text-muted-foreground">加载中...</span>
+        <span class="ml-2 text-muted-foreground">{{ t('healthCard.loading') }}</span>
       </div>
 
       <div
@@ -58,9 +58,9 @@
         class="flex flex-col items-center justify-center py-12 text-muted-foreground"
       >
         <Activity class="w-12 h-12 mb-3 opacity-30" />
-        <p>暂无健康监控数据</p>
+        <p>{{ t('healthCard.empty') }}</p>
         <p class="text-xs mt-1">
-          端点尚未产生请求记录
+          {{ t('healthCard.emptyHint') }}
         </p>
       </div>
 
@@ -97,7 +97,7 @@
                   v-if="showProviderInfo && 'provider_count' in monitor"
                   class="text-xs text-muted-foreground sm:hidden"
                 >
-                  {{ monitor.provider_count }} 个提供商 / {{ monitor.key_count }} 个密钥
+                  {{ t('healthCard.providerKeyCount', { providers: monitor.provider_count, keys: monitor.key_count }) }}
                 </span>
               </div>
 
@@ -106,7 +106,7 @@
                 v-if="showProviderInfo && 'provider_count' in monitor"
                 class="text-xs text-muted-foreground hidden sm:block"
               >
-                {{ monitor.provider_count }} 个提供商 / {{ monitor.key_count }} 个密钥
+                {{ t('healthCard.providerKeyCount', { providers: monitor.provider_count, keys: monitor.key_count }) }}
               </div>
             </div>
 
@@ -128,6 +128,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Activity, Loader2 } from 'lucide-vue-next'
 import Card from '@/components/ui/card.vue'
 import Badge from '@/components/ui/badge.vue'
@@ -150,12 +151,12 @@ const props = withDefaults(defineProps<{
   isAdmin?: boolean
   showProviderInfo?: boolean
 }>(), {
-  title: '健康监控',
   isAdmin: false,
   showProviderInfo: false
 })
 
 const { error: showError } = useToast()
+const { t } = useI18n()
 
 const loading = ref(false)
 const loadingMonitors = ref(false)
@@ -178,7 +179,7 @@ async function loadMonitors() {
       monitors.value = data.formats || []
     }
   } catch (err: unknown) {
-    showError(parseApiError(err, '加载健康监控数据失败'), '错误')
+    showError(parseApiError(err, t('healthCard.loadFailed')), t('healthCard.error'))
   } finally {
     loadingMonitors.value = false
   }

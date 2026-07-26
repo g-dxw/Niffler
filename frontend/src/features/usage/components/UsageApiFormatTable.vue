@@ -2,7 +2,7 @@
   <Card class="overflow-hidden flex flex-col">
     <div class="px-3 py-2 border-b flex-shrink-0">
       <h3 class="text-sm font-medium">
-        按API格式分析
+        {{ t('usageBreakdown.byApiFormat') }}
       </h3>
     </div>
     <div class="overflow-auto max-h-[320px]">
@@ -10,25 +10,25 @@
         <TableHeader>
           <TableRow>
             <TableHead class="h-8 px-2">
-              API格式
+              {{ t('usageBreakdown.apiFormat') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              请求数
+              {{ t('usageBreakdown.requests') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
               <div class="flex flex-col text-xs gap-0.5 whitespace-nowrap">
-                <span>输入/输出</span>
-                <span class="text-muted-foreground font-normal">缓存</span>
+                <span>{{ t('usageBreakdown.inputOutput') }}</span>
+                <span class="text-muted-foreground font-normal">{{ t('usageBreakdown.cache') }}</span>
               </div>
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              {{ isAdmin ? '用户扣费/平台成本' : '用户扣费' }}
+              {{ isAdmin ? t('usageBreakdown.chargePlatformCost') : t('usageBreakdown.userCharge') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              缓存命中率
+              {{ t('usageBreakdown.cacheHitRate') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              平均响应
+              {{ t('usageBreakdown.avgResponse') }}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -38,7 +38,7 @@
               :colspan="6"
               class="text-center py-6 text-muted-foreground px-2"
             >
-              暂无API格式统计数据
+              {{ t('usageBreakdown.noApiFormatData') }}
             </TableCell>
           </TableRow>
           <TableRow
@@ -64,7 +64,7 @@
                   v-if="isAdmin && item.actual_cost !== undefined"
                   class="text-muted-foreground text-[10px]"
                 >
-                  平台 {{ formatCurrency(item.actual_cost) }}
+                  {{ t('usageBreakdown.platformValue', { value: formatCurrency(item.actual_cost) }) }}
                 </span>
               </div>
             </TableCell>
@@ -82,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import Card from '@/components/ui/card.vue'
 import Table from '@/components/ui/table.vue'
 import TableHeader from '@/components/ui/table-header.vue'
@@ -92,6 +93,8 @@ import TableCell from '@/components/ui/table-cell.vue'
 import { formatTokens, formatCurrency, formatHitRate } from '@/utils/format'
 import { formatApiFormat } from '@/api/endpoints/types/api-format'
 import type { ApiFormatStatsItem } from '../types'
+
+const { t } = useI18n()
 
 defineProps<{
   data: ApiFormatStatsItem[]

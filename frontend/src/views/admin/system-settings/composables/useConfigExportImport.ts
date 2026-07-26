@@ -11,6 +11,7 @@ import {
 } from '@/api/admin'
 import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
+import { i18n } from '@/i18n'
 
 // 文件大小限制：导出文件可能包含大量 Provider Key、模型和用户数据。
 const BYTES_PER_MB = 1024 * 1024
@@ -51,10 +52,6 @@ function looksLikeAggregateExport(value: JsonObject): boolean {
     && asJsonObject(value.user_data) != null
 }
 
-function fileSizeLimitMessage(limitMb: number): string {
-  return `文件大小不能超过 ${limitMb}MB`
-}
-
 function downloadJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -69,6 +66,7 @@ function downloadJson(data: unknown, filename: string) {
 
 export function useConfigExportImport(systemConfig: { value: { site_name: string } }) {
   const { success, error } = useToast()
+  const t = i18n.global.t
 
   // 配置导出/导入相关
   const exportLoading = ref(false)
@@ -111,9 +109,9 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         data,
         `${systemConfig.value.site_name.toLowerCase()}-config-${new Date().toISOString().slice(0, 10)}.json`,
       )
-      success('配置已导出')
+      success(t('configTransfer.configExported'))
     } catch (err) {
-      error('导出配置失败')
+      error(t('configTransfer.configExportFailed'))
       log.error('导出配置失败:', err)
     } finally {
       exportLoading.value = false
@@ -132,7 +130,7 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
     if (!file) return
 
     if (file.size > MAX_FILE_SIZE) {
-      error(fileSizeLimitMessage(MAX_FILE_SIZE_MB))
+      error(t('configTransfer.fileTooLarge', { size: MAX_FILE_SIZE_MB }))
       input.value = ''
       return
     }
@@ -143,22 +141,22 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         const content = e.target?.result as string
         const root = asJsonObject(JSON.parse(content))
         if (!root) {
-          error('无效的配置文件：JSON 顶层必须是对象')
+          error(t('configTransfer.invalidConfigObject'))
           return
         }
 
         if (looksLikeUsersExport(root) && !looksLikeConfigExport(root)) {
-          error('这是用户数据导出文件，请使用“导入用户数据”')
+          error(t('configTransfer.useUsersImport'))
           return
         }
 
         if (!root.version) {
-          error('无效的配置文件：缺少版本信息')
+          error(t('configTransfer.configVersionMissing'))
           return
         }
 
         if (!looksLikeConfigExport(root)) {
-          error('无效的配置文件：未找到配置导出内容')
+          error(t('configTransfer.configContentMissing'))
           return
         }
 
@@ -167,7 +165,7 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         mergeMode.value = 'skip'
         importDialogOpen.value = true
       } catch (err) {
-        error('解析配置文件失败，请确保是有效的 JSON 文件')
+        error(t('configTransfer.configParseFailed'))
         log.error('解析配置文件失败:', err)
       }
     }
@@ -190,9 +188,9 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
       importDialogOpen.value = false
       mergeModeSelectOpen.value = false
       importResultDialogOpen.value = true
-      success('配置导入成功')
+      success(t('configTransfer.configImported'))
     } catch (err: unknown) {
-      error(parseApiError(err, '导入配置失败'))
+      error(parseApiError(err, t('configTransfer.configImportFailed')))
       log.error('导入配置失败:', err)
     } finally {
       importLoading.value = false
@@ -208,9 +206,9 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         data,
         `${systemConfig.value.site_name.toLowerCase()}-users-${new Date().toISOString().slice(0, 10)}.json`,
       )
-      success('用户数据已导出')
+      success(t('configTransfer.usersExported'))
     } catch (err) {
-      error('导出用户数据失败')
+      error(t('configTransfer.usersExportFailed'))
       log.error('导出用户数据失败:', err)
     } finally {
       exportUsersLoading.value = false
@@ -229,7 +227,7 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
     if (!file) return
 
     if (file.size > MAX_FILE_SIZE) {
-      error(fileSizeLimitMessage(MAX_FILE_SIZE_MB))
+      error(t('configTransfer.fileTooLarge', { size: MAX_FILE_SIZE_MB }))
       input.value = ''
       return
     }
@@ -240,32 +238,32 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         const content = e.target?.result as string
         const root = asJsonObject(JSON.parse(content))
         if (!root) {
-          error('无效的用户数据文件：JSON 顶层必须是对象')
+          error(t('configTransfer.invalidUsersObject'))
           return
         }
 
         if (looksLikeConfigExport(root) && !looksLikeUsersExport(root)) {
-          error('这是配置导出文件，请使用“导入配置”')
+          error(t('configTransfer.useConfigImport'))
           return
         }
 
         if (!root.version) {
-          error('无效的用户数据文件：缺少版本信息')
+          error(t('configTransfer.usersVersionMissing'))
           return
         }
 
         if (!Array.isArray(root.users)) {
-          error('无效的用户数据文件：缺少 users 数组')
+          error(t('configTransfer.usersArrayMissing'))
           return
         }
 
         if (root.user_groups != null && !Array.isArray(root.user_groups)) {
-          error('无效的用户数据文件：user_groups 必须是数组')
+          error(t('configTransfer.userGroupsInvalid'))
           return
         }
 
         if (root.standalone_keys != null && !Array.isArray(root.standalone_keys)) {
-          error('无效的用户数据文件：standalone_keys 必须是数组')
+          error(t('configTransfer.standaloneKeysInvalid'))
           return
         }
 
@@ -274,7 +272,7 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         usersMergeMode.value = 'skip'
         importUsersDialogOpen.value = true
       } catch (err) {
-        error('解析用户数据文件失败，请确保是有效的 JSON 文件')
+        error(t('configTransfer.usersParseFailed'))
         log.error('解析用户数据文件失败:', err)
       }
     }
@@ -297,9 +295,9 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
       importUsersDialogOpen.value = false
       usersMergeModeSelectOpen.value = false
       importUsersResultDialogOpen.value = true
-      success('用户数据导入成功')
+      success(t('configTransfer.usersImported'))
     } catch (err: unknown) {
-      error(parseApiError(err, '导入用户数据失败'))
+      error(parseApiError(err, t('configTransfer.usersImportFailed')))
       log.error('导入用户数据失败:', err)
     } finally {
       importUsersLoading.value = false
@@ -315,9 +313,9 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         data,
         `${systemConfig.value.site_name.toLowerCase()}-data-${new Date().toISOString().slice(0, 10)}.json`,
       )
-      success('聚合数据已导出')
+      success(t('configTransfer.aggregateExported'))
     } catch (err) {
-      error('导出聚合数据失败')
+      error(t('configTransfer.aggregateExportFailed'))
       log.error('导出聚合数据失败:', err)
     } finally {
       exportAggregateLoading.value = false
@@ -331,7 +329,7 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
     if (!file) return
 
     if (file.size > MAX_AGGREGATE_FILE_SIZE) {
-      error(fileSizeLimitMessage(MAX_AGGREGATE_FILE_SIZE_MB))
+      error(t('configTransfer.fileTooLarge', { size: MAX_AGGREGATE_FILE_SIZE_MB }))
       input.value = ''
       return
     }
@@ -342,34 +340,34 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         const content = e.target?.result as string
         const root = asJsonObject(JSON.parse(content))
         if (!root) {
-          error('无效的聚合数据文件：JSON 顶层必须是对象')
+          error(t('configTransfer.invalidAggregateObject'))
           return
         }
 
         if (!looksLikeAggregateExport(root)) {
           if (looksLikeConfigExport(root)) {
-            error('这是配置导出文件，请使用“导入配置数据”')
+            error(t('configTransfer.useConfigDataImport'))
           } else if (looksLikeUsersExport(root)) {
-            error('这是用户数据导出文件，请使用“导入用户数据”')
+            error(t('configTransfer.useUsersImport'))
           } else {
-            error('无效的聚合数据文件：未找到配置数据和用户数据')
+            error(t('configTransfer.aggregateContentMissing'))
           }
           return
         }
 
         if (!root.version) {
-          error('无效的聚合数据文件：缺少版本信息')
+          error(t('configTransfer.aggregateVersionMissing'))
           return
         }
 
         const configData = asJsonObject(root.config_data)
         const userData = asJsonObject(root.user_data)
         if (!configData || !looksLikeConfigExport(configData)) {
-          error('无效的聚合数据文件：config_data 格式不正确')
+          error(t('configTransfer.configDataInvalid'))
           return
         }
         if (!userData || !looksLikeUsersExport(userData)) {
-          error('无效的聚合数据文件：user_data 格式不正确')
+          error(t('configTransfer.userDataInvalid'))
           return
         }
 
@@ -378,7 +376,7 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
         aggregateMergeMode.value = 'skip'
         aggregateImportDialogOpen.value = true
       } catch (err) {
-        error('解析聚合数据文件失败，请确保是有效的 JSON 文件')
+        error(t('configTransfer.aggregateParseFailed'))
         log.error('解析聚合数据文件失败:', err)
       }
     }
@@ -401,9 +399,9 @@ export function useConfigExportImport(systemConfig: { value: { site_name: string
       aggregateImportDialogOpen.value = false
       aggregateMergeModeSelectOpen.value = false
       aggregateImportResultDialogOpen.value = true
-      success('聚合数据导入成功')
+      success(t('configTransfer.aggregateImported'))
     } catch (err: unknown) {
-      error(parseApiError(err, '导入聚合数据失败'))
+      error(parseApiError(err, t('configTransfer.aggregateImportFailed')))
       log.error('导入聚合数据失败:', err)
     } finally {
       importAggregateLoading.value = false

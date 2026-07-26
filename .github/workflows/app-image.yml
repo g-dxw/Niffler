@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: app-image-${{ github.ref }}
@@ -125,3 +126,67 @@ jobs:
           path: /tmp/niffler-app-linux-amd64.tar
           if-no-files-found: error
           retention-days: 7
+
+  deploy:
+    name: Deploy to mylingweave test
+    needs: image
+    if: github.ref_name == 'test'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup SSH
+        env:
+          SSH_HOST: ${{ secrets.MYLINGWEAVE_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.MYLINGWEAVE_SSH_KEY }}
+          SSH_HOST_FINGERPRINT: ${{ secrets.MYLINGWEAVE_SSH_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SSH_HOST_FINGERPRINT}" ]]; then
+            echo "MYLINGWEAVE_SSH_HOST_FINGERPRINT is required" >&2
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          scan_file="$(mktemp)"
+          public_key_file="$(mktemp)"
+          fingerprint_file="$(mktemp)"
+          trap 'rm -f "${scan_file}" "${public_key_file}" "${fingerprint_file}"' EXIT
+          ssh-keyscan -H "${SSH_HOST}" > "${scan_file}"
+          if [[ ! -s "${scan_file}" ]]; then
+            echo "ssh-keyscan returned no host keys for ${SSH_HOST}" >&2
+            exit 1
+          fi
+
+          awk 'NF >= 3 { print $2, $3 }' "${scan_file}" > "${public_key_file}"
+          if [[ ! -s "${public_key_file}" ]]; then
+            echo "ssh-keyscan returned no parseable public keys for ${SSH_HOST}" >&2
+            exit 1
+          fi
+
+          ssh-keygen -lf "${public_key_file}" -E sha256 | awk '{print $2}' > "${fingerprint_file}"
+          if [[ ! -s "${fingerprint_file}" ]]; then
+            echo "failed to calculate SSH host fingerprints for ${SSH_HOST}" >&2
+            exit 1
+          fi
+          if ! grep -Fxq -- "${SSH_HOST_FINGERPRINT}" "${fingerprint_file}"; then
+            echo "SSH host fingerprint mismatch for ${SSH_HOST}" >&2
+            exit 1
+          fi
+
+          install -m 600 "${scan_file}" ~/.ssh/known_hosts
+
+      - name: Deploy image artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APP_IMAGE: niffler-app:${{ github.sha }}
+        run: |
+          scripts/deploy-ci-artifact.sh \
+            --host "${{ secrets.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
+            --remote-dir "${{ secrets.MYLINGWEAVE_REMOTE_DIR }}" \
+            --run-id "${{ github.run_id }}"

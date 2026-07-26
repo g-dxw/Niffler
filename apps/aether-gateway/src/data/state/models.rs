@@ -217,6 +217,20 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        match &self.global_model_reader {
+            Some(repository) => {
+                repository
+                    .list_admin_provider_models_by_global_model_ids(global_model_ids)
+                    .await
+            }
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub(crate) async fn create_admin_provider_model(
         &self,
         record: &UpsertAdminProviderModelRecord,

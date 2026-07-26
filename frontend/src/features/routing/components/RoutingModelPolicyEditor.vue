@@ -2,14 +2,14 @@
   <div class="space-y-3">
     <div class="flex items-center justify-between gap-3">
       <h3 class="text-sm font-medium">
-        模型策略
+        {{ t('routingModelPolicy.title') }}
       </h3>
       <button
         type="button"
         class="rounded-md border border-border px-3 py-1.5 text-xs"
         @click="addPolicy"
       >
-        添加
+        {{ t('routingModelPolicy.add') }}
       </button>
     </div>
 
@@ -21,13 +21,13 @@
       <input
         v-model="policy.model"
         class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-        placeholder="模型"
+        :placeholder="t('routingModelPolicy.model')"
         @change="commit"
       >
       <input
         :value="policy.allowed_providers.join(', ')"
         class="h-9 rounded-md border border-border bg-background px-3 text-sm"
-        placeholder="允许 Provider"
+        :placeholder="t('routingModelPolicy.provider')"
         @change="event => updateProviders(index, event)"
       >
       <button
@@ -35,7 +35,7 @@
         class="rounded-md border border-border px-3 text-xs text-muted-foreground"
         @click="removePolicy(index)"
       >
-        删除
+        {{ t('routingModelPolicy.delete') }}
       </button>
     </div>
   </div>
@@ -43,8 +43,11 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { createEmptyModelPolicy, type RoutingModelPolicy } from '../utils/routingPolicy'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelPolicies: RoutingModelPolicy[]

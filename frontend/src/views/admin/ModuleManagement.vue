@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="模块管理"
-      description="管理系统功能模块的启用状态"
+      :title="t('moduleManagement.title')"
+      :description="t('moduleManagement.description')"
     >
       <template #actions>
         <Button
@@ -14,7 +14,7 @@
             class="w-4 h-4 mr-2"
             :class="{ 'animate-spin': loading }"
           />
-          刷新
+          {{ t('moduleManagement.refresh') }}
         </Button>
       </template>
     </PageHeader>
@@ -25,7 +25,7 @@
         <Search class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           v-model="searchQuery"
-          placeholder="搜索模块名称或描述..."
+          :placeholder="t('moduleManagement.searchPlaceholder')"
           class="pl-11 h-11"
         />
       </div>
@@ -38,7 +38,7 @@
         class="mb-8"
       >
         <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-          内置工具
+          {{ t('moduleManagement.builtinTools') }}
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           <div
@@ -71,7 +71,7 @@
                 @click.stop="router.push(tool.href)"
               >
                 <Settings class="w-3.5 h-3.5" />
-                管理
+                {{ t('moduleManagement.manage') }}
               </Button>
             </div>
           </div>
@@ -80,7 +80,7 @@
 
       <!-- 扩展模块 -->
       <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-        扩展模块
+        {{ t('moduleManagement.extensionModules') }}
       </h3>
 
       <!-- 模块卡片网格 -->
@@ -145,7 +145,7 @@
             v-if="!module.available"
             class="mt-4 text-xs text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-950/50 rounded-lg px-3 py-2"
           >
-            模块不可用，请检查环境变量和依赖库
+            {{ t('moduleManagement.unavailableHint') }}
           </div>
 
           <!-- 操作区域 -->
@@ -161,14 +161,14 @@
                   class="text-sm"
                   :class="module.enabled ? 'text-foreground' : 'text-muted-foreground'"
                 >
-                  {{ module.enabled ? '启用' : '禁用' }}
+                  {{ module.enabled ? t('moduleManagement.enabled') : t('moduleManagement.disabled') }}
                 </span>
                 <!-- 配置未验证提示（小字） -->
                 <span
                   v-if="module.available && !module.config_validated"
                   class="text-xs text-muted-foreground"
                 >
-                  {{ module.config_error || '请先完成配置' }}
+                  {{ module.config_error || t('moduleManagement.completeConfig') }}
                 </span>
               </div>
             </div>
@@ -180,7 +180,7 @@
               @click="router.push(module.admin_route)"
             >
               <Settings class="w-3.5 h-3.5" />
-              配置
+              {{ t('moduleManagement.configure') }}
             </Button>
           </div>
         </div>
@@ -193,7 +193,7 @@
       >
         <Search class="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
         <p class="text-muted-foreground">
-          没有找到匹配的模块
+          {{ t('moduleManagement.noMatches') }}
         </p>
       </div>
 
@@ -204,7 +204,7 @@
       >
         <Puzzle class="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
         <p class="text-muted-foreground">
-          暂无可管理的模块
+          {{ t('moduleManagement.empty') }}
         </p>
       </div>
     </div>
@@ -214,6 +214,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { RefreshCw, Puzzle, Users, Shield, Gauge, Link, Search, Settings } from 'lucide-vue-next'
 import Button from '@/components/ui/button.vue'
 import Switch from '@/components/ui/switch.vue'
@@ -221,24 +222,26 @@ import Input from '@/components/ui/input.vue'
 import { PageHeader, PageContainer } from '@/components/layout'
 import { useToast } from '@/composables/useToast'
 import { useModuleStore } from '@/stores/modules'
-import { BUILTIN_TOOLS } from '@/config/builtin-tools'
+import { createBuiltinTools } from '@/config/builtin-tools'
 import { log } from '@/utils/logger'
 import { getErrorMessage } from '@/types/api-error'
 
 const router = useRouter()
+const { t } = useI18n()
 const { success, error } = useToast()
 const moduleStore = useModuleStore()
 
 const loading = ref(false)
 const toggling = ref<Record<string, boolean>>({})
 const searchQuery = ref('')
+const builtinTools = computed(() => createBuiltinTools(t))
 
 // 过滤后的内置工具
 const filteredBuiltinTools = computed(() => {
-  if (!searchQuery.value.trim()) return BUILTIN_TOOLS
+  if (!searchQuery.value.trim()) return builtinTools.value
   const query = searchQuery.value.toLowerCase()
-  return BUILTIN_TOOLS.filter(
-    t => t.name.toLowerCase().includes(query) || t.description.toLowerCase().includes(query)
+  return builtinTools.value.filter(
+    tool => tool.name.toLowerCase().includes(query) || tool.description.toLowerCase().includes(query)
   )
 })
 
@@ -255,11 +258,11 @@ function getCategoryIcon(category: string) {
 
 function getModuleStatusCopy(module: { name: string; enabled: boolean; active: boolean; config_validated: boolean; config_error: string | null }) {
   if (module.name !== 'chat_pii_redaction') {
-    return module.enabled ? '已启用' : '已禁用'
+    return module.enabled ? t('moduleManagement.enabledStatus') : t('moduleManagement.disabledStatus')
   }
-  if (!module.config_validated) return '配置异常'
+  if (!module.config_validated) return t('moduleManagement.configInvalid')
   if (!module.enabled) return ''
-  return '已开启'
+  return t('moduleManagement.active')
 }
 
 // 所有模块列表（按 admin_menu_order 排序）
@@ -288,8 +291,8 @@ async function fetchModules() {
   try {
     await moduleStore.fetchModules()
   } catch (err) {
-    error('获取模块列表失败')
-    log.error('获取模块列表失败:', err)
+    error(t('moduleManagement.loadFailed'))
+    log.error(t('moduleManagement.loadFailed'), err)
   } finally {
     loading.value = false
   }
@@ -300,10 +303,10 @@ async function toggleModule(moduleName: string, enabled: boolean) {
   toggling.value[moduleName] = true
   try {
     await moduleStore.setEnabled(moduleName, enabled)
-    success(enabled ? '模块已启用' : '模块已禁用')
+    success(enabled ? t('moduleManagement.enabledSuccess') : t('moduleManagement.disabledSuccess'))
   } catch (err) {
-    error(getErrorMessage(err, '操作失败'))
-    log.error('切换模块状态失败:', err)
+    error(getErrorMessage(err, t('moduleManagement.operationFailed')))
+    log.error(t('moduleManagement.toggleFailed'), err)
   } finally {
     toggling.value[moduleName] = false
   }

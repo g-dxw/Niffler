@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Card from '@/components/ui/card.vue'
 import Button from '@/components/ui/button.vue'
 import Badge from '@/components/ui/badge.vue'
@@ -26,9 +27,7 @@ import type { TTLAnalysisUser } from '@/api/cache'
 import { formatNumber, formatTokens, formatCost, formatRemainingTime } from '@/utils/format'
 import {
   useTTLAnalysis,
-  ANALYSIS_HOURS_OPTIONS,
   getTTLBadgeVariant,
-  getFrequencyLabel,
   getFrequencyClass
 } from '@/composables/useTTLAnalysis'
 import { log } from '@/utils/logger'
@@ -37,6 +36,22 @@ import { formatApiFormat } from '@/api/endpoints/types/api-format'
 // ==================== 缓存统计与亲和性列表 ====================
 
 const stats = ref<CacheStats | null>(null)
+const { t, locale } = useI18n()
+const analysisHoursOptions = computed(() => [
+  { value: '12', label: t('ttlAnalysis.hours', { count: 12 }) },
+  { value: '24', label: t('ttlAnalysis.hours', { count: 24 }) },
+  { value: '72', label: t('ttlAnalysis.days', { count: 3 }) },
+  { value: '168', label: t('ttlAnalysis.days', { count: 7 }) },
+  { value: '336', label: t('ttlAnalysis.days', { count: 14 }) },
+  { value: '720', label: t('ttlAnalysis.days', { count: 30 }) },
+])
+
+function frequencyLabel(ttl: number): string {
+  if (ttl <= 5) return t('ttlAnalysis.frequencyHigh')
+  if (ttl <= 15) return t('ttlAnalysis.frequencyMediumHigh')
+  if (ttl <= 30) return t('ttlAnalysis.frequencyMedium')
+  return t('ttlAnalysis.frequencyLow')
+}
 const config = ref<CacheConfig | null>(null)
 const loading = ref(false)
 const affinityList = ref<UserAffinity[]>([])
@@ -101,8 +116,8 @@ async function fetchCacheStats() {
   try {
     stats.value = await cacheApi.getStats()
   } catch (error) {
-    showError('获取缓存统计失败')
-    log.error('获取缓存统计失败', error)
+    showError(t('cacheMonitoring.loadStatsFailed'))
+    log.error('Failed to load cache statistics', error)
   } finally {
     loading.value = false
   }
@@ -112,7 +127,7 @@ async function fetchCacheConfig() {
   try {
     config.value = await cacheApi.getConfig()
   } catch (error) {
-    log.error('获取缓存配置失败', error)
+    log.error('Failed to load cache configuration', error)
   }
 }
 
@@ -126,11 +141,11 @@ async function fetchAffinityList(keyword?: string) {
     pruneExpiredAffinities(currentTime.value, true)
 
     if (keyword && response.total === 0) {
-      showInfo('未找到匹配的缓存记录')
+      showInfo(t('cacheMonitoring.noMatch'))
     }
   } catch (error) {
-    showError('获取缓存列表失败')
-    log.error('获取缓存列表失败', error)
+    showError(t('cacheMonitoring.loadListFailed'))
+    log.error('Failed to load cache list', error)
   } finally {
     listLoading.value = false
   }
@@ -161,16 +176,16 @@ async function clearSingleAffinity(item: UserAffinity) {
   const apiFormat = item.api_format?.trim()
 
   if (!affinityKey || !endpointId || !modelId || !apiFormat) {
-    showError('缓存记录信息不完整，无法删除')
+    showError(t('cacheMonitoring.incompleteRecord'))
     return
   }
 
   const label = item.user_api_key_name || affinityKey
   const modelLabel = item.model_display_name || item.model_name || modelId
   const confirmed = await showConfirm({
-    title: '确认清除',
-    message: `确定要清除 ${label} 在模型 ${modelLabel} 上的缓存亲和性吗？`,
-    confirmText: '确认清除',
+    title: t('cacheMonitoring.confirmClear'),
+    message: t('cacheMonitoring.confirmSingle', { label, model: modelLabel }),
+    confirmText: t('cacheMonitoring.confirmClear'),
     variant: 'destructive'
   })
 
@@ -186,12 +201,12 @@ async function clearSingleAffinity(item: UserAffinity) {
       item.client_family,
       item.session_hash
     )
-    showSuccess('清除成功')
+    showSuccess(t('cacheMonitoring.clearSuccess'))
     await fetchCacheStats()
     await fetchAffinityList(tableKeyword.value.trim() || undefined)
   } catch (error) {
-    showError('清除失败')
-    log.error('清除单条缓存失败', error)
+    showError(t('cacheMonitoring.clearFailed'))
+    log.error('Failed to clear cache entry', error)
   } finally {
     clearingRowAffinityKey.value = null
   }
@@ -199,17 +214,17 @@ async function clearSingleAffinity(item: UserAffinity) {
 
 async function clearAllCache() {
   const firstConfirm = await showConfirm({
-    title: '危险操作',
-    message: '警告：此操作会清除所有用户的缓存亲和性，确定继续吗？',
-    confirmText: '继续',
+    title: t('cacheMonitoring.dangerousAction'),
+    message: t('cacheMonitoring.clearAllWarning'),
+    confirmText: t('cacheMonitoring.continue'),
     variant: 'destructive'
   })
   if (!firstConfirm) return
 
   const secondConfirm = await showConfirm({
-    title: '再次确认',
-    message: '这将影响所有用户，请再次确认！',
-    confirmText: '确认清除',
+    title: t('cacheMonitoring.confirmAgain'),
+    message: t('cacheMonitoring.clearAllAgain'),
+    confirmText: t('cacheMonitoring.confirmClear'),
     variant: 'destructive'
   })
   if (!secondConfirm) return
@@ -217,12 +232,12 @@ async function clearAllCache() {
   clearingAllAffinity.value = true
   try {
     await cacheApi.clearAllCache()
-    showSuccess('已清除所有缓存')
+    showSuccess(t('cacheMonitoring.clearAllSuccess'))
     await fetchCacheStats()
     await fetchAffinityList(tableKeyword.value.trim() || undefined)
   } catch (error) {
-    showError('清除失败')
-    log.error('清除所有缓存失败', error)
+    showError(t('cacheMonitoring.clearFailed'))
+    log.error('Failed to clear all cache', error)
   } finally {
     clearingAllAffinity.value = false
   }
@@ -242,7 +257,7 @@ function truncateMiddle(value: string, head = 8, tail = 6): string {
 }
 
 function affinityUserLabel(item: UserAffinity): string {
-  return item.username || item.email || item.user_id || '未知'
+  return item.username || item.email || item.user_id || t('cacheMonitoring.unknown')
 }
 
 function affinityUserTitle(item: UserAffinity): string | undefined {
@@ -275,11 +290,11 @@ function formatClientFamily(family?: string | null): string {
     case 'openai_js_sdk':
       return 'OpenAI JS SDK'
     case 'generic':
-      return '通用'
+  return t('cacheMonitoring.general')
     case undefined:
     case null:
     case '':
-      return '未知'
+  return t('cacheMonitoring.unknown')
     default:
       return family
   }
@@ -287,7 +302,7 @@ function formatClientFamily(family?: string | null): string {
 
 function providerKeyLabel(item: UserAffinity): string {
   if (item.key_name) return item.key_name
-  if (item.key_prefix === '[OAuth Token]') return 'OAuth 认证'
+  if (item.key_prefix === '[OAuth Token]') return t('cacheMonitoring.oauthAuth')
   return item.key_prefix || '---'
 }
 
@@ -303,7 +318,7 @@ function formatAffinityRequestCount(item: UserAffinity): string {
 
 function formatAffinityRequestCountUnit(item: UserAffinity): string {
   const count = formatAffinityRequestCount(item)
-  return count === '—' ? count : `${count}次`
+  return count === '—' ? count : t('cacheMonitoring.times', { count })
 }
 
 function formatIntervalDescription(user: TTLAnalysisUser): string {
@@ -311,9 +326,9 @@ function formatIntervalDescription(user: TTLAnalysisUser): string {
   if (p90 === null || p90 === undefined) return '-'
   if (p90 < 1) {
     const seconds = Math.round(p90 * 60)
-    return `90% 请求间隔 < ${seconds} 秒`
+    return t('cacheMonitoring.intervalSeconds', { value: seconds })
   }
-  return `90% 请求间隔 < ${p90.toFixed(1)} 分钟`
+  return t('cacheMonitoring.intervalMinutes', { value: p90.toFixed(1) })
 }
 
 function handlePageChange() {
@@ -348,7 +363,7 @@ function pruneExpiredAffinities(now: number, silent = false) {
   recalculateNextExpireAt(now)
 
   if (!silent) {
-    showInfo(`${beforeCount - activeItems.length} 个缓存已自动过期移除`)
+    showInfo(t('cacheMonitoring.expiredRemoved', { count: beforeCount - activeItems.length }))
   }
 }
 
@@ -394,8 +409,8 @@ async function fetchModelMappingStats() {
   try {
     modelMappingStats.value = await modelMappingCacheApi.getStats()
   } catch (error) {
-    showError('获取模型映射缓存统计失败')
-    log.error('获取模型映射缓存统计失败', error)
+    showError(t('cacheMonitoring.loadMappingFailed'))
+    log.error('Failed to load model mapping cache statistics', error)
   } finally {
     modelMappingLoading.value = false
   }
@@ -403,9 +418,9 @@ async function fetchModelMappingStats() {
 
 async function clearAllModelMappingCache() {
   const confirmed = await showConfirm({
-    title: '确认清除',
-    message: '确定要清除所有模型映射缓存吗？这会影响所有模型的名称解析。',
-    confirmText: '确认清除',
+    title: t('cacheMonitoring.confirmClear'),
+    message: t('cacheMonitoring.confirmAllMappings'),
+    confirmText: t('cacheMonitoring.confirmClear'),
     variant: 'destructive'
   })
 
@@ -414,11 +429,11 @@ async function clearAllModelMappingCache() {
   clearingModelMapping.value = true
   try {
     const result = await modelMappingCacheApi.clearAll()
-    showSuccess(`已清除 ${result.deleted_count} 个缓存键`)
+    showSuccess(t('cacheMonitoring.keysCleared', { count: result.deleted_count }))
     await fetchModelMappingStats()
   } catch (error) {
-    showError('清除模型映射缓存失败')
-    log.error('清除模型映射缓存失败', error)
+    showError(t('cacheMonitoring.clearMappingFailed'))
+    log.error('Failed to clear model mapping cache', error)
   } finally {
     clearingModelMapping.value = false
   }
@@ -428,11 +443,11 @@ async function clearModelMappingByName(modelName: string) {
   clearingModelName.value = modelName
   try {
     await modelMappingCacheApi.clearByName(modelName)
-    showSuccess(`已清除 ${modelName} 的映射缓存`)
+    showSuccess(t('cacheMonitoring.modelMappingCleared', { model: modelName }))
     await fetchModelMappingStats()
   } catch (error) {
-    showError('清除缓存失败')
-    log.error('清除模型映射缓存失败', error)
+    showError(t('cacheMonitoring.clearFailed'))
+    log.error('Failed to clear model mapping cache', error)
   } finally {
     clearingModelName.value = null
   }
@@ -440,9 +455,9 @@ async function clearModelMappingByName(modelName: string) {
 
 async function clearProviderModelMapping(providerId: string, globalModelId: string, displayName?: string) {
   const confirmed = await showConfirm({
-    title: '确认清除',
-    message: `确定要清除 ${displayName || 'Provider 模型映射'} 的缓存吗？`,
-    confirmText: '确认清除',
+    title: t('cacheMonitoring.confirmClear'),
+    message: t('cacheMonitoring.confirmProviderMapping', { name: displayName || t('cacheMonitoring.providerMapping') }),
+    confirmText: t('cacheMonitoring.confirmClear'),
     variant: 'destructive'
   })
 
@@ -450,11 +465,11 @@ async function clearProviderModelMapping(providerId: string, globalModelId: stri
 
   try {
     await modelMappingCacheApi.clearProviderModel(providerId, globalModelId)
-    showSuccess('已清除 Provider 模型映射缓存')
+    showSuccess(t('cacheMonitoring.providerMappingCleared'))
     await fetchModelMappingStats()
   } catch (error) {
-    showError('清除缓存失败')
-    log.error('清除 Provider 模型映射缓存失败', error)
+    showError(t('cacheMonitoring.clearFailed'))
+    log.error('Failed to clear provider model mapping cache', error)
   }
 }
 
@@ -465,8 +480,8 @@ async function fetchRedisCacheCategories() {
   try {
     redisCacheData.value = await redisCacheApi.getCategories()
   } catch (error) {
-    showError('获取 Redis 缓存分类失败')
-    log.error('获取 Redis 缓存分类失败', error)
+    showError(t('cacheMonitoring.loadRedisFailed'))
+    log.error('Failed to load Redis cache categories', error)
   } finally {
     redisCacheLoading.value = false
   }
@@ -474,23 +489,23 @@ async function fetchRedisCacheCategories() {
 
 async function clearRedisCategory(categoryKey: string, categoryName: string, count: number) {
   if (count === 0) {
-    showInfo(`${categoryName} 缓存为空，无需清理`)
+    showInfo(t('cacheMonitoring.categoryEmpty', { name: categoryName }))
     return
   }
   const confirmed = await showConfirm({
-    title: `清除 ${categoryName} 缓存`,
-    message: `确定要清除 ${categoryName} 的所有缓存吗？共 ${count} 个键。`,
+    title: t('cacheMonitoring.clearCategoryTitle', { name: categoryName }),
+    message: t('cacheMonitoring.clearCategoryConfirm', { name: categoryName, count }),
   })
   if (!confirmed) return
 
   clearingCategory.value = categoryKey
   try {
     const result = await redisCacheApi.clearCategory(categoryKey)
-    showSuccess(`已清除 ${categoryName} 缓存（${result.deleted_count} 个键）`)
+    showSuccess(t('cacheMonitoring.categoryCleared', { name: categoryName, count: result.deleted_count }))
     await fetchRedisCacheCategories()
   } catch (error) {
-    showError(`清除 ${categoryName} 缓存失败`)
-    log.error('清除 Redis 缓存分类失败', error)
+    showError(t('cacheMonitoring.clearCategoryFailed', { name: categoryName }))
+    log.error('Failed to clear Redis cache category', error)
   } finally {
     clearingCategory.value = null
   }
@@ -518,11 +533,11 @@ function formatTTL(ttl: number | null): string {
 function getUnmappedStatusBadge(status: string): { variant: 'default' | 'secondary' | 'destructive' | 'outline', text: string } {
   switch (status) {
     case 'not_found':
-      return { variant: 'secondary', text: '未找到' }
+      return { variant: 'secondary', text: t('cacheMonitoring.notFound') }
     case 'invalid':
-      return { variant: 'destructive', text: '无效' }
+      return { variant: 'destructive', text: t('cacheMonitoring.invalid') }
     case 'error':
-      return { variant: 'destructive', text: '错误' }
+      return { variant: 'destructive', text: t('cacheMonitoring.error') }
     default:
       return { variant: 'outline', text: status }
   }
@@ -580,10 +595,10 @@ onBeforeUnmount(() => {
     <!-- 标题 -->
     <div>
       <h2 class="text-2xl font-bold">
-        缓存监控
+        {{ t('cacheMonitoring.title') }}
       </h2>
       <p class="text-sm text-muted-foreground mt-1">
-        管理缓存亲和性，提高 Prompt Caching 命中率
+        {{ t('cacheMonitoring.description') }}
       </p>
     </div>
 
@@ -591,7 +606,7 @@ onBeforeUnmount(() => {
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <Card class="p-4">
         <div class="text-xs text-muted-foreground">
-          活跃亲和性
+          {{ t('cacheMonitoring.activeAffinity') }}
         </div>
         <div class="text-2xl font-bold mt-1">
           {{ stats?.affinity_stats?.active_affinities || stats?.affinity_stats?.total_affinities || 0 }}
@@ -603,7 +618,7 @@ onBeforeUnmount(() => {
 
       <Card class="p-4">
         <div class="text-xs text-muted-foreground">
-          Provider 切换
+          {{ t('cacheMonitoring.providerSwitch') }}
         </div>
         <div
           class="text-2xl font-bold mt-1"
@@ -612,13 +627,13 @@ onBeforeUnmount(() => {
           {{ stats?.affinity_stats?.provider_switches || 0 }}
         </div>
         <div class="text-xs text-muted-foreground mt-1">
-          Key 切换 {{ stats?.affinity_stats?.key_switches || 0 }}
+          {{ t('cacheMonitoring.keySwitch') }} {{ stats?.affinity_stats?.key_switches || 0 }}
         </div>
       </Card>
 
       <Card class="p-4">
         <div class="text-xs text-muted-foreground">
-          缓存失效
+          {{ t('cacheMonitoring.invalidated') }}
         </div>
         <div
           class="text-2xl font-bold mt-1"
@@ -627,19 +642,19 @@ onBeforeUnmount(() => {
           {{ stats?.affinity_stats?.cache_invalidations || 0 }}
         </div>
         <div class="text-xs text-muted-foreground mt-1">
-          因 Provider 不可用
+            {{ t('cacheMonitoring.unavailable') }}
         </div>
       </Card>
 
       <Card class="p-4">
         <div class="text-xs text-muted-foreground flex items-center gap-1">
-          预留比例
+          {{ t('cacheMonitoring.reservation') }}
           <Badge
             v-if="config?.dynamic_reservation?.enabled"
             variant="outline"
             class="text-[10px] px-1"
           >
-            动态
+            {{ t('cacheMonitoring.dynamic') }}
           </Badge>
         </div>
         <div class="text-2xl font-bold mt-1">
@@ -651,7 +666,7 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <div class="text-xs text-muted-foreground mt-1">
-          当前 {{ stats ? (stats.cache_reservation_ratio * 100).toFixed(0) : '-' }}%
+          {{ stats ? (stats.cache_reservation_ratio * 100).toFixed(0) : '-' }}%
         </div>
       </Card>
     </div>
@@ -661,7 +676,7 @@ onBeforeUnmount(() => {
       <div class="px-4 sm:px-6 py-3 sm:py-3.5 border-b border-border/60">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <h3 class="text-sm sm:text-base font-semibold shrink-0">
-            亲和性列表
+            {{ t('cacheMonitoring.affinityList') }}
           </h3>
           <div class="flex flex-wrap items-center gap-2">
             <div class="relative">
@@ -669,7 +684,7 @@ onBeforeUnmount(() => {
               <Input
                 id="cache-affinity-search"
                 v-model="tableKeyword"
-                placeholder="搜索用户或 Key"
+                :placeholder="t('cacheMonitoring.search')"
                 class="w-32 sm:w-48 h-8 text-sm pl-8 pr-8"
               />
               <button
@@ -687,7 +702,7 @@ onBeforeUnmount(() => {
               size="icon"
               class="h-8 w-8 text-muted-foreground/70 hover:text-destructive"
               :disabled="clearingAllAffinity"
-              title="清除全部缓存"
+              :title="t('cacheMonitoring.clearAll')"
               @click="clearAllCache"
             >
               <Eraser class="h-4 w-4" />
@@ -704,7 +719,7 @@ onBeforeUnmount(() => {
         <TableHeader>
           <TableRow>
             <TableHead class="w-36">
-              用户
+              {{ t('cacheMonitoring.user') }}
             </TableHead>
             <TableHead class="w-28">
               Key
@@ -713,22 +728,22 @@ onBeforeUnmount(() => {
               Provider
             </TableHead>
             <TableHead class="w-40">
-              模型
+              {{ t('cacheMonitoring.model') }}
             </TableHead>
             <TableHead class="w-24">
-              客户端
+              {{ t('cacheMonitoring.client') }}
             </TableHead>
             <TableHead class="w-36">
-              API 格式 / Key
+              {{ t('cacheMonitoring.formatKey') }}
             </TableHead>
             <TableHead class="w-20 text-center">
-              剩余
+              {{ t('cacheMonitoring.remaining') }}
             </TableHead>
             <TableHead class="w-14 text-center">
-              次数
+              {{ t('cacheMonitoring.count') }}
             </TableHead>
             <TableHead class="w-12 text-right">
-              操作
+              {{ t('cacheMonitoring.actions') }}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -744,7 +759,7 @@ onBeforeUnmount(() => {
                   variant="outline"
                   class="text-warning border-warning/30 text-[10px] px-1"
                 >
-                  独立
+                  {{ t('cacheMonitoring.independent') }}
                 </Badge>
                 <span
                   class="text-sm font-medium truncate max-w-[120px]"
@@ -775,7 +790,7 @@ onBeforeUnmount(() => {
                 class="text-sm truncate max-w-[100px]"
                 :title="item.provider_name || undefined"
               >
-                {{ item.provider_name || '未知' }}
+                {{ item.provider_name || t('cacheMonitoring.unknown') }}
               </div>
             </TableCell>
             <TableCell>
@@ -818,7 +833,7 @@ onBeforeUnmount(() => {
             <TableCell class="text-center">
               <span
                 class="text-sm"
-                :title="item.request_count_known === false ? '此缓存源没有精确次数统计' : undefined"
+                :title="item.request_count_known === false ? t('cacheMonitoring.noExact') : undefined"
               >{{ formatAffinityRequestCount(item) }}</span>
             </TableCell>
             <TableCell class="text-right">
@@ -827,7 +842,7 @@ onBeforeUnmount(() => {
                 variant="ghost"
                 class="h-7 w-7 text-muted-foreground/70 hover:text-destructive"
                 :disabled="clearingRowAffinityKey === item.affinity_key"
-                title="清除缓存"
+                :title="t('cacheMonitoring.clear')"
                 @click="clearSingleAffinity(item)"
               >
                 <Trash2 class="h-3.5 w-3.5" />
@@ -841,7 +856,7 @@ onBeforeUnmount(() => {
               colspan="9"
               class="text-center py-6 text-sm text-muted-foreground"
             >
-              {{ listLoading ? '加载中...' : '暂无缓存记录' }}
+              {{ listLoading ? t('cacheMonitoring.loading') : t('cacheMonitoring.empty') }}
             </TableCell>
           </TableRow>
         </TableBody>
@@ -865,7 +880,7 @@ onBeforeUnmount(() => {
                   variant="outline"
                   class="text-warning border-warning/30 text-[10px] px-1"
                 >
-                  独立
+                  {{ t('cacheMonitoring.independent') }}
                 </Badge>
                 <span class="text-sm font-medium truncate">{{ affinityUserLabel(item) }}</span>
               </div>
@@ -884,7 +899,7 @@ onBeforeUnmount(() => {
             </Button>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>{{ item.provider_name || '未知' }}</span>
+            <span>{{ item.provider_name || t('cacheMonitoring.unknown') }}</span>
             <span>·</span>
             <span class="truncate max-w-[100px]">{{ affinityModelLabel(item) }}</span>
             <span>·</span>
@@ -905,7 +920,7 @@ onBeforeUnmount(() => {
         v-else-if="!listLoading && affinityList.length === 0"
         class="xl:hidden text-center py-6 text-sm text-muted-foreground"
       >
-        暂无缓存记录
+        {{ t('cacheMonitoring.empty') }}
       </div>
 
       <Pagination
@@ -926,7 +941,7 @@ onBeforeUnmount(() => {
           <div class="flex items-center gap-3 shrink-0">
             <Database class="h-5 w-5 text-muted-foreground hidden sm:block" />
             <h3 class="text-sm sm:text-base font-semibold">
-              模型映射缓存
+              {{ t('cacheMonitoring.modelMapping') }}
             </h3>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -934,7 +949,7 @@ onBeforeUnmount(() => {
               variant="ghost"
               size="icon"
               class="h-8 w-8 text-muted-foreground/70 hover:text-destructive"
-              title="清除全部映射缓存"
+              :title="t('cacheMonitoring.clearMappings')"
               :disabled="clearingModelMapping || !modelMappingStats?.available"
               @click="clearAllModelMappingCache"
             >
@@ -956,20 +971,20 @@ onBeforeUnmount(() => {
         <TableHeader>
           <TableRow>
             <TableHead class="w-[25%]">
-              全局模型
+              {{ t('cacheMonitoring.globalModel') }}
             </TableHead>
             <TableHead class="w-8 text-center" />
             <TableHead class="w-[30%]">
-              映射模型
+              {{ t('cacheMonitoring.mappedModel') }}
             </TableHead>
             <TableHead class="w-[25%]">
-              提供商
+              {{ t('cacheMonitoring.provider') }}
             </TableHead>
             <TableHead class="w-[10%] text-center">
-              剩余
+              {{ t('cacheMonitoring.remaining') }}
             </TableHead>
             <TableHead class="w-[5%] text-right">
-              操作
+              {{ t('cacheMonitoring.actions') }}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -1036,7 +1051,7 @@ onBeforeUnmount(() => {
                 variant="ghost"
                 class="h-6 w-6 text-muted-foreground/50 hover:text-destructive"
                 :disabled="clearingModelName === mapping.mapping_name"
-                title="清除缓存"
+                :title="t('cacheMonitoring.clear')"
                 @click="clearModelMappingByName(mapping.mapping_name)"
               >
                 <X class="h-3.5 w-3.5" />
@@ -1094,7 +1109,7 @@ onBeforeUnmount(() => {
         class="px-6 py-4 border-t border-border/40"
       >
         <div class="text-xs text-muted-foreground mb-2">
-          未映射的缓存条目
+          {{ t('cacheMonitoring.unmapped') }}
         </div>
         <div class="flex flex-wrap gap-1.5">
           <Badge
@@ -1102,7 +1117,7 @@ onBeforeUnmount(() => {
             :key="entry.mapping_name"
             :variant="getUnmappedStatusBadge(entry.status).variant"
             class="text-xs font-mono cursor-pointer"
-            :title="`${getUnmappedStatusBadge(entry.status).text} - 点击清除`"
+                        :title="t('cacheMonitoring.statusClearTitle', { status: getUnmappedStatusBadge(entry.status).text })"
             @click="clearModelMappingByName(entry.mapping_name)"
           >
             {{ entry.mapping_name }}
@@ -1116,30 +1131,30 @@ onBeforeUnmount(() => {
         class="border-t border-border/40"
       >
         <div class="px-6 py-3 text-xs text-muted-foreground border-b border-border/30 bg-muted/20">
-          Provider 模型映射缓存
+          {{ t('cacheMonitoring.providerMapping') }}
         </div>
         <!-- 桌面端表格 -->
         <Table class="hidden md:table">
           <TableHeader>
             <TableRow>
               <TableHead class="w-[15%]">
-                提供商
+                {{ t('cacheMonitoring.provider') }}
               </TableHead>
               <TableHead class="w-[25%]">
-                请求名称
+                {{ t('cacheMonitoring.requestName') }}
               </TableHead>
               <TableHead class="w-8 text-center" />
               <TableHead class="w-[25%]">
-                映射模型
+                {{ t('cacheMonitoring.mappedModel') }}
               </TableHead>
               <TableHead class="w-[10%] text-center">
-                剩余
+                {{ t('cacheMonitoring.remaining') }}
               </TableHead>
               <TableHead class="w-[10%] text-center">
-                次数
+                {{ t('cacheMonitoring.count') }}
               </TableHead>
               <TableHead class="w-[7%] text-right">
-                操作
+                {{ t('cacheMonitoring.actions') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -1180,7 +1195,7 @@ onBeforeUnmount(() => {
                     size="icon"
                     variant="ghost"
                     class="h-7 w-7 text-muted-foreground/70 hover:text-destructive"
-                    title="清除缓存"
+                              :title="t('cacheMonitoring.clear')"
                     @click="clearProviderModelMapping(mapping.provider_id, mapping.global_model_id, `${mapping.provider_name} - ${alias}`)"
                   >
                     <Trash2 class="h-3.5 w-3.5" />
@@ -1210,12 +1225,12 @@ onBeforeUnmount(() => {
                 </Badge>
                 <div class="flex items-center gap-2">
                   <span class="text-xs text-muted-foreground">{{ formatTTL(mapping.ttl) }}</span>
-                  <span class="text-xs">{{ mapping.hit_count || 0 }}次</span>
+                          <span class="text-xs">{{ t('cacheMonitoring.times', { count: mapping.hit_count || 0 }) }}</span>
                   <Button
                     size="icon"
                     variant="ghost"
                     class="h-6 w-6 text-muted-foreground/70 hover:text-destructive"
-                    title="清除缓存"
+                              :title="t('cacheMonitoring.clear')"
                     @click="clearProviderModelMapping(mapping.provider_id, mapping.global_model_id, `${mapping.provider_name} - ${alias}`)"
                   >
                     <Trash2 class="h-3 w-3" />
@@ -1237,7 +1252,7 @@ onBeforeUnmount(() => {
         v-else-if="modelMappingStats?.available && (!modelMappingStats.mappings || modelMappingStats.mappings.length === 0) && (!modelMappingStats.unmapped || modelMappingStats.unmapped.length === 0) && (!modelMappingStats.provider_model_mappings || modelMappingStats.provider_model_mappings.length === 0)"
         class="px-6 py-8 text-center text-sm text-muted-foreground"
       >
-        暂无模型解析缓存
+        {{ t('cacheMonitoring.noMapping') }}
       </div>
 
       <!-- Redis 未启用 -->
@@ -1245,7 +1260,7 @@ onBeforeUnmount(() => {
         v-else-if="modelMappingStats && !modelMappingStats.available"
         class="px-6 py-8 text-center text-sm text-muted-foreground"
       >
-        {{ modelMappingStats.message || 'Redis 未启用' }}
+        {{ modelMappingStats.message || t('cacheMonitoring.redisDisabled') }}
       </div>
 
       <!-- 加载中 -->
@@ -1253,7 +1268,7 @@ onBeforeUnmount(() => {
         v-else-if="modelMappingLoading"
         class="px-6 py-8 text-center text-sm text-muted-foreground"
       >
-        加载中...
+                      {{ t('cacheMonitoring.loading') }}
       </div>
     </Card>
 
@@ -1264,20 +1279,20 @@ onBeforeUnmount(() => {
           <div class="flex items-center gap-3 shrink-0">
             <HardDrive class="h-5 w-5 text-muted-foreground hidden sm:block" />
             <h3 class="text-sm sm:text-base font-semibold">
-              Redis 缓存管理
+              {{ t('cacheMonitoring.redisManagement') }}
             </h3>
             <Badge
               v-if="redisCacheData?.total_keys !== undefined"
               variant="secondary"
             >
-              {{ redisCacheData.total_keys }} 个键
+                {{ t('cacheMonitoring.keyCount', { count: redisCacheData.total_keys }) }}
             </Badge>
           </div>
           <div class="flex items-center gap-2">
             <RefreshButton
               :loading="redisCacheLoading"
               size="sm"
-              title="刷新缓存分类"
+              :title="t('cacheMonitoring.refreshCategories')"
               @click="fetchRedisCacheCategories"
             />
           </div>
@@ -1312,7 +1327,7 @@ onBeforeUnmount(() => {
               size="sm"
               class="shrink-0 ml-3 text-destructive hover:text-destructive hover:bg-destructive/10"
               :disabled="clearingCategory === cat.key"
-              title="清除该分类缓存"
+                    :title="t('cacheMonitoring.clearCategory')"
               @click="clearRedisCategory(cat.key, cat.name, cat.count)"
             >
               <Trash2 class="h-3.5 w-3.5" />
@@ -1326,7 +1341,7 @@ onBeforeUnmount(() => {
           class="px-4 sm:px-6 py-3 border-t border-border/40"
         >
           <p class="text-xs text-muted-foreground">
-            另有 {{ redisCategoriesEmpty.length }} 个分类为空：{{ redisCategoriesEmpty.map(c => c.name).join('、') }}
+              {{ t('cacheMonitoring.emptyCategories', { count: redisCategoriesEmpty.length, names: redisCategoriesEmpty.map(c => c.name).join(locale === 'en-US' ? ', ' : '、') }) }}
           </p>
         </div>
 
@@ -1337,7 +1352,7 @@ onBeforeUnmount(() => {
         >
           <HardDrive class="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
           <p class="text-sm text-muted-foreground">
-            所有缓存分类为空
+              {{ t('cacheMonitoring.allCategoriesEmpty') }}
           </p>
         </div>
       </div>
@@ -1347,7 +1362,7 @@ onBeforeUnmount(() => {
         v-else-if="redisCacheData && !redisCacheData.available"
         class="px-6 py-8 text-center text-sm text-muted-foreground"
       >
-        {{ redisCacheData.message || 'Redis 未启用' }}
+              {{ redisCacheData.message || t('cacheMonitoring.redisDisabled') }}
       </div>
 
       <!-- 加载中 -->
@@ -1355,7 +1370,7 @@ onBeforeUnmount(() => {
         v-else-if="redisCacheLoading"
         class="px-6 py-8 text-center text-sm text-muted-foreground"
       >
-        正在扫描 Redis 缓存...
+              {{ t('cacheMonitoring.scanningRedis') }}
       </div>
     </Card>
 
@@ -1366,20 +1381,20 @@ onBeforeUnmount(() => {
           <div class="flex items-center gap-3 shrink-0">
             <BarChart3 class="h-5 w-5 text-muted-foreground hidden sm:block" />
             <h3 class="text-sm sm:text-base font-semibold">
-              TTL 分析
+              {{ t('cacheMonitoring.ttlAnalysis') }}
             </h3>
-            <span class="text-xs text-muted-foreground hidden sm:inline">分析用户请求间隔，推荐合适的缓存 TTL</span>
+            <span class="text-xs text-muted-foreground hidden sm:inline">{{ t('cacheMonitoring.ttlAnalysisHint') }}</span>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <Select
               v-model="analysisHours"
             >
               <SelectTrigger class="w-24 sm:w-28 h-8">
-                <SelectValue placeholder="时间段" />
+                <SelectValue :placeholder="t('cacheMonitoring.period')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
-                  v-for="option in ANALYSIS_HOURS_OPTIONS"
+                  v-for="option in analysisHoursOptions"
                   :key="option.value"
                   :value="option.value"
                 >
@@ -1399,29 +1414,29 @@ onBeforeUnmount(() => {
         <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
           <div>
             <div class="text-xs text-muted-foreground">
-              请求命中率
+                  {{ t('cacheMonitoring.requestHitRate') }}
             </div>
             <div class="text-2xl font-bold text-success">
               {{ hitAnalysis.request_cache_hit_rate }}%
             </div>
             <div class="text-xs text-muted-foreground">
-              {{ formatNumber(hitAnalysis.requests_with_cache_hit) }} / {{ formatNumber(hitAnalysis.total_requests) }} 请求
+                {{ t('cacheMonitoring.requestCount', { hit: formatNumber(hitAnalysis.requests_with_cache_hit), total: formatNumber(hitAnalysis.total_requests) }) }}
             </div>
           </div>
           <div>
             <div class="text-xs text-muted-foreground">
-              Token 命中率
+                  {{ t('cacheMonitoring.tokenHitRate') }}
             </div>
             <div class="text-2xl font-bold">
               {{ hitAnalysis.token_cache_hit_rate }}%
             </div>
             <div class="text-xs text-muted-foreground">
-              {{ formatTokens(hitAnalysis.total_cache_read_tokens) }} tokens 命中
+                {{ t('cacheMonitoring.tokenHits', { count: formatTokens(hitAnalysis.total_cache_read_tokens) }) }}
             </div>
           </div>
           <div>
             <div class="text-xs text-muted-foreground">
-              缓存创建费用
+                  {{ t('cacheMonitoring.creationCost') }}
             </div>
             <div class="text-2xl font-bold">
               {{ formatCost(hitAnalysis.total_cache_creation_cost_usd) }}
@@ -1432,7 +1447,7 @@ onBeforeUnmount(() => {
           </div>
           <div>
             <div class="text-xs text-muted-foreground">
-              缓存读取费用
+                  {{ t('cacheMonitoring.readCost') }}
             </div>
             <div class="text-2xl font-bold">
               {{ formatCost(hitAnalysis.total_cache_read_cost_usd) }}
@@ -1443,7 +1458,7 @@ onBeforeUnmount(() => {
           </div>
           <div>
             <div class="text-xs text-muted-foreground">
-              预估节省
+                  {{ t('cacheMonitoring.estimatedSavings') }}
             </div>
             <div class="text-2xl font-bold text-success">
               {{ formatCost(hitAnalysis.estimated_savings_usd) }}
@@ -1458,18 +1473,18 @@ onBeforeUnmount(() => {
           <TableRow>
             <TableHead class="w-10" />
             <TableHead class="w-[20%]">
-              用户
+                  {{ t('cacheMonitoring.user') }}
             </TableHead>
             <TableHead class="w-[15%] text-center">
-              请求数
+                  {{ t('cacheMonitoring.requestTotal') }}
             </TableHead>
             <TableHead class="w-[15%] text-center">
-              使用频率
+                  {{ t('cacheMonitoring.frequency') }}
             </TableHead>
             <TableHead class="w-[15%] text-center">
-              推荐 TTL
+                  {{ t('cacheMonitoring.recommendedTtl') }}
             </TableHead>
-            <TableHead>说明</TableHead>
+                <TableHead>{{ t('cacheMonitoring.explanation') }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1494,7 +1509,7 @@ onBeforeUnmount(() => {
                 </button>
               </TableCell>
               <TableCell>
-                <span class="text-sm font-medium">{{ user.username || '未知用户' }}</span>
+                          <span class="text-sm font-medium">{{ user.username || t('cacheMonitoring.unknownUser') }}</span>
               </TableCell>
               <TableCell class="text-center">
                 <span class="text-sm font-medium">{{ user.request_count }}</span>
@@ -1504,12 +1519,12 @@ onBeforeUnmount(() => {
                   class="text-sm"
                   :class="getFrequencyClass(user.recommended_ttl_minutes)"
                 >
-                  {{ getFrequencyLabel(user.recommended_ttl_minutes) }}
+                  {{ frequencyLabel(user.recommended_ttl_minutes) }}
                 </span>
               </TableCell>
               <TableCell class="text-center">
                 <Badge :variant="getTTLBadgeVariant(user.recommended_ttl_minutes)">
-                  {{ user.recommended_ttl_minutes }} 分钟
+                        {{ t('cacheMonitoring.minutes', { count: user.recommended_ttl_minutes }) }}
                 </Badge>
               </TableCell>
               <TableCell>
@@ -1530,25 +1545,25 @@ onBeforeUnmount(() => {
                 <div class="px-6 py-4">
                   <div class="flex items-center justify-between mb-3">
                     <h4 class="text-sm font-medium">
-                      请求间隔时间线
+                              {{ t('cacheMonitoring.requestTimeline') }}
                     </h4>
                     <div class="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500" /> 0-5分钟</span>
-                      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500" /> 5-15分钟</span>
-                      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-500" /> 15-30分钟</span>
-                      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-500" /> 30-60分钟</span>
-                      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500" /> >60分钟</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500" /> {{ t('cacheMonitoring.range0to5') }}</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500" /> {{ t('cacheMonitoring.range5to15') }}</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-500" /> {{ t('cacheMonitoring.range15to30') }}</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-500" /> {{ t('cacheMonitoring.range30to60') }}</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500" /> {{ t('cacheMonitoring.rangeOver60') }}</span>
                       <span
                         v-if="userTimelineData"
                         class="ml-2"
-                      >共 {{ userTimelineData.total_points }} 个数据点</span>
+                          >{{ t('cacheMonitoring.dataPoints', { count: userTimelineData.total_points }) }}</span>
                     </div>
                   </div>
                   <div
                     v-if="userTimelineLoading"
                     class="h-64 flex items-center justify-center"
                   >
-                    <span class="text-sm text-muted-foreground">加载中...</span>
+                          <span class="text-sm text-muted-foreground">{{ t('cacheMonitoring.loading') }}</span>
                   </div>
                   <div
                     v-else-if="userTimelineData && userTimelineData.points.length > 0"
@@ -1560,7 +1575,7 @@ onBeforeUnmount(() => {
                     v-else
                     class="h-64 flex items-center justify-center"
                   >
-                    <span class="text-sm text-muted-foreground">暂无数据</span>
+                          <span class="text-sm text-muted-foreground">{{ t('cacheMonitoring.noData') }}</span>
                   </div>
                 </div>
               </TableCell>
@@ -1576,10 +1591,10 @@ onBeforeUnmount(() => {
       >
         <BarChart3 class="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
         <p class="text-sm text-muted-foreground">
-          未找到符合条件的用户数据
+                {{ t('cacheMonitoring.noUserData') }}
         </p>
         <p class="text-xs text-muted-foreground mt-1">
-          尝试增加分析天数或降低最小请求数阈值
+                {{ t('cacheMonitoring.adjustAnalysis') }}
         </p>
       </div>
 
@@ -1589,7 +1604,7 @@ onBeforeUnmount(() => {
         class="px-6 py-12 text-center"
       >
         <p class="text-sm text-muted-foreground">
-          正在分析用户请求数据...
+            {{ t('cacheMonitoring.analyzing') }}
         </p>
       </div>
     </Card>

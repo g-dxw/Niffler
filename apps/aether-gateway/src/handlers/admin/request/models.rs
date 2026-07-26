@@ -642,6 +642,18 @@ impl<'a> AdminAppState<'a> {
             .await
     }
 
+    pub(crate) async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<
+        Vec<aether_data_contracts::repository::global_models::StoredAdminProviderModel>,
+        GatewayError,
+    > {
+        self.app
+            .list_admin_provider_models_by_global_model_ids(global_model_ids)
+            .await
+    }
+
     pub(crate) async fn update_admin_global_model(
         &self,
         record: &aether_data_contracts::repository::global_models::UpdateAdminGlobalModelRecord,

@@ -4,7 +4,7 @@
     <div class="p-4 border-b border-border/60">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold flex items-center gap-2">
-          模型名称映射
+          {{ t('modelAliases.title') }}
         </h3>
         <Button
           variant="outline"
@@ -13,7 +13,7 @@
           @click="openAddDialog"
         >
           <Plus class="w-3.5 h-3.5 mr-1.5" />
-          添加映射
+          {{ t('modelAliases.add') }}
         </Button>
       </div>
     </div>
@@ -58,7 +58,7 @@
                 variant="outline"
                 class="text-xs"
               >
-                全部
+                {{ t('modelAliases.all') }}
               </Badge>
               <Badge
                 v-for="format in group.apiFormats"
@@ -78,7 +78,7 @@
             </div>
             <!-- 映射数量 -->
             <span class="text-xs text-muted-foreground shrink-0">
-              ({{ group.aliases.length }} 个映射)
+              ({{ t('modelAliases.mappingCount', { count: group.aliases.length }) }})
             </span>
           </div>
           <!-- 操作按钮 -->
@@ -90,7 +90,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="编辑映射组"
+              :title="t('modelAliases.editGroup')"
               @click="editGroup(group)"
             >
               <Edit class="w-3.5 h-3.5" />
@@ -99,7 +99,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8 hover:text-destructive"
-              title="删除映射组"
+              :title="t('modelAliases.deleteGroup')"
               @click="deleteGroup(group)"
             >
               <Trash2 class="w-3.5 h-3.5" />
@@ -133,7 +133,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-7 w-7 shrink-0"
-                title="测试映射"
+                :title="t('modelAliases.test')"
                 :disabled="testingMapping === `${getAliasGroupKey(group)}-${mapping.name}`"
                 @click="testMapping(group, mapping)"
               >
@@ -159,10 +159,10 @@
     >
       <Tag class="w-12 h-12 mx-auto mb-3 opacity-50" />
       <p class="text-sm">
-        暂无模型映射
+        {{ t('modelAliases.empty') }}
       </p>
       <p class="text-xs mt-1">
-        点击上方"添加映射"按钮为模型创建名称映射
+        {{ t('modelAliases.emptyHint') }}
       </p>
     </div>
   </Card>
@@ -181,10 +181,10 @@
   <!-- 删除确认对话框 -->
   <AlertDialog
     v-model="deleteConfirmOpen"
-    title="删除映射组"
+    :title="t('modelAliases.deleteGroup')"
     :description="deleteConfirmDescription"
-    confirm-text="删除"
-    cancel-text="取消"
+    :confirm-text="t('modelAliases.delete')"
+    :cancel-text="t('modelAliases.cancel')"
     type="danger"
     @confirm="confirmDelete"
     @cancel="deleteConfirmOpen = false"
@@ -193,6 +193,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Tag, Plus, Edit, Trash2, ChevronRight, Loader2, Play } from 'lucide-vue-next'
 import { Card, Button, Badge } from '@/components/ui'
 import AlertDialog from '@/components/common/AlertDialog.vue'
@@ -220,6 +221,7 @@ const emit = defineEmits<{
 }>()
 
 const { error: showError, success: showSuccess } = useToast()
+const { t } = useI18n()
 
 // 状态
 const loading = ref(false)
@@ -274,8 +276,8 @@ function getAliasGroupKey(group: AliasGroup): string {
 }
 
 function getEndpointScopeLabel(group: AliasGroup): string {
-  if (!group.endpointIds || group.endpointIds.length === 0) return '全部端点'
-  return `${group.endpointIds.length} 端点`
+  if (!group.endpointIds || group.endpointIds.length === 0) return t('modelAliases.allEndpoints')
+  return t('modelAliases.endpointCount', { count: group.endpointIds.length })
 }
 
 // 按"模型+作用域"分组的映射列表
@@ -326,7 +328,7 @@ async function loadModels() {
     loading.value = true
     models.value = await getProviderModels(props.provider.id)
   } catch (err: unknown) {
-    showError(parseApiError(err, '加载失败'), '错误')
+    showError(parseApiError(err, t('modelAliases.loadFailed')), t('modelAliases.error'))
   } finally {
     loading.value = false
   }
@@ -337,10 +339,10 @@ const deleteConfirmDescription = computed(() => {
   if (!deletingGroup.value) return ''
   const { model, aliases, apiFormats } = deletingGroup.value
   const modelName = model.global_model_display_name || model.provider_model_name
-  const scopeText = apiFormats.length === 0 ? '全部' : apiFormats.map(f => formatApiFormat(f)).join(', ')
+  const scopeText = apiFormats.length === 0 ? t('modelAliases.all') : apiFormats.map(f => formatApiFormat(f)).join(', ')
   const endpointScope = getEndpointScopeLabel(deletingGroup.value)
   const aliasNames = aliases.map(a => a.name).join(', ')
-  return `确定要删除模型「${modelName}」在作用域「${scopeText} / ${endpointScope}」下的 ${aliases.length} 个映射吗？\n\n映射名称：${aliasNames}`
+  return t('modelAliases.deleteConfirm', { model: modelName, scope: `${scopeText} / ${endpointScope}`, count: aliases.length, aliases: aliasNames })
 })
 
 // 切换映射组展开状态
@@ -398,13 +400,13 @@ async function confirmDelete() {
       provider_model_mappings: newAliases.length > 0 ? newAliases : null
     })
 
-    showSuccess('映射组已删除')
+    showSuccess(t('modelAliases.deleted'))
     deleteConfirmOpen.value = false
     deletingGroup.value = null
     await loadModels()
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '删除失败'), '错误')
+    showError(parseApiError(err, t('modelAliases.deleteFailed')), t('modelAliases.error'))
   }
 }
 
@@ -434,20 +436,20 @@ async function testMapping(group: AliasGroup, mapping: ProviderModelAlias) {
     )
 
     if (result.success) {
-      showSuccess(`映射 "${mapping.name}" 测试成功`)
+      showSuccess(t('modelAliases.testSuccess', { name: mapping.name }))
 
       // 如果有响应内容，可以显示更多信息
       if (result.data?.response?.choices?.[0]?.message?.content) {
         const content = result.data.response.choices[0].message.content
-        showSuccess(`测试成功，响应: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`)
+        showSuccess(t('modelAliases.testResponse', { content: `${content.substring(0, 100)}${content.length > 100 ? '...' : ''}` }))
       } else if (result.data?.content_preview) {
-        showSuccess(`流式测试成功，预览: ${result.data.content_preview}`)
+        showSuccess(t('modelAliases.streamPreview', { content: result.data.content_preview }))
       }
     } else {
-      showError(`映射测试失败: ${parseTestModelError(result)}`)
+      showError(t('modelAliases.testFailedMessage', { error: parseTestModelError(result) }))
     }
   } catch (err: unknown) {
-    showError(`映射测试失败: ${parseApiError(err, '测试请求失败')}`)
+    showError(t('modelAliases.testFailedMessage', { error: parseApiError(err, t('modelAliases.testRequestFailed')) }))
   } finally {
     testingMapping.value = null
   }

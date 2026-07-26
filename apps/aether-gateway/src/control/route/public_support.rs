@@ -173,6 +173,8 @@ pub(super) fn classify_public_support_route(
                 | "/api/public/search/models"
                 | "/api/public/stats"
                 | "/api/public/global-models"
+                | "/api/public/model-groups"
+                | "/api/public/model-groups/catalog"
                 | "/api/public/health/api-formats"
         )
     {
@@ -183,6 +185,8 @@ pub(super) fn classify_public_support_route(
             "/api/public/search/models" => "search_models",
             "/api/public/stats" => "stats",
             "/api/public/global-models" => "global_models",
+            "/api/public/model-groups" => "model_groups",
+            "/api/public/model-groups/catalog" => "model_groups_catalog",
             "/api/public/health/api-formats" => "health_api_formats",
             _ => "site_info",
         };

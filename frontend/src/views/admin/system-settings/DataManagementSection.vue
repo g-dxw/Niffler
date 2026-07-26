@@ -1,14 +1,14 @@
 <template>
   <CardSection
-    title="数据管理"
-    description="导出、导入或清空系统数据"
+    :title="t('dataManagement.title')"
+    :description="t('dataManagement.description')"
   >
     <div class="space-y-6">
       <div>
         <div class="flex items-center gap-2 mb-3">
           <Database class="w-4 h-4 text-muted-foreground" />
           <h4 class="text-sm font-medium">
-            导出 / 导入
+            {{ t('dataManagement.transfer') }}
           </h4>
         </div>
 
@@ -37,7 +37,7 @@
                 @click="$emit('export', item.key)"
               >
                 <Download class="w-3.5 h-3.5 mr-1.5" />
-                {{ item.exportLoading ? '导出中...' : item.exportLabel }}
+                {{ item.exportLoading ? t('dataManagement.exporting') : item.exportLabel }}
               </Button>
               <Button
                 variant="outline"
@@ -47,7 +47,7 @@
                 @click="triggerDataFileSelect(item.key)"
               >
                 <Upload class="w-3.5 h-3.5 mr-1.5" />
-                {{ item.importLoading ? '导入中...' : item.importLabel }}
+                {{ item.importLoading ? t('dataManagement.importing') : item.importLabel }}
               </Button>
             </div>
           </div>
@@ -82,7 +82,7 @@
         <div class="flex items-center gap-2 mb-3">
           <Trash2 class="w-4 h-4 text-muted-foreground" />
           <h4 class="text-sm font-medium">
-            清空数据
+            {{ t('dataManagement.clear') }}
           </h4>
         </div>
 
@@ -110,7 +110,7 @@
               @click="handlePurge(item)"
             >
               <Trash2 class="w-3.5 h-3.5 mr-1.5" />
-              {{ loadingKey === item.key ? '清空中...' : item.buttonText }}
+              {{ loadingKey === item.key ? t('dataManagement.clearing') : item.buttonText }}
             </Button>
           </div>
         </div>
@@ -121,6 +121,9 @@
 
 <script setup lang="ts">
 import { computed, ref, markRaw, type Component } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import {
   Download,
   Upload,
@@ -189,92 +192,92 @@ const aggregateFileInput = ref<HTMLInputElement | null>(null)
 const dataItems = computed<DataItem[]>(() => [
   {
     key: 'config',
-    title: '配置数据',
-    description: '提供商、端点、API Key、模型与系统配置',
-    exportLabel: '导出配置',
-    importLabel: '导入配置',
+    title: t('dataManagement.items.configTitle'),
+    description: t('dataManagement.items.configDescription'),
+    exportLabel: t('dataManagement.items.configExport'),
+    importLabel: t('dataManagement.items.configImport'),
     icon: markRaw(Settings),
     exportLoading: props.configExportLoading,
     importLoading: props.configImportLoading,
   },
   {
     key: 'users',
-    title: '用户数据',
-    description: '普通用户、用户组、API Keys 与钱包快照（不含管理员）',
-    exportLabel: '导出用户',
-    importLabel: '导入用户',
+    title: t('dataManagement.items.usersTitle'),
+    description: t('dataManagement.items.usersDescription'),
+    exportLabel: t('dataManagement.items.usersExport'),
+    importLabel: t('dataManagement.items.usersImport'),
     icon: markRaw(Users),
     exportLoading: props.usersExportLoading,
     importLoading: props.usersImportLoading,
   },
   {
     key: 'aggregate',
-    title: '聚合数据',
-    description: '配置数据和用户数据的一体化备份文件',
-    exportLabel: '导出聚合',
-    importLabel: '导入聚合',
+    title: t('dataManagement.items.aggregateTitle'),
+    description: t('dataManagement.items.aggregateDescription'),
+    exportLabel: t('dataManagement.items.aggregateExport'),
+    importLabel: t('dataManagement.items.aggregateImport'),
     icon: markRaw(Layers3),
     exportLoading: props.aggregateExportLoading,
     importLoading: props.aggregateImportLoading,
   },
 ])
 
-const purgeItems: PurgeItem[] = [
+const purgeItems = computed<PurgeItem[]>(() => [
   {
     key: 'config',
-    title: '清空配置',
-    description: '后台删除所有提供商、端点、API Key 和模型配置',
-    buttonText: '清空配置',
+    title: t('dataManagement.purge.configTitle'),
+    description: t('dataManagement.purge.configDescription'),
+    buttonText: t('dataManagement.purge.configButton'),
     icon: markRaw(Settings),
-    confirmMessage: '确定要后台清空所有提供商配置吗？这将删除所有提供商、端点、API Key 和模型配置，操作不可逆。',
+    confirmMessage: t('dataManagement.purge.configConfirm'),
     action: () => adminApi.purgeConfig(),
   },
   {
     key: 'users',
-    title: '清空用户',
-    description: '后台删除所有非管理员用户及其 API Keys',
-    buttonText: '清空用户',
+    title: t('dataManagement.purge.usersTitle'),
+    description: t('dataManagement.purge.usersDescription'),
+    buttonText: t('dataManagement.purge.usersButton'),
     icon: markRaw(Users),
-    confirmMessage: '确定要后台清空所有非管理员用户吗？管理员账户将被保留，操作不可逆。',
+    confirmMessage: t('dataManagement.purge.usersConfirm'),
     action: () => adminApi.purgeUsers(),
   },
   {
     key: 'usage',
-    title: '清空使用记录',
-    description: '后台清空全部使用记录和请求候选记录',
-    buttonText: '清空记录',
+    title: t('dataManagement.purge.usageTitle'),
+    description: t('dataManagement.purge.usageDescription'),
+    buttonText: t('dataManagement.purge.usageButton'),
     icon: markRaw(BarChart3),
-    confirmMessage: '确定要后台清空全部使用记录吗？所有请求统计数据将被永久删除，操作不可逆。',
+    confirmMessage: t('dataManagement.purge.usageConfirm'),
     action: () => adminApi.purgeUsage(),
   },
   {
     key: 'audit-logs',
-    title: '清空审计日志',
-    description: '后台删除全部审计日志记录',
-    buttonText: '清空日志',
+    title: t('dataManagement.purge.auditTitle'),
+    description: t('dataManagement.purge.auditDescription'),
+    buttonText: t('dataManagement.purge.auditButton'),
     icon: markRaw(Shield),
-    confirmMessage: '确定要后台清空全部审计日志吗？所有安全事件记录将被永久删除，操作不可逆。',
+    confirmMessage: t('dataManagement.purge.auditConfirm'),
     action: () => adminApi.purgeAuditLogs(),
   },
   {
     key: 'request-bodies',
-    title: '清空请求体',
-    description: '后台分批清空所有请求/响应体数据，保留统计信息',
-    buttonText: '清空请求体',
+    title: t('dataManagement.purge.bodiesTitle'),
+    description: t('dataManagement.purge.bodiesDescription'),
+    buttonText: t('dataManagement.purge.bodiesButton'),
     icon: markRaw(FileText),
-    confirmMessage: '确定要后台清空全部请求体吗？请求/响应内容将被分批清除，但 token 和成本等统计信息会保留，操作不可逆。',
+    confirmMessage: t('dataManagement.purge.bodiesConfirm'),
     action: () => adminApi.purgeRequestBodiesAsync(),
   },
   {
     key: 'stats',
-    title: '清空统计聚合',
-    description: '后台删除统计聚合数据并重建，保留原始使用记录',
-    buttonText: '清空统计聚合',
+    title: t('dataManagement.purge.statsTitle'),
+    description: t('dataManagement.purge.statsDescription'),
+    buttonText: t('dataManagement.purge.statsButton'),
     icon: markRaw(PieChart),
-    confirmMessage: '确定要后台清空全部统计聚合数据吗？原始使用记录会保留，仪表盘和累计统计会从原始记录重新构建。',
+    confirmMessage: t('dataManagement.purge.statsConfirm'),
     action: () => adminApi.purgeStats(),
   },
-]
+])
 
 function triggerDataFileSelect(key: DataItemKey) {
   if (key === 'config') {
@@ -293,9 +296,9 @@ async function handlePurge(item: PurgeItem) {
   loadingKey.value = item.key
   try {
     const result = await item.action()
-    success(result.message || '操作成功')
+    success(result.message || t('common.success'))
   } catch (e) {
-    error(parseApiError(e, '清空失败'))
+    error(parseApiError(e, t('dataManagement.clearFailed')))
   } finally {
     loadingKey.value = null
   }

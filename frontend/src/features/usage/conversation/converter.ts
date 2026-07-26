@@ -24,7 +24,7 @@ export function contentBlockToRenderBlock(block: ContentBlock): RenderBlock | nu
 
     case 'thinking':
       return createCollapsibleBlock(
-        `思考过程 (${block.thinking.length} 字符)`,
+      conversationText('thinkingProcess', { count: block.thinking.length }),
         [createCodeBlock(block.thinking)],
         { defaultOpen: false }
       )
@@ -71,3 +71,4 @@ export function contentBlocksToRenderBlocks(blocks: ContentBlock[]): RenderBlock
     .map(contentBlockToRenderBlock)
     .filter((b): b is RenderBlock => b !== null)
 }
+import { conversationText } from './i18n'

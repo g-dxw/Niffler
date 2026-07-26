@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="调度策略"
-      description="管理调度分组、模型范围、默认调度模式和规则配置"
+      :title="t('routingProfiles.title')"
+      :description="t('routingProfiles.description')"
     >
       <template #actions>
         <Button
@@ -14,11 +14,11 @@
             class="mr-2 h-4 w-4"
             :class="{ 'animate-spin': loading || loadingGlobalModels }"
           />
-          刷新
+          {{ t('routingProfiles.refresh') }}
         </Button>
         <Button @click="startCreate">
           <Plus class="mr-2 h-4 w-4" />
-          新建策略
+          {{ t('routingProfiles.create') }}
         </Button>
       </template>
     </PageHeader>
@@ -29,10 +29,10 @@
           <div class="flex items-center justify-between gap-3">
             <div>
               <h2 class="text-sm font-semibold">
-                策略分组
+                {{ t('routingProfiles.groups') }}
               </h2>
               <p class="mt-1 text-xs text-muted-foreground">
-                共 {{ groups.length }} 个
+                {{ t('routingProfiles.total') }} {{ groups.length }}
               </p>
             </div>
             <SlidersHorizontal class="h-4 w-4 text-muted-foreground" />
@@ -44,17 +44,17 @@
             v-if="loading"
             class="py-10 text-center text-sm text-muted-foreground"
           >
-            正在加载调度策略
+            {{ t('routingProfiles.loading') }}
           </div>
           <div
             v-else-if="groups.length === 0"
             class="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center"
           >
             <p class="text-sm font-medium">
-              暂无调度策略
+              {{ t('routingProfiles.empty') }}
             </p>
             <p class="mt-1 text-xs text-muted-foreground">
-              可以先创建一个默认分组
+              {{ t('routingProfiles.emptyHint') }}
             </p>
           </div>
           <button
@@ -74,20 +74,20 @@
                   {{ group.name }}
                 </p>
                 <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                  {{ group.description || '未填写描述' }}
+                  {{ group.description || t('routingProfiles.unconfigured') }}
                 </p>
               </div>
               <Badge
                 :variant="group.enabled ? 'default' : 'secondary'"
                 class="shrink-0"
               >
-                {{ group.enabled ? '启用' : '停用' }}
+                {{ group.enabled ? t('routingProfiles.enabled') : t('routingProfiles.disabled') }}
               </Badge>
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>v{{ group.version }}</span>
-              <span v-if="group.is_system_default">系统默认</span>
-              <span>{{ group.config_json.allowed_models.length || '全部' }} 模型范围</span>
+              <span v-if="group.is_system_default">{{ t('routingProfiles.systemDefault') }}</span>
+              <span>{{ group.config_json.allowed_models.length || t('routingProfiles.allModels') }} {{ t('routingProfiles.modelScope') }}</span>
             </div>
           </button>
         </div>
@@ -102,7 +102,7 @@
             <div>
               <div class="flex flex-wrap items-center gap-2">
                 <h2 class="text-base font-semibold">
-                  {{ isCreating ? '新建调度策略' : draft.name || '未命名策略' }}
+                  {{ isCreating ? t('routingProfiles.create') : draft.name || t('routingProfiles.unnamed') }}
                 </h2>
                 <Badge
                   v-if="!isCreating"
@@ -114,11 +114,11 @@
                   v-if="draft.is_system_default"
                   variant="secondary"
                 >
-                  系统默认
+                  {{ t('routingProfiles.systemDefault') }}
                 </Badge>
               </div>
               <p class="mt-1 text-xs text-muted-foreground">
-                更新时间 {{ formatUnixSeconds(draft.updated_at) }}
+                {{ t('routingProfiles.updated') }} {{ formatUnixSeconds(draft.updated_at) }}
               </p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -129,7 +129,7 @@
                 @click="draft.is_system_default = !draft.is_system_default"
               >
                 <Star class="mr-2 h-4 w-4" />
-                {{ draft.is_system_default ? '系统默认' : '设为系统默认' }}
+                {{ draft.is_system_default ? t('routingProfiles.systemDefault') : t('routingProfiles.setDefault') }}
               </Button>
               <Button
                 variant="outline"
@@ -141,7 +141,7 @@
                   class="mr-2 h-4 w-4"
                   :class="{ 'animate-pulse': saving }"
                 />
-                保存
+                {{ t('routingProfiles.save') }}
               </Button>
               <Button
                 v-if="!isCreating"
@@ -151,7 +151,7 @@
                 @click="deleteDraft"
               >
                 <Trash2 class="mr-2 h-4 w-4" />
-                删除
+                {{ t('routingProfiles.delete') }}
               </Button>
             </div>
           </div>
@@ -160,21 +160,21 @@
         <div class="space-y-6 p-5">
           <div class="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)_160px]">
             <label class="space-y-1 text-sm">
-              <span class="text-muted-foreground">名称</span>
+              <span class="text-muted-foreground">{{ t('routingProfiles.name') }}</span>
               <Input
                 v-model="draft.name"
-                placeholder="新调度策略"
+                :placeholder="t('routingProfiles.unnamed')"
               />
             </label>
             <label class="space-y-1 text-sm">
-              <span class="text-muted-foreground">描述</span>
+              <span class="text-muted-foreground">{{ t('routingProfiles.descriptionLabel') }}</span>
               <Input
                 v-model="draft.description"
-                placeholder="例如：默认策略 / 高推理策略 / 号池优先策略"
+                :placeholder="t('routingProfiles.description')"
               />
             </label>
             <div class="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm">
-              <span>启用策略</span>
+              <span>{{ t('routingProfiles.enabledLabel') }}</span>
               <Switch v-model="draft.enabled" />
             </div>
           </div>
@@ -182,10 +182,10 @@
           <section class="space-y-3 rounded-lg border border-border/60 p-4">
             <div>
               <h3 class="text-sm font-medium">
-                排序作用范围
+                {{ t('routingProfiles.sortScope') }}
               </h3>
               <p class="mt-1 text-xs text-muted-foreground">
-                统一排序对策略内全部模型生效；按模型排序需先挑选模型，再逐个配置排序与调度方式。
+                {{ t('routingProfiles.sortHint') }}
               </p>
             </div>
             <div class="grid grid-cols-2 gap-1 rounded-lg bg-muted/40 p-1 sm:max-w-[320px]">
@@ -197,7 +197,7 @@
                   : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'"
                 @click="setSortingScope('unified')"
               >
-                统一排序
+                {{ t('routingProfiles.unifiedSort') }}
               </button>
               <button
                 type="button"
@@ -207,7 +207,7 @@
                   : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'"
                 @click="setSortingScope('per_model')"
               >
-                按模型排序
+                {{ t('routingProfiles.perModelSort') }}
               </button>
             </div>
           </section>
@@ -219,15 +219,15 @@
             <div class="space-y-3 rounded-lg border border-border/60 p-4">
               <div>
                 <h3 class="text-sm font-medium">
-                  优先级模式与调度策略
+                  {{ t('routingProfiles.priorityRoutingTitle') }}
                 </h3>
                 <p class="mt-1 text-xs text-muted-foreground">
-                  统一作用于策略范围内的全部模型。
+                  {{ t('routingProfiles.unifiedScopeHint') }}
                 </p>
               </div>
               <div class="grid gap-3 lg:grid-cols-2">
                 <div class="space-y-1 text-sm">
-                  <span class="text-muted-foreground">优先级模式</span>
+                  <span class="text-muted-foreground">{{ t('routingProfiles.priority') }}</span>
                   <div class="grid grid-cols-2 gap-1 rounded-lg bg-muted/40 p-1">
                     <button
                       type="button"
@@ -255,7 +255,7 @@
                 </div>
 
                 <div class="space-y-1 text-sm">
-                  <span class="text-muted-foreground">调度策略</span>
+                  <span class="text-muted-foreground">{{ t('routingProfiles.routing') }}</span>
                   <div class="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1">
                     <button
                       v-for="mode in schedulingModes"
@@ -279,7 +279,7 @@
               :model="DEFAULT_ROUTING_POLICY_MODEL"
               :show-priority-mode="false"
               :show-scheduling-mode="false"
-              subtitle="统一作用于当前策略范围内的所有模型"
+              :subtitle="t('routingProfiles.unifiedScopeHint')"
               @update:config="updateDraftConfig"
             />
           </section>
@@ -291,14 +291,14 @@
             <div class="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
               <div class="flex flex-col gap-3 rounded-lg border border-border/60 p-3">
                 <div class="flex items-center justify-between gap-3">
-                  <span class="text-sm font-medium">全局模型</span>
+                  <span class="text-sm font-medium">{{ t('routingProfiles.globalModels') }}</span>
                   <Badge variant="outline">
                     {{ filteredGlobalModels.length }}
                   </Badge>
                 </div>
                 <Input
                   v-model="globalModelSearch"
-                  placeholder="搜索模型"
+                :placeholder="t('routingProfiles.searchModel')"
                 />
                 <div class="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1">
                   <button
@@ -318,7 +318,7 @@
                   v-if="loadingGlobalModels"
                   class="rounded-md border border-dashed border-border/70 px-3 py-4 text-center text-xs text-muted-foreground"
                 >
-                  正在加载全局模型
+                  {{ t('routingProfiles.loadingModels') }}
                 </div>
                 <div
                   v-else-if="globalModelsError"
@@ -330,13 +330,13 @@
                   v-else-if="globalModels.length === 0"
                   class="rounded-md border border-dashed border-border/70 px-3 py-4 text-center text-xs text-muted-foreground"
                 >
-                  暂无可选择的全局模型
+                  {{ t('routingProfiles.noModels') }}
                 </div>
                 <div
                   v-else-if="filteredGlobalModels.length === 0"
                   class="rounded-md border border-dashed border-border/70 px-3 py-4 text-center text-xs text-muted-foreground"
                 >
-                  未匹配到模型
+                  {{ t('routingProfiles.noMatch') }}
                 </div>
                 <div
                   v-else
@@ -357,7 +357,7 @@
                       :class="hasModelPolicy(model.name)
                         ? 'bg-primary'
                         : 'bg-muted-foreground/20'"
-                      :title="hasModelPolicy(model.name) ? '已配置' : '未配置'"
+                      :title="hasModelPolicy(model.name) ? t('routingProfiles.configured') : t('routingProfiles.unconfigured')"
                     />
                     <span class="min-w-0 flex-1">
                       <span class="block truncate font-medium">{{ model.display_name || model.name }}</span>
@@ -371,7 +371,7 @@
                 <template v-if="activePerModelPolicy">
                   <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div class="min-w-0 space-y-1 text-sm">
-                      <span class="text-muted-foreground">当前模型</span>
+                      <span class="text-muted-foreground">{{ t('routingProfiles.currentModel') }}</span>
                       <div class="truncate text-sm font-medium">
                         {{ globalModelLabel(activePerModelPolicy.model) }}
                       </div>
@@ -389,7 +389,7 @@
                             :disabled="copySourceCandidates.length === 0"
                           >
                             <Copy class="mr-2 h-4 w-4" />
-                            加载
+                            {{ t('routingProfiles.loadConfig') }}
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
@@ -418,7 +418,7 @@
                         <Save
                           class="mr-2 h-4 w-4"
                         />
-                        保存到草稿
+                        {{ t('routingProfiles.saveDraftModel') }}
                       </Button>
                       <Button
                         v-if="hasModelPolicy(activePerModelPolicy.model)"
@@ -427,11 +427,11 @@
                         size="sm"
                         :class="canRemoveCurrentModel ? 'shadow-sm' : 'text-muted-foreground'"
                         :disabled="!canRemoveCurrentModel"
-                        :title="canRemoveCurrentModel ? '移除当前模型排序' : '当前有未保存改动，不能移除'"
+                        :title="canRemoveCurrentModel ? t('routingProfiles.removeCurrentTitle') : t('routingProfiles.removeUnsavedTitle')"
                         @click="removePerModelPolicy(activePerModelPolicy.model)"
                       >
                         <Trash2 class="mr-2 h-4 w-4" />
-                        移除
+                        {{ t('routingProfiles.remove') }}
                       </Button>
                     </div>
                   </div>
@@ -439,15 +439,15 @@
                   <div class="mb-4 space-y-3 rounded-lg border border-border/60 p-4">
                     <div>
                       <h3 class="text-sm font-medium">
-                        优先级模式与调度策略
+                        {{ t('routingProfiles.priorityRoutingTitle') }}
                       </h3>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        仅作用于当前选中的模型。
+                        {{ t('routingProfiles.currentModelScopeHint') }}
                       </p>
                     </div>
                     <div class="grid gap-3 lg:grid-cols-2">
                       <div class="space-y-1 text-sm">
-                        <span class="text-muted-foreground">优先级模式</span>
+                        <span class="text-muted-foreground">{{ t('routingProfiles.priority') }}</span>
                         <div class="grid grid-cols-2 gap-1 rounded-lg bg-muted/40 p-1">
                           <button
                             type="button"
@@ -475,7 +475,7 @@
                       </div>
 
                       <div class="space-y-1 text-sm">
-                        <span class="text-muted-foreground">调度策略</span>
+                        <span class="text-muted-foreground">{{ t('routingProfiles.routing') }}</span>
                         <div class="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1">
                           <button
                             v-for="mode in schedulingModes"
@@ -501,7 +501,7 @@
                     :scheduling-mode="modelSchedulingMode(activePerModelName)"
                     :show-priority-mode="false"
                     :show-scheduling-mode="false"
-                    :subtitle="`仅作用于 ${activePerModelName}`"
+                    :subtitle="t('routingProfiles.modelScopeHint', { model: activePerModelName })"
                     @update:config="updateEditingConfig"
                     @update:priority-mode="mode => updateModelPriorityMode(activePerModelName, mode)"
                     @update:scheduling-mode="mode => updateModelSchedulingMode(activePerModelName, mode)"
@@ -511,7 +511,7 @@
                   v-else
                   class="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground"
                 >
-                  在左侧添加模型后即可配置
+                  {{ t('routingProfiles.addModelHint') }}
                 </div>
               </div>
             </div>
@@ -526,7 +526,7 @@
         <div>
           <SlidersHorizontal class="mx-auto h-8 w-8 text-muted-foreground" />
           <p class="mt-3 text-sm font-medium">
-            请选择或新建调度策略
+            {{ t('routingProfiles.choosePolicy') }}
           </p>
         </div>
       </Card>
@@ -535,9 +535,9 @@
     <AlertDialog
       v-model="switchModelDialogOpen"
       type="warning"
-      title="切换模型"
-      description="当前模型有未保存的改动，切换将丢弃这些改动，是否继续？"
-      confirm-text="继续"
+      :title="t('routingProfiles.switchModel')"
+      :description="t('routingProfiles.switchModelDescription')"
+      :confirm-text="t('routingProfiles.continue')"
       @confirm="confirmSwitchModel"
       @cancel="cancelSwitchModel"
     />
@@ -545,9 +545,9 @@
     <AlertDialog
       v-model="deleteDialogOpen"
       type="destructive"
-      title="删除调度策略"
-      :description="`确认删除调度策略「${draft?.name ?? ''}」？此操作无法撤销。`"
-      confirm-text="删除"
+      :title="t('routingProfiles.deleteTitle')"
+      :description="t('routingProfiles.deleteDescription', { name: draft?.name ?? '' })"
+      :confirm-text="t('routingProfiles.delete')"
       :loading="deleting"
       @confirm="confirmDeleteDraft"
     />
@@ -556,6 +556,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t, locale } = useI18n()
 import { Copy, Key, Layers, Plus, RefreshCw, Save, SlidersHorizontal, Star, Trash2 } from 'lucide-vue-next'
 
 import { PageContainer, PageHeader } from '@/components/layout'
@@ -609,17 +612,17 @@ type ModelFilter = 'all' | 'configured' | 'unconfigured'
 
 const { success, error: showError } = useToast()
 
-const schedulingModes: Array<{ value: RoutingSchedulingMode; label: string }> = [
-  { value: 'cache_affinity', label: '缓存亲和' },
-  { value: 'load_balance', label: '负载均衡' },
-  { value: 'fixed_order', label: '固定顺序' },
-]
+const schedulingModes = computed<Array<{ value: RoutingSchedulingMode; label: string }>>(() => [
+  { value: 'cache_affinity', label: t('routingProfiles.cacheAffinity') },
+  { value: 'load_balance', label: t('routingProfiles.loadBalance') },
+  { value: 'fixed_order', label: t('routingProfiles.fixedOrder') },
+])
 
-const modelFilterOptions: Array<{ value: ModelFilter; label: string }> = [
-  { value: 'all', label: '全部' },
-  { value: 'configured', label: '已配置' },
-  { value: 'unconfigured', label: '未配置' },
-]
+const modelFilterOptions = computed<Array<{ value: ModelFilter; label: string }>>(() => [
+  { value: 'all', label: t('routingProfiles.all') },
+  { value: 'configured', label: t('routingProfiles.configured') },
+  { value: 'unconfigured', label: t('routingProfiles.unconfigured') },
+])
 
 const groups = ref<RoutingGroupRecord[]>([])
 const selectedGroupId = ref<string | null>(null)
@@ -735,7 +738,7 @@ function startCreate(): void {
   isCreating.value = true
   selectedGroupId.value = null
   draft.value = {
-    name: '新调度策略',
+    name: t('routingProfiles.newName'),
     description: '',
     enabled: true,
     is_system_default: groups.value.length === 0,
@@ -865,7 +868,7 @@ function updateFirstStepSchedulingMode(mode: RoutingSchedulingMode): void {
 function removePerModelPolicy(model: string): void {
   if (!draft.value) return
   if (perModelEditingActive.value && (editingDirty.value || draftDirty.value)) {
-    showError('请先保存当前改动后再移除模型')
+    showError(t('routingProfiles.saveBeforeRemove'))
     return
   }
   let next = removeModelPolicy(draft.value.config_json, model)
@@ -938,7 +941,7 @@ function copyModelConfig(sourceModel: string): void {
     next = { ...next, allowed_models: [...next.allowed_models, target] }
   }
   updateEditingConfig(next)
-  success(`已加载 ${globalModelLabel(sourceModel)} 的配置，点击保存生效`)
+  success(t('routingProfiles.configLoaded', { model: globalModelLabel(sourceModel) }))
 }
 
 function syncSelectedPerModelPolicy(): void {
@@ -1031,7 +1034,7 @@ async function fetchGroups(): Promise<void> {
       startCreate()
     }
   } catch (err) {
-    showError(parseApiError(err, '加载调度策略失败'))
+    showError(parseApiError(err, t('routingProfiles.loadFailed')))
     log.error('加载调度策略失败:', err)
   } finally {
     loading.value = false
@@ -1049,7 +1052,7 @@ async function loadGlobalModels(options: { cacheTtlMs?: number } = {}): Promise<
     globalModels.value = response.models ?? []
   } catch (err) {
     globalModels.value = []
-    globalModelsError.value = parseApiError(err, '加载全局模型失败')
+    globalModelsError.value = parseApiError(err, t('routingProfiles.loadModelsFailed'))
     log.error('加载全局模型失败:', err)
   } finally {
     loadingGlobalModels.value = false
@@ -1060,12 +1063,12 @@ async function saveDraft(): Promise<void> {
   if (!draft.value) return
   const name = draft.value.name.trim()
   if (!name) {
-    showError('策略名称不能为空')
+    showError(t('routingProfiles.nameRequired'))
     return
   }
   const config = cloneConfig(draft.value.config_json)
   if (sortingScope.value === 'per_model' && perModelPolicies.value.length === 0) {
-    showError('按模型排序时至少选择一个模型')
+    showError(t('routingProfiles.modelRequired'))
     return
   }
 
@@ -1083,9 +1086,9 @@ async function saveDraft(): Promise<void> {
       : await updateRoutingGroup(draft.value.id, payload)
     isCreating.value = false
     replaceGroup(saved)
-    success('调度策略已保存')
+    success(t('routingProfiles.saved'))
   } catch (err) {
-    showError(parseApiError(err, '保存调度策略失败'))
+    showError(parseApiError(err, t('routingProfiles.saveFailed')))
     log.error('保存调度策略失败:', err)
   } finally {
     saving.value = false
@@ -1096,7 +1099,7 @@ function saveCurrentModel(): void {
   if (!draft.value || !editingConfig.value) return
   const model = selectedPerModelName.value
   if (!model) {
-    showError('请先选择模型')
+    showError(t('routingProfiles.selectModel'))
     return
   }
   let next = editingConfig.value
@@ -1108,7 +1111,7 @@ function saveCurrentModel(): void {
   }
   updateDraftConfig(next)
   resetEditingConfig()
-  success('当前模型配置已保存到草稿，点击外层保存后生效')
+  success(t('routingProfiles.modelDraftSaved'))
 }
 
 function deleteDraft(): void {
@@ -1131,10 +1134,10 @@ async function confirmDeleteDraft(): Promise<void> {
     } else {
       startCreate()
     }
-    success('调度策略已删除')
+    success(t('routingProfiles.deleted'))
     deleteDialogOpen.value = false
   } catch (err) {
-    showError(parseApiError(err, '删除调度策略失败'))
+    showError(parseApiError(err, t('routingProfiles.deleteFailed')))
     log.error('删除调度策略失败:', err)
   } finally {
     deleting.value = false
@@ -1143,7 +1146,7 @@ async function confirmDeleteDraft(): Promise<void> {
 
 function formatUnixSeconds(value?: number | null): string {
   if (!value) return '-'
-  return new Date(value * 1000).toLocaleString('zh-CN')
+  return new Date(value * 1000).toLocaleString(locale.value)
 }
 
 onMounted(() => {

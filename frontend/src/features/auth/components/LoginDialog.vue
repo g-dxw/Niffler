@@ -7,9 +7,9 @@
     <div class="px-6 py-6 sm:px-8 sm:py-8">
       <div class="mb-7 flex flex-col items-center text-center">
         <img
-          src="/aether_adaptive.svg"
+          src="/niffler-logo.svg"
           :alt="siteName"
-          class="mb-4 h-14 w-14"
+          class="mb-4 h-14 w-14 dark:invert"
         >
         <h2 class="text-2xl font-semibold text-foreground">
           {{ dialogTitle }}
@@ -37,7 +37,7 @@
           class="flex items-center gap-3"
         >
           <div class="h-px flex-1 bg-border" />
-          <span class="text-xs text-muted-foreground">账号密码</span>
+          <span class="text-xs text-muted-foreground">{{ t('authCommon.accountPassword') }}</span>
           <div class="h-px flex-1 bg-border" />
         </div>
 
@@ -72,7 +72,7 @@
               type="text"
               name="username"
               required
-              placeholder="用户名或邮箱"
+              :placeholder="t('loginDialog.usernamePlaceholder')"
               autocomplete="username"
               autocapitalize="none"
               spellcheck="false"
@@ -86,7 +86,7 @@
                 for="password"
                 class="text-sm"
               >
-                密码
+                {{ t('loginDialog.password') }}
               </Label>
               <button
                 v-if="showPasswordResetLink"
@@ -96,7 +96,7 @@
                 :data-state="authStore.loading ? 'disabled' : 'idle'"
                 @click="openPasswordResetPanel"
               >
-                忘记密码？
+                {{ t('loginDialog.forgotPassword') }}
               </button>
             </div>
             <Input
@@ -105,7 +105,7 @@
               type="password"
               name="password"
               required
-              placeholder="输入密码"
+              :placeholder="t('loginDialog.passwordPlaceholder')"
               autocomplete="current-password"
               :disable-autofill="false"
             />
@@ -116,7 +116,7 @@
             :disabled="authStore.loading"
             class="h-12 w-full"
           >
-            {{ authStore.loading ? '登录中...' : '登录' }}
+            {{ authStore.loading ? t('loginDialog.signingIn') : t('loginDialog.signIn') }}
           </Button>
         </form>
 
@@ -156,6 +156,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Dialog } from '@/components/ui'
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
@@ -190,6 +191,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 const { success: showSuccess, warning: showWarning, error: showError } = useToast()
 const { siteName } = useSiteInfo()
+const { t } = useI18n()
 
 const isOpen = ref(props.modelValue)
 const isDemo = computed(() => isDemoMode())
@@ -224,7 +226,7 @@ const loginFormEl = ref<HTMLFormElement | null>(null)
 const passwordResetEmail = ref('')
 const passwordResetLoading = ref(false)
 const passwordResetNotice = ref('')
-const passwordResetRequestSuccessText = '如果该邮箱存在，会收到重置密码邮件'
+const passwordResetRequestSuccessText = computed(() => t('loginDialog.resetRequestSubmitted'))
 
 // 保存用户的认证类型偏好
 watch(authType, (newType) => {
@@ -232,11 +234,13 @@ watch(authType, (newType) => {
 })
 
 const emailLabel = computed(() => {
-  return '用户名/邮箱'
+  return t('loginDialog.usernameOrEmail')
 })
 
 const dialogTitle = computed(() => {
-  return authPanel.value === 'passwordReset' ? '找回密码' : `登录到 ${siteName.value}`
+  return authPanel.value === 'passwordReset'
+    ? t('loginDialog.resetPassword')
+    : t('loginDialog.signInTo', { site: siteName.value })
 })
 
 const showPasswordResetLink = computed(() => {
@@ -276,7 +280,7 @@ async function handleLogin(event?: Event) {
   const { email, password } = readCurrentLoginCredentials(event)
 
   if (!email || !password) {
-    showWarning('请输入邮箱和密码')
+    showWarning(t('loginDialog.enterCredentials'))
     return
   }
 
@@ -284,22 +288,24 @@ async function handleLogin(event?: Event) {
   if (success) {
     const targetPath = consumeStoredRedirectPath() ?? (authStore.canAccessAdmin ? '/admin/dashboard' : '/dashboard')
 
+    // Close and sync the shared dialog state before navigation.
+    isOpen.value = false
+
     try {
       const navigationFailure = await router.push(targetPath)
       if (navigationFailure) {
         throw navigationFailure
       }
     } catch {
-      showError('登录成功，但跳转失败，请刷新页面或手动进入控制台')
+      showError(t('loginDialog.navigationFailed'))
       return
     }
 
-    showSuccess('登录成功，正在跳转...')
+    showSuccess(t('loginDialog.signInRedirecting'))
 
     // 关闭对话框
-    isOpen.value = false
   } else {
-    showError(authStore.error || '登录失败，请检查邮箱和密码')
+    showError(authStore.error || t('loginDialog.signInFailed'))
   }
 }
 
@@ -361,17 +367,17 @@ function openPasswordResetPanel() {
 async function handlePasswordResetRequest() {
   const email = passwordResetEmail.value.trim()
   if (!email) {
-    showWarning('请输入邮箱')
+    showWarning(t('loginDialog.enterEmail'))
     return
   }
   passwordResetLoading.value = true
   passwordResetNotice.value = ''
   try {
     const response = await authApi.requestPasswordReset(email)
-    passwordResetNotice.value = response.message || passwordResetRequestSuccessText
-    showSuccess('申请已提交，请查看邮箱')
+    passwordResetNotice.value = response.message || passwordResetRequestSuccessText.value
+    showSuccess(t('loginDialog.checkEmail'))
   } catch (error) {
-    showError(getErrorMessage(error, '发送失败，请稍后重试'))
+    showError(getErrorMessage(error, t('loginDialog.sendFailed')))
   } finally {
     passwordResetLoading.value = false
   }
@@ -379,7 +385,7 @@ async function handlePasswordResetRequest() {
 
 function handleRegisterSuccess() {
   showRegisterDialog.value = false
-  showSuccess('注册成功！请登录')
+  showSuccess(t('loginDialog.registerSuccess'))
   isOpen.value = true
 }
 

@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="internalOpen"
-    title="优先级管理"
-    description="拖拽调整顺序，点击序号可编辑（相同数字为同级），保存后自动切换对应的调度策略"
+    :title="t('priorityManagement.title')"
+    :description="t('priorityManagement.description')"
     :icon="ListOrdered"
     size="2xl"
     @update:model-value="handleDialogUpdate"
@@ -21,7 +21,7 @@
           @click="activeMainTab = 'provider'"
         >
           <Layers class="w-4 h-4" />
-          <span>提供商优先</span>
+          <span>{{ t('priorityManagement.providerPriority') }}</span>
         </button>
         <button
           type="button"
@@ -34,7 +34,7 @@
           @click="activeMainTab = 'key'"
         >
           <Key class="w-4 h-4" />
-          <span>Key 优先</span>
+          <span>{{ t('priorityManagement.keyPriority') }}</span>
         </button>
       </div>
 
@@ -51,7 +51,7 @@
             class="flex flex-col items-center justify-center py-20 text-muted-foreground"
           >
             <Layers class="w-10 h-10 mb-3 opacity-20" />
-            <span class="text-sm">暂无提供商</span>
+            <span class="text-sm">{{ t('priorityManagement.noProviders') }}</span>
           </div>
 
           <!-- 提供商列表 -->
@@ -98,7 +98,7 @@
                 <div
                   v-else
                   class="w-6 h-6 rounded-md bg-muted/50 flex items-center justify-center text-xs font-medium text-muted-foreground cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors"
-                  title="点击编辑优先级，相同数字为同级"
+                  :title="t('priorityManagement.editPriority')"
                   @click.stop="startEditProviderPriority(provider)"
                 >
                   {{ provider.provider_priority }}
@@ -113,7 +113,7 @@
                   variant="secondary"
                   class="text-[10px] px-1.5 h-5 shrink-0"
                 >
-                  停用
+                  {{ t('priorityManagement.disabled') }}
                 </Badge>
               </div>
               <div class="flex items-center gap-3 shrink-0 ml-2">
@@ -156,7 +156,7 @@
           >
             <div class="flex flex-col items-center gap-2">
               <div class="animate-spin rounded-full h-5 w-5 border-2 border-muted border-t-primary" />
-              <span class="text-xs text-muted-foreground">加载中...</span>
+              <span class="text-xs text-muted-foreground">{{ t('priorityManagement.loading') }}</span>
             </div>
           </div>
 
@@ -166,7 +166,7 @@
             class="flex flex-col items-center justify-center py-20 text-muted-foreground"
           >
             <Key class="w-10 h-10 mb-3 opacity-20" />
-            <span class="text-sm">暂无 API Key</span>
+            <span class="text-sm">{{ t('priorityManagement.noKeys') }}</span>
           </div>
 
           <!-- 左右布局：格式列表 + Key 列表 -->
@@ -261,7 +261,7 @@
                       <div
                         v-else
                         class="w-5 h-5 rounded bg-muted/50 flex items-center justify-center text-[11px] font-medium transition-colors text-muted-foreground cursor-pointer hover:bg-primary/10 hover:text-primary"
-                        title="点击编辑优先级"
+                        :title="t('priorityManagement.editPriorityShort')"
                         @click.stop="startEditKeyPriority(format, key)"
                       >
                         {{ key.priority }}
@@ -276,7 +276,7 @@
                           type="button"
                           class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
                           :class="!(key.is_active && key.provider_active) ? 'text-muted-foreground' : ''"
-                          :title="`${getPriorityAccountDisplayName(key)}\n点击复制`"
+            :title="`${getPriorityAccountDisplayName(key)}\n${t('priorityManagement.clickToCopy')}`"
                           @click.stop="copyPriorityAccountDisplay(key)"
                         >
                           {{ getPriorityAccountDisplayName(key) }}
@@ -286,7 +286,7 @@
                           variant="outline"
                           class="text-[9px] h-4 px-1 shrink-0"
                         >
-                          号池
+                          {{ t('priorityManagement.pool') }}
                         </Badge>
                         <Badge
                           v-else-if="getKeySchedulingState(key) !== 'available'"
@@ -301,7 +301,7 @@
                       <div class="flex items-center gap-0 mt-0.5">
                         <template v-if="key.is_pool_aggregate">
                           <span class="text-[10px] text-muted-foreground/70 truncate">
-                            号池: {{ key.pool_active_key_count ?? 0 }}/{{ key.pool_key_count ?? 0 }}
+                            {{ t('priorityManagement.poolCount', { active: key.pool_active_key_count ?? 0, total: key.pool_key_count ?? 0 }) }}
                           </span>
                           <template v-if="key.provider_type">
                             <span class="text-[10px] text-muted-foreground/40 mx-1">·</span>
@@ -318,7 +318,7 @@
                           variant="secondary"
                           class="text-[9px] h-4 px-1 shrink-0 ml-1"
                         >
-                          停用
+                          {{ t('priorityManagement.disabled') }}
                         </Badge>
                       </div>
                     </div>
@@ -352,12 +352,12 @@
                             ? 'text-foreground/70 hover:bg-muted hover:text-foreground'
                             : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
                         :title="key.is_pool_aggregate
-                          ? '号池聚合项不支持在此单独开关'
+                          ? t('priorityManagement.poolAggregateNoToggle')
                           : !key.provider_active
-                            ? 'Provider 停用'
+                            ? t('priorityManagement.providerDisabled')
                             : key.is_active
-                              ? '点击停用'
-                              : '点击启用'"
+                              ? t('priorityManagement.clickDisable')
+                              : t('priorityManagement.clickEnable')"
                         :disabled="key.is_pool_aggregate || !key.provider_active"
                         @click.stop="!key.is_pool_aggregate && toggleKeyActive(format, key)"
                       >
@@ -372,7 +372,7 @@
                   class="flex flex-col items-center justify-center py-20 text-muted-foreground"
                 >
                   <Key class="w-10 h-10 mb-3 opacity-20" />
-                  <span class="text-sm">暂无 {{ format }} 格式的 Key</span>
+                  <span class="text-sm">{{ t('priorityManagement.noFormatKeys', { format }) }}</span>
                 </div>
               </div>
             </div>
@@ -385,10 +385,10 @@
       <div class="flex items-center justify-between w-full">
         <div class="flex items-center gap-3">
           <div class="text-xs text-muted-foreground whitespace-nowrap">
-            当前模式: <span class="font-medium text-foreground/80">{{ activeMainTab === 'provider' ? '提供商优先' : 'Key 优先' }}</span>
+            {{ t('priorityManagement.currentMode') }}: <span class="font-medium text-foreground/80">{{ activeMainTab === 'provider' ? t('priorityManagement.providerPriority') : t('priorityManagement.keyPriority') }}</span>
           </div>
           <div class="flex items-center gap-1.5 pl-3 border-l border-border/60">
-            <span class="text-xs text-muted-foreground">调度:</span>
+            <span class="text-xs text-muted-foreground">{{ t('priorityManagement.scheduling') }}:</span>
             <div class="flex gap-0.5 p-0.5 bg-muted/40 rounded-md">
               <button
                 type="button"
@@ -398,10 +398,10 @@
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 ]"
-                title="优先使用已缓存的Provider，利用Prompt Cache"
+                :title="t('priorityManagement.cacheAffinityHint')"
                 @click="schedulingMode = 'cache_affinity'"
               >
-                缓存亲和
+                {{ t('priorityManagement.cacheAffinity') }}
               </button>
               <button
                 type="button"
@@ -411,10 +411,10 @@
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 ]"
-                title="同优先级内随机轮换，不考虑缓存"
+                :title="t('priorityManagement.loadBalanceHint')"
                 @click="schedulingMode = 'load_balance'"
               >
-                负载均衡
+                {{ t('priorityManagement.loadBalance') }}
               </button>
               <button
                 type="button"
@@ -424,10 +424,10 @@
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 ]"
-                title="严格按优先级顺序，不考虑缓存"
+                :title="t('priorityManagement.priorityFirstHint')"
                 @click="schedulingMode = 'fixed_order'"
               >
-                固定顺序
+                {{ t('priorityManagement.priorityFirst') }}
               </button>
             </div>
           </div>
@@ -443,7 +443,7 @@
               v-if="saving"
               class="w-3.5 h-3.5 mr-1.5 animate-spin"
             />
-            {{ saving ? '保存中' : '保存' }}
+            {{ saving ? t('priorityManagement.saving') : t('priorityManagement.save') }}
           </Button>
           <Button
             variant="outline"
@@ -451,7 +451,7 @@
             class="min-w-[72px]"
             @click="close"
           >
-            取消
+            {{ t('priorityManagement.cancel') }}
           </Button>
         </div>
       </div>
@@ -461,6 +461,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { GripVertical, Layers, Key, Loader2, ListOrdered, Power } from 'lucide-vue-next'
 import { Dialog } from '@/components/ui'
 import Button from '@/components/ui/button.vue'
@@ -514,6 +515,8 @@ interface KeyWithMeta {
   pool_active_key_count?: number
   provider_type?: string
 }
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: boolean
@@ -857,10 +860,10 @@ const poolProviderIds = computed(() => {
 })
 
 const PROVIDER_TYPE_LABELS: Record<string, string> = {
-  custom: '自定义',
+  custom: '',
   vertex_ai: 'Vertex AI',
   claude_code: 'ClaudeCode',
-  claude_code_api: 'Claude Code 兼容 API',
+  claude_code_api: '',
   codex: 'Codex',
   chatgpt_web: 'ChatGPT Web',
   gemini_cli: 'Gemini CLI',
@@ -870,6 +873,8 @@ const PROVIDER_TYPE_LABELS: Record<string, string> = {
 }
 
 function formatProviderType(type?: string): string {
+  if (type === 'custom') return t('providerTypeLabels.custom')
+  if (type === 'claude_code_api') return t('providerTypeLabels.claudeCodeApi')
   if (!type) return ''
   return PROVIDER_TYPE_LABELS[type] || type
 }
@@ -926,17 +931,17 @@ function getKeySchedulingLabel(key: KeyWithMeta): string {
   if (key.scheduling_label) return key.scheduling_label
   switch (getKeySchedulingState(key)) {
     case 'disabled':
-      return '停用'
+      return t('providerPriorityUi.disabled')
     case 'invalid':
-      return '已失效'
+      return t('providerPriorityUi.invalid')
     case 'blocked':
-      return '异常'
+      return t('providerPriorityUi.blocked')
     case 'quota_exhausted':
-      return '额度耗尽'
+      return t('providerPriorityUi.quotaExhausted')
     case 'temporary_unavailable':
-      return '暂时不可用'
+      return t('providerPriorityUi.temporaryUnavailable')
     default:
-      return '可用'
+      return t('providerPriorityUi.available')
   }
 }
 
@@ -948,15 +953,15 @@ function getKeySchedulingBadgeVariant(key: KeyWithMeta): 'default' | 'secondary'
 }
 
 function getKeySchedulingTitle(key: KeyWithMeta): string {
-  const parts = [`状态: ${getKeySchedulingLabel(key)}`]
+  const parts = [t('providerPriorityUi.status', { value: getKeySchedulingLabel(key) })]
   if (key.scheduling_reason_label) {
-    parts.push(`原因: ${key.scheduling_reason_label}`)
+    parts.push(t('providerPriorityUi.reason', { value: key.scheduling_reason_label }))
   }
   return parts.join('\n')
 }
 
 function getPriorityAccountDisplayName(key: KeyWithMeta): string {
-  return getAccountDisplayName(key, '未命名账号')
+  return getAccountDisplayName(key, t('providerPriorityUi.unnamed'))
 }
 
 async function copyPriorityAccountDisplay(key: KeyWithMeta): Promise<void> {
@@ -999,7 +1004,7 @@ function buildPoolAggregateItem(format: string, providerId: string, sourceKeys: 
     ? Number(poolPriorityRaw)
     : fallbackPriority
 
-  const providerName = provider?.name || sourceKeys[0]?.provider_name || '未知 Provider'
+  const providerName = provider?.name || sourceKeys[0]?.provider_name || t('providerPriorityUi.unknownProvider')
   const activeKeyCount = sourceKeys.filter((k) => k.is_active).length
   const providerActive = provider?.is_active ?? sourceKeys.some((k) => k.provider_active)
   const healthCandidates = sourceKeys.map((k) => k.health_score).filter((v): v is number => v != null)
@@ -1021,7 +1026,7 @@ function buildPoolAggregateItem(format: string, providerId: string, sourceKeys: 
     provider_active: providerActive,
     circuit_breaker_open: false,
     scheduling_state: activeKeyCount > 0 && providerActive ? 'available' : 'disabled',
-    scheduling_label: activeKeyCount > 0 && providerActive ? '可用' : '禁用',
+    scheduling_label: activeKeyCount > 0 && providerActive ? t('providerPriorityUi.available') : t('providerPriorityUi.disabled'),
     provider_name: providerName,
     endpoint_base_url: sourceKeys.find((k) => k.endpoint_base_url)?.endpoint_base_url || '',
     api_format: format,
@@ -1251,7 +1256,7 @@ async function loadKeysByFormat() {
     }
   } catch (err: unknown) {
     originalKeyPriorityById = new Map()
-    showError(parseApiError(err, '加载 Key 列表失败'), '错误')
+    showError(parseApiError(err, t('priorityMessages.loadKeysFailed')), t('common.error'))
   } finally {
     loadingKeys.value = false
   }
@@ -1275,9 +1280,9 @@ async function toggleKeyActive(format: string, key: KeyWithMeta) {
     for (const fmt of Object.keys(keysByFormat.value)) {
       keysByFormat.value[fmt] = sortKeysByActiveAndPriority(keysByFormat.value[fmt])
     }
-    success(newStatus ? 'Key 已启用' : 'Key 已停用')
+    success(newStatus ? t('priorityMessages.keyEnabled') : t('priorityMessages.keyDisabled'))
   } catch (err: unknown) {
-    showError(parseApiError(err, '操作失败'), '错误')
+    showError(parseApiError(err, t('common.operationFailed')), t('common.error'))
   }
 }
 
@@ -1619,7 +1624,7 @@ async function save() {
     )
     snapshotCurrentPriorityBaseline()
 
-    success('优先级已保存')
+    success(t('priorityMessages.saved'))
     emit('saved')
 
     // 提供商优先模式保存后关闭，Key 优先模式保存后保持打开方便继续调整
@@ -1627,7 +1632,7 @@ async function save() {
       close()
     }
   } catch (err: unknown) {
-    showError(parseApiError(err, '保存失败'), '错误')
+    showError(parseApiError(err, t('priorityMessages.saveFailed')), t('common.error'))
   } finally {
     saving.value = false
   }

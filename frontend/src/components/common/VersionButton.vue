@@ -6,7 +6,7 @@
         class="flex h-9 w-9 items-center justify-center rounded-lg transition"
         :class="buttonClass"
         :title="buttonTitle"
-        aria-label="版本信息"
+        :aria-label="t('versionButton.title')"
       >
         <Info
           class="h-4 w-4"
@@ -25,7 +25,7 @@
         <div class="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-3 py-2.5">
           <div>
             <div class="text-xs font-semibold text-foreground">
-              版本信息
+              {{ t('versionButton.title') }}
             </div>
             <div class="mt-0.5 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
               System version
@@ -43,7 +43,7 @@
           <div class="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
             <div>
               <p class="text-xs text-muted-foreground">
-                当前版本
+                {{ t('versionButton.current') }}
               </p>
               <p class="mt-1 break-all font-mono text-sm text-foreground">
                 {{ currentVersionLabel }}
@@ -54,7 +54,7 @@
               class="mt-2"
             >
               <p class="text-xs text-muted-foreground">
-                最新版本
+                {{ t('versionButton.latest') }}
               </p>
               <p class="mt-1 break-all font-mono text-sm text-foreground">
                 {{ latestVersionLabel }}
@@ -66,7 +66,7 @@
             v-if="status?.error"
             class="text-xs text-muted-foreground"
           >
-            检查更新失败：{{ status.error }}
+            {{ t('versionButton.checkFailedWithError', { error: status.error }) }}
           </p>
 
           <div class="flex items-center gap-2">
@@ -81,7 +81,7 @@
                 class="mr-2 h-3.5 w-3.5"
                 :class="loading ? 'animate-spin' : ''"
               />
-              重新检查
+              {{ t('versionButton.checkAgain') }}
             </Button>
             <Button
               v-if="status?.has_update && status.release_url"
@@ -90,7 +90,7 @@
               @click="handleOpenRelease"
             >
               <ExternalLink class="mr-2 h-3.5 w-3.5" />
-              查看更新
+              {{ t('versionButton.viewUpdate') }}
             </Button>
           </div>
         </div>
@@ -101,16 +101,18 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { CheckUpdateResponse } from '@/api/admin'
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@/components/ui'
 import { formatDisplayVersion } from '@/utils/version'
-import { describeUpdateStatus } from '@/utils/updateStatus'
 import { ExternalLink, Info, RefreshCw } from 'lucide-vue-next'
 
 const props = defineProps<{
   status: CheckUpdateResponse | null
   loading?: boolean
 }>()
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   refresh: []
@@ -139,11 +141,16 @@ const buttonClass = computed(() => {
 
   return classes
 })
-const statusLabel = computed(() => describeUpdateStatus(props.status))
+const statusLabel = computed(() => {
+  if (!props.status) return t('versionButton.checking')
+  if (props.status.has_update) return t('versionButton.updateAvailable')
+  if (props.status.error) return t('versionButton.checkFailed')
+  return t('versionButton.upToDate')
+})
 const currentVersionLabel = computed(() => {
   return props.status?.current_version
     ? formatDisplayVersion(props.status.current_version)
-    : '加载中...'
+    : t('common.loading')
 })
 const latestVersionLabel = computed(() => {
   return props.status?.latest_version
@@ -157,8 +164,8 @@ const statusPillClass = computed(() => {
   return 'border-border/60 bg-background/70 text-muted-foreground'
 })
 const buttonTitle = computed(() => {
-  if (!props.status) return '版本信息'
-  return `版本信息：${statusLabel.value}`
+  if (!props.status) return t('versionButton.title')
+  return t('versionButton.titleWithStatus', { status: statusLabel.value })
 })
 
 function handleRefresh() {

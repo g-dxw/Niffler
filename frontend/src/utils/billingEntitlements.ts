@@ -32,14 +32,17 @@ export function hasPackageBillingEntitlement(input: BillingEntitlementsInput): b
 
 export function quotaConsumptionMultiplierLabel(
   item: Pick<DailyQuotaEntitlement, 'quota_multiplier'>,
+  translate?: (key: string, params: Record<string, unknown>) => string,
 ): string | null {
   const multiplier = Number(item.quota_multiplier ?? 1)
   if (!Number.isFinite(multiplier) || multiplier <= 0 || Math.abs(multiplier - 1) < 0.000001) {
     return null
   }
-  return `消耗倍率 ${formatQuotaMultiplier(multiplier)} 倍`
+  const value = formatQuotaMultiplier(multiplier)
+  return (translate ?? ((key, params) => i18n.global.t(key, params)))('billing.multiplierLabel', { value })
 }
 
 function formatQuotaMultiplier(value: number): string {
   return value.toFixed(4).replace(/\.?0+$/, '')
 }
+import { i18n } from '@/i18n'

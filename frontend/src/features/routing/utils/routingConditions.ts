@@ -14,20 +14,19 @@ export interface RoutingConditionGroup {
 
 export type RoutingCondition = RoutingConditionLeaf | RoutingConditionGroup
 
-export const routingConditionFieldLabels: Record<string, string> = {
-  model: '模型',
-  api_format: 'API 格式',
-  user_id: '用户',
-  api_key_id: 'API Key',
+export const routingConditionFieldLabelKeys: Record<string, string> = {
+  model: 'routingUi.model',
+  api_format: 'routingUi.apiFormat',
+  user_id: 'routingUi.user',
 }
 
-export const routingConditionOpLabels: Record<RoutingConditionOp, string> = {
-  eq: '等于',
-  ne: '不等于',
-  in: '包含于',
-  contains: '包含',
-  exists: '存在',
-  matches: '匹配',
+export const routingConditionOpLabelKeys: Record<RoutingConditionOp, string> = {
+  eq: 'routingUi.eq',
+  ne: 'routingUi.neq',
+  in: 'routingUi.in',
+  contains: 'routingUi.contains',
+  exists: 'routingUi.exists',
+  matches: 'routingUi.matches',
 }
 
 export function isConditionLeaf(condition: RoutingCondition): condition is RoutingConditionLeaf {
@@ -36,24 +35,26 @@ export function isConditionLeaf(condition: RoutingCondition): condition is Routi
 
 export function summarizeRoutingCondition(condition: RoutingCondition): string {
   if (isConditionLeaf(condition)) {
-    const field = routingConditionFieldLabels[condition.field] ?? condition.field
-    const op = routingConditionOpLabels[condition.op] ?? condition.op
+    const fieldKey = routingConditionFieldLabelKeys[condition.field]
+    const opKey = routingConditionOpLabelKeys[condition.op]
+    const field = fieldKey ? i18n.global.t(fieldKey) : condition.field === 'api_key_id' ? 'API Key' : condition.field
+    const op = opKey ? i18n.global.t(opKey) : condition.op
     return `${field} ${op} ${formatConditionValue(condition.value)}`
   }
 
   if (condition.all?.length) {
-    return condition.all.map(summarizeRoutingCondition).join(' 且 ')
+    return condition.all.map(summarizeRoutingCondition).join(` ${i18n.global.t('routingUi.and')} `)
   }
 
   if (condition.any?.length) {
-    return condition.any.map(summarizeRoutingCondition).join(' 或 ')
+    return condition.any.map(summarizeRoutingCondition).join(` ${i18n.global.t('routingUi.or')} `)
   }
 
   if (condition.not) {
-    return `非 ${summarizeRoutingCondition(condition.not)}`
+    return `${i18n.global.t('routingUi.not')} ${summarizeRoutingCondition(condition.not)}`
   }
 
-  return '无条件'
+  return i18n.global.t('routingUi.noCondition')
 }
 
 function formatConditionValue(value: unknown): string {
@@ -71,3 +72,4 @@ function formatConditionValue(value: unknown): string {
 
   return String(value)
 }
+import { i18n } from '@/i18n'

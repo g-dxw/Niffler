@@ -3,6 +3,7 @@ import type {
   QuotaStatusSnapshot,
   QuotaWindowSnapshot,
 } from '@/api/endpoints/types/statusSnapshot'
+import { i18n } from '@/i18n'
 
 export interface ProviderKeyQuotaCarrier {
   account_quota?: string | null
@@ -13,6 +14,10 @@ function normalizeText(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const text = value.trim()
   return text || null
+}
+
+function t(key: string, params?: Record<string, unknown>): string {
+  return i18n.global.t(`quotaUi.${key}`, params)
 }
 
 function clampPercent(value: number): number {
@@ -122,7 +127,7 @@ function getGrokQuotaWindowLabel(window: QuotaWindowSnapshot): string {
   const rawCode = normalizeText(window.code)?.replace(/^model:/i, '') || ''
   const rawLabel = normalizeText(window.label) || normalizeText(window.model) || rawCode
   const normalized = (rawLabel || rawCode).trim().toLowerCase()
-  return GROK_QUOTA_MODE_LABELS[normalized] || GROK_QUOTA_MODE_LABELS[rawCode.toLowerCase()] || rawLabel || rawCode || '模式'
+  return GROK_QUOTA_MODE_LABELS[normalized] || GROK_QUOTA_MODE_LABELS[rawCode.toLowerCase()] || rawLabel || rawCode || t('mode')
 }
 
 function getCodexQuotaWindowLabel(window: QuotaWindowSnapshot): string {
@@ -137,7 +142,7 @@ function getCodexQuotaWindowLabel(window: QuotaWindowSnapshot): string {
   if (minutes === 10_080) return '7D'
   if (minutes === 43_200) return '1M'
   if (minutes) return formatCodexWindowMinutes(minutes)
-  return normalizeText(window.code) || '窗口'
+  return normalizeText(window.code) || t('window')
 }
 
 function formatCodexWindowSeconds(totalSeconds: number): string {
@@ -150,9 +155,11 @@ function formatCodexWindowMinutes(totalMinutes: number): string {
   const hours = Math.floor((normalizedMinutes % (24 * 60)) / 60)
   const minutes = normalizedMinutes % 60
   const parts: string[] = []
-  if (days > 0) parts.push(`${days}天`)
-  if (hours > 0) parts.push(`${hours}小时`)
-  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}分钟`)
+  if (days > 0) parts.push(t('durationDays', { value: days }))
+  if (hours > 0) parts.push(t('durationHours', { value: hours }))
+  if (minutes > 0 || parts.length === 0) {
+    parts.push(t('durationMinutes', { value: minutes }))
+  }
   return parts.join('')
 }
 
@@ -161,40 +168,40 @@ function getCodexQuotaText(quota: QuotaStatusSnapshot): string | null {
     .map((window) => {
       const remainingPercent = getQuotaWindowRemainingPercent(window)
       if (remainingPercent == null) return null
-      return `${getCodexQuotaWindowLabel(window)}剩余 ${formatPercent(remainingPercent)}`
+      return `${getCodexQuotaWindowLabel(window)}${t('remaining', { value: formatPercent(remainingPercent) })}`
     })
     .filter((value): value is string => value != null)
   if (parts.length > 0) return parts.join(' | ')
 
   if (quota.credits?.has_credits === true && typeof quota.credits.balance === 'number') {
-    return `积分 ${quota.credits.balance.toFixed(2)}`
+    return t('credits', { value: quota.credits.balance.toFixed(2) })
   }
-  if (quota.credits?.has_credits === true) return '有积分'
-  if (quota.credits?.has_credits === false) return '无可用积分'
+  if (quota.credits?.has_credits === true) return t('hasCredits')
+  if (quota.credits?.has_credits === false) return t('noCredits')
 
-  return normalizeText(quota.label) || '暂无上游配额数据'
+  return normalizeText(quota.label) || t('noData')
 }
 
 function getKiroQuotaText(quota: QuotaStatusSnapshot): string | null {
   const code = normalizeText(quota.code)?.toLowerCase()
   if (code === 'banned') {
-    return normalizeText(quota.label) || '账号已封禁'
+    return normalizeText(quota.label) || t('accountBanned')
   }
 
   const window = getQuotaWindow(quota, 'usage') ?? getQuotaWindowsByScope(quota, 'account')[0] ?? null
   const remainingPercent = getQuotaWindowRemainingPercent(window)
   if (typeof window?.remaining_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0 && window.remaining_value <= 0) {
-    return `剩余 ${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}`
+    return t('remaining', { value: `${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}` })
   }
   if (remainingPercent != null) {
     if (typeof window?.used_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0) {
-      return `剩余 ${formatPercent(remainingPercent)} (${formatQuotaValue(window.used_value)}/${formatQuotaValue(window.limit_value)})`
+      return t('remaining', { value: `${formatPercent(remainingPercent)} (${formatQuotaValue(window.used_value)}/${formatQuotaValue(window.limit_value)})` })
     }
-    return `剩余 ${formatPercent(remainingPercent)}`
+    return t('remaining', { value: formatPercent(remainingPercent) })
   }
 
   if (typeof window?.remaining_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0) {
-    return `剩余 ${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}`
+    return t('remaining', { value: `${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}` })
   }
 
   return normalizeText(quota.label)
@@ -203,10 +210,10 @@ function getKiroQuotaText(quota: QuotaStatusSnapshot): string | null {
 function getGrokQuotaText(quota: QuotaStatusSnapshot): string | null {
   const code = normalizeText(quota.code)?.toLowerCase()
   if (code === 'banned') {
-    return normalizeText(quota.label) || '账号已封禁'
+    return normalizeText(quota.label) || t('accountBanned')
   }
   if (code === 'forbidden') {
-    return normalizeText(quota.label) || '访问受限'
+    return normalizeText(quota.label) || t('accessRestricted')
   }
 
   const modelWindows = getQuotaWindowsByScope(quota, 'model')
@@ -215,7 +222,7 @@ function getGrokQuotaText(quota: QuotaStatusSnapshot): string | null {
       const remainingPercent = getQuotaWindowRemainingPercent(window)
       if (remainingPercent == null) return null
       const valueText = getQuotaWindowValueText(window)
-      return `${getGrokQuotaWindowLabel(window)}剩余 ${formatPercent(remainingPercent)}${valueText ? ` (${valueText})` : ''}`
+      return `${getGrokQuotaWindowLabel(window)}${t('remaining', { value: `${formatPercent(remainingPercent)}${valueText ? ` (${valueText})` : ''}` })}`
     })
     .filter((value): value is string => value != null)
 
@@ -224,18 +231,18 @@ function getGrokQuotaText(quota: QuotaStatusSnapshot): string | null {
   const window = getQuotaWindow(quota, 'usage') ?? getQuotaWindowsByScope(quota, 'account')[0] ?? null
   const remainingPercent = getQuotaWindowRemainingPercent(window)
   if (typeof window?.remaining_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0 && window.remaining_value <= 0) {
-    return `剩余 ${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}`
+    return t('remaining', { value: `${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}` })
   }
   if (remainingPercent != null) {
     const valueText = getQuotaWindowValueText(window)
     if (valueText) {
-      return `剩余 ${formatPercent(remainingPercent)} (${valueText})`
+      return t('remaining', { value: `${formatPercent(remainingPercent)} (${valueText})` })
     }
-    return `剩余 ${formatPercent(remainingPercent)}`
+    return t('remaining', { value: formatPercent(remainingPercent) })
   }
 
   if (typeof window?.remaining_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0) {
-    return `剩余 ${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}`
+    return t('remaining', { value: `${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}` })
   }
 
   return normalizeText(quota.label)
@@ -244,7 +251,7 @@ function getGrokQuotaText(quota: QuotaStatusSnapshot): string | null {
 function getAntigravityQuotaText(quota: QuotaStatusSnapshot): string | null {
   const code = normalizeText(quota.code)?.toLowerCase()
   if (code === 'forbidden') {
-    return normalizeText(quota.label) || '访问受限'
+    return normalizeText(quota.label) || t('accessRestricted')
   }
 
   const remainingList = getQuotaWindowsByScope(quota, 'model')
@@ -255,9 +262,9 @@ function getAntigravityQuotaText(quota: QuotaStatusSnapshot): string | null {
 
   const minimumRemaining = Math.min(...remainingList)
   if (remainingList.length === 1) {
-    return `剩余 ${formatPercent(minimumRemaining)}`
+    return t('remaining', { value: formatPercent(minimumRemaining) })
   }
-  return `最低剩余 ${formatPercent(minimumRemaining)} (${remainingList.length} 模型)`
+  return t('minimumRemaining', { value: formatPercent(minimumRemaining), count: remainingList.length })
 }
 
 function getGeminiCliQuotaText(quota: QuotaStatusSnapshot): string | null {
@@ -272,13 +279,13 @@ function getGeminiCliQuotaText(quota: QuotaStatusSnapshot): string | null {
       if (typeof window.reset_at !== 'number') return true
       return window.reset_at > Math.floor(Date.now() / 1000)
     })
-    .map((window) => normalizeText(window.label) || normalizeText(window.model) || '模型')
+    .map((window) => normalizeText(window.label) || normalizeText(window.model) || t('model'))
 
   if (activeCoolingModels.length === 1) {
-    return `${activeCoolingModels[0]} 冷却中`
+    return t('cooling', { value: activeCoolingModels[0] })
   }
   if (activeCoolingModels.length > 1) {
-    return `${activeCoolingModels.length} 个模型冷却中`
+    return t('coolingCount', { count: activeCoolingModels.length })
   }
 
   const remainingList = modelWindows
@@ -288,9 +295,9 @@ function getGeminiCliQuotaText(quota: QuotaStatusSnapshot): string | null {
 
   const minimumRemaining = Math.min(...remainingList)
   if (remainingList.length === 1) {
-    return `剩余 ${formatPercent(minimumRemaining)}`
+    return t('remaining', { value: formatPercent(minimumRemaining) })
   }
-  return `最低剩余 ${formatPercent(minimumRemaining)} (${remainingList.length} 模型)`
+  return t('minimumRemaining', { value: formatPercent(minimumRemaining), count: remainingList.length })
 }
 
 function getChatGPTWebQuotaText(quota: QuotaStatusSnapshot): string | null {
@@ -299,20 +306,20 @@ function getChatGPTWebQuotaText(quota: QuotaStatusSnapshot): string | null {
 
   const remainingPercent = getQuotaWindowRemainingPercent(window)
   if (typeof window.remaining_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0 && window.remaining_value <= 0) {
-    return `生图剩余 ${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}`
+    return t('imageRemaining', { value: `${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}` })
   }
   if (remainingPercent != null) {
     if (typeof window.used_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0) {
-      return `生图剩余 ${formatPercent(remainingPercent)} (${formatQuotaValue(window.used_value)}/${formatQuotaValue(window.limit_value)})`
+      return t('imageRemaining', { value: `${formatPercent(remainingPercent)} (${formatQuotaValue(window.used_value)}/${formatQuotaValue(window.limit_value)})` })
     }
-    return `生图剩余 ${formatPercent(remainingPercent)}`
+    return t('imageRemaining', { value: formatPercent(remainingPercent) })
   }
 
   if (typeof window.remaining_value === 'number' && typeof window.limit_value === 'number' && window.limit_value > 0) {
-    return `生图剩余 ${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}`
+    return t('imageRemaining', { value: `${formatQuotaValue(window.remaining_value)}/${formatQuotaValue(window.limit_value)}` })
   }
   if (typeof window.remaining_value === 'number') {
-    return `生图剩余 ${formatQuotaValue(window.remaining_value)}`
+    return t('imageRemaining', { value: formatQuotaValue(window.remaining_value) })
   }
 
   return normalizeText(quota.label)

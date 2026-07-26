@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, type App } from '@/test/vue'
 
 import SiteInfoSection from '../SiteInfoSection.vue'
 

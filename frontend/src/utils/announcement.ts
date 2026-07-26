@@ -2,6 +2,7 @@
  * 公告类型相关工具函数
  */
 import { AlertCircle, AlertTriangle, Wrench, Info, type LucideIcon } from 'lucide-vue-next'
+import { i18n } from '@/i18n'
 
 export type AnnouncementType = 'important' | 'warning' | 'maintenance' | 'info'
 
@@ -14,11 +15,15 @@ interface AnnouncementTypeConfig {
   textColor: string
 }
 
-const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> = {
+type AnnouncementTypeConfigDefinition = Omit<AnnouncementTypeConfig, 'label'> & {
+  labelKey: string
+}
+
+const announcementTypeConfigDefinitions: Record<AnnouncementType, AnnouncementTypeConfigDefinition> = {
   important: {
     icon: AlertCircle,
     iconColor: 'text-rose-600 dark:text-rose-400',
-    label: '重要公告',
+    labelKey: 'announcementUi.important',
     bgColor: 'bg-rose-50 dark:bg-rose-950/30',
     borderColor: 'border-rose-200 dark:border-rose-800',
     textColor: 'text-rose-800 dark:text-rose-200'
@@ -26,7 +31,7 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
   warning: {
     icon: AlertTriangle,
     iconColor: 'text-amber-600 dark:text-amber-400',
-    label: '警告通知',
+    labelKey: 'announcementUi.warning',
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
     borderColor: 'border-amber-200 dark:border-amber-800',
     textColor: 'text-amber-800 dark:text-amber-200'
@@ -34,7 +39,7 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
   maintenance: {
     icon: Wrench,
     iconColor: 'text-orange-600 dark:text-orange-400',
-    label: '维护通知',
+    labelKey: 'announcementUi.maintenance',
     bgColor: 'bg-orange-50 dark:bg-orange-950/30',
     borderColor: 'border-orange-200 dark:border-orange-800',
     textColor: 'text-orange-800 dark:text-orange-200'
@@ -42,7 +47,7 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
   info: {
     icon: Info,
     iconColor: 'text-primary dark:text-primary',
-    label: '系统公告',
+    labelKey: 'announcementUi.system',
     bgColor: 'bg-primary/5',
     borderColor: 'border-primary/20',
     textColor: 'text-foreground'
@@ -53,7 +58,13 @@ const announcementTypeConfigs: Record<AnnouncementType, AnnouncementTypeConfig> 
  * 获取公告类型配置
  */
 export function getAnnouncementConfig(type: string): AnnouncementTypeConfig {
-  return announcementTypeConfigs[type as AnnouncementType] || announcementTypeConfigs.info
+  const definition = announcementTypeConfigDefinitions[type as AnnouncementType]
+    || announcementTypeConfigDefinitions.info
+  const { labelKey, ...config } = definition
+  return {
+    ...config,
+    label: i18n.global.t(labelKey),
+  }
 }
 
 /**
@@ -118,3 +129,4 @@ export function getPlainTextSummary(content: string, maxLength = 120): string {
 
   return `${cleaned.slice(0, maxLength).trim()}...`
 }
+import { i18n } from '@/i18n'

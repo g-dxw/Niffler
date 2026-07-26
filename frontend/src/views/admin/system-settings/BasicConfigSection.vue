@@ -1,7 +1,7 @@
 <template>
   <CardSection
-    title="基础配置"
-    description="配置系统默认参数"
+    :title="t('basicConfig.title')"
+    :description="t('basicConfig.description')"
   >
     <template #actions>
       <Button
@@ -9,7 +9,7 @@
         :disabled="loading || !hasChanges"
         @click="$emit('save')"
       >
-        {{ loading ? '保存中...' : '保存' }}
+        {{ loading ? t('basicConfig.saving') : t('basicConfig.save') }}
       </Button>
     </template>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -18,7 +18,7 @@
           for="default-quota"
           class="block text-sm font-medium"
         >
-          默认用户初始赠款(美元)
+          {{ t('basicConfig.gift') }}
         </Label>
         <Input
           id="default-quota"
@@ -30,7 +30,7 @@
           @update:model-value="$emit('update:defaultUserInitialGiftUsd', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          新用户注册时的默认初始赠款
+          {{ t('basicConfig.giftHint') }}
         </p>
       </div>
 
@@ -39,7 +39,7 @@
           for="rate-limit"
           class="block text-sm font-medium"
         >
-          默认速率限制 (请求/分钟)
+          {{ t('basicConfig.rate') }}
         </Label>
         <Input
           id="rate-limit"
@@ -50,7 +50,7 @@
           @update:model-value="$emit('update:rateLimitPerMinute', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          0 表示默认不限制；未单独配置的用户和独立 Key 会跟随这里
+          {{ t('basicConfig.rateHint') }}
         </p>
       </div>
 
@@ -59,7 +59,7 @@
           for="password-policy-level"
           class="block text-sm font-medium mb-2"
         >
-          密码策略
+          {{ t('basicConfig.passwordPolicy') }}
         </Label>
         <Select
           :model-value="passwordPolicyLevel"
@@ -73,18 +73,18 @@
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="weak">
-              弱密码 - 至少 6 个字符
+              {{ t('basicConfig.weak') }}
             </SelectItem>
             <SelectItem value="medium">
-              中等密码 - 至少 8 位，含字母和数字
+              {{ t('basicConfig.medium') }}
             </SelectItem>
             <SelectItem value="strong">
-              强密码 - 至少 8 位，含大小写字母、数字和特殊字符
+              {{ t('basicConfig.strong') }}
             </SelectItem>
           </SelectContent>
         </Select>
         <p class="mt-1 text-xs text-muted-foreground">
-          影响注册、创建用户、重置/修改密码的校验规则
+          {{ t('basicConfig.passwordPolicy') }}
         </p>
       </div>
 
@@ -100,10 +100,10 @@
               for="enable-registration"
               class="cursor-pointer"
             >
-              开放用户注册
+              {{ t('basicConfig.registration') }}
             </Label>
             <p class="text-xs text-muted-foreground">
-              允许新用户自助注册账户
+              {{ t('basicConfig.registrationHint') }}
             </p>
           </div>
         </div>
@@ -121,10 +121,10 @@
               for="auto-delete-expired-keys"
               class="cursor-pointer"
             >
-              自动删除过期 Key
+              {{ t('basicConfig.autoDelete') }}
             </Label>
             <p class="text-xs text-muted-foreground">
-              关闭时仅禁用过期的独立余额 Key
+              {{ t('basicConfig.autoDeleteHint') }}
             </p>
           </div>
         </div>
@@ -142,10 +142,10 @@
               for="enable-format-conversion"
               class="cursor-pointer"
             >
-              全局格式转换
+              {{ t('basicConfig.conversion') }}
             </Label>
             <p class="text-xs text-muted-foreground">
-              开启后强制允许所有提供商接受跨格式请求
+              {{ t('basicConfig.conversionHint') }}
             </p>
           </div>
         </div>
@@ -163,10 +163,10 @@
               for="enable-openai-image-sync-heartbeat"
               class="cursor-pointer"
             >
-              同步生图保活
+              {{ t('basicConfig.imageHeartbeat') }}
             </Label>
             <p class="text-xs text-muted-foreground">
-              避免超时中断；错误状态写入响应体
+              {{ t('basicConfig.imageHeartbeatHint') }}
             </p>
           </div>
         </div>
@@ -185,10 +185,10 @@
                 for="turnstile-enabled"
                 class="cursor-pointer"
               >
-                注册人机验证
+                {{ t('basicConfig.turnstile') }}
               </Label>
               <p class="text-xs text-muted-foreground">
-                开启后注册与发送邮箱验证码前需要通过 Cloudflare Turnstile
+                {{ t('basicConfig.turnstileHint') }}
               </p>
             </div>
           </div>
@@ -228,14 +228,14 @@
               :disabled="loading"
               @click="$emit('clearTurnstileSecret')"
             >
-              清空
+              {{ t('basicConfig.clear') }}
             </Button>
           </div>
           <Input
             id="turnstile-secret-key"
             :model-value="turnstileSecretKey"
             type="password"
-            :placeholder="turnstileSecretConfigured ? '已配置，留空不修改' : '输入 Secret Key'"
+            :placeholder="turnstileSecretConfigured ? t('basicConfig.secretConfigured') : t('basicConfig.enterSecret')"
             class="mt-1"
             autocomplete="new-password"
             @update:model-value="$emit('update:turnstileSecretKey', String($event || ''))"
@@ -247,7 +247,7 @@
             for="turnstile-hostnames"
             class="block text-sm font-medium"
           >
-            允许的 Hostname
+            {{ t('basicConfig.hostnames') }}
           </Label>
           <Input
             id="turnstile-hostnames"
@@ -258,7 +258,7 @@
             @update:model-value="$emit('update:turnstileAllowedHostnamesStr', String($event || ''))"
           />
           <p class="mt-1 text-xs text-muted-foreground">
-            留空则不额外校验 Cloudflare 返回的 hostname
+            {{ t('basicConfig.hostnamesHint') }}
           </p>
         </div>
       </div>
@@ -276,10 +276,10 @@
                 for="referral-enabled"
                 class="cursor-pointer"
               >
-                邀请返利
+                {{ t('basicConfig.referral') }}
               </Label>
               <p class="text-xs text-muted-foreground">
-                开启后可按充值比例、人头或两者同时发放赠款返利
+                {{ t('basicConfig.referralHint') }}
               </p>
             </div>
           </div>
@@ -290,7 +290,7 @@
             for="referral-reward-mode"
             class="block text-sm font-medium mb-2"
           >
-            返利方式
+            {{ t('basicConfig.referralMode') }}
           </Label>
           <Select
             :model-value="referralRewardMode"
@@ -301,13 +301,13 @@
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="percent">
-                按充值比例
+                {{ t('basicConfig.byRecharge') }}
               </SelectItem>
               <SelectItem value="headcount">
-                按邀请人头
+                {{ t('basicConfig.byHeadcount') }}
               </SelectItem>
               <SelectItem value="both">
-                两者同时启用
+                {{ t('basicConfig.bothRewards') }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -318,7 +318,7 @@
             for="referral-recharge-percent"
             class="block text-sm font-medium"
           >
-            充值返利比例 (%)
+            {{ t('basicConfig.rechargeRewardPercent') }}
           </Label>
           <Input
             id="referral-recharge-percent"
@@ -336,7 +336,7 @@
             for="referral-headcount-amount"
             class="block text-sm font-medium"
           >
-            人头返利金额 (美元)
+            {{ t('basicConfig.headcountRewardAmount') }}
           </Label>
           <Input
             id="referral-headcount-amount"
@@ -354,7 +354,7 @@
             for="referral-headcount-trigger"
             class="block text-sm font-medium mb-2"
           >
-            人头返利触发时机
+            {{ t('basicConfig.headcountTrigger') }}
           </Label>
           <Select
             :model-value="referralHeadcountTrigger"
@@ -365,13 +365,13 @@
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="registration">
-                注册成功
+                {{ t('basicConfig.registrationSuccess') }}
               </SelectItem>
               <SelectItem value="email_verified">
-                邮箱验证完成
+                {{ t('basicConfig.emailVerified') }}
               </SelectItem>
               <SelectItem value="first_paid_order">
-                首笔真实支付完成
+                {{ t('basicConfig.firstPaidOrder') }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -391,10 +391,10 @@
                 for="privacy-policy-enabled"
                 class="cursor-pointer"
               >
-                注册隐私政策确认
+                {{ t('basicConfig.privacyPolicyConfirmation') }}
               </Label>
               <p class="text-xs text-muted-foreground">
-                开启后注册时必须确认当前版本
+                {{ t('basicConfig.privacyPolicyConfirmationHint') }}
               </p>
             </div>
           </div>
@@ -405,7 +405,7 @@
             for="privacy-policy-version"
             class="block text-sm font-medium"
           >
-            隐私政策版本
+            {{ t('basicConfig.privacyPolicyVersion') }}
           </Label>
           <Input
             id="privacy-policy-version"
@@ -422,7 +422,7 @@
             for="privacy-policy-format"
             class="block text-sm font-medium mb-2"
           >
-            隐私政策格式
+            {{ t('basicConfig.privacyPolicyFormat') }}
           </Label>
           <Select
             :model-value="registrationPrivacyPolicyFormat"
@@ -447,14 +447,14 @@
             for="privacy-policy-content"
             class="block text-sm font-medium"
           >
-            隐私政策内容
+            {{ t('basicConfig.privacyPolicyContent') }}
           </Label>
           <Textarea
             id="privacy-policy-content"
             :model-value="registrationPrivacyPolicyContent"
             rows="8"
             class="mt-1"
-            placeholder="填写 Markdown 或 HTML 内容"
+            :placeholder="t('basicConfig.privacyPolicyContentPlaceholder')"
             @update:model-value="$emit('update:registrationPrivacyPolicyContent', $event)"
           />
         </div>
@@ -464,6 +464,9 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'

@@ -1,5 +1,6 @@
 import { normalizeApiFormatAlias } from '@/api/endpoints/types/api-format'
 import type { ModelTestCapabilities, OpenAiImageModelTestCapability } from '@/api/endpoints/types'
+import { i18n } from '@/i18n'
 
 export type ModelTestEndpointSource = {
   api_format: string
@@ -41,8 +42,8 @@ const MODEL_TEST_BEARER_INHERITS_PROVIDER_FORMATS = new Set([
   'chatgpt_web',
 ])
 
-const MODEL_TEST_DIAGNOSTIC_LABELS: Record<string, string> = {
-  pool_account_blocked: '账号已失效，需重新授权',
+const MODEL_TEST_DIAGNOSTIC_LABEL_KEYS: Record<string, string> = {
+  pool_account_blocked: 'accountUi.poolAccountBlocked',
 }
 
 export function normalizeModelTestStringList(values: string[] | null | undefined): string[] {
@@ -140,7 +141,8 @@ export function getOpenAiImageModelTestMaxGenerationCount(
 export function formatModelTestDiagnostic(value: string | null | undefined): string {
   const normalized = value?.trim()
   if (!normalized) return ''
-  return MODEL_TEST_DIAGNOSTIC_LABELS[normalized] ?? normalized
+  const labelKey = MODEL_TEST_DIAGNOSTIC_LABEL_KEYS[normalized]
+  return labelKey ? i18n.global.t(labelKey) : normalized
 }
 
 export function modelSupportsImageGeneration(model: ModelTestImageSource | null | undefined): boolean {

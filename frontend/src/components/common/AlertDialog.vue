@@ -44,7 +44,7 @@
         class="h-10 px-5"
         @click="handleCancel"
       >
-        {{ cancelText }}
+        {{ cancelText || t('common.cancel') }}
       </Button>
 
       <!-- 确认按钮 -->
@@ -58,7 +58,7 @@
           v-if="loading"
           class="animate-spin h-4 w-4 mr-2"
         />
-        {{ confirmText }}
+        {{ confirmText || t('common.confirm') }}
       </Button>
     </template>
   </Dialog>
@@ -69,6 +69,7 @@ import { computed } from 'vue'
 import { Dialog } from '@/components/ui'
 import Button from '@/components/ui/button.vue'
 import { AlertTriangle, AlertCircle, Info, Trash2, HelpCircle, Loader2 } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 export type AlertType = 'danger' | 'destructive' | 'warning' | 'info' | 'question'
 
@@ -90,12 +91,13 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   type: 'warning',
-  confirmText: '确认',
-  cancelText: '取消',
+  confirmText: '',
+  cancelText: '',
   loading: false
 })
 
 const emit = defineEmits<Emits>()
+const { t } = useI18n()
 
 // 解析描述文本为多行
 const descriptionLines = computed(() => {

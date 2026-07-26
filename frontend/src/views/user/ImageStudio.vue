@@ -7,28 +7,21 @@
             <WandSparkles class="h-5 w-5" />
           </div>
           <div>
-            <h1 class="text-xl font-semibold tracking-tight">
-              生图工作台
-            </h1>
-            <p class="text-sm text-muted-foreground">
-              使用 Niffler 图片模型生成或编辑图片，图片和历史记录保存在当前浏览器，并按登录用户隔离
-            </p>
+            <h1 class="text-xl font-semibold tracking-tight">{{ t('imageStudio.title') }}</h1>
+            <p class="text-sm text-muted-foreground">{{ t('imageStudio.description') }}</p>
           </div>
         </div>
       </div>
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <span
-          v-if="runningCount"
-          class="inline-flex items-center gap-1"
-        ><Loader2 class="h-3.5 w-3.5 animate-spin" />{{ runningCount }} 个任务运行中</span>
-        <span v-if="pendingCount">{{ pendingCount }} 个等待中</span>
+        <span v-if="runningCount">{{ runningCount }} {{ t('imageStudio.running') }}</span>
+        <span v-if="pendingCount">{{ pendingCount }} {{ t('imageStudio.pending') }}</span>
         <Button
           v-if="tasks.length"
           variant="outline"
           size="sm"
           @click="requestClearTasks"
         >
-          <Trash2 class="mr-1.5 h-3.5 w-3.5" />清空任务
+          <Trash2 class="mr-1.5 h-3.5 w-3.5" />{{ t('imageStudio.clearTasks') }}
         </Button>
       </div>
     </div>
@@ -53,18 +46,18 @@
         <Card class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="font-semibold">
-              生成任务
+              {{ t('imageStudio.tasks') }}
             </h2>
           </div>
           <div class="flex items-center gap-2">
             <Badge variant="secondary">
-              {{ tasks.length }} 个任务
+              {{ tasks.length }} {{ t('imageStudio.taskCount') }}
             </Badge>
             <RouterLink
               to="/dashboard/usage"
               class="text-xs text-primary hover:underline"
             >
-              查看实际用量
+              {{ t('imageStudio.usage') }}
             </RouterLink>
           </div>
         </Card>
@@ -91,23 +84,23 @@
         >
           <Images class="h-12 w-12 text-muted-foreground/40" />
           <h3 class="mt-4 font-semibold">
-            还没有生成任务
+              {{ t('imageStudio.empty') }}
           </h3>
           <p class="mt-1 max-w-sm text-sm text-muted-foreground">
-            选择 API Key 和图片模型，输入提示词后开始生成。添加参考图会自动切换到图片编辑模式。
+              {{ t('imageStudio.emptyHint') }}
           </p>
           <div class="mt-5 flex gap-3 text-xs">
             <RouterLink
               to="/dashboard/api-keys"
               class="text-primary hover:underline"
             >
-              管理 API Key
+              {{ t('imageStudio.manageKeys') }}
             </RouterLink>
             <RouterLink
               to="/dashboard/models"
               class="text-primary hover:underline"
             >
-              查看模型目录
+              {{ t('imageStudio.browseModels') }}
             </RouterLink>
           </div>
         </Card>
@@ -123,9 +116,9 @@
     <AlertDialog
       v-model="deleteDialogOpen"
       type="danger"
-      :title="deleteMode === 'all' ? '确认清空全部任务' : '确认删除任务'"
+      :title="deleteMode === 'all' ? t('imageStudio.deleteAll') : t('imageStudio.deleteTask')"
       :description="deleteDescription"
-      :confirm-text="deleteMode === 'all' ? '全部清空' : '删除'"
+      :confirm-text="deleteMode === 'all' ? t('imageStudio.confirmClear') : t('imageStudio.delete')"
       :loading="deleting"
       @confirm="confirmDeletion"
       @cancel="resetDeleteDialog"
@@ -135,7 +128,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Images, Loader2, Trash2, WandSparkles } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+import { Images, Trash2, WandSparkles } from 'lucide-vue-next'
 import { Badge, Button, Card } from '@/components/ui'
 import { AlertDialog } from '@/components/common'
 import { meApi } from '@/api/me'
@@ -162,6 +156,7 @@ import { resolveImageApiBaseUrl } from '@/features/image-studio/utils/base-url'
 import { createImageSubmissionSnapshot } from '@/features/image-studio/utils/submission'
 
 const authStore = useAuthStore()
+const { t } = useI18n()
 const { error: showError, success, warning } = useToast()
 const userId = authStore.user?.id || 'current-session'
 
@@ -194,12 +189,12 @@ const orderedTasks = computed(() => [...tasks.value].sort((a, b) => b.createdAt 
 const deleteTarget = computed(() => tasks.value.find(task => task.id === deleteTargetId.value))
 const deleteDescription = computed(() => {
   if (deleteMode.value === 'all') {
-    return `确定清空全部 ${tasks.value.length} 个生图任务吗？\n任务记录和本地缓存图片删除后无法恢复。`
+    return t('imageStudioExtra.clearConfirm', { count: tasks.value.length })
   }
   const runningHint = deleteTarget.value?.status === 'running' || deleteTarget.value?.status === 'pending'
-    ? '\n该任务仍在执行，删除后将同时终止任务。'
+    ? t('imageStudioExtra.runningDeleteHint')
     : ''
-  return `确定删除这个生图任务吗？${runningHint}\n任务记录和本地缓存图片删除后无法恢复。`
+  return t('imageStudioExtra.deleteConfirm', { runningHint })
 })
 
 watch(settings, value => saveImageSettings(userId, value), { deep: true })
@@ -247,39 +242,39 @@ async function loadResources() {
     }
   } catch (error) {
     log.error('加载生图资源失败:', error)
-    showError(error instanceof Error ? error.message : '无法加载 API Key 或图片模型', '加载失败')
+    showError(error instanceof Error ? error.message : t('imageStudioExtra.loadResourcesFailed'), t('imageStudioExtra.loadFailed'))
   } finally {
     resourceLoading.value = false
   }
 }
 
 async function getTaskCredential(apiKeyId = settings.value.selectedKeyId) {
-  if (!apiKeyId) throw new Error('请选择 API 密钥')
+  if (!apiKeyId) throw new Error(t('imageStudioExtra.selectKey'))
   if (!apiKeys.value.some(key => key.id === apiKeyId)) {
-    throw new Error('原任务 API 密钥已不可用，请重新创建任务')
+    throw new Error(t('imageStudioExtra.originalKeyUnavailable'))
   }
   let apiKey = credentialCache.get(apiKeyId)
   if (!apiKey) {
     const response = await meApi.getFullApiKey(apiKeyId)
     apiKey = response.key?.trim()
   }
-  if (!apiKey) throw new Error('无法读取所选 API 密钥')
+  if (!apiKey) throw new Error(t('imageStudioExtra.readKeyFailed'))
   credentialCache.set(apiKeyId, apiKey)
   return { apiKeyId, apiKey, baseUrl: baseUrl.value }
 }
 
 function ensureSelectedModelAvailable(model: string) {
   if (!models.value.some(item => item.name === model)) {
-    throw new Error('所选图片模型已不可用，请重新选择')
+    throw new Error(t('imageStudioExtra.modelUnavailable'))
   }
 }
 
 async function handleSubmit() {
   try {
     const submission = createImageSubmissionSnapshot(settings.value, form.value)
-    if (!submission.form.prompt.trim()) throw new Error('请输入提示词')
-    if (!submission.model) throw new Error('请选择图片模型')
-    if (!baseUrl.value) throw new Error('API 地址尚未加载')
+    if (!submission.form.prompt.trim()) throw new Error(t('imageStudioExtra.promptRequired'))
+    if (!submission.model) throw new Error(t('imageStudioExtra.selectModel'))
+    if (!baseUrl.value) throw new Error(t('imageStudioExtra.apiUrlNotLoaded'))
     ensureSelectedModelAvailable(submission.model)
     const credential = await getTaskCredential(submission.apiKeyId)
 
@@ -294,9 +289,9 @@ async function handleSubmit() {
       model: submission.model,
       responseFormat: submission.responseFormat,
     })
-    success(`已添加 ${Math.min(8, Math.max(1, submission.form.count))} 个生图任务`)
+    success(t('imageStudioExtra.tasksAdded', { count: Math.min(8, Math.max(1, submission.form.count)) }))
   } catch (error) {
-    showError(error instanceof Error ? error.message : '无法创建生图任务')
+    showError(error instanceof Error ? error.message : t('imageStudioExtra.createFailed'))
   }
 }
 
@@ -307,7 +302,7 @@ async function handleRetry(id: string) {
     const credential = await getTaskCredential(task.apiKeyId || settings.value.selectedKeyId)
     retryTask(id, credential)
   } catch (error) {
-    showError(error instanceof Error ? error.message : '无法重试任务')
+    showError(error instanceof Error ? error.message : t('imageStudioExtra.retryFailed'))
   }
 }
 
@@ -346,7 +341,7 @@ async function confirmDeletion() {
       await clearTasks()
       previewOpen.value = false
       previewTask.value = null
-      warning('生图任务和本地缓存已清空')
+      warning(t('imageStudioExtra.cleared'))
     } else if (deleteTargetId.value) {
       const id = deleteTargetId.value
       removeTask(id)
@@ -354,7 +349,7 @@ async function confirmDeletion() {
         previewOpen.value = false
         previewTask.value = null
       }
-      success('生图任务已删除')
+      success(t('imageStudioExtra.deleted'))
     }
     deleteDialogOpen.value = false
     deleteTargetId.value = ''

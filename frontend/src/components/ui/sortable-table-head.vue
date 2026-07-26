@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useAttrs, useSlots } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowUp, ArrowUpDown, ListFilter } from 'lucide-vue-next'
 
 import { cn } from '@/lib/utils'
 import TableHead from './table-head.vue'
+
+const { t } = useI18n()
 
 type SortDirection = 'asc' | 'desc'
 
@@ -30,7 +33,7 @@ const props = withDefaults(defineProps<{
   align: 'left',
   title: undefined,
   filterActive: false,
-  filterTitle: '筛选',
+  filterTitle: '',
   filterContentClass: undefined,
   resizable: false,
   resizeColumnKey: undefined,
@@ -197,7 +200,7 @@ onBeforeUnmount(() => {
           ref="filterTriggerRef"
           type="button"
           :class="filterButtonClass"
-          :title="filterTitle"
+          :title="filterTitle || t('sortableTable.filter')"
           :aria-pressed="filterActive"
           @click.stop="toggleFilter"
         >
@@ -222,7 +225,7 @@ onBeforeUnmount(() => {
         v-if="canSort"
         type="button"
         :class="buttonClass"
-        :title="title || '排序'"
+        :title="title || t('sortableTable.sort')"
         @click="handleSort"
       >
         <slot />
@@ -242,8 +245,8 @@ onBeforeUnmount(() => {
       v-if="resizable && resizeColumnKey"
       type="button"
       class="absolute inset-y-2 right-0 w-2 cursor-col-resize rounded-sm opacity-0 transition-opacity hover:bg-primary/40 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
-      title="拖动调整列宽"
-      aria-label="拖动调整列宽"
+      :title="t('sortableTable.resizeColumn')"
+      :aria-label="t('sortableTable.resizeColumn')"
       @pointerdown.stop.prevent="handleResizeStart"
       @click.stop.prevent
     />

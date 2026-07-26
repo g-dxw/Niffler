@@ -35,7 +35,7 @@
                     :variant="provider.is_active ? 'default' : 'secondary'"
                     class="text-xs shrink-0"
                   >
-                    {{ provider.is_active ? '活跃' : '停用' }}
+                    {{ provider.is_active ? t('providerDetail.active') : t('providerDetail.disabled') }}
                   </Badge>
                   <Badge
                     v-if="providerReadOnly"
@@ -43,11 +43,11 @@
                     class="text-xs shrink-0"
                     :title="provider.legacy_read_only_reason"
                   >
-                    Niffler Core 只读
+                    {{ t('providerDetail.coreReadOnly') }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
-                  <span :title="systemFormatConversionEnabled ? '系统级格式转换已启用' : (provider.enable_format_conversion ? '已启用格式转换（点击关闭）' : '启用格式转换')">
+                  <span :title="systemFormatConversionEnabled ? t('providerDetail.systemConversion') : (provider.enable_format_conversion ? t('providerDetail.disableConversion') : t('providerDetail.enableConversion'))">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -58,7 +58,7 @@
                       <Shuffle class="w-4 h-4" />
                     </Button>
                   </span>
-                  <span :title="hasFailoverRules ? '已配置故障转移规则（点击编辑）' : '配置故障转移规则'">
+                  <span :title="hasFailoverRules ? t('providerDetail.failoverConfigured') : t('providerDetail.configureFailover')">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -79,7 +79,7 @@
                         size="icon"
                         :class="provider.proxy?.node_id ? 'text-blue-500' : ''"
                         :disabled="savingProviderProxy || providerReadOnly"
-                        :title="provider.proxy?.node_id ? `代理: ${getProviderProxyNodeName()}` : '设置代理节点'"
+                        :title="provider.proxy?.node_id ? t('providerDetail.proxySelected', { name: getProviderProxyNodeName() }) : t('providerDetail.setProxy')"
                       >
                         <Globe class="w-4 h-4" />
                       </Button>
@@ -91,7 +91,7 @@
                     >
                       <div class="space-y-2">
                         <div class="flex items-center justify-between">
-                          <span class="text-xs font-medium">代理节点</span>
+                          <span class="text-xs font-medium">{{ t('providerDetail.proxyNode') }}</span>
                           <Button
                             v-if="provider.proxy?.node_id"
                             variant="ghost"
@@ -100,7 +100,7 @@
                             :disabled="savingProviderProxy || providerReadOnly"
                             @click="clearProviderProxy"
                           >
-                            清除
+                            {{ t('providerDetail.clear') }}
                           </Button>
                         </div>
                         <ProxyNodeSelect
@@ -109,7 +109,7 @@
                           @update:model-value="setProviderProxy"
                         />
                         <p class="text-[10px] text-muted-foreground">
-                          {{ provider.proxy?.node_id ? '当前使用独立代理' : '未设置代理节点' }}
+                          {{ provider.proxy?.node_id ? t('providerDetail.usingIndependentProxy') : t('providerDetail.proxyNotSet') }}
                         </p>
                       </div>
                     </PopoverContent>
@@ -118,7 +118,7 @@
                     variant="ghost"
                     size="icon"
                     :disabled="providerReadOnly"
-                    :title="providerReadOnly ? '请到 Niffler Core 修改' : '编辑提供商'"
+                    :title="providerReadOnly ? t('providerDetail.editInCore') : t('providerDetail.editProvider')"
                     @click="emitEditProvider"
                   >
                     <Edit class="w-4 h-4" />
@@ -127,7 +127,7 @@
                     variant="ghost"
                     size="icon"
                     :disabled="providerReadOnly"
-                    :title="providerReadOnly ? '请到 Niffler Core 修改' : provider.is_active ? '点击停用' : '点击启用'"
+                    :title="providerReadOnly ? t('providerDetail.editInCore') : provider.is_active ? t('providerDetail.clickDisable') : t('providerDetail.clickEnable')"
                     @click="emitToggleProviderStatus"
                   >
                     <Power class="w-4 h-4" />
@@ -135,7 +135,7 @@
                   <Button
                     variant="ghost"
                     size="icon"
-                    title="关闭"
+                    :title="t('providerDetail.close')"
                     @click="handleClose"
                   >
                     <X class="w-4 h-4" />
@@ -160,7 +160,7 @@
                 <template v-if="loadingProviderEndpoints && endpoints.length === 0">
                   <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Loader2 class="w-3.5 h-3.5 animate-spin" />
-                    加载端点中
+                    {{ t('providerDetail.loadingEndpoints') }}
                   </span>
                 </template>
                 <template v-else>
@@ -171,16 +171,16 @@
                     <span
                       class="text-xs px-2 py-0.5 rounded-md border border-border bg-background hover:bg-accent hover:border-accent-foreground/20 cursor-pointer transition-colors font-medium"
                       :class="{ 'opacity-40': !endpoint.is_active }"
-                      :title="providerReadOnly ? '请到 Niffler Core 修改' : `编辑 ${formatApiFormat(endpoint.api_format)} 端点`"
+                      :title="providerReadOnly ? t('providerDetail.editInCore') : t('providerDetail.editEndpointFormat', { format: formatApiFormat(endpoint.api_format) })"
                       @click="handleEditEndpoint(endpoint)"
                     >{{ formatApiFormat(endpoint.api_format) }}</span>
                   </template>
                   <span
                     v-if="endpoints.length > 0"
                     class="text-xs px-2 py-0.5 rounded-md border border-dashed border-border hover:bg-accent hover:border-accent-foreground/20 cursor-pointer transition-colors text-muted-foreground"
-                    :title="providerReadOnly ? '请到 Niffler Core 修改' : '编辑端点'"
+                      :title="providerReadOnly ? t('providerDetail.editInCore') : t('providerDetail.editEndpoint')"
                     @click="showAddEndpointDialog"
-                  >编辑</span>
+                  >{{ t('providerDetail.edit') }}</span>
                   <Button
                     v-else
                     variant="outline"
@@ -190,7 +190,7 @@
                     @click="showAddEndpointDialog"
                   >
                     <Plus class="w-3 h-3 mr-1" />
-                    添加 API 端点
+                    {{ t('providerDetail.addEndpoint') }}
                   </Button>
                 </template>
               </div>
@@ -205,7 +205,7 @@
                 <div class="space-y-3">
                   <div class="flex items-center justify-between">
                     <h3 class="text-sm font-semibold">
-                      订阅配额
+                      {{ t('providerDetail.subscriptionQuota') }}
                     </h3>
                     <Badge
                       variant="secondary"
@@ -233,7 +233,7 @@
                       v-if="provider.quota_reset_day"
                       class="text-muted-foreground"
                     >
-                      每月 {{ provider.quota_reset_day }} 号重置
+                      {{ t('providerDetail.monthlyReset', { day: provider.quota_reset_day }) }}
                     </span>
                   </div>
                 </div>
@@ -244,7 +244,7 @@
                 <div class="p-4 border-b border-border/60">
                   <div class="flex items-center justify-between">
                     <h3 class="text-sm font-semibold">
-                      {{ isKeyManagedProviderType(provider.provider_type) ? '密钥管理' : '账号管理' }}
+                      {{ isKeyManagedProviderType(provider.provider_type) ? t('providerDetail.keyManagement') : t('providerDetail.accountManagement') }}
                     </h3>
                     <div class="flex items-center gap-2">
                       <Button
@@ -256,7 +256,7 @@
                         @click="handleAddKeyToFirstEndpoint"
                       >
                         <Plus class="w-3.5 h-3.5 mr-1.5" />
-                        {{ isKeyManagedProviderType(provider.provider_type) ? '添加密钥' : '添加账号' }}
+                        {{ isKeyManagedProviderType(provider.provider_type) ? t('providerDetail.addKey') : t('providerDetail.addAccount') }}
                       </Button>
                     </div>
                   </div>
@@ -268,7 +268,7 @@
                   class="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground"
                 >
                   <Loader2 class="w-4 h-4 animate-spin" />
-                  正在加载{{ isKeyManagedProviderType(provider.provider_type) ? '密钥' : '账号' }}
+                  {{ t('providerDetail.loadingCredentials', { type: isKeyManagedProviderType(provider.provider_type) ? t('providerDetail.keys') : t('providerDetail.accounts') }) }}
                 </div>
 
                 <div
@@ -305,7 +305,7 @@
                               type="button"
                               class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
                               :class="!(key.is_active) ? 'text-muted-foreground' : ''"
-                              :title="`${getProviderAccountDisplayName(key)}\n点击复制`"
+                              :title="`${getProviderAccountDisplayName(key)}\n${t('providerDetail.clickCopy')}`"
                               @click.stop="copyProviderAccountDisplay(key)"
                             >
                               {{ getProviderAccountDisplayName(key) }}
@@ -346,7 +346,7 @@
                               variant="ghost"
                               size="icon"
                               class="h-4 w-4 shrink-0"
-                              title="下载 Refresh Token 授权文件"
+                              :title="t('providerDetail.downloadRefreshToken')"
                               @click.stop="downloadRefreshToken(key)"
                             >
                               <Download class="w-2.5 h-2.5" />
@@ -356,7 +356,7 @@
                               variant="ghost"
                               size="icon"
                               class="h-4 w-4 shrink-0"
-                              title="复制密钥"
+                              :title="t('providerDetail.copyKey')"
                               @click.stop="copyFullKey(key)"
                             >
                               <Copy class="w-2.5 h-2.5" />
@@ -371,14 +371,14 @@
                                   :title="getOAuthStatusTitle(key)"
                                 >
                                   <ShieldX class="w-2.5 h-2.5" />
-                                  账号异常
+                                  {{ t('providerDetail.accountAnomaly') }}
                                 </Badge>
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   class="h-4 w-4 shrink-0 text-destructive hover:text-destructive"
                                   :disabled="clearingOAuthInvalidKeyId === key.id"
-                                  title="清除异常标记（确认账号已完成验证后使用）"
+                                  :title="t('providerDetail.clearAnomalyHint')"
                                   @click.stop="handleClearOAuthInvalid(key)"
                                 >
                                   <RefreshCw
@@ -404,9 +404,9 @@
                                   v-if="key.oauth_temporary"
                                   variant="outline"
                                   class="text-[10px] px-1.5 py-0 shrink-0"
-                                  title="仅通过 Access Token 导入，无法自动刷新，到期后需要重新导入"
+                                  :title="t('providerDetail.temporaryHint')"
                                 >
-                                  临时
+                                  {{ t('providerDetail.temporary') }}
                                 </Badge>
                                 <Button
                                   variant="ghost"
@@ -427,9 +427,9 @@
                             <span
                               v-if="provider.provider_type === 'antigravity' && key.is_active && isOAuthManagedCredential(key) && !hasAntigravityQuotaDisplayData(key)"
                               class="text-[10px] text-orange-500 dark:text-orange-400"
-                              title="该账号尚未完成 Gemini Code Assist 激活，无法获取配额和使用模型"
+                              :title="t('providerDetailExtra.geminiNotActivated')"
                             >
-                              账号未激活
+                              {{ t('providerDetail.accountNotActivated') }}
                             </span>
                           </div>
                         </div>
@@ -470,7 +470,7 @@
                           size="icon"
                           class="h-7 w-7 text-green-600"
                           :disabled="isKeyReadOnly(key)"
-                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : getRecoverKeyTitle(key)"
+                          :title="isKeyReadOnly(key) ? t('providerDetail.editInCore') : getRecoverKeyTitle(key)"
                           @click="handleRecoverKey(key)"
                         >
                           <RefreshCw class="w-3.5 h-3.5" />
@@ -480,7 +480,7 @@
                           size="icon"
                           class="h-7 w-7"
                           :disabled="isKeyReadOnly(key)"
-                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '模型权限'"
+                          :title="isKeyReadOnly(key) ? t('providerDetail.editInCore') : t('providerDetail.modelPermissions')"
                           @click="handleKeyPermissions(key)"
                         >
                           <Shield class="w-3.5 h-3.5" />
@@ -497,7 +497,7 @@
                               class="h-7 w-7"
                               :class="key.proxy?.node_id ? 'text-blue-500' : ''"
                               :disabled="savingProxyKeyId === key.id || isKeyReadOnly(key)"
-                              :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : key.proxy?.node_id ? `代理: ${getKeyProxyNodeName(key)}` : '设置代理节点'"
+                              :title="isKeyReadOnly(key) ? t('providerDetail.editInCore') : key.proxy?.node_id ? t('providerDetail.proxySelected', { name: getKeyProxyNodeName(key) }) : t('providerDetail.setProxy')"
                               @click.stop
                             >
                               <Globe class="w-3.5 h-3.5" />
@@ -510,7 +510,7 @@
                           >
                             <div class="space-y-2">
                               <div class="flex items-center justify-between">
-                                <span class="text-xs font-medium">代理节点</span>
+                                <span class="text-xs font-medium">{{ t('providerDetail.proxyNode') }}</span>
                                 <Button
                                   v-if="key.proxy?.node_id"
                                   variant="ghost"
@@ -519,7 +519,7 @@
                                   :disabled="savingProxyKeyId === key.id || isKeyReadOnly(key)"
                                   @click="clearKeyProxy(key)"
                                 >
-                                  清除
+                                  {{ t('providerDetail.clear') }}
                                 </Button>
                               </div>
                               <ProxyNodeSelect
@@ -528,7 +528,7 @@
                                 @update:model-value="(v: string) => setKeyProxy(key, v)"
                               />
                               <p class="text-[10px] text-muted-foreground">
-                                {{ key.proxy?.node_id ? '当前使用独立代理' : '未设置，使用提供商级别代理' }}
+                                {{ key.proxy?.node_id ? t('providerDetail.usingIndependentProxy') : t('providerDetail.providerProxyFallback') }}
                               </p>
                             </div>
                           </PopoverContent>
@@ -538,7 +538,7 @@
                           size="icon"
                           class="h-7 w-7"
                           :disabled="isKeyReadOnly(key)"
-                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '编辑密钥'"
+                          :title="isKeyReadOnly(key) ? t('providerDetail.editInCore') : t('providerDetail.editKey')"
                           @click="handleEditKey(endpoint, key)"
                         >
                           <Edit class="w-3.5 h-3.5" />
@@ -548,7 +548,7 @@
                           variant="ghost"
                           size="icon"
                           class="h-7 w-7"
-                          title="配额详情"
+                          :title="t('providerDetail.quotaDetails')"
                           @click="openAntigravityQuotaDialog(key)"
                         >
                           <BarChart3 class="w-3.5 h-3.5" />
@@ -558,7 +558,7 @@
                           size="icon"
                           class="h-7 w-7"
                           :disabled="togglingKeyId === key.id || isKeyReadOnly(key)"
-                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : key.is_active ? '点击停用' : '点击启用'"
+                          :title="isKeyReadOnly(key) ? t('providerDetail.editInCore') : key.is_active ? t('providerDetail.clickDisable') : t('providerDetail.clickEnable')"
                           @click="toggleKeyActive(key)"
                         >
                           <Power class="w-3.5 h-3.5" />
@@ -568,7 +568,7 @@
                           size="icon"
                           class="h-7 w-7"
                           :disabled="isKeyReadOnly(key)"
-                          :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '删除密钥'"
+                          :title="isKeyReadOnly(key) ? t('providerDetail.editInCore') : t('providerDetail.deleteKey')"
                           @click="handleDeleteKey(key)"
                         >
                           <Trash2 class="w-3.5 h-3.5" />
@@ -581,7 +581,7 @@
                       class="mt-2 p-2 bg-muted/30 rounded-md"
                     >
                       <div class="flex items-center justify-between mb-1">
-                        <span class="text-[10px] text-muted-foreground">账号配额</span>
+                        <span class="text-[10px] text-muted-foreground">{{ t('providerDetail.accountQuota') }}</span>
                         <div class="flex items-center gap-1">
                           <RefreshCw
                             v-if="refreshingQuota"
@@ -649,7 +649,7 @@
                         <ShieldX class="w-4 h-4 shrink-0" />
                         <div class="flex-1 min-w-0">
                           <div class="text-[11px] font-medium">
-                            账户访问被禁止
+                            {{ t('providerDetail.accountBanned') }}
                           </div>
                           <div
                             v-if="getAntigravityForbiddenReason(key)"
@@ -669,7 +669,7 @@
                       <!-- 正常配额显示 -->
                       <template v-else>
                         <div class="flex items-center justify-between mb-1">
-                          <span class="text-[10px] text-muted-foreground">模型配额</span>
+                          <span class="text-[10px] text-muted-foreground">{{ t('providerDetail.modelQuota') }}</span>
                           <div class="flex items-center gap-1">
                             <RefreshCw
                               v-if="refreshingQuota"
@@ -708,13 +708,13 @@
                               class="text-[9px] text-muted-foreground/70 mt-0.5"
                             >
                               <template v-if="group.resetSeconds !== null && group.resetSeconds > 0">
-                                {{ formatResetTime(group.resetSeconds) }}后重置
+                                {{ t('providerDetail.resetAfter', { time: formatResetTime(group.resetSeconds) }) }}
                               </template>
                               <template v-else-if="group.resetSeconds !== null && group.resetSeconds <= 0">
-                                已重置
+                                {{ t('providerDetail.reset') }}
                               </template>
                               <template v-else>
-                                重置时间未知
+                            {{ t('providerDetail.resetUnknown') }}
                               </template>
                             </div>
                           </div>
@@ -735,7 +735,7 @@
                         <ShieldX class="w-4 h-4 shrink-0" />
                         <div class="flex-1 min-w-0">
                           <div class="text-[11px] font-medium">
-                            账户已封禁
+                            {{ t('providerDetail.accountBanned') }}
                           </div>
                           <div
                             v-if="getKiroQuotaDisplay(key)?.ban_reason"
@@ -755,7 +755,7 @@
                       <!-- 正常配额显示 -->
                       <template v-else>
                         <div class="flex items-center justify-between mb-1">
-                          <span class="text-[10px] text-muted-foreground">账号配额</span>
+                          <span class="text-[10px] text-muted-foreground">{{ t('providerDetail.accountQuota') }}</span>
                           <div class="flex items-center gap-1">
                             <RefreshCw
                               v-if="refreshingQuota"
@@ -774,7 +774,7 @@
                           <!-- 使用额度进度条 -->
                           <div>
                             <div class="flex items-center justify-between text-[10px] mb-0.5">
-                              <span class="text-muted-foreground">使用额度</span>
+                              <span class="text-muted-foreground">{{ t('providerDetail.usedQuota') }}</span>
                               <span :class="getQuotaRemainingClass(getKiroQuotaDisplay(key)?.usage_percentage || 0)">
                                 {{ (100 - (getKiroQuotaDisplay(key)?.usage_percentage || 0)).toFixed(1) }}%
                               </span>
@@ -792,7 +792,7 @@
                                 {{ formatKiroUsage(getKiroQuotaDisplay(key)?.usage_limit) }}
                               </span>
                               <span v-if="getKiroQuotaDisplay(key)?.next_reset_at">
-                                {{ formatKiroResetTime(getKiroQuotaDisplay(key)?.next_reset_at) }}重置
+                                {{ t('providerDetail.resetAfter', { time: formatKiroResetTime(getKiroQuotaDisplay(key)?.next_reset_at) }) }}
                               </span>
                             </div>
                           </div>
@@ -805,7 +805,7 @@
                       class="mt-2 p-2 rounded-md bg-muted/30"
                     >
                       <div class="flex items-center justify-between mb-1">
-                        <span class="text-[10px] text-muted-foreground">账号配额</span>
+                        <span class="text-[10px] text-muted-foreground">{{ t('providerDetail.accountQuota') }}</span>
                         <div class="flex items-center gap-1">
                           <RefreshCw
                             v-if="refreshingQuota"
@@ -821,7 +821,7 @@
                       </div>
                       <div>
                         <div class="flex items-center justify-between text-[10px] mb-0.5">
-                          <span class="text-muted-foreground">使用额度</span>
+                          <span class="text-muted-foreground">{{ t('providerDetail.usedQuota') }}</span>
                           <span :class="getQuotaRemainingClass(getChatGPTWebQuotaUsedPercent(key))">
                             {{ getChatGPTWebQuotaRemainingPercent(key).toFixed(1) }}%
                           </span>
@@ -839,7 +839,7 @@
                             {{ formatChatGPTWebUsage(getChatGPTWebQuotaDisplay(key)?.image_quota_total) }}
                           </span>
                           <span v-if="getChatGPTWebQuotaDisplay(key)?.image_quota_reset_at">
-                            {{ formatKiroResetTime(getChatGPTWebQuotaDisplay(key)?.image_quota_reset_at) }}重置
+                            {{ t('providerDetail.resetAfter', { time: formatKiroResetTime(getChatGPTWebQuotaDisplay(key)?.image_quota_reset_at) }) }}
                           </span>
                         </div>
                       </div>
@@ -849,7 +849,7 @@
                       <!-- 优先级放最前面，支持点击编辑 -->
                       <span
                         v-if="editingPriorityKey !== key.id"
-                        :title="isKeyReadOnly(key) ? '请到 Niffler Core 修改' : '点击编辑优先级'"
+                        :title="isKeyReadOnly(key) ? t('providerDetail.editInCore') : t('providerDetailExtra.editPriority')"
                         class="font-medium text-foreground/80"
                         :class="isKeyReadOnly(key) ? 'cursor-default' : 'cursor-pointer hover:text-primary hover:underline'"
                         @click="startEditPriority(key)"
@@ -873,15 +873,15 @@
                           :class="key.last_models_fetch_error ? 'text-amber-600 dark:text-amber-400' : ''"
                           :title="getAutoFetchStatusTitle(key)"
                         >
-                          {{ key.last_models_fetch_error ? '同步失败' : '自动同步' }}
+                          {{ key.last_models_fetch_error ? t('providerDetail.syncFailed') : t('providerDetail.autoSync') }}
                         </span>
                       </template>
                       <!-- RPM 限制信息（第二位） -->
                       <template v-if="key.rpm_limit || key.is_adaptive">
                         <span class="text-muted-foreground/40">|</span>
                         <span v-if="key.is_adaptive">
-                          {{ key.learned_rpm_limit != null ? `${key.learned_rpm_limit}` : '探测中' }} RPM
-                          <span class="text-muted-foreground/60">(自适应)</span>
+                          {{ key.learned_rpm_limit != null ? `${key.learned_rpm_limit}` : t('providerDetail.probing') }} RPM
+                          <span class="text-muted-foreground/60">({{ t('providerDetail.adaptive') }})</span>
                         </span>
                         <span v-else>{{ key.rpm_limit }} RPM</span>
                       </template>
@@ -900,7 +900,7 @@
                         </span>
                         <span
                           v-if="editingMultiplierKey !== key.id || editingMultiplierFormat !== format"
-                          title="点击编辑倍率"
+                          :title="t('providerDetail.editMultiplier')"
                           class="cursor-pointer hover:text-primary hover:underline"
                           :class="{ 'text-destructive': isFormatCircuitOpen(key, format) }"
                           @click="startEditMultiplier(key, format)"
@@ -924,7 +924,7 @@
                     v-if="shouldPaginateKeys"
                     class="px-4 py-2 flex items-center justify-between text-xs text-muted-foreground mt-auto"
                   >
-                    <span>共 {{ allKeys.length }} 个{{ isKeyManagedProviderType(provider.provider_type) ? '密钥' : '账号' }}</span>
+                    <span>{{ t('providerDetailExtra.credentialTotal', { count: allKeys.length, type: isKeyManagedProviderType(provider.provider_type) ? t('providerDetail.keys') : t('providerDetail.accounts') }) }}</span>
                     <div class="flex items-center gap-1.5">
                       <Button
                         variant="ghost"
@@ -956,12 +956,12 @@
                 >
                   <Key class="w-12 h-12 mx-auto mb-3 opacity-50" />
                   <p class="text-sm">
-                    {{ isKeyManagedProviderType(provider.provider_type) ? '暂无密钥配置' : '暂无账号配置' }}
+                    {{ isKeyManagedProviderType(provider.provider_type) ? t('providerDetailExtra.noKeys') : t('providerDetailExtra.noAccounts') }}
                   </p>
                   <p class="text-xs mt-1">
                     {{ endpoints.length > 0
-                      ? (isKeyManagedProviderType(provider.provider_type) ? '点击上方"添加密钥"按钮创建第一个密钥' : '点击上方"添加账号"按钮添加第一个账号')
-                      : '请先添加端点，然后再添加密钥' }}
+                      ? (isKeyManagedProviderType(provider.provider_type) ? t('providerDetailExtra.addFirstKey') : t('providerDetailExtra.addFirstAccount'))
+                      : t('providerDetailExtra.addEndpointFirst') }}
                   </p>
                 </div>
               </Card>
@@ -1059,10 +1059,10 @@
   <AlertDialog
     v-if="open"
     :model-value="deleteKeyConfirmOpen"
-    title="删除密钥"
-    :description="`确定要删除账号 ${keyToDelete ? getProviderAccountDisplayName(keyToDelete) : ''} 吗？`"
-    confirm-text="删除"
-    cancel-text="取消"
+    :title="t('providerDetail.deleteKey')"
+    :description="t('providerDetailExtra.deleteAccountConfirm', { name: keyToDelete ? getProviderAccountDisplayName(keyToDelete) : '' })"
+    :confirm-text="t('providerDetail.deleteKey')"
+    :cancel-text="t('endpointForm.cancel')"
     type="danger"
     @update:model-value="deleteKeyConfirmOpen = $event"
     @confirm="confirmDeleteKey"
@@ -1123,6 +1123,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Plus,
   Key,
@@ -1244,6 +1245,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'edit', provider: ProviderWithEndpointsSummary): void
@@ -1343,7 +1345,7 @@ const hasFailoverRules = computed(() => {
 const providerReadOnly = computed(() => provider.value?.legacy_read_only === true)
 
 function showProviderReadOnly() {
-  showWarning(provider.value?.legacy_read_only_reason || '这个提供商已迁移到 Niffler Core，旧入口只读')
+  showWarning(provider.value?.legacy_read_only_reason || t('providerDetail.readOnlyMessage'))
 }
 
 function isKeyReadOnly(key: EndpointAPIKey): boolean {
@@ -1600,10 +1602,10 @@ async function toggleFormatConversion() {
   try {
     const updated = await updateProvider(provider.value.id, { enable_format_conversion: newValue })
     provider.value = updated
-    showSuccess(newValue ? '已启用格式转换' : '已禁用格式转换')
+    showSuccess(newValue ? t('providerDetail.conversionEnabled') : t('providerDetail.conversionDisabled'))
     emit('refresh')
   } catch {
-    showError('切换格式转换失败')
+    showError(t('providerDetail.conversionFailed'))
   }
 }
 
@@ -1622,7 +1624,7 @@ function handleProviderProxyPopoverToggle(open: boolean) {
 
 function getProviderProxyNodeName(): string {
   const nodeId = provider.value?.proxy?.node_id
-  if (!nodeId) return '未知节点'
+  if (!nodeId) return t('providerDetail.unknownNode')
   const node = proxyNodesStore.nodes.find(n => n.id === nodeId)
   return node ? node.name : `${nodeId.slice(0, 8)}...`
 }
@@ -1640,10 +1642,10 @@ async function setProviderProxy(nodeId: string) {
     })
     provider.value = updated
     providerProxyPopoverOpen.value = false
-    showSuccess('代理节点已设置')
+    showSuccess(t('providerDetail.proxySet'))
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '设置代理失败'))
+    showError(parseApiError(err, t('providerDetail.proxySetFailed')))
   } finally {
     savingProviderProxy.value = false
   }
@@ -1660,10 +1662,10 @@ async function clearProviderProxy() {
     const updated = await updateProvider(provider.value.id, { proxy: null })
     provider.value = updated
     providerProxyPopoverOpen.value = false
-    showSuccess('已清除提供商代理')
+    showSuccess(t('providerDetail.providerProxyCleared'))
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '清除代理失败'))
+    showError(parseApiError(err, t('providerDetail.proxyClearFailed')))
   } finally {
     savingProviderProxy.value = false
   }
@@ -1771,12 +1773,12 @@ async function copyFullKey(key: EndpointAPIKey) {
     revealedKeys.value.set(key.id, textToCopy)
     copyToClipboard(textToCopy)
   } catch (err: unknown) {
-    showError(parseApiError(err, '获取密钥失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.getKeyFailed')), t('providerDetail.error'))
   }
 }
 
 function getProviderAccountDisplayName(key: EndpointAPIKey): string {
-  return getAccountDisplayName(key, '未命名账号')
+  return getAccountDisplayName(key, t('providerDetail.unnamedAccount'))
 }
 
 async function copyProviderAccountDisplay(key: EndpointAPIKey): Promise<void> {
@@ -1803,7 +1805,7 @@ async function downloadRefreshToken(key: EndpointAPIKey) {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   } catch (err: unknown) {
-    showError(parseApiError(err, '导出失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.exportFailed')), t('providerDetail.error'))
   }
 }
 
@@ -1832,12 +1834,12 @@ async function confirmDeleteKey() {
 
   try {
     await deleteEndpointKey(keyId)
-    showSuccess('密钥已删除')
+    showSuccess(t('providerDetail.keyDeleted'))
     // 刷新端点列表及模型数据（删除 Key 触发自动解除模型关联）
     await loadEndpoints()
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '删除密钥失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.deleteKeyFailed')), t('providerDetail.error'))
   }
 }
 
@@ -1848,11 +1850,11 @@ async function handleRecoverKey(key: EndpointAPIKey) {
   }
   try {
     const result = await recoverKeyHealth(key.id)
-    showSuccess(result.message || 'Key已完全恢复')
+    showSuccess(result.message || t('providerDetail.keyRecovered'))
     await loadEndpoints()
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, 'Key恢复失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.keyRecoverFailed')), t('providerDetail.error'))
   }
 }
 
@@ -1909,7 +1911,7 @@ async function handleRefreshOAuth(key: EndpointAPIKey) {
     // （不 emit('refresh')，避免触发全局 provider 余额刷新）
     void autoRefreshQuotaInBackground({ ignoreCooldown: true })
   } catch (err: unknown) {
-    showError(parseApiError(err, 'Token 刷新失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.tokenRefreshFailed')), t('providerDetail.error'))
   } finally {
     refreshingOAuthKeyId.value = null
   }
@@ -1931,9 +1933,9 @@ async function handleClearOAuthInvalid(key: EndpointAPIKey) {
   }
 
   const confirmed = await confirm({
-    title: '清除账号异常标记',
-    message: `确认账号 "${getProviderAccountDisplayName(key)}" 已手动完成验证？清除后系统会按当前手动开关和调度状态重新评估该 Key。`,
-    confirmText: '确认清除',
+    title: t('providerDetail.clearAnomalyTitle'),
+    message: t('providerDetail.clearAnomalyMessage', { name: getProviderAccountDisplayName(key) }),
+    confirmText: t('providerDetail.confirmClear'),
     variant: 'info',
   })
   if (!confirmed) return
@@ -1941,7 +1943,7 @@ async function handleClearOAuthInvalid(key: EndpointAPIKey) {
   clearingOAuthInvalidKeyId.value = key.id
   try {
     await clearOAuthInvalid(key.id)
-    showSuccess('已清除 OAuth 异常标记')
+    showSuccess(t('providerDetail.anomalyCleared'))
     // 更新本地数据
     const keyInList = providerKeys.value.find(k => k.id === key.id)
     if (keyInList) {
@@ -1971,7 +1973,7 @@ async function handleClearOAuthInvalid(key: EndpointAPIKey) {
     }
     await loadEndpoints()
   } catch (err: unknown) {
-    showError(parseApiError(err, '清除失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.clearFailed')), t('providerDetail.error'))
   } finally {
     clearingOAuthInvalidKeyId.value = null
   }
@@ -2101,7 +2103,7 @@ function getCodexQuotaWindowDisplayLabel(window: QuotaWindowSnapshot): string {
   if (minutes === 10_080) return '7D'
   if (minutes === 43_200) return '1M'
   if (minutes > 0) return formatCodexQuotaWindowMinutes(minutes)
-  return String(window.code || '窗口')
+  return String(window.code || t('quotaUi.window'))
 }
 
 function formatCodexQuotaWindowSeconds(totalSeconds: number): string {
@@ -2114,9 +2116,11 @@ function formatCodexQuotaWindowMinutes(totalMinutes: number): string {
   const hours = Math.floor((normalizedMinutes % (24 * 60)) / 60)
   const minutes = normalizedMinutes % 60
   const parts: string[] = []
-  if (days > 0) parts.push(`${days}天`)
-  if (hours > 0) parts.push(`${hours}小时`)
-  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}分钟`)
+  if (days > 0) parts.push(t('quotaUi.durationDays', { value: days }))
+  if (hours > 0) parts.push(t('quotaUi.durationHours', { value: hours }))
+  if (minutes > 0 || parts.length === 0) {
+    parts.push(t('quotaUi.durationMinutes', { value: minutes }))
+  }
   return parts.join('')
 }
 
@@ -2425,22 +2429,22 @@ function formatKiroResetTime(timestamp: number | null | undefined): string {
   const diff = ts - now
 
   if (diff <= 0) {
-    return '已重置'
+    return t('providerDetail.reset')
   }
 
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
 
   if (days > 0) {
-    return `${days}天${hours}小时后`
+    return t('providerDetail.daysHoursLater', { days, hours })
   }
 
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
   if (hours > 0) {
-    return `${hours}小时${minutes}分钟后`
+    return t('providerDetail.hoursMinutesLater', { hours, minutes })
   }
 
-  return `${minutes}分钟后`
+  return t('providerDetail.minutesLater', { minutes })
 }
 
 // 格式化 Kiro 订阅类型显示
@@ -2719,11 +2723,11 @@ async function autoRefreshQuotaInBackground(options: { ignoreCooldown?: boolean 
     const result = await refreshProviderQuota(providerId)
     const applied = applyQuotaResults(result.results)
     if (result.success <= 0 && applied === 0 && !hadCachedQuota && providerType === 'antigravity') {
-      showError('没有获取到配额信息（请检查账号是否已授权、project_id 是否存在）', '提示')
+      showError(t('providerDetail.noQuotaInfo'), t('providerDetail.notice'))
     }
   } catch (err: unknown) {
     if (!hadCachedQuota && providerType === 'antigravity') {
-      showError(parseApiError(err, '后台刷新配额失败'), '错误')
+      showError(parseApiError(err, t('providerDetail.quotaRefreshFailed')), t('providerDetail.error'))
     }
   } finally {
     refreshingQuota.value = false
@@ -2777,10 +2781,10 @@ async function toggleKeyActive(key: EndpointAPIKey) {
     const newStatus = !key.is_active
     await updateProviderKey(key.id, { is_active: newStatus })
     key.is_active = newStatus
-    showSuccess(newStatus ? '密钥已启用' : '密钥已停用')
+    showSuccess(newStatus ? t('providerDetail.keyEnabled') : t('providerDetail.keyDisabled'))
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '操作失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.operationFailed')), t('providerDetail.error'))
   } finally {
     togglingKeyId.value = null
   }
@@ -2822,10 +2826,10 @@ async function setKeyProxy(key: EndpointAPIKey, nodeId: string) {
     })
     key.proxy = { node_id: nodeId, enabled: true }
     proxyPopoverOpenKeyId.value = null
-    showSuccess('代理节点已设置')
+    showSuccess(t('providerDetail.proxySet'))
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '设置代理失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.proxySetFailed')), t('providerDetail.error'))
   } finally {
     savingProxyKeyId.value = null
   }
@@ -2842,10 +2846,10 @@ async function clearKeyProxy(key: EndpointAPIKey) {
     await updateProviderKey(key.id, { proxy: null })
     key.proxy = null
     proxyPopoverOpenKeyId.value = null
-    showSuccess('已清除账号代理，将使用提供商级别代理')
+    showSuccess(t('providerDetail.accountProxyCleared'))
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '清除代理失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.proxyClearFailed')), t('providerDetail.error'))
   } finally {
     savingProxyKeyId.value = null
   }
@@ -2972,7 +2976,7 @@ async function savePriority(key: EndpointAPIKey) {
 
   try {
     await updateProviderKey(keyId, { internal_priority: newPriority })
-    showSuccess('优先级已更新')
+    showSuccess(t('providerDetail.priorityUpdated'))
     // 更新本地数据 - 更新 providerKeys 中的数据
     const keyToUpdate = providerKeys.value.find(k => k.id === keyId)
     if (keyToUpdate) {
@@ -2982,7 +2986,7 @@ async function savePriority(key: EndpointAPIKey) {
     providerKeys.value.sort((a, b) => (a.internal_priority ?? 0) - (b.internal_priority ?? 0))
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '更新优先级失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.priorityUpdateFailed')), t('providerDetail.error'))
   }
 }
 
@@ -3041,7 +3045,7 @@ async function saveMultiplier(key: EndpointAPIKey, format: string) {
 
   // 验证输入有效性
   if (!keyId || isNaN(newMultiplier)) {
-    showError('请输入有效的倍率值')
+    showError(t('providerDetail.invalidMultiplier'))
     cancelEditMultiplier()
     multiplierSaving.value = false
     return
@@ -3049,7 +3053,7 @@ async function saveMultiplier(key: EndpointAPIKey, format: string) {
 
   // 验证合理范围
   if (newMultiplier <= 0 || newMultiplier > 100) {
-    showError('倍率必须在 0.01 到 100 之间')
+    showError(t('providerDetail.multiplierRange'))
     cancelEditMultiplier()
     multiplierSaving.value = false
     return
@@ -3071,7 +3075,7 @@ async function saveMultiplier(key: EndpointAPIKey, format: string) {
     rateMultipliers[format] = newMultiplier
 
     await updateProviderKey(keyId, { rate_multipliers: rateMultipliers })
-    showSuccess('倍率已更新')
+    showSuccess(t('providerDetail.multiplierUpdated'))
 
     // 更新本地数据
     const keyToUpdate = providerKeys.value.find(k => k.id === keyId)
@@ -3080,7 +3084,7 @@ async function saveMultiplier(key: EndpointAPIKey, format: string) {
     }
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '更新倍率失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.multiplierUpdateFailed')), t('providerDetail.error'))
   } finally {
     multiplierSaving.value = false
   }
@@ -3202,11 +3206,11 @@ async function handleKeyDrop(event: DragEvent, targetIndex: number) {
     })
 
     await Promise.all(updatePromises)
-    showSuccess('优先级已更新')
+    showSuccess(t('providerDetail.priorityUpdated'))
     await loadEndpoints()
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '更新优先级失败'), '错误')
+    showError(parseApiError(err, t('providerDetail.priorityUpdateFailed')), t('providerDetail.error'))
     await loadEndpoints()
   }
 }
@@ -3298,13 +3302,13 @@ function formatUpdatedAt(updatedAt: number): string {
   if (!updatedAt || typeof updatedAt !== 'number') return ''
   const now = Math.floor(Date.now() / 1000)
   const diff = now - updatedAt
-  if (diff <= 60) return '刚刚更新'
+  if (diff <= 60) return t('providerDetail.justUpdated')
   const minutes = Math.floor(diff / 60)
-  if (minutes < 60) return `${minutes}分钟前更新`
+  if (minutes < 60) return t('providerDetail.minutesAgoUpdated', { count: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时前更新`
+  if (hours < 24) return t('providerDetail.hoursAgoUpdated', { count: hours })
   const days = Math.floor(hours / 24)
-  return `${days}天前更新`
+  return t('providerDetail.daysAgoUpdated', { count: days })
 }
 
 // 兼容旧函数名
@@ -3531,7 +3535,7 @@ function getResetCountdownText(
     toCodexRemainingPercent(usedPercent)
   )
   if (!status) return ''
-  return status.isExpired ? status.text : `${status.text} 后重置`
+  return status.isExpired ? status.text : t('providerDetail.resetAfter', { time: status.text })
 }
 
 function getResetCountdownClass(
@@ -3573,12 +3577,12 @@ function formatResetTime(seconds: number): string {
   const minutes = Math.floor((seconds % 3600) / 60)
 
   if (days > 0) {
-    return `${days}天 ${hours}小时`
+    return t('providerDetailExtra.daysHours', { days, hours })
   }
   if (hours > 0) {
-    return `${hours}小时 ${minutes}分钟`
+    return t('providerDetailExtra.hoursMinutes', { hours, minutes })
   }
-  return `${minutes}分钟`
+  return t('providerDetailExtra.minutes', { minutes })
 }
 
 // OAuth 订阅类型样式
@@ -3650,17 +3654,17 @@ function getKeySchedulingLabel(key: EndpointAPIKey): string {
   if (key.scheduling_label) return key.scheduling_label
   switch (getKeySchedulingState(key)) {
     case 'disabled':
-      return '禁用'
+      return t('providerDetailExtra.schedulingDisabled')
     case 'invalid':
-      return '已失效'
+      return t('providerDetailExtra.schedulingInvalid')
     case 'blocked':
-      return '异常'
+      return t('providerDetailExtra.schedulingAnomaly')
     case 'quota_exhausted':
-      return '额度耗尽'
+      return t('providerDetailExtra.schedulingQuotaExhausted')
     case 'temporary_unavailable':
-      return '暂时不可用'
+      return t('providerDetailExtra.schedulingUnavailable')
     default:
-      return '可用'
+      return t('providerDetailExtra.schedulingAvailable')
   }
 }
 
@@ -3672,9 +3676,9 @@ function getKeySchedulingBadgeVariant(key: EndpointAPIKey): 'default' | 'seconda
 }
 
 function getKeySchedulingTitle(key: EndpointAPIKey): string {
-  const parts = [`状态: ${getKeySchedulingLabel(key)}`]
+  const parts = [t('providerDetailExtra.statusLabel', { status: getKeySchedulingLabel(key) })]
   if (key.scheduling_reason_label) {
-    parts.push(`原因: ${key.scheduling_reason_label}`)
+    parts.push(t('providerDetailExtra.reasonLabel', { reason: key.scheduling_reason_label }))
   }
   if (key.circuit_breaker_open) {
     parts.push(getKeyCircuitBreakerTitle(key))
@@ -3696,36 +3700,36 @@ function getOpenCircuitEntries(key: EndpointAPIKey): Array<[string, NonNullable<
 
 function getKeyCircuitBreakerTitle(key: EndpointAPIKey): string {
   const entries = getOpenCircuitEntries(key)
-  if (entries.length === 0) return '存在历史熔断记录'
+  if (entries.length === 0) return t('providerDetailExtra.historicalCircuitRecord')
   const parts = entries.map(([format, value]) => {
     const label = formatApiFormatShort(format)
-    const reason = value.reason ? `原因: ${value.reason}` : '原因: 连续失败'
+    const reason = value.reason ? t('providerDetailExtra.reasonLabel', { reason: value.reason }) : t('providerDetailExtra.consecutiveFailures')
     return [label, reason]
       .filter(Boolean)
       .join(' / ')
   })
-  parts.push('这是历史健康记录，不参与当前调度状态')
+  parts.push(t('providerDetailExtra.historicalHealthHint'))
   return parts.join('\n')
 }
 
 function getRecoverKeyTitle(key: EndpointAPIKey): string {
   if (key.circuit_breaker_open) {
-    return '清理历史健康记录并恢复健康状态'
+    return t('providerDetailExtra.clearHistoricalHealth')
   }
-  return '刷新健康状态'
+  return t('providerDetailExtra.refreshHealth')
 }
 
 // 获取自动获取模型状态的 title 提示
 function getAutoFetchStatusTitle(key: EndpointAPIKey): string {
-  const parts: string[] = ['自动获取模型已启用']
+  const parts: string[] = [t('providerDetailExtra.autoModelsEnabled')]
 
   if (key.last_models_fetch_at) {
     const date = new Date(key.last_models_fetch_at)
-    parts.push(`上次同步: ${date.toLocaleString()}`)
+    parts.push(t('providerDetailExtra.lastSync', { time: date.toLocaleString() }))
   }
 
   if (key.last_models_fetch_error) {
-    parts.push(`错误: ${key.last_models_fetch_error}`)
+    parts.push(t('providerDetailExtra.errorLabel', { error: key.last_models_fetch_error }))
   }
 
   return parts.join('\n')
@@ -3767,11 +3771,11 @@ async function loadProvider() {
     keyPageSize.value = getProviderKeysPageSize(providerData.provider_type)
 
     if (!provider.value) {
-      throw new Error('Provider 不存在')
+      throw new Error(t('providerDetailExtra.providerMissing'))
     }
   } catch (err: unknown) {
     if (requestId !== providerLoadRequestId) return
-    showError(parseApiError(err, '加载失败'), '错误')
+    showError(parseApiError(err, t('providerDetailExtra.loadFailed')), t('providerDetail.error'))
   } finally {
     if (requestId === providerLoadRequestId && shouldShowSpinner) {
       loading.value = false
@@ -3808,7 +3812,7 @@ async function loadProviderKeysPage(page = currentKeyPage.value) {
     providerKeys.value = []
     providerKeysTotal.value = 0
     syncCurrentSelections(endpoints.value, [])
-    showError(parseApiError(err, '加载密钥失败'), '错误')
+    showError(parseApiError(err, t('providerDetailExtra.loadKeysFailed')), t('providerDetail.error'))
   } finally {
     if (requestId === keysLoadRequestId) {
       loadingProviderKeys.value = false
@@ -3847,7 +3851,7 @@ async function loadEndpoints() {
       if (requestId !== endpointsLoadRequestId) return
       endpoints.value = []
       syncCurrentSelections([], providerKeys.value)
-      showError(parseApiError(err, '加载端点失败'), '错误')
+      showError(parseApiError(err, t('providerDetailExtra.loadEndpointsFailed')), t('providerDetail.error'))
     })
     .finally(() => {
       if (requestId === endpointsLoadRequestId) {

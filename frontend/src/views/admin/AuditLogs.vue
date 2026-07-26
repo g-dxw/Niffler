@@ -10,10 +10,10 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div class="shrink-0">
             <h3 class="text-sm sm:text-base font-semibold">
-              审计日志
+              {{ t('auditLogs.title') }}
             </h3>
             <p class="text-xs text-muted-foreground mt-0.5">
-              查看系统所有操作记录
+              {{ t('auditLogs.description') }}
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -23,7 +23,7 @@
               <Input
                 id="audit-logs-search"
                 v-model="searchQuery"
-                placeholder="搜索用户名..."
+                :placeholder="t('auditLogs.searchUser')"
                 class="w-32 sm:w-64 h-8 text-sm pl-8"
                 @input="handleSearchChange"
               />
@@ -37,7 +37,7 @@
                 @update:model-value="handleEventTypeChange"
               >
                 <SelectTrigger class="w-24 sm:w-40 h-8 border-border/60">
-                  <SelectValue placeholder="全部类型" />
+                  <SelectValue :placeholder="t('auditLogs.allTypes')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem
@@ -76,7 +76,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="重置筛选"
+              :title="t('auditLogs.reset')"
               @click="handleResetFilters"
             >
               <FilterX class="w-3.5 h-3.5" />
@@ -87,7 +87,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="导出"
+              :title="t('auditLogs.export')"
               @click="exportLogs"
             >
               <Download class="w-3.5 h-3.5" />
@@ -112,7 +112,7 @@
         v-else-if="logs.length === 0"
         class="text-center py-12 text-muted-foreground"
       >
-        暂无审计记录
+        {{ t('auditLogs.empty') }}
       </div>
 
       <div v-else>
@@ -124,10 +124,10 @@
                 column-key="created_at"
                 :sortable="false"
                 :filter-active="filters.days !== 7"
-                filter-title="筛选时间范围"
+                :filter-title="t('auditLogs.timeRange')"
                 filter-content-class="w-32 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
               >
-                时间
+                {{ t('auditLogs.time') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     :model-value="filtersDaysString"
@@ -138,17 +138,17 @@
                 </template>
               </SortableTableHead>
               <TableHead class="h-12 font-semibold">
-                用户
+                {{ t('auditLogs.user') }}
               </TableHead>
               <SortableTableHead
                 class="h-12 font-semibold"
                 column-key="event_type"
                 :sortable="false"
                 :filter-active="filters.eventType !== '__all__'"
-                filter-title="筛选事件类型"
+                :filter-title="t('auditLogs.eventTypeFilter')"
                 filter-content-class="w-48 p-1 rounded-2xl border-border bg-card text-foreground shadow-2xl backdrop-blur-xl"
               >
-                事件类型
+                {{ t('auditLogs.eventType') }}
                 <template #filter="{ close }">
                   <TableFilterMenu
                     :model-value="filters.eventType"
@@ -159,13 +159,13 @@
                 </template>
               </SortableTableHead>
               <TableHead class="h-12 font-semibold">
-                描述
+                {{ t('auditLogs.descriptionCol') }}
               </TableHead>
               <TableHead class="h-12 font-semibold">
-                IP地址
+                {{ t('auditLogs.ip') }}
               </TableHead>
               <TableHead class="h-12 font-semibold">
-                状态
+                {{ t('auditLogs.status') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -187,7 +187,7 @@
                   class="flex flex-col"
                 >
                   <span class="text-sm font-medium">
-                    {{ entry.user_email || `用户 ${entry.user_id}` }}
+                    {{ entry.user_email || t('auditLogs.userFallback', { id: entry.user_id }) }}
                   </span>
                   <span
                     v-if="entry.user_username"
@@ -199,7 +199,7 @@
                 <span
                   v-else
                   class="text-muted-foreground italic"
-                >系统</span>
+                >{{ t('auditLogs.system') }}</span>
               </TableCell>
 
               <TableCell class="py-4">
@@ -216,7 +216,7 @@
                 class="max-w-xs truncate py-4"
                 :title="entry.description"
               >
-                {{ entry.description || '无描述' }}
+                {{ entry.description || t('auditLogs.noDescription') }}
               </TableCell>
 
               <TableCell class="py-4">
@@ -279,13 +279,13 @@
               v-if="logItem.user_id"
               class="text-sm"
             >
-              {{ logItem.user_email || `用户 ${logItem.user_id}` }}
+              {{ logItem.user_email || t('auditLogs.userFallback', { id: logItem.user_id }) }}
             </div>
             <div
               class="text-xs text-muted-foreground truncate"
               :title="logItem.description"
             >
-              {{ logItem.description || '无描述' }}
+              {{ logItem.description || t('auditLogs.noDescription') }}
             </div>
             <div
               v-if="logItem.ip_address"
@@ -323,7 +323,7 @@
         <div class="p-6">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-medium">
-              审计日志详情
+              {{ t('auditLogs.detail') }}
             </h3>
             <Button
               variant="ghost"
@@ -336,7 +336,7 @@
 
           <div class="space-y-4">
             <div>
-              <Label>事件类型</Label>
+              <Label>{{ t('auditLogs.eventType') }}</Label>
               <p class="mt-1 text-sm">
                 {{ getEventTypeLabel(selectedLog.event_type) }}
               </p>
@@ -345,24 +345,24 @@
             <Separator />
 
             <div>
-              <Label>描述</Label>
+              <Label>{{ t('auditLogs.descriptionCol') }}</Label>
               <p class="mt-1 text-sm">
-                {{ selectedLog.description || '无描述' }}
+                {{ selectedLog.description || t('auditLogs.noDescription') }}
               </p>
             </div>
 
             <div>
-              <Label>时间</Label>
+              <Label>{{ t('auditLogs.time') }}</Label>
               <p class="mt-1 text-sm">
                 {{ formatDateTime(selectedLog.created_at) }}
               </p>
             </div>
 
             <div v-if="selectedLog.user_id">
-              <Label>用户信息</Label>
+              <Label>{{ t('auditLogs.userInfo') }}</Label>
               <div class="mt-1 text-sm">
                 <p class="font-medium">
-                  {{ selectedLog.user_email || `用户 ${selectedLog.user_id}` }}
+                  {{ selectedLog.user_email || t('auditLogs.userFallback', { id: selectedLog.user_id }) }}
                 </p>
                 <p
                   v-if="selectedLog.user_username"
@@ -377,28 +377,28 @@
             </div>
 
             <div v-if="selectedLog.ip_address">
-              <Label>IP地址</Label>
+              <Label>{{ t('auditLogs.ip') }}</Label>
               <p class="mt-1 text-sm">
                 {{ selectedLog.ip_address }}
               </p>
             </div>
 
             <div v-if="selectedLog.status_code">
-              <Label>状态码</Label>
+              <Label>{{ t('auditLogs.statusCode') }}</Label>
               <p class="mt-1 text-sm">
                 {{ selectedLog.status_code }}
               </p>
             </div>
 
             <div v-if="selectedLog.error_message">
-              <Label>错误消息</Label>
+              <Label>{{ t('auditLogs.errorMessage') }}</Label>
               <p class="mt-1 text-sm text-destructive">
                 {{ selectedLog.error_message }}
               </p>
             </div>
 
             <div v-if="selectedLog.metadata">
-              <Label>元数据</Label>
+              <Label>{{ t('auditLogs.metadata') }}</Label>
               <pre class="mt-1 text-sm bg-muted p-3 rounded-md overflow-x-auto">{{ JSON.stringify(selectedLog.metadata, null, 2) }}</pre>
             </div>
           </div>
@@ -410,6 +410,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Card,
   Button,
@@ -465,6 +466,7 @@ interface AuditLog {
 }
 
 const loading = ref(false)
+const { t } = useI18n()
 const logs = ref<AuditLog[]>([])
 const selectedLog = ref<AuditLog | null>(null)
 let logsRequestId = 0
@@ -481,25 +483,25 @@ const filters = ref({
 })
 
 const filtersDaysString = ref('7')
-const auditEventTypeFilterOptions = [
-  { value: '__all__', label: '全部类型' },
-  { value: 'login_success', label: '登录成功' },
-  { value: 'login_failed', label: '登录失败' },
-  { value: 'logout', label: '退出登录' },
-  { value: 'api_key_created', label: 'API密钥创建' },
-  { value: 'api_key_deleted', label: 'API密钥删除' },
-  { value: 'request_success', label: '请求成功' },
-  { value: 'request_failed', label: '请求失败' },
-  { value: 'user_created', label: '用户创建' },
-  { value: 'user_updated', label: '用户更新' },
-  { value: 'user_deleted', label: '用户删除' },
-]
-const auditDaysFilterOptions = [
-  { value: '1', label: '1天' },
-  { value: '7', label: '7天' },
-  { value: '30', label: '30天' },
-  { value: '90', label: '90天' },
-]
+const auditEventTypeFilterOptions = computed(() => [
+  { value: '__all__', label: t('auditLogs.allTypes') },
+  { value: 'login_success', label: t('auditLogs.loginSuccess') },
+  { value: 'login_failed', label: t('auditLogs.loginFailed') },
+  { value: 'logout', label: t('auditLogs.logout') },
+  { value: 'api_key_created', label: t('auditLogs.apiKeyCreated') },
+  { value: 'api_key_deleted', label: t('auditLogs.apiKeyDeleted') },
+  { value: 'request_success', label: t('auditLogs.requestSuccess') },
+  { value: 'request_failed', label: t('auditLogs.requestFailed') },
+  { value: 'user_created', label: t('auditLogs.userCreated') },
+  { value: 'user_updated', label: t('auditLogs.userUpdated') },
+  { value: 'user_deleted', label: t('auditLogs.userDeleted') },
+])
+const auditDaysFilterOptions = computed(() => [
+  { value: '1', label: t('auditLogs.days', { count: 1 }) },
+  { value: '7', label: t('auditLogs.days', { count: 7 }) },
+  { value: '30', label: t('auditLogs.days', { count: 30 }) },
+  { value: '90', label: t('auditLogs.days', { count: 90 }) },
+])
 
 const currentPage = ref(1)
 const pageSize = ref(20)
@@ -618,7 +620,7 @@ async function exportLogs() {
     }
 
     const csvContent = [
-      ['时间', '用户邮箱', '用户名', '用户ID', '事件类型', '描述', 'IP地址', '状态码', '错误消息'].join(','),
+      [t('auditLogs.time'), t('auditLogs.email'), t('auditLogs.username'), t('auditLogs.userId'), t('auditLogs.eventType'), t('auditLogs.descriptionCol'), t('auditLogs.ip'), t('auditLogs.statusCode'), t('auditLogs.errorMessage')].join(','),
       ...allLogs.map((log: AuditLog) => [
         log.created_at,
         `"${log.user_email || ''}"`,
@@ -662,26 +664,12 @@ function closeLogDetail() {
 
 function getEventTypeLabel(eventType: string): string {
   const labels: Record<string, string> = {
-    'login_success': '登录成功',
-    'login_failed': '登录失败',
-    'logout': '退出登录',
-    'api_key_created': 'API密钥创建',
-    'api_key_deleted': 'API密钥删除',
-    'api_key_used': 'API密钥使用',
-    'request_success': '请求成功',
-    'request_failed': '请求失败',
-    'request_rate_limited': '请求限流',
-    'request_quota_exceeded': '配额超出',
-    'user_created': '用户创建',
-    'user_updated': '用户更新',
-    'user_deleted': '用户删除',
-    'provider_added': '提供商添加',
-    'provider_updated': '提供商更新',
-    'provider_removed': '提供商删除',
-    'suspicious_activity': '可疑活动',
-    'unauthorized_access': '未授权访问',
-    'data_export': '数据导出',
-    'config_changed': '配置变更'
+    'login_success': t('auditLogs.loginSuccess'), 'login_failed': t('auditLogs.loginFailed'), 'logout': t('auditLogs.logout'),
+    'api_key_created': t('auditLogs.apiKeyCreated'), 'api_key_deleted': t('auditLogs.apiKeyDeleted'), 'api_key_used': t('auditLogs.apiKeyUsed'),
+    'request_success': t('auditLogs.requestSuccess'), 'request_failed': t('auditLogs.requestFailed'), 'request_rate_limited': t('auditLogs.requestRateLimited'), 'request_quota_exceeded': t('auditLogs.requestQuotaExceeded'),
+    'user_created': t('auditLogs.userCreated'), 'user_updated': t('auditLogs.userUpdated'), 'user_deleted': t('auditLogs.userDeleted'),
+    'provider_added': t('auditLogs.providerAdded'), 'provider_updated': t('auditLogs.providerUpdated'), 'provider_removed': t('auditLogs.providerRemoved'),
+    'suspicious_activity': t('auditLogs.suspiciousActivity'), 'unauthorized_access': t('auditLogs.unauthorizedAccess'), 'data_export': t('auditLogs.dataExport'), 'config_changed': t('auditLogs.configChanged')
   }
   return labels[eventType] || eventType
 }

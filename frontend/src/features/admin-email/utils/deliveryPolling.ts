@@ -1,4 +1,5 @@
 import { asyncTasksApi, type AsyncTaskItem, type AsyncTaskStatus } from '@/api/async-tasks'
+import { i18n } from '@/i18n'
 
 const DEFAULT_TIMEOUT_MS = 90_000
 const DEFAULT_INTERVAL_MS = 2_000
@@ -32,7 +33,7 @@ function isFailureStatus(status: AsyncTaskStatus): boolean {
 }
 
 function taskFailureMessage(task: AsyncTaskItem): string {
-  return task.error_message || task.progress_message || '测试邮件发送失败'
+  return task.error_message || task.progress_message || i18n.global.t('emailDeliveryFeedback.sendFailed')
 }
 
 export async function waitForEmailDeliveryResult(
@@ -54,7 +55,7 @@ export async function waitForEmailDeliveryResult(
       return {
         status: 'succeeded',
         task: latestTask,
-        message: latestTask.progress_message || '测试邮件已发送',
+        message: latestTask.progress_message || i18n.global.t('emailDeliveryFeedback.sent'),
       }
     }
 
@@ -71,7 +72,7 @@ export async function waitForEmailDeliveryResult(
       return {
         status: 'timeout',
         task: latestTask,
-        message: '测试邮件仍在发送，请在最近发送记录查看结果',
+        message: i18n.global.t('emailDeliveryFeedback.stillSending'),
       }
     }
 

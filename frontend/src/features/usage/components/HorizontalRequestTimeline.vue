@@ -31,7 +31,7 @@
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-3">
               <h4 class="text-sm font-semibold">
-                请求链路追踪
+                {{ t('requestTimeline.title') }}
               </h4>
               <Badge :variant="getFinalStatusBadgeVariant(computedFinalStatus)">
                 {{ getFinalStatusLabel(computedFinalStatus) }}
@@ -185,7 +185,7 @@
                     v-if="currentAttempt.started_at"
                     class="info-item"
                   >
-                    <span class="info-label">时间范围</span>
+                    <span class="info-label">{{ t('requestTimeline.timeRange') }}</span>
                     <span class="info-value mono time-range-value">
                       {{ formatTime(currentAttempt.started_at) }}
                       <span class="time-arrow-container">
@@ -195,21 +195,21 @@
                         >+{{ formatDuration(currentAttempt.started_at, currentAttempt.finished_at) }}</span>
                         <span class="time-arrow">→</span>
                       </span>
-                      {{ currentAttempt.finished_at ? formatTime(currentAttempt.finished_at) : '进行中' }}
+                      {{ currentAttempt.finished_at ? formatTime(currentAttempt.finished_at) : t('requestTimeline.inProgress') }}
                     </span>
                   </div>
                   <div
                     v-if="currentAttempt.extra_data?.first_byte_time_ms != null"
                     class="info-item"
                   >
-                    <span class="info-label">首字 (TTFB)</span>
+                    <span class="info-label">{{ t('requestTimeline.ttfb') }}</span>
                     <span class="info-value mono">{{ formatLatency(currentAttempt.extra_data.first_byte_time_ms) }}</span>
                   </div>
                   <div
                     v-if="currentAttemptFormatDisplay"
                     class="info-item"
                   >
-                    <span class="info-label">格式</span>
+                    <span class="info-label">{{ t('requestTimeline.format') }}</span>
                     <span class="info-value">
                       <code class="format-code">{{ currentAttemptFormatDisplay }}</code>
                     </span>
@@ -218,7 +218,7 @@
                     v-if="currentAttemptRequestPathDisplay"
                     class="info-item"
                   >
-                    <span class="info-label">请求路径</span>
+                    <span class="info-label">{{ t('requestTimeline.requestPath') }}</span>
                     <span class="info-value">
                       <code class="format-code request-path-code">{{ currentAttemptRequestPathDisplay }}</code>
                     </span>
@@ -227,7 +227,7 @@
                     v-if="currentAttemptAccountDisplay"
                     class="info-item"
                   >
-                    <span class="info-label">{{ isOAuthType(currentAttempt.key_auth_type) ? '账号' : '密钥' }}</span>
+                    <span class="info-label">{{ isOAuthType(currentAttempt.key_auth_type) ? t('requestTimeline.account') : t('requestTimeline.key') }}</span>
                     <span class="info-value info-value-stacked">
                       <span class="key-name">
                         {{ currentAttemptAccountDisplay }}
@@ -246,11 +246,11 @@
                     v-if="currentAttemptKeyFormatsDisplay"
                     class="info-item"
                   >
-                    <span class="info-label">支持端点</span>
+                    <span class="info-label">{{ t('requestTimeline.supportedEndpoints') }}</span>
                     <span class="info-value info-value-stacked">
                       <code class="format-code">{{ currentAttemptKeyFormatsDisplay }}</code>
                       <span class="text-xs text-muted-foreground">
-                        Key 声明的可用 endpoint 格式
+                        {{ t('requestTimeline.keyEndpointFormats') }}
                       </span>
                     </span>
                   </div>
@@ -258,14 +258,14 @@
                     v-if="currentAttempt.extra_data?.proxy"
                     class="info-item"
                   >
-                    <span class="info-label">代理</span>
+                    <span class="info-label">{{ t('requestTimeline.proxy') }}</span>
                     <span class="info-value info-value-stacked">
                       <span class="proxy-name">
-                        {{ currentAttempt.extra_data.proxy.node_name || currentAttempt.extra_data.proxy.url || '未知' }}
+                        {{ currentAttempt.extra_data.proxy.node_name || currentAttempt.extra_data.proxy.url || t('requestTimeline.unknown') }}
                         <span
                           v-if="currentAttempt.extra_data.proxy.source === 'system'"
                           class="text-xs text-muted-foreground ml-1"
-                        >(系统)</span>
+                        >({{ t('requestTimeline.system') }})</span>
                       </span>
                       <span class="proxy-detail">
                         <span
@@ -289,7 +289,7 @@
                     v-if="currentAttempt.extra_data?.pool_selection"
                     class="info-item"
                   >
-                    <span class="info-label">号池调度</span>
+                    <span class="info-label">{{ t('requestTimeline.poolScheduling') }}</span>
                     <span class="info-value info-value-stacked">
                       <span class="pool-reason">
                         <span
@@ -301,7 +301,7 @@
                         <span
                           v-if="currentAttempt.extra_data.pool_selection.cost_soft_threshold"
                           class="pool-cost-warn"
-                        >接近限额</span>
+                        >{{ t('requestTimeline.nearQuota') }}</span>
                       </span>
                       <span
                         v-if="currentAttempt.extra_data.pool_selection.cost_window_usage"
@@ -319,7 +319,7 @@
                     v-if="currentAttempt.extra_data?.pool_skip"
                     class="info-item"
                   >
-                    <span class="info-label">号池跳过</span>
+                    <span class="info-label">{{ t('requestTimeline.poolSkipped') }}</span>
                     <span class="info-value info-value-stacked">
                       <span class="pool-skip-type">
                         {{ poolSkipLabel(currentAttempt.extra_data.pool_skip.type) }}
@@ -348,7 +348,7 @@
                   class="image-progress-block"
                 >
                   <div class="image-progress-header">
-                    <span class="image-progress-title">图片生成进度</span>
+                    <span class="image-progress-title">{{ t('requestTimeline.imageProgress') }}</span>
                     <span
                       class="image-progress-phase"
                       :class="imageProgressPhaseClass(currentImageProgress.phase)"
@@ -358,32 +358,32 @@
                   </div>
                   <div class="image-progress-grid">
                     <div class="image-progress-item">
-                      <span class="image-progress-label">上游 TTFB</span>
+                      <span class="image-progress-label">{{ t('requestTimeline.upstreamTtfb') }}</span>
                       <span class="image-progress-value mono">{{ formatLatency(currentImageProgress.upstream_ttfb_ms) }}</span>
                     </div>
                     <div class="image-progress-item">
-                      <span class="image-progress-label">SSE 帧数</span>
+                      <span class="image-progress-label">{{ t('requestTimeline.sseFrames') }}</span>
                       <span class="image-progress-value mono">{{ formatProgressCount(currentImageProgress.upstream_sse_frame_count) }}</span>
                     </div>
                     <div class="image-progress-item">
-                      <span class="image-progress-label">Partial 图片</span>
+                      <span class="image-progress-label">{{ t('requestTimeline.partialImages') }}</span>
                       <span class="image-progress-value mono">{{ formatProgressCount(currentImageProgress.partial_image_count) }}</span>
                     </div>
                     <div class="image-progress-item">
-                      <span class="image-progress-label">最后帧</span>
+                      <span class="image-progress-label">{{ t('requestTimeline.lastFrame') }}</span>
                       <span class="image-progress-value mono">{{ formatProgressFrameTime(currentImageProgress.last_upstream_frame_at_unix_ms) }}</span>
                     </div>
                     <template v-if="hasDownstreamHeartbeatProgress">
                       <div class="image-progress-item">
-                        <span class="image-progress-label">下游心跳</span>
+                        <span class="image-progress-label">{{ t('requestTimeline.downstreamHeartbeat') }}</span>
                         <span class="image-progress-value mono">{{ formatProgressCount(currentImageProgress.downstream_heartbeat_count) }}</span>
                       </div>
                       <div class="image-progress-item">
-                        <span class="image-progress-label">心跳间隔</span>
+                        <span class="image-progress-label">{{ t('requestTimeline.heartbeatInterval') }}</span>
                         <span class="image-progress-value mono">{{ formatLatency(currentImageProgress.downstream_heartbeat_interval_ms) }}</span>
                       </div>
                       <div class="image-progress-item">
-                        <span class="image-progress-label">最后心跳</span>
+                        <span class="image-progress-label">{{ t('requestTimeline.lastHeartbeat') }}</span>
                         <span class="image-progress-value mono">{{ formatProgressFrameTime(currentImageProgress.last_downstream_heartbeat_at_unix_ms) }}</span>
                       </div>
                     </template>
@@ -391,14 +391,14 @@
                       v-if="currentImageProgress.last_upstream_event"
                       class="image-progress-item full-width"
                     >
-                      <span class="image-progress-label">上游事件</span>
+                      <span class="image-progress-label">{{ t('requestTimeline.upstreamEvents') }}</span>
                       <code class="image-progress-code">{{ currentImageProgress.last_upstream_event }}</code>
                     </div>
                     <div
                       v-if="currentImageProgress.last_client_visible_event"
                       class="image-progress-item full-width"
                     >
-                      <span class="image-progress-label">客户端可见事件</span>
+                      <span class="image-progress-label">{{ t('requestTimeline.clientEvents') }}</span>
                       <code class="image-progress-code">{{ currentImageProgress.last_client_visible_event }}</code>
                     </div>
                   </div>
@@ -413,13 +413,13 @@
                     <!-- 输入 输出 -->
                     <div class="usage-row">
                       <div class="usage-item">
-                        <span class="usage-label">输入</span>
+                        <span class="usage-label">{{ t('requestTimeline.input') }}</span>
                         <span class="usage-tokens">{{ formatNumber(usageData.tokens.input) }}</span>
                         <span class="usage-cost">${{ usageData.cost.input.toFixed(6) }}</span>
                       </div>
                       <div class="usage-divider" />
                       <div class="usage-item">
-                        <span class="usage-label">输出</span>
+                        <span class="usage-label">{{ t('requestTimeline.output') }}</span>
                         <span class="usage-tokens">{{ formatNumber(usageData.tokens.output) }}</span>
                         <span class="usage-cost">${{ usageData.cost.output.toFixed(6) }}</span>
                       </div>
@@ -430,13 +430,13 @@
                       class="usage-row"
                     >
                       <div class="usage-item">
-                        <span class="usage-label">缓存创建</span>
+                        <span class="usage-label">{{ t('requestTimeline.cacheCreation') }}</span>
                         <span class="usage-tokens">{{ formatNumber(usageData.tokens.cache_creation || 0) }}</span>
                         <span class="usage-cost">${{ (usageData.cost.cache_creation || 0).toFixed(6) }}</span>
                       </div>
                       <div class="usage-divider" />
                       <div class="usage-item">
-                        <span class="usage-label">缓存读取</span>
+                        <span class="usage-label">{{ t('requestTimeline.cacheRead') }}</span>
                         <span class="usage-tokens">{{ formatNumber(usageData.tokens.cache_read || 0) }}</span>
                         <span class="usage-cost">${{ (usageData.cost.cache_read || 0).toFixed(6) }}</span>
                       </div>
@@ -449,7 +449,7 @@
                   v-if="currentAttemptSkipReasonDisplay"
                   class="skip-reason"
                 >
-                  <span class="reason-label">跳过原因</span>
+                  <span class="reason-label">{{ t('requestTimeline.skipReason') }}</span>
                   <span class="reason-content">
                     <span class="reason-value">{{ currentAttemptSkipReasonDisplay }}</span>
                     <span
@@ -468,7 +468,7 @@
                   class="error-block"
                 >
                   <div class="error-heading">
-                    <span class="error-type">错误信息</span>
+                    <span class="error-type">{{ t('requestTimeline.errorInfo') }}</span>
                     <span
                       v-if="currentAttemptRequestError.statusCode != null"
                       class="error-status-badge"
@@ -490,7 +490,7 @@
                     <JsonContentPanel
                       :data="currentAttemptRequestError.upstreamResponse"
                       :is-dark="isDark"
-                      empty-message="无上游响应信息"
+                    :empty-message="t('requestTimeline.noUpstreamResponse')"
                     />
                   </div>
                 </div>
@@ -501,13 +501,13 @@
                   class="extra-block"
                 >
                   <summary class="extra-toggle">
-                    额外信息
+                    {{ t('requestTimeline.extraInfo') }}
                   </summary>
                   <JsonContentPanel
                     class="extra-json-panel"
                     :data="currentAttemptExtraDataDisplay"
                     :is-dark="isDark"
-                    empty-message="无额外信息"
+                    :empty-message="t('requestTimeline.noExtraInfo')"
                   />
                 </details>
               </div>
@@ -524,7 +524,7 @@
     >
       <div class="p-8 text-center">
         <p class="text-sm text-muted-foreground">
-          暂无追踪数据
+          {{ t('requestTimeline.noTrace') }}
         </p>
       </div>
     </Card>
@@ -533,6 +533,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { isAxiosError } from 'axios'
 import Card from '@/components/ui/card.vue'
 import Badge from '@/components/ui/badge.vue'
@@ -602,6 +603,8 @@ interface UsageData {
   }
 }
 
+const { t } = useI18n()
+
 const props = defineProps<{
   requestId?: string | null
   /** 外部传入的状态码，用于覆盖 trace.final_status 的判断 */
@@ -643,11 +646,11 @@ const formatNumber = (num: number | null | undefined): string => {
 // 获取最终状态标签
 const getFinalStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
-    success: '最终成功',
-    failed: '最终失败',
-    cancelled: '已取消',
-    streaming: '流式传输中',
-    pending: '进行中'
+    success: t('requestTimeline.finalSuccess'),
+    failed: t('requestTimeline.finalFailed'),
+    cancelled: t('requestTimeline.cancelled'),
+    streaming: t('requestTimeline.streaming'),
+    pending: t('requestTimeline.inProgress')
   }
   return labels[status] || status
 }
@@ -705,7 +708,7 @@ const proxyTimingBreakdown = (proxy: CandidateProxyInfo): string => {
   // 兼容旧版 timing（含 body_read_ms/decompress_ms）
   const readDecompress = ((t.body_read_ms as number) || 0) + ((t.decompress_ms as number) || 0)
   if (readDecompress > 0) {
-    let label = `读取 ${formatLatency(readDecompress)}`
+    let label = t('requestTimelineExtra.read', { value: formatLatency(readDecompress) })
     if (t.decompress_ms != null && t.decompress_ms > 0 && t.wire_size != null && t.body_size != null && (t.body_size as number) > 0) {
       const ratio = Math.round((1 - (t.wire_size as number) / (t.body_size as number)) * 100)
       label += ` ${formatSize(t.wire_size as number)}→${formatSize(t.body_size as number)}`
@@ -730,10 +733,10 @@ const proxyTimingBreakdown = (proxy: CandidateProxyInfo): string => {
     parts.push(`DNS ${formatLatency(t.dns_ms as number)}`)
   }
   if (t.connection_reused === true) {
-    parts.push('复用连接')
+    parts.push(t('requestTiming.reused'))
   }
   if (t.connect_ms != null && (t.connect_ms as number) > 0) {
-    parts.push(`连接 ${formatLatency(t.connect_ms as number)}`)
+    parts.push(t('requestTiming.connect', { value: formatLatency(t.connect_ms as number) }))
   }
   if (t.tls_ms != null && (t.tls_ms as number) > 0) {
     parts.push(`TLS ${formatLatency(t.tls_ms as number)}`)
@@ -742,16 +745,16 @@ const proxyTimingBreakdown = (proxy: CandidateProxyInfo): string => {
     parts.push(`TTFB ${formatLatency(ttfbMs as number)}`)
   }
   if (responseWaitMs != null && (responseWaitMs as number) > 0) {
-    parts.push(`等待响应头 ${formatLatency(Math.round(responseWaitMs as number))}`)
+    parts.push(t('requestTiming.responseHeaders', { value: formatLatency(Math.round(responseWaitMs as number)) }))
   } else if (legacyWaitMs != null && (legacyWaitMs as number) > 0) {
-    parts.push(`等待响应头(旧版估算) ${formatLatency(Math.round(legacyWaitMs as number))}`)
+    parts.push(t('requestTiming.responseHeadersLegacy', { value: formatLatency(Math.round(legacyWaitMs as number) ) }))
   }
 
   // 计算 Aether→代理 之间无法解释的耗时差
   if (proxy.ttfb_ms != null && t.total_ms != null) {
     const gap = (proxy.ttfb_ms as number) - (t.total_ms as number)
     if (gap > 500) {
-      parts.push(`传输 ${formatLatency(Math.round(gap))}`)
+    parts.push(t('requestTiming.transfer', { value: formatLatency(Math.round(gap)) }))
     }
   }
 
@@ -869,7 +872,7 @@ const getProviderDisplayName = (
   options: { allowAuthTypeFallback?: boolean } = {},
 ): string => {
   const allowAuthTypeFallback = options.allowAuthTypeFallback ?? true
-  if (!attempt) return '未知'
+  if (!attempt) return t('requestTimelineExtra.unknown')
   const providerName = String(attempt.provider_name || '').trim()
   if (providerName) return providerName
   if (allowAuthTypeFallback) {
@@ -878,7 +881,7 @@ const getProviderDisplayName = (
       return AUTH_TYPE_PROVIDER_LABEL_MAP[authType]
     }
   }
-  return '未知'
+  return t('requestTimelineExtra.unknown')
 }
 
 const normalizeProviderIdentity = (value: unknown): string => {
@@ -891,7 +894,7 @@ const buildProviderGroups = (items: CandidateRecord[]): NodeGroup[] => {
   let currentGroup: NodeGroup | null = null
 
   items.forEach((candidate) => {
-    const providerKey = candidate.provider_name || '未知'
+    const providerKey = candidate.provider_name || t('requestTimelineExtra.unknown')
 
     if (currentGroup && currentGroup.id === providerKey) {
       currentGroup.allAttempts.push(candidate)
@@ -1146,12 +1149,12 @@ const currentImageProgress = computed<ImageProgress | null>(() => {
 
 const formatImageProgressPhase = (phase?: string | null): string => {
   const labels: Record<string, string> = {
-    upstream_connecting: '连接上游',
-    upstream_streaming: '上游生成中',
-    upstream_completed: '上游已完成',
-    failed: '失败',
+    upstream_connecting: t('requestTimelineExtra.imagePhase.upstreamConnecting'),
+    upstream_streaming: t('requestTimelineExtra.imagePhase.upstreamStreaming'),
+    upstream_completed: t('requestTimelineExtra.imagePhase.upstreamCompleted'),
+    failed: t('requestTimelineExtra.imagePhase.failed'),
   }
-  if (!phase) return '未知'
+  if (!phase) return t('requestTimelineExtra.unknown')
   return labels[phase] || phase
 }
 
@@ -1172,7 +1175,7 @@ const formatProgressFrameTime = (value?: number | null): string => {
   const time = formatTime(date.toISOString())
   const ageMs = Date.now() - value
   if (ageMs >= 0 && ageMs < 60_000) {
-    return `${Math.max(0, Math.round(ageMs / 1000))}s 前 (${time})`
+    return t('requestTimelineExtra.secondsAgo', { count: Math.max(0, Math.round(ageMs / 1000)), time })
   }
   return time
 }
@@ -1369,10 +1372,10 @@ const currentAttemptSkipReasonDisplay = computed(() => {
   if (!attempt?.skip_reason) return ''
 
   if (attempt.skip_reason === 'provider_request_body_build_failed') {
-    return '上游请求体转换失败'
+    return t('requestTimelineExtra.skipBodyBuild')
   }
   if (attempt.skip_reason === 'provider_request_body_missing') {
-    return '无法构建上游请求体'
+    return t('requestTimelineExtra.skipBodyMissing')
   }
 
   if (attempt.skip_reason !== 'transport_unsupported') {
@@ -1409,7 +1412,7 @@ const currentAttemptFailureDiagnostic = computed<{
   if (!path && !message) return null
   return {
     path: path || '$',
-    message: message || '请求体转换失败',
+    message: message || t('requestTimelineExtra.bodyConvertFailed'),
   }
 })
 
@@ -1417,7 +1420,7 @@ const formatAttemptErrorMessage = (message: string, statusCode?: number): string
   const normalized = message.trim()
   if (!normalized) return ''
   if (/execution runtime (stream )?returned non-success status \d+/i.test(normalized)) {
-    return statusCode != null ? `上游返回非成功状态 ${statusCode}` : '上游返回非成功状态'
+    return statusCode != null ? t('requestTimelineExtra.upstreamStatus', { status: statusCode }) : t('requestTimelineExtra.upstreamStatusUnknown')
   }
   return normalized
 }
@@ -1484,7 +1487,7 @@ const currentAttemptRequestError = computed<{
   if (!message && statusCode == null && !upstreamResponseDisplay) return null
 
   return {
-    message: message || '未知错误',
+    message: message || t('requestTimelineExtra.unknownError'),
     statusCode,
     upstreamResponse: upstreamResponseDisplay,
   }
@@ -1538,22 +1541,22 @@ const formatAuthTypeWithPlan = (authType: string, planType?: string): string => 
 
 const poolSelectionLabel = (reason?: string | null): string => {
   const labels: Record<string, string> = {
-    sticky: '粘性会话',
-    lru: 'LRU',
-    random: '随机',
-    tiebreak: '随机 (平分)',
+    sticky: t('requestTimelineExtra.pool.sticky'),
+    lru: t('requestTimelineExtra.pool.lru'),
+    random: t('requestTimelineExtra.pool.random'),
+    tiebreak: t('requestTimelineExtra.pool.tiebreak'),
   }
-  if (!reason) return '未知'
+  if (!reason) return t('requestTimelineExtra.unknown')
   return labels[reason] || reason
 }
 
 const poolSkipLabel = (type?: string | null): string => {
   const labels: Record<string, string> = {
-    cooldown: '冷却中',
-    cost_exhausted: '额度耗尽',
-    upstream: '上游跳过',
+    cooldown: t('requestTimelineExtra.pool.cooldown'),
+    cost_exhausted: t('requestTimelineExtra.pool.costExhausted'),
+    upstream: t('requestTimelineExtra.pool.upstream'),
   }
-  if (!type) return '未知'
+  if (!type) return t('requestTimelineExtra.unknown')
   return labels[type] || type
 }
 
@@ -1605,7 +1608,7 @@ const formatCandidateAttemptIndex = (attempt: CandidateRecord): string => {
 }
 
 const formatCandidateAccountDisplay = (attempt: CandidateRecord): string => {
-  return attempt.key_account_label || attempt.key_name || attempt.key_preview || '未知 Key'
+  return attempt.key_account_label || attempt.key_name || attempt.key_preview || t('requestTimelineExtra.unknownKey')
 }
 
 const formatAttemptDotTitle = (attempt: CandidateRecord): string => {
@@ -1664,7 +1667,7 @@ const loadTrace = async (silent = false) => {
         return
       }
       if (!silent) {
-        error.value = parseApiError(err, '加载失败')
+    error.value = parseApiError(err, t('common.operationFailed'))
       }
       log.error('加载请求追踪失败:', err)
     } finally {
@@ -1836,15 +1839,15 @@ const formatDuration = (startStr: string, endStr: string): string => {
 // 获取状态标签
 const getStatusLabel = (status: string) => {
   const labels: Record<string, string> = {
-    available: '可用未尝试',
-    unused: '未使用',
-    pending: '进行中',
-    streaming: '传输中',
-    stream_interrupted: '流中断',
-    success: '成功',
-    failed: '失败',
-    cancelled: '已取消',
-    skipped: '跳过'
+    available: t('requestStatuses.available'),
+    unused: t('requestStatuses.unused'),
+    pending: t('requestStatuses.pending'),
+    streaming: t('requestStatuses.streaming'),
+    stream_interrupted: t('requestStatuses.interrupted'),
+    success: t('requestStatuses.success'),
+    failed: t('requestStatuses.failed'),
+    cancelled: t('requestStatuses.cancelled'),
+    skipped: t('requestStatuses.skipped')
   }
   return labels[status] || status
 }

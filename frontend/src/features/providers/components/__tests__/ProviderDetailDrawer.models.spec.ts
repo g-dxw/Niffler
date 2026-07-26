@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, reactive, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, reactive, type App } from '@/test/vue'
 import ProviderDetailDrawer from '@/features/providers/components/ProviderDetailDrawer.vue'
 
 const endpointMocks = vi.hoisted(() => ({

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6 px-4 sm:px-6 lg:px-0">
-    <!-- 页面头部：统计卡片 + 公告 -->
+    <!-- 页面头部：统计卡片 -->
     <div class="flex flex-col lg:flex-row gap-6 lg:items-start">
       <!-- 左侧统计区域 -->
       <div
@@ -115,7 +115,7 @@
                   --
                 </p>
                 <p class="mt-0.5 sm:mt-1 text-[10px] sm:text-sm text-muted-foreground/50">
-                  暂无数据
+                  {{ t('dashboard.noData') }}
                 </p>
               </div>
             </Card>
@@ -129,7 +129,7 @@
         >
           <div class="mb-3 flex items-center justify-between">
             <h3 class="text-sm font-medium text-foreground">
-              本月系统健康
+              {{ t('dashboard.systemHealth') }}
             </h3>
             <Badge
               variant="outline"
@@ -143,7 +143,7 @@
               <Clock class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  平均响应
+                  {{ t('dashboard.averageResponse') }}
                 </p>
                 <p class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold text-foreground">
                   {{ systemHealth.avg_response_time }}s
@@ -154,7 +154,7 @@
               <AlertTriangle class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  错误率
+                  {{ t('dashboard.errorRate') }}
                 </p>
                 <p
                   class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold"
@@ -168,7 +168,7 @@
               <Shuffle class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  转移次数
+                  {{ t('dashboard.fallbackCount') }}
                 </p>
                 <p class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold text-foreground">
                   {{ systemHealth.fallback_count }}
@@ -182,7 +182,7 @@
               <DollarSign class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  本月费用
+                  {{ t('dashboard.monthlyCost') }}
                 </p>
                 <p class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold text-foreground">
                   {{ formatCurrency(costStats.total_cost) }}
@@ -192,7 +192,7 @@
                   variant="success"
                   class="mt-1 text-[9px] sm:text-[10px]"
                 >
-                  节省 {{ formatCurrency(costStats.cost_savings) }}
+                  {{ t('dashboard.savings') }} {{ formatCurrency(costStats.cost_savings) }}
                 </Badge>
               </div>
             </Card>
@@ -206,7 +206,7 @@
         >
           <div class="mb-3 flex items-center justify-between">
             <h3 class="text-sm font-medium text-foreground">
-              本月统计
+              {{ t('dashboard.monthlyStats') }}
             </h3>
             <Badge
               variant="outline"
@@ -223,7 +223,7 @@
               <Database class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  缓存命中率
+                  {{ t('dashboard.cacheHitRate') }}
                 </p>
                 <p class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold text-foreground">
                   {{ cacheStats.cache_hit_rate || 0 }}%
@@ -237,7 +237,7 @@
               <Hash class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  缓存读取
+                  {{ t('dashboard.cacheReads') }}
                 </p>
                 <p class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold text-foreground">
                   {{ formatTokens(cacheStats.cache_read_tokens) }}
@@ -251,7 +251,7 @@
               <Database class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  缓存创建
+                  {{ t('dashboard.cacheCreates') }}
                 </p>
                 <p class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold text-foreground">
                   {{ formatTokens(cacheStats.cache_creation_tokens) }}
@@ -265,7 +265,7 @@
               <DollarSign class="absolute top-3 right-3 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               <div class="pr-6">
                 <p class="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-muted-foreground">
-                  本月费用
+                  {{ t('dashboard.monthlyCost') }}
                 </p>
                 <p class="mt-1.5 sm:mt-2 text-lg sm:text-xl font-semibold text-foreground">
                   {{ formatCurrency(userMonthlyCost) }}
@@ -276,122 +276,12 @@
         </div>
       </div>
 
-      <!-- 右侧系统公告 -->
-      <div
-        id="announcements-section"
-        class="w-full lg:w-[300px] xl:w-[320px] flex-shrink-0 flex flex-col min-h-0"
-        :style="announcementsContainerStyle"
-      >
-        <div class="mb-3 flex items-center justify-between flex-shrink-0">
-          <h3 class="text-sm font-medium text-foreground">
-            系统公告
-          </h3>
-          <Badge
-            variant="outline"
-            class="uppercase tracking-[0.3em] text-[10px]"
-          >
-            Live
-          </Badge>
-        </div>
-
-        <Card class="overflow-hidden p-4 flex flex-col flex-1 min-h-0 h-full max-h-[280px] lg:max-h-none">
-          <div
-            v-if="loadingAnnouncements"
-            class="flex-1 flex items-center justify-center"
-          >
-            <Loader2 class="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-
-          <div
-            v-else-if="announcements.length === 0"
-            class="flex-1 flex flex-col items-center justify-center"
-          >
-            <Bell class="h-8 w-8 text-muted-foreground/40" />
-            <p class="mt-2 text-xs text-muted-foreground">
-              暂无公告
-            </p>
-          </div>
-
-          <div
-            v-else
-            class="-mx-4 px-4 flex-1 overflow-y-auto scrollbar-thin min-h-0 pb-2"
-          >
-            <div
-              ref="announcementsTimelineRef"
-              class="relative pl-5"
-            >
-              <div
-                v-if="announcements.length > 1"
-                class="absolute left-[7px] w-[2px] bg-slate-200 dark:bg-muted"
-                :style="timelineLineStyle"
-              />
-
-              <button
-                v-for="announcement in announcements"
-                :key="announcement.id"
-                data-announcement-item
-                type="button"
-                class="relative w-full text-left mb-3 last:mb-0"
-                @click="viewAnnouncementDetail(announcement)"
-              >
-                <div class="flex gap-2">
-                  <div class="absolute left-[-18px] top-1 z-10">
-                    <span
-                      data-announcement-marker
-                      class="flex h-3 w-3 items-center justify-center rounded-full border-2 border-white dark:border-slate-900"
-                      :class="[
-                        announcement.is_pinned
-                          ? 'bg-amber-500 dark:bg-amber-400'
-                          : announcement.is_read
-                            ? 'bg-slate-300 dark:bg-slate-600'
-                            : getAnnouncementDotColor(announcement.type)
-                      ]"
-                    >
-                      <span
-                        v-if="!announcement.is_read && !announcement.is_pinned"
-                        class="h-1.5 w-1.5 rounded-full bg-white"
-                      />
-                    </span>
-                  </div>
-
-                  <div
-                    class="flex-1 rounded-lg p-2 transition"
-                    :class="[
-                      announcement.is_pinned
-                        ? 'hover:bg-amber-50/50 dark:hover:bg-amber-900/10'
-                        : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
-                    ]"
-                  >
-                    <div class="flex items-center gap-2 mb-1">
-                      <h4 class="text-xs font-medium text-foreground line-clamp-1 flex-1">
-                        {{ announcement.title }}
-                      </h4>
-                      <span
-                        v-if="announcement.is_pinned"
-                        class="flex-shrink-0 rounded-full bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 text-[9px] font-medium text-amber-700 dark:text-amber-400"
-                      >
-                        置顶
-                      </span>
-                    </div>
-                    <div class="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-1">
-                      {{ getPlainText(announcement.content) }}
-                    </div>
-                    <div class="text-[10px] text-muted-foreground/70">
-                      {{ formatAnnouncementDate(announcement.created_at) }}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
-        </Card>
-      </div>
     </div>
 
     <!-- 趋势图表筛选 -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        统计周期
+        {{ t('dashboard.period') }}
       </h3>
       <TimeRangePicker
         v-model="dailyTimeRange"
@@ -407,7 +297,7 @@
         class="p-5"
       >
         <h4 class="mb-3 text-xs font-semibold text-foreground uppercase tracking-wider">
-          每日使用趋势
+          {{ t('dashboard.dailyUsage') }}
         </h4>
         <div
           v-if="loadingDaily"
@@ -428,7 +318,7 @@
             v-else
             class="flex h-full items-center justify-center text-xs text-muted-foreground"
           >
-            暂无数据
+            {{ t('dashboard.noData') }}
           </div>
         </div>
       </Card>
@@ -439,7 +329,7 @@
         class="p-5"
       >
         <h4 class="mb-3 text-xs font-semibold text-foreground uppercase tracking-wider">
-          每日模型成本
+          {{ t('dashboard.dailyModelCost') }}
         </h4>
         <div
           v-if="loadingDaily"
@@ -460,7 +350,7 @@
             v-else
             class="flex h-full items-center justify-center text-xs text-muted-foreground"
           >
-            暂无数据
+            {{ t('dashboard.noData') }}
           </div>
         </div>
       </Card>
@@ -471,7 +361,7 @@
         class="p-5"
       >
         <h4 class="mb-3 text-xs font-semibold text-foreground uppercase tracking-wider">
-          提供商成本分布
+          {{ t('dashboard.providerCost') }}
         </h4>
         <div
           v-if="loadingDaily"
@@ -492,7 +382,7 @@
             v-else
             class="flex h-full items-center justify-center text-xs text-muted-foreground"
           >
-            暂无数据
+            {{ t('dashboard.noData') }}
           </div>
         </div>
       </Card>
@@ -503,7 +393,7 @@
         class="p-5"
       >
         <h4 class="mb-3 text-xs font-semibold text-foreground uppercase tracking-wider">
-          每日模型成本
+          {{ t('dashboard.dailyModelCost') }}
         </h4>
         <div
           v-if="loadingDaily"
@@ -524,7 +414,7 @@
             v-else
             class="flex h-full items-center justify-center text-xs text-muted-foreground"
           >
-            暂无数据
+            {{ t('dashboard.noData') }}
           </div>
         </div>
       </Card>
@@ -536,7 +426,7 @@
       <div class="sm:hidden">
         <div class="px-4 py-3 border-b border-border/60">
           <h3 class="text-sm font-semibold">
-            每日统计
+            {{ t('dashboard.dailyStats') }}
           </h3>
         </div>
         <div
@@ -544,13 +434,13 @@
           class="flex items-center justify-center py-8"
         >
           <Skeleton class="h-5 w-5 rounded-full" />
-          <span class="ml-2 text-muted-foreground text-xs">加载中...</span>
+          <span class="ml-2 text-muted-foreground text-xs">{{ t('dashboard.loading') }}</span>
         </div>
         <div
           v-else-if="dailyStats.length === 0"
           class="py-8 text-center text-muted-foreground text-xs"
         >
-          暂无数据
+          {{ t('dashboard.noData') }}
         </div>
         <div
           v-else
@@ -572,7 +462,7 @@
             </div>
             <div class="grid grid-cols-2 gap-2 text-xs">
               <div class="flex justify-between">
-                <span class="text-muted-foreground">请求</span>
+                <span class="text-muted-foreground">{{ t('dashboard.requests') }}</span>
                 <span>{{ stat.requests.toLocaleString() }}</span>
               </div>
               <div class="flex justify-between">
@@ -580,11 +470,11 @@
                 <span>{{ formatTokens(stat.tokens) }}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-muted-foreground">响应</span>
+                <span class="text-muted-foreground">{{ t('dashboard.responses') }}</span>
                 <span>{{ formatResponseTime(stat.avg_response_time) }}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-muted-foreground">模型</span>
+                <span class="text-muted-foreground">{{ t('dashboard.model') }}</span>
                 <span>{{ stat.unique_models }}</span>
               </div>
             </div>
@@ -597,28 +487,28 @@
         <TableHeader>
           <TableRow>
             <TableHead class="text-left">
-              日期
+              {{ t('dashboard.date') }}
             </TableHead>
             <TableHead class="text-center">
-              请求次数
+              {{ t('dashboard.requestCount') }}
             </TableHead>
             <TableHead class="text-center">
               Tokens
             </TableHead>
             <TableHead class="text-center">
-              费用
+              {{ t('dashboard.cost') }}
             </TableHead>
             <TableHead class="text-center">
-              平均响应
+              {{ t('dashboard.averageResponse') }}
             </TableHead>
             <TableHead class="text-center">
-              使用模型
+              {{ t('dashboard.modelsUsed') }}
             </TableHead>
             <TableHead
               v-if="isAdmin"
               class="text-center"
             >
-              使用提供商
+              {{ t('dashboard.providersUsed') }}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -630,7 +520,7 @@
             >
               <div class="flex items-center justify-center gap-2">
                 <Skeleton class="h-5 w-5 rounded-full" />
-                <span class="text-muted-foreground text-xs">加载中...</span>
+                <span class="text-muted-foreground text-xs">{{ t('dashboard.loading') }}</span>
               </div>
             </TableCell>
           </TableRow>
@@ -639,7 +529,7 @@
               :colspan="isAdmin ? 7 : 6"
               class="text-center py-8 text-muted-foreground text-xs"
             >
-              暂无数据
+              {{ t('dashboard.noData') }}
             </TableCell>
           </TableRow>
           <template v-else>
@@ -699,7 +589,7 @@
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div class="text-center">
             <div class="text-muted-foreground text-[10px]">
-              总请求
+              {{ t('dashboard.totalRequests') }}
             </div>
             <div class="font-semibold text-foreground">
               {{ totalStats.requests.toLocaleString() }}
@@ -707,7 +597,7 @@
           </div>
           <div class="text-center">
             <div class="text-muted-foreground text-[10px]">
-              总Tokens
+              {{ t('dashboard.totalTokens') }}
             </div>
             <div class="font-semibold text-book-cloth dark:text-kraft">
               {{ formatTokens(totalStats.tokens) }}
@@ -715,7 +605,7 @@
           </div>
           <div class="text-center">
             <div class="text-muted-foreground text-[10px]">
-              总费用
+              {{ t('dashboard.cost') }}
             </div>
             <div class="font-semibold text-amber-600 dark:text-amber-400">
               ${{ totalStats.cost.toFixed(4) }}
@@ -723,7 +613,7 @@
           </div>
           <div class="text-center">
             <div class="text-muted-foreground text-[10px]">
-              平均响应
+              {{ t('dashboard.averageLatency') }}
             </div>
             <div class="font-semibold text-book-cloth dark:text-kraft">
               {{ formatResponseTime(totalStats.avgResponseTime) }}
@@ -750,10 +640,10 @@
           />
           <div class="flex-1 min-w-0">
             <h3 class="text-lg font-semibold text-foreground leading-tight truncate">
-              {{ selectedAnnouncement?.title || '公告详情' }}
+              {{ selectedAnnouncement?.title || t('dashboard.announcementDetail') }}
             </h3>
             <p class="text-xs text-muted-foreground">
-              系统公告
+              {{ t('dashboard.systemAnnouncement') }}
             </p>
           </div>
         </div>
@@ -782,7 +672,7 @@
         class="h-10 px-5"
         @click="detailDialogOpen = false"
       >
-        关闭
+        {{ t('common.close') }}
       </Button>
     </template>
   </Dialog>
@@ -791,6 +681,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, onBeforeUnmount, nextTick, watch, markRaw } from 'vue'
 import type { Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { dashboardApi, type DashboardStat, type DailyStat, type ProviderSummary } from '@/api/dashboard'
 import { getDateRangeFromPeriod } from '@/features/usage/composables'
@@ -833,6 +724,8 @@ import {
 } from 'lucide-vue-next'
 import { formatTokens, formatCurrency } from '@/utils/format'
 import { parseDateLike } from '@/utils/date'
+
+const { t } = useI18n()
 import { marked } from 'marked'
 import { sanitizeMarkdown } from '@/utils/sanitize'
 import type { ChartData, ChartOptions, ChartDataset, TooltipItem } from 'chart.js'
@@ -1019,17 +912,17 @@ const iconMap: Record<string, Component> = {
 const emptyStatPlaceholders = computed(() => {
   if (isAdmin.value) {
     return [
-      { name: '今日请求', icon: Activity },
-      { name: '今日 Tokens', icon: Hash },
-      { name: '活跃用户', icon: Users },
-      { name: '今日费用', icon: DollarSign }
+      { name: t('dashboard.todayRequests'), icon: Activity },
+      { name: t('dashboard.todayTokens'), icon: Hash },
+      { name: t('dashboard.activeUsers'), icon: Users },
+      { name: t('dashboard.todayCost'), icon: DollarSign }
     ]
   }
   return [
-    { name: '今日请求', icon: Activity },
-    { name: '今日 Tokens', icon: Hash },
+    { name: t('dashboard.todayRequests'), icon: Activity },
+    { name: t('dashboard.todayTokens'), icon: Hash },
     { name: 'API Keys', icon: Key },
-    { name: '今日费用', icon: DollarSign }
+    { name: t('dashboard.todayCost'), icon: DollarSign }
   ]
 })
 
@@ -1119,7 +1012,7 @@ const dailyModelCostChartOptions = computed<ChartOptions<'bar'>>(() => ({
     },
     y: {
       stacked: true,
-      title: { display: true, text: '费用 ($)', color: 'rgb(107, 114, 128)', font: { size: 10 } },
+      title: { display: true, text: t('chartLabels.costUsd'), color: 'rgb(107, 114, 128)', font: { size: 10 } },
       ticks: { font: { size: 10 } }
     }
   },
@@ -1213,7 +1106,7 @@ const dailyUsageTrendChartData = computed<ChartData<'line'>>(() => {
     labels: dailyStats.value.map(stat => formatDateForChart(stat.date)),
     datasets: [
       {
-        label: '请求数',
+        label: t('chartLabels.requests'),
         data: dailyStats.value.map(stat => stat.requests),
         borderColor: 'rgba(59, 130, 246, 0.8)',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -1254,7 +1147,7 @@ const dailyUsageTrendChartOptions = computed<ChartOptions<'line'>>(() => {
         type: 'linear',
         display: true,
         position: 'left',
-        title: { display: true, text: '请求数', color: 'rgb(107, 114, 128)', font: { size: 10 } },
+        title: { display: true, text: t('chartLabels.requests'), color: 'rgb(107, 114, 128)', font: { size: 10 } },
         ticks: { font: { size: 10 } }
       },
       y1: {
@@ -1299,7 +1192,6 @@ onMounted(async () => {
   }
   await Promise.all([
     loadDashboardData(),
-    loadAnnouncements(),
     loadDailyStats()
   ])
   await nextTick()
@@ -1405,8 +1297,8 @@ function formatDate(dateString: string): string {
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
-  if (date.toDateString() === today.toDateString()) return '今天'
-  if (date.toDateString() === yesterday.toDateString()) return '昨天'
+    if (date.toDateString() === today.toDateString()) return t('relativeDate.today')
+    if (date.toDateString() === yesterday.toDateString()) return t('relativeDate.yesterday')
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', weekday: 'short' })
 }
 
@@ -1415,8 +1307,8 @@ function formatDateForChart(dateString: string): string {
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
-  if (date.toDateString() === today.toDateString()) return '今天'
-  if (date.toDateString() === yesterday.toDateString()) return '昨天'
+    if (date.toDateString() === today.toDateString()) return t('relativeDate.today')
+    if (date.toDateString() === yesterday.toDateString()) return t('relativeDate.yesterday')
   return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
 }
 
@@ -1498,10 +1390,10 @@ function formatAnnouncementDate(dateString: string): string {
   const minutes = Math.floor(diff / (1000 * 60))
   const hours = Math.floor(diff / (1000 * 60 * 60))
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-  if (days < 7) return `${days}天前`
+    if (minutes < 1) return t('relativeDate.justNow')
+    if (minutes < 60) return t('relativeDate.minutesAgo', { count: minutes })
+    if (hours < 24) return t('relativeDate.hoursAgo', { count: hours })
+    if (days < 7) return t('relativeDate.daysAgo', { count: days })
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 

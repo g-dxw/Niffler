@@ -8,17 +8,17 @@
           @update:model-value="emitMetric"
         >
           <SelectTrigger class="h-8 text-xs w-28">
-            <SelectValue placeholder="指标" />
+            <SelectValue :placeholder="t('leaderboard.metric')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="requests">
-              请求数
+              {{ t('leaderboard.requests') }}
             </SelectItem>
             <SelectItem value="tokens">
               Tokens
             </SelectItem>
             <SelectItem value="cost">
-              成本
+              {{ t('leaderboard.cost') }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -36,25 +36,25 @@
       class="p-6"
     >
       <EmptyState
-        title="暂无数据"
-        description="当前时间范围内没有统计结果"
+        :title="t('leaderboard.empty')"
+        :description="t('leaderboard.emptyDescription')"
       />
     </div>
     <Table v-else>
       <TableHeader>
         <TableRow>
           <TableHead class="w-16">
-            排名
+            {{ t('leaderboard.rank') }}
           </TableHead>
-          <TableHead>名称</TableHead>
+          <TableHead>{{ t('leaderboard.name') }}</TableHead>
           <TableHead class="text-right">
-            请求数
+            {{ t('leaderboard.requests') }}
           </TableHead>
           <TableHead class="text-right">
             Tokens
           </TableHead>
           <TableHead class="text-right">
-            成本
+            {{ t('leaderboard.cost') }}
           </TableHead>
         </TableRow>
       </TableHeader>
@@ -86,6 +86,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { EmptyState, LoadingState } from '@/components/common'
 import { TableCard } from '@/components/ui'
 import {
@@ -103,6 +104,8 @@ import {
 } from '@/components/ui'
 import { formatCurrency, formatTokens } from '@/utils/format'
 import type { LeaderboardItem } from '@/api/admin'
+
+const { t } = useI18n()
 
 interface Props {
   title: string

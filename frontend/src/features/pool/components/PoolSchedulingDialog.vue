@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="modelValue"
-    title="号池调度"
-    description="管理号池内 Key 的分配模式和排序偏好"
+    :title="t('poolScheduling.title')"
+    :description="t('poolScheduling.description')"
     size="lg"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -11,10 +11,10 @@
       <div class="space-y-4 rounded-2xl border border-border/60 bg-card/70 p-4">
         <div class="space-y-1">
           <h3 class="text-sm font-medium">
-            分配模式
+            {{ t('poolScheduling.distributionMode') }}
           </h3>
           <p class="text-xs text-muted-foreground">
-            控制 Key 的基础分配方式，选择一种模式。
+            {{ t('poolScheduling.distributionHint') }}
           </p>
         </div>
 
@@ -56,17 +56,17 @@
         <div class="space-y-1">
           <div class="flex flex-wrap items-center gap-2">
             <h3 class="text-sm font-medium">
-              策略调度
+              {{ t('poolScheduling.strategyScheduling') }}
             </h3>
             <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-              已启用 {{ enabledStrategyCount }} 项
+              {{ t('poolScheduling.enabledCount', { count: enabledStrategyCount }) }}
             </span>
           </div>
           <p class="text-xs text-muted-foreground">
-            在分配模式基础上叠加排序因素，可组合启用。
+            {{ t('poolScheduling.strategyHint') }}
           </p>
           <p class="text-xs text-muted-foreground">
-            桌面端支持拖拽排序，移动端可点按上下调整优先级。
+            {{ t('poolScheduling.dragHint') }}
           </p>
         </div>
 
@@ -122,7 +122,7 @@
                         v-if="!item.applicable"
                         class="rounded-full border border-border/60 bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
                       >
-                        当前不可用
+                        {{ t('poolScheduling.unavailable') }}
                       </span>
                     </div>
                     <p class="mt-0.5 text-xs leading-5 text-muted-foreground">
@@ -140,7 +140,7 @@
                       :disabled="!canMoveStrategy(index, -1)"
                       @click="moveStrategy(index, -1)"
                     >
-                      上移
+                      {{ t('poolScheduling.moveUp') }}
                     </button>
                     <button
                       type="button"
@@ -148,7 +148,7 @@
                       :disabled="!canMoveStrategy(index, 1)"
                       @click="moveStrategy(index, 1)"
                     >
-                      下移
+                      {{ t('poolScheduling.moveDown') }}
                     </button>
                   </div>
 
@@ -199,14 +199,14 @@
         :disabled="loading"
         @click="emit('update:modelValue', false)"
       >
-        取消
+        {{ t('poolScheduling.cancel') }}
       </Button>
       <Button
         class="min-w-[96px] flex-1 sm:flex-none"
         :disabled="loading"
         @click="handleSave"
       >
-        {{ loading ? '保存中...' : '保存' }}
+        {{ loading ? t('poolScheduling.saving') : t('poolScheduling.save') }}
       </Button>
     </template>
   </Dialog>
@@ -214,6 +214,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { GripVertical } from 'lucide-vue-next'
 import { Dialog, Button, Switch } from '@/components/ui'
 import { useToast } from '@/composables/useToast'
@@ -251,6 +252,7 @@ const props = defineProps<{
   providerType?: string
   currentConfig: PoolAdvancedConfig | null
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -506,6 +508,12 @@ function getModeOptions(def: PoolPresetMeta): PresetModeOption[] {
     .filter(mode => Boolean(mode.value))
 }
 
+function localizePresetText(name: string, field: 'label' | 'description' | 'evidence'): string | null {
+  const key = `${field}.${normalizePresetName(name)}`
+  const value = t(`poolScheduling.presets.${key}`)
+  return value === `poolScheduling.presets.${key}` ? null : value
+}
+
 function defaultModeForPreset(def: PoolPresetMeta): string | null {
   const options = getModeOptions(def)
   if (options.length === 0) return null
@@ -519,14 +527,14 @@ function defaultModeForPreset(def: PoolPresetMeta): string | null {
 function buildPresetListItem(def: PoolPresetMeta, enabled: boolean, mode?: unknown): PresetListItem {
   return {
     preset: def.name,
-    label: def.label,
-    desc: def.description,
+    label: localizePresetText(def.name, 'label') || def.label,
+    desc: localizePresetText(def.name, 'description') || def.description,
     enabled,
     mode: mode !== undefined ? resolveMode(def, mode) : defaultModeForPreset(def),
     modeOptions: getModeOptions(def),
     applicable: isApplicablePreset(def),
     mutexGroup: normalizeMutexGroup(def.mutex_group),
-    evidenceHint: String(def.evidence_hint ?? '').trim(),
+    evidenceHint: localizePresetText(def.name, 'evidence') || String(def.evidence_hint ?? '').trim(),
   }
 }
 
@@ -845,7 +853,7 @@ async function handleSave() {
     }
     const updatedProvider = await updateProvider(props.providerId, payload)
 
-    success('号池调度已保存')
+    success(t('poolScheduling.saved'))
     emit('saved', updatedProvider)
     emit('update:modelValue', false)
   } catch (err) {

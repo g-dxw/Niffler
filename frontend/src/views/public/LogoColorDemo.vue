@@ -2,16 +2,16 @@
   <div class="min-h-screen bg-[#fafaf7] dark:bg-[#191714] p-8">
     <div class="max-w-7xl mx-auto">
       <h1 class="text-3xl font-bold text-center mb-2 text-[#191919] dark:text-white">
-        Logo 颜色方案对比
+        {{ t('logoColorDemo.title') }}
       </h1>
       <p class="text-center text-[#666663] dark:text-gray-400 mb-8">
-        点击任意方案可以放大预览
+        {{ t('logoColorDemo.subtitle') }}
       </p>
 
       <!-- Color schemes grid -->
       <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
         <div
-          v-for="(scheme, index) in colorSchemes"
+          v-for="(scheme, index) in localizedSchemes"
           :key="index"
           class="relative bg-white dark:bg-[#262624] rounded-2xl p-6 border border-[#e5e4df] dark:border-[rgba(227,224,211,0.16)] cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02]"
           :class="{ 'ring-2 ring-primary': selectedScheme === index }"
@@ -115,7 +115,7 @@
           >
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-xl font-bold text-[#191919] dark:text-white">
-                {{ colorSchemes[selectedScheme].name }}
+                {{ localizedSchemes[selectedScheme].name }}
               </h2>
               <button
                 class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
@@ -149,7 +149,7 @@
                 :loop="true"
                 :loop-pause="300"
                 :stroke-width="3.5"
-                :outline-color="colorSchemes[selectedScheme].primary"
+                :outline-color="localizedSchemes[selectedScheme].primary"
               />
             </div>
 
@@ -158,19 +158,19 @@
               <div class="flex items-center gap-2">
                 <div
                   class="w-6 h-6 rounded-full border-2 border-white shadow"
-                  :style="{ backgroundColor: colorSchemes[selectedScheme].primary }"
+                  :style="{ backgroundColor: localizedSchemes[selectedScheme].primary }"
                 />
                 <span class="text-sm font-mono text-[#666663] dark:text-gray-400">
-                  {{ colorSchemes[selectedScheme].primary }}
+                  {{ localizedSchemes[selectedScheme].primary }}
                 </span>
               </div>
               <div class="flex items-center gap-2">
                 <div
                   class="w-6 h-6 rounded-full border-2 border-white shadow"
-                  :style="{ backgroundColor: colorSchemes[selectedScheme].secondary }"
+                  :style="{ backgroundColor: localizedSchemes[selectedScheme].secondary }"
                 />
                 <span class="text-sm font-mono text-[#666663] dark:text-gray-400">
-                  {{ colorSchemes[selectedScheme].secondary }}
+                  {{ localizedSchemes[selectedScheme].secondary }}
                 </span>
               </div>
             </div>
@@ -181,7 +181,7 @@
                 class="px-6 py-2 bg-primary text-white rounded-xl font-medium hover:bg-primary/90 transition"
                 @click="applyScheme"
               >
-                应用此方案
+                {{ t('logoColorDemo.apply') }}
               </button>
             </div>
           </div>
@@ -207,7 +207,7 @@
               d="M15 19l-7-7 7-7"
             />
           </svg>
-          返回首页
+          {{ t('logoColorDemo.backHome') }}
         </RouterLink>
       </div>
     </div>
@@ -215,70 +215,79 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AetherLineByLineLogo from '@/components/AetherLineByLineLogo.vue'
 import { AETHER_LINE_PATHS, AETHER_FULL_PATH } from '@/constants/logoPaths'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const linePaths = AETHER_LINE_PATHS
 const fullPath = AETHER_FULL_PATH
 
 const colorSchemes = [
   {
-    name: '当前配色 - 暖橙',
+    nameKey: 'currentWarm',
     primary: '#cc785c',
     secondary: '#e8a882',
-    description: '温暖的赤陶色，亲和力强'
+    descriptionKey: 'currentWarmDescription'
   },
   {
-    name: '深金色调',
+    nameKey: 'deepGold',
     primary: '#b08d57',
     secondary: '#d4b896',
-    description: '古铜金色，更加沉稳大气'
+    descriptionKey: 'deepGoldDescription'
   },
   {
-    name: '玫瑰红调',
+    nameKey: 'rose',
     primary: '#a4636c',
     secondary: '#d4a5aa',
-    description: '优雅的玫瑰红，细腻温婉'
+    descriptionKey: 'roseDescription'
   },
   {
-    name: '青铜绿调',
+    nameKey: 'bronzeGreen',
     primary: '#7a8c70',
     secondary: '#a8b8a0',
-    description: '自然青铜色，清新科技感'
+    descriptionKey: 'bronzeGreenDescription'
   },
   {
-    name: '深紫藤调',
+    nameKey: 'deepWisteria',
     primary: '#7d6b8a',
     secondary: '#b5a8c2',
-    description: '紫藤色调，神秘优雅'
+    descriptionKey: 'deepWisteriaDescription'
   },
   {
-    name: '黑金商务',
+    nameKey: 'blackGold',
     primary: '#3d3833',
     secondary: '#8b7355',
-    description: '炭黑配金色，高端商务风'
+    descriptionKey: 'blackGoldDescription'
   },
   {
-    name: '海蓝科技',
+    nameKey: 'oceanBlue',
     primary: '#4a7c8c',
     secondary: '#8ab8c8',
-    description: '深海蓝色，科技专业感'
+    descriptionKey: 'oceanBlueDescription'
   },
   {
-    name: '焦糖棕调',
+    nameKey: 'caramel',
     primary: '#8b6b4a',
     secondary: '#c4a882',
-    description: '焦糖棕色，复古温暖'
+    descriptionKey: 'caramelDescription'
   },
   {
-    name: '石墨灰调',
+    nameKey: 'graphite',
     primary: '#5a5a5a',
     secondary: '#9a9a9a',
-    description: '中性石墨色，简约现代'
+    descriptionKey: 'graphiteDescription'
   }
 ]
+
+const localizedSchemes = computed(() => colorSchemes.map(scheme => ({
+  ...scheme,
+  name: t(`logoColorDemo.schemes.${scheme.nameKey}`),
+  description: t(`logoColorDemo.schemes.${scheme.descriptionKey}`),
+})))
 
 const selectedScheme = ref(0)
 const showPreview = ref(false)
@@ -289,8 +298,12 @@ const selectScheme = (index: number) => {
 }
 
 const applyScheme = () => {
-  const scheme = colorSchemes[selectedScheme.value]
-  alert(`应用方案: ${scheme.name}\n\n请将以下颜色值更新到代码中:\n主色: ${scheme.primary}\n过渡色: ${scheme.secondary}\n\n需要修改的文件:\n1. AetherLineByLineLogo.vue - gradient 颜色\n2. Home.vue - outlineColor 属性`)
+  const scheme = localizedSchemes.value[selectedScheme.value]
+  alert(t('logoColorDemo.applyAlert', {
+    name: scheme.name,
+    primary: scheme.primary,
+    secondary: scheme.secondary,
+  }))
   showPreview.value = false
 }
 </script>

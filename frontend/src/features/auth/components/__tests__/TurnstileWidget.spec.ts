@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createApp } from 'vue'
+import { createApp } from '@/test/vue'
 import TurnstileWidget from '../TurnstileWidget.vue'
 
 function mountTurnstileWidget() {

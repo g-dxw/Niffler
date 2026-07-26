@@ -40,6 +40,12 @@ pub(crate) async fn build_auth_registration_settings_payload(
     let privacy_version_config = state
         .read_system_config_json_value("registration_privacy_policy_version")
         .await?;
+    let contact_us_format_config = state
+        .read_system_config_json_value("contact_us_format")
+        .await?;
+    let contact_us_content_config = state
+        .read_system_config_json_value("contact_us_content")
+        .await?;
 
     let email_configured = smtp_config_is_complete(
         smtp_host.as_ref(),
@@ -65,6 +71,12 @@ pub(crate) async fn build_auth_registration_settings_payload(
         system_config_string(privacy_content_config.as_ref()).unwrap_or_default();
     let privacy_policy_version =
         system_config_string(privacy_version_config.as_ref()).unwrap_or_else(|| "1".to_string());
+    let contact_us_format = match system_config_string(contact_us_format_config.as_ref()) {
+        Some(value) if matches!(value.as_str(), "markdown" | "html") => value,
+        _ => "markdown".to_string(),
+    };
+    let contact_us_content =
+        system_config_string(contact_us_content_config.as_ref()).unwrap_or_default();
 
     Ok(json!({
         "enable_registration": enable_registration,
@@ -79,6 +91,10 @@ pub(crate) async fn build_auth_registration_settings_payload(
             "format": privacy_policy_format,
             "content": privacy_policy_content,
             "version": privacy_policy_version,
+        },
+        "contact_us": {
+            "format": contact_us_format,
+            "content": contact_us_content,
         },
     }))
 }

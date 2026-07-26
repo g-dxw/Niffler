@@ -362,7 +362,7 @@ h4,
 h5,
 h6,
 .literary-heading {
-  font-family: var(--serif);
+  /* font-family: var(--serif); */
   font-weight: 500;
   letter-spacing: -0.015em;
 }
@@ -377,7 +377,7 @@ h1 {
 .literary-body,
 article p,
 .prose p {
-  font-family: var(--serif);
+  /* font-family: var(--serif); */
   line-height: 1.7;
   letter-spacing: 0.005em;
 }

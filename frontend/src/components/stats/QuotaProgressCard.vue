@@ -21,8 +21,8 @@
       class="p-4"
     >
       <EmptyState
-        title="暂无数据"
-        description="暂无周期额度数据"
+        :title="t('quotaProgress.empty')"
+        :description="t('quotaProgress.emptyDescription')"
       />
     </div>
     <div
@@ -47,9 +47,9 @@
           />
         </div>
         <div class="flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>剩余 {{ formatCurrency(provider.remaining_usd) }}</span>
+          <span>{{ t('quotaProgress.remaining', { value: formatCurrency(provider.remaining_usd) }) }}</span>
           <span v-if="provider.estimated_exhaust_at">
-            预计耗尽 {{ formatDate(provider.estimated_exhaust_at) }}
+            {{ t('quotaProgress.estimatedExhaustion', { date: formatDate(provider.estimated_exhaust_at) }) }}
           </span>
         </div>
       </div>
@@ -58,10 +58,13 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Card } from '@/components/ui'
 import { EmptyState, LoadingState } from '@/components/common'
 import { formatCurrency } from '@/utils/format'
 import type { QuotaUsageProvider } from '@/api/admin'
+
+const { t, locale } = useI18n()
 
 interface Props {
   title: string
@@ -76,6 +79,6 @@ withDefaults(defineProps<Props>(), {
 })
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString()
+  return new Date(value).toLocaleDateString(locale.value)
 }
 </script>

@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="产品策略"
-      description="决定用户能用哪些模型，以及钱包按什么价格扣费。"
+      :title="t('productPlans.title')"
+      :description="t('productPlans.description')"
       :icon="Tags"
     >
       <template #actions>
@@ -16,14 +16,14 @@
             class="mr-2 h-4 w-4"
             :class="{ 'animate-spin': pageLoading }"
           />
-          刷新
+          {{ t('productPlans.refresh') }}
         </Button>
         <Button
           class="admin-entry-action"
           @click="productPlanDialogOpen = true"
         >
           <Plus class="mr-2 h-4 w-4" />
-          新增策略
+          {{ t('productPlans.add') }}
         </Button>
       </template>
     </PageHeader>
@@ -34,10 +34,10 @@
           <div class="flex items-center justify-between gap-3">
             <div>
               <h2 class="text-sm font-semibold">
-                策略
+                {{ t('productPlans.policy') }}
               </h2>
               <p class="mt-1 text-xs text-muted-foreground">
-                给用户密钥使用的模型和价格规则。
+                {{ t('productPlans.policyHint') }}
               </p>
             </div>
             <Badge variant="secondary">
@@ -49,7 +49,7 @@
             <Input
               v-model="productPlanSearch"
               class="h-9"
-              placeholder="搜索策略"
+              :placeholder="t('productPlans.search')"
               @keyup.enter="loadProductPlans"
             />
             <Button
@@ -57,7 +57,7 @@
               size="icon"
               class="admin-filter-action h-9 w-9 shrink-0"
               :disabled="productPlanLoading"
-              title="搜索"
+              :title="t('productPlans.searchAction')"
               @click="loadProductPlans"
             >
               <Search class="h-4 w-4" />
@@ -76,7 +76,7 @@
             class="flex items-center justify-center py-12 text-sm text-muted-foreground"
           >
             <Loader2 class="mr-2 h-5 w-5 animate-spin" />
-            正在读取策略
+            {{ t('productPlans.loading') }}
           </div>
 
           <div
@@ -84,17 +84,17 @@
             class="mt-4 rounded-lg border border-dashed border-border/70 p-4"
           >
             <p class="text-sm font-medium">
-              先新增一个策略
+              {{ t('productPlans.empty') }}
             </p>
             <p class="mt-1 text-xs text-muted-foreground">
-              策略建好后，再添加可用模型和适用密钥。
+              {{ t('productPlans.emptyHint') }}
             </p>
             <Button
               class="admin-entry-action mt-3 h-8"
               size="sm"
               @click="productPlanDialogOpen = true"
             >
-              新增策略
+              {{ t('productPlans.add') }}
             </Button>
           </div>
 
@@ -116,11 +116,11 @@
                     {{ plan.display_name }}
                   </div>
                   <div class="mt-1 truncate text-xs text-muted-foreground">
-                    {{ formatMultiplier(plan.sales_multiplier) }} · {{ plan.is_public ? '公开' : '内部' }}
+                    {{ formatMultiplier(plan.sales_multiplier) }} · {{ plan.is_public ? t('productPlans.public') : t('productPlans.internal') }}
                   </div>
                 </div>
                 <Badge :variant="plan.is_active ? 'outline' : 'secondary'">
-                  {{ plan.is_active ? '启用' : '停用' }}
+                  {{ plan.is_active ? t('productPlans.enabled') : t('productPlans.disabled') }}
                 </Badge>
               </div>
             </button>
@@ -133,17 +133,17 @@
             class="flex min-h-[440px] flex-col justify-center rounded-lg border border-dashed border-border/70 p-6"
           >
             <p class="text-base font-semibold">
-              先新增策略
+              {{ t('productPlans.empty') }}
             </p>
             <p class="mt-2 max-w-md text-sm text-muted-foreground">
-              策略决定用户密钥能用哪些模型，以及钱包扣费价格。
+              {{ t('productPlans.description') }}
             </p>
             <Button
               class="admin-entry-action mt-4 w-fit"
               @click="productPlanDialogOpen = true"
             >
               <Plus class="mr-2 h-4 w-4" />
-              新增策略
+              {{ t('productPlans.add') }}
             </Button>
           </div>
 
@@ -158,10 +158,10 @@
                     {{ selectedProductPlan.display_name }}
                   </h2>
                   <Badge :variant="selectedProductPlan.is_active ? 'outline' : 'secondary'">
-                    {{ selectedProductPlan.is_active ? '启用' : '停用' }}
+                    {{ selectedProductPlan.is_active ? t('productPlans.enabled') : t('productPlans.disabled') }}
                   </Badge>
                   <Badge :variant="selectedProductPlan.is_public ? 'outline' : 'secondary'">
-                    {{ selectedProductPlan.is_public ? '公开' : '内部' }}
+                    {{ selectedProductPlan.is_public ? t('productPlans.public') : t('productPlans.internal') }}
                   </Badge>
                 </div>
                 <p
@@ -171,9 +171,9 @@
                   {{ selectedProductPlan.description }}
                 </p>
                 <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>默认倍率 {{ formatMultiplier(selectedProductPlan.sales_multiplier) }}</span>
-                  <span>模型 {{ productPlanModels.length }}</span>
-                  <span>密钥 {{ selectedPlanKeyCount }}</span>
+                  <span>{{ t('productPlans.defaultMultiplier') }} {{ formatMultiplier(selectedProductPlan.sales_multiplier) }}</span>
+                  <span>{{ t('productPlans.models') }} {{ productPlanModels.length }}</span>
+                  <span>{{ t('productPlans.keys') }} {{ selectedPlanKeyCount }}</span>
                 </div>
               </div>
               <Button
@@ -181,7 +181,7 @@
                 @click="openProductPlanModelDialog"
               >
                 <Plus class="mr-2 h-4 w-4" />
-                添加模型
+                {{ t('productPlans.addModel') }}
               </Button>
             </div>
 
@@ -189,10 +189,10 @@
               <section class="rounded-lg border border-border/70">
                 <div class="border-b border-border/70 px-4 py-3">
                   <h3 class="text-sm font-semibold">
-                    可用模型
+                    {{ t('productPlans.availableModels') }}
                   </h3>
                   <p class="mt-1 text-xs text-muted-foreground">
-                    这些模型会按当前策略的价格规则扣费。
+                    {{ t('productPlans.availableHint') }}
                   </p>
                 </div>
 
@@ -208,7 +208,7 @@
                   class="flex items-center justify-center py-12 text-sm text-muted-foreground"
                 >
                   <Loader2 class="mr-2 h-5 w-5 animate-spin" />
-                  正在读取模型
+                  {{ t('productPlans.loadingModels') }}
                 </div>
 
                 <div
@@ -217,17 +217,17 @@
                 >
                   <div class="rounded-lg border border-dashed border-border/70 p-4">
                     <p class="text-sm font-medium">
-                      还没有模型
+                      {{ t('productPlans.noModels') }}
                     </p>
                     <p class="mt-1 text-xs text-muted-foreground">
-                      添加后，使用该策略的密钥才能看到这些模型。
+                      {{ t('productPlans.noModelsHint') }}
                     </p>
                     <Button
                       class="admin-entry-action mt-3 h-8"
                       size="sm"
                       @click="openProductPlanModelDialog"
                     >
-                      添加模型
+                      {{ t('productPlans.addModel') }}
                     </Button>
                   </div>
                 </div>
@@ -235,9 +235,9 @@
                 <Table v-else>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>模型</TableHead>
-                      <TableHead>倍率</TableHead>
-                      <TableHead>状态</TableHead>
+                      <TableHead>{{ t('productPlans.models') }}</TableHead>
+                      <TableHead>{{ t('productPlans.multiplier') }}</TableHead>
+                      <TableHead>{{ t('productPlans.status') }}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -255,7 +255,7 @@
                       </TableCell>
                       <TableCell>
                         <Badge :variant="model.is_enabled ? 'outline' : 'secondary'">
-                          {{ model.is_enabled ? '启用' : '停用' }}
+                          {{ model.is_enabled ? t('productPlans.enabled') : t('productPlans.disabled') }}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -266,10 +266,10 @@
               <section class="rounded-lg border border-border/70">
                 <div class="border-b border-border/70 px-4 py-3">
                   <h3 class="text-sm font-semibold">
-                    适用密钥
+                    {{ t('productPlans.applicableKeys') }}
                   </h3>
                   <p class="mt-1 text-xs text-muted-foreground">
-                    这些密钥会按当前策略的模型和价格生效。
+                    {{ t('productPlans.applicableHint') }}
                   </p>
                 </div>
 
@@ -285,7 +285,7 @@
                   class="flex items-center justify-center py-12 text-sm text-muted-foreground"
                 >
                   <Loader2 class="mr-2 h-5 w-5 animate-spin" />
-                  正在读取密钥
+                  {{ t('productPlans.loadingKeys') }}
                 </div>
 
                 <div
@@ -294,10 +294,10 @@
                 >
                   <div class="rounded-lg border border-dashed border-border/70 p-4">
                     <p class="text-sm font-medium">
-                      还没有独立密钥
+                      {{ t('productPlans.noKeys') }}
                     </p>
                     <p class="mt-1 text-xs text-muted-foreground">
-                      先在独立密钥页面创建密钥。
+                      {{ t('productPlans.noKeysHint') }}
                     </p>
                   </div>
                 </div>
@@ -305,10 +305,10 @@
                 <Table v-else>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>密钥</TableHead>
-                      <TableHead>当前策略</TableHead>
+                      <TableHead>{{ t('productPlans.key') }}</TableHead>
+                      <TableHead>{{ t('productPlans.currentPolicy') }}</TableHead>
                       <TableHead class="text-right">
-                        操作
+                        {{ t('productPlans.actions') }}
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -342,7 +342,7 @@
                             v-if="savingApiKeyBindingId === apiKey.id"
                             class="mr-2 h-4 w-4 animate-spin"
                           />
-                          {{ apiKeyIsBoundToSelectedPlan(apiKey.id) ? '已适用' : '改策略' }}
+                          {{ apiKeyIsBoundToSelectedPlan(apiKey.id) ? t('productPlans.applied') : t('productPlans.changePolicy') }}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -358,8 +358,8 @@
     <Dialog
       v-model="productPlanDialogOpen"
       size="lg"
-      title="新增策略"
-      description="设置默认销售倍率、公开状态和备注。"
+      :title="t('productPlans.createTitle')"
+      :description="t('productPlans.createHint')"
       :icon="Tags"
     >
       <form
@@ -367,25 +367,25 @@
         @submit.prevent="submitProductPlan"
       >
         <div class="space-y-2">
-          <Label for="product-plan-name">策略名称</Label>
+          <Label for="product-plan-name">{{ t('productPlans.policyName') }}</Label>
           <Input
             id="product-plan-name"
             v-model="productPlanForm.display_name"
-            placeholder="例如 标准策略"
+            :placeholder="t('productPlans.policyNamePlaceholder')"
             required
           />
         </div>
         <div class="space-y-2">
-          <Label for="product-plan-description">备注</Label>
+          <Label for="product-plan-description">{{ t('productPlans.notes') }}</Label>
           <Input
             id="product-plan-description"
             v-model="productPlanForm.description"
-            placeholder="给管理员看的备注，可选"
+            :placeholder="t('productPlans.notesPlaceholder')"
           />
         </div>
         <div class="grid gap-4 sm:grid-cols-3">
           <div class="space-y-2">
-            <Label for="product-plan-sales">销售倍率</Label>
+            <Label for="product-plan-sales">{{ t('productPlans.salesMultiplier') }}</Label>
             <Input
               id="product-plan-sales"
               v-model.number="productPlanForm.sales_multiplier"
@@ -399,14 +399,14 @@
               id="product-plan-public"
               v-model="productPlanForm.is_public"
             />
-            <Label for="product-plan-public">公开</Label>
+            <Label for="product-plan-public">{{ t('productPlans.public') }}</Label>
           </div>
           <div class="flex items-center gap-3 pt-7">
             <Switch
               id="product-plan-active"
               v-model="productPlanForm.is_active"
             />
-            <Label for="product-plan-active">启用</Label>
+            <Label for="product-plan-active">{{ t('productPlans.enabled') }}</Label>
           </div>
         </div>
       </form>
@@ -418,7 +418,7 @@
           :disabled="savingProductPlan"
           @click="submitProductPlan"
         >
-          {{ savingProductPlan ? '保存中...' : '保存策略' }}
+          {{ savingProductPlan ? t('productPlans.saving') : t('productPlans.savePolicy') }}
         </Button>
         <Button
           class="admin-entry-action"
@@ -427,7 +427,7 @@
           :disabled="savingProductPlan"
           @click="productPlanDialogOpen = false"
         >
-          取消
+          {{ t('productPlans.cancel') }}
         </Button>
       </template>
     </Dialog>
@@ -435,8 +435,8 @@
     <Dialog
       v-model="productPlanModelDialogOpen"
       size="lg"
-      title="添加模型"
-      description="从全局模型选择并预览钱包价格。"
+      :title="t('productPlans.addModel')"
+      :description="t('productPlans.addModelHint')"
       :icon="PackageCheck"
     >
       <form
@@ -444,16 +444,16 @@
         @submit.prevent="submitProductPlanModel"
       >
         <div class="space-y-2">
-          <Label for="product-plan-global-model">全局模型</Label>
+          <Label for="product-plan-global-model">{{ t('productPlans.globalModel') }}</Label>
           <Select
             :model-value="selectedProductPlanModelGlobalModelId"
             :disabled="globalModelsLoading"
             @update:model-value="selectProductPlanGlobalModel"
           >
             <SelectTrigger id="product-plan-global-model">
-              <SelectValue :placeholder="globalModelsLoading ? '正在读取模型...' : '选择模型'" />
+              <SelectValue :placeholder="globalModelsLoading ? t('productPlans.loadingModels') : t('productPlans.chooseModel')" />
             </SelectTrigger>
-            <SelectContent search-placeholder="搜索模型名称...">
+            <SelectContent :search-placeholder="t('productPlans.searchModels')">
               <SelectItem
                 v-for="model in globalModels"
                 :key="model.id"
@@ -473,25 +473,25 @@
         </div>
 
         <div class="space-y-2">
-          <Label for="product-plan-model-name">模型名称</Label>
+          <Label for="product-plan-model-name">{{ t('productPlans.modelName') }}</Label>
           <Input
             id="product-plan-model-name"
             v-model="productPlanModelForm.model_name"
-            placeholder="选择后自动填写，也可手动输入"
+            :placeholder="t('productPlans.modelNamePlaceholder')"
             required
           />
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="space-y-2">
-            <Label for="product-plan-model-sales">倍率覆盖</Label>
+            <Label for="product-plan-model-sales">{{ t('productPlans.multiplierOverride') }}</Label>
             <Input
               id="product-plan-model-sales"
               v-model="productPlanModelForm.sales_multiplier_override"
               type="number"
               min="0"
               step="0.0001"
-              placeholder="留空使用默认倍率"
+              :placeholder="t('productPlans.multiplierPlaceholder')"
             />
           </div>
           <div class="flex items-center gap-3 pt-7">
@@ -499,7 +499,7 @@
               id="product-plan-model-enabled"
               v-model="productPlanModelForm.is_enabled"
             />
-            <Label for="product-plan-model-enabled">启用</Label>
+            <Label for="product-plan-model-enabled">{{ t('productPlans.enabled') }}</Label>
           </div>
         </div>
 
@@ -510,18 +510,18 @@
           <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p class="text-sm font-medium">
-                钱包价格
+                {{ t('productPlans.walletPrice') }}
               </p>
               <p class="mt-1 text-xs text-muted-foreground">
-                基础价格 × 实际销售倍率。
+                {{ t('productPlans.walletPriceHint') }}
               </p>
             </div>
             <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <span class="rounded-md bg-background px-2 py-1">
-                默认：{{ formatMultiplier(selectedProductPlan?.sales_multiplier ?? 1) }}
+                {{ t('productPlans.defaultLabel') }}: {{ formatMultiplier(selectedProductPlan?.sales_multiplier ?? 1) }}
               </span>
               <span class="rounded-md bg-background px-2 py-1">
-                实际：{{ formatMultiplier(productPlanModelEffectiveMultiplier) }}
+                {{ t('productPlans.effectiveLabel') }}: {{ formatMultiplier(productPlanModelEffectiveMultiplier) }}
               </span>
             </div>
           </div>
@@ -531,9 +531,9 @@
             class="mt-3 divide-y divide-border/60 rounded-lg border border-border/60 bg-background"
           >
             <div class="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-2 text-xs text-muted-foreground">
-              <span>计费项</span>
-              <span>基础价</span>
-              <span>钱包价</span>
+              <span>{{ t('productPlans.billingItem') }}</span>
+              <span>{{ t('productPlans.basePrice') }}</span>
+              <span>{{ t('productPlans.walletPrice') }}</span>
             </div>
             <div
               v-for="row in productPlanModelPriceRows"
@@ -557,7 +557,7 @@
           :disabled="savingProductPlanModel || !selectedProductPlan"
           @click="submitProductPlanModel"
         >
-          {{ savingProductPlanModel ? '保存中...' : '保存模型' }}
+          {{ savingProductPlanModel ? t('productPlans.saving') : t('productPlans.saveModel') }}
         </Button>
         <Button
           class="admin-entry-action"
@@ -566,7 +566,7 @@
           :disabled="savingProductPlanModel"
           @click="productPlanModelDialogOpen = false"
         >
-          取消
+          {{ t('productPlans.cancel') }}
         </Button>
       </template>
     </Dialog>
@@ -575,6 +575,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import {
   Loader2,
   PackageCheck,
@@ -772,7 +775,7 @@ async function loadProductPlans() {
       }
     }
   } catch (err) {
-    productPlanError.value = extractErrorMessage(err, '读取策略失败')
+    productPlanError.value = extractErrorMessage(err, t('productPlans.loadFailed'))
     showError(productPlanError.value)
   } finally {
     productPlanLoading.value = false
@@ -794,7 +797,7 @@ async function loadProductPlanModels(productPlanId: string) {
     productPlanModels.value = response.items
   } catch (err) {
     if (seq !== productPlanModelLoadSeq) return
-    productPlanModelError.value = extractErrorMessage(err, '读取模型失败')
+    productPlanModelError.value = extractErrorMessage(err, t('productPlans.loadModelsFailed'))
     showError(productPlanModelError.value)
   } finally {
     if (seq === productPlanModelLoadSeq) {
@@ -818,7 +821,7 @@ async function loadApiKeyBindingData() {
     apiKeyProductPlanBindings.value = bindingResponse.items
   } catch (err) {
     if (seq !== apiKeyBindingLoadSeq) return
-    apiKeyBindingError.value = extractErrorMessage(err, '读取密钥失败')
+    apiKeyBindingError.value = extractErrorMessage(err, t('productPlans.loadKeysFailed'))
     showError(apiKeyBindingError.value)
   } finally {
     if (seq === apiKeyBindingLoadSeq) {
@@ -839,7 +842,7 @@ async function loadGlobalModels() {
     )
     globalModels.value = response.models
   } catch (err) {
-    globalModelsError.value = extractErrorMessage(err, '读取全局模型失败')
+    globalModelsError.value = extractErrorMessage(err, t('productPlans.loadGlobalModelsFailed'))
     showError(globalModelsError.value)
   } finally {
     globalModelsLoading.value = false
@@ -870,12 +873,12 @@ async function submitProductPlan() {
   savingProductPlan.value = true
   try {
     const created = await createNifflerProductPlan(payload)
-    success('策略已保存')
+    success(t('productPlans.saved'))
     productPlanDialogOpen.value = false
     await loadProductPlans()
     await selectProductPlan(created.id)
   } catch (err) {
-    showError(extractErrorMessage(err, '新增策略失败'))
+    showError(extractErrorMessage(err, t('productPlans.createFailed')))
   } finally {
     savingProductPlan.value = false
   }
@@ -889,11 +892,11 @@ async function submitProductPlanModel() {
   savingProductPlanModel.value = true
   try {
     await upsertNifflerProductPlanModel(selectedProductPlanId.value, payload)
-    success('模型已保存')
+    success(t('productPlans.modelSaved'))
     productPlanModelDialogOpen.value = false
     await loadProductPlanModels(selectedProductPlanId.value)
   } catch (err) {
-    showError(extractErrorMessage(err, '保存模型失败'))
+    showError(extractErrorMessage(err, t('productPlans.saveModelFailed')))
   } finally {
     savingProductPlanModel.value = false
   }
@@ -901,20 +904,20 @@ async function submitProductPlanModel() {
 
 async function bindApiKeyToSelectedProductPlan(apiKeyId: string) {
   if (!selectedProductPlanId.value || !selectedProductPlan.value) {
-    showError('请先选择策略')
+    showError(t('productPlans.selectPolicyFirst'))
     return
   }
   if (!selectedProductPlan.value.is_active) {
-    showError('只能使用启用的策略')
+    showError(t('productPlans.activePolicyOnly'))
     return
   }
   savingApiKeyBindingId.value = apiKeyId
   try {
     await upsertNifflerApiKeyProductPlanBinding(selectedProductPlanId.value, { api_key_id: apiKeyId })
-    success('策略已应用')
+    success(t('productPlans.appliedSuccess'))
     await loadApiKeyBindingData()
   } catch (err) {
-    showError(extractErrorMessage(err, '保存适用密钥失败'))
+    showError(extractErrorMessage(err, t('productPlans.saveBindingFailed')))
   } finally {
     savingApiKeyBindingId.value = null
   }
@@ -923,13 +926,13 @@ async function bindApiKeyToSelectedProductPlan(apiKeyId: string) {
 function normalizeProductPlanPayload(form: ProductPlanForm): CreateNifflerProductPlanPayload | null {
   const displayName = form.display_name.trim()
   if (!displayName) {
-    showError('策略名称不能为空')
+    showError(t('productPlans.policyNameRequired'))
     return null
   }
 
   const salesMultiplier = Number(form.sales_multiplier ?? 1)
   if (!Number.isFinite(salesMultiplier) || salesMultiplier < 0) {
-    showError('销售倍率必须是非负数字')
+    showError(t('productPlans.multiplierNonNegative'))
     return null
   }
 
@@ -947,7 +950,7 @@ function normalizeProductPlanModelPayload(
 ): UpsertNifflerProductPlanModelPayload | null {
   const modelName = form.model_name.trim()
   if (!modelName) {
-    showError('模型名称不能为空')
+    showError(t('productPlans.modelNameRequired'))
     return null
   }
 
@@ -956,7 +959,7 @@ function normalizeProductPlanModelPayload(
   if (rawOverride !== null && rawOverride !== '') {
     const parsed = Number(rawOverride)
     if (!Number.isFinite(parsed) || parsed < 0) {
-      showError('倍率覆盖必须是非负数字')
+      showError(t('productPlans.overrideNonNegative'))
       return null
     }
     salesMultiplierOverride = parsed
@@ -979,7 +982,7 @@ function formatMultiplier(value: number): string {
 }
 
 function formatOptionalMultiplier(value?: number | null): string {
-  return value === null || value === undefined ? '默认倍率' : formatMultiplier(value)
+  return value === null || value === undefined ? t('productPlans.defaultMultiplier') : formatMultiplier(value)
 }
 
 function formatApiKeyName(apiKey: AdminApiKey): string {
@@ -992,8 +995,8 @@ function formatApiKeyOwner(apiKey: AdminApiKey): string {
 
 function apiKeyBindingPlanLabel(apiKeyId: string): string {
   const binding = apiKeyBindingByApiKeyId.value.get(apiKeyId)
-  if (!binding) return '未设置'
-  return productPlanNameById.value.get(binding.product_plan_id) || '未知策略'
+  if (!binding) return t('productPlans.notSet')
+  return productPlanNameById.value.get(binding.product_plan_id) || t('productPlans.unknownPolicy')
 }
 
 function apiKeyIsBoundToSelectedPlan(apiKeyId: string): boolean {

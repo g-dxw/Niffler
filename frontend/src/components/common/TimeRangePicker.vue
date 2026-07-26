@@ -4,7 +4,7 @@
       v-model="selectedPreset"
     >
       <SelectTrigger class="h-8 w-32 text-xs border-border/60">
-        <SelectValue placeholder="选择时间段" />
+        <SelectValue :placeholder="t('timeRangePicker.selectRange')" />
       </SelectTrigger>
       <SelectContent :searchable="false">
         <SelectItem
@@ -22,53 +22,53 @@
       class="flex flex-wrap items-center gap-1.5"
     >
       <div class="flex h-8 max-w-full items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 transition-colors focus-within:border-primary/70 focus-within:bg-background focus-within:ring-1 focus-within:ring-primary/20">
-        <span class="shrink-0 text-xs text-muted-foreground">开始</span>
+        <span class="shrink-0 text-xs text-muted-foreground">{{ t('timeRangePicker.start') }}</span>
         <Input
           v-if="showTimePicker"
           v-model="startTimeDate"
           type="date"
-          aria-label="开始日期"
+          :aria-label="t('timeRangePicker.startDate')"
           class="h-6 w-32 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
         />
         <Input
           v-else
           v-model="startDate"
           type="date"
-          aria-label="开始日期"
+          :aria-label="t('timeRangePicker.startDate')"
           class="h-6 w-32 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
         />
         <Input
           v-if="showTimePicker"
           v-model="startTimeClock"
           type="time"
-          aria-label="开始时间"
+          :aria-label="t('timeRangePicker.startTime')"
           class="h-6 w-20 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
         />
       </div>
 
-      <span class="hidden text-xs text-muted-foreground sm:inline">至</span>
+      <span class="hidden text-xs text-muted-foreground sm:inline">{{ t('timeRangePicker.to') }}</span>
 
       <div class="flex h-8 max-w-full items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 transition-colors focus-within:border-primary/70 focus-within:bg-background focus-within:ring-1 focus-within:ring-primary/20">
-        <span class="shrink-0 text-xs text-muted-foreground">结束</span>
+        <span class="shrink-0 text-xs text-muted-foreground">{{ t('timeRangePicker.end') }}</span>
         <Input
           v-if="showTimePicker"
           v-model="endTimeDate"
           type="date"
-          aria-label="结束日期"
+          :aria-label="t('timeRangePicker.endDate')"
           class="h-6 w-32 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
         />
         <Input
           v-else
           v-model="endDate"
           type="date"
-          aria-label="结束日期"
+          :aria-label="t('timeRangePicker.endDate')"
           class="h-6 w-32 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
         />
         <Input
           v-if="showTimePicker"
           v-model="endTimeClock"
           type="time"
-          aria-label="结束时间"
+          :aria-label="t('timeRangePicker.endTime')"
           class="h-6 w-20 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
         />
       </div>
@@ -79,23 +79,23 @@
       v-model="selectedGranularity"
     >
       <SelectTrigger class="h-8 w-24 text-xs border-border/60">
-        <SelectValue placeholder="粒度" />
+        <SelectValue :placeholder="t('timeRangePicker.granularity')" />
       </SelectTrigger>
       <SelectContent>
         <SelectItem
           v-if="allowHourly && canUseHourly"
           value="hour"
         >
-          小时
+          {{ t('timeRangePicker.hour') }}
         </SelectItem>
         <SelectItem value="day">
-          天
+          {{ t('timeRangePicker.day') }}
         </SelectItem>
         <SelectItem value="week">
-          周
+          {{ t('timeRangePicker.week') }}
         </SelectItem>
         <SelectItem value="month">
-          月
+          {{ t('timeRangePicker.month') }}
         </SelectItem>
       </SelectContent>
     </Select>
@@ -104,6 +104,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Select,
   SelectContent,
@@ -114,17 +115,19 @@ import {
 } from '@/components/ui'
 import type { DateRangeParams } from '@/features/usage/types'
 
+const { t } = useI18n()
+
 const selectablePresets = ['today', 'yesterday', 'last7days', 'last30days', 'last90days', 'custom'] as const
 type SelectablePreset = typeof selectablePresets[number]
 
-const presetLabels: Record<SelectablePreset, string> = {
-  today: '今天',
-  yesterday: '昨天',
-  last7days: '最近7天',
-  last30days: '最近30天',
-  last90days: '最近90天',
-  custom: '自定义'
-}
+const presetLabels = computed<Record<SelectablePreset, string>>(() => ({
+  today: t('timeRangePicker.today'),
+  yesterday: t('timeRangePicker.yesterday'),
+  last7days: t('timeRangePicker.last7Days'),
+  last30days: t('timeRangePicker.last30Days'),
+  last90days: t('timeRangePicker.last90Days'),
+  custom: t('timeRangePicker.custom')
+}))
 
 const props = withDefaults(defineProps<{
   modelValue: DateRangeParams

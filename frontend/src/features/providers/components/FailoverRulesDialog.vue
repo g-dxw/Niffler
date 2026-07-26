@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    title="故障转移规则"
-    description="配置提供商级别的故障转移规则。默认所有错误都会触发转移，此处可自定义例外。"
+    :title="t('failoverRules.title')"
+    :description="t('failoverRules.description')"
     :icon="GitBranch"
     size="lg"
     @update:model-value="handleClose"
@@ -13,10 +13,10 @@
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <h3 class="text-sm font-medium">
-              成功转移规则
+              {{ t('failoverRules.successRules') }}
             </h3>
             <p class="text-xs text-muted-foreground mt-0.5">
-              HTTP 200 但响应体匹配正则时，视为失败并触发转移
+              {{ t('failoverRules.successHint') }}
             </p>
           </div>
           <Button
@@ -27,7 +27,7 @@
             @click="addRule('success')"
           >
             <Plus class="w-4 h-4 mr-1" />
-            添加
+            {{ t('failoverRules.add') }}
           </Button>
         </div>
 
@@ -35,7 +35,7 @@
           v-if="successPatterns.length === 0"
           class="text-xs text-muted-foreground px-3 py-4 border border-dashed rounded-lg text-center"
         >
-          暂无规则
+          {{ t('failoverRules.empty') }}
         </div>
 
         <div
@@ -45,7 +45,7 @@
         >
           <Input
             v-model="rule.pattern"
-            placeholder="例如: relay:.*格式错误"
+            :placeholder="t('failoverRules.successPlaceholder')"
             size="sm"
             class="font-mono text-xs flex-1"
           />
@@ -65,10 +65,10 @@
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <h3 class="text-sm font-medium">
-              错误终止规则
+              {{ t('failoverRules.errorRules') }}
             </h3>
             <p class="text-xs text-muted-foreground mt-0.5">
-              HTTP 非 200 且响应体匹配正则时，停止转移并直接返回错误。可选填状态码缩小匹配范围
+              {{ t('failoverRules.errorHint') }}
             </p>
           </div>
           <Button
@@ -79,7 +79,7 @@
             @click="addRule('error')"
           >
             <Plus class="w-4 h-4 mr-1" />
-            添加
+            {{ t('failoverRules.add') }}
           </Button>
         </div>
 
@@ -87,7 +87,7 @@
           v-if="errorPatterns.length === 0"
           class="text-xs text-muted-foreground px-3 py-4 border border-dashed rounded-lg text-center"
         >
-          暂无规则
+          {{ t('failoverRules.empty') }}
         </div>
 
         <div
@@ -97,13 +97,13 @@
         >
           <Input
             v-model="statusCodeInputs[index]"
-            placeholder="状态码 (可选)"
+            :placeholder="t('failoverRules.statusPlaceholder')"
             size="sm"
             class="font-mono text-xs w-28 shrink-0"
           />
           <Input
             v-model="rule.pattern"
-            placeholder="例如: content_policy_violation"
+            :placeholder="t('failoverRules.errorPlaceholder')"
             size="sm"
             class="font-mono text-xs flex-1"
           />
@@ -125,13 +125,13 @@
         :disabled="saving"
         @click="handleClose"
       >
-        取消
+        {{ t('failoverRules.cancel') }}
       </Button>
       <Button
         :disabled="saving"
         @click="handleSave"
       >
-        {{ saving ? '保存中...' : '保存' }}
+        {{ saving ? t('failoverRules.saving') : t('failoverRules.save') }}
       </Button>
     </template>
   </Dialog>
@@ -139,6 +139,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Dialog,
   Button,
@@ -154,6 +155,7 @@ const props = defineProps<{
   open: boolean
   provider: ProviderWithEndpointsSummary | null
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -208,21 +210,21 @@ function parseStatusCodes(input: string): { valid: true; codes?: number[] } | { 
   const codes: number[] = []
   for (const part of parts) {
     if (!part) continue
-    if (!/^\d+$/.test(part)) return { valid: false, reason: `"${part}" 不是有效数字` }
+    if (!/^\d+$/.test(part)) return { valid: false, reason: t('failoverRules.notNumber', { value: part }) }
     const n = parseInt(part, 10)
-    if (n < 100 || n > 599) return { valid: false, reason: `${n} 不在 100-599 范围内` }
+    if (n < 100 || n > 599) return { valid: false, reason: t('failoverRules.outOfRange', { value: n }) }
     codes.push(n)
   }
   return { valid: true, codes: codes.length > 0 ? codes : undefined }
 }
 
 function validatePattern(pattern: string): string | null {
-  if (!pattern.trim()) return '正则表达式不能为空'
+  if (!pattern.trim()) return t('failoverRules.patternRequired')
   try {
     new RegExp(pattern)
     return null
   } catch {
-    return `无效的正则表达式: ${pattern}`
+    return t('failoverRules.invalidPattern', { pattern })
   }
 }
 
@@ -234,7 +236,7 @@ async function handleSave() {
   for (const rule of allPatterns) {
     const err = validatePattern(rule.pattern)
     if (err) {
-      showError(err, '验证失败')
+      showError(err, t('failoverRules.validationFailed'))
       return
     }
   }
@@ -244,7 +246,7 @@ async function handleSave() {
     const raw = statusCodeInputs.value[i]?.trim() || ''
     const result = parseStatusCodes(raw)
     if (!result.valid) {
-      showError(`状态码格式错误: ${result.reason}，请输入 100-599 之间的整数，多个用逗号分隔`, '验证失败')
+      showError(t('failoverRules.statusInvalid', { reason: result.reason }), t('failoverRules.validationFailed'))
       return
     }
     errorPatterns.value[i].status_codes = result.codes
@@ -266,11 +268,11 @@ async function handleSave() {
         : null,
     })
 
-    success('故障转移规则已保存')
+    success(t('failoverRules.saved'))
     emit('saved')
     handleClose()
   } catch (err: unknown) {
-    showError(parseApiError(err, '保存故障转移规则失败'), '保存失败')
+    showError(parseApiError(err, t('failoverRules.saveFailed')), t('failoverRules.saveFailedTitle'))
   } finally {
     saving.value = false
   }

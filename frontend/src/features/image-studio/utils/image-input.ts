@@ -2,14 +2,17 @@ import {
   ACCEPTED_INPUT_IMAGE_TYPES,
   MAX_INPUT_IMAGE_BYTES,
 } from '../constants'
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
 
 export function validateInputImages(files: File[]): File[] {
   for (const file of files) {
     if (!(ACCEPTED_INPUT_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-      throw new Error(`${file.name} 格式不支持，请使用 PNG、JPEG 或 WebP`)
+      throw new Error(t('imageTaskErrors.unsupportedImage', { name: file.name }))
     }
     if (file.size > MAX_INPUT_IMAGE_BYTES) {
-      throw new Error(`${file.name} 超过 20 MB`)
+      throw new Error(t('imageTaskErrors.tooLarge', { name: file.name }))
     }
   }
   return files

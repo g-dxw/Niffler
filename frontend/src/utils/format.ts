@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 // Token formatting - intelligent display based on value size
 export function formatTokens(num: number | undefined | null): string {
   if (num === undefined || num === null || num === 0) {
@@ -92,7 +94,7 @@ export function formatNumber(num: number | undefined | null): string {
 
 // Date formatting
 export function formatDate(dateString: string | undefined | null): string {
-  if (!dateString) return '未知'
+  if (!dateString) return i18n.global.t('formatUi.unknown')
 
   return new Date(dateString).toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -120,11 +122,11 @@ export function formatModelPrice(price: number | undefined | null): string {
 // Billing type formatting
 export function formatBillingType(type: string | undefined | null): string {
   const typeMap: Record<string, string> = {
-    'pay_as_you_go': '按量付费',
-    'monthly_quota': '月卡配额',
-    'free_tier': '免费套餐'
+    'pay_as_you_go': i18n.global.t('formatUi.payAsYouGo'),
+    'monthly_quota': i18n.global.t('formatUi.monthlyQuota'),
+    'free_tier': i18n.global.t('formatUi.freeTier')
   }
-  return typeMap[type || ''] || type || '按量付费'
+  return typeMap[type || ''] || type || i18n.global.t('formatUi.payAsYouGo')
 }
 
 // Format cost with 4 decimal places (for cache analysis)
@@ -145,13 +147,13 @@ export function formatUsageCount(count: number): string {
 
 // Format remaining time from unix timestamp
 export function formatRemainingTime(expireAt: number | undefined, currentTime: number): string {
-  if (!expireAt) return '未知'
+  if (!expireAt) return i18n.global.t('formatUi.unknown')
   const remaining = expireAt - currentTime
-  if (remaining <= 0) return '已过期'
+  if (remaining <= 0) return i18n.global.t('formatUi.expired')
 
   const minutes = Math.floor(remaining / 60)
   const seconds = Math.floor(remaining % 60)
-  return `${minutes}分${seconds}秒`
+  return i18n.global.t('formatUi.remainingTime', { minutes, seconds })
 }
 
 // Cache hit rate formatting
@@ -162,14 +164,14 @@ export function formatHitRate(rate: number | undefined): string {
 
 // Rate limit formatting (supports "inherit" semantics: null = inherit system default)
 export function formatRateLimitInheritable(rateLimit?: number | null): string {
-  if (rateLimit == null) return '跟随系统'
-  if (rateLimit === 0) return '不限速'
+  if (rateLimit == null) return i18n.global.t('formatUi.followSystem')
+  if (rateLimit === 0) return i18n.global.t('formatUi.unlimited')
   return `${rateLimit}/min`
 }
 
 // Rate limit formatting (simple: null/0 both mean unlimited)
 export function formatRateLimitSimple(rateLimit?: number | null): string {
-  if (rateLimit == null || rateLimit === 0) return '不限速'
+  if (rateLimit == null || rateLimit === 0) return i18n.global.t('formatUi.unlimited')
   return `${rateLimit}/min`
 }
 

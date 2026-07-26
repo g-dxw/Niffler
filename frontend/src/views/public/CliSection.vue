@@ -59,7 +59,7 @@
             </div>
             <button
               :class="panelClasses.iconButtonSmall"
-              title="复制配置"
+              :title="t('common.copy')"
               @click="$emit('copy', installCommand)"
             >
               <Copy class="h-3.5 w-3.5" />
@@ -86,7 +86,7 @@
                 </span>
                 <button
                   :class="panelClasses.iconButtonSmall"
-                  title="复制配置"
+                  :title="t('common.copy')"
                   @click="$emit('copy', config.content)"
                 >
                   <Copy class="h-3.5 w-3.5" />
@@ -118,6 +118,7 @@
 
 <script setup lang="ts">
 import { ref, computed, type CSSProperties, type Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Copy } from 'lucide-vue-next'
 import PlatformSelect from '@/components/PlatformSelect.vue'
 import CodeHighlight from '@/components/CodeHighlight.vue'
@@ -126,6 +127,7 @@ import { panelClasses, type PlatformOption } from './home-config'
 const props = withDefaults(defineProps<Props>(), {
   contentPosition: 'left'
 })
+const { t } = useI18n()
 defineEmits<{
   copy: [text: string]
   'update:platformValue': [value: string]

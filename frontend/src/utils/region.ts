@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 const regionLabels: Record<string, string> = {
   US: 'US(美国)',
   SG: 'SG(新加坡)',
@@ -19,5 +21,7 @@ const regionLabels: Record<string, string> = {
 
 export function formatRegion(region: string | null, fallback = '-'): string {
   if (!region) return fallback
-  return regionLabels[region.toUpperCase()] || region
+  const code = region.toUpperCase()
+  const translated = i18n.global.t(`regions.${code}`)
+  return translated === `regions.${code}` ? (regionLabels[code] || region) : translated
 }

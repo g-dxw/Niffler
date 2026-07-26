@@ -34,6 +34,8 @@ mod support_ccswitch_usage;
 mod support_dashboard;
 #[path = "support/install.rs"]
 mod support_install;
+#[path = "support/model_group_catalog.rs"]
+mod support_model_group_catalog;
 #[path = "support/models.rs"]
 mod support_models;
 #[path = "support/monitoring.rs"]
@@ -77,6 +79,7 @@ use self::support_install::{
     handle_users_me_api_key_install_session_create, maybe_build_local_install_response,
     users_me_api_key_install_sessions_path_matches,
 };
+use self::support_model_group_catalog::build_public_model_group_catalog_response;
 use self::support_models::{
     build_models_auth_error_response, maybe_build_local_models_response, models_api_format,
 };
@@ -343,6 +346,41 @@ pub(crate) async fn maybe_build_local_public_support_response(
                 }))
                 .into_response(),
             );
+        }
+
+        if decision.route_kind.as_deref() == Some("model_groups_catalog")
+            && request_context.request_path == "/api/public/model-groups/catalog"
+        {
+            if !state.has_global_model_data_reader()
+                || (!state.has_niffler_core_reader() && !state.has_user_data_reader())
+            {
+                return None;
+            }
+            return Some(build_public_model_group_catalog_response(state).await);
+        }
+
+        if decision.route_kind.as_deref() == Some("model_groups")
+            && request_context.request_path == "/api/public/model-groups"
+        {
+            if !state.has_user_data_reader() {
+                return None;
+            }
+            let groups = state.list_user_groups().await.ok()?;
+            let groups = groups
+                .into_iter()
+                .filter(|group| group.visibility == "public")
+                .map(|group| {
+                    json!({
+                        "id": group.id,
+                        "name": group.name,
+                        "sales_multiplier": group.sales_multiplier,
+                        "model_sales_multipliers": group.model_sales_multipliers,
+                        "allowed_models": group.allowed_models,
+                        "allowed_models_mode": group.allowed_models_mode,
+                    })
+                })
+                .collect::<Vec<_>>();
+            return Some(Json(json!({ "groups": groups })).into_response());
         }
 
         if decision.route_kind.as_deref() == Some("global_models")

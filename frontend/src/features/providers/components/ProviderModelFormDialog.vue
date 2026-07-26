@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    :title="isEditing ? '编辑模型配置' : '添加模型'"
-    :description="isEditing ? '修改模型价格配置' : '为此 Provider 添加模型实现'"
+    :title="isEditing ? t('providerModelForm.editTitle') : t('providerModelForm.addTitle')"
+    :description="isEditing ? t('providerModelForm.editDescription') : t('providerModelForm.addDescription')"
     :icon="isEditing ? SquarePen : Layers"
     size="xl"
     @update:model-value="handleClose"
@@ -17,7 +17,7 @@
         class="space-y-3"
       >
         <div class="flex items-center justify-between gap-3">
-          <Label for="global-model">选择已有模型或手动添加 *</Label>
+          <Label for="global-model">{{ t('providerModelForm.chooseOrAdd') }} *</Label>
           <Button
             type="button"
             variant="ghost"
@@ -25,7 +25,7 @@
             class="h-7 px-2 text-xs"
             @click="manualGlobalModelMode = !manualGlobalModelMode"
           >
-            {{ manualGlobalModelMode ? '选择已有模型' : '手动添加' }}
+            {{ manualGlobalModelMode ? t('providerModelForm.chooseExisting') : t('providerModelForm.manualAdd') }}
           </Button>
         </div>
         <div
@@ -38,7 +38,7 @@
             @update:model-value="handleGlobalModelSelect"
           >
             <SelectTrigger class="w-full">
-              <SelectValue :placeholder="loadingGlobalModels ? '加载中...' : '请选择模型'" />
+              <SelectValue :placeholder="loadingGlobalModels ? t('providerModelForm.loading') : t('providerModelForm.chooseModel')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -60,11 +60,11 @@
               <Label
                 for="manual-global-model-name"
                 class="text-xs"
-              >模型ID *</Label>
+              >{{ t('providerModelForm.modelId') }} *</Label>
               <Input
                 id="manual-global-model-name"
                 v-model="form.manual_global_model_name"
-                placeholder="如 gpt-4o-mini"
+                :placeholder="t('providerModelForm.modelIdPlaceholder')"
                 @update:model-value="syncManualProviderName"
               />
             </div>
@@ -72,36 +72,36 @@
               <Label
                 for="manual-global-model-display-name"
                 class="text-xs"
-              >显示名称</Label>
+              >{{ t('providerModelForm.displayName') }}</Label>
               <Input
                 id="manual-global-model-display-name"
                 v-model="form.manual_global_model_display_name"
-                placeholder="默认使用模型ID"
+                :placeholder="t('providerModelForm.displayNamePlaceholder')"
               />
             </div>
           </div>
           <p class="text-xs text-muted-foreground">
-            无法联网获取模型目录时，可直接填写模型ID。保存时会先创建本地全局模型，再添加到当前 Provider。
+            {{ t('providerModelForm.manualHint') }}
           </p>
         </div>
         <p
           v-if="availableGlobalModels.length === 0 && !loadingGlobalModels && !manualGlobalModelMode"
           class="text-xs text-muted-foreground"
         >
-          没有可选择的本地全局模型。可以切换到“手动添加”继续保存。
+          {{ t('providerModelForm.noModelsHint') }}
         </p>
         <div class="space-y-1.5">
           <Label
             for="provider-model-name"
             class="text-xs"
-          >Provider 模型名 *</Label>
+          >{{ t('providerModelForm.providerModelName') }} *</Label>
           <Input
             id="provider-model-name"
             v-model="form.provider_model_name"
-            placeholder="Provider 实际接收的模型名，如 gpt-4o-mini"
+            :placeholder="t('providerModelForm.providerModelPlaceholder')"
           />
           <p class="text-xs text-muted-foreground">
-            默认跟随所选模型ID；如内网模型、兼容网关或别名不同，可手动覆盖。
+            {{ t('providerModelForm.providerModelHint') }}
           </p>
         </div>
         <div
@@ -112,7 +112,7 @@
             Embedding
           </div>
           <p class="text-xs text-muted-foreground">
-            此模型将继承全局模型的 Embeddings 元数据，不按 Chat 能力处理。
+            {{ t('providerModelForm.embeddingHint') }}
           </p>
         </div>
       </div>
@@ -150,10 +150,10 @@
           />
           <div class="space-y-1">
             <div class="text-sm font-medium">
-              图片模型
+              {{ t('providerModelForm.imageModel') }}
             </div>
             <p class="text-xs text-muted-foreground">
-              启用图片输出计费，并展开尺寸 × 质量矩阵价格。
+              {{ t('providerModelForm.imageModelHint') }}
             </p>
           </div>
         </div>
@@ -162,7 +162,7 @@
       <!-- 价格配置 -->
       <div class="space-y-4">
         <h4 class="font-semibold text-sm border-b pb-2">
-          价格配置
+          {{ t('providerModelForm.pricing') }}
         </h4>
         <TieredPricingEditor
           ref="tieredPricingEditorRef"
@@ -173,36 +173,36 @@
 
         <!-- 按次计费 -->
         <div class="flex items-center gap-3 pt-2 border-t">
-          <Label class="text-xs whitespace-nowrap">按次计费 ($/次)</Label>
+          <Label class="text-xs whitespace-nowrap">{{ t('providerModelForm.perRequest') }}</Label>
           <Input
             :model-value="form.price_per_request ?? ''"
             type="number"
             step="0.001"
             min="0"
             class="w-32"
-            placeholder="留空使用默认值"
+            :placeholder="t('providerModelForm.defaultPlaceholder')"
             @update:model-value="updatePricePerRequest"
           />
-          <span class="text-xs text-muted-foreground">每次请求固定费用，留空使用全局模型默认值</span>
+          <span class="text-xs text-muted-foreground">{{ t('providerModelForm.perRequestHint') }}</span>
         </div>
         <div class="flex items-center gap-3">
-          <Label class="text-xs whitespace-nowrap">成本倍率</Label>
+          <Label class="text-xs whitespace-nowrap">{{ t('providerModelForm.costMultiplier') }}</Label>
           <Input
             :model-value="form.cost_multiplier ?? ''"
             type="number"
             step="0.01"
             min="0"
             class="w-32"
-            placeholder="留空继承提供商"
+            :placeholder="t('providerModelForm.providerDefaultPlaceholder')"
             @update:model-value="(v) => form.cost_multiplier = parseNumberInput(v, { allowFloat: true })"
           />
-          <span class="text-xs text-muted-foreground">只影响平台成本统计，不影响用户扣费</span>
+          <span class="text-xs text-muted-foreground">{{ t('providerModelForm.costMultiplierHint') }}</span>
         </div>
 
         <!-- 视频计费（可选覆盖） -->
         <div class="pt-3 border-t space-y-2">
           <div class="text-sm font-medium">
-            视频计费（可选覆盖）
+            {{ t('providerModelForm.videoPricing') }}
           </div>
 
           <div class="flex items-center gap-1.5 flex-wrap">
@@ -213,7 +213,7 @@
               class="h-7 text-xs"
               @click="() => { fillVideoResolutionPricePreset('common'); configTouched = true }"
             >
-              通用
+              {{ t('providerModelForm.common') }}
             </Button>
             <Button
               type="button"
@@ -241,7 +241,7 @@
               @click="() => { addVideoResolutionPriceRow(); configTouched = true }"
             >
               <Plus class="w-3.5 h-3.5 mr-0.5" />
-              自定义
+              {{ t('providerModelForm.custom') }}
             </Button>
           </div>
 
@@ -250,8 +250,8 @@
             class="rounded-lg border border-border overflow-hidden"
           >
             <div class="grid grid-cols-[1fr_1fr_32px] gap-0 text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 border-b border-border">
-              <span>分辨率</span>
-              <span>单价（$/秒）</span>
+              <span>{{ t('providerModelForm.resolution') }}</span>
+              <span>{{ t('providerModelForm.pricePerSecond') }}</span>
               <span />
             </div>
             <div class="divide-y divide-border">
@@ -263,7 +263,7 @@
                 <Input
                   v-model="row.resolution"
                   class="h-7 text-sm"
-                  placeholder="如 720p"
+                  :placeholder="t('providerModelForm.resolutionPlaceholder')"
                   @update:model-value="() => { configTouched = true }"
                 />
                 <Input
@@ -280,7 +280,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  title="删除"
+                  :title="t('providerModelForm.delete')"
                   @click="() => { removeVideoResolutionPriceRow(idx); configTouched = true }"
                 >
                   <Trash2 class="w-3.5 h-3.5" />
@@ -297,7 +297,7 @@
         variant="outline"
         @click="handleClose(false)"
       >
-        取消
+        {{ t('providerModelForm.cancel') }}
       </Button>
       <Button
         :disabled="submitting || (!isEditing && !canSubmitCreate)"
@@ -307,7 +307,7 @@
           v-if="submitting"
           class="w-4 h-4 mr-2 animate-spin"
         />
-        {{ isEditing ? '保存' : '添加' }}
+        {{ isEditing ? t('providerModelForm.save') : t('providerModelForm.add') }}
       </Button>
     </template>
   </Dialog>
@@ -315,6 +315,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { parseApiError } from '@/utils/errorParser'
 import { Loader2, Layers, SquarePen, Plus, Trash2 } from 'lucide-vue-next'
 import {
@@ -353,6 +354,7 @@ const props = withDefaults(defineProps<Props>(), {
   providerName: '',
   editingModel: null
 })
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -823,7 +825,7 @@ async function loadAvailableGlobalModels() {
       (gm: GlobalModelResponse) => !existingGlobalModelIds.has(gm.id)
     )
   } catch (err: unknown) {
-    showError(parseApiError(err, '加载模型列表失败'), '错误')
+    showError(parseApiError(err, t('providerModelFormStatus.loadFailed')), t('providerModelFormStatus.error'))
   } finally {
     loadingGlobalModels.value = false
   }
@@ -840,7 +842,7 @@ function handleClose(value: boolean) {
 async function handleSubmit() {
   if (submitting.value) return
   if (!isEditing.value && !canSubmitCreate.value) {
-    showError(manualGlobalModelMode.value ? '请填写模型ID和 Provider 模型名' : '请选择模型并填写 Provider 模型名', '错误')
+    showError(manualGlobalModelMode.value ? t('providerModelFormStatus.manualRequired') : t('providerModelFormStatus.selectionRequired'), t('providerModelFormStatus.error'))
     return
   }
 
@@ -874,14 +876,14 @@ async function handleSubmit() {
         supportsImageGeneration,
         isActive: form.value.is_active
       }))
-      showSuccess('模型配置已更新')
+      showSuccess(t('providerModelFormStatus.updated'))
     } else {
       // 添加模式：只有用户修改了配置才提交 tiered_pricing，否则保持继承关系
       const selectedModel = manualGlobalModelMode.value
         ? await createManualGlobalModel(finalTieredPricing, cleanConfig)
         : availableGlobalModels.value.find(m => m.id === form.value.global_model_id)
       if (!selectedModel) {
-        showError('请选择模型，或切换到手动添加后填写模型ID', '错误')
+        showError(t('providerModelFormStatus.modelRequired'), t('providerModelFormStatus.error'))
         return
       }
       await createModel(props.providerId, buildProviderModelCreatePayload({
@@ -902,12 +904,12 @@ async function handleSubmit() {
         supportsImageGeneration,
         isActive: form.value.is_active
       }))
-      showSuccess('模型已添加')
+      showSuccess(t('providerModelFormStatus.added'))
     }
     emit('update:open', false)
     emit('saved')
   } catch (err: unknown) {
-    showError(parseApiError(err, isEditing.value ? '更新失败' : '添加失败'), '错误')
+    showError(parseApiError(err, isEditing.value ? t('providerModelFormStatus.updateFailed') : t('providerModelFormStatus.addFailed')), t('providerModelFormStatus.error'))
   } finally {
     submitting.value = false
   }

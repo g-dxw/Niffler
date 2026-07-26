@@ -824,6 +824,11 @@ pub trait GlobalModelReadRepository: Send + Sync {
         global_model_id: &str,
     ) -> Result<Vec<StoredAdminProviderModel>, crate::DataLayerError>;
 
+    async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<StoredAdminProviderModel>, crate::DataLayerError>;
+
     async fn list_provider_model_stats(
         &self,
         provider_ids: &[String],

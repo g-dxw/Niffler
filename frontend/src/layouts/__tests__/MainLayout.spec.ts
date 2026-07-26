@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { createApp, defineComponent, h, nextTick, type App } from '@/test/vue'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 
 import MainLayout from '../MainLayout.vue'
@@ -114,7 +114,7 @@ vi.mock('@/components/icons/GithubIcon.vue', () => ({
 }))
 
 vi.mock('@/config/builtin-tools', () => ({
-  BUILTIN_TOOL_BREADCRUMBS: {},
+  createBuiltinToolBreadcrumbs: () => ({}),
 }))
 
 vi.mock('@/utils/adminNavigationPrefetch', () => ({
@@ -128,6 +128,8 @@ vi.mock('lucide-vue-next', () => {
     AlertTriangle: Icon,
     BarChart3: Icon,
     Box: Icon,
+    Check: Icon,
+    ChevronDown: Icon,
     ChevronRight: Icon,
     Cog: Icon,
     CreditCard: Icon,
@@ -139,9 +141,12 @@ vi.mock('lucide-vue-next', () => {
     Home: Icon,
     Key: Icon,
     KeyRound: Icon,
+    Languages: Icon,
     Layers: Icon,
     LogOut: Icon,
+    Maximize2: Icon,
     Megaphone: Icon,
+    MessageCircle: Icon,
     Menu: Icon,
     Moon: Icon,
     Package: Icon,
@@ -150,9 +155,11 @@ vi.mock('lucide-vue-next', () => {
     Settings: Icon,
     Shield: Icon,
     SlidersHorizontal: Icon,
+    Sun: Icon,
     SunMedium: Icon,
     SunMoon: Icon,
     Users: Icon,
+    UsersRound: Icon,
     Wallet: Icon,
     X: Icon,
     Zap: Icon,
@@ -230,5 +237,13 @@ describe('MainLayout version check', () => {
 
     const link = document.querySelector('a[href="/admin/image-studio"]')
     expect(link?.textContent).toBe('生图工作台')
+  })
+
+  it('shows the infinite canvas as an external administrator tool link', async () => {
+    await mountMainLayout()
+    await settle()
+
+    const link = document.querySelector('a[href="/InfiniteCanvas/canvas"]')
+    expect(link?.textContent).toBe('无限画布')
   })
 })

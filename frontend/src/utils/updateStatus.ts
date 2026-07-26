@@ -1,10 +1,10 @@
 import type { CheckUpdateResponse } from '@/api/admin'
 
 export function describeUpdateStatus(status: CheckUpdateResponse | null): string {
-  if (!status) return '检查中'
-  if (status.has_update) return '有新版本'
-  if (status.error) return '检查失败'
-  return '已是最新'
+  if (!status) return i18n.global.t('updateUi.checking')
+  if (status.has_update) return i18n.global.t('updateUi.available')
+  if (status.error) return i18n.global.t('updateUi.failed')
+  return i18n.global.t('updateUi.latest')
 }
 
 export function buildUpdateErrorStatus(
@@ -18,6 +18,7 @@ export function buildUpdateErrorStatus(
     release_url: null,
     release_notes: null,
     published_at: null,
-    error: error instanceof Error ? error.message : '检查更新失败'
+    error: error instanceof Error ? error.message : i18n.global.t('updateUi.requestFailed')
   }
 }
+import { i18n } from '@/i18n'

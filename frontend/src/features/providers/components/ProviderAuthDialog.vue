@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :open="open"
-    title="用户认证"
-    description="配置提供商的用户认证信息，用于余额查询、签到等操作"
+    :title="t('providerAuth.title')"
+    :description="t('providerAuth.description')"
     :icon="KeyRound"
     size="md"
     @update:open="$emit('update:open', $event)"
@@ -18,7 +18,7 @@
         class="flex items-center justify-center py-8"
       >
         <div class="text-sm text-muted-foreground">
-          加载配置中...
+          {{ t('providerAuth.loading') }}
         </div>
       </div>
       <div
@@ -31,13 +31,13 @@
             class="space-y-2"
             :style="{ flex: currentAuthTypes.length > 1 ? 1 : 'auto', width: currentAuthTypes.length > 1 ? undefined : '100%' }"
           >
-            <Label>认证模板</Label>
+            <Label>{{ t('providerAuth.template') }}</Label>
             <Select
               v-model="selectedArchitectureId"
               @update:model-value="handleArchitectureChange"
             >
               <SelectTrigger>
-                <SelectValue placeholder="选择认证模板" />
+                <SelectValue :placeholder="t('providerAuth.templatePlaceholder')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -56,13 +56,13 @@
             class="space-y-2"
             style="flex: 1"
           >
-            <Label>认证方式</Label>
+            <Label>{{ t('providerAuth.method') }}</Label>
             <Select
               v-model="selectedAuthType"
               @update:model-value="handleAuthTypeChange"
             >
               <SelectTrigger>
-                <SelectValue placeholder="选择认证方式" />
+                <SelectValue :placeholder="t('providerAuth.methodPlaceholder')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -90,9 +90,9 @@
             >
               <!-- 标题栏：标题在左，开关在右（在卡片外） -->
               <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-foreground">{{ group.title }}</span>
+                <span class="text-sm font-medium text-foreground">{{ authGroupTitle(group.title) }}</span>
                 <div class="flex items-center gap-2">
-                  <span class="text-xs text-muted-foreground">启用代理</span>
+                  <span class="text-xs text-muted-foreground">{{ t('providerAuth.enableProxy') }}</span>
                   <Switch
                     :model-value="formData[group.toggleKey] || false"
                     @update:model-value="handleProxyToggle(group.toggleKey, $event)"
@@ -121,7 +121,7 @@
                 v-if="group.title"
                 class="pt-2 text-sm font-medium text-muted-foreground"
               >
-                {{ group.title }}
+                {{ authGroupTitle(group.title) }}
               </div>
 
               <!-- inline 布局：字段横向排列 -->
@@ -136,7 +136,7 @@
                   :style="{ flex: field.flex || 1 }"
                 >
                   <Label>
-                    {{ field.label }}
+                    {{ authFieldLabel(field.label) }}
                     <span
                       v-if="field.required"
                       class="text-muted-foreground/70"
@@ -147,7 +147,7 @@
                   <Input
                     v-if="field.type === 'text'"
                     v-model="formData[field.key]"
-                    :placeholder="field.sensitive ? (sensitivePlaceholders[field.key] || field.placeholder) : field.placeholder"
+                    :placeholder="field.sensitive ? (sensitivePlaceholders[field.key] || authFieldPlaceholder(field)) : authFieldPlaceholder(field)"
                     :masked="field.sensitive"
                     disable-autofill
                     @update:model-value="handleFieldChange(field.key, $event)"
@@ -157,7 +157,7 @@
                   <Input
                     v-else-if="field.type === 'password'"
                     v-model="formData[field.key]"
-                    :placeholder="sensitivePlaceholders[field.key] || field.placeholder"
+                    :placeholder="sensitivePlaceholders[field.key] || authFieldPlaceholder(field)"
                     masked
                     @update:model-value="handleFieldChange(field.key, $event)"
                   />
@@ -172,7 +172,7 @@
                   class="space-y-2"
                 >
                   <Label>
-                    {{ field.label }}
+                    {{ authFieldLabel(field.label) }}
                     <span
                       v-if="field.required"
                       class="text-muted-foreground/70"
@@ -183,7 +183,7 @@
                   <Input
                     v-if="field.type === 'text'"
                     v-model="formData[field.key]"
-                    :placeholder="field.sensitive ? (sensitivePlaceholders[field.key] || field.placeholder) : field.placeholder"
+                    :placeholder="field.sensitive ? (sensitivePlaceholders[field.key] || authFieldPlaceholder(field)) : authFieldPlaceholder(field)"
                     :masked="field.sensitive"
                     disable-autofill
                     @update:model-value="handleFieldChange(field.key, $event)"
@@ -193,7 +193,7 @@
                   <Input
                     v-else-if="field.type === 'password'"
                     v-model="formData[field.key]"
-                    :placeholder="sensitivePlaceholders[field.key] || field.placeholder"
+                    :placeholder="sensitivePlaceholders[field.key] || authFieldPlaceholder(field)"
                     masked
                     @update:model-value="handleFieldChange(field.key, $event)"
                   />
@@ -205,7 +205,7 @@
                     @update:model-value="handleFieldChange(field.key, $event)"
                   >
                     <SelectTrigger>
-                      <SelectValue :placeholder="field.placeholder || '请选择'" />
+                      <SelectValue :placeholder="authFieldPlaceholder(field)" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem
@@ -222,7 +222,7 @@
                   <Textarea
                     v-else-if="field.type === 'textarea'"
                     v-model="formData[field.key]"
-                    :placeholder="field.placeholder"
+                    :placeholder="authFieldPlaceholder(field)"
                     rows="3"
                     @update:model-value="handleFieldChange(field.key, $event)"
                   />
@@ -252,7 +252,7 @@
             :disabled="isClearing"
             @click="handleClear"
           >
-            {{ isClearing ? '清除中...' : '清除' }}
+            {{ isClearing ? t('providerAuth.clearing') : t('providerAuth.clear') }}
           </Button>
         </div>
         <!-- 右侧：验证、保存、取消按钮 -->
@@ -262,19 +262,19 @@
             :disabled="isVerifying || !canVerify"
             @click="handleVerify"
           >
-            {{ isVerifying ? '验证中...' : '验证' }}
+            {{ isVerifying ? t('providerAuth.verifying') : t('providerAuth.verify') }}
           </Button>
           <Button
             :disabled="isSaving || !canSave"
             @click="handleSave"
           >
-            {{ isSaving ? '保存中...' : '保存' }}
+            {{ isSaving ? t('providerAuth.saving') : t('providerAuth.save') }}
           </Button>
           <Button
             variant="outline"
             @click="$emit('update:open', false)"
           >
-            取消
+            {{ t('providerAuth.cancel') }}
           </Button>
         </div>
       </div>
@@ -284,6 +284,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { KeyRound } from 'lucide-vue-next'
 import {
   Dialog,
@@ -343,6 +344,19 @@ function isSensitiveField(key: string): boolean {
 
 const { success: showSuccess, error: showError } = useToast()
 const { confirmDanger } = useConfirm()
+const { t } = useI18n()
+
+function authFieldLabel(label: string): string {
+  return label === '代理节点' ? t('providerAuthFields.proxyNode') : label
+}
+
+function authFieldPlaceholder(field: { key: string; placeholder?: string }): string {
+  return field.key === 'proxy_node_id' ? t('providerAuthFields.proxyNodePlaceholder') : (field.placeholder || t('providerAuth.selectPlaceholder'))
+}
+
+function authGroupTitle(title: string): string {
+  return title === '代理配置' ? t('providerAuthFields.proxyConfig') : title
+}
 const proxyNodeSelectRef = ref<InstanceType<typeof ProxyNodeSelect> | null>(null)
 const proxyNodesStore = useProxyNodesStore()
 
@@ -517,7 +531,7 @@ async function handleVerify() {
 
   const effectiveBaseUrl = formData.value.base_url || props.providerWebsite
   if (!effectiveBaseUrl) {
-    showError('请填写 API 地址')
+    showError(t('providerAuth.apiUrlRequired'))
     return
   }
 
@@ -543,9 +557,9 @@ async function handleVerify() {
       if (!username || quota === undefined || quota === null) {
         verifyStatus.value = 'error'
         const missing: string[] = []
-        if (!username) missing.push('用户信息')
-        if (quota === undefined || quota === null) missing.push('余额')
-        showError(`验证响应缺少: ${missing.join('、')}`)
+        if (!username) missing.push(t('providerAuth.userInfo'))
+        if (quota === undefined || quota === null) missing.push(t('providerAuth.balance'))
+        showError(t('providerAuth.responseMissing', { fields: missing.join(t('providerAuth.listSeparator')) }))
       } else {
         verifyStatus.value = 'success'
         formChanged.value = false
@@ -564,11 +578,11 @@ async function handleVerify() {
 
         const displayName = result.data?.display_name || result.data?.username
         const extra = result.data?.extra
-        let balanceText = `余额: ${formatQuota(quota)}`
+        let balanceText = t('providerAuth.balanceValue', { value: formatQuota(quota) })
         if (extra && typeof extra.balance === 'number' && typeof extra.points === 'number') {
-          balanceText = `余额: ${formatQuota(extra.balance)} | 积分: ${formatQuota(extra.points)}`
+          balanceText = t('providerAuth.balancePoints', { balance: formatQuota(extra.balance), points: formatQuota(extra.points) })
         }
-        showSuccess(`用户: ${displayName} | ${balanceText}`, '验证成功')
+        showSuccess(t('providerAuth.userResult', { user: displayName, balance: balanceText }), t('providerAuth.verifySuccess'))
       }
     } else {
       verifyStatus.value = 'error'
@@ -580,11 +594,11 @@ async function handleVerify() {
         }
       }
 
-      showError(result.message || '验证失败')
+      showError(result.message || t('providerAuth.verifyFailed'))
     }
   } catch (error: unknown) {
     verifyStatus.value = 'error'
-    showError(parseApiError(error, '验证失败'))
+    showError(parseApiError(error, t('providerAuth.verifyFailed')))
   } finally {
     isVerifying.value = false
   }
@@ -612,7 +626,7 @@ async function handleSave() {
 
   const effectiveBaseUrl = String(formData.value.base_url || props.providerWebsite || '')
   if (!effectiveBaseUrl) {
-    showError('请填写 API 地址')
+    showError(t('providerAuth.apiUrlRequired'))
     return
   }
 
@@ -626,14 +640,14 @@ async function handleSave() {
     )
     const result = await saveProviderOpsConfig(props.providerId, request)
     if (result.success) {
-      showSuccess(result.message || '配置已保存', '保存成功')
+      showSuccess(result.message || t('providerAuth.saved'), t('providerAuth.saveSuccess'))
       emit('saved')
       emit('update:open', false)
     } else {
-      showError(result.message || '保存失败')
+      showError(result.message || t('providerAuth.saveFailed'))
     }
   } catch (error: unknown) {
-    showError(parseApiError(error, '保存失败'), '保存失败')
+    showError(parseApiError(error, t('providerAuth.saveFailed')), t('providerAuth.saveFailed'))
   } finally {
     isSaving.value = false
   }
@@ -643,9 +657,9 @@ async function handleClear() {
   if (!props.providerId) return
 
   const confirmed = await confirmDanger(
-    '确定要清除该提供商的认证配置吗？清除后将无法进行余额查询、签到等操作。',
-    '清除认证',
-    '清除'
+    t('providerAuth.clearConfirm'),
+    t('providerAuth.clearTitle'),
+    t('providerAuth.clear')
   )
   if (!confirmed) return
 
@@ -653,7 +667,7 @@ async function handleClear() {
   try {
     const result = await deleteProviderOpsConfig(props.providerId)
     if (result.success) {
-      showSuccess(result.message || '认证信息已清除', '清除成功')
+      showSuccess(result.message || t('providerAuth.cleared'), t('providerAuth.clearSuccess'))
       hasExistingConfig.value = false
       sensitivePlaceholders.value = {}
       verifyStatus.value = null
@@ -664,10 +678,10 @@ async function handleClear() {
       emit('saved')
       emit('update:open', false)
     } else {
-      showError(result.message || '清除失败')
+      showError(result.message || t('providerAuth.clearFailed'))
     }
   } catch (error: unknown) {
-    showError(parseApiError(error, '清除失败'), '清除失败')
+    showError(parseApiError(error, t('providerAuth.clearFailed')), t('providerAuth.clearFailed'))
   } finally {
     isClearing.value = false
   }

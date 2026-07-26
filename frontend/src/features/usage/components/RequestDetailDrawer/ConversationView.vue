@@ -32,7 +32,7 @@
             <Settings class="w-4 h-4 text-muted-foreground" />
             <span class="text-xs font-medium text-muted-foreground">System</span>
             <span class="text-xs text-muted-foreground">
-              ({{ groupedConversation.system.length }} 字符)
+              ({{ groupedConversation.system.length }} {{ t('requestDetailUi.characters') }})
             </span>
             <component
               :is="systemExpanded ? ChevronDown : ChevronRight"
@@ -58,7 +58,7 @@
             @click="historyExpanded = !historyExpanded"
           >
             <span class="text-xs font-medium text-muted-foreground">
-              历史轮次 ({{ historyTurns.length }})
+              {{ t('requestDetailUi.historyTurns') }} ({{ historyTurns.length }})
             </span>
             <component
               :is="historyExpanded ? ChevronDown : ChevronRight"
@@ -99,7 +99,7 @@
           class="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground bg-muted/30 rounded-lg w-fit"
         >
           <Zap class="w-4 h-4" />
-          <span>流式响应</span>
+          <span>{{ t('requestDetailUi.streamingResponse') }}</span>
         </div>
       </template>
     </div>
@@ -112,11 +112,13 @@ import { AlertCircle, Zap, Settings, ChevronRight, ChevronDown } from 'lucide-vu
 import TurnCard from './TurnCard.vue'
 import type { RenderResult } from '../../conversation'
 import { groupRenderBlocksIntoTurns } from '../../conversation/grouper'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   renderResult: RenderResult
   emptyMessage: string
 }>()
+const { t } = useI18n()
 
 // 状态
 const systemExpanded = ref(false)

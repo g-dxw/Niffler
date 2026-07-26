@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { i18n } from '@/i18n'
 import { editImage, generateImage } from '../api/image-generation'
 import type {
   ImageGenerationForm,
@@ -18,6 +19,8 @@ import {
 import { loadImageTasks, saveImageTasks, selectRetainedImageTaskIds } from '../utils/storage'
 import { buildCompatibleImageRequest } from '../utils/image-sizing'
 
+const t = i18n.global.t
+
 interface UseImageTasksOptions {
   userId: string
   settings: Ref<ImageStudioSettings>
@@ -28,9 +31,9 @@ function taskId() {
 }
 
 function friendlyTaskError(error: unknown) {
-  if (error instanceof DOMException && error.name === 'AbortError') return '任务已取消'
+  if (error instanceof DOMException && error.name === 'AbortError') return t('imageTaskErrors.cancelled')
   if (error instanceof Error) return error.message
-  return '生图请求失败'
+  return t('imageTaskErrors.requestFailed')
 }
 
 export function useImageTasks(options: UseImageTasksOptions) {
@@ -92,7 +95,7 @@ export function useImageTasks(options: UseImageTasksOptions) {
     if (!credential?.apiKey.trim()) {
       pendingInputs.delete(task.id)
       taskCredentials.delete(task.id)
-      replaceTask(task.id, { status: 'error', error: 'API 密钥未加载', finishedAt: Date.now() })
+      replaceTask(task.id, { status: 'error', error: t('imageTaskErrors.keyNotLoaded'), finishedAt: Date.now() })
       schedule()
       return
     }
@@ -251,7 +254,7 @@ export function useImageTasks(options: UseImageTasksOptions) {
     if (task?.status === 'pending') {
       pendingInputs.delete(id)
       taskCredentials.delete(id)
-      replaceTask(id, { status: 'cancelled', error: '任务已取消', finishedAt: Date.now() })
+      replaceTask(id, { status: 'cancelled', error: t('imageTaskErrors.cancelled'), finishedAt: Date.now() })
     }
   }
 
@@ -259,12 +262,12 @@ export function useImageTasks(options: UseImageTasksOptions) {
     const task = tasks.value.find(item => item.id === id)
     if (!task || task.status === 'running' || task.status === 'pending') return
     if (task.mode === 'edit' && !pendingInputs.has(id)) {
-      replaceTask(id, { status: 'error', error: '参考图已释放，请重新提交图生图任务' })
+      replaceTask(id, { status: 'error', error: t('imageTaskErrors.referenceReleased') })
       return
     }
     if (credential) taskCredentials.set(id, { ...credential })
     if (!taskCredentials.has(id)) {
-      replaceTask(id, { status: 'error', error: '原任务 API 密钥未加载，请刷新密钥后重试' })
+      replaceTask(id, { status: 'error', error: t('imageTaskErrors.originalKeyNotLoaded') })
       return
     }
     revokeObjectUrl(task.imageUrl)

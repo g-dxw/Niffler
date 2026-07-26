@@ -3,10 +3,10 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h1 class="text-lg font-semibold">
-          用户统计
+          {{ t('userStats.title') }}
         </h1>
         <p class="text-xs text-muted-foreground">
-          查看用户排行榜与使用趋势
+          {{ t('userStats.description') }}
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-3">
@@ -18,7 +18,7 @@
           v-model="selectedUserId"
         >
           <SelectTrigger class="h-8 text-xs w-52">
-            <SelectValue placeholder="选择用户" />
+            <SelectValue :placeholder="t('userStats.selectUser')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem
@@ -34,11 +34,11 @@
           v-model="compareUserId"
         >
           <SelectTrigger class="h-8 text-xs w-52">
-            <SelectValue placeholder="对比用户（可选）" />
+            <SelectValue :placeholder="t('userStats.compareUser')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">
-              不对比
+              {{ t('userStats.noCompare') }}
             </SelectItem>
             <SelectItem
               v-for="user in users"
@@ -54,7 +54,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <LeaderboardTable
-        title="用户排行榜"
+        :title="t('userStats.leaderboard')"
         :items="leaderboard"
         :metric="metric"
         :loading="leaderboardLoading"
@@ -63,7 +63,7 @@
 
       <Card class="p-4 space-y-3">
         <h3 class="text-sm font-semibold">
-          用户摘要
+          {{ t('userStats.summary') }}
         </h3>
         <div
           v-if="summaryLoading"
@@ -77,7 +77,7 @@
         >
           <div>
             <div class="text-xs text-muted-foreground">
-              请求数
+              {{ t('userStats.requests') }}
             </div>
             <div class="font-semibold">
               {{ userSummary?.total_requests ?? 0 }}
@@ -93,7 +93,7 @@
           </div>
           <div>
             <div class="text-xs text-muted-foreground">
-              成本
+              {{ t('userStats.cost') }}
             </div>
             <div class="font-semibold">
               {{ formatCurrency(userSummary?.total_cost ?? 0) }}
@@ -101,7 +101,7 @@
           </div>
           <div>
             <div class="text-xs text-muted-foreground">
-              错误率
+              {{ t('userStats.errorRate') }}
             </div>
             <div class="font-semibold">
               {{ userSummary?.error_rate ?? 0 }}%
@@ -113,7 +113,7 @@
 
     <Card class="p-4 space-y-4">
       <h3 class="text-sm font-semibold">
-        用户使用趋势
+        {{ t('userStats.usageTrend') }}
       </h3>
       <div
         v-if="seriesLoading"
@@ -134,7 +134,7 @@
       class="p-4 space-y-4"
     >
       <h3 class="text-sm font-semibold">
-        用户对比趋势
+        {{ t('userStats.comparisonTrend') }}
       </h3>
       <div class="h-[280px]">
         <LineChart :data="comparisonChartData" />
@@ -145,6 +145,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Card, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import LineChart from '@/components/charts/LineChart.vue'
 import { LoadingState, TimeRangePicker } from '@/components/common'
@@ -155,6 +156,8 @@ import { usageApi } from '@/api/usage'
 import { formatCurrency, formatTokens } from '@/utils/format'
 import { getDateRangeFromPeriod } from '@/features/usage/composables'
 import type { DateRangeParams } from '@/features/usage/types'
+
+const { t } = useI18n()
 
 const timeRange = ref<DateRangeParams>(getDateRangeFromPeriod('last7days'))
 const metric = ref<'requests' | 'tokens' | 'cost'>('requests')
@@ -328,7 +331,7 @@ const seriesChartData = computed(() => ({
   labels: series.value.map(item => item.date),
   datasets: [
     {
-      label: '成本',
+      label: t('userStats.cost'),
       data: series.value.map(item => item.total_cost),
       borderColor: 'rgb(59, 130, 246)',
       tension: 0.25,
@@ -341,14 +344,14 @@ const comparisonChartData = computed(() => ({
   labels: series.value.map(item => item.date),
   datasets: [
     {
-      label: '当前用户',
+      label: t('userStats.currentUser'),
       data: series.value.map(item => item.total_cost),
       borderColor: 'rgb(59, 130, 246)',
       tension: 0.25,
       pointRadius: 2
     },
     {
-      label: '对比用户',
+      label: t('userStats.comparisonUser'),
       data: comparisonSeries.value.map(item => item.total_cost),
       borderColor: 'rgb(234, 179, 8)',
       tension: 0.25,

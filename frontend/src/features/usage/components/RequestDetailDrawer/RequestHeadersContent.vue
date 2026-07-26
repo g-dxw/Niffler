@@ -6,7 +6,7 @@
         v-if="!resolvedClientHeaders || !resolvedProviderHeaders"
         class="text-sm text-muted-foreground"
       >
-        {{ emptyMessage }}
+        {{ emptyMessage || t('requestHeaders.empty') }}
       </div>
       <Card
         v-else
@@ -15,11 +15,11 @@
         <!-- Diff 头部 -->
         <div class="flex border-b bg-muted/50">
           <div class="flex-1 px-3 py-2 text-xs text-muted-foreground border-r flex items-center justify-between">
-            <span class="font-medium">{{ clientLabel }}</span>
+            <span class="font-medium">{{ clientLabel || t('requestHeaders.clientLabel') }}</span>
             <span class="text-destructive">-{{ headerStats.removed + headerStats.modified }}</span>
           </div>
           <div class="flex-1 px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
-            <span class="font-medium">{{ providerLabel }}</span>
+            <span class="font-medium">{{ providerLabel || t('requestHeaders.providerLabel') }}</span>
             <span class="text-green-600 dark:text-green-400">+{{ headerStats.added + headerStats.modified }}</span>
           </div>
         </div>
@@ -59,7 +59,7 @@
                 v-else-if="entry.status === 'added'"
                 class="flex items-start bg-muted/30 px-3 py-0.5"
               >
-                <span class="text-muted-foreground/30 italic">（无）</span>
+                <span class="text-muted-foreground/30 italic">{{ t('requestHeaders.noValue') }}</span>
               </div>
               <!-- 未变化的行 -->
               <div
@@ -131,7 +131,7 @@
         :view-mode="viewMode"
         :expand-depth="currentExpandDepth"
         :is-dark="isDark"
-        empty-message="无请求头信息"
+        :empty-message="emptyMessage || t('requestHeaders.empty')"
       />
     </div>
 
@@ -141,7 +141,7 @@
         v-if="!currentHeaderData || Object.keys(currentHeaderData).length === 0"
         class="text-sm text-muted-foreground"
       >
-        无请求头信息
+        {{ emptyMessage || t('requestHeaders.empty') }}
       </div>
       <Card
         v-else
@@ -157,9 +157,12 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Card from '@/components/ui/card.vue'
 import JsonContent from './JsonContent.vue'
 import type { RequestDetail } from '@/api/dashboard'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   detail: RequestDetail
@@ -179,9 +182,9 @@ const props = withDefaults(defineProps<{
 }>(), {
   clientHeaders: undefined,
   providerHeaders: undefined,
-  clientLabel: '客户端请求头',
-  providerLabel: '提供商请求头',
-  emptyMessage: '无请求头信息',
+  clientLabel: '',
+  providerLabel: '',
+  emptyMessage: '',
 })
 
 // 解析实际使用的 header 数据

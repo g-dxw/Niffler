@@ -2,10 +2,10 @@
   <div class="space-y-6 pb-8">
     <div>
       <h1 class="text-2xl font-semibold text-foreground">
-        我的邀请
+        {{ t('referral.title') }}
       </h1>
       <p class="mt-1 text-sm text-muted-foreground">
-        分享邀请码后，符合规则的返利会进入赠款余额
+        {{ t('referral.description') }}
       </p>
     </div>
 
@@ -13,14 +13,14 @@
       v-if="loading"
       class="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground"
     >
-      正在加载...
+      {{ t('referral.loading') }}
     </div>
 
     <template v-else-if="dashboard">
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card class="p-5">
           <p class="text-xs text-muted-foreground">
-            总邀请
+            {{ t('referral.total') }}
           </p>
           <p class="mt-2 text-2xl font-semibold">
             {{ dashboard.summary.total_invites }}
@@ -28,7 +28,7 @@
         </Card>
         <Card class="p-5">
           <p class="text-xs text-muted-foreground">
-            有效邀请
+            {{ t('referral.valid') }}
           </p>
           <p class="mt-2 text-2xl font-semibold">
             {{ dashboard.summary.effective_invites }}
@@ -36,7 +36,7 @@
         </Card>
         <Card class="p-5">
           <p class="text-xs text-muted-foreground">
-            已发返利
+            {{ t('referral.paid') }}
           </p>
           <p class="mt-2 text-2xl font-semibold">
             {{ formatUsd(dashboard.summary.paid_reward_usd) }}
@@ -48,7 +48,7 @@
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr]">
           <div>
             <Label class="text-xs text-muted-foreground">
-              邀请码
+              {{ t('referral.code') }}
             </Label>
             <div class="mt-2 flex items-center gap-2">
               <code class="rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm">
@@ -61,14 +61,14 @@
                 @click="copyToClipboard(dashboard.invite_code)"
               >
                 <Copy class="mr-2 h-4 w-4" />
-                复制
+                {{ t('referral.copy') }}
               </Button>
             </div>
           </div>
 
           <div>
             <Label class="text-xs text-muted-foreground">
-              邀请链接
+              {{ t('referral.link') }}
             </Label>
             <div class="mt-2 flex min-w-0 items-center gap-2">
               <Input
@@ -84,7 +84,7 @@
                 @click="copyToClipboard(dashboard.invitation_link)"
               >
                 <Copy class="mr-2 h-4 w-4" />
-                复制
+                {{ t('referral.copy') }}
               </Button>
             </div>
           </div>
@@ -94,7 +94,7 @@
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card class="p-5">
           <p class="text-xs text-muted-foreground">
-            待发返利
+            {{ t('referral.pending') }}
           </p>
           <p class="mt-2 text-xl font-semibold">
             {{ formatUsd(dashboard.summary.pending_reward_usd) }}
@@ -102,7 +102,7 @@
         </Card>
         <Card class="p-5">
           <p class="text-xs text-muted-foreground">
-            已冲回返利
+            {{ t('referral.reversed') }}
           </p>
           <p class="mt-2 text-xl font-semibold">
             {{ formatUsd(dashboard.summary.reversed_reward_usd) }}
@@ -115,13 +115,14 @@
       v-else
       class="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground"
     >
-      邀请数据暂不可用
+      {{ t('referral.unavailable') }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Copy } from 'lucide-vue-next'
 import { referralApi, type ReferralDashboardResponse } from '@/api/referrals'
 import { Button, Card, Input, Label } from '@/components/ui'
@@ -131,6 +132,7 @@ import { useToast } from '@/composables/useToast'
 const dashboard = ref<ReferralDashboardResponse | null>(null)
 const loading = ref(false)
 const { copyToClipboard } = useClipboard()
+const { t } = useI18n()
 const { error: showError } = useToast()
 
 function formatUsd(value: number): string {
@@ -143,7 +145,7 @@ async function loadReferralDashboard() {
     dashboard.value = await referralApi.getMyReferral()
   } catch {
     dashboard.value = null
-    showError('加载邀请数据失败')
+    showError(t('referralCenter.loadFailed'))
   } finally {
     loading.value = false
   }

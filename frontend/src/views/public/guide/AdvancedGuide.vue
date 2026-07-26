@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { Settings } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 </script>
 
 <template>
@@ -8,13 +11,13 @@ import { Settings } from 'lucide-vue-next'
     <div class="space-y-4">
       <div class="inline-flex items-center gap-1.5 rounded-full bg-[#cc785c]/10 dark:bg-[#cc785c]/20 border border-[#cc785c]/20 dark:border-[#cc785c]/40 px-3 py-1 text-xs font-medium text-[#cc785c] dark:text-[#d4a27f]">
         <Settings class="h-3 w-3" />
-        高级使用
+        {{ t('advancedGuide.badge') }}
       </div>
       <h1 class="text-3xl font-bold text-[#262624] dark:text-[#f1ead8]">
-        高级功能
+        {{ t('advancedGuide.title') }}
       </h1>
       <p class="text-base text-[#666663] dark:text-[#a3a094] max-w-2xl">
-        解锁 Niffler 的自定义请求修改、智能转换机制以及进阶配置。
+        {{ t('advancedGuide.description') }}
       </p>
     </div>
 
@@ -23,14 +26,14 @@ import { Settings } from 'lucide-vue-next'
       id="format-conversion"
       class="scroll-mt-24 lg:scroll-mt-20"
     >
-      <h2>1. 格式转换</h2>
+      <h2>{{ t('advancedGuide.formatTitle') }}</h2>
       <p class="text-sm text-[#666663] dark:text-[#a3a094] mb-4">
-        格式转换机制允许非原生接口的请求通过 Gateway 转为下游需要的格式，这一转换发生在多个层级：
+        {{ t('advancedGuide.formatText') }}
       </p>
       <ul class="list-decimal pl-5 space-y-2 mt-2 text-[#666663] dark:text-[#a3a094] text-sm">
-        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">全局格式转换：</strong> 在系统层面全局开启或关闭的默认转换规则。</li>
-        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">提供商级转换：</strong> 针对某个特定提供商的所有请求进行特定的格式转换配置。</li>
-        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">端点级转换：</strong> 针对某个具体端点的细粒度转换支持。</li>
+        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">{{ t('advancedGuide.globalConversion') }}：</strong> {{ t('advancedGuide.globalConversionText') }}</li>
+        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">{{ t('advancedGuide.providerConversion') }}：</strong> {{ t('advancedGuide.providerConversionText') }}</li>
+        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">{{ t('advancedGuide.endpointConversion') }}：</strong> {{ t('advancedGuide.endpointConversionText') }}</li>
       </ul>
     </section>
 
@@ -39,9 +42,9 @@ import { Settings } from 'lucide-vue-next'
       id="stream-policy"
       class="scroll-mt-24 lg:scroll-mt-20"
     >
-      <h2>2. 请求上游固定非流/流式</h2>
+      <h2>{{ t('advancedGuide.streamPolicyTitle') }}</h2>
       <p class="text-sm text-[#666663] dark:text-[#a3a094] mb-4">
-        部分提供商在流式或非流式表现上可能存在差异，此功能可强制在请求上游时使用指定的流式/非流式格式（并在前端按用户请求还原）。
+        {{ t('advancedGuide.streamPolicyText') }}
       </p>
     </section>
 
@@ -50,9 +53,9 @@ import { Settings } from 'lucide-vue-next'
       id="header-body-edit"
       class="scroll-mt-24 lg:scroll-mt-20"
     >
-      <h2>3. 请求头/体编辑</h2>
+      <h2>{{ t('advancedGuide.headerBodyTitle') }}</h2>
       <p class="text-sm text-[#666663] dark:text-[#a3a094] mb-4">
-        可在端点设置中添加规则（Rules），使用条件匹配与动作（如 Delete, Set, Insert）来动态修改发往上游的 Headers 或 JSON Payload。
+        {{ t('advancedGuide.headerBodyText') }}
       </p>
     </section>
 
@@ -61,9 +64,9 @@ import { Settings } from 'lucide-vue-next'
       id="model-mapping"
       class="scroll-mt-24 lg:scroll-mt-20"
     >
-      <h2>4. 模型映射</h2>
+      <h2>{{ t('advancedGuide.modelMappingTitle') }}</h2>
       <p class="text-sm text-[#666663] dark:text-[#a3a094] mb-4">
-        解决提供商特定模型名称与平台标准名称不一致的问题。将请求中的统一模型名动态转换为上游真实需要的模型名。
+        {{ t('advancedGuide.modelMappingText') }}
       </p>
     </section>
 
@@ -72,10 +75,10 @@ import { Settings } from 'lucide-vue-next'
       id="regex-mapping"
       class="scroll-mt-24 lg:scroll-mt-20"
     >
-      <h2>5. 正则映射</h2>
+      <h2>{{ t('advancedGuide.regexTitle') }}</h2>
       <ul class="list-decimal pl-5 space-y-2 mt-4 text-[#666663] dark:text-[#a3a094] text-sm">
-        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">模型权限：</strong> 使用正则表达式来匹配一类模型，给予批量授权。</li>
-        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">自动获取上游模型：</strong> 在自动获取的模型列表中，应用正则过滤与清洗，从而快速导入符合规则的标准模型列表。</li>
+        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">{{ t('advancedGuide.modelPermissions') }}：</strong> {{ t('advancedGuide.modelPermissionsText') }}</li>
+        <li><strong class="text-[#262624] dark:text-[#f1ead8] font-medium">{{ t('advancedGuide.autoFetch') }}：</strong> {{ t('advancedGuide.autoFetchText') }}</li>
       </ul>
     </section>
 
@@ -86,10 +89,10 @@ import { Settings } from 'lucide-vue-next'
         class="scroll-mt-24 lg:scroll-mt-20"
       >
         <h3 class="mt-0 text-xl text-[#262624] dark:text-[#f1ead8]">
-          6. 余额监控
+          {{ t('advancedGuide.balanceTitle') }}
         </h3>
         <p class="text-sm text-[#666663] dark:text-[#a3a094] mt-2">
-          针对各大提供商的官方接口或常见聚合平台，自动抓取并记录剩余额度，在余额低于阈值时触发报警或禁用策略。
+          {{ t('advancedGuide.balanceText') }}
         </p>
       </section>
 
@@ -99,10 +102,10 @@ import { Settings } from 'lucide-vue-next'
         class="scroll-mt-24 lg:scroll-mt-20"
       >
         <h3 class="mt-0 text-xl text-[#262624] dark:text-[#f1ead8]">
-          7. 配置导入/出
+          {{ t('advancedGuide.configTitle') }}
         </h3>
         <p class="text-sm text-[#666663] dark:text-[#a3a094] mt-2">
-          支持将统一模型配置、提供商端点及网关路由策略一键导出为 JSON，并在其他部署实例中迁移导入。
+          {{ t('advancedGuide.configText') }}
         </p>
       </section>
 
@@ -112,10 +115,10 @@ import { Settings } from 'lucide-vue-next'
         class="scroll-mt-24 lg:scroll-mt-20"
       >
         <h3 class="mt-0 text-xl text-[#262624] dark:text-[#f1ead8]">
-          8. 锁定用户密钥
+          {{ t('advancedGuide.lockKeyTitle') }}
         </h3>
         <p class="text-sm text-[#666663] dark:text-[#a3a094] mt-2">
-          若监控发现恶意使用、异常调用或高频报错，管理员可以临时或永久锁定特定密钥，以阻断攻击源头。
+          {{ t('advancedGuide.lockKeyText') }}
         </p>
       </section>
     </div>

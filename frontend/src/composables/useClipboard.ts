@@ -1,14 +1,16 @@
 import { useToast } from './useToast'
 import { log } from '@/utils/logger'
+import { useI18n } from 'vue-i18n'
 
 export function useClipboard() {
   const { success, error: showError } = useToast()
+  const { t } = useI18n()
 
   async function copyToClipboard(text: string, showToast = true): Promise<boolean> {
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text)
-        if (showToast) success('已复制到剪贴板')
+        if (showToast) success(t('clipboard.copied'))
         return true
       }
 
@@ -25,17 +27,17 @@ export function useClipboard() {
       try {
         const successful = document.execCommand('copy')
         if (successful) {
-          if (showToast) success('已复制到剪贴板')
+          if (showToast) success(t('clipboard.copied'))
           return true
         }
-        if (showToast) showError('复制失败，请手动复制')
+        if (showToast) showError(t('clipboard.copyFailed'))
         return false
       } finally {
         document.body.removeChild(textArea)
       }
     } catch (err) {
       log.error('复制失败:', err)
-      if (showToast) showError('复制失败，请手动选择文本进行复制')
+      if (showToast) showError(t('clipboard.copyFailedManual'))
       return false
     }
   }

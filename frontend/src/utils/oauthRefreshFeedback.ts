@@ -2,6 +2,7 @@ import {
   getAccountStatusDisplay,
   type ProviderKeyStatusCarrier,
 } from './providerKeyStatus'
+import { i18n } from '@/i18n'
 
 export interface OAuthAccountBlockDisplay {
   label: string | null
@@ -52,30 +53,30 @@ export function getOAuthRefreshFeedback(
     if (recheckError) {
       return {
         tone: 'warning',
-        message: `Token 刷新成功，但额度/账号状态复检失败：${formatRecheckError(recheckError)}`,
+        message: i18n.global.t('oauthFeedbackUi.successRecheckFailed', { error: formatRecheckError(recheckError) }),
       }
     }
     if (blockedLabel) {
       return {
         tone: 'warning',
-        message: `Token 刷新成功，已重新检查额度/账号状态；当前状态仍是${blockedLabel}`,
+        message: i18n.global.t('oauthFeedbackUi.successStillBlocked', { label: blockedLabel }),
       }
     }
     return {
       tone: 'success',
-      message: 'Token 刷新成功，已重新检查额度/账号状态',
+      message: i18n.global.t('oauthFeedbackUi.successRechecked'),
     }
   }
 
   if (blockedLabel) {
     return {
       tone: 'warning',
-      message: `Token 刷新成功，但当前状态仍是${blockedLabel}`,
+      message: i18n.global.t('oauthFeedbackUi.successBlocked', { label: blockedLabel }),
     }
   }
 
   return {
     tone: 'success',
-    message: 'Token 刷新成功',
+    message: i18n.global.t('oauthFeedbackUi.success'),
   }
 }
