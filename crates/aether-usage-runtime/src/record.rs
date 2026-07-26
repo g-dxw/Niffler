@@ -33,6 +33,9 @@ pub fn build_upsert_usage_record_from_event(
 ) -> Result<UpsertUsageRecord, DataLayerError> {
     let (status, billing_status) = lifecycle_status_and_billing(event.event_type);
     let mut data = event.data.clone();
+    let billing_status = billing_status_override(&data)
+        .unwrap_or(billing_status)
+        .to_string();
     let request_metadata = attach_client_request_body_metadata(
         data.request_metadata.take(),
         data.request_body.as_ref(),
@@ -41,9 +44,6 @@ pub fn build_upsert_usage_record_from_event(
         request_metadata,
         data.provider_request_body.as_ref(),
     );
-    let billing_status = billing_status_override(&data)
-        .unwrap_or(billing_status)
-        .to_string();
     let now_unix_secs = event.timestamp_ms / 1_000;
 
     Ok(UpsertUsageRecord {
@@ -89,50 +89,48 @@ pub fn build_upsert_usage_record_from_event(
         request_headers: data.request_headers,
         request_body: data.request_body,
         request_body_ref: empty_to_none(data.request_body_ref)
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "request_body_ref")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "request_body_ref")),
         request_body_state: data.request_body_state,
         provider_request_headers: data.provider_request_headers,
         provider_request_body: data.provider_request_body,
-        provider_request_body_ref: empty_to_none(data.provider_request_body_ref).or_else(|| {
-            metadata_string(data.request_metadata.as_ref(), "provider_request_body_ref")
-        }),
+        provider_request_body_ref: empty_to_none(data.provider_request_body_ref)
+            .or_else(|| metadata_string(request_metadata.as_ref(), "provider_request_body_ref")),
         provider_request_body_state: data.provider_request_body_state,
         response_headers: data.response_headers,
         response_body: data.response_body,
         response_body_ref: empty_to_none(data.response_body_ref)
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "response_body_ref")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "response_body_ref")),
         response_body_state: data.response_body_state,
         client_response_headers: data.client_response_headers,
         client_response_body: data.client_response_body,
-        client_response_body_ref: empty_to_none(data.client_response_body_ref).or_else(|| {
-            metadata_string(data.request_metadata.as_ref(), "client_response_body_ref")
-        }),
+        client_response_body_ref: empty_to_none(data.client_response_body_ref)
+            .or_else(|| metadata_string(request_metadata.as_ref(), "client_response_body_ref")),
         client_response_body_state: data.client_response_body_state,
         candidate_id: data
             .candidate_id
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "candidate_id")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "candidate_id")),
         candidate_index: data
             .candidate_index
-            .or_else(|| metadata_u64(data.request_metadata.as_ref(), "candidate_index")),
+            .or_else(|| metadata_u64(request_metadata.as_ref(), "candidate_index")),
         key_name: data
             .key_name
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "key_name")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "key_name")),
         planner_kind: data
             .planner_kind
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "planner_kind")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "planner_kind")),
         route_family: data
             .route_family
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "route_family")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "route_family")),
         route_kind: data
             .route_kind
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "route_kind")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "route_kind")),
         execution_path: data
             .execution_path
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "execution_path")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "execution_path")),
         local_execution_runtime_miss_reason: data.local_execution_runtime_miss_reason.or_else(
             || {
                 metadata_string(
-                    data.request_metadata.as_ref(),
+                    request_metadata.as_ref(),
                     "local_execution_runtime_miss_reason",
                 )
             },

@@ -37,7 +37,8 @@
 - 通过 Aether 格式转换层兼容 Chat 请求；
 - 读取 xAI CLI weekly/monthly Billing 额度，并写入结构化额度快照；
 - `grok-4.5` 支持 `low`、`medium`、`high` 思考程度；未指定时使用上游默认值
-  `high`，并在使用记录中保存最终实际值。
+  `high`，并在使用记录中保存最终实际值。附加该元数据时必须保留原请求元数据，
+  不能影响候选、路由、正文引用、平台代处理和内容审查等既有记录字段及计费状态判断。
 
 上游固定使用 Responses，不为 `grok_oauth` 直连创建 Chat Completions 端点。
 
