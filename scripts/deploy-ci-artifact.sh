@@ -17,6 +17,7 @@ APP_SERVICES="${APP_SERVICES:-app}"
 SSH_OPTS="${SSH_OPTS:-}"
 DEPLOY_STATE_FILE="${DEPLOY_STATE_FILE:-.niffler-deployed-commit}"
 ANCESTRY_CHECK_SCRIPT="$SCRIPT_DIR/check-deploy-ancestry.sh"
+FIXED_DEPLOYER_PATH="/opt/niffler-release/bin/deploy-production"
 
 DEPLOY_HOST=""
 REMOTE_DIR="/opt/niffler-app"
@@ -293,54 +294,25 @@ fi
 echo ">>> Uploading image tar to $DEPLOY_HOST:$REMOTE_TAR..."
 scp $SSH_OPTS "$IMAGE_TAR" "$DEPLOY_HOST:$REMOTE_TAR"
 
-echo ">>> Loading image and restarting services on $DEPLOY_HOST..."
+echo ">>> Handing the verified artifact to the fixed production deployer..."
 read -r -a LOCAL_SERVICES <<< "$APP_SERVICES"
+REMOTE_DEPLOY_ARGS=(
+    --image-tar "$REMOTE_TAR"
+    --target "$TARGET_COMMIT"
+    --remote-dir "$REMOTE_DIR"
+    --state-file "$DEPLOY_STATE_FILE"
+)
+for service in "${LOCAL_SERVICES[@]}"; do
+    REMOTE_DEPLOY_ARGS+=(--service "$service")
+done
+if [ "$ALLOW_ROLLBACK" = true ]; then
+    REMOTE_DEPLOY_ARGS+=(--allow-rollback)
+fi
+
 ssh $SSH_OPTS "$DEPLOY_HOST" bash -s -- \
-    "$REMOTE_DIR" "$REMOTE_TAR" "$APP_IMAGE" "$TARGET_COMMIT" "$DEPLOY_STATE_FILE" \
-    "${LOCAL_SERVICES[@]}" <<'REMOTE_SCRIPT'
+    "$FIXED_DEPLOYER_PATH" "${REMOTE_DEPLOY_ARGS[@]}" <<'REMOTE_SCRIPT'
 set -euo pipefail
-
-REMOTE_DIR="$1"
-REMOTE_TAR="$2"
-APP_IMAGE="$3"
-TARGET_COMMIT="$4"
-DEPLOY_STATE_FILE="$5"
-shift 5
-SERVICES=("$@")
-
-cd "$REMOTE_DIR"
-
-if [ ! -f docker-compose.yml ]; then
-    echo "Required file not found on server: $REMOTE_DIR/docker-compose.yml"
-    exit 1
-fi
-
-docker load -i "$REMOTE_TAR"
-
-if [ -f .env ]; then
-    if grep -q '^APP_IMAGE=' .env; then
-        sed -i.bak "s|^APP_IMAGE=.*|APP_IMAGE=$APP_IMAGE|" .env
-    else
-        printf '\nAPP_IMAGE=%s\n' "$APP_IMAGE" >> .env
-    fi
-else
-    printf 'APP_IMAGE=%s\n' "$APP_IMAGE" > .env
-fi
-
-if docker compose version >/dev/null 2>&1; then
-    DC=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-    DC=(docker-compose)
-else
-    echo "docker compose is not installed on server"
-    exit 1
-fi
-
-"${DC[@]}" up -d --no-build --force-recreate "${SERVICES[@]}"
-"${DC[@]}" ps
-printf '%s\n' "$TARGET_COMMIT" > "$REMOTE_DIR/$DEPLOY_STATE_FILE.tmp"
-mv "$REMOTE_DIR/$DEPLOY_STATE_FILE.tmp" "$REMOTE_DIR/$DEPLOY_STATE_FILE"
-rm -f "$REMOTE_TAR"
+exec "$@"
 REMOTE_SCRIPT
 
 echo ">>> Done."

@@ -12,12 +12,6 @@ on:
       - "apps/**"
       - ".github/workflows/rust-ci.yml"
   pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "crates/**"
-      - "apps/**"
-      - ".github/workflows/rust-ci.yml"
   workflow_dispatch:
     inputs:
       full:

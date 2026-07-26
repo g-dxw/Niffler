@@ -28,6 +28,19 @@ pub struct PendingMigrationInfo {
     pub description: String,
 }
 
+/// Return every embedded PostgreSQL up-migration version in execution order.
+///
+/// Production release tooling uses this read-only manifest before replacing
+/// running containers. Keeping the manifest in the compiled binary guarantees
+/// the check describes the exact image that will be started.
+pub fn embedded_postgres_migration_versions() -> Vec<i64> {
+    POSTGRES_MIGRATOR
+        .iter()
+        .filter(|migration| migration.migration_type.is_up_migration())
+        .map(|migration| migration.version)
+        .collect()
+}
+
 /// Run all pending Postgres migrations embedded at compile time from `migrations/postgres/`.
 pub async fn run_migrations(pool: &PgPool) -> Result<(), MigrateError> {
     let mut conn = pool.acquire().await?;

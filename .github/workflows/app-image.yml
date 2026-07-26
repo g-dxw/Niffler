@@ -22,8 +22,11 @@ jobs:
         run: |
           bash -n scripts/check-deploy-ancestry.sh
           bash -n scripts/deploy-ci-artifact.sh
+          bash -n scripts/fixed-production-deployer.sh
           bash -n scripts/tests/test-deploy-ancestry.sh
+          bash -n scripts/tests/test-fixed-production-deployer.sh
           bash scripts/tests/test-deploy-ancestry.sh
+          bash scripts/tests/test-fixed-production-deployer.sh
 
   frontend:
     name: Build frontend

@@ -1,0 +1,36 @@
+name: Release Tooling CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-tooling-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release_tooling:
+    name: Release tooling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check script syntax
+        run: |
+          bash -n scripts/check-deploy-ancestry.sh
+          bash -n scripts/deploy-ci-artifact.sh
+          bash -n scripts/fixed-production-deployer.sh
+          bash -n scripts/tests/test-deploy-ancestry.sh
+          bash -n scripts/tests/test-fixed-production-deployer.sh
+
+      - name: Test deployment ancestry guard
+        run: bash scripts/tests/test-deploy-ancestry.sh
+
+      - name: Test fixed production deployer
+        run: bash scripts/tests/test-fixed-production-deployer.sh

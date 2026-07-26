@@ -1894,6 +1894,16 @@ fn pending_migrations_from_applied_returns_all_versions_when_none_applied() {
 }
 
 #[test]
+fn embedded_postgres_manifest_contains_latest_production_migrations() {
+    let versions = super::embedded_postgres_migration_versions();
+
+    assert!(versions.contains(&20260723120000));
+    assert!(versions.contains(&20260723121000));
+    assert!(versions.contains(&20260723122000));
+    assert!(versions.windows(2).all(|pair| pair[0] < pair[1]));
+}
+
+#[test]
 fn pending_migrations_from_applied_skips_versions_already_applied() {
     let applied = vec![
         AppliedMigration {
