@@ -13,13 +13,13 @@
 
       <!-- Title -->
       <h2 class="text-xl font-semibold text-foreground mt-4 mb-2">
-        发现新版本
+        {{ t('updateDialog.title') }}
       </h2>
 
       <!-- Version Info -->
       <div class="mx-auto mb-2 w-full max-w-sm rounded-lg bg-muted/20 px-4 py-3 text-center">
         <p class="text-xs text-muted-foreground">
-          最新版本
+          {{ t('updateDialog.latest') }}
         </p>
         <p class="mt-1 break-all font-mono text-base font-semibold text-primary">
           {{ formatDisplayVersion(latestVersion) }}
@@ -35,10 +35,10 @@
           v-if="publishedAt"
           class="text-left text-xs text-muted-foreground mb-2"
         >
-          发布于 {{ formattedPublishedAt }}
+          {{ t('updateDialog.publishedAt', { date: formattedPublishedAt }) }}
         </div>
         <div class="text-left text-xs font-medium text-muted-foreground mb-2">
-          更新内容
+          {{ t('updateDialog.releaseNotes') }}
         </div>
         <!-- eslint-disable vue/no-v-html -->
         <div
@@ -53,7 +53,7 @@
         v-else
         class="text-sm text-muted-foreground max-w-xs mt-2 mb-4"
       >
-        新版本已发布，建议更新以获得最新功能和安全修复
+        {{ t('updateDialog.fallbackDescription') }}
       </p>
     </div>
 
@@ -64,13 +64,13 @@
           class="flex-1"
           @click="handleLater"
         >
-          稍后提醒
+          {{ t('updateDialog.later') }}
         </Button>
         <Button
           class="flex-1"
           @click="handleViewRelease"
         >
-          查看更新
+          {{ t('updateDialog.viewUpdate') }}
         </Button>
       </div>
     </template>
@@ -79,12 +79,15 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Dialog } from '@/components/ui'
 import Button from '@/components/ui/button.vue'
 import HeaderLogo from '@/components/HeaderLogo.vue'
 import { formatDisplayVersion } from '@/utils/version'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+
+const { t, locale } = useI18n()
 
 const props = defineProps<{
   modelValue: boolean
@@ -114,7 +117,7 @@ const formattedPublishedAt = computed(() => {
   if (!props.publishedAt) return ''
   try {
     const date = new Date(props.publishedAt)
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(locale.value === 'en-US' ? 'en-US' : 'zh-CN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'

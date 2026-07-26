@@ -2,7 +2,7 @@
   <Card class="overflow-hidden flex flex-col">
     <div class="px-3 py-2 border-b flex-shrink-0">
       <h3 class="text-sm font-medium">
-        按模型分析
+        {{ t('usageBreakdown.byModel') }}
       </h3>
     </div>
     <div class="overflow-auto max-h-[320px]">
@@ -10,28 +10,28 @@
         <TableHeader>
           <TableRow>
             <TableHead class="h-8 px-2">
-              模型
+              {{ t('usageBreakdown.model') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              请求数
+              {{ t('usageBreakdown.requests') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
               <div class="flex flex-col text-xs gap-0.5 whitespace-nowrap">
-                <span>输入/输出</span>
-                <span class="text-muted-foreground font-normal">缓存</span>
+                <span>{{ t('usageBreakdown.inputOutput') }}</span>
+                <span class="text-muted-foreground font-normal">{{ t('usageBreakdown.cache') }}</span>
               </div>
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              官方应扣
+              {{ t('usageBreakdown.officialCharge') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              {{ isAdmin ? '用户实扣/平台成本' : '用户实扣' }}
+              {{ isAdmin ? t('usageBreakdown.actualChargePlatformCost') : t('usageBreakdown.actualCharge') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              缓存命中率
+              {{ t('usageBreakdown.cacheHitRate') }}
             </TableHead>
             <TableHead class="h-8 px-2 text-right">
-              平均实扣/M
+              {{ t('usageBreakdown.avgActualPerM') }}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -41,7 +41,7 @@
               :colspan="7"
               class="text-center py-6 text-muted-foreground px-2"
             >
-              暂无模型统计数据
+              {{ t('usageBreakdown.noModelData') }}
             </TableCell>
           </TableRow>
           <TableRow
@@ -72,7 +72,7 @@
                   v-if="isAdmin && model.actual_cost !== undefined"
                   class="text-muted-foreground text-[10px]"
                 >
-                  平台 {{ formatCurrency(model.actual_cost) }}
+                  {{ t('usageBreakdown.platformValue', { value: formatCurrency(model.actual_cost) }) }}
                 </span>
               </div>
             </TableCell>
@@ -90,6 +90,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import Card from '@/components/ui/card.vue'
 import Table from '@/components/ui/table.vue'
 import TableHeader from '@/components/ui/table-header.vue'
@@ -99,6 +100,8 @@ import TableHead from '@/components/ui/table-head.vue'
 import TableCell from '@/components/ui/table-cell.vue'
 import { formatTokens, formatCurrency, formatHitRate } from '@/utils/format'
 import type { EnhancedModelStatsItem } from '../types'
+
+const { t } = useI18n()
 
 defineProps<{
   data: EnhancedModelStatsItem[]

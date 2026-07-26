@@ -22,7 +22,7 @@
     >
       <div class="space-y-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-medium">提供商代理节点</span>
+          <span class="text-xs font-medium">{{ t('providerProxyPopover.title') }}</span>
           <Button
             v-if="nodeId"
             variant="ghost"
@@ -31,7 +31,7 @@
             :disabled="saving"
             @click="emit('clear')"
           >
-            清除
+            {{ t('providerProxyPopover.clear') }}
           </Button>
         </div>
         <ProxyNodeSelect
@@ -40,7 +40,7 @@
           @update:model-value="emit('select', $event)"
         />
         <p class="text-[10px] text-muted-foreground">
-          {{ nodeId ? '当前使用提供商独立代理' : '未设置，使用系统默认网络出口' }}
+          {{ nodeId ? t('providerProxyPopover.usingIndependent') : t('providerProxyPopover.notSetFallback') }}
         </p>
       </div>
     </PopoverContent>
@@ -48,9 +48,12 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Globe } from 'lucide-vue-next'
 import { Button, Popover, PopoverTrigger, PopoverContent } from '@/components/ui'
 import ProxyNodeSelect from '@/features/providers/components/ProxyNodeSelect.vue'
+
+const { t } = useI18n()
 
 defineProps<{
   open: boolean

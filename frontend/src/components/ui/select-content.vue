@@ -21,7 +21,7 @@
             <Input
               ref="searchInputRef"
               v-model="searchQuery"
-              :placeholder="searchPlaceholder"
+              :placeholder="searchPlaceholder || t('selectContent.searchPlaceholder')"
               class="h-9 rounded-xl border-border/60 bg-background/80 pl-9 pr-3 text-sm"
               @keydown.stop
             />
@@ -34,7 +34,7 @@
           v-if="showEmptyState"
           class="px-3 py-2 text-sm text-muted-foreground"
         >
-          未找到匹配项
+          {{ t('selectContent.noMatches') }}
         </div>
       </SelectViewport>
     </SelectContentPrimitive>
@@ -48,6 +48,7 @@ import {
   SelectViewport,
 } from 'radix-vue'
 import { Search } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import {
   computed,
   inject,
@@ -66,6 +67,8 @@ import {
   type RegisteredSelectItem,
 } from './select-search-context'
 import { matchesSearchQuery, preloadPinyin } from '@/utils/search'
+
+const { t } = useI18n()
 
 interface Props {
   class?: string
@@ -90,7 +93,7 @@ const props = withDefaults(defineProps<Props>(), {
   disablePortal: undefined,
   searchable: true,
   searchThreshold: 8,
-  searchPlaceholder: '输入关键词搜索...',
+  searchPlaceholder: '',
 })
 
 const isInsideDialog = inject(DIALOG_CONTEXT_KEY, false)

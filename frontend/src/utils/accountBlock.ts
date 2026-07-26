@@ -62,14 +62,14 @@ export function isAccountLevelBlockReason(reason: string | null | undefined): bo
 }
 
 export function classifyAccountBlockLabel(reason: string): string {
-  if (reason.trim().startsWith('[OAUTH_EXPIRED]')) return 'Token 失效'
+  if (reason.trim().startsWith('[OAUTH_EXPIRED]')) return i18n.global.t('accountUi.tokenExpired')
   const lowered = reason.toLowerCase()
-  if (KEYWORDS_TOKEN_INVALID.some(kw => lowered.includes(kw))) return 'Token 失效'
-  if (KEYWORDS_VERIFICATION.some(kw => lowered.includes(kw))) return '需要验证'
-  if (lowered.includes('deactivated_workspace')) return '工作区停用'
-  if (KEYWORDS_DISABLED.some(kw => lowered.includes(kw))) return '账号停用'
-  if (KEYWORDS_SUSPENDED.some(kw => lowered.includes(kw))) return '账号封禁'
-  return '账号异常'
+  if (KEYWORDS_TOKEN_INVALID.some(kw => lowered.includes(kw))) return i18n.global.t('accountUi.tokenExpired')
+  if (KEYWORDS_VERIFICATION.some(kw => lowered.includes(kw))) return i18n.global.t('accountUi.verificationRequired')
+  if (lowered.includes('deactivated_workspace')) return i18n.global.t('accountUi.workspaceDisabled')
+  if (KEYWORDS_DISABLED.some(kw => lowered.includes(kw))) return i18n.global.t('accountUi.accountDisabled')
+  if (KEYWORDS_SUSPENDED.some(kw => lowered.includes(kw))) return i18n.global.t('accountUi.accountBanned')
+  return i18n.global.t('accountUi.accountAbnormal')
 }
 
 export function cleanAccountBlockReason(reason: string): string {
@@ -88,3 +88,4 @@ export function isOAuthExpiredReason(reason: string | null | undefined): boolean
   if (!reason) return false
   return reason.trim().startsWith('[OAUTH_EXPIRED]')
 }
+import { i18n } from '@/i18n'

@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    title="用户分组"
-    description="管理用户组、默认注册组、成员和组级访问控制"
+    :title="t('userGroups.title')"
+    :description="t('userGroups.description')"
     size="4xl"
     persistent
     @update:model-value="handleDialogUpdate"
@@ -14,7 +14,7 @@
             variant="ghost"
             size="icon"
             class="nav-action h-8 w-8"
-            title="新建分组"
+            :title="t('userGroups.create')"
             @click="startCreate"
           >
             <Plus class="h-4 w-4" />
@@ -25,13 +25,13 @@
           v-if="loading"
           class="rounded-lg border border-dashed border-border/70 px-3 py-8 text-center text-xs text-muted-foreground"
         >
-          正在加载...
+          {{ t('userGroups.loading') }}
         </div>
         <div
           v-else-if="groups.length === 0"
           class="rounded-lg border border-dashed border-border/70 px-3 py-8 text-center text-xs text-muted-foreground"
         >
-          暂无分组
+          {{ t('userGroups.empty') }}
         </div>
         <div
           v-else
@@ -54,7 +54,7 @@
                   variant="secondary"
                   class="h-5 px-1.5 py-0 text-[10px]"
                 >
-                  默认
+                  {{ t('userGroups.default') }}
                 </Badge>
                 <Badge
                   v-if="group.legacy_read_only"
@@ -75,10 +75,10 @@
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div class="min-w-0">
             <h4 class="truncate text-base font-semibold text-foreground">
-              {{ editingGroupId ? '编辑分组' : '新建分组' }}
+              {{ editingGroupId ? t('userGroups.edit') : t('userGroups.create') }}
             </h4>
             <p class="text-xs text-muted-foreground">
-              {{ selectedGroupReadOnly ? '已迁移到 Niffler Core 产品策略，旧入口只读' : selectedGroup?.is_default ? '当前为所有用户的默认组' : '通过额外分组配置访问限制' }}
+              {{ selectedGroupReadOnly ? t('userGroups.readOnlyHint') : selectedGroup?.is_default ? t('userGroups.defaultHint') : t('userGroups.accessHint') }}
             </p>
           </div>
           <div
@@ -91,7 +91,7 @@
               class="nav-action h-8 w-8"
               :class="selectedGroup?.is_default ? 'text-emerald-500 hover:text-emerald-500' : ''"
               :disabled="saving || selectedGroup?.is_default || selectedGroupReadOnly"
-              :title="selectedGroupReadOnly ? '请到 Niffler Core 修改' : selectedGroup?.is_default ? '默认注册组' : '设为默认注册组'"
+              :title="selectedGroupReadOnly ? t('userGroups.editInCore') : selectedGroup?.is_default ? t('userGroups.defaultGroup') : t('userGroups.setDefault')"
               @click="toggleDefault"
             >
               <BadgeCheck class="h-4 w-4" />
@@ -101,7 +101,7 @@
               size="icon"
               class="nav-action h-8 w-8"
               :disabled="saving || selectedGroup?.is_default || selectedGroupReadOnly"
-              :title="selectedGroupReadOnly ? '请到 Niffler Core 修改' : '删除分组'"
+              :title="selectedGroupReadOnly ? t('userGroups.editInCore') : t('userGroups.delete')"
               @click="deleteSelectedGroup"
             >
               <Trash2 class="h-4 w-4" />
@@ -113,7 +113,7 @@
           v-if="selectedGroupReadOnly"
           class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
         >
-          {{ selectedGroup?.legacy_read_only_reason || '这个分组已迁移到 Niffler Core，旧入口只读。' }}
+          {{ selectedGroup?.legacy_read_only_reason || t('userGroups.readOnlyMessage') }}
         </div>
 
         <fieldset
@@ -123,39 +123,39 @@
         >
           <div class="space-y-4">
             <div class="space-y-2">
-              <Label class="text-sm font-medium">名称</Label>
+              <Label class="text-sm font-medium">{{ t('userGroups.name') }}</Label>
               <Input
                 v-model="form.name"
                 class="h-10"
-                placeholder="例如：生产团队"
+                :placeholder="t('userGroups.namePlaceholder')"
               />
             </div>
 
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="space-y-2">
-                <Label class="text-sm font-medium">分组可见性</Label>
+                <Label class="text-sm font-medium">{{ t('userGroups.visibility') }}</Label>
                 <select
                   v-model="form.visibility"
                   class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="public">
-                    公开分组，用户创建 API Key 时可见
+                    {{ t('userGroups.publicVisibility') }}
                   </option>
                   <option value="internal">
-                    内部分组，仅管理员分配后可见
+                    {{ t('userGroups.internalVisibility') }}
                   </option>
                 </select>
               </div>
 
               <div class="space-y-2">
-                <Label class="text-sm font-medium">默认销售倍率</Label>
+                <Label class="text-sm font-medium">{{ t('userGroups.defaultMultiplier') }}</Label>
                 <Input
                   :model-value="form.sales_multiplier"
                   type="number"
                   min="0"
                   step="0.01"
                   class="h-10"
-                  placeholder="1 = 按官方价扣费"
+                  :placeholder="t('userGroups.multiplierPlaceholder')"
                   @update:model-value="(value) => form.sales_multiplier = parseNumberInput(value, { allowFloat: true, min: 0, max: 100 }) ?? 1"
                 />
               </div>
@@ -163,7 +163,7 @@
 
             <div class="space-y-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <Label class="text-sm font-medium">模型销售倍率覆盖（可选）</Label>
+                <Label class="text-sm font-medium">{{ t('userGroups.modelMultiplier') }}</Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -173,7 +173,7 @@
                   @click="addModelSalesMultiplierRow"
                 >
                   <Plus class="mr-1.5 h-3.5 w-3.5" />
-                  添加模型
+                  {{ t('userGroups.addModel') }}
                 </Button>
               </div>
               <div class="rounded-lg border border-border/70">
@@ -181,7 +181,7 @@
                   v-if="modelSalesMultiplierRows.length === 0"
                   class="px-3 py-4 text-sm text-muted-foreground"
                 >
-                  未单独设置的模型使用默认销售倍率。
+                  {{ t('userGroups.modelMultiplierHint') }}
                 </div>
                 <div
                   v-for="row in modelSalesMultiplierRows"
@@ -193,7 +193,7 @@
                     class="h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm"
                   >
                     <option value="">
-                      选择模型
+                      {{ t('userGroups.chooseModel') }}
                     </option>
                     <option
                       v-for="option in globalModelSelectOptions"
@@ -209,7 +209,7 @@
                     min="0"
                     step="0.01"
                     class="h-9"
-                    placeholder="倍率"
+                    :placeholder="t('userGroups.multiplier')"
                     @update:model-value="(value) => row.multiplier = parseNumberInput(value, { allowFloat: true, min: 0, max: 100 }) ?? undefined"
                   />
                   <Button
@@ -217,7 +217,7 @@
                     variant="ghost"
                     size="icon"
                     class="filter-action h-9 w-9"
-                    title="删除"
+                    :title="t('userGroups.delete')"
                     @click="removeModelSalesMultiplierRow(row.id)"
                   >
                     <Trash2 class="h-4 w-4" />
@@ -229,7 +229,7 @@
                 class="rounded-lg border border-border/70 bg-muted/20 p-3"
               >
                 <div class="mb-2 text-xs font-medium text-muted-foreground">
-                  按提供商批量设置
+                  {{ t('userGroups.batchByProvider') }}
                 </div>
                 <div class="grid gap-2 sm:grid-cols-2">
                   <div
@@ -238,7 +238,7 @@
                     class="rounded-lg border border-border/60 bg-background/70 p-2"
                   >
                     <div class="mb-2 truncate text-xs font-medium">
-                      {{ provider.name }} · {{ provider.modelIds.length }} 个模型
+                      {{ provider.name }} · {{ provider.modelIds.length }} {{ t('userGroups.models') }}
                     </div>
                     <div class="flex gap-2">
                       <Input
@@ -247,7 +247,7 @@
                         min="0"
                         step="0.01"
                         class="h-8 min-w-0"
-                        placeholder="例如 0.15"
+                        :placeholder="t('userGroups.providerMultiplierPlaceholder')"
                         @update:model-value="(value) => setProviderBatchSalesMultiplier(provider.id, value)"
                       />
                       <Button
@@ -257,41 +257,41 @@
                         class="h-8 shrink-0"
                         @click="applyProviderSalesMultiplier(provider)"
                       >
-                        应用
+                        {{ t('userGroups.apply') }}
                       </Button>
                     </div>
                   </div>
                 </div>
               </div>
               <p class="text-xs text-muted-foreground">
-                不设置的模型使用默认销售倍率；批量按钮只是帮你快速填入这些模型。
+                {{ t('userGroups.modelMultiplierBatchHint') }}
               </p>
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm font-medium">成员</Label>
+              <Label class="text-sm font-medium">{{ t('userGroups.members') }}</Label>
               <MultiSelect
                 v-model="memberUserIds"
                 :options="userOptions"
                 :search-threshold="0"
                 :disabled="selectedGroup?.is_default"
-                placeholder="选择用户"
-                empty-text="暂无用户"
-                no-results-text="未找到匹配用户"
+                :placeholder="t('userGroups.chooseUser')"
+                :empty-text="t('userGroups.noUsers')"
+                :no-results-text="t('userGroups.noMatchingUsers')"
               />
             </div>
           </div>
 
           <div class="space-y-4 border-t border-border/60 pt-5">
             <div class="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 pb-2 border-b border-border/60">
-              <span class="text-sm font-medium">组权限</span>
+              <span class="text-sm font-medium">{{ t('userGroups.permissions') }}</span>
               <span class="text-[11px] text-muted-foreground">
-                多个组与用户额外限制取交集
+                {{ t('userGroups.permissionsHint') }}
               </span>
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm font-medium">允许的提供商</Label>
+              <Label class="text-sm font-medium">{{ t('userGroups.allowedProviders') }}</Label>
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div class="flex w-full items-center sm:w-auto sm:shrink-0">
                   <Switch
@@ -305,15 +305,15 @@
                     :options="providerOptions"
                     :search-threshold="0"
                     :disabled="form.allowed_providers_mode === 'unrestricted'"
-                    :placeholder="form.allowed_providers_mode === 'unrestricted' ? '不限制所有选项' : '选择提供商'"
-                    empty-text="暂无选项"
+                    :placeholder="form.allowed_providers_mode === 'unrestricted' ? t('userGroups.unrestricted') : t('userGroups.chooseProvider')"
+                    :empty-text="t('userGroups.noOptions')"
                   />
                 </div>
               </div>
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm font-medium">允许的端点</Label>
+              <Label class="text-sm font-medium">{{ t('userGroups.allowedEndpoints') }}</Label>
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div class="flex w-full items-center sm:w-auto sm:shrink-0">
                   <Switch
@@ -327,15 +327,15 @@
                     :options="apiFormatOptions"
                     :search-threshold="0"
                     :disabled="form.allowed_api_formats_mode === 'unrestricted'"
-                    :placeholder="form.allowed_api_formats_mode === 'unrestricted' ? '不限制所有选项' : '选择端点'"
-                    empty-text="暂无选项"
+                    :placeholder="form.allowed_api_formats_mode === 'unrestricted' ? t('userGroups.unrestricted') : t('userGroups.chooseEndpoint')"
+                    :empty-text="t('userGroups.noOptions')"
                   />
                 </div>
               </div>
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm font-medium">允许的模型</Label>
+              <Label class="text-sm font-medium">{{ t('userGroups.allowedModels') }}</Label>
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div class="flex w-full items-center sm:w-auto sm:shrink-0">
                   <Switch
@@ -349,8 +349,8 @@
                     :options="modelOptions"
                     :search-threshold="0"
                     :disabled="form.allowed_models_mode === 'unrestricted'"
-                    :placeholder="form.allowed_models_mode === 'unrestricted' ? '不限制所有选项' : '选择模型'"
-                    empty-text="暂无选项"
+                    :placeholder="form.allowed_models_mode === 'unrestricted' ? t('userGroups.unrestricted') : t('userGroups.chooseModel')"
+                    :empty-text="t('userGroups.noOptions')"
                   />
                 </div>
               </div>
@@ -359,7 +359,7 @@
                 class="rounded-lg border border-border/70 bg-muted/20 p-3"
               >
                 <div class="mb-2 text-xs font-medium text-muted-foreground">
-                  按提供商快速勾选
+                  {{ t('userGroups.quickByProvider') }}
                 </div>
                 <div class="flex flex-wrap gap-2">
                   <button
@@ -383,7 +383,7 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm font-medium">速率限制 (请求/分钟)</Label>
+              <Label class="text-sm font-medium">{{ t('userGroups.rateLimit') }}</Label>
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div class="flex w-full items-center sm:w-auto sm:shrink-0">
                   <Switch
@@ -399,7 +399,7 @@
                     max="10000"
                     class="h-10"
                     :disabled="form.rate_limit_mode === 'system'"
-                    :placeholder="form.rate_limit_mode === 'system' ? '使用系统默认' : '0 = 不限速'"
+                    :placeholder="form.rate_limit_mode === 'system' ? t('userGroups.systemDefault') : t('userGroups.noRateLimit')"
                     @update:model-value="(value) => form.rate_limit = parseNumberInput(value, { min: 0, max: 10000 })"
                   />
                 </div>
@@ -407,7 +407,7 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm font-medium">并发上限</Label>
+              <Label class="text-sm font-medium">{{ t('userGroups.concurrentLimit') }}</Label>
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div class="flex w-full items-center sm:w-auto sm:shrink-0">
                   <Switch
@@ -423,13 +423,13 @@
                     max="10000"
                     class="h-10"
                     :disabled="form.concurrent_limit_mode === 'system'"
-                    :placeholder="form.concurrent_limit_mode === 'system' ? '使用系统默认' : '0 = 不限制'"
+                    :placeholder="form.concurrent_limit_mode === 'system' ? t('userGroups.systemDefault') : t('userGroups.noLimit')"
                     @update:model-value="(value) => form.concurrent_limit = parseNumberInput(value, { min: 0, max: 10000 })"
                   />
                 </div>
               </div>
               <p class="text-xs text-muted-foreground">
-                0 表示不限制并发。
+                {{ t('userGroups.concurrentHint') }}
               </p>
             </div>
           </div>
@@ -443,22 +443,22 @@
         :disabled="saving"
         @click="emit('close')"
       >
-        关闭
+        {{ t('userGroups.close') }}
       </Button>
       <Button
         :disabled="saving || !form.name.trim() || selectedGroupReadOnly"
-        :title="selectedGroupReadOnly ? '请到 Niffler Core 修改' : '保存'"
+        :title="selectedGroupReadOnly ? t('userGroups.editInCore') : t('userGroups.save')"
         @click="saveGroup"
       >
-        保存
+        {{ t('userGroups.save') }}
       </Button>
     </template>
   </Dialog>
 
   <Dialog
     :model-value="deleteReplacementDialogOpen"
-    title="替换 Key 分组并删除"
-    description="这个分组还有 API Key 正在使用，选择新分组后再删除原分组"
+    :title="t('userGroupActions.replaceTitle')"
+    :description="t('userGroupActions.replaceDescription')"
     size="md"
     :z-index="90"
     persistent
@@ -467,18 +467,18 @@
     <div class="space-y-4">
       <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
         <p>
-          「{{ deleteConflictGroup?.name || '当前分组' }}」还有 {{ deleteConflictApiKeyCount }} 把 API Key 正在使用。
+          {{ t('userGroupActions.keysInUse', { name: deleteConflictGroup?.name || t('userGroupActions.currentGroup'), count: deleteConflictApiKeyCount }) }}
         </p>
         <p
           v-if="deleteConflictExampleText"
           class="mt-1 text-xs opacity-90"
         >
-          当前占用：{{ deleteConflictExampleText }}
+          {{ t('userGroupActions.currentUsage') }}{{ deleteConflictExampleText }}
         </p>
       </div>
 
       <div class="space-y-2">
-        <Label class="text-sm font-medium">替换到</Label>
+        <Label class="text-sm font-medium">{{ t('userGroupActions.replaceWith') }}</Label>
         <select
           v-model="replacementGroupId"
           class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -489,20 +489,20 @@
             :key="group.id"
             :value="group.id"
           >
-            {{ group.name }}{{ group.is_default ? '（默认）' : '' }}
+            {{ group.name }}{{ group.is_default ? t('userGroupActions.defaultSuffix') : '' }}
           </option>
         </select>
         <p
           v-if="replacementGroupOptions.length === 0"
           class="text-xs text-destructive"
         >
-          暂无可替换分组，请先新建一个分组。
+          {{ t('userGroupActions.noReplacement') }}
         </p>
         <p
           v-else
           class="text-xs text-muted-foreground"
         >
-          后端会在同一个操作里把这些 API Key 改到新分组，然后删除原分组。
+          {{ t('userGroupActions.replaceHint') }}
         </p>
       </div>
     </div>
@@ -513,20 +513,20 @@
         :disabled="replacingAndDeleting"
         @click="inspectDeleteConflictApiKeys"
       >
-        查看绑定 Key
+        {{ t('userGroupActions.inspectKeys') }}
       </Button>
       <Button
         variant="outline"
         :disabled="replacingAndDeleting"
         @click="resetDeleteReplacementDialog"
       >
-        取消
+        {{ t('userGroupActions.cancel') }}
       </Button>
       <Button
         :disabled="replacingAndDeleting || !replacementGroupId || replacementGroupOptions.length === 0"
         @click="replaceAndDeleteGroup"
       >
-        {{ replacingAndDeleting ? '处理中...' : '迁移并删除' }}
+        {{ replacingAndDeleting ? t('userGroupActions.processing') : t('userGroupActions.migrateDelete') }}
       </Button>
     </template>
   </Dialog>
@@ -534,6 +534,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { BadgeCheck, ChevronRight, Plus, Trash2 } from 'lucide-vue-next'
 import {
   Badge,
@@ -564,6 +565,7 @@ const props = defineProps<{
   open: boolean
   users: User[]
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -625,7 +627,7 @@ const deleteConflictApiKeyCount = computed(() => Number(deleteConflictPayload.va
 const deleteConflictExampleText = computed(() => formatConflictApiKeyExamples(deleteConflictPayload.value?.api_keys))
 
 function showSelectedGroupReadOnly(): void {
-  warning(selectedGroup.value?.legacy_read_only_reason || '这个分组已迁移到 Niffler Core，旧入口只读')
+  warning(selectedGroup.value?.legacy_read_only_reason || t('userGroups.readOnlyMessage'))
 }
 const userOptions = computed(() => props.users.map((user) => ({
   label: `${user.username}${user.email ? ` (${user.email})` : ''}`,
@@ -708,7 +710,7 @@ const globalModelSelectOptions = computed(() => {
   const missingOptions = missingModelIds
     .map((modelId) => ({
       value: modelId,
-      label: `${modelId} · 已失效`,
+      label: `${modelId} · ${t('userGroupActions.invalid')}`,
     }))
   return [...loadedOptions, ...missingOptions]
 })
@@ -759,7 +761,7 @@ watch(
     }
     void loadDialogData()
     void loadAccessControlOptions().catch((err) => {
-      error(parseApiError(err, '加载访问控制选项失败'))
+      error(parseApiError(err, t('userGroupActions.loadAccessFailed')))
     })
   },
 )
@@ -790,7 +792,7 @@ async function loadDialogData(): Promise<void> {
       startCreate()
     }
   } catch (err) {
-    error(parseApiError(err, '加载用户分组失败'))
+    error(parseApiError(err, t('userGroupActions.loadGroupsFailed')))
   } finally {
     loading.value = false
   }
@@ -822,7 +824,7 @@ async function selectGroup(groupId: string): Promise<void> {
     memberUserIds.value = members.map((member) => member.user_id)
   } catch (err) {
     memberUserIds.value = []
-    error(parseApiError(err, '加载分组成员失败'))
+    error(parseApiError(err, t('userGroupActions.loadMembersFailed')))
   }
 }
 
@@ -873,18 +875,18 @@ async function toggleDefault(): Promise<void> {
     return
   }
   const confirmed = await confirmInfo(
-    `确定将「${group.name}」设为默认注册组吗？后续本地注册和 OAuth 自动创建的用户将加入该分组。`,
-    '设为默认注册组',
+    t('userGroupActions.setDefaultConfirm', { name: group.name }),
+    t('userGroups.setDefault'),
   )
   if (!confirmed) return
   saving.value = true
   try {
     await usersStore.setDefaultUserGroup(group.id)
-    success('已更新默认注册组')
+    success(t('userGroupActions.defaultUpdated'))
     emit('changed')
     await loadDialogData()
   } catch (err) {
-    error(parseApiError(err, '设置默认注册组失败'))
+    error(parseApiError(err, t('userGroupActions.setDefaultFailed')))
   } finally {
     saving.value = false
   }
@@ -960,10 +962,10 @@ function parseModelSalesMultipliers(): Record<string, number> | null {
   for (const row of modelSalesMultiplierRows.value) {
     const modelId = row.modelId.trim()
     if (!modelId && row.multiplier === undefined) continue
-    if (!modelId) throw new Error('请选择要单独设置倍率的模型')
-    if (seenModelIds.has(modelId)) throw new Error('同一个模型不能重复设置销售倍率')
+    if (!modelId) throw new Error(t('userGroupActions.modelRequired'))
+    if (seenModelIds.has(modelId)) throw new Error(t('userGroupActions.duplicateModel'))
     if (row.multiplier === undefined || !Number.isFinite(row.multiplier) || row.multiplier < 0) {
-      throw new Error('模型销售倍率必须是大于等于 0 的数字')
+      throw new Error(t('userGroupActions.invalidMultiplier'))
     }
     seenModelIds.add(modelId)
     result[modelId] = row.multiplier
@@ -999,7 +1001,7 @@ function setProviderBatchSalesMultiplier(providerId: string, value: string | num
 function applyProviderSalesMultiplier(provider: ProviderModelMultiplierSource): void {
   const multiplier = getProviderBatchSalesMultiplier(provider.id)
   if (multiplier === undefined) {
-    error('请先填写这个提供商的销售倍率')
+    error(t('userGroupActions.providerMultiplierRequired'))
     return
   }
   const nextByModelId = new Map<string, number>()
@@ -1032,12 +1034,12 @@ async function saveGroup(): Promise<void> {
     if (!saved.is_default) {
       await usersStore.replaceUserGroupMembers(saved.id, memberUserIds.value)
     }
-    success('用户分组已保存')
+    success(t('userGroupActions.saved'))
     emit('changed')
     editingGroupId.value = saved.id
     await loadDialogData()
   } catch (err) {
-    error(parseApiError(err, '保存用户分组失败'))
+    error(parseApiError(err, t('userGroupActions.saveFailed')))
   } finally {
     saving.value = false
   }
@@ -1056,8 +1058,8 @@ function formatConflictApiKeyExamples(items: UserGroupApiKeyConflictItem[] | und
   const examples = (items ?? [])
     .slice(0, 5)
     .map((item) => {
-      const keyName = String(item.name || item.id || '未命名 API Key').trim()
-      const userName = String(item.username || item.user_id || '未知用户').trim()
+      const keyName = String(item.name || item.id || t('userGroupActions.unnamedKey')).trim()
+      const userName = String(item.username || item.user_id || t('userGroupActions.unknownUser')).trim()
       const email = String(item.email || '').trim()
       return email && email !== userName ? `${keyName}（${userName} / ${email}）` : `${keyName}（${userName}）`
     })
@@ -1097,7 +1099,7 @@ async function replaceAndDeleteGroup(): Promise<void> {
   replacingAndDeleting.value = true
   try {
     const result = await usersStore.deleteUserGroupWithReplacement(group.id, targetGroupId)
-    success(`已迁移 ${result.migrated_api_key_count} 把 API Key，并删除分组`)
+    success(t('userGroupActions.migrated', { count: result.migrated_api_key_count }))
     deleteReplacementDialogOpen.value = false
     deleteConflictGroup.value = null
     deleteConflictPayload.value = null
@@ -1106,7 +1108,7 @@ async function replaceAndDeleteGroup(): Promise<void> {
     editingGroupId.value = null
     await loadDialogData()
   } catch (err) {
-    error(parseApiError(err, '替换 Key 分组并删除失败'))
+    error(parseApiError(err, t('userGroupActions.replaceFailed')))
   } finally {
     replacingAndDeleting.value = false
   }
@@ -1120,14 +1122,14 @@ async function deleteSelectedGroup(): Promise<void> {
     return
   }
   const confirmed = await confirmDanger(
-    `确定要删除用户分组 ${group.name} 吗？成员关系会一并清理。`,
-    '删除用户分组',
+    t('userGroupActions.deleteConfirm', { name: group.name }),
+    t('userGroupActions.deleteTitle'),
   )
   if (!confirmed) return
   saving.value = true
   try {
     await usersStore.deleteUserGroup(group.id)
-    success('用户分组已删除')
+    success(t('userGroupActions.deleted'))
     emit('changed')
     editingGroupId.value = null
     await loadDialogData()
@@ -1137,7 +1139,7 @@ async function deleteSelectedGroup(): Promise<void> {
       showUserGroupApiKeyConflict(group, conflict)
       return
     }
-    error(parseApiError(err, '删除用户分组失败'))
+    error(parseApiError(err, t('userGroupActions.deleteFailed')))
   } finally {
     saving.value = false
   }

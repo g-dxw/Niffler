@@ -1,4 +1,5 @@
 import type { RequestDetail, RequestErrorDomain, RequestSchedulingFailure } from '@/api/dashboard'
+import { i18n } from '@/i18n'
 
 export interface RequestFailureNotice {
   title: string
@@ -51,7 +52,7 @@ export function resolveRequestFailureNotice(detail: RequestDetail | null | undef
     const message = schedulingFailureMessage(schedulingFailure, fallbackDomain, fallbackErrorMessage)
     if (message) {
       return {
-        title: nonEmptyString(schedulingFailure.title) ?? '本地调度失败',
+        title: nonEmptyString(schedulingFailure.title) ?? i18n.global.t('usageUi.schedulingFailure'),
         message,
         isSchedulingFailure: true,
         meta: uniqueMeta([
@@ -59,7 +60,7 @@ export function resolveRequestFailureNotice(detail: RequestDetail | null | undef
           nonEmptyString(schedulingFailure.reason_label),
           nonEmptyString(schedulingFailure.reason),
           formatHttpStatus(schedulingFailure.status_code ?? detail.status_code),
-          schedulingFailure.no_upstream_attempt ? '未进入上游执行' : null,
+          schedulingFailure.no_upstream_attempt ? i18n.global.t('usageUi.noUpstreamAttempt') : null,
         ]),
       }
     }
@@ -70,7 +71,7 @@ export function resolveRequestFailureNotice(detail: RequestDetail | null | undef
   if (!message) return null
 
   return {
-    title: '执行失败原因',
+    title: i18n.global.t('usageUi.executionFailure'),
     message,
     isSchedulingFailure: false,
     meta: uniqueMeta([

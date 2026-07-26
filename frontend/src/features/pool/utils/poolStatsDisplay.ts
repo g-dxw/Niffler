@@ -1,5 +1,6 @@
 import type { QuotaWindowUsageSnapshot } from '@/api/endpoints/types/statusSnapshot'
 import type { PoolManagementStatsMode } from '@/features/pool/utils/poolManagementState'
+import { i18n } from '@/i18n'
 
 export type PoolStatsMetricKey = 'request_count' | 'total_tokens' | 'total_cost_usd'
 export type PoolStatsDisplayKind = 'account_total' | 'codex_cycle'
@@ -45,10 +46,7 @@ export interface PoolCodexCycleStatsDisplay {
 export type PoolStatsDisplay = PoolAccountTotalStatsDisplay | PoolCodexCycleStatsDisplay
 
 const MISSING_STAT_VALUE = '—'
-const CODEX_CYCLE_WINDOWS: Array<{ code: PoolCodexCycleWindowCode, label: string }> = [
-  { code: '5h', label: '5H' },
-  { code: 'weekly', label: '周' },
-]
+const CODEX_CYCLE_WINDOW_CODES: PoolCodexCycleWindowCode[] = ['5h', 'weekly']
 
 export function isCodexProviderType(providerType: string | null | undefined): boolean {
   return String(providerType || '').trim().toLowerCase() === 'codex'
@@ -130,17 +128,17 @@ function getQuotaWindowUsage(
 
 function buildAccountTotalMetrics(key: PoolStatsKeyInput): PoolStatsMetric[] {
   return [
-    createMetric('request_count', '请求', formatPoolStatInteger(key.request_count)),
+    createMetric('request_count', i18n.global.t('commonUi.request'), formatPoolStatInteger(key.request_count)),
     createMetric('total_tokens', 'Token', formatPoolTokenCount(key.total_tokens)),
-    createMetric('total_cost_usd', '基础费用', formatPoolStatUsd(key.total_cost_usd)),
+    createMetric('total_cost_usd', i18n.global.t('commonUi.baseCost'), formatPoolStatUsd(key.total_cost_usd)),
   ]
 }
 
 function buildCycleMetrics(usage: QuotaWindowUsageSnapshot | null): PoolStatsMetric[] {
   return [
-    createMetric('request_count', '请求', formatCycleInteger(usage?.request_count)),
+    createMetric('request_count', i18n.global.t('commonUi.request'), formatCycleInteger(usage?.request_count)),
     createMetric('total_tokens', 'Token', formatCycleTokenCount(usage?.total_tokens)),
-    createMetric('total_cost_usd', '基础费用', formatCycleUsd(usage?.total_cost_usd)),
+    createMetric('total_cost_usd', i18n.global.t('commonUi.baseCost'), formatCycleUsd(usage?.total_cost_usd)),
   ]
 }
 
@@ -158,9 +156,10 @@ export function buildCodexCycleStatsDisplay(
 ): PoolCodexCycleStatsDisplay {
   return {
     kind: 'codex_cycle',
-    groups: CODEX_CYCLE_WINDOWS.map(window => ({
-      ...window,
-      metrics: buildCycleMetrics(getQuotaWindowUsage(key, window.code)),
+    groups: CODEX_CYCLE_WINDOW_CODES.map(code => ({
+      code,
+      label: code === 'weekly' ? i18n.global.t('commonUi.weekly') : '5H',
+      metrics: buildCycleMetrics(getQuotaWindowUsage(key, code)),
     })),
   }
 }

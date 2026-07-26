@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/aether_adaptive.svg" width="120" height="120" alt="Niffler Logo">
+  <img src="frontend/public/niffler-logo.svg" width="120" height="120" alt="Niffler Logo">
 </p>
 
 <h1 align="center">Niffler</h1>
@@ -74,6 +74,14 @@ curl -fsSL https://raw.githubusercontent.com/ryfineZ/Niffler/main/install.sh | s
 make dev
 ```
 
+Windows PowerShell 可使用同样的本地热开发流程：
+
+```powershell
+.\scripts\dev.ps1
+```
+
+该脚本只通过 Docker 启动 Postgres/Redis，Rust gateway 和前端均从本地源码运行。修改后端代码时只会增量编译，不需要重新构建 `aether-app` 镜像；按 `Ctrl+C` 会停止本次启动的本地进程。
+
 `make dev` 会同时启动后端 `aether-gateway` 和前端 `frontend` 的 Vite dev server。需要单独启动时可使用 `make dev-backend` 或 `make dev-frontend`。
 Postgres / Redis 本地依赖未就绪时，`make dev` 会自动执行 `docker compose up -d postgres redis`。
 
@@ -116,14 +124,6 @@ App Secret 用于创建 DoDoPay 收银台和验证 DoDoPay 回调，会使用系
 ## 许可证
 
 本项目采用 [Niffler 非商业开源许可证](LICENSE)。允许个人学习、教育研究、非盈利组织及企业内部非盈利性质的使用；禁止用于盈利目的。商业使用请联系获取商业许可。
-
-## 联系作者
-
-<p align="center">
-  <img src="docs/author/qq_qrcode.jpg" width="200" alt="QQ二维码">
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="docs/author/qrcode_1770574997172.jpg" width="200" alt="QQ群二维码">
-</p>
 
 ## Star History
 

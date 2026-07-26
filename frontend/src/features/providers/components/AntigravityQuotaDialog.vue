@@ -1,7 +1,7 @@
 <template>
   <Dialog
     :model-value="open"
-    :title="`配额详情 - ${keyName}`"
+    :title="t('antigravityQuota.title', { name: keyName })"
     :icon="BarChart3"
     size="2xl"
     :z-index="70"
@@ -17,7 +17,7 @@
             variant="ghost"
             size="icon"
             class="h-8 w-8"
-            title="测试模型"
+            :title="t('antigravityQuota.testModel')"
             :disabled="!!testingModel"
           >
             <Loader2
@@ -74,10 +74,10 @@
             class="text-[9px] text-muted-foreground/70 mt-0.5"
           >
             <template v-if="item.resetSeconds > 0">
-              {{ formatResetTime(item.resetSeconds) }}后重置
+              {{ t('antigravityQuota.resetAfter', { time: formatResetTime(item.resetSeconds) }) }}
             </template>
             <template v-else>
-              已重置
+              {{ t('antigravityQuota.reset') }}
             </template>
           </div>
         </div>
@@ -86,7 +86,7 @@
         v-else
         class="text-center text-sm text-muted-foreground py-8"
       >
-        暂无配额数据
+        {{ t('antigravityQuota.empty') }}
       </div>
     </div>
     <template #footer>
@@ -94,7 +94,7 @@
         variant="outline"
         @click="$emit('update:open', false)"
       >
-        关闭
+        {{ t('antigravityQuota.close') }}
       </Button>
     </template>
   </Dialog>
@@ -102,6 +102,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { BarChart3, Play, Loader2 } from 'lucide-vue-next'
 import { Dialog } from '@/components/ui'
 import {
@@ -115,6 +116,8 @@ import { testModel } from '@/api/endpoints/providers'
 import type { UpstreamMetadata, QuotaStatusSnapshot, QuotaWindowSnapshot } from '@/api/endpoints/types'
 import { useToast } from '@/composables/useToast'
 import { parseApiError } from '@/utils/errorParser'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -272,15 +275,15 @@ async function handleTestModel(modelName: string) {
         result.data?.response?.choices?.[0]?.message?.content
         || result.data?.content_preview
       if (content) {
-        showSuccess(`测试成功，响应: ${String(content).substring(0, 100)}${String(content).length > 100 ? '...' : ''}`)
+        showSuccess(t('antigravityQuota.testSuccessResponse', { response: `${String(content).substring(0, 100)}${String(content).length > 100 ? '...' : ''}` }))
       } else {
-        showSuccess(`模型 "${modelName}" 测试成功`)
+        showSuccess(t('antigravityQuota.testSuccess', { model: modelName }))
       }
     } else {
-      showError(`模型测试失败: ${result.error || '未知错误'}`)
+      showError(t('antigravityQuota.testFailed', { error: result.error || t('antigravityQuota.unknownError') }))
     }
   } catch (err: unknown) {
-    showError(`模型测试失败: ${parseApiError(err, '测试请求失败')}`)
+    showError(t('antigravityQuota.testFailed', { error: parseApiError(err, t('antigravityQuota.requestFailed')) }))
   } finally {
     testingModel.value = null
   }
@@ -305,8 +308,8 @@ function formatResetTime(seconds: number): string {
   const hours = Math.floor((seconds % 86400) / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
 
-  if (days > 0) return `${days}天 ${hours}小时`
-  if (hours > 0) return `${hours}小时 ${minutes}分钟`
-  return `${minutes}分钟`
+  if (days > 0) return t('antigravityQuota.daysHours', { days, hours })
+  if (hours > 0) return t('antigravityQuota.hoursMinutes', { hours, minutes })
+  return t('antigravityQuota.minutes', { minutes })
 }
 </script>

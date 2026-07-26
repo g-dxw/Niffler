@@ -5,6 +5,7 @@ import type {
   NifflerUpstreamService,
   NifflerUpstreamServiceCapability,
 } from '@/api/niffler-core'
+import { i18n } from '@/i18n'
 
 export type NifflerServiceTemplateKey =
   | 'codex_oauth'
@@ -40,6 +41,19 @@ export interface NifflerServiceTemplate {
   capabilities: CapabilityDefaults
 }
 
+type Translate = (key: string) => string
+
+interface NifflerServiceTemplateDefinition extends Omit<
+  NifflerServiceTemplate,
+  'label' | 'description' | 'baseUrlPlaceholder'
+> {
+  label: string
+  labelKey?: string
+  descriptionKey: string
+  baseUrlPlaceholder: string
+  baseUrlPlaceholderKey?: string
+}
+
 export interface NifflerServiceCapabilityOption {
   key: NifflerServiceCapabilityKey
   label: string
@@ -67,16 +81,17 @@ const textModelCapabilities = {
   model_test: true,
 } satisfies CapabilityDefaults
 
-export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
+const NIFFLER_SERVICE_TEMPLATE_DEFINITIONS: NifflerServiceTemplateDefinition[] = [
   {
     key: 'codex_oauth',
     label: 'Codex / ChatGPT OAuth',
-    description: '用于接入 Codex 或 ChatGPT OAuth 账号池，默认开启对话和 Responses 生图工具能力。',
+    descriptionKey: 'upstreamTemplateUi.codexDesc',
     serviceKind: 'codex',
     protocolKind: 'codex',
     defaultApiFormat: 'codex',
     defaultBaseUrl: '',
-    baseUrlPlaceholder: 'OAuth 账号通常不需要填写',
+    baseUrlPlaceholder: '',
+    baseUrlPlaceholderKey: 'upstreamTemplateUi.oauthPlaceholder',
     baseUrlRequired: false,
     defaultAuthKind: 'oauth',
     capabilities: {
@@ -87,12 +102,13 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'claude_oauth',
     label: 'Claude OAuth',
-    description: '用于接入 Claude OAuth 账号池，默认按 Anthropic 协议登记文本和流式能力。',
+    descriptionKey: 'upstreamTemplateUi.claudeDesc',
     serviceKind: 'claude',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
     defaultBaseUrl: '',
-    baseUrlPlaceholder: 'OAuth 账号通常不需要填写',
+    baseUrlPlaceholder: '',
+    baseUrlPlaceholderKey: 'upstreamTemplateUi.oauthPlaceholder',
     baseUrlRequired: false,
     defaultAuthKind: 'oauth',
     capabilities: { ...textModelCapabilities },
@@ -100,7 +116,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'openai_api_key',
     label: 'OpenAI API Key',
-    description: '用于接入官方 OpenAI API Key，默认填入官方地址和 OpenAI 协议能力。',
+    descriptionKey: 'upstreamTemplateUi.openaiDesc',
     serviceKind: 'openai',
     protocolKind: 'openai',
     defaultApiFormat: 'openai',
@@ -117,7 +133,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'claude_api_key',
     label: 'Claude API Key',
-    description: '用于接入官方 Anthropic Claude API Key，默认按 Anthropic 协议登记。',
+    descriptionKey: 'upstreamTemplateUi.anthropicDesc',
     serviceKind: 'claude',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
@@ -130,7 +146,7 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   {
     key: 'gemini_service_account',
     label: 'Gemini Service Account',
-    description: '用于登记 Gemini 服务账号类接入。当前只记录服务形态，不保存真实凭证。',
+    descriptionKey: 'upstreamTemplateUi.geminiDesc',
     serviceKind: 'gemini',
     protocolKind: 'gemini',
     defaultApiFormat: 'gemini',
@@ -142,8 +158,9 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'openai_compatible',
-    label: 'OpenAI 兼容接口',
-    description: '用于接入第三方 OpenAI 兼容服务，可手动声明图片接口和 Responses 生图工具能力。',
+    label: '',
+    labelKey: 'upstreamTemplateUi.openaiCompatible',
+    descriptionKey: 'upstreamTemplateUi.openaiCompatibleDesc',
     serviceKind: 'openai_compatible',
     protocolKind: 'openai',
     defaultApiFormat: 'openai',
@@ -155,8 +172,9 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'anthropic_compatible',
-    label: 'Anthropic 兼容接口',
-    description: '用于接入第三方 Anthropic 兼容服务，不显示 OpenAI Responses 生图工具能力。',
+    label: '',
+    labelKey: 'upstreamTemplateUi.anthropicCompatible',
+    descriptionKey: 'upstreamTemplateUi.anthropicCompatibleDesc',
     serviceKind: 'anthropic_compatible',
     protocolKind: 'anthropic',
     defaultApiFormat: 'anthropic',
@@ -168,8 +186,9 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
   {
     key: 'custom',
-    label: '自定义接口',
-    description: '用于暂时无法归类的上游服务，需要管理员自行确认协议和能力。',
+    label: '',
+    labelKey: 'upstreamTemplateUi.custom',
+    descriptionKey: 'upstreamTemplateUi.customDesc',
     serviceKind: 'custom',
     protocolKind: 'custom',
     defaultApiFormat: 'custom',
@@ -181,12 +200,66 @@ export const nifflerServiceTemplates: NifflerServiceTemplate[] = [
   },
 ]
 
-const templatesByKey = new Map(nifflerServiceTemplates.map(template => [template.key, template]))
+/**
+ * Compatibility export: translated fields are getters, so existing callers
+ * continue to receive the current locale instead of a module-load snapshot.
+ */
+export const nifflerServiceTemplates: NifflerServiceTemplate[] =
+  NIFFLER_SERVICE_TEMPLATE_DEFINITIONS.map((definition) => {
+    const template = { ...definition } as NifflerServiceTemplate
+    Object.defineProperties(template, {
+      label: {
+        enumerable: true,
+        get: () => definition.labelKey ? i18n.global.t(definition.labelKey) : definition.label,
+      },
+      description: {
+        enumerable: true,
+        get: () => i18n.global.t(definition.descriptionKey),
+      },
+      baseUrlPlaceholder: {
+        enumerable: true,
+        get: () => definition.baseUrlPlaceholderKey
+          ? i18n.global.t(definition.baseUrlPlaceholderKey)
+          : definition.baseUrlPlaceholder,
+      },
+    })
+    return template
+  })
+
+const templateDefinitionsByKey = new Map(
+  NIFFLER_SERVICE_TEMPLATE_DEFINITIONS.map(template => [template.key, template])
+)
+
+function translateNifflerServiceTemplate(
+  template: NifflerServiceTemplateDefinition,
+  translate: Translate
+): NifflerServiceTemplate {
+  const { labelKey, descriptionKey, baseUrlPlaceholderKey, ...stable } = template
+  return {
+    ...stable,
+    label: labelKey ? translate(labelKey) : template.label,
+    description: translate(descriptionKey),
+    baseUrlPlaceholder: baseUrlPlaceholderKey
+      ? translate(baseUrlPlaceholderKey)
+      : template.baseUrlPlaceholder,
+  }
+}
+
+export function createNifflerServiceTemplates(
+  translate: Translate = i18n.global.t
+): NifflerServiceTemplate[] {
+  return NIFFLER_SERVICE_TEMPLATE_DEFINITIONS.map(template =>
+    translateNifflerServiceTemplate(template, translate)
+  )
+}
 
 export function getNifflerServiceTemplate(
-  key: NifflerServiceTemplateKey
+  key: NifflerServiceTemplateKey,
+  translate: Translate = i18n.global.t
 ): NifflerServiceTemplate {
-  return templatesByKey.get(key) ?? templatesByKey.get(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)!
+  const template = templateDefinitionsByKey.get(key)
+    ?? templateDefinitionsByKey.get(DEFAULT_NIFFLER_SERVICE_TEMPLATE_KEY)!
+  return translateNifflerServiceTemplate(template, translate)
 }
 
 export function buildNifflerServiceFormFromTemplate(
@@ -224,9 +297,9 @@ export function getServiceKindLabel(serviceKind: string): string {
     claude: 'Claude',
     openai: 'OpenAI',
     gemini: 'Gemini',
-    openai_compatible: 'OpenAI 兼容接口',
-    anthropic_compatible: 'Anthropic 兼容接口',
-    custom: '自定义接口',
+    openai_compatible: i18n.global.t('upstreamTemplateUi.openaiCompatible'),
+    anthropic_compatible: i18n.global.t('upstreamTemplateUi.anthropicCompatible'),
+    custom: i18n.global.t('upstreamTemplateUi.custom'),
   }
   return labels[normalized] ?? serviceKind
 }
@@ -295,7 +368,7 @@ export function validateNifflerServiceCapabilities(
     && form.protocol_kind !== 'openai'
     && form.protocol_kind !== 'codex'
   ) {
-    issues.push('OpenAI Responses 生图工具只能用于 OpenAI 或 Codex 协议。')
+    issues.push(i18n.global.t('upstreamTemplateUi.imageToolIssue'))
   }
   if (
     form.capabilities.images_endpoint
@@ -303,7 +376,7 @@ export function validateNifflerServiceCapabilities(
     && form.protocol_kind !== 'codex'
     && form.protocol_kind !== 'custom'
   ) {
-    issues.push('图片接口只适用于 OpenAI、Codex 或自定义协议。')
+    issues.push(i18n.global.t('upstreamTemplateUi.imageEndpointIssue'))
   }
   return issues
 }

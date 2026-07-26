@@ -9,28 +9,31 @@
       <div class="px-4 sm:px-6 py-3 sm:py-3.5 border-b border-border/60">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div class="shrink-0">
-            <h3 class="text-sm sm:text-base font-semibold">
-              公告管理
+            <h3 v-if="false" class="text-sm sm:text-base font-semibold">
+              {{ t('announcements.title') }}
             </h3>
-            <p class="text-xs text-muted-foreground mt-0.5">
-              {{ isAdmin ? '管理系统公告和通知' : '查看系统公告和通知' }}
+            <h3 class="text-sm sm:text-base font-semibold">{{ t('announcements.title') }}</h3>
+            <p v-if="false" class="text-xs text-muted-foreground mt-0.5">
+              {{ isAdmin ? t('announcements.adminHint') : t('announcements.userHint') }}
             </p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ isAdmin ? t('announcements.adminHint') : t('announcements.userHint') }}</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <Badge
-              v-if="unreadCount > 0"
+              v-if="false"
               variant="default"
               class="px-3 py-1"
             >
-              {{ unreadCount }} 条未读
+              {{ unreadCount }} {{ t('announcements.unread') }}
             </Badge>
+            <Badge v-if="unreadCount > 0" variant="default" class="px-3 py-1">{{ unreadCount }} {{ t('announcements.unread') }}</Badge>
             <div class="hidden sm:block h-4 w-px bg-border" />
             <Button
               v-if="isAdmin"
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="新建公告"
+              :title="t('announcements.create')"
               @click="openCreateDialog"
             >
               <Plus class="w-3.5 h-3.5" />
@@ -57,10 +60,10 @@
       >
         <Bell class="h-12 w-12 text-muted-foreground mb-3" />
         <h3 class="text-sm font-medium text-foreground">
-          暂无公告
+          {{ t('announcements.empty') }}
         </h3>
         <p class="text-xs text-muted-foreground mt-1">
-          系统暂时没有发布任何公告
+          {{ t('announcements.emptyHint') }}
         </p>
       </div>
 
@@ -68,41 +71,41 @@
         v-else
         class="overflow-x-auto"
       >
-        <Table class="hidden xl:table">
+        <Table class="hidden min-w-0 w-full table-fixed xl:table">
           <TableHeader>
             <TableRow class="border-b border-border/60 hover:bg-transparent">
               <TableHead class="w-[80px] h-12 font-semibold text-center">
-                类型
+                {{ t('announcements.type') }}
               </TableHead>
               <TableHead class="h-12 font-semibold">
-                概要
+                {{ t('announcements.summary') }}
               </TableHead>
               <TableHead class="w-[120px] h-12 font-semibold">
-                发布者
+                {{ t('announcements.publisher') }}
               </TableHead>
               <TableHead class="w-[140px] h-12 font-semibold">
-                发布时间
+                {{ t('announcements.publishedAt') }}
               </TableHead>
               <TableHead class="w-[80px] h-12 font-semibold text-center">
-                状态
+                {{ t('announcements.status') }}
               </TableHead>
               <TableHead
                 v-if="isAdmin"
                 class="w-[80px] h-12 font-semibold text-center"
               >
-                置顶
+                {{ t('announcements.pinned') }}
               </TableHead>
               <TableHead
                 v-if="isAdmin"
                 class="w-[80px] h-12 font-semibold text-center"
               >
-                启用
+                {{ t('announcements.enabled') }}
               </TableHead>
               <TableHead
                 v-if="isAdmin"
                 class="w-[100px] h-12 font-semibold text-center"
               >
-                操作
+                {{ t('announcements.actions') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -128,23 +131,23 @@
                   </span>
                 </div>
               </TableCell>
-              <TableCell class="py-4">
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 mb-1">
-                    <span class="text-sm font-medium text-foreground">{{ announcement.title }}</span>
+              <TableCell class="max-w-0 py-4">
+                <div class="min-w-0 max-w-full">
+                  <div class="mb-1 flex min-w-0 items-center gap-2">
+                    <span class="min-w-0 truncate text-sm font-medium text-foreground">{{ announcement.title }}</span>
                     <Badge
                       v-if="announcement.requires_ack"
                       variant="outline"
                       class="text-[10px] px-1.5 py-0"
                     >
-                      必读
+                      {{ t('announcements.required') }}
                     </Badge>
                     <Pin
                       v-if="announcement.is_pinned"
                       class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0"
                     />
                   </div>
-                  <p class="text-xs text-muted-foreground line-clamp-1">
+                  <p class="break-words text-xs text-muted-foreground line-clamp-2 whitespace-normal">
                     {{ getPlainText(announcement.content) }}
                   </p>
                 </div>
@@ -161,14 +164,14 @@
                   variant="secondary"
                   class="text-xs px-2.5 py-0.5"
                 >
-                  已读
+                  {{ t('announcements.read') }}
                 </Badge>
                 <Badge
                   v-else
                   variant="default"
                   class="text-xs px-2.5 py-0.5"
                 >
-                  未读
+                  {{ t('announcements.unreadLabel') }}
                 </Badge>
               </TableCell>
               <TableCell
@@ -252,7 +255,7 @@
                   variant="outline"
                   class="text-[10px] shrink-0"
                 >
-                  必读
+                  {{ t('announcements.required') }}
                 </Badge>
                 <Pin
                   v-if="announcement.is_pinned"
@@ -263,7 +266,7 @@
                 :variant="announcement.is_read ? 'secondary' : 'default'"
                 class="text-xs shrink-0"
               >
-                {{ announcement.is_read ? '已读' : '未读' }}
+                  {{ announcement.is_read ? t('announcements.read') : t('announcements.unreadLabel') }}
               </Badge>
             </div>
             <p class="text-xs text-muted-foreground line-clamp-2">
@@ -280,7 +283,7 @@
               @click.stop
             >
               <div class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground">置顶</span>
+                <span class="text-xs text-muted-foreground">{{ t('announcements.pinned') }}</span>
                 <Switch
                   :model-value="announcement.is_pinned"
                   class="data-[state=checked]:bg-emerald-500 scale-75"
@@ -288,7 +291,7 @@
                 />
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground">启用</span>
+                <span class="text-xs text-muted-foreground">{{ t('announcements.enabled') }}</span>
                 <Switch
                   :model-value="announcement.is_active"
                   class="data-[state=checked]:bg-primary scale-75"
@@ -343,10 +346,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                {{ editingAnnouncement ? '编辑公告' : '新建公告' }}
+                {{ editingAnnouncement ? t('announcements.edit') : t('announcements.create') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                {{ editingAnnouncement ? '修改公告内容和设置' : '发布新的系统公告' }}
+                {{ editingAnnouncement ? t('announcements.editHint') : t('announcements.createHint') }}
               </p>
             </div>
           </div>
@@ -361,11 +364,11 @@
           <Label
             for="title"
             class="text-sm font-medium"
-          >标题 *</Label>
+          >{{ t('announcements.titleLabel') }} *</Label>
           <Input
             id="title"
             v-model="formData.title"
-            placeholder="输入公告标题"
+            :placeholder="t('announcements.titlePlaceholder')"
             class="h-11"
             required
           />
@@ -375,11 +378,11 @@
           <Label
             for="content"
             class="text-sm font-medium"
-          >内容 * (支持 Markdown)</Label>
+            >{{ t('announcements.contentLabel') }}</Label>
           <Textarea
             id="content"
             v-model="formData.content"
-            placeholder="输入公告内容，支持 Markdown 格式"
+            :placeholder="t('announcements.contentPlaceholder')"
             rows="10"
             required
           />
@@ -390,7 +393,7 @@
             <Label
               for="type"
               class="text-sm font-medium"
-            >类型</Label>
+            >{{ t('announcements.type') }}</Label>
             <Select
               v-model="formData.type"
             >
@@ -398,20 +401,20 @@
                 id="type"
                 class="h-11"
               >
-                <SelectValue placeholder="选择类型" />
+                <SelectValue :placeholder="t('announcements.chooseType')" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="info">
-                  信息
+                  {{ t('announcements.info') }}
                 </SelectItem>
                 <SelectItem value="warning">
-                  警告
+                  {{ t('announcements.warning') }}
                 </SelectItem>
                 <SelectItem value="maintenance">
-                  维护
+                  {{ t('announcements.maintenance') }}
                 </SelectItem>
                 <SelectItem value="important">
-                  重要
+                  {{ t('announcements.important') }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -421,7 +424,7 @@
             <Label
               for="priority"
               class="text-sm font-medium"
-            >优先级</Label>
+            >{{ t('announcements.priority') }}</Label>
             <Input
               id="priority"
               v-model.number="formData.priority"
@@ -445,7 +448,7 @@
             <Label
               for="pinned"
               class="cursor-pointer text-sm"
-            >置顶公告</Label>
+            >{{ t('announcements.pin') }}</Label>
           </div>
           <div class="flex items-center gap-2">
             <input
@@ -457,7 +460,7 @@
             <Label
               for="requires-ack"
               class="cursor-pointer text-sm"
-            >必读确认</Label>
+            >{{ t('announcements.readConfirm') }}</Label>
           </div>
           <div
             v-if="editingAnnouncement"
@@ -472,7 +475,7 @@
             <Label
               for="active"
               class="cursor-pointer text-sm"
-            >启用</Label>
+            >{{ t('announcements.enabled') }}</Label>
           </div>
         </div>
       </form>
@@ -487,7 +490,7 @@
             v-if="saving"
             class="animate-spin h-4 w-4 mr-2"
           />
-          {{ editingAnnouncement ? '保存' : '创建' }}
+          {{ editingAnnouncement ? t('announcements.save') : t('announcements.createAction') }}
         </Button>
         <Button
           variant="outline"
@@ -495,7 +498,7 @@
           class="h-10 px-5"
           @click="dialogOpen = false"
         >
-          取消
+          {{ t('announcements.cancel') }}
         </Button>
       </template>
     </Dialog>
@@ -504,16 +507,18 @@
     <AlertDialog
       v-model="deleteDialogOpen"
       type="danger"
-      title="确认删除"
-      :description="`确定要删除公告「${deletingAnnouncement?.title}」吗？此操作无法撤销。`"
-      confirm-text="删除"
+      :title="t('announcements.confirmDelete')"
+      :description="t('announcements.deleteConfirmDescription', { title: deletingAnnouncement?.title || '' })"
+      :confirm-text="t('announcements.delete')"
       :loading="deleting"
       @confirm="deleteAnnouncement"
       @cancel="deleteDialogOpen = false"
     />
 
     <!-- 公告详情对话框 -->
+    <AnnouncementDetailDialog v-model="detailDialogOpen" :announcement="viewingAnnouncement" />
     <Dialog
+      v-if="false"
       v-model="detailDialogOpen"
       size="lg"
     >
@@ -525,18 +530,18 @@
               :class="getDialogIconClass(viewingAnnouncement?.type)"
             >
               <component
-                :is="getAnnouncementIcon(viewingAnnouncement.type)"
+                :is="getAnnouncementIcon(viewingAnnouncement?.type || 'info')"
                 v-if="viewingAnnouncement"
                 class="h-5 w-5"
-                :class="getIconColor(viewingAnnouncement.type)"
+                :class="getIconColor(viewingAnnouncement?.type || 'info')"
               />
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight truncate">
-                {{ viewingAnnouncement?.title || '公告详情' }}
+                {{ viewingAnnouncement?.title || t('announcements.detail') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                系统公告
+                {{ t('announcements.system') }}
               </p>
             </div>
           </div>
@@ -548,15 +553,15 @@
         class="space-y-4"
       >
         <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-muted-foreground">
-          <span>{{ viewingAnnouncement.author.username }}</span>
+          <span>{{ viewingAnnouncement?.author?.username }}</span>
           <span>·</span>
-          <span>{{ formatFullDate(viewingAnnouncement.created_at) }}</span>
+          <span>{{ formatFullDate(viewingAnnouncement?.created_at || '') }}</span>
         </div>
 
         <!-- eslint-disable vue/no-v-html -->
         <div
           class="prose prose-sm dark:prose-invert max-w-none"
-          v-html="renderMarkdown(viewingAnnouncement.content)"
+          v-html="renderMarkdown(viewingAnnouncement?.content || '')"
         />
         <!-- eslint-enable vue/no-v-html -->
       </div>
@@ -568,7 +573,7 @@
           class="h-10 px-5"
           @click="detailDialogOpen = false"
         >
-          关闭
+          {{ t('announcements.close') }}
         </Button>
       </template>
     </Dialog>
@@ -577,6 +582,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { announcementApi, type Announcement } from '@/api/announcements'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -603,6 +609,7 @@ import SelectValue from '@/components/ui/select-value.vue'
 import SelectContent from '@/components/ui/select-content.vue'
 import SelectItem from '@/components/ui/select-item.vue'
 import { AlertDialog } from '@/components/common'
+import AnnouncementDetailDialog from '@/components/common/AnnouncementDetailDialog.vue'
 import { Bell, AlertCircle, AlertTriangle, Info, Pin, Wrench, Loader2, Plus, SquarePen, Trash2 } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { log } from '@/utils/logger'
@@ -611,6 +618,7 @@ import { sanitizeMarkdown } from '@/utils/sanitize'
 
 const { success, error: showError } = useToast()
 const authStore = useAuthStore()
+const { t, locale } = useI18n()
 const isAdmin = computed(() => authStore.isAdmin)
 
 const announcements = ref<Announcement[]>([])
@@ -659,7 +667,7 @@ async function loadAnnouncements(page = 1) {
     unreadCount.value = response.unread_count || 0
   } catch (error) {
     log.error('加载公告失败:', error)
-    showError('加载公告失败')
+    showError(t('announcements.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -716,10 +724,10 @@ async function toggleAnnouncementPin(announcement: Announcement, newStatus: bool
       is_pinned: newStatus
     })
     announcement.is_pinned = newStatus
-    success(newStatus ? '已置顶' : '已取消置顶')
+    success(newStatus ? t('announcements.pinnedSuccess') : t('announcements.unpinnedSuccess'))
   } catch (error) {
     log.error('更新置顶状态失败:', error)
-    showError('更新置顶状态失败')
+    showError(t('announcements.updatePinFailed'))
   }
 }
 
@@ -729,16 +737,16 @@ async function toggleAnnouncementActive(announcement: Announcement, newStatus: b
       is_active: newStatus
     })
     announcement.is_active = newStatus
-    success(newStatus ? '已启用' : '已禁用')
+    success(newStatus ? t('announcements.enabledSuccess') : t('announcements.disabledSuccess'))
   } catch (error) {
     log.error('更新启用状态失败:', error)
-    showError('更新启用状态失败')
+    showError(t('announcements.updateStatusFailed'))
   }
 }
 
 async function saveAnnouncement() {
   if (!formData.value.title || !formData.value.content) {
-    showError('请填写标题和内容')
+    showError(t('announcements.titleContentRequired'))
     return
   }
 
@@ -747,17 +755,17 @@ async function saveAnnouncement() {
     if (editingAnnouncement.value) {
       // 更新
       await announcementApi.updateAnnouncement(editingAnnouncement.value.id, formData.value)
-      success('公告更新成功')
+      success(t('announcements.updateSuccess'))
     } else {
       // 创建
       await announcementApi.createAnnouncement(formData.value)
-      success('公告创建成功')
+      success(t('announcements.createSuccess'))
     }
     dialogOpen.value = false
     loadAnnouncements(currentPage.value)
   } catch (error) {
     log.error('保存失败:', error)
-    showError('保存失败')
+    showError(t('announcements.saveFailed'))
   } finally {
     saving.value = false
   }
@@ -774,12 +782,12 @@ async function deleteAnnouncement() {
   deleting.value = true
   try {
     await announcementApi.deleteAnnouncement(deletingAnnouncement.value.id)
-    success('公告已删除')
+    success(t('announcements.deleteSuccess'))
     deleteDialogOpen.value = false
     loadAnnouncements(currentPage.value)
   } catch (error) {
     log.error('删除失败:', error)
-    showError('删除失败')
+    showError(t('announcements.deleteFailed'))
   } finally {
     deleting.value = false
   }
@@ -827,13 +835,13 @@ function getTypeTextColor(type: string): string {
 function getTypeLabel(type: string): string {
   switch (type) {
     case 'important':
-      return '重要'
+      return t('announcements.important')
     case 'warning':
-      return '警告'
+      return t('announcements.warning')
     case 'maintenance':
-      return '维护'
+      return t('announcements.maintenance')
     default:
-      return '信息'
+      return t('announcements.info')
   }
 }
 
@@ -852,7 +860,7 @@ function getDialogIconClass(type?: string) {
 
 function formatFullDate(dateString: string): string {
   const date = new Date(dateString)
-  return date.toLocaleDateString('zh-CN', {
+  return date.toLocaleDateString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -884,13 +892,13 @@ function formatDate(dateString: string): string {
   const minutes = Math.floor(diff / (1000 * 60))
 
   if (minutes < 60) {
-    return `${minutes} 分钟前`
+    return t('announcements.minutesAgo', { count: minutes })
   } else if (hours < 24) {
-    return `${hours} 小时前`
+    return t('announcements.hoursAgo', { count: hours })
   } else if (days < 7) {
-    return `${days} 天前`
+    return t('announcements.daysAgo', { count: days })
   } else {
-    return date.toLocaleDateString('zh-CN', {
+    return date.toLocaleDateString(locale.value, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'

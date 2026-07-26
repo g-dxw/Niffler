@@ -1,7 +1,7 @@
 <template>
   <CardSection
-    title="最近发送记录"
-    description="只显示邮件类型、脱敏收件人和发送结果"
+    :title="t('emailDeliveryHistory.title')"
+    :description="t('emailDeliveryHistory.description')"
   >
     <template #actions>
       <Button
@@ -10,7 +10,7 @@
         :disabled="loading"
         @click="loadHistory"
       >
-        {{ loading ? '刷新中...' : '刷新' }}
+        {{ loading ? t('emailDeliveryHistory.refreshing') : t('emailDeliveryHistory.refresh') }}
       </Button>
     </template>
 
@@ -18,7 +18,7 @@
       v-if="loading && items.length === 0"
       class="py-8 text-center text-sm text-muted-foreground"
     >
-      正在加载发送记录...
+      {{ t('emailDeliveryHistory.loading') }}
     </div>
 
     <div
@@ -32,7 +32,7 @@
       v-else-if="items.length === 0"
       class="py-8 text-center text-sm text-muted-foreground"
     >
-      暂无邮件发送记录
+      {{ t('emailDeliveryHistory.empty') }}
     </div>
 
     <Table
@@ -49,19 +49,19 @@
       <TableHeader>
         <TableRow>
           <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
-            时间
+            {{ t('emailDeliveryHistory.time') }}
           </SortableTableHead>
           <SortableTableHead :sortable="false" resize-column-key="type" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
-            类型
+            {{ t('emailDeliveryHistory.type') }}
           </SortableTableHead>
           <SortableTableHead :sortable="false" resize-column-key="recipient" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
-            收件人
+            {{ t('emailDeliveryHistory.recipient') }}
           </SortableTableHead>
           <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
-            状态
+            {{ t('emailDeliveryHistory.status') }}
           </SortableTableHead>
           <SortableTableHead :sortable="false" resize-column-key="error" :resizable="true" @resize-start="handleEmailHistoryColumnResizeStart">
-            失败原因
+            {{ t('emailDeliveryHistory.failureReason') }}
           </SortableTableHead>
         </TableRow>
       </TableHeader>
@@ -98,6 +98,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { CardSection } from '@/components/layout'
 import { useResizableTableColumns, type ResizableTableColumn } from '@/composables/useResizableTableColumns'
 import {
@@ -119,6 +120,7 @@ interface EmailDeliveryResult {
 }
 
 const items = ref<AsyncTaskItem[]>([])
+const { t, locale } = useI18n()
 const loading = ref(false)
 const loadError = ref('')
 type EmailHistoryColumnKey = 'time' | 'type' | 'recipient' | 'status' | 'error'
@@ -152,7 +154,7 @@ async function loadHistory() {
     })
     items.value = response.items
   } catch (err) {
-    loadError.value = parseApiError(err, '加载发送记录失败')
+    loadError.value = parseApiError(err, t('emailDeliveryHistory.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -166,20 +168,20 @@ function resultOf(item: AsyncTaskItem): EmailDeliveryResult {
 }
 
 function formatMessageType(type: string | null | undefined): string {
-  if (type === 'verification') return '注册验证码'
-  if (type === 'password_reset') return '找回密码'
-  if (type === 'test') return '测试邮件'
+  if (type === 'verification') return t('emailDeliveryHistory.verification')
+  if (type === 'password_reset') return t('emailDeliveryHistory.passwordReset')
+  if (type === 'test') return t('emailDeliveryHistory.testEmail')
   return type || '-'
 }
 
 function statusLabel(status: AsyncTaskStatus): string {
-  if (status === 'queued' || status === 'pending' || status === 'submitted') return '等待发送'
-  if (status === 'running' || status === 'processing') return '发送中'
-  if (status === 'retrying') return '等待重试'
-  if (status === 'succeeded' || status === 'completed') return '已发送'
-  if (status === 'failed') return '失败'
-  if (status === 'cancelled') return '已取消'
-  if (status === 'skipped') return '已跳过'
+  if (status === 'queued' || status === 'pending' || status === 'submitted') return t('emailDeliveryHistory.waiting')
+  if (status === 'running' || status === 'processing') return t('emailDeliveryHistory.sending')
+  if (status === 'retrying') return t('emailDeliveryHistory.waitingRetry')
+  if (status === 'succeeded' || status === 'completed') return t('emailDeliveryHistory.sent')
+  if (status === 'failed') return t('emailDeliveryHistory.failed')
+  if (status === 'cancelled') return t('emailDeliveryHistory.cancelled')
+  if (status === 'skipped') return t('emailDeliveryHistory.skipped')
   return status
 }
 
@@ -195,7 +197,7 @@ function statusVariant(
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '-'
-  return new Date(value).toLocaleString('zh-CN', {
+  return new Date(value).toLocaleString(locale.value, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',

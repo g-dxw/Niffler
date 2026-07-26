@@ -486,41 +486,27 @@ LIMIT 1
         &self,
         global_model_id: &str,
     ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        self.list_admin_provider_models_by_global_model_ids(&[global_model_id.to_string()])
+            .await
+    }
+
+    pub async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        if global_model_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut builder = QueryBuilder::<Postgres>::new(LIST_ADMIN_PROVIDER_MODELS_PREFIX);
+        builder.push(" WHERE m.global_model_id IN (");
+        let mut separated = builder.separated(", ");
+        for global_model_id in global_model_ids {
+            separated.push_bind(global_model_id.trim().to_string());
+        }
+        separated.push_unseparated(") ORDER BY m.global_model_id ASC, m.created_at DESC, m.id ASC");
         collect_query_rows(
-            sqlx::query(
-                r#"
-SELECT
-  m.id,
-  m.provider_id,
-  m.global_model_id,
-  m.provider_model_name,
-  m.provider_model_mappings,
-  CAST(m.price_per_request AS DOUBLE PRECISION) AS price_per_request,
-  m.tiered_pricing,
-  m.supports_vision,
-  m.supports_function_calling,
-  m.supports_streaming,
-  m.supports_extended_thinking,
-  m.supports_image_generation,
-  m.is_active,
-  COALESCE(m.is_available, TRUE) AS is_available,
-  m.config,
-  EXTRACT(EPOCH FROM m.created_at)::bigint AS created_at_unix_ms,
-  EXTRACT(EPOCH FROM m.updated_at)::bigint AS updated_at_unix_secs,
-  gm.name AS global_model_name,
-  gm.display_name AS global_model_display_name,
-  CAST(gm.default_price_per_request AS DOUBLE PRECISION) AS global_model_default_price_per_request,
-  gm.default_tiered_pricing AS global_model_default_tiered_pricing,
-  gm.supported_capabilities AS global_model_supported_capabilities,
-  gm.config AS global_model_config
-FROM models m
-LEFT JOIN global_models gm ON gm.id = m.global_model_id
-WHERE m.global_model_id = $1
-ORDER BY m.created_at DESC, m.id ASC
-            "#,
-            )
-            .bind(global_model_id)
-            .fetch(&self.pool),
+            builder.build().fetch(&self.pool),
             map_admin_provider_model_row,
         )
         .await
@@ -894,6 +880,13 @@ LIMIT 1
         Self::list_admin_provider_models_by_global_model_id(self, global_model_id).await
     }
 
+    async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        Self::list_admin_provider_models_by_global_model_ids(self, global_model_ids).await
+    }
+
     async fn list_provider_model_stats(
         &self,
         provider_ids: &[String],
@@ -1240,7 +1233,7 @@ mod tests {
             include_str!("postgres.rs")
                 .matches(&supported_capabilities_projection)
                 .count(),
-            4
+            3
         );
     }
 

@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="open"
-    :title="isEditMode ? '编辑模型' : '创建统一模型'"
-    :description="isEditMode ? '修改模型配置和价格信息' : ''"
+    :title="isEditMode ? t('globalModelForm.editTitle') : t('globalModelForm.createTitle')"
+    :description="isEditMode ? t('globalModelForm.editDescription') : ''"
     :icon="isEditMode ? SquarePen : Layers"
     size="4xl"
     @update:model-value="handleDialogUpdate"
@@ -22,7 +22,7 @@
           <Input
             v-model="searchQuery"
             type="text"
-            placeholder="搜索模型、提供商..."
+            :placeholder="t('globalModelForm.searchPlaceholder')"
             class="pl-8 h-8 text-sm"
           />
         </div>
@@ -88,7 +88,7 @@
               v-if="groupedModels.length === 0"
               class="text-center py-8 text-sm text-muted-foreground"
             >
-              {{ searchQuery ? '未找到模型' : '加载中...' }}
+              {{ searchQuery ? t('globalModelForm.noModelsFound') : t('common.loading') }}
             </div>
           </template>
         </div>
@@ -106,14 +106,14 @@
           <!-- 基本信息 -->
           <section class="space-y-3">
             <h4 class="font-medium text-sm">
-              基本信息
+              {{ t('globalModelForm.basicInfo') }}
             </h4>
             <div class="grid grid-cols-2 gap-3">
               <div class="space-y-1.5">
                 <Label
                   for="model-display-name"
                   class="text-xs"
-                >名称 *</Label>
+                >{{ t('globalModelForm.name') }} *</Label>
                 <Input
                   id="model-display-name"
                   v-model="form.display_name"
@@ -125,7 +125,7 @@
                 <Label
                   for="model-name"
                   class="text-xs"
-                >模型ID *</Label>
+                >{{ t('globalModelForm.modelId') }} *</Label>
                 <Input
                   id="model-name"
                   v-model="form.name"
@@ -139,11 +139,11 @@
               <Label
                 for="model-description"
                 class="text-xs"
-              >描述</Label>
+              >{{ t('globalModelForm.description') }}</Label>
               <Input
                 id="model-description"
                 :model-value="getConfigInputValue('description')"
-                placeholder="简短描述此模型的特点"
+                :placeholder="t('globalModelForm.descriptionPlaceholder')"
                 @update:model-value="(v) => setConfigField('description', v || undefined)"
               />
             </div>
@@ -152,13 +152,13 @@
                 <Label
                   for="model-output-limit"
                   class="text-xs"
-                >最大输出 Token</Label>
+                >{{ t('globalModelForm.maxOutputTokens') }}</Label>
                 <Input
                   id="model-output-limit"
                   :model-value="getConfigInputValue('output_limit')"
                   type="number"
                   min="1"
-                  placeholder="如 8192"
+                  :placeholder="t('globalModelForm.example8192')"
                   @update:model-value="(v) => setConfigField('output_limit', parseNumberInput(v, { allowFloat: false }))"
                 />
               </div>
@@ -166,13 +166,13 @@
                 <Label
                   for="model-context-limit"
                   class="text-xs"
-                >上下文窗口</Label>
+                >{{ t('globalModelForm.contextWindow') }}</Label>
                 <Input
                   id="model-context-limit"
                   :model-value="getConfigInputValue('context_limit')"
                   type="number"
                   min="1"
-                  placeholder="如 200000"
+                  :placeholder="t('globalModelForm.example200000')"
                   @update:model-value="(v) => setConfigField('context_limit', parseNumberInput(v, { allowFloat: false }))"
                 />
               </div>
@@ -189,7 +189,7 @@
                     Embedding
                   </div>
                   <p class="text-xs text-muted-foreground">
-                    标记为 Embeddings 模型，并使用独立的 embedding API 格式，不按 Chat 模型处理。
+                    {{ t('globalModelForm.embeddingHint') }}
                   </p>
                   <div
                     v-if="isEmbeddingEnabled"
@@ -211,10 +211,10 @@
                 />
                 <div class="space-y-1">
                   <div class="text-sm font-medium">
-                    图片模型
+                    {{ t('globalModelForm.imageModel') }}
                   </div>
                   <p class="text-xs text-muted-foreground">
-                    启用图片输出计费，并展开尺寸 × 质量矩阵价格。
+                    {{ t('globalModelForm.imageModelHint') }}
                   </p>
                 </div>
               </div>
@@ -224,7 +224,7 @@
           <!-- 价格配置 -->
           <section class="space-y-3">
             <h4 class="font-medium text-sm">
-              价格配置
+              {{ t('globalModelForm.pricing') }}
             </h4>
             <TieredPricingEditor
               ref="tieredPricingEditorRef"
@@ -233,23 +233,23 @@
               :show-image-pricing="isImageGenerationEnabled"
             />
             <div class="flex items-center gap-3 pt-2 border-t">
-              <Label class="text-xs whitespace-nowrap">按次计费</Label>
+              <Label class="text-xs whitespace-nowrap">{{ t('globalModelForm.perRequestPricing') }}</Label>
               <Input
                 :model-value="form.default_price_per_request ?? ''"
                 type="number"
                 step="0.001"
                 min="0"
                 class="w-24"
-                placeholder="$/次"
+                :placeholder="t('globalModelForm.perRequestPlaceholder')"
                 @update:model-value="(v) => form.default_price_per_request = parseNumberInput(v, { allowFloat: true })"
               />
-              <span class="text-xs text-muted-foreground">可与 Token 计费叠加</span>
+              <span class="text-xs text-muted-foreground">{{ t('globalModelForm.perRequestHint') }}</span>
             </div>
 
             <!-- 视频计费（分辨率 × 时长） -->
             <div class="pt-3 border-t space-y-2">
               <div class="text-sm font-medium">
-                视频计费（分辨率 × 时长）
+                {{ t('globalModelForm.videoPricing') }}
               </div>
 
               <div class="flex items-center gap-1.5 flex-wrap">
@@ -260,7 +260,7 @@
                   class="h-7 text-xs"
                   @click="fillVideoResolutionPricePreset('common')"
                 >
-                  通用
+                  {{ t('globalModelForm.commonPreset') }}
                 </Button>
                 <Button
                   type="button"
@@ -288,7 +288,7 @@
                   @click="addVideoResolutionPriceRow"
                 >
                   <Plus class="w-3.5 h-3.5 mr-0.5" />
-                  自定义
+                  {{ t('globalModelForm.custom') }}
                 </Button>
               </div>
 
@@ -297,8 +297,8 @@
                 class="rounded-lg border border-border overflow-hidden"
               >
                 <div class="grid grid-cols-[1fr_1fr_32px] gap-0 text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 border-b border-border">
-                  <span>分辨率</span>
-                  <span>单价（$/秒）</span>
+                  <span>{{ t('globalModelForm.resolution') }}</span>
+                  <span>{{ t('globalModelForm.pricePerSecond') }}</span>
                   <span />
                 </div>
                 <div class="divide-y divide-border">
@@ -310,7 +310,7 @@
                     <Input
                       v-model="row.resolution"
                       class="h-7 text-sm"
-                      placeholder="如 720p"
+                      :placeholder="t('globalModelForm.example720p')"
                     />
                     <Input
                       :model-value="row.price_per_second ?? ''"
@@ -326,7 +326,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="删除"
+                      :title="t('globalModelForm.delete')"
                       @click="removeVideoResolutionPriceRow(idx)"
                     >
                       <Trash2 class="w-3.5 h-3.5" />
@@ -346,7 +346,7 @@
         variant="outline"
         @click="handleCancel"
       >
-        取消
+        {{ t('common.cancel') }}
       </Button>
       <Button
         :disabled="submitting || !form.name || !form.display_name"
@@ -356,7 +356,7 @@
           v-if="submitting"
           class="w-4 h-4 mr-2 animate-spin"
         />
-        {{ isEditMode ? '保存' : '添加' }}
+        {{ isEditMode ? t('globalModelForm.save') : t('globalModelForm.add') }}
       </Button>
       <Button
         v-if="selectedModel && !isEditMode"
@@ -364,7 +364,7 @@
         variant="ghost"
         @click="clearSelection"
       >
-        清空
+        {{ t('globalModelForm.clear') }}
       </Button>
     </template>
   </Dialog>
@@ -372,6 +372,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Loader2, Layers, SquarePen,
   Search, ChevronRight, Plus, Trash2
@@ -411,6 +412,7 @@ const emit = defineEmits<{
 }>()
 
 const { success, error: showError } = useToast()
+const { t } = useI18n()
 const submitting = ref(false)
 const tieredPricingEditorRef = ref<InstanceType<typeof TieredPricingEditor> | null>(null)
 
@@ -887,14 +889,14 @@ const { isEditMode, handleDialogUpdate, handleCancel } = useFormDialog({
 
 async function handleSubmit() {
   if (!form.value.name || !form.value.display_name) {
-    showError('请填写模型ID和名称')
+    showError(t('globalModelForm.modelRequired'))
     return
   }
 
   const finalTieredPricing = tieredPricingEditorRef.value?.getFinalPricing() ?? tieredPricing.value
 
   if (!finalTieredPricing?.tiers?.length) {
-    showError('请配置至少一个价格阶梯')
+    showError(t('globalModelForm.pricingTierRequired'))
     return
   }
 
@@ -927,11 +929,11 @@ async function handleSubmit() {
     if (isEditMode.value && props.model) {
       const updateData = buildGlobalModelUpdatePayload(form.value, finalTieredPricing)
       await updateGlobalModel(props.model.id, updateData)
-      success('模型更新成功')
+      success(t('globalModelForm.updated'))
     } else {
       const createData = buildGlobalModelCreatePayload(form.value, finalTieredPricing)
       await createGlobalModel(createData)
-      success('模型创建成功')
+      success(t('globalModelForm.created'))
       clearSelection()
       emit('success')
       return
@@ -939,7 +941,8 @@ async function handleSubmit() {
     emit('update:open', false)
     emit('success')
   } catch (err: unknown) {
-    showError(parseApiError(err, isEditMode.value ? '更新失败' : '创建失败'), isEditMode.value ? '更新失败' : '创建失败')
+    const fallback = isEditMode.value ? t('globalModelForm.updateFailed') : t('globalModelForm.createFailed')
+    showError(parseApiError(err, fallback), fallback)
   } finally {
     submitting.value = false
   }

@@ -249,3 +249,4 @@ analysis/
 !docs/analysis/*.md
 new-api/
 apps/aether-tunnel/aether-tunnel.toml
+.gstack/

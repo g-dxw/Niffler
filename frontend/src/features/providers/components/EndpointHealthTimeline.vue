@@ -35,9 +35,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
 import type { EndpointStatusMonitor, EndpointHealthEvent, PublicEndpointStatusMonitor, PublicHealthEvent } from '@/api/endpoints'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+const { t } = useI18n()
 
 // 组件同时支持管理员端和用户端的监控数据类型
 // - EndpointStatusMonitor: 管理员端，包含 provider_count, key_count 等敏感信息
@@ -73,7 +75,7 @@ const segments = computed(() => {
   if (events.length === 0) {
     return Array.from({ length: gridCount }, () => ({
       color: 'bg-gray-300 dark:bg-gray-600',
-      tooltip: '暂无请求记录'
+      tooltip: t('endpointHealthTimeline.noRequests')
     }))
   }
 
@@ -103,7 +105,7 @@ const segments = computed(() => {
     if (cellEvents.length === 0) {
       result.push({
         color: 'bg-gray-300 dark:bg-gray-600',
-        tooltip: `${formatTimestamp(cellStartTime.toISOString())} - ${formatTimestamp(cellEndTime.toISOString())}\n暂无请求记录`
+        tooltip: `${formatTimestamp(cellStartTime.toISOString())} - ${formatTimestamp(cellEndTime.toISOString())}\n${t('endpointHealthTimeline.noRequests')}`
       })
       continue
     }
@@ -136,7 +138,7 @@ const segments = computed(() => {
 
     const firstTime = formatTimestamp(cellEvents[0]?.timestamp)
     const lastTime = formatTimestamp(cellEvents[cellEvents.length - 1]?.timestamp)
-    const tooltip = `${firstTime} - ${lastTime}\n共 ${total} 次请求\n成功: ${successCount}, 失败: ${failedCount}, 跳过: ${skippedCount}`
+    const tooltip = `${firstTime} - ${lastTime}\n${t('endpointHealthTimeline.summary', { total, success: successCount, failed: failedCount, skipped: skippedCount })}`
 
     result.push({ color, tooltip })
   }
@@ -171,20 +173,20 @@ function buildTooltip(event: EndpointHealthEvent | PublicHealthEvent) {
 function getStatusText(status: string) {
   switch (status) {
     case 'success':
-      return '成功'
+      return t('endpointHealth.success')
     case 'failed':
-      return '失败'
+      return t('endpointHealth.failed')
     case 'skipped':
-      return '跳过'
+      return t('endpointHealth.skipped')
     case 'started':
-      return '执行中'
+      return t('endpointHealth.started')
     default:
-      return '未知'
+      return t('endpointHealth.unknown')
   }
 }
 
 function formatTimestamp(timestamp?: string | null) {
-  if (!timestamp) return '未知时间'
+  if (!timestamp) return t('endpointHealth.unknownTime')
   const date = new Date(timestamp)
   return date.toLocaleString('zh-CN', {
     month: '2-digit',
@@ -233,7 +235,7 @@ function buildUsageTimelineSegments(
       color: getHealthTimelineColor(status),
       tooltip: `${formatTimestamp(cellStart.toISOString())} - ${formatTimestamp(
         cellEnd.toISOString()
-      )}\n状态：${getHealthTimelineLabel(status)}`
+      )}\n${t('endpointHealth.health', { value: getHealthTimelineLabel(status) })}`
     }
   })
 }
@@ -254,13 +256,13 @@ function getHealthTimelineColor(status: string) {
 function getHealthTimelineLabel(status: string) {
   switch (status) {
     case 'healthy':
-      return '健康'
+      return t('endpointHealth.healthy')
     case 'warning':
-      return '警告'
+      return t('endpointHealth.warning')
     case 'unhealthy':
-      return '异常'
+      return t('endpointHealth.unhealthy')
     default:
-      return '未知'
+      return t('endpointHealth.unknown')
   }
 }
 </script>

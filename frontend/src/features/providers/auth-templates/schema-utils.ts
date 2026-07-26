@@ -11,7 +11,7 @@ import type {
   AuthTemplateFieldGroup,
   BalanceExtraItem,
 } from './types'
-import { PROXY_FIELD_GROUP, buildProxyConfig, parseProxyConfig } from './types'
+import { createProxyFieldGroup, buildProxyConfig, parseProxyConfig } from './types'
 import { executeFieldHook } from './field-hooks'
 
 // ==================== 类型定义 ====================
@@ -122,7 +122,7 @@ export function schemaToFieldGroups(
   }
 
   // 追加代理配置
-  groups.push(PROXY_FIELD_GROUP)
+  groups.push(createProxyFieldGroup())
 
   return groups
 }

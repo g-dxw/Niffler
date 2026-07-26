@@ -3,7 +3,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
       <!-- 左侧：标题 -->
       <h3 class="text-sm sm:text-base font-semibold text-foreground shrink-0">
-        提供商管理
+        {{ t('providerTableHeader.title') }}
       </h3>
 
       <!-- 右侧：操作区 -->
@@ -15,7 +15,7 @@
             id="provider-search"
             :model-value="searchQuery"
             type="text"
-            placeholder="搜索提供商..."
+            :placeholder="t('providerTableHeader.searchPlaceholder')"
             class="w-32 sm:w-44 pl-8 pr-3 h-8 text-sm bg-muted/30 border-border/50 focus:border-primary/50 transition-colors"
             @update:model-value="$emit('update:searchQuery', $event)"
           />
@@ -28,7 +28,7 @@
             @update:model-value="$emit('update:filterStatus', $event)"
           >
             <SelectTrigger class="w-20 sm:w-28 h-8 text-xs border-border/60">
-              <SelectValue placeholder="全部状态" />
+              <SelectValue :placeholder="t('providerTableHeader.allStatuses')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -49,7 +49,7 @@
             @update:model-value="$emit('update:filterApiFormat', $event)"
           >
             <SelectTrigger class="w-20 sm:w-28 h-8 text-xs border-border/60">
-              <SelectValue placeholder="全部格式" />
+              <SelectValue :placeholder="t('providerTableHeader.allFormats')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -70,7 +70,7 @@
             @update:model-value="$emit('update:filterModel', $event)"
           >
             <SelectTrigger class="w-20 sm:w-36 h-8 text-xs border-border/60">
-              <SelectValue placeholder="全部模型" />
+              <SelectValue :placeholder="t('providerTableHeader.allModels')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -90,7 +90,7 @@
           variant="ghost"
           size="icon"
           class="h-8 w-8"
-          title="重置筛选"
+          :title="t('providerTableHeader.resetFilters')"
           @click="$emit('resetFilters')"
         >
           <FilterX class="w-3.5 h-3.5" />
@@ -101,10 +101,10 @@
         <!-- 调度策略 -->
         <button
           class="group inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md border border-border/50 bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-all duration-200 text-xs"
-          title="点击调整调度策略"
+          :title="t('providerTableHeader.adjustScheduling')"
           @click="$emit('openPriorityDialog')"
         >
-          <span class="text-muted-foreground/80 hidden sm:inline">调度:</span>
+          <span class="text-muted-foreground/80 hidden sm:inline">{{ t('providerTableHeader.scheduling') }}:</span>
           <span class="font-medium text-foreground/90">{{ priorityModeLabel }}</span>
           <ChevronDown class="w-3 h-3 text-muted-foreground/70 group-hover:text-foreground transition-colors" />
         </button>
@@ -116,7 +116,7 @@
           variant="ghost"
           size="icon"
           class="h-8 w-8"
-          title="新增提供商"
+          :title="t('providerTableHeader.addProvider')"
           @click="$emit('addProvider')"
         >
           <Plus class="w-3.5 h-3.5" />
@@ -132,6 +132,7 @@
 
 <script setup lang="ts">
 import { Search, Plus, ChevronDown, FilterX } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
 import Select from '@/components/ui/select.vue'
@@ -141,6 +142,8 @@ import SelectContent from '@/components/ui/select-content.vue'
 import SelectItem from '@/components/ui/select-item.vue'
 import RefreshButton from '@/components/ui/refresh-button.vue'
 import type { FilterOption } from '@/features/providers/composables/useProviderFilters'
+
+const { t } = useI18n()
 
 defineProps<{
   searchQuery: string

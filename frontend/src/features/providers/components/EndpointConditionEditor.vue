@@ -15,7 +15,7 @@
           variant="ghost"
           size="icon"
           class="h-6 w-6 shrink-0 text-muted-foreground"
-          title="转回单条件"
+          :title="t('endpointConditionEditor.convertToSingle')"
           @click="convertToLeaf"
         >
           <ListFilter class="w-3.5 h-3.5" />
@@ -41,11 +41,11 @@
           variant="ghost"
           size="sm"
           class="h-6 px-1.5 text-xs text-muted-foreground"
-          title="添加条件"
+          :title="t('endpointConditionEditor.addCondition')"
           @click="addLeafChild"
         >
           <Plus class="w-3 h-3 mr-0.5" />
-          条件
+          {{ t('endpointConditionEditor.condition') }}
         </Button>
         <Button
           v-if="!nested"
@@ -55,7 +55,7 @@
           @click="addGroupChild(modelValue.mode === 'all' ? 'any' : 'all')"
         >
           <Plus class="w-3 h-3 mr-0.5" />
-          子组
+          {{ t('endpointConditionEditor.group') }}
         </Button>
         <Button
           v-if="removable && nested"
@@ -114,7 +114,7 @@
         variant="ghost"
         size="icon"
         class="h-7 w-7 shrink-0 text-muted-foreground"
-        title="转为组合条件 (AND/OR)"
+        :title="t('endpointConditionEditor.convertToGroup')"
         @click="convertToGroup('all')"
       >
         <ListFilter class="w-3.5 h-3.5" />
@@ -128,19 +128,19 @@
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="body">
-            请求体
+            {{ t('endpointConditionEditor.requestBody') }}
           </SelectItem>
           <SelectItem value="original">
-            原始请求体
+            {{ t('endpointConditionEditor.rawRequestBody') }}
           </SelectItem>
           <SelectItem value="request_headers">
-            请求头
+            {{ t('endpointConditionEditor.requestHeaders') }}
           </SelectItem>
         </SelectContent>
       </Select>
       <Input
         :model-value="modelValue.path"
-        :placeholder="modelValue.source === 'request_headers' ? 'Header 名称' : (pathHint || '字段路径')"
+        :placeholder="modelValue.source === 'request_headers' ? t('endpointConditionEditor.headerName') : (pathHint || t('endpointConditionEditor.fieldPath'))"
         size="sm"
         class="flex-1 min-w-[120px] h-7 text-xs"
         @update:model-value="(value) => updateLeafField('path', value)"
@@ -158,7 +158,7 @@
             :key="option.value"
             :value="option.value"
           >
-            {{ option.label }}
+            {{ t(`endpointConditionOps.${option.value}`) }}
           </SelectItem>
         </SelectContent>
       </Select>
@@ -184,6 +184,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { ListFilter, Plus, X } from 'lucide-vue-next'
 
@@ -201,6 +202,8 @@ import {
   type EditableConditionLeaf,
   type EditableConditionNode,
 } from './endpoint-rule-condition'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   modelValue: EditableConditionNode

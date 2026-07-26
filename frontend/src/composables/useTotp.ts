@@ -1,10 +1,12 @@
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { TOTP, Secret } from 'otpauth'
+import { useI18n } from 'vue-i18n'
 
 /**
  * TOTP composable: 给定 secret 持续生成验证码并显示剩余秒数。
  */
 export function useTotp() {
+  const { t } = useI18n()
   const secret = ref('')
   const code = ref('')
   const remaining = ref(0)
@@ -46,7 +48,7 @@ export function useTotp() {
 
     const parsed = parseSecret(rawSecret)
     if (!parsed) {
-      error.value = rawSecret.trim() ? 'Secret 格式无效' : ''
+      error.value = rawSecret.trim() ? t('runtimeText.invalidSecret') : ''
       return
     }
 

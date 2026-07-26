@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="OAuth 配置"
-      description="配置 OAuth Providers（登录/绑定）"
+      :title="t('oauth.title')"
+      :description="t('oauth.description')"
     >
       <template #actions>
         <Button
@@ -10,7 +10,7 @@
           :disabled="loading"
           @click="loadAll"
         >
-          刷新
+          {{ t('oauth.refresh') }}
         </Button>
       </template>
     </PageHeader>
@@ -23,14 +23,14 @@
           @click="handleClickAdd"
         >
           <Plus class="w-3.5 h-3.5" />
-          添加配置
+          {{ t('oauth.add') }}
         </button>
 
         <div
           v-if="configuredList.length === 0 && !loading"
           class="text-sm text-muted-foreground px-2 py-4 text-center"
         >
-          暂无配置
+          {{ t('oauth.empty') }}
         </div>
 
         <div class="space-y-0.5">
@@ -49,10 +49,10 @@
             </div>
             <div class="flex-1 min-w-0 text-left">
               <div class="truncate font-medium text-sm">
-                新配置
+                {{ t('oauth.newConfig') }}
               </div>
               <div class="text-[10px] text-muted-foreground">
-                未保存
+                {{ t('oauth.unsaved') }}
               </div>
             </div>
           </button>
@@ -84,7 +84,7 @@
                 {{ item.display_name }}
               </div>
               <div class="text-[10px] text-muted-foreground">
-                {{ item.configured ? (item.is_enabled ? '已启用' : '已禁用') : '未配置' }}
+                {{ item.configured ? (item.is_enabled ? t('oauth.enabled') : t('oauth.disabled')) : t('oauth.unconfigured') }}
               </div>
             </div>
             <!-- 开关 -->
@@ -108,8 +108,8 @@
         <!-- 配置表单 -->
         <CardSection
           v-if="selectedType"
-          :title="selectedType === '__new__' ? '新建配置' : (selectedTypeMeta?.display_name || selectedType)"
-          :description="selectedType === '__new__' ? '填写后点击保存' : (configs[selectedType]?.is_enabled ? '已启用' : '已禁用')"
+          :title="selectedType === '__new__' ? t('oauth.createTitle') : (selectedTypeMeta?.display_name || selectedType)"
+          :description="selectedType === '__new__' ? t('oauth.createHint') : (configs[selectedType]?.is_enabled ? t('oauth.enabled') : t('oauth.disabled'))"
         >
           <template #actions>
             <div class="flex gap-2">
@@ -119,14 +119,14 @@
                 :disabled="saving || testing"
                 @click="handleTest"
               >
-                {{ testing ? '测试中...' : '测试' }}
+                {{ testing ? t('oauth.testing') : t('oauth.test') }}
               </Button>
               <Button
                 size="sm"
                 :disabled="saving"
                 @click="handleSave"
               >
-                {{ saving ? '保存中...' : '保存' }}
+                {{ saving ? t('oauth.saving') : t('oauth.save') }}
               </Button>
             </div>
           </template>
@@ -138,16 +138,16 @@
             class="grid grid-cols-1 md:grid-cols-2 gap-4"
           >
             <div>
-              <Label class="block text-sm font-medium">显示名称</Label>
+              <Label class="block text-sm font-medium">{{ t('oauth.displayName') }}</Label>
               <Input
                 v-model="form.new_display_name"
                 class="mt-1"
-                placeholder="例如：My OIDC Provider"
+                :placeholder="t('oauth.displayNamePlaceholder')"
                 autocomplete="off"
               />
             </div>
             <div>
-              <Label class="block text-sm font-medium">配置标识</Label>
+              <Label class="block text-sm font-medium">{{ t('oauth.configKey') }}</Label>
               <Input
                 v-model="form.new_provider_type"
                 class="mt-1"
@@ -175,7 +175,7 @@
                 v-model="form.client_secret"
                 masked
                 class="mt-1"
-                :placeholder="hasSecret ? '已设置（留空保持不变）' : '请输入 secret'"
+                :placeholder="hasSecret ? t('oauth.secretSet') : t('oauth.secretInput')"
               />
             </div>
           </div>
@@ -183,7 +183,7 @@
           <!-- 回调地址 -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label class="block text-sm font-medium">Redirect URI（后端回调）</Label>
+              <Label class="block text-sm font-medium">{{ t('oauth.redirectUri') }}</Label>
               <Input
                 v-model="form.redirect_uri"
                 class="mt-1"
@@ -192,7 +192,7 @@
               />
             </div>
             <div>
-              <Label class="block text-sm font-medium">前端回调页</Label>
+              <Label class="block text-sm font-medium">{{ t('oauth.frontendCallback') }}</Label>
               <Input
                 v-model="form.frontend_callback_url"
                 class="mt-1"
@@ -238,7 +238,7 @@
 
           <!-- 图标 URL -->
           <div>
-            <Label class="block text-sm font-medium">图标 URL</Label>
+            <Label class="block text-sm font-medium">{{ t('oauth.iconUrl') }}</Label>
             <Input
               v-model="form.icon_url"
               class="mt-1"
@@ -246,14 +246,14 @@
               autocomplete="off"
             />
             <p class="mt-1 text-xs text-muted-foreground">
-              登录页显示的 Provider 图标，留空使用默认图标
+              {{ t('oauth.iconHint') }}
             </p>
           </div>
 
           <!-- 高级选项（折叠） -->
           <details class="group">
             <summary class="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              高级选项
+              {{ t('oauth.advanced') }}
             </summary>
             <div class="mt-4 space-y-4 pl-4 border-l-2 border-border">
               <div>
@@ -261,11 +261,11 @@
                 <Input
                   v-model="form.scopes_input"
                   class="mt-1"
-                  :placeholder="selectedTypeMeta?.default_scopes?.join(' ') || '留空使用默认值'"
+                  :placeholder="selectedTypeMeta?.default_scopes?.join(' ') || t('oauth.defaultPlaceholder')"
                   autocomplete="off"
                 />
                 <p class="mt-1 text-xs text-muted-foreground">
-                  空格/逗号分隔；留空使用默认值
+                  {{ t('oauth.scopesHint') }}
                 </p>
               </div>
 
@@ -279,7 +279,7 @@
                   <Input
                     v-model="form.authorization_url_override"
                     class="mt-1"
-                    :placeholder="selectedTypeMeta?.default_authorization_url || '默认'"
+                    :placeholder="selectedTypeMeta?.default_authorization_url || t('oauth.defaultPlaceholder')"
                     autocomplete="off"
                   />
                 </div>
@@ -288,7 +288,7 @@
                   <Input
                     v-model="form.token_url_override"
                     class="mt-1"
-                    :placeholder="selectedTypeMeta?.default_token_url || '默认'"
+                    :placeholder="selectedTypeMeta?.default_token_url || t('oauth.defaultPlaceholder')"
                     autocomplete="off"
                   />
                 </div>
@@ -297,7 +297,7 @@
                   <Input
                     v-model="form.userinfo_url_override"
                     class="mt-1"
-                    :placeholder="selectedTypeMeta?.default_userinfo_url || '默认'"
+                    :placeholder="selectedTypeMeta?.default_userinfo_url || t('oauth.defaultPlaceholder')"
                     autocomplete="off"
                   />
                 </div>
@@ -327,7 +327,7 @@
                     v-if="isSelectedCustomProvider"
                     class="mt-1 text-xs text-muted-foreground"
                   >
-                    自定义 OIDC 必填；填写 Authorization / Token / Userinfo URL 所属域名。
+                    {{ t('oauth.customOidcHint') }}
                   </p>
                 </div>
               </div>
@@ -339,7 +339,7 @@
             class="mt-6 rounded-lg border border-border p-4 text-sm"
           >
             <div class="font-medium mb-2">
-              测试结果
+              {{ t('oauth.testResult') }}
             </div>
             <div class="flex flex-wrap gap-4 text-xs">
               <div class="flex items-center gap-2">
@@ -379,6 +379,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Plus } from 'lucide-vue-next'
 import { oauthApi, type OAuthProviderAdminConfig, type OAuthProviderTestResponse, type SupportedOAuthType } from '@/api/oauth'
 import { PageContainer, PageHeader, CardSection } from '@/components/layout'
@@ -393,6 +394,7 @@ import { log } from '@/utils/logger'
 import { getErrorMessage, getErrorStatus, isApiError } from '@/types/api-error'
 import { summarizeOAuthConfigTest } from '@/utils/oauthConfigTest'
 
+const { t } = useI18n()
 const { success, warning, error: showError } = useToast()
 const { confirmWarning } = useConfirm()
 
@@ -657,7 +659,7 @@ function syncFormFromSelected() {
 async function toggleProviderEnabled(providerType: string, enabled: boolean, force = false) {
   const cfg = configs.value[providerType]
   if (!cfg) {
-    showError('请先保存配置后再启用')
+    showError(t('oauth.saveBeforeEnable'))
     return
   }
 
@@ -679,7 +681,7 @@ async function toggleProviderEnabled(providerType: string, enabled: boolean, for
       force,
     }
     await oauthApi.admin.upsertProviderConfig(providerType, payload)
-    success(enabled ? '已启用' : '已禁用')
+    success(enabled ? t('oauth.enabled') : t('oauth.disabled'))
     await loadAll()
   } catch (err: unknown) {
     // 检查是否是需要确认的冲突错误
@@ -688,8 +690,8 @@ async function toggleProviderEnabled(providerType: string, enabled: boolean, for
       if (errorData?.type === 'confirmation_required') {
         const affectedCount = errorData.details?.affected_count ?? 0
         const confirmed = await confirmWarning(
-          `禁用该 Provider 会导致 ${affectedCount} 个用户无法登录，是否继续？`,
-          '确认禁用'
+          t('oauth.disableImpact', { count: affectedCount }),
+          t('oauth.confirmDisable')
         )
         if (confirmed) {
           await toggleProviderEnabled(providerType, enabled, true)
@@ -697,7 +699,7 @@ async function toggleProviderEnabled(providerType: string, enabled: boolean, for
         return
       }
     }
-    showError(getErrorMessage(err, '操作失败'))
+    showError(getErrorMessage(err, t('oauth.operationFailed')))
   } finally {
     saving.value = false
   }
@@ -722,8 +724,8 @@ async function loadAll() {
       }
     }
   } catch (err: unknown) {
-    log.error('加载 OAuth 配置失败:', err)
-    showError(getErrorMessage(err, '加载失败'))
+    log.error('Failed to load OAuth configuration:', err)
+    showError(getErrorMessage(err, t('oauth.loadFailed')))
   } finally {
     loading.value = false
   }
@@ -754,13 +756,13 @@ async function handleSave() {
     }
 
     await oauthApi.admin.upsertProviderConfig(providerType, payload)
-    success('保存成功')
+    success(t('oauth.saved'))
     const savedType = providerType
     await loadAll()
     selectedType.value = savedType
     syncFormFromSelected()
   } catch (err: unknown) {
-    showError(getErrorMessage(err, '保存失败'))
+    showError(getErrorMessage(err, t('oauth.saveFailed')))
   } finally {
     saving.value = false
     form.value.client_secret = ''
@@ -790,7 +792,7 @@ async function handleTest() {
       showError(summary.message)
     }
   } catch (err: unknown) {
-    showError(getErrorMessage(err, '测试失败'))
+    showError(getErrorMessage(err, t('oauth.testFailed')))
   } finally {
     testing.value = false
   }

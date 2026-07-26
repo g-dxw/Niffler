@@ -8,14 +8,14 @@
         v-if="hasData"
         class="flex items-center gap-1 text-[11px] text-muted-foreground flex-shrink-0"
       >
-        <span class="flex-shrink-0">少</span>
+        <span class="flex-shrink-0">{{ t('activityHeatmap.less') }}</span>
         <div
           v-for="(level, index) in legendLevels"
           :key="index"
           class="w-3 h-3 rounded-[3px] flex-shrink-0"
           :style="{ backgroundColor: `rgba(var(--color-primary-rgb), ${level})` }"
         />
-        <span class="flex-shrink-0">多</span>
+        <span class="flex-shrink-0">{{ t('activityHeatmap.more') }}</span>
       </div>
     </div>
     <div
@@ -23,14 +23,14 @@
       class="h-full min-h-[160px] flex items-center justify-center text-sm text-muted-foreground"
     >
       <Loader2 class="h-5 w-5 animate-spin mr-2" />
-      加载中...
+      {{ t('common.loading') }}
     </div>
     <div
       v-else-if="hasError"
       class="h-full min-h-[160px] flex items-center justify-center text-sm text-destructive"
     >
       <AlertCircle class="h-4 w-4 mr-1.5" />
-      加载失败
+      {{ t('activityHeatmap.loadFailed') }}
     </div>
     <ActivityHeatmap
       v-else-if="hasData"
@@ -41,17 +41,20 @@
       v-else
       class="h-full min-h-[160px] flex items-center justify-center text-sm text-muted-foreground"
     >
-      暂无活跃数据
+      {{ t('activityHeatmap.empty') }}
     </div>
   </Card>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Loader2, AlertCircle } from 'lucide-vue-next'
 import Card from '@/components/ui/card.vue'
 import ActivityHeatmap from '@/components/stats/ActivityHeatmap.vue'
 import type { ActivityHeatmap as ActivityHeatmapData } from '@/types/activity'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   data: ActivityHeatmapData | null

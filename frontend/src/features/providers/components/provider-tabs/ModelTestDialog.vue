@@ -31,21 +31,21 @@
       >
         <div class="grid min-h-8 w-full items-center gap-2 sm:h-8 sm:grid-cols-2">
           <div class="text-sm font-medium text-foreground">
-            选择测试端点
+            {{ t('modelTest.selectEndpoint') }}
           </div>
           <div
             v-if="modelMappingAvailable"
             class="grid w-full grid-cols-[auto_1fr] items-center gap-2"
           >
             <div class="text-sm font-medium text-foreground">
-              模型映射
+              {{ t('modelTest.modelMapping') }}
             </div>
             <Select
               :model-value="selectedModelMappingValue"
               @update:model-value="handleModelMappingValueChange"
             >
               <SelectTrigger class="h-8 min-h-8 w-full shrink-0 overflow-hidden border-border/60 py-0 text-xs leading-none [transition-property:none] [&>span:first-child]:min-w-0 [&>span:first-child]:flex-1 [&>span:first-child]:text-left [&>span:first-child]:leading-none">
-                <SelectValue :placeholder="requestedModelName || '当前模型'" />
+                <SelectValue :placeholder="requestedModelName || t('modelTest.currentModel')" />
               </SelectTrigger>
               <SelectContent
                 class="w-[var(--radix-select-trigger-width)]"
@@ -92,7 +92,7 @@
                 </div>
               </div>
               <Badge :variant="selectedEndpoint?.id === endpoint.id ? 'success' : 'outline'">
-                {{ selectedEndpoint?.id === endpoint.id ? '已选择' : (endpoint.is_active ? '可用' : '已禁用') }}
+                {{ selectedEndpoint?.id === endpoint.id ? t('modelTest.selected') : (endpoint.is_active ? t('modelTest.enabled') : t('modelTest.disabled')) }}
               </Badge>
             </div>
           </button>
@@ -103,14 +103,14 @@
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-3">
             <div class="text-sm font-medium">
-              测试请求头
+              {{ t('modelTest.requestHeaders') }}
             </div>
             <div class="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 rounded-lg text-muted-foreground"
-                title="格式化请求头 JSON"
+                :title="t('modelTest.formatHeaders')"
                 @click="formatRequestHeadersDraft"
               >
                 <Code2 class="h-4 w-4" />
@@ -119,7 +119,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 rounded-lg text-muted-foreground"
-                title="重置请求头"
+                :title="t('modelTest.resetHeaders')"
                 @click="resetRequestHeadersDraft"
               >
                 <RotateCcw class="h-4 w-4" />
@@ -129,7 +129,7 @@
           <Textarea
             :model-value="requestHeadersDraft"
             class="min-h-[220px] font-mono text-xs"
-            placeholder="输入 JSON 请求头"
+            :placeholder="t('modelTest.headersPlaceholder')"
             @update:model-value="emit('update:requestHeadersDraft', $event)"
           />
           <div
@@ -139,21 +139,21 @@
             {{ requestHeadersError }}
           </div>
           <div class="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-            这里的请求头会合并到测试请求里；鉴权头和必要系统头仍由后端按端点规则补齐。
+              {{ t('modelTest.headersHint') }}
           </div>
         </div>
 
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-3">
             <div class="text-sm font-medium">
-              测试请求体
+              {{ t('modelTest.requestBody') }}
             </div>
             <div class="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 rounded-lg text-muted-foreground"
-                title="格式化请求体 JSON"
+                :title="t('modelTest.formatBody')"
                 @click="formatRequestBodyDraft"
               >
                 <Code2 class="h-4 w-4" />
@@ -162,7 +162,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-8 w-8 rounded-lg text-muted-foreground"
-                title="重置请求体"
+                :title="t('modelTest.resetBody')"
                 @click="resetRequestBodyDraft"
               >
                 <RotateCcw class="h-4 w-4" />
@@ -172,7 +172,7 @@
           <Textarea
             :model-value="requestBodyDraft"
             class="min-h-[220px] font-mono text-xs"
-            placeholder="输入 JSON 请求体"
+            :placeholder="t('modelTest.bodyPlaceholder')"
             @update:model-value="emit('update:requestBodyDraft', $event)"
           />
           <div
@@ -182,7 +182,7 @@
             {{ requestBodyError }}
           </div>
           <div class="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-            请求体中的 model 会按当前编辑内容发送；未填写时使用当前测试模型，实际发送时会按端点格式转换并应用规则。
+            {{ t('modelTest.bodyHint') }}
           </div>
         </div>
       </div>
@@ -192,7 +192,7 @@
         :disabled="startDisabled"
         @click="emit('start')"
       >
-        开始测试
+        {{ t('modelTest.start') }}
       </Button>
     </div>
 
@@ -204,7 +204,7 @@
         <Loader2 class="h-8 w-8 animate-spin text-primary" />
         <div class="space-y-1">
           <p class="text-sm font-medium">
-            正在测试模型
+            {{ t('modelTest.testing') }}
           </p>
           <p class="text-xs text-muted-foreground">
             {{ selectingModelName || '-' }}
@@ -213,7 +213,7 @@
             v-if="selectedEndpoint"
             class="text-xs text-muted-foreground"
           >
-            端点：{{ formatApiFormat(selectedEndpoint.api_format) }} · {{ selectedEndpoint.base_url }}
+            {{ t('modelTest.endpointSummary', { format: formatApiFormat(selectedEndpoint.api_format), url: selectedEndpoint.base_url }) }}
           </p>
         </div>
       </div>
@@ -221,7 +221,7 @@
       <div class="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4">
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>实时进度</span>
+            <span>{{ t('modelTest.liveProgress') }}</span>
             <span>{{ liveProgressText }}</span>
           </div>
           <div class="h-2 overflow-hidden rounded-full bg-muted">
@@ -247,7 +247,7 @@
             v-else
             class="text-xs text-muted-foreground"
           >
-            正在准备测试请求
+              {{ t('modelTest.preparing') }}
           </div>
         </div>
 
@@ -268,7 +268,7 @@
           </div>
           <div class="rounded-md border border-border/60 bg-background/80 p-3 space-y-1">
             <div class="text-xs text-muted-foreground">
-              状态
+              {{ t('modelTest.status') }}
             </div>
             <div class="text-sm font-medium">
               {{ liveStatusTitle }}
@@ -286,7 +286,7 @@
           v-if="requestId"
           class="break-all text-[11px] text-muted-foreground"
         >
-          请求 ID：<code class="rounded bg-muted px-1 py-0.5">{{ requestId }}</code>
+          {{ t('modelTest.requestId') }}：<code class="rounded bg-muted px-1 py-0.5">{{ requestId }}</code>
         </div>
 
         <div
@@ -294,7 +294,7 @@
           class="space-y-2"
         >
           <div class="text-xs font-medium text-muted-foreground">
-            最近
+            {{ t('modelTest.latest') }}
           </div>
           <div class="space-y-2">
             <div
@@ -340,14 +340,14 @@
               :variant="result.success ? 'success' : 'destructive'"
               class="px-2 py-0.5"
             >
-              {{ result.success ? '测试成功' : '测试失败' }}
+              {{ result.success ? t('modelTest.success') : t('modelTest.failed') }}
             </Badge>
           </div>
           <div
             v-if="hasEffectiveModel"
             class="text-xs text-muted-foreground"
           >
-            请求模型：{{ resultModelTitle }}
+            {{ t('modelTest.requestModel', { model: resultModelTitle }) }}
           </div>
         </div>
 
@@ -362,7 +362,7 @@
           </div>
           <div class="rounded-md border border-border/60 bg-background/80 p-3 space-y-1">
             <div class="text-xs text-muted-foreground">
-              调度结果
+              {{ t('modelTest.routingResult') }}
             </div>
             <div class="text-sm font-medium">
               {{ resultDispatchTitle }}
@@ -370,7 +370,7 @@
           </div>
           <div class="rounded-md border border-border/60 bg-background/80 p-3 space-y-1">
             <div class="text-xs text-muted-foreground">
-              实际请求
+              {{ t('modelTest.actualRequest') }}
             </div>
             <div class="break-all text-sm font-medium">
               {{ resultModelTitle }}
@@ -397,13 +397,13 @@
         v-if="shouldCollapseAttempts"
         class="flex items-center justify-between gap-3 text-xs text-muted-foreground"
       >
-        <span>仅展示前 {{ visibleAttempts.length }} 条，共 {{ resultAttempts.length }} 条</span>
+        <span>{{ t('modelTest.visibleAttempts', { visible: visibleAttempts.length, total: resultAttempts.length }) }}</span>
         <Button
           variant="ghost"
           size="sm"
           @click="showAllAttempts = !showAllAttempts"
         >
-          {{ showAllAttempts ? '收起详情' : `展开全部 ${resultAttempts.length} 条` }}
+          {{ showAllAttempts ? t('modelTest.collapseDetails') : t('modelTest.expandAll', { count: resultAttempts.length }) }}
         </Button>
       </div>
 
@@ -494,13 +494,13 @@
                 Key
               </th>
               <th class="px-3 py-2 text-left font-medium">
-                状态
+                {{ t('modelTest.status') }}
               </th>
               <th class="px-3 py-2 text-right font-medium">
-                延迟
+                {{ t('modelTest.latency') }}
               </th>
               <th class="px-3 py-2 text-left font-medium">
-                详情
+                {{ t('modelTest.details') }}
               </th>
             </tr>
           </thead>
@@ -627,7 +627,7 @@
                 <div class="content-block rounded-md border overflow-hidden">
                   <div class="flex items-center justify-end gap-0.5 px-3 py-1 border-b bg-muted/40">
                     <button
-                      :title="inspectionExpandDepth === 0 ? '展开全部' : '收缩全部'"
+                      :title="inspectionExpandDepth === 0 ? t('modelTest.expandAllShort') : t('modelTest.collapseAll')"
                       class="p-1 rounded transition-colors text-muted-foreground hover:bg-muted"
                       @click="inspectionExpandDepth === 0 ? expandInspectionContent() : collapseInspectionContent()"
                     >
@@ -642,7 +642,7 @@
                     </button>
 
                     <button
-                      :title="inspectionCopiedStates[inspectionTab] ? '已复制' : '复制'"
+                      :title="inspectionCopiedStates[inspectionTab] ? t('modelTest.copied') : t('modelTest.copy')"
                       class="p-1 rounded transition-colors text-muted-foreground hover:bg-muted"
                       @click="copyInspectionContent(inspectionTab)"
                     >
@@ -663,7 +663,7 @@
                       view-mode="formatted"
                       :expand-depth="inspectionExpandDepth"
                       :is-dark="isDark"
-                      empty-message="无请求头数据"
+                      :empty-message="t('modelTest.noRequestHeaders')"
                     />
                   </TabsContent>
 
@@ -673,7 +673,7 @@
                       view-mode="formatted"
                       :expand-depth="inspectionExpandDepth"
                       :is-dark="isDark"
-                      empty-message="无请求体数据"
+                      :empty-message="t('modelTest.noRequestBody')"
                     />
                   </TabsContent>
 
@@ -683,7 +683,7 @@
                       view-mode="formatted"
                       :expand-depth="inspectionExpandDepth"
                       :is-dark="isDark"
-                      empty-message="无响应头数据"
+                      :empty-message="t('modelTest.noResponseHeaders')"
                     />
                   </TabsContent>
 
@@ -693,8 +693,8 @@
                       class="mb-3 rounded-md border border-border/60 bg-muted/20 p-3"
                     >
                       <div class="mb-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                        <span>图片预览</span>
-                        <span>{{ selectedInspectionImagePreviews.length }} 张</span>
+                        <span>{{ t('modelTest.imagePreview') }}</span>
+                        <span>{{ t('modelTest.imageCount', { count: selectedInspectionImagePreviews.length }) }}</span>
                       </div>
                       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         <button
@@ -723,7 +723,7 @@
                       view-mode="formatted"
                       :expand-depth="inspectionExpandDepth"
                       :is-dark="isDark"
-                      empty-message="无响应体数据"
+                      :empty-message="t('modelTest.noResponseBody')"
                     />
                   </TabsContent>
                 </div>
@@ -739,14 +739,14 @@
         variant="outline"
         @click="emit('close')"
       >
-        {{ showSetup ? '取消' : '关闭' }}
+        {{ showSetup ? t('modelTest.cancel') : t('modelTest.close') }}
       </Button>
       <Button
         v-if="showResult"
         variant="outline"
         @click="emit('back')"
       >
-        返回
+          {{ t('modelTest.back') }}
       </Button>
     </template>
   </Dialog>
@@ -760,7 +760,7 @@
     <template #header>
       <div class="border-b border-border px-6 py-4">
         <div class="text-lg font-semibold text-foreground leading-tight">
-          {{ activeImagePreview?.label || '图片预览' }}
+          {{ activeImagePreview?.label || t('modelTest.imagePreview') }}
         </div>
       </div>
     </template>
@@ -779,7 +779,7 @@
         variant="outline"
         @click="activeImagePreview = null"
       >
-        关闭
+        {{ t('modelTest.close') }}
       </Button>
     </template>
   </Dialog>
@@ -787,6 +787,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Check, Code2, Copy, Loader2, Maximize2, Minimize2, RotateCcw } from 'lucide-vue-next'
 import {
   Badge,
@@ -814,6 +815,8 @@ import {
   formatModelTestDiagnostic,
 } from './model-test-request'
 import type { ModelTestImagePreview } from './model-test-request'
+
+const { t } = useI18n()
 
 type JsonContentData = Record<string, unknown> | unknown[] | string | number | boolean | null | undefined
 
@@ -894,16 +897,16 @@ function handleModelMappingValueChange(value: string) {
 }
 
 const dialogTitle = computed(() => {
-  if (props.result) return '模型测试结果'
-  return '模型测试'
+  if (props.result) return t('modelTest.resultTitle')
+  return t('modelTest.title')
 })
 
 const dialogDescription = computed(() => {
   if (showSetup.value && props.selectingModelName) {
-    return `为 ${props.selectingModelName} 选择端点并编辑测试请求头与请求体`
+    return t('modelTest.setupDescription', { model: props.selectingModelName })
   }
   if (props.testing && props.selectedEndpoint) {
-    return `正在通过 ${formatApiFormat(props.selectedEndpoint.api_format)} 测试 ${props.selectingModelName || '模型'}`
+    return t('modelTest.testingDescription', { format: formatApiFormat(props.selectedEndpoint.api_format), model: props.selectingModelName || t('modelTest.model') })
   }
   return ''
 })
@@ -918,7 +921,7 @@ const hasEffectiveModel = computed(() => {
 })
 
 const resultEmptyMessage = computed(() => {
-  if (!props.result) return '没有可用的候选进行测试'
+  if (!props.result) return t('modelTest.noCandidates')
   if (typeof props.result.error === 'string' && props.result.error.trim()) {
     return formatModelTestDiagnostic(props.result.error)
   }
@@ -926,7 +929,7 @@ const resultEmptyMessage = computed(() => {
   if (typeof rawResult.message === 'string' && rawResult.message.trim()) {
     return formatModelTestDiagnostic(rawResult.message)
   }
-  return '没有可用的候选进行测试'
+  return t('modelTest.noCandidates')
 })
 const showAllAttempts = ref(false)
 const inspectionTab = ref<'request-headers' | 'request-body' | 'response-headers' | 'response-body'>('request-body')
@@ -1116,41 +1119,41 @@ const testScenario = computed<'pool' | 'custom' | 'direct' | 'provider'>(() => {
 })
 
 const candidateNoun = computed(() => {
-  if (testScenario.value === 'pool') return '账号'
+  if (testScenario.value === 'pool') return t('modelTest.account')
   if (testScenario.value === 'custom') return 'Key'
-  return '候选'
+  return t('modelTest.candidate')
 })
 
 const liveEntityLabel = computed(() => {
-  if (testScenario.value === 'pool') return '当前账号'
-  if (testScenario.value === 'custom') return '当前 Key'
-  return '当前候选'
+  if (testScenario.value === 'pool') return t('modelTest.currentAccount')
+  if (testScenario.value === 'custom') return t('modelTest.currentKey')
+  return t('modelTest.currentCandidate')
 })
 
 const resultEntityLabel = computed(() => {
-  if (testScenario.value === 'pool') return '命中账号'
-  if (testScenario.value === 'custom') return '命中 Key'
-  return '命中候选'
+  if (testScenario.value === 'pool') return t('modelTest.hitAccount')
+  if (testScenario.value === 'custom') return t('modelTest.hitKey')
+  return t('modelTest.hitCandidate')
 })
 
 function buildSummaryItems(summary: SummaryView): SummaryBadgeItem[] {
   const totalLabel = testScenario.value === 'pool'
-    ? '候选账号'
+    ? t('modelTest.candidateAccount')
     : testScenario.value === 'custom'
-      ? '候选 Key'
-      : '候选'
+      ? t('modelTest.candidateKey')
+      : t('modelTest.candidate')
   const successLabel = testScenario.value === 'pool'
-    ? '命中账号'
+    ? t('modelTest.hitAccount')
     : testScenario.value === 'custom'
-      ? '命中 Key'
-      : '成功'
-  const failedLabel = testScenario.value === 'pool' ? '失败切换' : '失败'
-  const skippedLabel = testScenario.value === 'pool' ? '调度跳过' : '跳过'
-  const unusedLabel = testScenario.value === 'pool' ? '成功后未执行' : '未执行'
+      ? t('modelTest.hitKey')
+      : t('modelTest.success')
+  const failedLabel = testScenario.value === 'pool' ? t('modelTest.failover') : t('modelTest.failed')
+  const skippedLabel = testScenario.value === 'pool' ? t('modelTest.schedulingSkipped') : t('modelTest.skipped')
+  const unusedLabel = testScenario.value === 'pool' ? t('modelTest.unusedAfterSuccess') : t('modelTest.unused')
 
   return [
     { key: 'total', label: totalLabel, value: summary.total_candidates, variant: 'secondary' },
-    { key: 'attempted', label: '已尝试', value: summary.attempted, variant: 'outline' },
+    { key: 'attempted', label: t('modelTest.attempted'), value: summary.attempted, variant: 'outline' },
     { key: 'success', label: successLabel, value: summary.success, variant: 'success' },
     { key: 'failed', label: failedLabel, value: summary.failed, variant: 'destructive' },
     { key: 'skipped', label: skippedLabel, value: summary.skipped, variant: 'secondary' },
@@ -1162,7 +1165,7 @@ const liveSummaryItems = computed(() => buildSummaryItems(liveTraceSummary.value
 const resultSummaryItems = computed(() => buildSummaryItems(resultSummary.value))
 
 const liveProgressText = computed(() => {
-  if (liveTraceSummary.value.total_candidates <= 0) return '准备中'
+  if (liveTraceSummary.value.total_candidates <= 0) return t('modelTest.preparingShort')
   return `${liveTraceSummary.value.completed}/${liveTraceSummary.value.total_candidates}`
 })
 
@@ -1183,7 +1186,7 @@ const activeTraceCandidate = computed(() => {
 
 const liveAccountTitle = computed(() => {
   const candidate = activeTraceCandidate.value
-  if (!candidate) return '等待候选'
+  if (!candidate) return t('modelTest.waitingCandidate')
   return candidate.key_account_label || candidate.key_name || candidate.key_preview || '-'
 })
 
@@ -1199,15 +1202,15 @@ const liveAccountMeta = computed(() => {
 
 const liveStatusTitle = computed(() => {
   const candidate = activeTraceCandidate.value
-  if (!candidate) return '正在准备测试请求'
+  if (!candidate) return t('modelTest.preparing')
   if (candidate.status === 'pending' || candidate.status === 'streaming') {
-    return `正在请求 ${formatTraceCandidateIndex(candidate)}`
+    return t('modelTest.requestingCandidate', { candidate: formatTraceCandidateIndex(candidate) })
   }
   if (candidate.status === 'success') {
-    return `命中 ${formatTraceCandidateIndex(candidate)}`
+    return t('modelTest.hitCandidateIndex', { candidate: formatTraceCandidateIndex(candidate) })
   }
   if (candidate.status === 'unused') {
-    return '成功后未执行'
+    return t('modelTest.unusedAfterSuccess')
   }
   return statusLabel(candidate.status)
 })
@@ -1234,10 +1237,10 @@ const showDebugInspector = computed(() => {
 })
 
 const detailTabs = [
-  { name: 'request-headers', label: '请求头' },
-  { name: 'request-body', label: '请求体' },
-  { name: 'response-headers', label: '响应头' },
-  { name: 'response-body', label: '响应体' },
+  { name: 'request-headers', label: t('modelTest.requestHeadersShort') },
+  { name: 'request-body', label: t('modelTest.requestBodyShort') },
+  { name: 'response-headers', label: t('modelTest.responseHeaders') },
+  { name: 'response-body', label: t('modelTest.responseBody') },
 ] as const
 
 const selectedInspectionAttempt = computed(() => {
@@ -1264,13 +1267,13 @@ const resultWinningTitle = computed(() => {
   const summary = resultSummary.value
   const keyName = summary.winning_key_account_label || summary.winning_key_name || summary.winning_key_id
   if (keyName) return keyName
-  if (props.result?.success) return `已命中 ${candidateNoun.value}`
-  return `无${resultEntityLabel.value}`
+  if (props.result?.success) return t('modelTest.hitEntity', { entity: candidateNoun.value })
+  return t('modelTest.noEntity', { entity: resultEntityLabel.value })
 })
 
 const resultDispatchTitle = computed(() => {
   const summary = resultSummary.value
-  return `${summary.attempted}/${summary.total_candidates} 已尝试`
+  return t('modelTest.attemptedSummary', { attempted: summary.attempted, total: summary.total_candidates })
 })
 
 const attemptedEffectiveModelTitle = computed(() => {
@@ -1321,15 +1324,15 @@ function statusVariant(status: string) {
 }
 
 function statusLabel(status: string) {
-  if (status === 'success') return '成功'
-  if (status === 'failed') return '失败'
-  if (status === 'skipped') return '跳过'
-  if (status === 'pending') return '等待中'
-  if (status === 'streaming') return '测试中'
-  if (status === 'cancelled') return '已取消'
-  if (status === 'stream_interrupted') return '流中断'
-  if (status === 'available') return '待请求'
-  if (status === 'unused') return '未执行'
+  if (status === 'success') return t('modelTest.success')
+  if (status === 'failed') return t('modelTest.failed')
+  if (status === 'skipped') return t('modelTest.skipped')
+  if (status === 'pending') return t('modelTest.pending')
+  if (status === 'streaming') return t('modelTest.testingShort')
+  if (status === 'cancelled') return t('modelTest.cancelled')
+  if (status === 'stream_interrupted') return t('modelTest.streamInterrupted')
+  if (status === 'available') return t('modelTest.available')
+  if (status === 'unused') return t('modelTest.unused')
   return status
 }
 
@@ -1338,7 +1341,7 @@ function statusDisplay(item: { status: string; status_code?: number | null }): s
   const status = item.status
   if (!code) return statusLabel(status)
   if (status === 'failed' && code >= 200 && code < 300) {
-    return `${code} 体内错误`
+    return t('modelTest.bodyError', { code })
   }
   return String(code)
 }
@@ -1417,20 +1420,20 @@ function extractAttemptRequestModel(attempt: TestAttemptDetail): string | null {
 function traceCandidateDetail(candidate: CandidateRecord): string {
   if (candidate.skip_reason) return formatModelTestDiagnostic(candidate.skip_reason)
   if (candidate.error_message) return formatModelTestDiagnostic(candidate.error_message)
-  if (candidate.status === 'unused') return '成功后未请求'
-  if (candidate.status === 'available') return '待请求'
-  if (candidate.endpoint_name) return `端点：${formatApiFormat(candidate.endpoint_name)}`
+  if (candidate.status === 'unused') return t('modelTest.unusedAfterSuccess')
+  if (candidate.status === 'available') return t('modelTest.available')
+  if (candidate.endpoint_name) return t('modelTest.endpointLabel', { endpoint: formatApiFormat(candidate.endpoint_name) })
   return ''
 }
 
 function attemptDetail(attempt: TestAttemptDetail): string {
-  if (attempt.status === 'cancelled') return '测试已取消'
-  if (attempt.status === 'unused') return '成功后未请求'
+  if (attempt.status === 'cancelled') return t('modelTest.testCancelled')
+  if (attempt.status === 'unused') return t('modelTest.unusedAfterSuccess')
   if (attempt.skip_reason) return formatModelTestDiagnostic(attempt.skip_reason)
   if (attempt.error_message) return formatModelTestDiagnostic(attempt.error_message)
   if (attempt.status === 'success') {
     return extractModelTestResponsePreview(attempt.response_body)
-      ?? (attempt.effective_model ? `请求模型：${attempt.effective_model}` : attempt.endpoint_base_url)
+      ?? (attempt.effective_model ? t('modelTest.requestModel', { model: attempt.effective_model }) : attempt.endpoint_base_url)
   }
   return '-'
 }

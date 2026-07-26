@@ -1,7 +1,7 @@
 <template>
   <section class="rounded-lg border border-border bg-muted/30 p-3">
     <p class="mb-2 text-xs font-medium text-foreground">
-      演示账号
+      {{ t('authCommon.demoAccounts') }}
     </p>
     <div class="grid gap-2 sm:grid-cols-2">
       <button
@@ -12,7 +12,7 @@
         @click="$emit('fill', 'admin')"
       >
         <span class="demo-account__mark flex h-4 w-4 items-center justify-center text-[10px] font-bold">A</span>
-        <span>管理员</span>
+        <span>{{ t('authCommon.admin') }}</span>
       </button>
       <button
         type="button"
@@ -22,13 +22,17 @@
         @click="$emit('fill', 'user')"
       >
         <span class="demo-account__mark flex h-4 w-4 items-center justify-center text-[10px] font-bold">U</span>
-        <span>普通用户</span>
+        <span>{{ t('authCommon.user') }}</span>
       </button>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 defineProps<{
   disabled?: boolean
 }>()

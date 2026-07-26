@@ -4,13 +4,13 @@
       <div>
         <div class="flex items-center gap-2">
           <h4 class="text-sm font-semibold">
-            节点数据
+            {{ t('proxyNodeData.nodeData') }}
           </h4>
           <Badge
             variant="outline"
             class="text-[10px] px-1.5 py-0"
           >
-            最近 24 小时
+            {{ t('proxyNodeData.last24h') }}
           </Badge>
         </div>
         <p class="text-xs text-muted-foreground mt-1">
@@ -28,7 +28,7 @@
           class="h-3.5 w-3.5 mr-1"
           :class="state?.loading ? 'animate-spin' : ''"
         />
-        刷新
+        {{ t('proxyNodeData.refresh') }}
       </Button>
     </div>
 
@@ -37,7 +37,7 @@
       class="py-8 flex items-center justify-center gap-2 text-sm text-muted-foreground"
     >
       <Loader2 class="h-4 w-4 animate-spin" />
-      加载节点数据...
+      {{ t('proxyNodeData.loading') }}
     </div>
 
     <div
@@ -81,13 +81,13 @@
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
               <h5 class="text-xs font-semibold">
-                在线率采样
+                {{ t('proxyNodeData.uptime') }}
               </h5>
               <p class="text-[11px] text-muted-foreground mt-0.5">
-                1h 桶，颜色随在线率和错误数变化
+                {{ t('proxyNodeData.uptimeHint') }}
               </p>
             </div>
-            <span class="text-[11px] text-muted-foreground tabular-nums shrink-0">{{ formatNumber(bucketItems.length) }} 点</span>
+            <span class="text-[11px] text-muted-foreground tabular-nums shrink-0">{{ formatNumber(bucketItems.length) }} {{ t('proxyNodeData.point') }}</span>
           </div>
           <div
             v-if="bucketItems.length > 0"
@@ -105,14 +105,14 @@
             v-else
             class="h-20 rounded-md bg-muted/30 flex items-center justify-center text-xs text-muted-foreground"
           >
-            暂无采样数据
+            {{ t('proxyNodeData.noSamples') }}
           </div>
         </section>
 
         <section class="rounded-lg border border-border/50 bg-background/70 p-3 min-w-0">
           <div class="flex items-center justify-between gap-2 mb-3">
             <h5 class="text-xs font-semibold">
-              最近事件
+              {{ t('proxyNodeData.recentEvents') }}
             </h5>
             <span class="text-[11px] text-muted-foreground tabular-nums">{{ recentEvents.length }}/8</span>
           </div>
@@ -120,7 +120,7 @@
             v-if="recentEvents.length === 0"
             class="h-20 rounded-md bg-muted/30 flex items-center justify-center text-xs text-muted-foreground"
           >
-            暂无关键事件
+            {{ t('proxyNodeData.noEvents') }}
           </div>
           <div
             v-else
@@ -150,7 +150,7 @@
       <div class="grid gap-4 lg:grid-cols-2">
         <section class="rounded-lg border border-border/50 bg-background/70 p-3 min-w-0">
           <h5 class="text-xs font-semibold mb-3">
-            硬件与资源
+              {{ t('proxyNodeData.hardware') }}
           </h5>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
             <div
@@ -179,7 +179,7 @@
 
         <section class="rounded-lg border border-border/50 bg-background/70 p-3 min-w-0">
           <h5 class="text-xs font-semibold mb-3">
-            实时快照
+              {{ t('proxyNodeData.snapshot') }}
           </h5>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
             <div
@@ -199,7 +199,7 @@
 
         <section class="rounded-lg border border-border/50 bg-background/70 p-3 min-w-0">
           <h5 class="text-xs font-semibold mb-3">
-            隧道计数器
+              {{ t('proxyNodeData.tunnelCounters') }}
           </h5>
           <div
             v-if="tunnelMetrics"
@@ -222,7 +222,7 @@
             v-else
             class="rounded-md bg-muted/30 py-4 text-center text-xs text-muted-foreground"
           >
-            暂无隧道计数器
+            {{ t('proxyNodeData.noCounters') }}
           </div>
         </section>
       </div>
@@ -232,6 +232,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-vue-next'
 import { Badge, Button } from '@/components/ui'
 import type {
@@ -260,6 +261,7 @@ defineEmits<{
 }>()
 
 const detailNode = computed(() => props.state?.node ?? props.node)
+const { t } = useI18n()
 const metrics = computed(() => props.state?.metrics ?? null)
 const metricsSummary = computed(() => metrics.value?.summary ?? null)
 const bucketItems = computed(() => metrics.value?.items.slice(-24) ?? [])
@@ -270,9 +272,9 @@ const resourceUsage = computed(() => asRecord(metadata.value?.resource_usage))
 const tunnelMetrics = computed(() => asRecord(metadata.value?.tunnel_metrics))
 
 const loadedText = computed(() => {
-  if (props.state?.loading) return '正在刷新采样数据'
-  if (!props.state?.loadedAt) return '展开后自动读取 24 小时指标和最近关键事件'
-  return `数据刷新于 ${formatLoadedAt(props.state.loadedAt)}`
+  if (props.state?.loading) return t('proxyNodeData.loading')
+  if (!props.state?.loadedAt) return t('proxyNodeData.uptimeHint')
+  return `${t('proxyNodeData.refresh')} ${formatLoadedAt(props.state.loadedAt)}`
 })
 
 const summaryStats = computed(() => {
@@ -280,39 +282,39 @@ const summaryStats = computed(() => {
   const totalBytes = (summary?.ws_in_bytes_delta ?? 0) + (summary?.ws_out_bytes_delta ?? 0)
   return [
     {
-      label: '在线率',
+      label: t('proxyNodeData.metrics.uptime'),
       value: formatPercent(summary?.uptime_ratio ?? null),
-      hint: `${formatNumber(summary?.uptime_samples ?? 0)}/${formatNumber(summary?.samples ?? 0)} 样本`,
+      hint: `${formatNumber(summary?.uptime_samples ?? 0)}/${formatNumber(summary?.samples ?? 0)} ${t('proxyNodeData.metrics.samples')}`,
       tone: uptimeTone(summary?.uptime_ratio ?? null),
     },
     {
-      label: '心跳 RTT',
+      label: t('proxyNodeData.metrics.heartbeatRtt'),
       value: formatMs(summary?.heartbeat_rtt_ms_avg ?? null),
-      hint: `峰值 ${formatMs(summary?.heartbeat_rtt_ms_max ?? null)}`,
+      hint: `${t('proxyNodeData.metrics.peak')} ${formatMs(summary?.heartbeat_rtt_ms_max ?? null)}`,
       tone: '',
     },
     {
-      label: '并发峰值',
+      label: t('proxyNodeData.metrics.peakConcurrency'),
       value: formatNumber(summary?.active_connections_max ?? 0),
-      hint: `均值 ${formatDecimal(summary?.active_connections_avg ?? null)}`,
+      hint: `${t('proxyNodeData.metrics.average')} ${formatDecimal(summary?.active_connections_avg ?? null)}`,
       tone: '',
     },
     {
-      label: '断开',
+      label: t('proxyNodeData.metrics.disconnects'),
       value: formatNumber(summary?.disconnects_delta ?? 0),
       hint: '24h delta',
       tone: (summary?.disconnects_delta ?? 0) > 0 ? 'text-yellow-600 dark:text-yellow-400' : '',
     },
     {
-      label: '连接错误',
+      label: t('proxyNodeData.metrics.connectionErrors'),
       value: formatNumber(summary?.connect_errors_delta ?? 0),
       hint: '24h delta',
       tone: (summary?.connect_errors_delta ?? 0) > 0 ? 'text-destructive' : '',
     },
     {
-      label: 'WS 流量',
+      label: t('proxyNodeData.metrics.wsTraffic'),
       value: formatBytes(totalBytes),
-      hint: `${formatNumber((summary?.ws_in_frames_delta ?? 0) + (summary?.ws_out_frames_delta ?? 0))} 帧`,
+      hint: `${formatNumber((summary?.ws_in_frames_delta ?? 0) + (summary?.ws_out_frames_delta ?? 0))} ${t('proxyNodeData.metrics.frames')}`,
       tone: '',
     },
   ]
@@ -321,15 +323,15 @@ const summaryStats = computed(() => {
 const snapshotItems = computed(() => {
   const node = detailNode.value
   return [
-    { label: '当前并发', value: formatNumber(node.active_connections ?? 0) },
-    { label: '心跳间隔', value: `${node.heartbeat_interval ?? '-'}s` },
-    { label: '最后心跳', value: formatTime(node.last_heartbeat_at) },
-    { label: '隧道连接', value: node.tunnel_connected ? '已连接' : '未连接' },
-    { label: '连接时间', value: formatTime(node.tunnel_connected_at) },
-    { label: '容量估算', value: node.estimated_max_concurrency == null ? '-' : formatNumber(node.estimated_max_concurrency) },
-    { label: '配置版本', value: `v${node.config_version}` },
-    { label: '注册来源', value: node.registered_by || '-' },
-    { label: '代理版本', value: stringField(metadata.value, 'version') || '-' },
+    { label: t('proxyNodeData.details.activeConnections'), value: formatNumber(node.active_connections ?? 0) },
+    { label: t('proxyNodeData.details.heartbeatInterval'), value: `${node.heartbeat_interval ?? '-'}s` },
+    { label: t('proxyNodeData.details.lastHeartbeat'), value: formatTime(node.last_heartbeat_at) },
+    { label: t('proxyNodeData.details.tunnelConnection'), value: node.tunnel_connected ? t('proxyNodeData.details.connected') : t('proxyNodeData.details.disconnected') },
+    { label: t('proxyNodeData.details.connectionTime'), value: formatTime(node.tunnel_connected_at) },
+    { label: t('proxyNodeData.details.capacityEstimate'), value: node.estimated_max_concurrency == null ? '-' : formatNumber(node.estimated_max_concurrency) },
+    { label: t('proxyNodeData.details.configVersion'), value: `v${node.config_version}` },
+    { label: t('proxyNodeData.details.registeredBy'), value: node.registered_by || '-' },
+    { label: t('proxyNodeData.details.proxyVersion'), value: stringField(metadata.value, 'version') || '-' },
   ]
 })
 
@@ -349,13 +351,13 @@ const resourceItems = computed(() => {
   const cpuCores = numberField(hardware, 'cpu_cores')
   return [
     {
-      label: '系统 CPU',
+      label: t('proxyNodeData.resources.systemCpu'),
       value: formatUsagePercent(systemCpu),
-      hint: '主机整体',
+      hint: t('proxyNodeData.resources.hostOverall'),
       tone: usageTone(systemCpu, 70, 90),
     },
     {
-      label: '系统内存',
+      label: t('proxyNodeData.resources.systemMemory'),
       value: formatUsagePercent(memoryUsedPercent),
       hint: memoryUsedBytes == null || memoryTotalBytes == null
         ? ''
@@ -365,67 +367,67 @@ const resourceItems = computed(() => {
     {
       label: 'Proxy CPU',
       value: formatUsagePercent(processCpu),
-      hint: '当前进程',
+      hint: t('proxyNodeData.resources.currentProcess'),
       tone: usageTone(processCpu, 70, 90),
     },
     {
-      label: 'Proxy 内存',
+      label: t('proxyNodeData.resources.proxyMemory'),
       value: processMemoryBytes == null ? '-' : formatBytes(processMemoryBytes),
       hint: processMemoryPercent == null ? '' : formatUsagePercent(processMemoryPercent),
       tone: usageTone(processMemoryPercent, 5, 15),
     },
     {
-      label: '负载',
+      label: t('proxyNodeData.resources.load'),
       value: formatLoadAverage(load1, load5, load15),
-      hint: cpuCores == null ? '1/5/15m' : `${formatNumber(cpuCores)} 核`,
+      hint: cpuCores == null ? '1/5/15m' : `${formatNumber(cpuCores)} ${t('proxyNodeData.resources.cores')}`,
       tone: loadTone(load1, cpuCores),
     },
     {
-      label: '运行时间',
+      label: t('proxyNodeData.resources.uptime'),
       value: formatDurationSeconds(numberField(resource, 'process_uptime_secs')),
-      hint: 'proxy 进程',
+      hint: t('proxyNodeData.resources.proxyProcess'),
       tone: '',
     },
     {
-      label: 'CPU 核心',
+      label: t('proxyNodeData.resources.cpuCores'),
       value: cpuCores == null ? '-' : formatNumber(cpuCores),
       hint: stringField(hardware, 'os_info') || '',
       tone: '',
     },
     {
-      label: '物理内存',
+      label: t('proxyNodeData.resources.physicalMemory'),
       value: memoryTotalBytes == null ? '-' : formatBytes(memoryTotalBytes),
-      hint: '启动采集',
+      hint: t('proxyNodeData.resources.collectionStarted'),
       tone: '',
     },
     {
-      label: 'FD 限制',
+      label: t('proxyNodeData.resources.fdLimit'),
       value: formatOptionalNumber(numberField(hardware, 'fd_limit')),
       hint: detailNode.value.estimated_max_concurrency == null
         ? ''
-        : `容量 ${formatNumber(detailNode.value.estimated_max_concurrency)}`,
+        : t('proxyNodeDiagnostics.capacity', { value: formatNumber(detailNode.value.estimated_max_concurrency) }),
       tone: '',
     },
   ]
 })
 
 const tunnelCounterItems = computed(() => [
-  { label: '建连尝试', value: formatTunnelNumber('connect_attempts') },
-  { label: '建连成功', value: formatTunnelNumber('connect_successes') },
-  { label: '建连错误', value: formatTunnelNumber('connect_errors') },
-  { label: '断开次数', value: formatTunnelNumber('disconnects') },
-  { label: '最近连上', value: formatUnixSecs(numberField(tunnelMetrics.value, 'last_connected_at_unix_secs')) },
-  { label: '最近断开', value: formatUnixSecs(numberField(tunnelMetrics.value, 'last_disconnected_at_unix_secs')) },
-  { label: '最近在线', value: formatDurationMs(numberField(tunnelMetrics.value, 'last_connected_duration_ms')) },
-  { label: '累计在线', value: formatDurationMs(numberField(tunnelMetrics.value, 'connected_duration_total_ms')) },
-  { label: '心跳发送', value: formatTunnelNumber('heartbeat_sent') },
-  { label: '心跳确认', value: formatTunnelNumber('heartbeat_ack') },
-  { label: '最近 RTT', value: formatMs(numberField(tunnelMetrics.value, 'heartbeat_rtt_last_ms')) },
-  { label: '平均 RTT', value: formatMs(numberField(tunnelMetrics.value, 'heartbeat_rtt_avg_ms')) },
-  { label: 'WS 入站', value: formatBytes(numberField(tunnelMetrics.value, 'ws_in_bytes') ?? 0) },
-  { label: 'WS 出站', value: formatBytes(numberField(tunnelMetrics.value, 'ws_out_bytes') ?? 0) },
-  { label: '入站帧', value: formatTunnelNumber('ws_in_frames') },
-  { label: '出站帧', value: formatTunnelNumber('ws_out_frames') },
+  { label: t('proxyNodeDiagnostics.counters.connectAttempts'), value: formatTunnelNumber('connect_attempts') },
+  { label: t('proxyNodeDiagnostics.counters.connectSuccesses'), value: formatTunnelNumber('connect_successes') },
+  { label: t('proxyNodeDiagnostics.counters.connectErrors'), value: formatTunnelNumber('connect_errors') },
+  { label: t('proxyNodeDiagnostics.counters.disconnects'), value: formatTunnelNumber('disconnects') },
+  { label: t('proxyNodeDiagnostics.counters.lastConnected'), value: formatUnixSecs(numberField(tunnelMetrics.value, 'last_connected_at_unix_secs')) },
+  { label: t('proxyNodeDiagnostics.counters.lastDisconnected'), value: formatUnixSecs(numberField(tunnelMetrics.value, 'last_disconnected_at_unix_secs')) },
+  { label: t('proxyNodeDiagnostics.counters.lastOnline'), value: formatDurationMs(numberField(tunnelMetrics.value, 'last_connected_duration_ms')) },
+  { label: t('proxyNodeDiagnostics.counters.totalOnline'), value: formatDurationMs(numberField(tunnelMetrics.value, 'connected_duration_total_ms')) },
+  { label: t('proxyNodeDiagnostics.counters.heartbeatSent'), value: formatTunnelNumber('heartbeat_sent') },
+  { label: t('proxyNodeDiagnostics.counters.heartbeatAck'), value: formatTunnelNumber('heartbeat_ack') },
+  { label: t('proxyNodeDiagnostics.counters.lastRtt'), value: formatMs(numberField(tunnelMetrics.value, 'heartbeat_rtt_last_ms')) },
+  { label: t('proxyNodeDiagnostics.counters.averageRtt'), value: formatMs(numberField(tunnelMetrics.value, 'heartbeat_rtt_avg_ms')) },
+  { label: t('proxyNodeDiagnostics.counters.wsIn'), value: formatBytes(numberField(tunnelMetrics.value, 'ws_in_bytes') ?? 0) },
+  { label: t('proxyNodeDiagnostics.counters.wsOut'), value: formatBytes(numberField(tunnelMetrics.value, 'ws_out_bytes') ?? 0) },
+  { label: t('proxyNodeDiagnostics.counters.inFrames'), value: formatTunnelNumber('ws_in_frames') },
+  { label: t('proxyNodeDiagnostics.counters.outFrames'), value: formatTunnelNumber('ws_out_frames') },
 ])
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -561,9 +563,9 @@ function formatTime(iso: string | null) {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '-'
   const diff = (Date.now() - date.getTime()) / 1000
-  if (diff >= 0 && diff < 60) return '刚刚'
-  if (diff >= 0 && diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-  if (diff >= 0 && diff < 86400) return `${Math.floor(diff / 3600)}小时前`
+  if (diff >= 0 && diff < 60) return t('proxyNodeDiagnostics.relative.justNow')
+  if (diff >= 0 && diff < 3600) return t('proxyNodeDiagnostics.relative.minutes', { count: Math.floor(diff / 60) })
+  if (diff >= 0 && diff < 86400) return t('proxyNodeDiagnostics.relative.hours', { count: Math.floor(diff / 3600) })
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
@@ -594,10 +596,10 @@ function bucketBarColor(bucket: ProxyNodeMetricsBucket) {
 function bucketTitle(bucket: ProxyNodeMetricsBucket) {
   return [
     formatBucketTime(bucket.bucket_start),
-    `在线率 ${formatPercent(bucket.uptime_ratio)}`,
-    `RTT ${formatMs(bucket.heartbeat_rtt_ms_avg)}`,
-    `断开 ${formatNumber(bucket.disconnects_delta)}`,
-    `错误 ${formatNumber(bucket.connect_errors_delta + bucket.error_events_delta)}`,
+    t('proxyNodeDiagnostics.bucket.uptime', { value: formatPercent(bucket.uptime_ratio) }),
+    t('proxyNodeDiagnostics.bucket.rtt', { value: formatMs(bucket.heartbeat_rtt_ms_avg) }),
+    t('proxyNodeDiagnostics.bucket.disconnects', { value: formatNumber(bucket.disconnects_delta) }),
+    t('proxyNodeDiagnostics.bucket.errors', { value: formatNumber(bucket.connect_errors_delta + bucket.error_events_delta) }),
   ].join('，')
 }
 
@@ -617,10 +619,10 @@ function uptimeTone(value: number | null) {
 
 function eventTypeLabel(type: string) {
   switch (type) {
-    case 'connected': return '连接'
-    case 'disconnected': return '断开'
-    case 'error': return '错误'
-    case 'tunnel_err': return '隧道错误'
+    case 'connected': return t('proxyNodeDiagnostics.event.connected')
+    case 'disconnected': return t('proxyNodeDiagnostics.event.disconnected')
+    case 'error': return t('proxyNodeDiagnostics.event.error')
+    case 'tunnel_err': return t('proxyNodeDiagnostics.event.tunnelError')
     default: return type
   }
 }
@@ -653,7 +655,7 @@ function eventTooltip(event: ProxyNodeEvent) {
   const parts = [eventDetail(event)]
   const category = stringField(metadata, 'category')
   const action = (category ? tunnelErrorAction(category) : '') || stringField(metadata, 'operator_action')
-  if (action) parts.push(`建议：${action}`)
+  if (action) parts.push(t('proxyNodeDiagnostics.event.advice', { value: action }))
   const component = stringField(metadata, 'component')
   const severity = stringField(metadata, 'severity')
   if (component || severity) parts.push([component, severity].filter(Boolean).join(' / '))
@@ -661,40 +663,12 @@ function eventTooltip(event: ProxyNodeEvent) {
 }
 
 function tunnelErrorSummary(category: string) {
-  switch (category) {
-    case 'stale_timeout': return '超时未收到隧道入站帧'
-    case 'ws_write_error': return 'WebSocket 写入失败，对端重置或关闭'
-    case 'ws_ping_error': return 'WebSocket 保活 Ping 发送失败'
-    case 'ws_read_error': return 'WebSocket 读取失败'
-    case 'tunnel_connect_error': return '隧道建连失败'
-    case 'frame_decode_error': return '隧道帧解析失败'
-    case 'stream_dispatch_timeout': return '请求流分发超时'
-    case 'heartbeat_ack_empty': return '心跳确认为空'
-    case 'heartbeat_ack_parse': return '心跳确认解析失败'
-    case 'writer_task_panic': return '隧道写任务异常退出'
-    case 'writer_task_cancelled': return '隧道写任务被取消'
-    case 'dispatcher_error': return '隧道分发器错误'
-    default: return ''
-  }
+  const value = t(`proxyNodeDiagnostics.errors.${category}`)
+  return value === `proxyNodeDiagnostics.errors.${category}` ? '' : value
 }
 
 function tunnelErrorAction(category: string) {
-  switch (category) {
-    case 'stale_timeout': return '检查 gateway/反向代理 idle timeout、跨境链路抖动和 ping/pong 是否可达；网络抖动大时可调高 stale timeout。'
-    case 'ws_write_error': return '检查 gateway 是否重启、负载均衡/NAT/防火墙是否重置长连接，并确认 proxy 是否已自动重连。'
-    case 'ws_ping_error': return '检查中间代理是否清理空闲 WebSocket，或对端是否提前关闭连接。'
-    case 'ws_read_error': return '对照同一时间的 gateway 日志和网络监控，确认是否存在链路中断。'
-    case 'tunnel_connect_error': return '检查 Niffler 地址、DNS、TLS、管理 token，以及 AETHER_TUNNEL_AETHER_OUTBOUND_PROXY_URL 配置。'
-    case 'frame_decode_error': return '检查 proxy/gateway 版本兼容性，确认中间层没有改写 WebSocket 二进制帧。'
-    case 'stream_dispatch_timeout': return '检查 proxy CPU/内存、并发上限和上游 provider 慢请求。'
-    case 'heartbeat_ack_empty':
-    case 'heartbeat_ack_parse':
-      return '检查 gateway 心跳处理日志和 proxy/gateway 版本兼容性。'
-    case 'writer_task_panic':
-    case 'writer_task_cancelled':
-      return '查看此前一条写入或 ping 错误，确认隧道重连循环仍在运行。'
-    case 'dispatcher_error': return '检查同一时间的请求流和 gateway tunnel 日志。'
-    default: return ''
-  }
+  const value = t(`proxyNodeDiagnostics.actions.${category}`)
+  return value === `proxyNodeDiagnostics.actions.${category}` ? '' : value
 }
 </script>

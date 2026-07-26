@@ -3,12 +3,12 @@
     <Brain
       v-if="showBadge('thinking') && stats.hasThinking"
       class="w-3.5 h-3.5 text-muted-foreground"
-      title="包含思考过程"
+      :title="t('turnBadges.thinking')"
     />
     <Wrench
       v-if="showBadge('tool') && stats.hasToolUse"
       class="w-3.5 h-3.5 text-muted-foreground"
-      title="包含工具调用"
+      :title="t('turnBadges.tool')"
     />
     <span
       v-if="showBadge('tool') && stats.toolCount > 1"
@@ -17,19 +17,22 @@
     <ImageIcon
       v-if="showBadge('image') && stats.hasImage"
       class="w-3.5 h-3.5 text-muted-foreground"
-      title="包含图片"
+      :title="t('turnBadges.image')"
     />
     <AlertCircle
       v-if="showBadge('error') && stats.hasError"
       class="w-3.5 h-3.5 text-muted-foreground"
-      title="包含错误"
+      :title="t('turnBadges.error')"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Brain, Wrench, Image as ImageIcon, AlertCircle } from 'lucide-vue-next'
 import type { TurnStats } from '../../conversation/types'
+
+const { t } = useI18n()
 
 type BadgeType = 'thinking' | 'tool' | 'image' | 'error'
 

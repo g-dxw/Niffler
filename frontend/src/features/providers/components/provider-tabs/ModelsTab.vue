@@ -4,7 +4,7 @@
     <div class="p-4 border-b border-border/60">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold flex items-center gap-2 shrink-0">
-          模型列表
+          {{ t('providerModelsTab.title') }}
         </h3>
         <div class="flex items-center justify-end gap-2 flex-wrap">
           <Button
@@ -14,7 +14,7 @@
             @click="openUpstreamImportDialog"
           >
             <RefreshCw class="w-3.5 h-3.5 mr-1.5" />
-            从上游获取
+            {{ t('providerModelsTab.fetchUpstream') }}
           </Button>
           <Button
             variant="outline"
@@ -23,7 +23,7 @@
             @click="openBatchAssignDialog"
           >
             <Layers class="w-3.5 h-3.5 mr-1.5" />
-            关联已有模型
+            {{ t('providerModelsTab.linkExisting') }}
           </Button>
         </div>
       </div>
@@ -76,7 +76,7 @@
                     <span class="font-mono truncate">{{ model.provider_model_name }}</span>
                     <button
                       class="p-0.5 hover:bg-muted rounded transition-colors shrink-0"
-                      title="复制模型 ID"
+                      :title="t('providerModelsTab.copyModelId')"
                       @click.stop="copyModelId(model.provider_model_name)"
                     >
                       <Copy class="w-3 h-3" />
@@ -92,34 +92,34 @@
               >
                 <!-- 按 Token 计费 -->
                 <template v-if="hasTokenPricing(model)">
-                  <span class="text-muted-foreground text-right">入/出:</span>
+                  <span class="text-muted-foreground text-right">{{ t('providerModelsTab.inputOutput') }}</span>
                   <span class="font-mono font-semibold">
                     ${{ formatPrice(model.effective_input_price) }}/${{ formatPrice(model.effective_output_price) }}
                   </span>
                 </template>
                 <template v-if="getEffectiveCachePrice(model, 'creation') > 0 || getEffectiveCachePrice(model, 'read') > 0">
-                  <span class="text-muted-foreground text-right">{{ get1hCachePrice(model) > 0 ? '5min 缓存:' : '缓存:' }}</span>
+                  <span class="text-muted-foreground text-right">{{ get1hCachePrice(model) > 0 ? t('providerModelsTab.cache5m') : t('providerModelsTab.cache') }}</span>
                   <span class="font-mono font-semibold">
                     ${{ formatPrice(getEffectiveCachePrice(model, 'creation')) }}/${{ formatPrice(getEffectiveCachePrice(model, 'read')) }}
                   </span>
                 </template>
                 <!-- 1h 缓存价格 -->
                 <template v-if="get1hCachePrice(model) > 0">
-                  <span class="text-muted-foreground text-right">1h 缓存创建:</span>
+                  <span class="text-muted-foreground text-right">{{ t('providerModelsTab.cache1h') }}</span>
                   <span class="font-mono font-semibold">
                     ${{ formatPrice(get1hCachePrice(model)) }}
                   </span>
                 </template>
                 <!-- 按次计费 -->
                 <template v-if="hasRequestPricing(model)">
-                  <span class="text-muted-foreground text-right">按次:</span>
+                  <span class="text-muted-foreground text-right">{{ t('providerModelsTab.perRequest') }}</span>
                   <span class="font-mono font-semibold">
-                    ${{ formatPrice(model.effective_price_per_request ?? model.price_per_request) }}/次
+                    ${{ formatPrice(model.effective_price_per_request ?? model.price_per_request) }}{{ t('providerModelsTab.perRequestSuffix') }}
                   </span>
                 </template>
                 <!-- 视频费用计费 -->
                 <template v-if="hasVideoPricing(model)">
-                  <span class="text-muted-foreground text-right">视频:</span>
+                  <span class="text-muted-foreground text-right">{{ t('providerModelsTab.video') }}</span>
                   <span
                     class="font-mono font-semibold"
                     :title="getVideoPricingTooltip(model)"
@@ -140,7 +140,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-8 w-8"
-                  title="测试模型"
+                  :title="t('providerModelsTab.testModel')"
                   :disabled="modelTest.testing.value && pendingTestModel?.id === model.id"
                   @click="testModelConnection(model)"
                 >
@@ -157,7 +157,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-8 w-8"
-                  title="编辑"
+                  :title="t('providerModelsTab.edit')"
                   @click="editModel(model)"
                 >
                   <Edit class="w-3.5 h-3.5" />
@@ -167,7 +167,7 @@
                   size="icon"
                   class="h-8 w-8"
                   :disabled="togglingModelId === model.id"
-                  :title="model.is_active ? '点击停用' : '点击启用'"
+                  :title="model.is_active ? t('providerModelsTab.clickDisable') : t('providerModelsTab.clickEnable')"
                   @click="toggleModelActive(model)"
                 >
                   <Power class="w-3.5 h-3.5" />
@@ -182,7 +182,7 @@
         v-if="shouldPaginateModels"
         class="px-4 py-2 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground"
       >
-        <span>共 {{ sortedModels.length }} 个模型</span>
+        <span>{{ t('providerModelsTab.totalModels', { count: sortedModels.length }) }}</span>
         <div class="flex items-center gap-1.5">
           <Button
             variant="ghost"
@@ -214,10 +214,10 @@
     >
       <Box class="w-12 h-12 mx-auto mb-3 opacity-50" />
       <p class="text-sm">
-        暂无模型
+        {{ t('providerModelsTab.empty') }}
       </p>
       <p class="text-xs mt-1">
-        可以从上游获取模型，或关联已有模型
+        {{ t('providerModelsTab.emptyHint') }}
       </p>
     </div>
   </Card>
@@ -256,6 +256,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSmartPagination } from '@/composables/useSmartPagination'
 import { useModelTest } from '@/composables/useModelTest'
 import { Box, Edit, Layers, Power, Copy, Loader2, Play, RefreshCw } from 'lucide-vue-next'
@@ -294,6 +295,7 @@ const props = defineProps<{
   providerKeys?: EndpointAPIKey[]
   loading?: boolean
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'editModel': [model: Model]
@@ -447,7 +449,7 @@ function getVideoPricingDisplay(model: Model): string {
   const [firstRes, firstPrice] = entries[0]
   const priceStr = `${firstRes} $${(firstPrice as number).toFixed(2)}/s`
   if (entries.length > 1) {
-    return `${priceStr} [${entries.length}种]`
+    return t('providerModelsTab.videoPriceSummary', { price: priceStr, count: entries.length })
   }
   return priceStr
 }
@@ -478,12 +480,12 @@ function getStatusIndicatorClass(model: Model): string {
 // 获取状态提示文本
 function getStatusTitle(model: Model): string {
   if (!model.is_active) {
-    return '停用'
+    return t('providerModelsTab.disabled')
   }
   if (model.is_available) {
-    return '活跃且可用'
+    return t('providerModelsTab.activeAvailable')
   }
-  return '活跃但不可用'
+  return t('providerModelsTab.activeUnavailable')
 }
 
 // 编辑模型
@@ -510,9 +512,9 @@ async function toggleModelActive(model: Model) {
     const newStatus = !model.is_active
     await updateModel(props.provider.id, model.id, { is_active: newStatus })
     model.is_active = newStatus
-    showSuccess(newStatus ? '模型已启用' : '模型已停用')
+    showSuccess(newStatus ? t('providerModelsTab.enabledSuccess') : t('providerModelsTab.disabledSuccess'))
   } catch (err: unknown) {
-    showError(parseApiError(err, '操作失败'), '错误')
+    showError(parseApiError(err, t('providerModelsTab.operationFailed')), t('providerModelsTab.error'))
   } finally {
     togglingModelId.value = null
   }
@@ -557,19 +559,19 @@ async function handleStartPendingTest() {
 
   const endpoint = selectedTestEndpoint.value || activeEndpoints.value[0]
   if (!endpoint) {
-    showError('请选择要测试的端点')
+    showError(t('providerModelsTab.selectTestEndpoint'))
     return
   }
 
   const { value: requestHeaders, error: requestHeadersError } = parsedTestRequestHeaders.value
   if (!requestHeaders || requestHeadersError) {
-    showError(`测试请求头无效: ${requestHeadersError || '无效 JSON'}`)
+    showError(t('providerModelsTab.invalidHeaders', { error: requestHeadersError || t('providerModelsTab.invalidJson') }))
     return
   }
 
   const { value: requestBody, error } = parsedTestRequestBody.value
   if (!requestBody || error) {
-    showError(`测试请求体无效: ${error || '无效 JSON'}`)
+    showError(t('providerModelsTab.invalidBody', { error: error || t('providerModelsTab.invalidJson') }))
     return
   }
 
@@ -600,7 +602,7 @@ async function testModelConnection(model: Model) {
   if (modelTest.testing.value) return
 
   if (activeEndpoints.value.length === 0) {
-    showError('暂无可用于测试的活跃端点')
+    showError(t('providerModelsTab.noTestEndpoint'))
     return
   }
 

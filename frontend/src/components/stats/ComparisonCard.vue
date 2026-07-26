@@ -12,7 +12,7 @@
     >
       <span v-if="changePercent !== null">{{ changePercent }}%</span>
       <span v-else>--</span>
-      <span class="ml-1 text-muted-foreground">vs 对比期</span>
+      <span class="ml-1 text-muted-foreground">{{ t('comparisonCard.vsPeriod') }}</span>
     </div>
   </Card>
 </template>

@@ -5,30 +5,30 @@
         <div class="space-y-2">
           <div class="flex flex-wrap items-center gap-2">
             <h2 class="text-xl font-semibold">
-              Niffler 核心对账
+              {{ t('coreReadiness.title') }}
             </h2>
             <Badge variant="outline">
-              只读检查
+              {{ t('coreReadiness.readonly') }}
             </Badge>
           </div>
           <p class="max-w-3xl text-sm text-muted-foreground">
-            这里只读取旧 Provider、上游账号、分组、价格和请求记录，检查它们能否映射到新的 Niffler 核心模型。这个页面不会修改任何数据。
+            {{ t('coreReadiness.description') }}
           </p>
         </div>
         <div class="flex items-center gap-2">
           <Select v-model="recentDays">
             <SelectTrigger class="h-9 w-32">
-              <SelectValue placeholder="时间范围" />
+              <SelectValue :placeholder="t('coreReadiness.range')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="7">
-                最近 7 天
+                {{ t('coreReadiness.days7') }}
               </SelectItem>
               <SelectItem value="30">
-                最近 30 天
+                {{ t('coreReadiness.days30') }}
               </SelectItem>
               <SelectItem value="90">
-                最近 90 天
+                {{ t('coreReadiness.days90') }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -48,7 +48,7 @@
         <AlertCircle class="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
         <div>
           <p class="font-medium text-destructive">
-            读取失败
+            {{ t('coreReadiness.failed') }}
           </p>
           <p class="mt-1 text-sm text-muted-foreground">
             {{ error }}
@@ -63,40 +63,40 @@
     >
       <Loader2 class="mx-auto h-8 w-8 animate-spin" />
       <p class="mt-3 text-sm">
-        正在读取只读对账报告...
+        {{ t('coreReadiness.loading') }}
       </p>
     </div>
 
     <template v-else-if="report">
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard
-          title="影子表"
+          :title="t('coreReadiness.shadowTables')"
           :value="`${report.shadow_tables.existing_tables}/${report.shadow_tables.expected_tables}`"
-          :description="report.shadow_tables.all_present ? '结构完整' : '缺少表，需要先跑迁移'"
+          :description="report.shadow_tables.all_present ? t('coreReadiness.complete') : t('coreReadiness.missing')"
           :tone="report.shadow_tables.all_present ? 'success' : 'danger'"
         />
         <MetricCard
-          title="Provider 映射"
+          :title="t('coreReadiness.providerMapping')"
           :value="`${report.provider_mapping.mapped_count}/${report.provider_mapping.legacy_count}`"
-          :description="`${report.provider_mapping.blocked_count} 个停用，不能进入新策略`"
+          :description="t('coreReadiness.blockedProviders', { count: report.provider_mapping.blocked_count })"
           :tone="report.provider_mapping.blocked_count ? 'warning' : 'success'"
         />
         <MetricCard
-          title="账号映射"
+          :title="t('coreReadiness.accountMapping')"
           :value="`${report.account_mapping.mapped_count}/${report.account_mapping.legacy_count}`"
-          :description="`${report.account_mapping.blocked_count} 个不可直接调度`"
+          :description="t('coreReadiness.blockedAccounts', { count: report.account_mapping.blocked_count })"
           :tone="report.account_mapping.blocked_count ? 'warning' : 'success'"
         />
         <MetricCard
-          title="产品策略映射"
+          :title="t('coreReadiness.productMapping')"
           :value="`${report.product_plan_mapping.mapped_count}/${report.product_plan_mapping.legacy_count}`"
-          :description="`${report.summary.product_plans_public} 个公开，${report.summary.product_plans_total - report.summary.product_plans_public} 个内部`"
+          :description="t('coreReadiness.publicInternalPlans', { public: report.summary.product_plans_public, internal: report.summary.product_plans_total - report.summary.product_plans_public })"
           :tone="report.product_plan_mapping.blocked_count ? 'warning' : 'success'"
         />
         <MetricCard
-          title="请求记录异常"
+          :title="t('coreReadiness.requestIssues')"
           :value="String(report.summary.recent_problem_usage_sample_count)"
-          :description="`最近 ${report.recent_days} 天样本`"
+          :description="t('coreReadiness.recentDaysSample', { days: report.recent_days })"
           :tone="report.summary.recent_problem_usage_sample_count ? 'warning' : 'success'"
         />
       </div>
@@ -106,14 +106,14 @@
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <h3 class="font-semibold">
-                稳定观察
+                {{ t('coreReadiness.stability') }}
               </h3>
               <Badge variant="outline">
-                最多 15 条
+                {{ t('coreReadiness.max15') }}
               </Badge>
             </div>
             <p class="mt-1 text-sm text-muted-foreground">
-              第 5 批第五片的上线观察结果。只有连续 14 天通过，才能继续删除旧逻辑。
+              {{ t('coreReadiness.stabilityHint') }}
             </p>
           </div>
           <RefreshButton
@@ -125,7 +125,7 @@
           v-if="stabilityLoading && !latestStabilityObservation"
           class="p-6 text-center text-sm text-muted-foreground"
         >
-          正在读取稳定观察...
+          {{ t('coreReadiness.loadingStability') }}
         </div>
         <div
           v-else-if="stabilityError"
@@ -140,33 +140,33 @@
         >
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <MetricCard
-              title="观察状态"
+              :title="t('coreReadiness.observationStatus')"
               :value="stabilityStatusLabel(latestStabilityObservation.status)"
               :description="formatWindow(latestStabilityObservation.window_start_unix_ms, latestStabilityObservation.window_end_unix_ms)"
               :tone="stabilityStatusTone(latestStabilityObservation.status)"
             />
             <MetricCard
-              title="稳定期进度"
-              :value="`${stabilityConsecutivePassDays}/${STABILITY_REQUIRED_PASS_DAYS} 天`"
+              :title="t('coreReadiness.progress')"
+              :value="t('coreReadiness.daysProgress', { current: stabilityConsecutivePassDays, required: STABILITY_REQUIRED_PASS_DAYS })"
               :description="stabilityGateDescription"
               :tone="stabilityReadyForLegacyRemoval ? 'success' : 'warning'"
             />
             <MetricCard
-              title="回滚演练"
+              :title="t('coreReadiness.rollback')"
               :value="rollbackDrillLabel(latestStabilityObservation.rollback_drill_status)"
-              description="配置键 niffler_stability_rollback_drill_status"
+              :description="t('coreReadiness.rollbackStatusConfig')"
               :tone="rollbackDrillTone(latestStabilityObservation.rollback_drill_status)"
             />
             <MetricCard
-              title="未知上游"
+              :title="t('coreReadiness.unknownUpstream')"
               :value="String(latestStabilityObservation.unknown_upstream_count)"
-              description="只统计已尝试上游但缺少服务或账号的记录"
+              :description="t('coreReadiness.unknownUpstreamHint')"
               :tone="latestStabilityObservation.unknown_upstream_count ? 'danger' : 'success'"
             />
             <MetricCard
-              title="对账异常"
+              :title="t('coreReadiness.consistencyIssues')"
               :value="String(latestStabilityObservation.consistency_issue_count)"
-              :description="`${latestStabilityObservation.consistency_checked_count} 条检查样本`"
+              :description="t('coreReadiness.checkedSamples', { count: latestStabilityObservation.consistency_checked_count })"
               :tone="latestStabilityObservation.consistency_issue_count ? 'danger' : 'success'"
             />
           </div>
@@ -175,7 +175,7 @@
             <div class="rounded-lg border border-border/60">
               <div class="border-b border-border/60 px-4 py-3">
                 <p class="font-medium">
-                  阻断原因
+                  {{ t('coreReadiness.blockers') }}
                 </p>
               </div>
               <div
@@ -199,14 +199,14 @@
                 v-else
                 class="p-4 text-sm text-muted-foreground"
               >
-                当前观察没有阻断原因。
+                {{ t('coreReadiness.noBlockers') }}
               </div>
             </div>
 
             <div class="rounded-lg border border-border/60">
               <div class="border-b border-border/60 px-4 py-3">
                 <p class="font-medium">
-                  最近观察记录
+                  {{ t('coreReadiness.recent') }}
                 </p>
               </div>
               <div class="divide-y divide-border/60">
@@ -224,8 +224,8 @@
                     </p>
                   </div>
                   <div class="text-right text-xs text-muted-foreground">
-                    <p>阻断 {{ item.blocker_codes.length }}</p>
-                    <p>未知上游 {{ item.unknown_upstream_count }}</p>
+                    <p>{{ t('coreReadiness.blockerCount', { count: item.blocker_codes.length }) }}</p>
+                    <p>{{ t('coreReadiness.unknownUpstreamCount', { count: item.unknown_upstream_count }) }}</p>
                   </div>
                 </div>
               </div>
@@ -237,14 +237,14 @@
               <div>
                 <div class="flex flex-wrap items-center gap-2">
                   <p class="font-medium">
-                    回滚演练证据
+                    {{ t('coreReadiness.rollbackEvidence') }}
                   </p>
                   <Badge :variant="rollbackEvidence?.evidence_complete ? 'outline' : 'secondary'">
                     {{ rollbackEvidenceStatusText }}
                   </Badge>
                 </div>
                 <p class="mt-1 text-sm text-muted-foreground">
-                  只有状态为“已通过”且备份引用、可回滚镜像标签、演练说明都存在，稳定观察才会计入通过。
+                  {{ t('coreReadiness.rollbackEvidenceHint') }}
                 </p>
               </div>
               <RefreshButton
@@ -257,7 +257,7 @@
               v-if="rollbackEvidenceLoading && !rollbackEvidence"
               class="p-5 text-sm text-muted-foreground"
             >
-              正在读取回滚演练证据...
+              {{ t('coreReadiness.loadingRollbackEvidence') }}
             </div>
             <div
               v-else
@@ -293,7 +293,7 @@
                       v-if="rollbackEvidenceMissingLabels.length"
                       class="text-xs text-muted-foreground"
                     >
-                      缺少字段：{{ rollbackEvidenceMissingLabels.join('、') }}
+                      {{ t('coreReadiness.missingFields', { fields: rollbackEvidenceMissingLabels.join('、') }) }}
                     </p>
                   </div>
                 </div>
@@ -302,7 +302,7 @@
               <div class="grid gap-3 text-sm md:grid-cols-3">
                 <div>
                   <p class="text-xs text-muted-foreground">
-                    状态配置
+                    {{ t('coreReadiness.statusConfig') }}
                   </p>
                   <p class="mt-1 break-all font-mono text-xs">
                     {{ rollbackEvidence?.status_config_key || '-' }}
@@ -310,7 +310,7 @@
                 </div>
                 <div>
                   <p class="text-xs text-muted-foreground">
-                    证据配置
+                    {{ t('coreReadiness.evidenceConfig') }}
                   </p>
                   <p class="mt-1 break-all font-mono text-xs">
                     {{ rollbackEvidence?.evidence_config_key || '-' }}
@@ -318,7 +318,7 @@
                 </div>
                 <div>
                   <p class="text-xs text-muted-foreground">
-                    最近记录
+                    {{ t('coreReadiness.latestRecord') }}
                   </p>
                   <p class="mt-1">
                     {{ formatUnixMs(rollbackEvidence?.evidence.recorded_at_unix_ms || 0) }}
@@ -329,51 +329,51 @@
               <div class="grid gap-4 lg:grid-cols-2">
                 <div class="space-y-2">
                   <Label for="rollback-drill-status">
-                    演练状态
+                    {{ t('coreReadiness.drillStatus') }}
                   </Label>
                   <Select
                     id="rollback-drill-status"
                     v-model="rollbackEvidenceForm.status"
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="选择演练状态" />
+                    <SelectValue :placeholder="t('coreReadiness.selectDrillStatus')" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="not_recorded">
-                        未记录
+                        {{ t('coreReadiness.notRecorded') }}
                       </SelectItem>
                       <SelectItem value="failed">
-                        演练失败
+                        {{ t('coreReadiness.drillFailed') }}
                       </SelectItem>
                       <SelectItem value="passed">
-                        已通过
+                        {{ t('coreReadiness.passed') }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div class="space-y-2">
                   <Label for="rollback-backup-reference">
-                    备份引用
+                    {{ t('coreReadiness.backupReference') }}
                   </Label>
                   <Input
                     id="rollback-backup-reference"
                     v-model="rollbackEvidenceForm.backup_reference"
-                    placeholder="例如备份文件名、备份任务号或对象存储路径"
+                    :placeholder="t('coreReadiness.backupReferencePlaceholder')"
                   />
                 </div>
                 <div class="space-y-2">
                   <Label for="rollback-image-tag">
-                    可回滚镜像标签
+                    {{ t('coreReadiness.rollbackImageTag') }}
                   </Label>
                   <Input
                     id="rollback-image-tag"
                     v-model="rollbackEvidenceForm.rollback_image_tag"
-                    placeholder="例如 niffler-app:20260609-xxxx"
+                    :placeholder="t('coreReadiness.rollbackImageTagPlaceholder')"
                   />
                 </div>
                 <div class="space-y-2">
                   <Label>
-                    记录人
+                    {{ t('coreReadiness.recordedBy') }}
                   </Label>
                   <Input
                     :model-value="rollbackEvidence?.evidence.recorded_by || '-'"
@@ -384,19 +384,19 @@
 
               <div class="space-y-2">
                 <Label for="rollback-drill-summary">
-                  演练说明
+                  {{ t('coreReadiness.drillSummary') }}
                 </Label>
                 <Textarea
                   id="rollback-drill-summary"
                   v-model="rollbackEvidenceForm.drill_summary"
                   rows="4"
-                  placeholder="写清演练时间、验证步骤、结果和未完成事项。"
+                  :placeholder="t('coreReadiness.drillSummaryPlaceholder')"
                 />
               </div>
 
               <div class="flex flex-col gap-3 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <p class="text-xs text-muted-foreground">
-                  确认后再保存。“已通过”需要备份引用、镜像标签和演练说明。
+                  {{ t('coreReadiness.saveEvidenceHint') }}
                 </p>
                 <Button
                   :disabled="rollbackEvidenceSubmitDisabled"
@@ -406,7 +406,7 @@
                     v-if="rollbackEvidenceSaving"
                     class="mr-2 h-4 w-4 animate-spin"
                   />
-                  保存证据
+                  {{ t('coreReadiness.saveEvidence') }}
                 </Button>
               </div>
             </div>
@@ -416,21 +416,21 @@
           v-else
           class="p-6 text-center text-sm text-muted-foreground"
         >
-          还没有稳定观察记录。
+          {{ t('coreReadiness.noStabilityRecords') }}
         </div>
       </Card>
 
       <Card class="overflow-hidden">
         <SectionHeader
-          title="需要处理的问题"
-          :description="report.issues.length ? '按迁移风险汇总' : '没有发现阻塞问题'"
+          :title="t('coreReadiness.issuesTitle')"
+          :description="report.issues.length ? t('coreReadiness.issuesSummary') : t('coreReadiness.noBlockingIssues')"
         />
         <div
           v-if="report.issues.length === 0"
           class="flex items-center gap-3 p-5 text-sm text-muted-foreground"
         >
           <CheckCircle2 class="h-5 w-5 text-primary" />
-          当前只读检查没有发现需要处理的问题。
+          {{ t('coreReadiness.noIssues') }}
         </div>
         <div
           v-else
@@ -471,14 +471,14 @@
           <div class="space-y-1">
             <div class="flex flex-wrap items-center gap-2">
               <h3 class="font-semibold">
-                旧依赖下线稽核
+                {{ t('coreReadiness.legacyAuditTitle') }}
               </h3>
               <Badge variant="outline">
-                手动只读
+                {{ t('coreReadiness.manualReadonly') }}
               </Badge>
             </div>
             <p class="max-w-3xl text-sm text-muted-foreground">
-              第 5 批第二片检查旧 Key 限制、旧分组规则、Provider Key 限制、旧价格、旧写入口冻结和旧运行时读路径。为避免后台默认打开页面时重复读取旧表，这块需要手动读取。
+              {{ t('coreReadiness.legacyAuditPendingHint') }}
             </p>
             <p
               v-if="legacyAuditError"
@@ -501,10 +501,10 @@
         <div class="flex flex-col gap-3 border-b border-border/60 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h3 class="font-semibold">
-              旧依赖下线稽核
+              {{ t('coreReadiness.legacyAuditTitle') }}
             </h3>
             <p class="mt-1 text-sm text-muted-foreground">
-              第 5 批第二片已接入旧写入口冻结机制。已迁移对象的旧入口返回 409 并提示去 Niffler Core 修改；未迁移对象继续旧逻辑。
+              {{ t('coreReadiness.legacyAuditLoadedHint') }}
             </p>
           </div>
           <RefreshButton
@@ -514,85 +514,85 @@
         </div>
         <div class="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
           <MetricCard
-            title="独立 Key 旧限制"
+            :title="t('coreReadiness.userKeyRestrictions')"
             :value="String(legacyAudit.summary.user_key_restrictions_in_page)"
-            :description="legacyAudit.has_more_user_keys ? '当前页有样本，后面还有独立 Key' : '当前页已读完'"
+            :description="legacyAudit.has_more_user_keys ? t('coreReadiness.moreUserKeys') : t('coreReadiness.userKeysComplete')"
             :tone="legacyAudit.summary.user_key_restrictions_in_page ? 'warning' : 'success'"
           />
           <MetricCard
-            title="分组旧规则"
+            :title="t('coreReadiness.groupLegacyRules')"
             :value="String(legacyAudit.summary.user_group_policy_items)"
-            description="旧分组仍表达模型、Provider、格式或倍率"
+            :description="t('coreReadiness.groupLegacyRulesHint')"
             :tone="legacyAudit.summary.user_group_policy_items ? 'warning' : 'success'"
           />
           <MetricCard
-            title="Provider Key 旧限制"
+            :title="t('coreReadiness.providerKeyRestrictions')"
             :value="String(legacyAudit.summary.provider_key_restriction_items)"
-            description="旧上游账号仍保存模型、格式或优先级限制"
+            :description="t('coreReadiness.providerKeyRestrictionsHint')"
             :tone="legacyAudit.summary.provider_key_restriction_items ? 'warning' : 'success'"
           />
           <MetricCard
-            title="旧价格依赖"
+            :title="t('coreReadiness.legacyPriceDependencies')"
             :value="String(legacyAudit.summary.provider_model_price_dependency_items)"
-            description="旧 Provider 模型价格仍可能参与成本展示"
+            :description="t('coreReadiness.legacyPriceDependenciesHint')"
             :tone="legacyAudit.summary.provider_model_price_dependency_items ? 'warning' : 'success'"
           />
           <MetricCard
-            title="旧写入口"
+            :title="t('coreReadiness.legacyWriteEntrypoints')"
             :value="String(legacyAudit.summary.legacy_write_entrypoints)"
-            description="下一片需要冻结或跳转的旧入口"
+            :description="t('coreReadiness.legacyWriteEntrypointsHint')"
             tone="warning"
           />
           <MetricCard
-            title="旧读路径"
+            :title="t('coreReadiness.legacyReadPaths')"
             :value="String(legacyAudit.summary.runtime_read_dependencies)"
-            description="第三片需要切换的运行时读源"
+            :description="t('coreReadiness.legacyReadPathsHint')"
             tone="warning"
           />
         </div>
 
         <div class="grid gap-4 border-t border-border/60 p-5 xl:grid-cols-2">
           <ListCard
-            title="稽核说明"
-            :description="`当前页 offset=${legacyAudit.offset}，limit=${legacyAudit.limit}`"
+            :title="t('coreReadiness.auditNotes')"
+            :description="t('coreReadiness.auditPagination', { offset: legacyAudit.offset, limit: legacyAudit.limit })"
             :items="legacyAuditNoteItems"
-            empty-text="没有额外说明"
+            :empty-text="t('coreReadiness.noAdditionalNotes')"
           />
           <ListCard
-            title="独立 Key 旧限制"
-            description="只展示当前分页样本，不扫描普通用户 Key"
+            :title="t('coreReadiness.userKeyRestrictions')"
+            :description="t('coreReadiness.userKeyRestrictionsHint')"
             :items="legacyUserKeyRestrictionItems"
-            empty-text="当前页没有发现独立 Key 旧限制"
+            :empty-text="t('coreReadiness.noUserKeyRestrictions')"
           />
           <ListCard
-            title="用户分组旧规则"
-            description="这些字段后续应迁到产品策略"
+            :title="t('coreReadiness.userGroupLegacyRules')"
+            :description="t('coreReadiness.userGroupLegacyRulesHint')"
             :items="legacyGroupPolicyItems"
-            empty-text="没有发现用户分组旧规则"
+            :empty-text="t('coreReadiness.noUserGroupLegacyRules')"
           />
           <ListCard
-            title="Provider Key 旧限制"
-            description="这些字段后续应迁到账号能力或调度策略"
+            :title="t('coreReadiness.providerKeyRestrictions')"
+            :description="t('coreReadiness.providerKeyRestrictionsListHint')"
             :items="legacyProviderKeyRestrictionItems"
-            empty-text="没有发现 Provider Key 旧限制"
+            :empty-text="t('coreReadiness.noProviderKeyRestrictions')"
           />
           <ListCard
-            title="Provider 模型价格依赖"
-            description="这些价格后续应迁到基础价、成本倍率或账号成本倍率"
+            :title="t('coreReadiness.providerModelPriceDependencies')"
+            :description="t('coreReadiness.providerModelPriceDependenciesHint')"
             :items="legacyProviderModelPriceItems"
-            empty-text="没有发现旧价格依赖样本"
+            :empty-text="t('coreReadiness.noLegacyPriceDependencies')"
           />
           <ListCard
-            title="旧写入口"
-            description="第二片要冻结或跳转的旧管理入口"
+            :title="t('coreReadiness.legacyWriteEntrypoints')"
+            :description="t('coreReadiness.legacyWriteEntrypointsListHint')"
             :items="legacyWriteEntrypointItems"
-            empty-text="没有旧写入口"
+            :empty-text="t('coreReadiness.noLegacyWriteEntrypoints')"
           />
           <ListCard
-            title="旧运行时读路径"
-            description="第三片要切换到新模型的读源"
+            :title="t('coreReadiness.legacyRuntimeReadPaths')"
+            :description="t('coreReadiness.legacyRuntimeReadPathsHint')"
             :items="legacyRuntimeReadItems"
-            empty-text="没有旧读路径"
+            :empty-text="t('coreReadiness.noLegacyReadPaths')"
           />
         </div>
       </Card>
@@ -600,68 +600,68 @@
       <div class="grid gap-4 xl:grid-cols-2">
         <Card class="overflow-hidden">
           <SectionHeader
-            title="影子表状态"
-            :description="`数据库：${report.shadow_tables.database_driver || '未配置'}`"
+            :title="t('coreReadiness.shadowTableStatus')"
+            :description="t('coreReadiness.databaseDriver', { driver: report.shadow_tables.database_driver || t('coreReadiness.notConfigured') })"
           />
           <CompactTable
             :rows="shadowTableRows"
-            empty-text="没有影子表检查结果"
+            :empty-text="t('coreReadiness.noShadowTableResults')"
           />
         </Card>
 
         <Card class="overflow-hidden">
           <SectionHeader
-            title="账号状态映射"
-            description="按旧 Key 字段能确定的状态统计"
+          :title="t('coreReadiness.accountStatusMapping')"
+          :description="t('coreReadiness.accountStatusMappingHint')"
           />
           <CompactTable
             :rows="accountStatusRows"
-            empty-text="没有账号数据"
+          :empty-text="t('coreReadiness.noAccountData')"
           />
         </Card>
       </div>
 
       <div class="grid gap-4 xl:grid-cols-2">
         <ListCard
-          title="停用 Provider 引用"
-          description="这些分组仍引用了已停用的 Provider"
+          :title="t('coreReadiness.disabledProviderReferences')"
+          :description="t('coreReadiness.disabledProviderReferencesHint')"
           :items="disabledProviderItems"
-          empty-text="没有发现停用 Provider 引用"
+          :empty-text="t('coreReadiness.noDisabledProviderReferences')"
         />
         <ListCard
-          title="Key 独立限制"
-          description="这些限制后续应归入账号能力或调度策略"
+          :title="t('coreReadiness.keyRestrictions')"
+          :description="t('coreReadiness.keyRestrictionsHint')"
           :items="keyResidueItems"
-          empty-text="没有发现 Key 独立限制"
+          :empty-text="t('coreReadiness.noKeyRestrictions')"
         />
         <ListCard
-          title="分组策略缺口"
-          description="迁移为产品策略前需要确认"
+          :title="t('coreReadiness.groupPolicyGaps')"
+          :description="t('coreReadiness.groupPolicyGapsHint')"
           :items="groupGapItems"
-          empty-text="没有发现分组策略缺口"
+          :empty-text="t('coreReadiness.noGroupPolicyGaps')"
         />
         <ListCard
-          title="价格缺口"
-          description="迁移计费前需要补齐"
+          :title="t('coreReadiness.pricingGaps')"
+          :description="t('coreReadiness.pricingGapsHint')"
           :items="priceGapItems"
-          empty-text="没有发现价格缺口"
+          :empty-text="t('coreReadiness.noPricingGaps')"
         />
       </div>
 
       <Card class="overflow-hidden">
         <SectionHeader
-          title="最近请求记录异常"
-          description="只展示有限样本，不包含请求体和密钥内容"
+          :title="t('coreReadiness.recentRequestAnomalies')"
+          :description="t('coreReadiness.recentRequestAnomaliesHint')"
         />
         <Table class="hidden lg:table">
           <TableHeader>
             <TableRow>
-              <TableHead>请求</TableHead>
-              <TableHead>模型</TableHead>
+              <TableHead>{{ t('coreReadiness.request') }}</TableHead>
+              <TableHead>{{ t('coreReadiness.model') }}</TableHead>
               <TableHead>Provider</TableHead>
-              <TableHead>扣费快照</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>判断</TableHead>
+              <TableHead>{{ t('coreReadiness.billingSnapshot') }}</TableHead>
+              <TableHead>{{ t('coreReadiness.status') }}</TableHead>
+              <TableHead>{{ t('coreReadiness.diagnosis') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -682,7 +682,7 @@
               </TableCell>
               <TableCell class="max-w-[220px] text-sm">
                 <div class="truncate">
-                  {{ item.provider_display_name || item.provider_name || '未选定上游' }}
+                  {{ item.provider_display_name || item.provider_name || t('coreReadiness.unselectedUpstream') }}
                 </div>
                 <div
                   v-if="item.provider_account_label || item.provider_api_key_name"
@@ -693,10 +693,10 @@
               </TableCell>
               <TableCell class="text-sm">
                 <div class="tabular-nums">
-                  钱包 {{ formatUsd(item.wallet_debit_usd) }}
+                  {{ t('coreReadiness.walletDebit', { amount: formatUsd(item.wallet_debit_usd) }) }}
                 </div>
                 <div class="tabular-nums text-xs text-muted-foreground">
-                  套餐 {{ formatUsd(item.package_debit_usd) }}
+                  {{ t('coreReadiness.packageDebit', { amount: formatUsd(item.package_debit_usd) }) }}
                 </div>
               </TableCell>
               <TableCell>
@@ -710,7 +710,7 @@
                 </div>
                 <div>{{ item.diagnosis }}</div>
                 <div class="mt-1">
-                  建议：{{ item.recommended_action }}
+                  {{ t('coreReadiness.recommendation', { text: item.recommended_action }) }}
                 </div>
               </TableCell>
             </TableRow>
@@ -719,7 +719,7 @@
                 colspan="6"
                 class="py-8 text-center text-sm text-muted-foreground"
               >
-                没有发现请求记录异常
+                {{ t('coreReadiness.noRequestAnomalies') }}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -737,53 +737,53 @@
               </Badge>
             </div>
             <p class="text-sm">
-              {{ item.model }} · {{ item.provider_display_name || item.provider_name || '未选定上游' }}
+              {{ item.model }} · {{ item.provider_display_name || item.provider_name || t('coreReadiness.unselectedUpstream') }}
             </p>
             <p
               v-if="item.provider_account_label || item.provider_api_key_name"
               class="text-xs text-muted-foreground"
             >
-              账号：{{ item.provider_account_label || item.provider_api_key_name }}
+              {{ t('coreReadiness.account', { value: item.provider_account_label || item.provider_api_key_name }) }}
             </p>
             <p class="text-xs text-muted-foreground">
-              钱包 {{ formatUsd(item.wallet_debit_usd) }} · 套餐 {{ formatUsd(item.package_debit_usd) }}
+              {{ t('coreReadiness.walletAndPackage', { wallet: formatUsd(item.wallet_debit_usd), package: formatUsd(item.package_debit_usd) }) }}
             </p>
             <p class="text-sm text-muted-foreground">
               {{ item.diagnosis }}
             </p>
             <p class="text-sm text-muted-foreground">
-              建议：{{ item.recommended_action }}
+              {{ t('coreReadiness.recommendation', { text: item.recommended_action }) }}
             </p>
           </div>
           <div
             v-if="report.recent_usage_anomalies.length === 0"
             class="p-6 text-center text-sm text-muted-foreground"
           >
-            没有发现请求记录异常
+            {{ t('coreReadiness.noRequestAnomalies') }}
           </div>
         </div>
       </Card>
 
       <ListCard
-        title="路由跳过原因"
-        description="最近路由尝试里记录到的跳过原因"
+        :title="t('coreReadiness.routeSkipReasons')"
+        :description="t('coreReadiness.routeSkipReasonsHint')"
         :items="routeSkipItems"
-        empty-text="没有路由跳过原因样本"
+        :empty-text="t('coreReadiness.noRouteSkipReasons')"
       />
 
       <Card class="overflow-hidden">
         <SectionHeader
-          title="路由跳过样本"
-          description="展示最近被跳过的具体服务和账号，便于定位为什么没有被调度"
+          :title="t('coreReadiness.routeSkipSamples')"
+          :description="t('coreReadiness.routeSkipSamplesHint')"
         />
         <Table class="hidden lg:table">
           <TableHeader>
             <TableRow>
-              <TableHead>请求</TableHead>
+              <TableHead>{{ t('coreReadiness.request') }}</TableHead>
               <TableHead>Provider</TableHead>
-              <TableHead>账号</TableHead>
-              <TableHead>跳过原因</TableHead>
-              <TableHead>建议</TableHead>
+              <TableHead>{{ t('coreReadiness.accountLabel') }}</TableHead>
+              <TableHead>{{ t('coreReadiness.skipReason') }}</TableHead>
+              <TableHead>{{ t('coreReadiness.recommendationLabel') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -800,10 +800,10 @@
                 </div>
               </TableCell>
               <TableCell class="text-sm">
-                {{ item.provider_name || item.provider_id || '未选定上游' }}
+                {{ item.provider_name || item.provider_id || t('coreReadiness.unselectedUpstream') }}
               </TableCell>
               <TableCell class="text-sm">
-                {{ item.account_label || item.key_name || item.key_id || '未选定账号' }}
+                {{ item.account_label || item.key_name || item.key_id || t('coreReadiness.unselectedAccount') }}
               </TableCell>
               <TableCell class="max-w-[240px] text-sm">
                 <div class="font-medium">
@@ -822,7 +822,7 @@
                 colspan="5"
                 class="py-8 text-center text-sm text-muted-foreground"
               >
-                没有路由跳过样本
+                {{ t('coreReadiness.noRouteSkipSamples') }}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -840,17 +840,17 @@
               </Badge>
             </div>
             <p class="text-sm">
-              {{ item.provider_name || item.provider_id || '未选定上游' }} · {{ item.account_label || item.key_name || item.key_id || '未选定账号' }}
+              {{ item.provider_name || item.provider_id || t('coreReadiness.unselectedUpstream') }} · {{ item.account_label || item.key_name || item.key_id || t('coreReadiness.unselectedAccount') }}
             </p>
             <p class="text-sm text-muted-foreground">
-              建议：{{ item.recommended_action }}
+              {{ t('coreReadiness.recommendation', { text: item.recommended_action }) }}
             </p>
           </div>
           <div
             v-if="routeSkipSamples.length === 0"
             class="p-6 text-center text-sm text-muted-foreground"
           >
-            没有路由跳过样本
+            {{ t('coreReadiness.noRouteSkipSamples') }}
           </div>
         </div>
       </Card>
@@ -860,6 +860,9 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import axios from 'axios'
 import {
   AlertCircle,
@@ -1018,7 +1021,7 @@ async function saveRollbackDrillEvidence() {
       rollback_image_tag: rollbackEvidenceForm.value.rollback_image_tag,
       drill_summary: rollbackEvidenceForm.value.drill_summary
     })
-    showSuccess('已记录回滚演练证据')
+    showSuccess(t('coreReadiness.evidenceSaved'))
     await Promise.all([
       loadRollbackDrillEvidence(),
       loadStabilityObservations()
@@ -1040,13 +1043,13 @@ function errorMessage(err: unknown): string {
     }
     return err.message
   }
-  return err instanceof Error ? err.message : '未知错误'
+  return err instanceof Error ? err.message : t('coreReadiness.unknownError')
 }
 
 const shadowTableRows = computed(() => {
   return (report.value?.shadow_tables.tables ?? []).map((table) => ({
     title: table.table_name,
-    value: table.exists ? '已创建' : '缺失',
+    value: table.exists ? t('coreReadiness.created') : t('coreReadiness.missing'),
     tone: (table.exists ? 'success' : 'danger') as Tone
   }))
 })
@@ -1061,12 +1064,12 @@ const accountStatusRows = computed(() => {
 
 const disabledProviderItems = computed(() => {
   return (report.value?.disabled_provider_references ?? []).map((item) => ({
-    title: `${item.product_plan_name} 引用了 ${item.provider_name}`,
+    title: t('coreReadiness.providerReferenceTitle', { plan: item.product_plan_name, provider: item.provider_name }),
     description: joinParts([
-      `来源：${item.source_field_label || item.source_field}`,
+      t('coreReadiness.source', { value: item.source_field_label || item.source_field }),
       item.reason,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
@@ -1075,11 +1078,11 @@ const keyResidueItems = computed(() => {
   return (report.value?.key_scope_residue ?? []).map((item) => ({
     title: item.display_name || item.account_label || item.key_name || item.key_id,
     description: joinParts([
-      item.provider_name ? `Provider：${item.provider_name}` : '',
-      `配置项：${(item.field_labels?.length ? item.field_labels : item.residue_fields).join('、')}`,
+      item.provider_name ? t('coreReadiness.provider', { value: item.provider_name }) : '',
+      t('coreReadiness.configFields', { value: (item.field_labels?.length ? item.field_labels : item.residue_fields).join('、') }),
       item.reason,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
@@ -1089,8 +1092,8 @@ const groupGapItems = computed(() => {
     title: `${item.product_plan_name} · ${item.gap_label || item.gap_kind}`,
     description: joinParts([
       item.message,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
@@ -1099,30 +1102,30 @@ const priceGapItems = computed(() => {
   return (report.value?.price_gaps ?? []).map((item) => ({
     title: item.provider_name ? `${item.provider_name} / ${item.model_name}` : item.model_name,
     description: joinParts([
-      `范围：${item.scope_label || item.scope}`,
-      `缺少字段：${item.missing_fields.join('、')}`,
+      t('coreReadiness.scope', { value: item.scope_label || item.scope }),
+      t('coreReadiness.missingFields', { fields: item.missing_fields.join('、') }),
       item.reason,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
 
 const routeSkipItems = computed(() => {
   return (report.value?.route_skip_reasons ?? []).map((item) => ({
-    title: `${item.label || item.reason} · ${item.count} 次`,
+    title: t('coreReadiness.routeSkipTitle', { label: item.label || item.reason, count: item.count }),
     description: joinParts([
-      `分类：${item.category || '未归类'}`,
-      `原始代码：${item.reason}`,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.category', { value: item.category || t('coreReadiness.uncategorized') }),
+      t('coreReadiness.rawCode', { value: item.reason }),
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
 
 const legacyAuditNoteItems = computed(() => {
   return (legacyAudit.value?.notes ?? []).map((note, index) => ({
-    title: `说明 ${index + 1}`,
+    title: t('coreReadiness.noteNumber', { number: index + 1 }),
     description: note
   }))
 })
@@ -1132,11 +1135,11 @@ const legacyUserKeyRestrictionItems = computed(() => {
     title: item.key_name || item.key_id,
     description: joinParts([
       item.owner_label,
-      item.group_name ? `分组：${item.group_name}` : '',
-      `字段：${(item.field_labels.length ? item.field_labels : item.field_names).join('、')}`,
+      item.group_name ? t('coreReadiness.group', { value: item.group_name }) : '',
+      t('coreReadiness.fields', { value: (item.field_labels.length ? item.field_labels : item.field_names).join('、') }),
       item.reason,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
@@ -1145,11 +1148,11 @@ const legacyGroupPolicyItems = computed(() => {
   return (legacyAudit.value?.user_group_legacy_policies ?? []).map((item) => ({
     title: `${item.group_name} · ${item.field_label}`,
     description: joinParts([
-      `模式：${legacyPolicyModeLabel(item.mode)}`,
-      `数量：${item.item_count}`,
+      t('coreReadiness.mode', { value: legacyPolicyModeLabel(item.mode) }),
+      t('coreReadiness.count', { value: item.item_count }),
       item.reason,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
@@ -1158,11 +1161,11 @@ const legacyProviderKeyRestrictionItems = computed(() => {
   return (legacyAudit.value?.provider_key_legacy_restrictions ?? []).map((item) => ({
     title: item.display_name || item.account_label || item.key_name || item.key_id,
     description: joinParts([
-      item.provider_name ? `Provider：${item.provider_name}` : '',
-      `配置项：${(item.field_labels.length ? item.field_labels : item.residue_fields).join('、')}`,
+      item.provider_name ? t('coreReadiness.provider', { value: item.provider_name }) : '',
+      t('coreReadiness.configFields', { value: (item.field_labels.length ? item.field_labels : item.residue_fields).join('、') }),
       item.reason,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
@@ -1173,8 +1176,8 @@ const legacyProviderModelPriceItems = computed(() => {
     description: joinParts([
       item.dependency_label || item.dependency_kind,
       item.reason,
-      `影响：${item.impact}`,
-      `建议：${item.recommended_action}`
+      t('coreReadiness.impact', { value: item.impact }),
+      t('coreReadiness.recommendation', { text: item.recommended_action })
     ])
   }))
 })
@@ -1183,10 +1186,10 @@ const legacyWriteEntrypointItems = computed(() => {
   return (legacyAudit.value?.legacy_write_entrypoints ?? []).map((item) => ({
     title: `${item.area} · ${item.current_status}`,
     description: joinParts([
-      item.method ? `方法：${item.method}` : '',
-      `位置：${item.path}`,
+      item.method ? t('coreReadiness.method', { value: item.method }) : '',
+      t('coreReadiness.location', { value: item.path }),
       item.reason,
-      `下一步：${item.next_action}`
+      t('coreReadiness.nextStep', { value: item.next_action })
     ])
   }))
 })
@@ -1196,9 +1199,9 @@ const legacyRuntimeReadItems = computed(() => {
     title: `${item.area} · ${item.current_status}`,
     description: joinParts([
       item.label,
-      `位置：${item.path}`,
+      t('coreReadiness.location', { value: item.path }),
       item.reason,
-      `下一步：${item.next_action}`
+      t('coreReadiness.nextStep', { value: item.next_action })
     ])
   }))
 })
@@ -1253,8 +1256,8 @@ const rollbackEvidenceSubmitDisabled = computed(() => {
 })
 
 const rollbackEvidenceStatusText = computed(() => {
-  if (!rollbackEvidence.value) return '未读取'
-  return rollbackEvidence.value.evidence_complete ? '证据完整' : '证据不完整'
+  if (!rollbackEvidence.value) return t('coreReadiness.notRead')
+  return rollbackEvidence.value.evidence_complete ? t('coreReadiness.evidenceComplete') : t('coreReadiness.evidenceIncomplete')
 })
 
 function joinParts(parts: Array<string | null | undefined>): string {
@@ -1266,11 +1269,11 @@ function joinParts(parts: Array<string | null | undefined>): string {
 
 function legacyPolicyModeLabel(mode: string): string {
   const labels: Record<string, string> = {
-    inherit: '继承',
-    unrestricted: '不限制',
-    specific: '指定列表',
-    deny_all: '全部拒绝',
-    configured: '已配置'
+    inherit: t('coreReadiness.inherit'),
+    unrestricted: t('coreReadiness.unrestricted'),
+    specific: t('coreReadiness.specificList'),
+    deny_all: t('coreReadiness.denyAll'),
+    configured: t('coreReadiness.configured')
   }
   return labels[mode] ?? mode
 }
@@ -1288,16 +1291,16 @@ function issueIconClass(severity: NifflerReadinessSeverity): string {
 }
 
 function severityLabel(severity: NifflerReadinessSeverity): string {
-  if (severity === 'error') return '阻塞'
-  if (severity === 'warning') return '需确认'
-  return '提示'
+  if (severity === 'error') return t('coreReadiness.severityBlocking')
+  if (severity === 'warning') return t('coreReadiness.severityReview')
+  return t('coreReadiness.severityInfo')
 }
 
 function stabilityStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    pass: '通过',
-    pending: '等待证据',
-    reset_required: '需要重算稳定期'
+    pass: t('coreReadiness.pass'),
+    pending: t('coreReadiness.waitingEvidence'),
+    reset_required: t('coreReadiness.resetRequired')
   }
   return labels[status] ?? status
 }
@@ -1310,9 +1313,9 @@ function stabilityStatusTone(status: string): Tone {
 
 function rollbackDrillLabel(status: string): string {
   const labels: Record<string, string> = {
-    passed: '已记录',
-    failed: '失败',
-    not_recorded: '未记录'
+    passed: t('coreReadiness.recorded'),
+    failed: t('coreReadiness.failed'),
+    not_recorded: t('coreReadiness.notRecorded')
   }
   return labels[status] ?? status
 }
@@ -1331,53 +1334,20 @@ function rollbackDrillTone(status: string): Tone {
 }
 
 function stabilityBlockerLabel(code: string): string {
-  const labels: Record<string, string> = {
-    rollback_drill_not_recorded: '还没有回滚演练记录',
-    rollback_drill_evidence_missing: '回滚演练证据不完整',
-    rollback_drill_failed: '回滚演练失败',
-    p0_incident_recorded: '记录过 P0 事故',
-    p1_incident_recorded: '记录过 P1 事故',
-    incident_status_unknown: '事故状态不明确',
-    legacy_write_audit_unavailable: '旧写入口审计不可读',
-    request_candidate_audit_unavailable: '路由尝试审计不可读',
-    consistency_sample_limit_reached: '对账样本达到读取上限',
-    consistency_issue: '发现对账不一致',
-    unknown_upstream: '发现未知上游记录',
-    legacy_write_call: '仍有旧写入口调用',
-    billing_reservation_exception: '预占计费有异常',
-    referral_exception: '邀请返利有异常'
-  }
-  return labels[code] ?? code
+  const label = t(`coreReadiness.blockerLabels.${code}`)
+  return label === `coreReadiness.blockerLabels.${code}` ? code : label
 }
 
 function stabilityBlockerDescription(code: string): string {
-  const descriptions: Record<string, string> = {
-    rollback_drill_not_recorded: '缺少可回滚镜像、近期数据库备份或演练记录的确认。',
-    rollback_drill_evidence_missing: '回滚演练状态已经记为通过，但备份引用、可回滚镜像标签或演练说明至少缺了一项。',
-    rollback_drill_failed: '回滚演练失败会重置稳定期，修复演练问题后再重新观察。',
-    p0_incident_recorded: '稳定窗口内出现 P0 事故，不能计入 14 天稳定期。',
-    p1_incident_recorded: '稳定窗口内出现 P1 事故，不能计入 14 天稳定期。',
-    incident_status_unknown: '事故状态配置不是 none、p0 或 p1，需要先修正配置。',
-    legacy_write_audit_unavailable: '后台无法读取旧写入口审计，不能确认旧入口是否仍被调用。',
-    request_candidate_audit_unavailable: '后台无法读取路由尝试审计，不能确认 unknown 上游是否归零。',
-    consistency_sample_limit_reached: '对账样本太多，当前窗口可能没有完整读取完。',
-    consistency_issue: '稳定窗口内仍有计费、结算或路由对账不一致。',
-    unknown_upstream: '稳定窗口内仍有已尝试上游但服务或账号缺失的记录。',
-    legacy_write_call: '稳定窗口内仍有人调用被冻结的旧写入口。',
-    billing_reservation_exception: '稳定窗口内仍有预占计费异常，需要先处理。',
-    referral_exception: '稳定窗口内仍有邀请返利失败记录，需要先处理。'
-  }
-  return descriptions[code] ?? '未识别的阻断代码，需要查看稳定观察生成逻辑。'
+  const key = `coreReadiness.blockerDescriptions.${code}`
+  const description = t(key)
+  return description === key ? t('coreReadiness.unknownBlocker') : description
 }
 
 function statusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    available: '可用',
-    disabled: '停用',
-    invalid: '失效',
-    active: '启用'
-  }
-  return labels[status] ?? status
+  const key = `coreReadiness.statusLabels.${status}`
+  const label = t(key)
+  return label === key ? status : label
 }
 
 function formatWindow(startUnixMs: number, endUnixMs: number): string {
@@ -1500,7 +1470,7 @@ const ListCard = defineComponent({
         ? h('div', { class: 'divide-y divide-border/60' }, props.items.map((item) => h('div', { class: 'space-y-1 p-5' }, [
           h('div', { class: 'flex items-center gap-2' }, [
             h('p', { class: 'font-medium' }, item.title),
-            h(Badge, { variant: 'secondary' }, () => '样本')
+            h(Badge, { variant: 'secondary' }, () => t('coreReadiness.sample'))
           ]),
           h('p', { class: 'text-sm text-muted-foreground' }, item.description)
         ])))

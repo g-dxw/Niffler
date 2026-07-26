@@ -1,8 +1,8 @@
 <template>
   <PageContainer padding="lg">
     <PageHeader
-      title="套餐管理"
-      description="配置用量额度、会员权益和混合套餐"
+      :title="t('billingPlansManagement.title')"
+      :description="t('billingPlansManagement.description')"
     >
       <template #actions>
         <Button
@@ -10,7 +10,7 @@
           @click="openCreateDialog"
         >
           <Plus class="mr-2 h-4 w-4" />
-          新建套餐
+          {{ t('billingPlansManagement.create') }}
         </Button>
       </template>
     </PageHeader>
@@ -20,21 +20,21 @@
         v-if="loading"
         class="py-16"
       >
-        <LoadingState message="正在加载套餐..." />
+        <LoadingState :message="t('billingPlansManagement.loading')" />
       </div>
 
       <CardSection
         v-else
-        title="套餐列表"
-        description="启用后的套餐会出现在用户套餐中心"
+        :title="t('billingPlansManagement.list')"
+        :description="t('billingPlansManagement.listHint')"
       >
         <div
           v-if="plans.length === 0"
           class="py-12"
         >
           <EmptyState
-            title="暂无套餐"
-            description="创建第一个套餐后，用户可以在套餐中心购买"
+            :title="t('billingPlansManagement.empty')"
+            :description="t('billingPlansManagement.emptyHint')"
           />
         </div>
 
@@ -46,25 +46,25 @@
             <TableHeader>
               <TableRow>
                 <TableHead class="w-[24%]">
-                  套餐
+                  {{ t('billingPlansManagement.plan') }}
                 </TableHead>
                 <TableHead class="w-[10%] whitespace-nowrap">
-                  价格
+                  {{ t('billingPlansManagement.price') }}
                 </TableHead>
                 <TableHead class="w-[18%] whitespace-nowrap">
-                  有效期
+                  {{ t('billingPlansManagement.duration') }}
                 </TableHead>
                 <TableHead class="w-[20%]">
-                  权益
+                  {{ t('billingPlansManagement.benefits') }}
                 </TableHead>
                 <TableHead class="w-[6%] whitespace-nowrap text-center">
-                  排序
+                  {{ t('billingPlansManagement.order') }}
                 </TableHead>
                 <TableHead class="w-[7%] whitespace-nowrap text-center">
-                  状态
+                  {{ t('billingPlansManagement.status') }}
                 </TableHead>
                 <TableHead class="w-[15%] whitespace-nowrap text-right">
-                  操作
+                  {{ t('billingPlansManagement.actions') }}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -118,7 +118,7 @@
                       class="h-1.5 w-1.5 rounded-full"
                       :class="plan.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/40'"
                     />
-                    {{ plan.enabled ? '已启用' : '已停用' }}
+                    {{ plan.enabled ? t('billingPlansManagement.enabled') : t('billingPlansManagement.disabled') }}
                   </span>
                 </TableCell>
                 <TableCell class="whitespace-nowrap text-right">
@@ -129,7 +129,7 @@
                       :disabled="deletingPlanId === plan.id"
                       @click="togglePlanStatus(plan)"
                     >
-                      {{ plan.enabled ? '停用' : '启用' }}
+                      {{ plan.enabled ? t('billingPlansManagement.disable') : t('billingPlansManagement.enable') }}
                     </Button>
                     <Button
                       variant="ghost"
@@ -137,7 +137,7 @@
                       :disabled="deletingPlanId === plan.id"
                       @click="openEditDialog(plan)"
                     >
-                      编辑
+                      {{ t('billingPlansManagement.edit') }}
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger as-child>
@@ -157,7 +157,7 @@
                           @select="deletePlan(plan)"
                         >
                           <Trash2 class="mr-2 h-4 w-4" />
-                          {{ deletingPlanId === plan.id ? '删除中...' : '删除套餐' }}
+                          {{ deletingPlanId === plan.id ? t('billingPlansManagement.deleting') : t('billingPlansManagement.delete') }}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -173,8 +173,8 @@
     <Dialog
       v-model:open="dialogOpen"
       size="4xl"
-      :title="editingPlan ? '编辑套餐' : '新建套餐'"
-      description="通过固定权益控件生成套餐配置"
+      :title="editingPlan ? t('billingPlansManagement.editTitle') : t('billingPlansManagement.createTitle')"
+      :description="t('billingPlansManagement.formHint')"
       no-padding
     >
       <div class="max-h-[calc(100vh-193px)] space-y-4 overflow-y-auto px-6 py-4">
@@ -186,8 +186,8 @@
             @click="applyTemplate('daily')"
           >
             <span>
-              <span class="block text-sm font-medium leading-5">周期额度套餐</span>
-              <span class="block text-xs font-normal leading-4 text-muted-foreground">支付成功后开始计算</span>
+              <span class="block text-sm font-medium leading-5">{{ t('billingPlansManagement.quotaPlan') }}</span>
+              <span class="block text-xs font-normal leading-4 text-muted-foreground">{{ t('billingPlansManagement.quotaPlanHint') }}</span>
             </span>
           </Button>
           <Button
@@ -197,8 +197,8 @@
             @click="applyTemplate('membership')"
           >
             <span>
-              <span class="block text-sm font-medium leading-5">会员权益包</span>
-              <span class="block text-xs font-normal leading-4 text-muted-foreground">动态授予分组</span>
+              <span class="block text-sm font-medium leading-5">{{ t('billingPlansManagement.membershipPlan') }}</span>
+              <span class="block text-xs font-normal leading-4 text-muted-foreground">{{ t('billingPlansManagement.membershipPlanHint') }}</span>
             </span>
           </Button>
           <Button
@@ -208,8 +208,8 @@
             @click="applyTemplate('mixed')"
           >
             <span>
-              <span class="block text-sm font-medium leading-5">混合套餐</span>
-              <span class="block text-xs font-normal leading-4 text-muted-foreground">周期权益组合</span>
+              <span class="block text-sm font-medium leading-5">{{ t('billingPlansManagement.hybridPlan') }}</span>
+              <span class="block text-xs font-normal leading-4 text-muted-foreground">{{ t('billingPlansManagement.hybridPlanHint') }}</span>
             </span>
           </Button>
         </div>
@@ -248,7 +248,7 @@
           <div class="grid grid-cols-1 gap-x-4 gap-y-3 xl:grid-cols-12">
             <div class="border-b border-border/70 pb-2 xl:col-span-12">
               <h3 class="text-sm font-semibold leading-5">
-                基础信息
+                {{ t('billingPlansManagement.basicInfo') }}
               </h3>
             </div>
 
@@ -257,7 +257,7 @@
                 for="plan-title"
                 class="inline-flex items-center gap-1.5 text-sm font-medium"
               >
-                <span>套餐名称</span>
+                <span>{{ t('billingPlansManagement.planName') }}</span>
                 <span class="text-destructive">*</span>
                 <TooltipProvider>
                   <Tooltip>
@@ -265,7 +265,7 @@
                       <button
                         type="button"
                         class="text-muted-foreground/60 hover:text-muted-foreground"
-                        aria-label="套餐名称说明"
+                        :aria-label="t('billingPlansManagement.planNameAria')"
                       >
                         <CircleHelp class="h-3.5 w-3.5" />
                       </button>
@@ -274,7 +274,7 @@
                       side="top"
                       class="max-w-64 text-xs"
                     >
-                      用户端购买页和订单快照里显示的套餐名称。
+                      {{ t('billingPlansManagement.planNameHint') }}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -283,7 +283,7 @@
                 id="plan-title"
                 v-model="form.title"
                 class="h-9 rounded-xl bg-muted/70"
-                placeholder="Pro 周套餐"
+                :placeholder="t('billingPlansManagement.planNamePlaceholder')"
               />
             </div>
 
@@ -292,7 +292,7 @@
                 for="plan-price"
                 class="inline-flex items-center gap-1.5 text-sm font-medium"
               >
-                <span>价格</span>
+                <span>{{ t('billingPlansManagement.price') }}</span>
                 <span class="text-destructive">*</span>
                 <TooltipProvider>
                   <Tooltip>
@@ -300,7 +300,7 @@
                       <button
                         type="button"
                         class="text-muted-foreground/60 hover:text-muted-foreground"
-                        aria-label="价格字段说明"
+                        :aria-label="t('billingPlansManagement.priceAria')"
                       >
                         <CircleHelp class="h-3.5 w-3.5" />
                       </button>
@@ -309,7 +309,7 @@
                       side="top"
                       class="max-w-72 text-xs"
                     >
-                      设置用户实际支付的套餐价格。
+                      {{ t('billingPlansManagement.priceHint') }}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -347,14 +347,14 @@
                 for="plan-description"
                 class="inline-flex items-center gap-1.5 text-sm font-medium"
               >
-                <span>说明</span>
+                <span>{{ t('billingPlansManagement.summary') }}</span>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger as-child>
                       <button
                         type="button"
                         class="text-muted-foreground/60 hover:text-muted-foreground"
-                        aria-label="套餐说明字段说明"
+                        :aria-label="t('billingPlansManagement.summaryAria')"
                       >
                         <CircleHelp class="h-3.5 w-3.5" />
                       </button>
@@ -363,7 +363,7 @@
                       side="top"
                       class="max-w-72 text-xs"
                     >
-                      简短描述套餐包含的权益，建议控制在一两句话内。
+                      {{ t('billingPlansManagement.summaryHint') }}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -373,7 +373,7 @@
                 v-model="form.description"
                 class="min-h-[72px] resize-y rounded-2xl bg-muted/70"
                 rows="2"
-                placeholder="简短说明套餐权益"
+                :placeholder="t('billingPlansManagement.summaryPlaceholder')"
               />
             </div>
           </div>
@@ -381,7 +381,7 @@
           <section class="mt-5 space-y-3">
             <div class="border-b border-border/70 pb-2">
               <h3 class="text-sm font-semibold leading-5">
-                有效期与购买限制
+                {{ t('billingPlansManagement.durationAndLimits') }}
               </h3>
             </div>
             <div class="grid grid-cols-1 gap-x-4 gap-y-3 xl:grid-cols-12">
@@ -393,14 +393,14 @@
                   for="plan-purchase-limit-scope"
                   class="inline-flex items-center gap-1.5 text-sm font-medium"
                 >
-                  <span>重复购买限制</span>
+                  <span>{{ t('billingPlansManagement.purchaseLimit') }}</span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger as-child>
                         <button
                           type="button"
                           class="text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label="重复购买限制说明"
+                          :aria-label="t('billingPlansManagement.purchaseLimitAria')"
                         >
                           <CircleHelp class="h-3.5 w-3.5" />
                         </button>
@@ -409,7 +409,7 @@
                         side="top"
                         class="max-w-72 text-xs"
                       >
-                        控制同一用户能否重复购买本套餐；不决定套餐能用多久。
+                        {{ t('billingPlansManagement.purchaseLimitHint') }}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -423,13 +423,13 @@
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active_period">
-                      按周期限制
+                      {{ t('billingPlansManagement.periodLimit') }}
                     </SelectItem>
                     <SelectItem value="lifetime">
-                      永久限制
+                      {{ t('billingPlansManagement.lifetimeLimit') }}
                     </SelectItem>
                     <SelectItem value="unlimited">
-                      不限购
+                      {{ t('billingPlansManagement.unlimitedPurchase') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -450,7 +450,7 @@
                         <button
                           type="button"
                           class="text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label="套餐有效期说明"
+                          :aria-label="t('billingPlansManagement.durationAria')"
                         >
                           <CircleHelp class="h-3.5 w-3.5" />
                         </button>
@@ -481,13 +481,13 @@
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="day">
-                        日
+                        {{ t('billingPlansManagement.day') }}
                       </SelectItem>
                       <SelectItem value="month">
-                        月
+                        {{ t('billingPlansManagement.month') }}
                       </SelectItem>
                       <SelectItem value="year">
-                        年
+                        {{ t('billingPlansManagement.year') }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -510,7 +510,7 @@
                         <button
                           type="button"
                           class="text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label="最多持有份数字段说明"
+                          :aria-label="t('billingPlansManagement.maxActiveAria')"
                         >
                           <CircleHelp class="h-3.5 w-3.5" />
                         </button>
@@ -536,11 +536,11 @@
                 />
               </div>
               <div class="xl:col-span-12 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
-                <span class="font-medium text-foreground/80">当前逻辑：</span>
+                <span class="font-medium text-foreground/80">{{ t('billingPlansManagement.currentLogic') }}：</span>
                 {{ purchaseLimitSummaryText }}
               </div>
               <div class="xl:col-span-12 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-200">
-                同一个套餐再次购买会从当前到期时间后继续；不同套餐可以并存，按各自可用模型范围生效。
+                {{ t('billingPlansManagement.renewalLogic') }}
               </div>
             </div>
           </section>
@@ -548,7 +548,7 @@
           <section class="mt-5 space-y-3">
             <div class="border-b border-border/70 pb-2">
               <h3 class="text-sm font-semibold leading-5">
-                展示与上架
+                {{ t('billingPlansManagement.displayAndListing') }}
               </h3>
             </div>
             <div class="grid grid-cols-1 gap-x-4 gap-y-3 xl:grid-cols-12">
@@ -557,14 +557,14 @@
                   for="plan-sort"
                   class="inline-flex items-center gap-1.5 text-sm font-medium"
                 >
-                  <span>展示排序</span>
+                  <span>{{ t('billingPlansManagement.displayOrder') }}</span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger as-child>
                         <button
                           type="button"
                           class="text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label="展示排序说明"
+                          :aria-label="t('billingPlansManagement.displayOrderAria')"
                         >
                           <CircleHelp class="h-3.5 w-3.5" />
                         </button>
@@ -573,7 +573,7 @@
                         side="top"
                         class="max-w-64 text-xs"
                       >
-                        数值越小越靠前，用户端套餐列表按排序值升序展示。
+                        {{ t('billingPlansManagement.displayOrderHint') }}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -588,14 +588,14 @@
               </div>
               <div class="space-y-1.5 xl:col-span-6">
                 <Label class="inline-flex items-center gap-1.5 text-sm font-medium">
-                  <span>上架状态</span>
+                  <span>{{ t('billingPlansManagement.listingStatus') }}</span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger as-child>
                         <button
                           type="button"
                           class="text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label="上架状态说明"
+                          :aria-label="t('billingPlansManagement.listingStatusAria')"
                         >
                           <CircleHelp class="h-3.5 w-3.5" />
                         </button>
@@ -604,14 +604,14 @@
                         side="top"
                         class="max-w-64 text-xs"
                       >
-                        停用后保留配置，但用户端套餐中心不再展示。
+                        {{ t('billingPlansManagement.listingStatusHint') }}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </Label>
                 <div class="flex h-9 items-center justify-between rounded-xl border border-border/60 bg-muted/70 px-3">
                   <span class="text-sm text-muted-foreground">
-                    {{ form.enabled ? '已上架' : '未上架' }}
+                    {{ form.enabled ? t('billingPlansManagement.listed') : t('billingPlansManagement.unlisted') }}
                   </span>
                   <Switch v-model="form.enabled" />
                 </div>
@@ -625,7 +625,7 @@
           class="space-y-4"
         >
           <h3 class="text-sm font-semibold">
-            权益配置
+            {{ t('billingPlansManagement.entitlements') }}
           </h3>
 
           <div
@@ -634,7 +634,7 @@
           >
             <div class="flex items-center justify-between gap-3">
               <div>
-                <Label class="text-sm font-medium">附赠余额</Label>
+                <Label class="text-sm font-medium">{{ t('billingPlansManagement.bonusBalance') }}</Label>
                 <p class="mt-1 text-xs text-muted-foreground">
                   {{ walletCreditSummaryText }}
                 </p>
@@ -646,7 +646,7 @@
               class="grid grid-cols-1 gap-3 md:grid-cols-2"
             >
               <div class="space-y-1.5">
-                <Label>发放金额 (USD)</Label>
+                <Label>{{ t('billingPlansManagement.grantAmount') }}</Label>
                 <Input
                   v-model.number="form.wallet_credit_amount_usd"
                   type="number"
@@ -655,17 +655,17 @@
                 />
               </div>
               <div class="space-y-1.5">
-                <Label>余额类型</Label>
+                <Label>{{ t('billingPlansManagement.balanceType') }}</Label>
                 <Select v-model="form.wallet_credit_balance_bucket">
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="recharge">
-                      充值余额
+                      {{ t('billingPlansManagement.rechargeBalance') }}
                     </SelectItem>
                     <SelectItem value="gift">
-                      赠款余额
+                      {{ t('billingPlansManagement.giftBalance') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -682,7 +682,7 @@
           >
             <div class="flex items-center justify-between gap-3">
               <div>
-                <Label class="text-sm font-medium">用量额度</Label>
+                <Label class="text-sm font-medium">{{ t('billingPlansManagement.usageQuota') }}</Label>
                 <p class="mt-1 text-xs text-muted-foreground">
                   {{ dailyQuotaSummaryText }}
                 </p>
@@ -694,7 +694,7 @@
               class="grid grid-cols-1 gap-3 md:grid-cols-2"
             >
               <div class="space-y-1.5">
-                <Label>24 小时额度 (USD)</Label>
+                <Label>{{ t('billingPlansManagement.dailyQuota') }}</Label>
                 <Input
                   v-model.number="form.daily_quota_usd"
                   type="number"
@@ -703,7 +703,7 @@
                 />
               </div>
               <div class="space-y-1.5">
-                <Label>5 小时额度 (USD)</Label>
+                <Label>{{ t('billingPlansManagement.fiveHourQuota') }}</Label>
                 <Input
                   v-model.number="form.five_hour_quota_usd"
                   type="number"
@@ -712,7 +712,7 @@
                 />
               </div>
               <div class="space-y-1.5">
-                <Label>7 天额度 (USD)</Label>
+                <Label>{{ t('billingPlansManagement.weeklyQuota') }}</Label>
                 <Input
                   v-model.number="form.weekly_quota_usd"
                   type="number"
@@ -721,7 +721,7 @@
                 />
               </div>
               <div class="space-y-1.5">
-                <Label>30 天额度 (USD)</Label>
+                <Label>{{ t('billingPlansManagement.monthlyQuota') }}</Label>
                 <Input
                   v-model.number="form.monthly_quota_usd"
                   type="number"
@@ -730,7 +730,7 @@
                 />
               </div>
               <div class="space-y-1.5">
-                <Label>套餐消耗倍率</Label>
+                <Label>{{ t('billingPlansManagement.consumptionMultiplier') }}</Label>
                 <Input
                   v-model.number="form.quota_multiplier"
                   type="number"
@@ -738,32 +738,32 @@
                   step="0.0001"
                 />
                 <p class="text-xs leading-5 text-muted-foreground">
-                  1 美元基础价消耗多少套餐额度，默认 1。
+                  {{ t('billingPlansManagement.multiplierHint') }}
                 </p>
               </div>
               <div class="space-y-1.5 md:col-span-2">
                 <Label class="inline-flex items-center gap-1.5">
-                  <span>套餐可用模型</span>
+                  <span>{{ t('billingPlansManagement.allowedModels') }}</span>
                   <span class="text-destructive">*</span>
                 </Label>
                 <MultiSelect
                   v-model="form.allowed_global_model_ids"
                   :options="globalModelOptions"
-                  :placeholder="loadingGlobalModels ? '正在加载模型...' : '选择这个套餐可以使用的模型'"
-                  empty-text="暂无可选模型"
+                  :placeholder="loadingGlobalModels ? t('billingPlansManagement.loadingModels') : t('billingPlansManagement.chooseModels')"
+                  :empty-text="t('billingPlansManagement.noModels')"
                 />
                 <div
                   v-if="loadingProviders || providerModelSourceOptions.length > 0"
                   class="rounded-xl border border-border/60 bg-muted/20 p-3"
                 >
                   <div class="mb-2 text-xs font-medium text-muted-foreground">
-                    按提供商快速勾选
+                    {{ t('billingPlansManagement.quickProviderSelect') }}
                   </div>
                   <div
                     v-if="loadingProviders"
                     class="text-xs text-muted-foreground"
                   >
-                    正在加载提供商...
+                    {{ t('billingPlansManagement.loadingProviders') }}
                   </div>
                   <div
                     v-else
@@ -788,11 +788,11 @@
                   </div>
                 </div>
                 <p class="text-xs leading-5 text-muted-foreground">
-                  这里决定哪些模型可以使用这个套餐额度。点上面的提供商按钮，只是快速勾选或取消它下面的模型。
+                  {{ t('billingPlansManagement.allowedModelsHint') }}
                 </p>
               </div>
               <div class="space-y-1.5">
-                <Label>重置时区</Label>
+                <Label>{{ t('billingPlansManagement.resetTimezone') }}</Label>
                 <Input
                   v-model="form.reset_timezone"
                   placeholder="Asia/Shanghai"
@@ -801,18 +801,18 @@
               </div>
               <div class="flex items-center justify-between rounded-xl border border-border/60 bg-card/50 p-3">
                 <div>
-                  <Label>允许超额扣钱包</Label>
+                  <Label>{{ t('billingPlansManagement.allowWalletOverage') }}</Label>
                   <p class="mt-1 text-xs text-muted-foreground">
-                    额度不足时继续使用钱包余额
+                    {{ t('billingPlansManagement.allowWalletOverageHint') }}
                   </p>
                 </div>
                 <Switch v-model="form.allow_wallet_overage" />
               </div>
               <div class="flex items-center justify-between rounded-xl border border-border/60 bg-card/50 p-3 opacity-70">
                 <div>
-                  <Label>额度结转</Label>
+                  <Label>{{ t('billingPlansManagement.rollover') }}</Label>
                   <p class="mt-1 text-xs text-muted-foreground">
-                    当前后端固定不支持结转
+                    {{ t('billingPlansManagement.rolloverUnsupported') }}
                   </p>
                 </div>
                 <Switch
@@ -832,7 +832,7 @@
           >
             <div class="flex items-center justify-between gap-3">
               <div>
-                <Label class="text-sm font-medium">会员分组</Label>
+                <Label class="text-sm font-medium">{{ t('billingPlansManagement.memberGroups') }}</Label>
                 <p class="mt-1 text-xs text-muted-foreground">
                   {{ membershipSummaryText }}
                 </p>
@@ -849,20 +849,20 @@
               <MultiSelect
                 v-model="form.grant_user_groups"
                 :options="userGroupOptions"
-                placeholder="选择要授予的用户分组"
-                empty-text="暂无用户分组"
+                :placeholder="t('billingPlansManagement.chooseGroups')"
+                :empty-text="t('billingPlansManagement.noGroups')"
               />
               <div class="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
                 <Input
                   v-model="manualGroupId"
-                  placeholder="手动输入分组 ID"
+                  :placeholder="t('billingPlansManagement.groupIdPlaceholder')"
                   @keyup.enter="addManualGroup"
                 />
                 <Button
                   variant="outline"
                   @click="addManualGroup"
                 >
-                  添加
+                  {{ t('billingPlansManagement.add') }}
                 </Button>
               </div>
             </div>
@@ -877,7 +877,7 @@
           :disabled="saving"
           @click="dialogOpen = false"
         >
-          取消
+          {{ t('billingPlansManagement.cancel') }}
         </Button>
         <Button
           variant="default"
@@ -885,7 +885,7 @@
           :disabled="saving || isSaveDisabled"
           @click="savePlan"
         >
-          {{ saving ? '保存中...' : '保存套餐' }}
+          {{ saving ? t('billingPlansManagement.saving') : t('billingPlansManagement.savePlan') }}
         </Button>
       </div>
     </Dialog>
@@ -894,6 +894,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { CircleHelp, MoreHorizontal, Plus, Trash2 } from 'lucide-vue-next'
 import {
   adminBillingPlansApi,
@@ -1127,89 +1130,89 @@ const planModeGuide = computed<PlanModeGuide>(() => {
   switch (planMode.value) {
     case 'wallet':
       return {
-        badge: '旧余额权益',
-        title: '旧余额套餐',
-        description: '纯余额套餐已由钱包充值功能承接。建议停用该套餐，或补充周期额度/会员分组后作为混合套餐。',
+        badge: t('billingPlansManagement.legacyBalanceBadge'),
+        title: t('billingPlansManagement.legacyBalancePlan'),
+        description: t('billingPlansManagement.legacyBalanceDescription'),
         notes: [
-          '新建套餐不再提供余额包模板',
-          '钱包入账请使用充值功能',
-          '附赠余额仍可放在混合套餐中',
+          t('billingPlansManagement.legacyBalanceNote1'),
+          t('billingPlansManagement.legacyBalanceNote2'),
+          t('billingPlansManagement.legacyBalanceNote3'),
         ],
       }
     case 'daily':
       return {
-        badge: '周期额度',
-        title: '周期额度套餐',
-        description: '适合日套餐、周套餐、月套餐。支付成功后开始计算有效期和额度窗口，到期后不再生效。',
+        badge: t('billingPlansManagement.periodQuotaBadge'),
+        title: t('billingPlansManagement.quotaPlan'),
+        description: t('billingPlansManagement.periodQuotaDescription'),
         notes: [
-          '日、周、月额度都从支付成功后开始滚动',
-          '默认用完后拒绝继续消费',
-          '同一个套餐再次购买会自动顺延',
+          t('billingPlansManagement.periodQuotaNote1'),
+          t('billingPlansManagement.periodQuotaNote2'),
+          t('billingPlansManagement.periodQuotaNote3'),
         ],
       }
     case 'membership':
       return {
-        badge: '会员权限',
-        title: '会员权益包',
-        description: '适合 Pro、Plus、团队会员。购买后动态合并用户分组权限，到期自然失效。',
+        badge: t('billingPlansManagement.membershipBadge'),
+        title: t('billingPlansManagement.membershipPlan'),
+        description: t('billingPlansManagement.membershipDescription'),
         notes: [
-          '不会永久修改用户基础分组',
-          '同一个权益包再次购买会自动顺延',
-          '适合解锁模型组或高级功能',
+          t('billingPlansManagement.membershipNote1'),
+          t('billingPlansManagement.membershipNote2'),
+          t('billingPlansManagement.membershipNote3'),
         ],
       }
     case 'mixed':
       return {
-        badge: '混合套餐',
-        title: '组合权益套餐',
-        description: '适合同时包含周期额度和会员权限的产品，也可以按需附赠少量钱包余额。',
+        badge: t('billingPlansManagement.hybridBadge'),
+        title: t('billingPlansManagement.hybridBenefitsPlan'),
+        description: t('billingPlansManagement.hybridDescription'),
         notes: [
-          '同一个组合套餐再次购买会自动顺延',
-          '附赠余额发放后不随周期结束扣回',
-          '限购会同时影响整套组合权益',
+          t('billingPlansManagement.hybridNote1'),
+          t('billingPlansManagement.hybridNote2'),
+          t('billingPlansManagement.hybridNote3'),
         ],
       }
     default:
       return {
-        badge: '待配置',
-        title: '选择一种套餐模板',
-        description: '先选择周期额度、会员分组或混合套餐，再配置价格、购买限制和权益配置。',
+        badge: t('billingPlansManagement.pendingConfig'),
+        title: t('billingPlansManagement.chooseTemplate'),
+        description: t('billingPlansManagement.chooseTemplateDescription'),
         notes: [
-          '周期额度和会员权益是限时权益',
-          '钱包充值已从套餐中拆出',
-          '混合套餐可以附赠余额',
+          t('billingPlansManagement.chooseTemplateNote1'),
+          t('billingPlansManagement.chooseTemplateNote2'),
+          t('billingPlansManagement.chooseTemplateNote3'),
         ],
       }
   }
 })
 
-const durationFieldLabel = computed(() => '套餐有效期')
+const durationFieldLabel = computed(() => t('billingPlansManagement.planValidity'))
 
 const durationTooltipText = computed(() => {
   if (planMode.value === 'wallet') {
-    return '用户购买或后台发放后，套餐在这段时间内有效；旧余额套餐建议改用钱包充值功能。'
+    return t('billingPlansManagement.legacyDurationHint')
   }
-  return '用户购买或后台发放后，周期额度和会员权益会在这段时间内有效，到期自动失效。'
+  return t('billingPlansManagement.durationHint')
 })
 
 const activeLimitFieldLabel = computed(() =>
-  form.purchase_limit_scope === 'lifetime' ? '每人最多购买次数' : '每人最多待支付订单'
+  form.purchase_limit_scope === 'lifetime' ? t('billingPlansManagement.maxPurchasesPerUser') : t('billingPlansManagement.maxPendingOrdersPerUser')
 )
 
 const activeLimitTooltipText = computed(() =>
   form.purchase_limit_scope === 'lifetime'
-    ? '按同一用户历史成功购买次数累计，达到该值后不能再次购买，适合首购特惠包。'
-    : '只限制同一用户同时存在的未支付订单，不阻止续费。'
+    ? t('billingPlansManagement.lifetimeLimitHint')
+    : t('billingPlansManagement.pendingOrderLimitHint')
 )
 
 const purchaseLimitSummaryText = computed(() => {
   if (form.purchase_limit_scope === 'unlimited') {
-    return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；不限制同一用户重复购买。`
+    return t('billingPlansManagement.unlimitedSummary', { duration: form.duration_value || 1, unit: durationUnitLabel(form.duration_unit) })
   }
   if (form.purchase_limit_scope === 'lifetime') {
-    return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；同一用户历史成功购买本套餐达到 ${form.max_active_per_user || 1} 次后不能再买。`
+    return t('billingPlansManagement.lifetimeSummary', { duration: form.duration_value || 1, unit: durationUnitLabel(form.duration_unit), count: form.max_active_per_user || 1 })
   }
-  return `套餐有效期为 ${form.duration_value || 1}${durationUnitLabel(form.duration_unit)}；同一用户最多同时保留 ${form.max_active_per_user || 1} 个未支付订单，支付成功后同套餐自动顺延。`
+  return t('billingPlansManagement.activePeriodSummary', { duration: form.duration_value || 1, unit: durationUnitLabel(form.duration_unit), count: form.max_active_per_user || 1 })
 })
 
 const showWalletCreditConfig = computed(() =>
@@ -1226,35 +1229,35 @@ const showMembershipGroupConfig = computed(() =>
 
 const walletCreditSummaryText = computed(() =>
   planMode.value === 'mixed'
-    ? '作为套餐附赠余额一次性发放'
-    : '旧余额套餐会一次性发放到充值余额或赠款余额'
+    ? t('billingPlansManagement.bonusBalanceSummary')
+    : t('billingPlansManagement.legacyBalanceSummary')
 )
 
 const walletCreditDetailText = computed(() => {
-  const bucket = form.wallet_credit_balance_bucket === 'recharge' ? '充值余额' : '赠款余额'
-  return `当前会发放到${bucket}。附赠余额发放后进入钱包，不会因为套餐周期结束而自动扣回。`
+  const bucket = form.wallet_credit_balance_bucket === 'recharge' ? t('billingPlansManagement.rechargeBalance') : t('billingPlansManagement.giftBalance')
+  return t('billingPlansManagement.balanceGrantDetail', { bucket })
 })
 
 const dailyQuotaSummaryText = computed(() =>
   planMode.value === 'mixed'
-    ? '组合套餐内的周期性 USD 消费用量'
-    : '可配置 24 小时、5 小时、7 天和 30 天额度'
+    ? t('billingPlansManagement.hybridQuotaSummary')
+    : t('billingPlansManagement.quotaWindowSummary')
 )
 
 const dailyQuotaDetailText = computed(() =>
   form.allow_wallet_overage
-    ? '套餐额度不足时会继续使用钱包余额，适合希望用户不中断请求的套餐。'
-    : '任意一个额度窗口不足时都会停止套餐扣费，适合严格封顶的周期套餐或体验卡。'
+    ? t('billingPlansManagement.walletOverageDetail')
+    : t('billingPlansManagement.strictQuotaDetail')
 )
 
 const membershipSummaryText = computed(() =>
   planMode.value === 'mixed'
-    ? '组合套餐内的动态会员权限'
-    : '购买后动态合并分组权限，到期自动失效'
+    ? t('billingPlansManagement.hybridMembershipSummary')
+    : t('billingPlansManagement.membershipGrantSummary')
 )
 
 const membershipDetailText = computed(() =>
-  '这里授予的是动态分组权限，不会永久改写用户基础分组；权益到期后权限解析会自动移除。'
+  t('billingPlansManagement.membershipGrantDetail')
 )
 
 onMounted(() => {
@@ -1306,8 +1309,8 @@ async function loadPlans() {
         : left.sort_order - right.sort_order
     )
   } catch (err) {
-    log.error('加载套餐失败:', err)
-    showError(parseApiError(err, '加载套餐失败'))
+    log.error(t('billingPlansManagement.loadPlansFailed'), err)
+    showError(parseApiError(err, t('billingPlansManagement.loadPlansFailed')))
   }
 }
 
@@ -1316,8 +1319,8 @@ async function loadUserGroups() {
     const response = await usersApi.listUserGroups()
     userGroups.value = response.items
   } catch (err) {
-    log.error('加载用户分组失败:', err)
-    showError(parseApiError(err, '加载用户分组失败'))
+    log.error(t('billingPlansManagement.loadGroupsFailed'), err)
+    showError(parseApiError(err, t('billingPlansManagement.loadGroupsFailed')))
   }
 }
 
@@ -1327,8 +1330,8 @@ async function loadGlobalModels() {
     const response = await getGlobalModels({ skip: 0, limit: 1000, is_active: true })
     globalModels.value = response.models
   } catch (err) {
-    log.error('加载模型失败:', err)
-    showError(parseApiError(err, '加载模型失败'))
+    log.error(t('billingPlansManagement.loadModelsFailed'), err)
+    showError(parseApiError(err, t('billingPlansManagement.loadModelsFailed')))
   } finally {
     loadingGlobalModels.value = false
   }
@@ -1343,8 +1346,8 @@ async function loadProviders() {
     )
     providers.value = response.items
   } catch (err) {
-    log.error('加载提供商失败:', err)
-    showError(parseApiError(err, '加载提供商失败'))
+    log.error(t('billingPlansManagement.loadProvidersFailed'), err)
+    showError(parseApiError(err, t('billingPlansManagement.loadProvidersFailed')))
   } finally {
     loadingProviders.value = false
   }
@@ -1426,8 +1429,8 @@ function formFromPlan(plan: BillingPlan): PlanFormState {
 function applyTemplate(template: TemplateKey) {
   const next = buildDefaultForm()
   if (template === 'daily') {
-    next.title = 'Pro 周套餐'
-    next.description = '支付成功后 7 天内可用 50 USD 额度'
+    next.title = t('billingPlansManagement.defaultQuotaTitle')
+    next.description = t('billingPlansManagement.defaultQuotaDescription')
     next.daily_quota_enabled = true
     next.duration_unit = 'day'
     next.duration_value = 7
@@ -1435,13 +1438,13 @@ function applyTemplate(template: TemplateKey) {
     next.weekly_quota_usd = 50
     next.max_active_per_user = 1
   } else if (template === 'membership') {
-    next.title = 'Pro 会员套餐'
-    next.description = '动态授予 Pro 用户分组 1 个月'
+    next.title = t('billingPlansManagement.defaultMembershipTitle')
+    next.description = t('billingPlansManagement.defaultMembershipDescription')
     next.membership_group_enabled = true
     next.max_active_per_user = 1
   } else {
-    next.title = 'Pro 混合套餐'
-    next.description = '周期额度和会员分组组合'
+    next.title = t('billingPlansManagement.defaultHybridTitle')
+    next.description = t('billingPlansManagement.defaultHybridDescription')
     next.daily_quota_enabled = true
     next.duration_unit = 'day'
     next.duration_value = 7
@@ -1507,25 +1510,25 @@ function normalizeActiveLimit() {
 }
 
 function validatePlan(entitlements: BillingEntitlement[]): string | null {
-  if (!form.title.trim()) return '请输入套餐名称'
-  if (!hasValidPricePrecision.value) return '价格最多支持两位小数'
-  if (!hasValidPriceAmount.value) return '价格必须大于 0，已有 0 元同步套餐可以继续保存为 0'
-  if (!form.price_currency.trim()) return '请输入价格币种'
-  if (!hasValidPurchaseLimitScope.value) return '重复购买限制必须是按周期限制、永久限制或不限购'
-  if (!hasValidDurationUnit.value) return '套餐有效期单位必须是日/月/年'
-  if (!hasValidDuration.value) return '套餐有效期必须是正整数'
+  if (!form.title.trim()) return t('billingPlansManagement.planNameRequired')
+  if (!hasValidPricePrecision.value) return t('billingPlansManagement.pricePrecision')
+  if (!hasValidPriceAmount.value) return t('billingPlansManagement.pricePositive')
+  if (!form.price_currency.trim()) return t('billingPlansManagement.currencyRequired')
+  if (!hasValidPurchaseLimitScope.value) return t('billingPlansManagement.purchaseLimitInvalid')
+  if (!hasValidDurationUnit.value) return t('billingPlansManagement.durationUnitInvalid')
+  if (!hasValidDuration.value) return t('billingPlansManagement.durationInvalid')
   if (showPurchaseLimitCount.value && !hasValidActiveLimit.value) {
-    return `${activeLimitFieldLabel.value}必须是正整数`
+    return t('billingPlansManagement.positiveIntegerRequired', { field: activeLimitFieldLabel.value })
   }
-  if (entitlements.length === 0) return '至少启用一种权益'
-  if (!hasPackageEntitlement(entitlements)) return '套餐至少需要包含用量额度或会员分组；钱包充值请使用充值功能'
-  if (form.wallet_credit_enabled && Number(form.wallet_credit_amount_usd) <= 0) return '附赠余额金额必须大于 0'
-  if (form.daily_quota_enabled && !hasAnyUsageQuota()) return '用量额度至少填写一个大于 0 的金额'
+  if (entitlements.length === 0) return t('billingPlansManagement.entitlementRequired')
+  if (!hasPackageEntitlement(entitlements)) return t('billingPlansManagement.packageEntitlementRequired')
+  if (form.wallet_credit_enabled && Number(form.wallet_credit_amount_usd) <= 0) return t('billingPlansManagement.bonusBalancePositive')
+  if (form.daily_quota_enabled && !hasAnyUsageQuota()) return t('billingPlansManagement.quotaAmountRequired')
   if (form.daily_quota_enabled && (!Number.isFinite(Number(form.quota_multiplier)) || Number(form.quota_multiplier) <= 0)) {
-    return '套餐消耗倍率必须大于 0'
+    return t('billingPlansManagement.multiplierPositive')
   }
-  if (form.daily_quota_enabled && form.allowed_global_model_ids.length === 0) return '请选择套餐支持的模型'
-  if (form.membership_group_enabled && form.grant_user_groups.length === 0) return '会员分组权益至少选择一个分组'
+  if (form.daily_quota_enabled && form.allowed_global_model_ids.length === 0) return t('billingPlansManagement.modelsRequired')
+  if (form.membership_group_enabled && form.grant_user_groups.length === 0) return t('billingPlansManagement.groupRequired')
   return null
 }
 
@@ -1568,16 +1571,16 @@ async function savePlan() {
   try {
     if (editingPlan.value) {
       await adminBillingPlansApi.update(editingPlan.value.id, payload)
-      success('套餐已更新')
+      success(t('billingPlansManagement.updated'))
     } else {
       await adminBillingPlansApi.create(payload)
-      success('套餐已创建')
+      success(t('billingPlansManagement.created'))
     }
     dialogOpen.value = false
     await loadPlans()
   } catch (err) {
-    log.error('保存套餐失败:', err)
-    showError(parseApiError(err, '保存套餐失败'))
+    log.error(t('billingPlansManagement.saveFailed'), err)
+    showError(parseApiError(err, t('billingPlansManagement.saveFailed')))
   } finally {
     saving.value = false
   }
@@ -1586,29 +1589,29 @@ async function savePlan() {
 async function togglePlanStatus(plan: BillingPlan) {
   try {
     await adminBillingPlansApi.setStatus(plan.id, !plan.enabled)
-    success(plan.enabled ? '套餐已停用' : '套餐已启用')
+    success(plan.enabled ? t('billingPlansManagement.disabledSuccess') : t('billingPlansManagement.enabledSuccess'))
     await loadPlans()
   } catch (err) {
-    log.error('更新套餐状态失败:', err)
-    showError(parseApiError(err, '更新套餐状态失败'))
+    log.error(t('billingPlansManagement.updateStatusFailed'), err)
+    showError(parseApiError(err, t('billingPlansManagement.updateStatusFailed')))
   }
 }
 
 async function deletePlan(plan: BillingPlan) {
   if (deletingPlanId.value) return
   const confirmed = window.confirm(
-    `确定删除套餐「${plan.title}」吗？\n\n已有订单或权益的套餐不能删除，请改为停用。删除后无法恢复。`
+    t('billingPlansManagement.deleteConfirm', { title: plan.title })
   )
   if (!confirmed) return
 
   deletingPlanId.value = plan.id
   try {
     await adminBillingPlansApi.delete(plan.id)
-    success('套餐已删除')
+    success(t('billingPlansManagement.deleted'))
     await loadPlans()
   } catch (err) {
-    log.error('删除套餐失败:', err)
-    showError(parseApiError(err, '删除套餐失败'))
+    log.error(t('billingPlansManagement.deleteFailed'), err)
+    showError(parseApiError(err, t('billingPlansManagement.deleteFailed')))
   } finally {
     deletingPlanId.value = null
   }
@@ -1629,10 +1632,10 @@ function formatPlanPriceAmount(plan: BillingPlan): string {
 
 function durationUnitLabel(unit: BillingDurationUnit): string {
   const labels: Record<BillingDurationUnit, string> = {
-    day: '天',
-    month: '个月',
-    year: '年',
-    custom: '个自定义周期',
+    day: t('billingPlansManagement.durationDays'),
+    month: t('billingPlansManagement.durationMonths'),
+    year: t('billingPlansManagement.durationYears'),
+    custom: t('billingPlansManagement.durationCustom'),
   }
   return labels[unit] || labels.month
 }
@@ -1662,15 +1665,15 @@ function resolvePlanModeFromEntitlements(entitlements: BillingEntitlementsInput)
 function planDurationHint(plan: BillingPlan): string {
   const mode = resolvePlanModeFromEntitlements(plan.entitlements)
   const modeText = (() => {
-    if (mode === 'wallet') return '旧余额套餐，建议停用'
-    if (mode === 'daily') return '周期额度'
-    if (mode === 'membership') return '会员权限'
-    if (mode === 'mixed') return '组合权益'
-    return '未配置权益'
+    if (mode === 'wallet') return t('billingPlansManagement.legacyPlanDisable')
+    if (mode === 'daily') return t('billingPlansManagement.periodQuotaBadge')
+    if (mode === 'membership') return t('billingPlansManagement.membershipBadge')
+    if (mode === 'mixed') return t('billingPlansManagement.hybridBenefits')
+    return t('billingPlansManagement.noBenefitsConfigured')
   })()
-  if (plan.purchase_limit_scope === 'unlimited') return `${modeText} · 不限购`
-  if (plan.purchase_limit_scope === 'lifetime') return `${modeText} · 永久限购`
-  return `${modeText} · 有效期内限购`
+  if (plan.purchase_limit_scope === 'unlimited') return t('billingPlansManagement.modeUnlimited', { mode: modeText })
+  if (plan.purchase_limit_scope === 'lifetime') return t('billingPlansManagement.modeLifetime', { mode: modeText })
+  return t('billingPlansManagement.modeActivePeriod', { mode: modeText })
 }
 
 function groupName(groupId: string): string {
@@ -1684,34 +1687,34 @@ function globalModelName(modelId: string): string {
 
 function formatAllowedGlobalModels(modelIds?: string[]): string {
   if (!Array.isArray(modelIds) || modelIds.length === 0) {
-    return '全部模型（旧套餐）'
+    return t('billingPlansManagement.allModelsLegacy')
   }
   const names = modelIds.map(globalModelName)
   return names.length <= 2
     ? names.join('、')
-    : `${names.slice(0, 2).join('、')} 等 ${names.length} 个模型`
+    : t('billingPlansManagement.modelListSummary', { names: names.slice(0, 2).join('、'), count: names.length })
 }
 
 function entitlementBadges(plan: BillingPlan): string[] {
   return normalizeBillingEntitlements(plan.entitlements).map((entitlement) => {
     if (entitlement.type === 'wallet_credit') {
-      return `附赠余额 $${Number(entitlement.amount_usd || 0).toFixed(2)}`
+      return t('billingPlansManagement.bonusBalanceAmount', { amount: Number(entitlement.amount_usd || 0).toFixed(2) })
     }
     if (entitlement.type === 'daily_quota') {
       const parts = []
       if (Number(entitlement.daily_quota_usd || 0) > 0) {
-        parts.push(`24小时 $${Number(entitlement.daily_quota_usd || 0).toFixed(2)}`)
+        parts.push(t('billingPlansManagement.quota24hAmount', { amount: Number(entitlement.daily_quota_usd || 0).toFixed(2) }))
       }
       if (Number(entitlement.five_hour_quota_usd || 0) > 0) {
         parts.push(`5H $${Number(entitlement.five_hour_quota_usd || 0).toFixed(2)}`)
       }
       if (Number(entitlement.weekly_quota_usd || 0) > 0) {
-        parts.push(`7天 $${Number(entitlement.weekly_quota_usd || 0).toFixed(2)}`)
+        parts.push(t('billingPlansManagement.quota7dAmount', { amount: Number(entitlement.weekly_quota_usd || 0).toFixed(2) }))
       }
       if (Number(entitlement.monthly_quota_usd || 0) > 0) {
-        parts.push(`30天 $${Number(entitlement.monthly_quota_usd || 0).toFixed(2)}`)
+        parts.push(t('billingPlansManagement.quota30dAmount', { amount: Number(entitlement.monthly_quota_usd || 0).toFixed(2) }))
       }
-      const quotaText = parts.join(' / ') || '用量额度'
+      const quotaText = parts.join(' / ') || t('billingPlansManagement.usageQuota')
       const labels = [formatAllowedGlobalModels(entitlement.allowed_global_model_ids)]
       const multiplierLabel = quotaConsumptionMultiplierLabel(entitlement)
       if (multiplierLabel) labels.push(multiplierLabel)
@@ -1719,9 +1722,9 @@ function entitlementBadges(plan: BillingPlan): string[] {
     }
     if (entitlement.type === 'membership_group') {
       const groups = entitlement.grant_user_groups.map(groupName).join(', ')
-      return `会员组 ${groups}`
+      return t('billingPlansManagement.membershipGroupsSummary', { groups })
     }
-    return '未知权益'
+    return t('billingPlansManagement.unknownEntitlement')
   })
 }
 

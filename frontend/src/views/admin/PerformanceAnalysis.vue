@@ -3,22 +3,22 @@
     <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
       <div>
         <h1 class="text-lg font-semibold">
-          性能分析
+          {{ t('performance.title') }}
         </h1>
         <p class="text-xs text-muted-foreground">
-          实时性能监控与历史延迟趋势
+          {{ t('performance.description') }}
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <Badge variant="outline">
-          实时 10s 刷新
+          {{ t('performance.live') }}
         </Badge>
         <span class="text-xs text-muted-foreground">
-          上次更新 {{ liveLastUpdatedLabel }}
+          {{ t('performance.updated') }} {{ liveLastUpdatedLabel }}
         </span>
         <RefreshButton
           :loading="isRefreshing"
-          title="刷新实时与历史性能数据"
+          :title="t('performance.refresh')"
           @click="handleManualRefresh"
         />
         <TimeRangePicker
@@ -33,10 +33,10 @@
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 class="text-sm font-semibold">
-              实时运行状态
+              {{ t('performance.runtime') }}
             </h2>
             <p class="text-xs text-muted-foreground">
-              聚合系统健康、并发保护、代理通道与降级切换
+              {{ t('performance.runtimeHint') }}
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -55,14 +55,14 @@
           v-if="liveLoading && !liveReady"
           class="py-6"
         >
-          <LoadingState message="加载实时性能数据中" />
+          <LoadingState :message="t('performance.loading')" />
         </div>
 
         <div
           v-else-if="!liveReady"
           class="rounded-xl border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-sm text-muted-foreground"
         >
-          实时性能数据暂不可用，请稍后重试。
+          {{ t('performance.unavailable') }}
         </div>
 
         <div
@@ -104,10 +104,10 @@
               <section class="rounded-xl border border-border/70 bg-card/60 p-4 lg:col-span-2">
                 <div class="flex items-center justify-between gap-3">
                   <h3 class="text-sm font-semibold">
-                    并发保护
+                    {{ t('performance.concurrency') }}
                   </h3>
                   <Badge variant="outline">
-                    全局 {{ distributedGateText }}
+                    {{ t('performance.global') }} {{ distributedGateText }}
                   </Badge>
                 </div>
 
@@ -115,16 +115,16 @@
                   <div class="rounded-lg border border-border/60 bg-background/50 px-3 py-3">
                     <div class="flex items-center justify-between gap-3">
                       <div class="text-sm font-medium">
-                        当前节点
+                        {{ t('performance.currentNode') }}
                       </div>
                       <Badge variant="outline">
-                        本机
+                        {{ t('performance.local') }}
                       </Badge>
                     </div>
                     <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          处理中
+                          {{ t('performance.processing') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.local.inFlight) }}
@@ -132,7 +132,7 @@
                       </div>
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          可接入
+                          {{ t('performance.capacity') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.local.availablePermits) }}
@@ -140,7 +140,7 @@
                       </div>
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          峰值并发
+                          {{ t('performance.peak') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.local.highWatermark) }}
@@ -148,7 +148,7 @@
                       </div>
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          被限流
+                          {{ t('performance.throttled') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.local.rejectedTotal) }}
@@ -160,7 +160,7 @@
                   <div class="rounded-lg border border-border/60 bg-background/50 px-3 py-3">
                     <div class="flex items-center justify-between gap-3">
                       <div class="text-sm font-medium">
-                        全局保护
+                        {{ t('performance.global') }}
                       </div>
                       <Badge :variant="distributedGateVariant">
                         {{ distributedGateText }}
@@ -169,7 +169,7 @@
                     <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          处理中
+                          {{ t('performance.processing') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.distributed.inFlight) }}
@@ -177,7 +177,7 @@
                       </div>
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          可接入
+                          {{ t('performance.capacity') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.distributed.availablePermits) }}
@@ -185,7 +185,7 @@
                       </div>
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          峰值并发
+                          {{ t('performance.peak') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.distributed.highWatermark) }}
@@ -193,7 +193,7 @@
                       </div>
                       <div>
                         <div class="text-xs text-muted-foreground">
-                          被限流
+                          {{ t('performance.throttled') }}
                         </div>
                         <div class="mt-1 text-lg font-semibold">
                           {{ formatMetricNumber(gatewayMetrics?.distributed.rejectedTotal) }}
@@ -206,23 +206,23 @@
                   v-if="gatewayMetrics?.distributed.unavailable"
                   class="mt-3 text-xs text-yellow-700 dark:text-yellow-300"
                 >
-                  全局并发保护暂不可用，请检查 Redis 连接。
+                  {{ t('performanceExtra.globalUnavailable') }}
                 </p>
               </section>
 
               <section class="rounded-xl border border-border/70 bg-card/60 p-4">
                 <div class="flex items-center justify-between gap-3">
                   <h3 class="text-sm font-semibold">
-                    代理通道
+                    {{ t('performance.proxyTunnel') }}
                   </h3>
                   <Badge variant="outline">
-                    实时连接
+                    {{ t('performance.liveConnections') }}
                   </Badge>
                 </div>
                 <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      节点数
+                      {{ t('performance.nodes') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(currentTunnelNodes) }}
@@ -230,7 +230,7 @@
                   </div>
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      可用连接
+                      {{ t('performance.availableConnections') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(gatewayMetrics?.tunnel.availableProxyConnections) }}
@@ -238,7 +238,7 @@
                   </div>
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      活跃流
+                      {{ t('performance.activeFlows') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(currentActiveStreams) }}
@@ -246,7 +246,7 @@
                   </div>
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      避让连接
+                      {{ t('performance.avoiding') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(gatewayMetrics?.tunnel.softAvoidProxyConnections) }}
@@ -258,16 +258,16 @@
               <section class="rounded-xl border border-border/70 bg-card/60 p-4">
                 <div class="flex items-center justify-between gap-3">
                   <h3 class="text-sm font-semibold">
-                    代理通道压力
+                    {{ t('performance.tunnelPressure') }}
                   </h3>
                   <Badge variant="outline">
-                    排队 {{ tunnelQueueUtilizationText }}
+                    {{ t('performanceExtra.queueWithValue', { value: tunnelQueueUtilizationText }) }}
                   </Badge>
                 </div>
                 <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      排队中
+                      {{ t('performance.queued') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(gatewayMetrics?.tunnel.outboundQueueDepthTotal) }}
@@ -275,7 +275,7 @@
                   </div>
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      峰值排队
+                      {{ t('performance.peakQueue') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(gatewayMetrics?.tunnel.outboundQueueDepthMax) }}
@@ -283,7 +283,7 @@
                   </div>
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      队列满拒绝
+                      {{ t('performance.queueRejected') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(tunnelQueueRejectedTotal) }}
@@ -291,7 +291,7 @@
                   </div>
                   <div>
                     <div class="text-xs text-muted-foreground">
-                      无可用通道
+                      {{ t('performance.unavailableTunnel') }}
                     </div>
                     <div class="mt-1 text-lg font-semibold">
                       {{ formatMetricNumber(tunnelSelectionPressureTotal) }}
@@ -304,10 +304,10 @@
             <section class="rounded-xl border border-border/70 bg-card/60 p-4">
               <div class="flex items-center justify-between gap-3">
                 <h3 class="text-sm font-semibold">
-                  降级切换统计
+                  {{ t('performance.fallback') }}
                 </h3>
                 <span class="text-xs text-muted-foreground">
-                  总计 {{ formatMetricNumber(gatewayMetrics?.fallbackTotal) }}
+                  {{ t('performanceExtra.totalWithValue', { value: formatMetricNumber(gatewayMetrics?.fallbackTotal) }) }}
                 </span>
               </div>
 
@@ -315,7 +315,7 @@
                 v-if="!fallbackRows.length"
                 class="mt-4 rounded-lg border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground"
               >
-                当前没有记录到降级切换。
+                {{ t('performance.noFallback') }}
               </div>
 
               <div
@@ -346,7 +346,7 @@
             <section class="flex h-full flex-col rounded-xl border border-border/70 bg-card/60 p-4">
               <div class="flex items-center justify-between gap-3">
                 <h3 class="text-sm font-semibold">
-                  最近错误
+                  {{ t('performance.recentErrors') }}
                 </h3>
                 <div class="flex items-center gap-2">
                   <Button
@@ -354,14 +354,14 @@
                     variant="ghost"
                     size="sm"
                     class="h-7 gap-1 px-2 text-xs"
-                    :title="recentErrorsExpanded ? '收起最近错误' : '展开最近错误'"
+                    :title="recentErrorsExpanded ? t('performance.collapse') : t('performance.expand')"
                     @click="recentErrorsExpanded = !recentErrorsExpanded"
                   >
                     <component
                       :is="recentErrorsExpanded ? ChevronUp : ChevronDown"
                       class="h-3.5 w-3.5"
                     />
-                    {{ recentErrorsExpanded ? '收起' : `展开 ${recentErrors.length}` }}
+                    {{ recentErrorsExpanded ? t('performance.collapse') : `${t('performance.expand')} ${recentErrors.length}` }}
                   </Button>
                   <span class="text-xs text-muted-foreground">
                     {{ formatMetricNumber(resilienceStatus?.error_statistics.total_errors) }} / 24h
@@ -373,7 +373,7 @@
                 v-if="!recentErrors.length"
                 class="mt-4 flex-1 rounded-lg border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground"
               >
-                当前没有最近错误。
+                {{ t('performance.noErrors') }}
               </div>
 
               <div
@@ -405,10 +405,10 @@
                         HTTP {{ item.context.status_code ?? '-' }}
                       </Badge>
                       <Badge variant="outline">
-                        {{ item.context.provider_name || item.context.provider_id || '未知上游' }}
+                        {{ item.context.provider_name || item.context.provider_id || t('performanceExtra.unknownUpstream') }}
                       </Badge>
                       <Badge variant="outline">
-                        {{ item.context.api_format || item.context.model || '未知格式' }}
+                        {{ item.context.api_format || item.context.model || t('performanceExtra.unknownFormat') }}
                       </Badge>
                     </div>
 
@@ -426,10 +426,10 @@
             <section class="flex h-full flex-col rounded-xl border border-border/70 bg-card/60 p-4">
               <div class="flex items-center justify-between gap-3">
                 <h3 class="text-sm font-semibold">
-                  熔断历史与建议
+                  {{ t('performance.circuitHistory') }}
                 </h3>
                 <span class="text-xs text-muted-foreground">
-                  开路 {{ formatMetricNumber(resilienceStatus?.error_statistics.open_circuit_breakers) }}
+                  {{ t('performanceExtra.openCircuits', { count: formatMetricNumber(resilienceStatus?.error_statistics.open_circuit_breakers) }) }}
                 </span>
               </div>
 
@@ -437,7 +437,7 @@
                 v-if="!circuitHistory.length"
                 class="mt-4 rounded-lg border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground"
               >
-                当前没有熔断事件。
+                {{ t('performanceExtra.noCircuitEvents') }}
               </div>
 
               <div
@@ -456,20 +456,20 @@
                           {{ item.provider_name || item.provider_id }}
                         </span>
                         <Badge :variant="item.event === 'opened' ? 'destructive' : 'warning'">
-                          {{ item.event === 'opened' ? '已打开' : '半开' }}
+                          {{ item.event === 'opened' ? t('performanceExtra.opened') : t('performanceExtra.halfOpen') }}
                         </Badge>
                       </div>
                       <div class="mt-1 text-xs text-muted-foreground">
                         <button
                           type="button"
                           class="transition-colors hover:text-foreground"
-                          :title="`${getCircuitHistoryAccountDisplay(item)}\n点击复制`"
+                          :title="`${getCircuitHistoryAccountDisplay(item)}\n${t('performanceExtra.clickToCopy')}`"
                           @click="copyCircuitHistoryAccount(item)"
                         >
                           {{ getCircuitHistoryAccountDisplay(item) }}
                           <Copy class="ml-1 inline h-3 w-3" />
                         </button>
-                        · {{ item.api_format || '未知格式' }}
+                        · {{ item.api_format || t('performanceExtra.unknownFormat') }}
                       </div>
                     </div>
                     <span class="shrink-0 text-xs text-muted-foreground">
@@ -478,17 +478,17 @@
                   </div>
 
                   <div class="mt-2 text-xs text-muted-foreground">
-                    原因：{{ item.reason || '未提供' }}
+                    {{ t('performanceExtra.reason', { reason: item.reason || t('performanceExtra.notProvided') }) }}
                   </div>
                   <div class="mt-1 text-xs text-muted-foreground">
-                    恢复窗口：{{ item.recovery_seconds != null ? `${item.recovery_seconds}s` : '-' }}
+                    {{ t('performanceExtra.recoveryWindow', { value: item.recovery_seconds != null ? `${item.recovery_seconds}s` : '-' }) }}
                   </div>
                 </article>
               </div>
 
               <div class="mt-4 border-t border-border/70 pt-4">
                 <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  建议
+                  {{ t('performanceExtra.recommendations') }}
                 </h4>
                 <ul
                   v-if="resilienceRecommendations.length"
@@ -506,7 +506,7 @@
                   v-else
                   class="mt-3 text-sm text-muted-foreground"
                 >
-                  当前没有额外运维建议。
+                  {{ t('performanceExtra.noRecommendations') }}
                 </div>
               </div>
             </section>
@@ -519,7 +519,7 @@
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 class="text-sm font-semibold">
-            上游服务性能
+            {{ t('performanceExtra.upstreamPerformance') }}
           </h3>
           <p class="text-xs text-muted-foreground">
             {{ providerPerformanceSubtitle }}
@@ -534,11 +534,11 @@
             variant="ghost"
             size="sm"
             class="h-8 gap-1 px-2 text-xs"
-            title="清除上游服务性能筛选"
+            :title="t('performanceExtra.clearFiltersTitle')"
             @click="resetProviderPerformanceFilters"
           >
             <FilterX class="h-3.5 w-3.5" />
-            清除
+            {{ t('performanceExtra.clear') }}
           </Button>
         </div>
       </div>
@@ -546,52 +546,52 @@
         <Input
           v-model="providerPerformanceProviderId"
           size="sm"
-          placeholder="上游 ID"
+          :placeholder="t('performanceExtra.upstreamId')"
         />
         <Input
           v-model="providerPerformanceModel"
           size="sm"
-          placeholder="模型"
+          :placeholder="t('performanceExtra.model')"
         />
         <Input
           v-model="providerPerformanceApiFormat"
           size="sm"
-          placeholder="API 格式"
+          :placeholder="t('performanceExtra.apiFormat')"
         />
         <Input
           v-model="providerPerformanceEndpointKind"
           size="sm"
-          placeholder="端点类型"
+          :placeholder="t('performanceExtra.endpointType')"
         />
         <Select v-model="providerPerformanceIsStream">
           <SelectTrigger class="h-8 text-xs border-border/60">
-            <SelectValue placeholder="流式" />
+            <SelectValue :placeholder="t('performanceExtra.streaming')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              全部流式
+              {{ t('performanceExtra.allStreaming') }}
             </SelectItem>
             <SelectItem value="true">
-              仅流式
+              {{ t('performanceExtra.streamingOnly') }}
             </SelectItem>
             <SelectItem value="false">
-              非流式
+              {{ t('performanceExtra.nonStreaming') }}
             </SelectItem>
           </SelectContent>
         </Select>
         <Select v-model="providerPerformanceHasFormatConversion">
           <SelectTrigger class="h-8 text-xs border-border/60">
-            <SelectValue placeholder="格式转换" />
+            <SelectValue :placeholder="t('performanceExtra.conversion')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              全部转换
+              {{ t('performanceExtra.allConversions') }}
             </SelectItem>
             <SelectItem value="true">
-              仅转换
+              {{ t('performanceExtra.convertedOnly') }}
             </SelectItem>
             <SelectItem value="false">
-              不转换
+              {{ t('performanceExtra.notConverted') }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -601,7 +601,7 @@
           type="number"
           min="1"
           max="600000"
-          placeholder="慢请求阈值 ms"
+          :placeholder="t('performanceExtra.slowThreshold')"
         />
       </div>
 
@@ -647,37 +647,37 @@
             <thead class="bg-muted/30 text-xs text-muted-foreground">
               <tr>
                 <th class="px-3 py-2 text-left font-medium">
-                  上游服务
+                  {{ t('performanceExtra.upstreamService') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  请求
+                  {{ t('performanceExtra.requests') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  成功率
+                  {{ t('performanceExtra.successRate') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  错误率
+                  {{ t('performanceExtra.errorRate') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  输出 TPS
+                  {{ t('performanceExtra.outputTps') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  平均首字
+                  {{ t('performanceExtra.avgFirstByte') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  平均响应
+                  {{ t('performanceExtra.avgResponse') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  P90/P99 响应
+                  {{ t('performanceExtra.responsePercentiles') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  P90/P99 首字
+                  {{ t('performanceExtra.firstBytePercentiles') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  慢请求
+                  {{ t('performanceExtra.slowRequests') }}
                 </th>
                 <th class="px-3 py-2 text-right font-medium">
-                  样本覆盖
+                  {{ t('performanceExtra.sampleCoverage') }}
                 </th>
               </tr>
             </thead>
@@ -738,7 +738,7 @@
           v-else
           class="rounded-lg border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground"
         >
-          当前没有上游服务性能数据。
+          {{ t('performanceExtra.noUpstreamData') }}
         </div>
       </div>
     </Card>
@@ -746,7 +746,7 @@
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card class="space-y-3 p-4">
         <h3 class="text-sm font-semibold">
-          输出 TPS 趋势
+          {{ t('performanceExtra.outputTpsTrend') }}
         </h3>
         <div
           v-if="providerPerformanceLoading"
@@ -766,7 +766,7 @@
       </Card>
       <Card class="space-y-3 p-4">
         <h3 class="text-sm font-semibold">
-          平均首字趋势
+          {{ t('performanceExtra.avgFirstByteTrend') }}
         </h3>
         <div
           v-if="providerPerformanceLoading"
@@ -789,7 +789,7 @@
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card class="p-4">
         <PercentileChart
-          title="响应延迟百分位"
+          :title="t('performanceExtra.responseLatencyPercentiles')"
           :series="percentiles"
           mode="response"
           :loading="percentileLoading"
@@ -797,7 +797,7 @@
       </Card>
       <Card class="p-4">
         <PercentileChart
-          title="首字节延迟百分位"
+          :title="t('performanceExtra.firstByteLatencyPercentiles')"
           :series="percentiles"
           mode="ttfb"
           :loading="percentileLoading"
@@ -808,14 +808,14 @@
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card class="p-4">
         <ErrorDistributionChart
-          title="错误分布"
+          :title="t('performanceExtra.errorDistribution')"
           :distribution="errorDistribution"
           :loading="errorLoading"
         />
       </Card>
       <Card class="space-y-3 p-4">
         <h3 class="text-sm font-semibold">
-          错误趋势
+          {{ t('performanceExtra.errorTrend') }}
         </h3>
         <div
           v-if="errorLoading"
@@ -836,6 +836,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import {
   Activity,
   AlertTriangle,
@@ -1185,7 +1188,7 @@ async function loadLiveData(options: { silent?: boolean } = {}) {
     systemStatus.value = systemResult.value
     successCount += 1
   } else {
-    failedScopes.push('系统状态')
+    failedScopes.push(t('performanceExtra.systemStatus'))
     log.error('加载系统状态失败', systemResult.reason)
   }
 
@@ -1193,7 +1196,7 @@ async function loadLiveData(options: { silent?: boolean } = {}) {
     resilienceStatus.value = resilienceResult.value
     successCount += 1
   } else {
-    failedScopes.push('韧性状态')
+    failedScopes.push(t('performanceExtra.resilienceStatus'))
     log.error('加载韧性状态失败', resilienceResult.reason)
   }
 
@@ -1201,7 +1204,7 @@ async function loadLiveData(options: { silent?: boolean } = {}) {
     circuitHistory.value = circuitResult.value.items
     successCount += 1
   } else {
-    failedScopes.push('熔断历史')
+    failedScopes.push(t('performanceExtra.circuitHistory'))
     log.error('加载熔断历史失败', circuitResult.reason)
   }
 
@@ -1209,7 +1212,7 @@ async function loadLiveData(options: { silent?: boolean } = {}) {
     gatewayMetrics.value = metricsResult.value
     successCount += 1
   } else {
-    failedScopes.push('网关指标')
+    failedScopes.push(t('performanceExtra.gatewayMetrics'))
     log.error('加载网关指标失败', metricsResult.reason)
   }
 
@@ -1218,11 +1221,11 @@ async function loadLiveData(options: { silent?: boolean } = {}) {
     liveLastUpdatedAt.value = new Date().toISOString()
   }
   liveLoadError.value = failedScopes.length
-    ? `部分实时数据加载失败：${failedScopes.join('、')}`
+    ? t('performanceExtra.partialLoadFailed', { scopes: failedScopes.join(t('performanceExtra.listSeparator')) })
     : null
 
   if (failedScopes.length && !options.silent) {
-    showError(liveLoadError.value ?? '实时性能数据加载失败')
+    showError(liveLoadError.value ?? t('performanceExtra.liveLoadFailed'))
   }
 
   if (requestId === liveRequestId) {
@@ -1235,7 +1238,7 @@ const errorTrendChartData = computed(() => ({
   labels: errorTrend.value.map(item => item.date),
   datasets: [
     {
-      label: '错误数',
+      label: t('performanceExtra.errorCount'),
       data: errorTrend.value.map(item => item.total),
       borderColor: 'rgb(239, 68, 68)',
       tension: 0.25,
@@ -1272,20 +1275,20 @@ const healthStatusVariant = computed<'success' | 'warning' | 'destructive' | 'ou
 
 const healthStatusText = computed(() => {
   if (!resilienceStatus.value) {
-    return '健康状态未知'
+    return t('performanceExtra.healthUnknown')
   }
 
   const statusMap: Record<string, string> = {
-    healthy: '系统健康',
-    degraded: '系统降级',
-    critical: '系统告警',
+    healthy: t('performanceExtra.systemHealthy'),
+    degraded: t('performanceExtra.systemDegraded'),
+    critical: t('performanceExtra.systemCritical'),
   }
 
   return `${statusMap[resilienceStatus.value.status] ?? resilienceStatus.value.status} · ${resilienceStatus.value.health_score}/100`
 })
 
 const metricsAvailabilityText = computed(() => (
-  gatewayMetrics.value ? '网关指标在线' : '网关指标暂不可达'
+  gatewayMetrics.value ? t('performanceExtra.gatewayOnline') : t('performanceExtra.gatewayUnavailable')
 ))
 
 const distributedGateVariant = computed<'warning' | 'outline'>(() => (
@@ -1293,11 +1296,11 @@ const distributedGateVariant = computed<'warning' | 'outline'>(() => (
 ))
 
 const distributedGateText = computed(() => (
-  gatewayMetrics.value?.distributed.unavailable ? '不可用' : '在线'
+  gatewayMetrics.value?.distributed.unavailable ? t('performanceExtra.unavailable') : t('performanceExtra.online')
 ))
 
 const liveLastUpdatedLabel = computed(() => (
-  liveLastUpdatedAt.value ? formatDate(liveLastUpdatedAt.value) : '尚未刷新'
+  liveLastUpdatedAt.value ? formatDate(liveLastUpdatedAt.value) : t('performanceExtra.notRefreshed')
 ))
 
 const currentActiveStreams = computed(() => (
@@ -1352,66 +1355,66 @@ const providerPerformanceRows = computed(() => providerPerformance.value?.provid
 const providerPerformanceSubtitle = computed(() => {
   const requests = providerPerformance.value?.summary.request_count ?? 0
   const filters = providerPerformanceActiveFilterCount.value
-  const filterText = filters > 0 ? ` · ${filters} 个筛选条件` : ''
-  return `完成窗口内 ${formatMetricNumber(requests)} 个上游请求样本${filterText}`
+  const filterText = filters > 0 ? t('performanceExtra.filterCountSuffix', { count: filters }) : ''
+  return t('performanceExtra.sampleSummary', { count: formatMetricNumber(requests), filters: filterText })
 })
 
 const providerPerformanceSummaryCards = computed(() => {
   const summary = providerPerformance.value?.summary
   return [
     {
-      title: '请求样本',
+      title: t('performanceExtra.requestSamples'),
       value: formatMetricNumber(summary?.request_count),
-      hint: `${formatMetricNumber(providerPerformanceRows.value.length)} 个上游服务`,
+      hint: t('performanceExtra.upstreamServiceCount', { count: formatMetricNumber(providerPerformanceRows.value.length) }),
       icon: Activity,
       iconClass: 'text-blue-500',
     },
     {
-      title: '成功率',
+      title: t('performanceExtra.successRate'),
       value: formatProviderPerformanceMetric(summary?.success_rate, '%'),
-      hint: `错误率 ${formatErrorRate(summary?.success_rate)}`,
+      hint: t('performanceExtra.errorRateValue', { value: formatErrorRate(summary?.success_rate) }),
       icon: CheckCircle2,
       iconClass: 'text-emerald-500',
     },
     {
-      title: 'P99 响应',
+      title: t('performanceExtra.p99Response'),
       value: formatProviderPerformanceMetric(summary?.p99_response_time_ms, 'ms', 0),
       hint: `P90 ${formatProviderPerformanceMetric(summary?.p90_response_time_ms, 'ms', 0)}`,
       icon: Gauge,
       iconClass: 'text-violet-500',
     },
     {
-      title: 'P99 首字',
+      title: t('performanceExtra.p99FirstByte'),
       value: formatProviderPerformanceMetric(summary?.p99_first_byte_time_ms, 'ms', 0),
       hint: `P90 ${formatProviderPerformanceMetric(summary?.p90_first_byte_time_ms, 'ms', 0)}`,
       icon: Timer,
       iconClass: 'text-sky-500',
     },
     {
-      title: '输出 TPS',
+      title: t('performanceExtra.outputTps'),
       value: formatProviderPerformanceMetric(summary?.avg_output_tps, ' tps'),
-      hint: `TPS 样本 ${formatMetricNumber(summary?.tps_sample_count)}`,
+      hint: t('performanceExtra.tpsSamples', { count: formatMetricNumber(summary?.tps_sample_count) }),
       icon: Zap,
       iconClass: 'text-amber-500',
     },
     {
-      title: '平均首字',
+      title: t('performanceExtra.avgFirstByte'),
       value: formatProviderPerformanceMetric(summary?.avg_first_byte_time_ms, 'ms'),
-      hint: `首字样本 ${formatMetricNumber(summary?.first_byte_sample_count)}`,
+      hint: t('performanceExtra.firstByteSamples', { count: formatMetricNumber(summary?.first_byte_sample_count) }),
       icon: Timer,
       iconClass: 'text-sky-500',
     },
     {
-      title: '平均响应',
+      title: t('performanceExtra.avgResponse'),
       value: formatProviderPerformanceMetric(summary?.avg_response_time_ms, 'ms'),
-      hint: `响应样本 ${formatMetricNumber(summary?.response_time_sample_count)}`,
+      hint: t('performanceExtra.responseSamples', { count: formatMetricNumber(summary?.response_time_sample_count) }),
       icon: Gauge,
       iconClass: 'text-violet-500',
     },
     {
-      title: '慢请求',
+      title: t('performanceExtra.slowRequests'),
       value: formatMetricNumber(summary?.slow_request_count),
-      hint: `响应耗时 >= ${providerPerformanceSlowThresholdLabel.value}`,
+      hint: t('performanceExtra.slowThresholdHint', { value: providerPerformanceSlowThresholdLabel.value }),
       icon: AlertTriangle,
       iconClass: 'text-yellow-500',
     },
@@ -1456,48 +1459,48 @@ const providerLatencyChartOptions = computed(() => ({
 
 const liveSummaryCards = computed(() => [
   {
-    title: '系统健康',
+    title: t('performanceExtra.systemHealthy'),
     value: resilienceStatus.value ? `${resilienceStatus.value.health_score}/100` : '-',
-    hint: `${healthStatusText.value} · 熔断打开 ${formatMetricNumber(resilienceStatus.value?.error_statistics.open_circuit_breakers)}`,
+    hint: t('performanceExtra.healthCircuitHint', { status: healthStatusText.value, count: formatMetricNumber(resilienceStatus.value?.error_statistics.open_circuit_breakers) }),
     icon: ShieldCheck,
     iconClass: 'text-emerald-500',
   },
   {
-    title: '最近 1 小时错误',
+    title: t('performanceExtra.lastHourErrors'),
     value: formatMetricNumber(systemStatus.value?.recent_errors),
-    hint: `24h 总错误 ${formatMetricNumber(resilienceStatus.value?.error_statistics.total_errors)}`,
+    hint: t('performanceExtra.totalErrors24h', { count: formatMetricNumber(resilienceStatus.value?.error_statistics.total_errors) }),
     icon: AlertTriangle,
     iconClass: 'text-yellow-500',
   },
   {
-    title: '代理活跃流',
+    title: t('performanceExtra.proxyActiveFlows'),
     value: formatMetricNumber(currentActiveStreams.value),
-    hint: `代理连接 ${formatMetricNumber(currentProxyConnections.value)}`,
+    hint: t('performanceExtra.proxyConnections', { count: formatMetricNumber(currentProxyConnections.value) }),
     icon: Cable,
     iconClass: 'text-sky-500',
   },
   {
-    title: '当前节点处理中',
+    title: t('performanceExtra.localProcessing'),
     value: formatMetricNumber(gatewayMetrics.value?.local.inFlight),
-    hint: `可接入 ${formatMetricNumber(gatewayMetrics.value?.local.availablePermits)}`,
+    hint: t('performanceExtra.availablePermits', { count: formatMetricNumber(gatewayMetrics.value?.local.availablePermits) }),
     icon: Activity,
     iconClass: 'text-blue-500',
   },
   {
-    title: '全局处理中',
+    title: t('performanceExtra.globalProcessing'),
     value: gatewayMetrics.value?.distributed.unavailable
-      ? '不可用'
+      ? t('performanceExtra.unavailable')
       : formatMetricNumber(gatewayMetrics.value?.distributed.inFlight),
     hint: gatewayMetrics.value?.distributed.unavailable
-      ? '检查 Redis 连接'
-      : `可接入 ${formatMetricNumber(gatewayMetrics.value?.distributed.availablePermits)}`,
+      ? t('performanceExtra.checkRedis')
+      : t('performanceExtra.availablePermits', { count: formatMetricNumber(gatewayMetrics.value?.distributed.availablePermits) }),
     icon: Workflow,
     iconClass: 'text-violet-500',
   },
   {
-    title: '降级切换',
+    title: t('performanceExtra.fallbackSwitches'),
     value: formatMetricNumber(gatewayMetrics.value?.fallbackTotal),
-    hint: '当前进程累计',
+    hint: t('performanceExtra.currentProcessTotal'),
     icon: GitBranch,
     iconClass: 'text-rose-500',
   },

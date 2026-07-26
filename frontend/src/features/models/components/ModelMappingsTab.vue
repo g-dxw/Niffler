@@ -6,14 +6,14 @@
         <div class="space-y-1">
           <div class="flex items-baseline gap-2">
             <h4 class="text-sm font-semibold">
-              别名匹配
+              {{ t('modelMappings.title') }}
             </h4>
             <span class="text-xs text-muted-foreground">
-              支持精确别名和正则规则 ({{ localRules.length }}/{{ MAX_MAPPINGS_PER_MODEL }})
+              {{ t('modelMappings.ruleCount', { current: localRules.length, max: MAX_MAPPINGS_PER_MODEL }) }}
             </span>
           </div>
           <p class="text-xs text-muted-foreground">
-            用户请求的模型名匹配这些规则时，会归到当前模型；已有同名全局模型会优先命中自身。
+            {{ t('modelMappings.description') }}
           </p>
         </div>
         <div class="flex items-center gap-1">
@@ -21,7 +21,7 @@
             variant="ghost"
             size="icon"
             class="h-7 w-7"
-            title="添加别名规则"
+            :title="t('modelMappings.addRule')"
             :disabled="localRules.length >= MAX_MAPPINGS_PER_MODEL"
             @click="addMapping"
           >
@@ -31,7 +31,7 @@
             variant="ghost"
             size="icon"
             class="h-7 w-7"
-            title="刷新"
+            :title="t('modelMappings.refresh')"
             :disabled="props.loading"
             @click="$emit('refresh')"
           >
@@ -74,7 +74,7 @@
                   :class="rule.mode === 'alias' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                   @click="setMappingMode(index, 'alias')"
                 >
-                  别名
+                  {{ t('modelMappings.alias') }}
                 </button>
                 <button
                   type="button"
@@ -82,7 +82,7 @@
                   :class="rule.mode === 'regex' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                   @click="setMappingMode(index, 'regex')"
                 >
-                  正则
+                  {{ t('modelMappings.regex') }}
                 </button>
               </div>
               <Input
@@ -108,14 +108,14 @@
             variant="secondary"
             class="text-xs flex-shrink-0 h-6 leading-none"
           >
-            {{ mappingMatchCounts[index] }} 匹配
+            {{ t('modelMappings.matchCount', { count: mappingMatchCounts[index] }) }}
           </Badge>
           <Badge
             v-else-if="normalizedMappings[index] && mappingValidations[index].valid"
             variant="outline"
             class="text-xs text-muted-foreground flex-shrink-0 h-6 leading-none"
           >
-            无匹配
+            {{ t('modelMappings.noMatch') }}
           </Badge>
           <!-- 操作按钮 -->
           <div class="flex items-center gap-1 flex-shrink-0">
@@ -124,7 +124,7 @@
               variant="ghost"
               size="icon"
               class="h-7 w-7 text-muted-foreground hover:text-primary"
-              title="保存"
+              :title="t('modelMappings.save')"
               :disabled="saving || hasValidationErrors"
               @click.stop="saveMappings"
             >
@@ -141,7 +141,7 @@
               variant="ghost"
               size="icon"
               class="h-7 w-7 text-muted-foreground hover:text-destructive"
-              title="删除"
+              :title="t('modelMappings.delete')"
               :disabled="saving"
               @click.stop="removeMapping(index)"
             >
@@ -167,7 +167,7 @@
             class="text-center py-4"
           >
             <p class="text-sm text-muted-foreground">
-              {{ normalizedMappings[index] ? '此规则暂未匹配任何 Key 白名单模型名' : '请输入别名规则' }}
+              {{ normalizedMappings[index] ? t('modelMappings.ruleNoKeyMatch') : t('modelMappings.enterRule') }}
             </p>
           </div>
 
@@ -192,14 +192,14 @@
                   variant="secondary"
                   class="text-xs"
                 >
-                  已关联
+                  {{ t('modelMappings.linked') }}
                 </Badge>
                 <Button
                   v-else
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  title="关联到当前模型"
+                  :title="t('modelMappings.linkCurrent')"
                   @click="$emit('linkProvider', group.providerId)"
                 >
                   <Link class="w-3.5 h-3.5" />
@@ -241,7 +241,7 @@
     >
       <GitMerge class="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
       <p class="text-sm text-muted-foreground">
-        暂无别名规则
+        {{ t('modelMappings.empty') }}
       </p>
     </div>
   </Card>
@@ -249,6 +249,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onUnmounted, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Card, Button, Input, Badge } from '@/components/ui'
 import { Plus, Trash2, GitMerge, RefreshCw, ChevronRight, Save, AlertCircle, Link } from 'lucide-vue-next'
 import { updateGlobalModel, getGlobalModel, getGlobalModelRoutingPreview, getGlobalModels } from '@/api/global-models'
@@ -290,6 +291,7 @@ const emit = defineEmits<{
 }>()
 
 const { success: toastSuccess, error: toastError } = useToast()
+const { t } = useI18n()
 
 // 本地状态
 const localRules = ref<LocalMappingRule[]>(props.mappings.map(createLocalRuleFromStoredMapping))
@@ -359,7 +361,7 @@ function toStoredMappingPattern(rule: LocalMappingRule): string {
 function validateLocalRule(rule: LocalMappingRule): ValidationResult {
   const value = rule.value.trim()
   if (!value) {
-    return { valid: false, error: '规则不能为空' }
+    return { valid: false, error: t('modelMappings.ruleRequired') }
   }
 
   if (rule.mode === 'regex') {
@@ -368,7 +370,7 @@ function validateLocalRule(rule: LocalMappingRule): ValidationResult {
 
   const escapedPattern = escapeModelAliasPattern(value)
   if (value.length > MAX_MODEL_NAME_LENGTH || escapedPattern.length > MAX_MAPPING_LENGTH) {
-    return { valid: false, error: `别名过长 (最大 ${MAX_MODEL_NAME_LENGTH} 字符)` }
+    return { valid: false, error: t('modelMappings.aliasTooLong', { max: MAX_MODEL_NAME_LENGTH }) }
   }
 
   return { valid: true }
@@ -576,8 +578,8 @@ function markDirty() {
 
 function getMappingPlaceholder(mode: MappingMode): string {
   return mode === 'alias'
-    ? '例如: claude-opus-4.8-thinking'
-    : '例如: claude[-_]opus[-_]4[.-]8(?:[-_]thinking)?'
+    ? t('modelMappings.aliasExample')
+    : t('modelMappings.regexExample')
 }
 
 function setMappingMode(index: number, mode: MappingMode) {
@@ -589,7 +591,7 @@ function setMappingMode(index: number, mode: MappingMode) {
 
 function addMapping() {
   if (localRules.value.length >= MAX_MAPPINGS_PER_MODEL) {
-    toastError(`最多支持 ${MAX_MAPPINGS_PER_MODEL} 条别名规则`)
+    toastError(t('modelMappings.maxRules', { max: MAX_MAPPINGS_PER_MODEL }))
     return
   }
   localRules.value.push({ value: '', mode: 'alias' })
@@ -606,7 +608,7 @@ async function removeMapping(index: number) {
   }
   // 删除后自动保存（仅在当前无校验错误时）
   if (hasValidationErrors.value) {
-    toastError('存在无效别名规则，请修正后再保存')
+    toastError(t('modelMappings.invalidRulesFix'))
     isDirty.value = true
     return
   }
@@ -615,7 +617,7 @@ async function removeMapping(index: number) {
 
 async function saveMappings() {
   if (hasValidationErrors.value) {
-    toastError('存在无效别名规则，无法保存')
+    toastError(t('modelMappings.invalidRulesCannotSave'))
     return
   }
 
@@ -632,7 +634,7 @@ async function saveMappings() {
     ])
     if (conflictingAliases.length > 0) {
       toastError(
-        `这些别名已经是启用中的独立模型：${conflictingAliases.join(', ')}。请先停用或删除同名模型。`
+        t('modelMappings.aliasConflicts', { aliases: conflictingAliases.join(', ') })
       )
       return
     }
@@ -669,10 +671,10 @@ async function saveMappings() {
 
     // 自动关联未关联的提供商
     if (unlinkedProviderIds.length > 0) {
-      toastSuccess(`别名规则已保存，正在关联 ${unlinkedProviderIds.length} 个提供商...`)
+      toastSuccess(t('modelMappings.savedLinking', { count: unlinkedProviderIds.length }))
       emit('linkProviders', unlinkedProviderIds)
     } else {
-      toastSuccess('别名规则已保存')
+      toastSuccess(t('modelMappings.saved'))
     }
 
     // 保存成功后刷新数据
@@ -680,7 +682,7 @@ async function saveMappings() {
     emit('refresh')
   } catch (err) {
     log.error('保存别名规则失败:', err)
-    toastError('保存失败，请重试')
+    toastError(t('modelMappings.saveFailed'))
     // 保存失败时恢复到原始值
     localRules.value = cloneRules(originalRules.value)
     isDirty.value = false

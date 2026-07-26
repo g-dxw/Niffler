@@ -5,7 +5,7 @@
       <div class="flex items-center justify-between gap-4">
         <div class="flex items-baseline gap-2">
           <h4 class="text-sm font-semibold">
-            链路预览
+            {{ t('routingTab.title') }}
           </h4>
           <template v-if="routingData">
             <span class="text-xs text-muted-foreground">·</span>
@@ -23,7 +23,7 @@
             variant="ghost"
             size="icon"
             class="h-8 w-8"
-            title="关联提供商"
+            :title="t('routingTab.linkProvider')"
             @click="$emit('addProvider')"
           >
             <Link class="w-3.5 h-3.5" />
@@ -32,7 +32,7 @@
             variant="ghost"
             size="icon"
             class="h-8 w-8"
-            title="刷新"
+            :title="t('routingTab.refresh')"
             @click="loadRoutingData"
           >
             <RefreshCw
@@ -61,10 +61,10 @@
         >
           <Route class="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
           <p class="text-sm text-muted-foreground">
-            暂无关联提供商
+            {{ t('routingTab.empty') }}
           </p>
           <p class="text-xs text-muted-foreground mt-1">
-            请先为此模型添加提供商关联
+            {{ t('routingTab.emptyHint') }}
           </p>
         </div>
 
@@ -91,7 +91,7 @@
               <span class="text-sm text-muted-foreground">
                 {{ formatGroup.active_keys }}/{{ formatGroup.total_keys }} Keys
                 <span class="mx-1.5">·</span>
-                {{ formatGroup.active_providers }}/{{ formatGroup.total_providers }} 提供商
+                {{ t('routingTab.providerCount', { active: formatGroup.active_providers, total: formatGroup.total_providers }) }}
               </span>
               <ChevronDown
                 class="w-4 h-4 text-muted-foreground transition-transform"
@@ -161,7 +161,7 @@
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted-foreground/20 text-muted-foreground'"
                             >
-                              <span v-if="groupIndex === 0 && keyIndex === 0">首选</span>
+                              <span v-if="groupIndex === 0 && keyIndex === 0">{{ t('routingTab.preferred') }}</span>
                               <span v-else>P{{ keyGroup.priority ?? '?' }}</span>
                             </div>
 
@@ -172,7 +172,7 @@
                                 type="button"
                                 class="min-w-0 truncate text-left text-sm font-medium transition-colors hover:text-primary"
                                 :class="getKeyNameClass(keyEntry.key)"
-                                :title="`${getRoutingAccountDisplayName(keyEntry.key)}\n点击复制`"
+                                :title="t('routingTab.clickToCopy', { name: getRoutingAccountDisplayName(keyEntry.key) })"
                                 @click.stop="copyRoutingAccountDisplay(keyEntry.key)"
                               >
                                 {{ getRoutingAccountDisplayName(keyEntry.key) }}
@@ -232,7 +232,7 @@
                                 variant="ghost"
                                 size="icon"
                                 class="h-6 w-6 text-green-600"
-                                title="刷新健康状态"
+                                :title="t('routingTab.refreshHealth')"
                                 @click.stop="handleRecoverKey(keyEntry.key.id, keyEntry.endpoint?.api_format || formatGroup.api_format)"
                               >
                                 <RefreshCw class="w-3 h-3" />
@@ -241,7 +241,7 @@
                                 variant="ghost"
                                 size="icon"
                                 class="h-6 w-6"
-                                :title="keyEntry.provider.model_is_active ? '停用此关联' : '启用此关联'"
+                                :title="keyEntry.provider.model_is_active ? t('routingTab.disableLink') : t('routingTab.enableLink')"
                                 @click.stop="$emit('toggleProviderStatus', keyEntry.provider)"
                               >
                                 <Power class="w-3 h-3" />
@@ -322,7 +322,7 @@
                                   ? 'bg-primary text-primary-foreground'
                                   : 'bg-muted-foreground/20 text-muted-foreground'"
                               >
-                                <span v-if="providerIndex === 0">首选</span>
+                                <span v-if="providerIndex === 0">{{ t('routingTab.preferred') }}</span>
                                 <span v-else>P{{ providerEntry.provider.provider_priority }}</span>
                               </div>
 
@@ -341,7 +341,7 @@
                                     v-if="hasModelMapping(providerEntry.provider)"
                                     class="text-[10px] text-muted-foreground shrink-0"
                                   >
-                                    (上游 {{ providerEntry.provider.provider_model_name }})
+                                    ({{ t('routingTab.upstreamModel', { model: providerEntry.provider.provider_model_name }) }})
                                   </span>
                                 </div>
                                 <!-- 第二行：Endpoint URL -->
@@ -371,7 +371,7 @@
                                   variant="ghost"
                                   size="icon"
                                   class="h-6 w-6"
-                                  :title="providerEntry.provider.model_is_active ? '停用此关联' : '启用此关联'"
+                                  :title="providerEntry.provider.model_is_active ? t('routingTab.disableLink') : t('routingTab.enableLink')"
                                   @click.stop="$emit('toggleProviderStatus', providerEntry.provider)"
                                 >
                                   <Power class="w-3 h-3" />
@@ -396,7 +396,7 @@
                                 v-if="hasModelMapping(providerEntry.provider)"
                                 class="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 px-1"
                               >
-                                <span class="text-muted-foreground/60">上游模型:</span>
+                                <span class="text-muted-foreground/60">{{ t('routingTab.upstreamModelLabel') }}</span>
                                 <span class="text-primary/70 font-medium">{{ providerEntry.provider.provider_model_name }}</span>
                               </div>
                               <!-- Keys 列表 -->
@@ -461,7 +461,7 @@
                                             type="button"
                                             class="min-w-0 truncate text-left font-medium transition-colors hover:text-primary"
                                             :class="getKeyNameClass(key)"
-                                            :title="`${getRoutingAccountDisplayName(key)}\n点击复制`"
+                                            :title="t('routingTab.clickToCopy', { name: getRoutingAccountDisplayName(key) })"
                                             @click.stop="copyRoutingAccountDisplay(key)"
                                           >
                                             {{ getRoutingAccountDisplayName(key) }}
@@ -509,7 +509,7 @@
                                         <button
                                           v-if="key.circuit_breaker_open || (key.health_score ?? 1) < 0.5"
                                           class="p-0.5 rounded hover:bg-muted/50 text-green-600 shrink-0"
-                                          title="刷新健康状态"
+                                          :title="t('routingTab.refreshHealth')"
                                           @click.stop="handleRecoverKey(key.id, providerEntry.endpoint?.api_format || formatGroup.api_format)"
                                         >
                                           <RefreshCw class="w-3 h-3" />
@@ -538,7 +538,7 @@
                                 v-else
                                 class="text-[10px] text-muted-foreground"
                               >
-                                暂无可用 Key
+                                {{ t('routingTab.noKeys') }}
                               </div>
                             </div>
                           </Transition>
@@ -556,7 +556,7 @@
                       </div>
                       <div class="flex items-center gap-1 text-[10px] text-muted-foreground/50">
                         <ArrowDown class="w-3 h-3" />
-                        <span>降级</span>
+                        <span>{{ t('routingTab.fallback') }}</span>
                       </div>
                     </div>
                   </div>
@@ -583,7 +583,7 @@
         class="mt-4"
         @click="loadRoutingData"
       >
-        重试
+        {{ t('routingTab.retry') }}
       </Button>
     </div>
   </Card>
@@ -591,6 +591,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   RefreshCw,
   Loader2,
@@ -626,6 +627,7 @@ const props = defineProps<{
   loading?: boolean
   error?: string | null
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   editProvider: [provider: RoutingProviderInfo]
@@ -1002,7 +1004,7 @@ async function loadRoutingData() {
     internalRoutingData.value = data
     compiledGlobalModelMappingRegexes.value = compiled
   } catch (err: unknown) {
-    internalError.value = parseApiError(err, '加载失败')
+    internalError.value = parseApiError(err, t('routingTab.loadFailed'))
   } finally {
     internalLoading.value = false
   }
@@ -1026,9 +1028,9 @@ watch(() => props.routingData, (data) => {
 // 获取调度模式标签
 function getSchedulingModeLabel(mode: string): string {
   const labels: Record<string, string> = {
-    cache_affinity: '缓存亲和',
-    fixed_order: '固定顺序',
-    load_balance: '负载均衡'
+    cache_affinity: t('routingTab.cacheAffinity'),
+    fixed_order: t('routingTab.fixedOrder'),
+    load_balance: t('routingTab.loadBalance')
   }
   return labels[mode] || mode
 }
@@ -1041,16 +1043,16 @@ const samePriorityLabel = computed(() =>
 // 获取降级标签（含同优先级调度行为）
 function getDemoteLabel(nextGroupKeyCount: number): string {
   if (nextGroupKeyCount > 1) {
-    return `降级 · ${samePriorityLabel.value}`
+    return t('routingTab.fallbackWithMode', { mode: samePriorityLabel.value })
   }
-  return '降级'
+  return t('routingTab.fallback')
 }
 
 // 获取优先级模式标签
 function getPriorityModeLabel(mode: string): string {
   const labels: Record<string, string> = {
-    provider: '提供商优先',
-    global_key: '全局 Key 优先'
+    provider: t('routingTab.providerFirst'),
+    global_key: t('routingTab.globalKeyFirst')
   }
   return labels[mode] || mode
 }
@@ -1222,12 +1224,12 @@ function getBillingLabel(provider: RoutingProviderInfo): string {
   if (provider.billing_type === 'monthly_quota') {
     const used = provider.monthly_used_usd || 0
     const quota = provider.monthly_quota_usd
-    return quota ? `$${used.toFixed(0)}/$${quota.toFixed(0)}` : '月卡'
+    return quota ? `$${used.toFixed(0)}/$${quota.toFixed(0)}` : t('routingTab.monthlyPlan')
   }
   if (provider.billing_type === 'pay_as_you_go') {
-    return '按量'
+    return t('routingTab.payAsYouGo')
   }
-  return '免费'
+  return t('routingTab.free')
 }
 
 // 获取 Key 状态样式（score 为 0-1 小数格式）
@@ -1267,17 +1269,17 @@ function getKeySchedulingLabel(key: RoutingKeyInfo): string {
   if (key.scheduling_label) return key.scheduling_label
   switch (getKeySchedulingState(key)) {
     case 'disabled':
-      return '禁用'
+      return t('routingTab.disabled')
     case 'invalid':
-      return '已失效'
+      return t('routingTab.invalid')
     case 'blocked':
-      return '异常'
+      return t('routingTab.abnormal')
     case 'quota_exhausted':
-      return '额度耗尽'
+      return t('routingTab.quotaExhausted')
     case 'temporary_unavailable':
-      return '暂时不可用'
+      return t('routingTab.temporarilyUnavailable')
     default:
-      return '可用'
+      return t('routingTab.available')
   }
 }
 
@@ -1296,7 +1298,7 @@ function getKeyNameClass(key: RoutingKeyInfo): string {
 }
 
 function getRoutingAccountDisplayName(key: RoutingKeyInfo): string {
-  return getAccountDisplayName(key, '未命名账号')
+  return getAccountDisplayName(key, t('routingTab.unnamedAccount'))
 }
 
 async function copyRoutingAccountDisplay(key: RoutingKeyInfo): Promise<void> {
@@ -1308,15 +1310,15 @@ async function copyRoutingAccountDisplay(key: RoutingKeyInfo): Promise<void> {
 // 获取 Key 提示信息
 function getKeyTooltip(key: RoutingKeyInfo): string {
   const parts: string[] = []
-  parts.push(`账号: ${getRoutingAccountDisplayName(key)}`)
-  parts.push(`状态: ${getKeySchedulingLabel(key)}`)
+  parts.push(t('routingTab.accountTooltip', { value: getRoutingAccountDisplayName(key) }))
+  parts.push(t('routingTab.statusTooltip', { value: getKeySchedulingLabel(key) }))
   if (key.scheduling_reason_label) {
-    parts.push(`原因: ${key.scheduling_reason_label}`)
+    parts.push(t('routingTab.reasonTooltip', { value: key.scheduling_reason_label }))
   }
-  parts.push(`健康度: ${((key.health_score || 0) * 100).toFixed(0)}%`)
+  parts.push(t('routingTab.healthTooltip', { value: ((key.health_score || 0) * 100).toFixed(0) }))
   if (key.circuit_breaker_open) {
     const formats = key.circuit_breaker_formats.join(', ')
-    parts.push(`历史熔断记录: ${formats || '已打开'}`)
+    parts.push(t('routingTab.circuitHistoryTooltip', { value: formats || t('routingTab.open') }))
   }
   return parts.join('\n')
 }
@@ -1327,9 +1329,9 @@ async function handleRecoverKey(keyId: string, apiFormat: string) {
     const result = await recoverKeyHealth(keyId, apiFormat)
     // 通知父组件刷新数据
     emit('refresh')
-    showSuccess(result.message || 'Key 已恢复')
+    showSuccess(result.message || t('routingTab.keyRecovered'))
   } catch (err: unknown) {
-    showError(parseApiError(err, 'Key 恢复失败'), '错误')
+    showError(parseApiError(err, t('routingTab.keyRecoveryFailed')), t('routingTab.error'))
   }
 }
 

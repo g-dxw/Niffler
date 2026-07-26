@@ -42,7 +42,7 @@
           <span
             v-else
             class="font-medium"
-          >无上限</span>
+          >{{ t('tieredPricingEditor.unlimited') }}</span>
         </div>
         <Button
           v-if="localTiers.length > 1"
@@ -61,7 +61,7 @@
         :class="[showCache1h ? 'grid-cols-5' : 'grid-cols-4']"
       >
         <div class="space-y-1">
-          <Label class="text-xs">输入 ($/M)</Label>
+          <Label class="text-xs">{{ t('tieredPricingEditor.input') }}</Label>
           <Input
             :model-value="tier.input_price_per_1m"
             type="number"
@@ -73,7 +73,7 @@
           />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs">输出 ($/M)</Label>
+          <Label class="text-xs">{{ t('tieredPricingEditor.output') }}</Label>
           <Input
             :model-value="tier.output_price_per_1m"
             type="number"
@@ -85,7 +85,7 @@
           />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs text-muted-foreground">{{ showCache1h ? '5min 缓存创建' : '缓存创建' }}</Label>
+          <Label class="text-xs text-muted-foreground">{{ showCache1h ? t('tieredPricingEditor.cacheCreation5m') : t('tieredPricingEditor.cacheCreation') }}</Label>
           <Input
             :model-value="getCacheCreationDisplay(index)"
             type="number"
@@ -97,7 +97,7 @@
           />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs text-muted-foreground">缓存读取</Label>
+          <Label class="text-xs text-muted-foreground">{{ t('tieredPricingEditor.cacheRead') }}</Label>
           <Input
             :model-value="getCacheReadDisplay(index)"
             type="number"
@@ -112,7 +112,7 @@
           v-if="showCache1h"
           class="space-y-1"
         >
-          <Label class="text-xs text-muted-foreground">1h 缓存创建</Label>
+          <Label class="text-xs text-muted-foreground">{{ t('tieredPricingEditor.cacheCreation1h') }}</Label>
           <Input
             :model-value="getCache1hDisplay(index)"
             type="number"
@@ -134,7 +134,7 @@
       @click="addTier"
     >
       <Plus class="w-4 h-4 mr-2" />
-      添加价格阶梯
+      {{ t('tieredPricingEditor.addTier') }}
     </Button>
 
     <div
@@ -142,9 +142,9 @@
       class="rounded-lg border bg-muted/10 p-3 space-y-3"
     >
       <div class="flex flex-wrap items-end justify-between gap-3">
-        <Label class="text-xs font-medium">图像输出计费 ($/张)</Label>
+        <Label class="text-xs font-medium">{{ t('tieredPricingEditor.imageOutputPricing') }}</Label>
         <div class="flex items-center gap-2">
-          <Label class="text-xs text-muted-foreground">默认价</Label>
+          <Label class="text-xs text-muted-foreground">{{ t('tieredPricingEditor.defaultPrice') }}</Label>
           <Input
             :model-value="imageOutputPriceDefault"
             type="number"
@@ -159,11 +159,11 @@
 
       <div class="space-y-2">
         <div class="flex items-center justify-between gap-2">
-          <Label class="text-xs text-muted-foreground">精确分辨率覆盖</Label>
-          <span class="text-[11px] text-muted-foreground">优先匹配 size + quality</span>
+          <Label class="text-xs text-muted-foreground">{{ t('tieredPricingEditor.exactResolutionOverrides') }}</Label>
+          <span class="text-[11px] text-muted-foreground">{{ t('tieredPricingEditor.exactResolutionHint') }}</span>
         </div>
         <div class="grid grid-cols-[minmax(120px,1.1fr)_repeat(3,minmax(0,1fr))_32px] gap-2 text-xs text-muted-foreground">
-          <span>分辨率</span>
+          <span>{{ t('tieredPricingEditor.resolution') }}</span>
           <span>low</span>
           <span>medium</span>
           <span>high</span>
@@ -209,17 +209,17 @@
           @click="addImageOutputSizeRow"
         >
           <Plus class="w-4 h-4 mr-2" />
-          添加分辨率
+          {{ t('tieredPricingEditor.addResolution') }}
         </Button>
       </div>
 
       <div class="space-y-2 border-t pt-3">
         <div class="flex items-center justify-between gap-2">
-          <Label class="text-xs text-muted-foreground">像素区间</Label>
-          <span class="text-[11px] text-muted-foreground">矩阵未命中时按宽×高落档</span>
+          <Label class="text-xs text-muted-foreground">{{ t('tieredPricingEditor.pixelRanges') }}</Label>
+          <span class="text-[11px] text-muted-foreground">{{ t('tieredPricingEditor.pixelRangeHint') }}</span>
         </div>
         <div class="grid grid-cols-[minmax(120px,1.1fr)_repeat(3,minmax(0,1fr))_32px] gap-2 text-xs text-muted-foreground">
-          <span>上限像素</span>
+          <span>{{ t('tieredPricingEditor.maxPixels') }}</span>
           <span>low</span>
           <span>medium</span>
           <span>high</span>
@@ -235,7 +235,7 @@
             type="number"
             min="1"
             class="h-8 font-mono text-xs"
-            placeholder="空=无上限"
+            :placeholder="t('tieredPricingEditor.unlimitedPlaceholder')"
             @update:model-value="(v) => updateImageOutputRangeLimit(row.id, v)"
           />
           <Input
@@ -267,7 +267,7 @@
           @click="addImageOutputRangeRow"
         >
           <Plus class="w-4 h-4 mr-2" />
-          添加像素区间
+          {{ t('tieredPricingEditor.addPixelRange') }}
         </Button>
       </div>
     </div>
@@ -284,6 +284,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Plus, X } from 'lucide-vue-next'
 import { Button, Input, Label } from '@/components/ui'
 import type { TieredPricingConfig, PricingTier, ImageOutputPriceRange } from '@/api/endpoints/types'
@@ -309,6 +310,7 @@ const props = defineProps<{
   showCache1h?: boolean
   showImagePricing?: boolean
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:modelValue': [value: TieredPricingConfig | null]
@@ -327,14 +329,14 @@ let imageOutputPriceRangeRowId = 0
 const cacheManuallySet = reactive<Record<number, { creation: boolean; read: boolean; cache1h: boolean }>>({})
 
 // 预设的阶梯上限选项
-const THRESHOLD_OPTIONS = [
+const THRESHOLD_OPTIONS = computed(() => [
   { value: 64000, label: '64K' },
   { value: 128000, label: '128K' },
   { value: 200000, label: '200K' },
   { value: 500000, label: '500K' },
   { value: 1000000, label: '1M' },
-  { value: -1, label: '自定义...' },  // 特殊值表示自定义输入
-]
+  { value: -1, label: t('tieredPricingEditor.custom') },
+])
 
 // 跟踪哪些阶梯正在使用自定义输入
 const customInputMode = reactive<Record<number, boolean>>({})
@@ -381,18 +383,18 @@ watch(
 // 验证错误
 const validationError = computed(() => {
   if (localTiers.value.length === 0) {
-    return '至少需要一个价格阶梯'
+    return t('tieredPricingEditor.atLeastOneTier')
   }
 
   if (localTiers.value[localTiers.value.length - 1].up_to !== null) {
-    return '最后一个阶梯必须是无上限的'
+    return t('tieredPricingEditor.lastTierUnlimited')
   }
 
   let prevUpTo = 0
   for (let i = 0; i < localTiers.value.length - 1; i++) {
     const tier = localTiers.value[i]
     if (tier.up_to === null || tier.up_to <= prevUpTo) {
-      return `阶梯 ${i + 1} 的上限必须大于前一个阶梯`
+      return t('tieredPricingEditor.tierLimitOrder', { number: i + 1 })
     }
     prevUpTo = tier.up_to
   }
@@ -421,13 +423,13 @@ function getAvailableThresholds(index: number) {
   const currentValue = localTiers.value[index].up_to
 
   // 过滤可用的预设选项
-  const options = THRESHOLD_OPTIONS.filter(opt =>
+  const options = THRESHOLD_OPTIONS.value.filter(opt =>
     (opt.value === -1) ||  // "自定义..."始终显示
     (!usedThresholds.has(opt.value) && opt.value > minValue)
   )
 
   // 如果当前值是自定义的（不在预设中），添加到选项列表
-  if (currentValue !== null && !THRESHOLD_OPTIONS.some(opt => opt.value === currentValue)) {
+  if (currentValue !== null && !THRESHOLD_OPTIONS.value.some(opt => opt.value === currentValue)) {
     options.unshift({ value: currentValue, label: formatTokens(currentValue) })
   }
 
@@ -463,17 +465,17 @@ function getAutoCache1h(index: number): number {
 
 function getCacheCreationPlaceholder(index: number): string {
   const auto = getAutoCacheCreation(index)
-  return auto > 0 ? String(auto) : '自动'
+  return auto > 0 ? String(auto) : t('tieredPricingEditor.auto')
 }
 
 function getCacheReadPlaceholder(index: number): string {
   const auto = getAutoCacheRead(index)
-  return auto > 0 ? String(auto) : '自动'
+  return auto > 0 ? String(auto) : t('tieredPricingEditor.auto')
 }
 
 function getCache1hPlaceholder(index: number): string {
   const auto = getAutoCache1h(index)
-  return auto > 0 ? String(auto) : '自动'
+  return auto > 0 ? String(auto) : t('tieredPricingEditor.auto')
 }
 
 function getCacheCreationDisplay(index: number): string | number {
@@ -909,7 +911,7 @@ function addTier() {
     const lastTier = localTiers.value[localTiers.value.length - 1]
     const secondLastTier = localTiers.value[localTiers.value.length - 2]
     const minValue = secondLastTier?.up_to || 0
-    const availableThresholds = THRESHOLD_OPTIONS.filter(opt => opt.value > minValue)
+    const availableThresholds = THRESHOLD_OPTIONS.value.filter(opt => opt.value > minValue)
     const newUpTo = availableThresholds[0]?.value || minValue + 200000
 
     // 给当前最后一个阶梯设置上限

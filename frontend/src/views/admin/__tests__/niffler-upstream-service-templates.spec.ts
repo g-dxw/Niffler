@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import enUS from '@/i18n/locales/en-US'
+import zhCN from '@/i18n/locales/zh-CN'
+
 import {
   buildNifflerServiceCapabilityForm,
   buildNifflerServiceFormFromTemplate,
@@ -22,6 +25,30 @@ const capabilityOptions: NifflerServiceCapabilityOption[] = [
 ]
 
 describe('niffler upstream service templates', () => {
+  it('defines localized labels and hints for every configurable capability', () => {
+    const keys = [
+      'text',
+      'textHint',
+      'streaming',
+      'streamingHint',
+      'images',
+      'imagesHint',
+      'imageTool',
+      'imageToolHint',
+      'modelList',
+      'modelListHint',
+      'modelTest',
+      'modelTestHint',
+    ]
+
+    for (const locale of [zhCN, enUS]) {
+      const messages = locale.upstreamCapabilities as Record<string, unknown>
+      for (const key of keys) {
+        expect(messages[key], `${key} should be translated`).toEqual(expect.any(String))
+      }
+    }
+  })
+
   it('builds OpenAI compatible service defaults without requiring manual protocol fields', () => {
     const form = buildNifflerServiceFormFromTemplate('openai_compatible', {
       display_name: 'cc-max',

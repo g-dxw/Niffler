@@ -1,6 +1,10 @@
 export const AETHER_LOGO_VIEWBOX = '0 0 954 933'
 export const AETHER_SVG_VIEWBOX = '0 0 799.31 752.14'
 
+// Niffler primary mark. Kept as a path so it inherits currentColor in the UI.
+export const NIFFLER_LOGO_VIEWBOX = '6 -5.7 119 114'
+export const NIFFLER_LOGO_PATH = 'm82.7 0v46l-40.2-46h-26.3v101h32.1v-45.7l40.8 45.7h25.9v-101h-32.3zm-62.3 6.3 9.6 11v79.4h-9.5c-0.1 0-0.1-90.4-0.1-90.4zm13.8 15.5 73.3 74.8h-16.6l-47-52.1v52.2h-9.7v-74.9zm-10.3-17.6h16.9l45.8 52.1v-52.1h10.2v75.4l-72.9-75.4zm86.9 90.8-9.8-10v-80.8h9.8v90.8z'
+
 export const AETHER_LOGO_CENTER = {
   x: 477,
   y: 466.5

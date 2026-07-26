@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, type App } from 'vue'
+import { createApp, nextTick, type App } from '@/test/vue'
 
 import PoolManagement from '@/views/admin/PoolManagement.vue'
 import type { PoolKeyDetail, PoolOverviewItem, PoolKeysPageResponse } from '@/api/endpoints/pool'
@@ -674,7 +674,7 @@ describe('PoolManagement Codex cycle stats mode', () => {
     await settle()
 
     expect(root.textContent).toContain('0.875')
-    expect(root.querySelectorAll('button[title="查看评分计算结果"]').length).toBeGreaterThan(0)
+    expect(root.querySelectorAll('button[title="评分计算结果"]').length).toBeGreaterThan(0)
   })
 
   it('opens only one score popover across desktop and mobile layouts', async () => {
@@ -712,7 +712,7 @@ describe('PoolManagement Codex cycle stats mode', () => {
     const root = mountPoolManagement()
     await settle()
 
-    const helpButtons = root.querySelectorAll<HTMLButtonElement>('button[title="查看评分计算结果"]')
+    const helpButtons = root.querySelectorAll<HTMLButtonElement>('button[title="评分计算结果"]')
     expect(helpButtons.length).toBe(2)
 
     helpButtons[0]?.click()
@@ -916,7 +916,7 @@ describe('PoolManagement Codex cycle stats mode', () => {
 
     const selectFilteredButton = root.querySelector<HTMLButtonElement>('[data-testid="pool-select-filtered-results"]')
     expect(selectFilteredButton).not.toBeNull()
-    expect(selectFilteredButton?.textContent).toContain('选择全部 123')
+    expect(selectFilteredButton?.textContent).toContain('选择全部筛选结果 123')
 
     selectFilteredButton?.click()
     await settle()

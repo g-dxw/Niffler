@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, type App } from 'vue'
+import { createApp, defineComponent, h, type App } from '@/test/vue'
 import UsageRecordsTable from '../UsageRecordsTable.vue'
 import type { UsageRecord } from '../../types'
 
@@ -200,10 +200,10 @@ describe('UsageRecordsTable', () => {
 
     const titles = [...root.querySelectorAll<HTMLElement>('[title]')].map((element) => element.title)
     expect(titles).toContain([
-      '首字: 0.50s',
-      '总耗时: 1.00s',
-      '生成耗时: 0.50s',
-      '输出速度: 100 tokens/s',
+      '首字：0.50s',
+      '总耗时：1.00s',
+      '生成耗时：0.50s',
+      '输出速度：100 tokens/s',
     ].join('\n'))
     expect(titles.join('\n')).not.toContain('500ms')
     expect(titles.join('\n')).not.toContain('首字后生成耗时')
@@ -223,10 +223,10 @@ describe('UsageRecordsTable', () => {
 
     const titles = [...root.querySelectorAll<HTMLElement>('[title]')].map((element) => element.title)
     expect(titles).toContain([
-      '首字: 0.50s',
-      '总耗时: 1.00s',
-      '生成耗时: 0.50s',
-      '输出速度: -',
+      '首字：0.50s',
+      '总耗时：1.00s',
+      '生成耗时：0.50s',
+      '输出速度：-',
     ].join('\n'))
   })
 
@@ -333,7 +333,7 @@ describe('UsageRecordsTable', () => {
     expect(root.textContent).toContain('模型扣费 $0.15')
     expect(root.textContent).toContain('审查成本 $0.00010')
     const titles = [...root.querySelectorAll<HTMLElement>('[title]')].map((element) => element.title)
-    expect(titles.some(title => title.includes('平台审查成本: $0.000080'))).toBe(true)
+    expect(titles.some(title => title.includes('平台审查成本：$0.000080'))).toBe(true)
   })
 
   it('hides platform cost in the user usage table', () => {

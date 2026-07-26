@@ -9,7 +9,7 @@
         v-if="showPriorityMode"
         class="space-y-1 text-sm"
       >
-        <span class="text-muted-foreground">优先级模式</span>
+        <span class="text-muted-foreground">{{ t('routingPriorityPolicy.priorityMode') }}</span>
         <div class="grid grid-cols-2 gap-1 rounded-lg bg-muted/40 p-1">
           <button
             type="button"
@@ -40,7 +40,7 @@
         v-if="showSchedulingMode"
         class="space-y-1 text-sm"
       >
-        <span class="text-muted-foreground">调度策略</span>
+        <span class="text-muted-foreground">{{ t('routingPriorityPolicy.schedulingPolicy') }}</span>
         <div class="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1">
           <button
             v-for="mode in schedulingModes"
@@ -62,7 +62,7 @@
       <div class="flex flex-col gap-3 border-b border-border/60 px-4 py-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 class="text-sm font-medium">
-            {{ effectivePriorityMode === 'provider' ? '提供商排序' : 'Key 排序' }}
+            {{ effectivePriorityMode === 'provider' ? t('routingPriorityPolicy.providerOrder') : t('routingPriorityPolicy.keyOrder') }}
           </h3>
           <p class="mt-1 text-xs text-muted-foreground">
             {{ subtitle }}
@@ -91,14 +91,14 @@
               class="h-3.5 w-3.5"
               :class="{ 'animate-spin': loading }"
             />
-            刷新
+            {{ t('routingPriorityPolicy.refresh') }}
           </button>
           <button
             type="button"
             class="h-9 rounded-md border border-border px-3 text-xs text-muted-foreground"
             @click="clearActiveOverrides"
           >
-            清空排序
+            {{ t('routingPriorityPolicy.clearOrder') }}
           </button>
         </div>
       </div>
@@ -108,7 +108,7 @@
           v-if="loading"
           class="py-10 text-center text-sm text-muted-foreground"
         >
-          正在加载
+            {{ t('routingPriorityPolicy.loading') }}
         </div>
         <div
           v-else-if="loadError"
@@ -125,7 +125,7 @@
             v-if="providerRows.length === 0"
             class="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground"
           >
-            暂无 Provider
+            {{ t('routingPriorityPolicy.noProviders') }}
           </div>
           <div
             v-for="(row, index) in providerRows"
@@ -185,7 +185,7 @@
                   v-if="!row.is_active"
                   class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
                 >
-                  停用
+                  {{ t('routingPriorityPolicy.disabled') }}
                 </span>
               </div>
               <div class="mt-0.5 truncate text-xs text-muted-foreground">
@@ -212,7 +212,7 @@
             v-if="keyRows.length === 0"
             class="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground"
           >
-            暂无 Key
+                  {{ t('routingPriorityPolicy.noKeys') }}
           </div>
           <div
             v-for="(row, index) in keyRows"
@@ -266,7 +266,7 @@
                   v-if="!row.is_active"
                   class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
                 >
-                  停用
+                  {{ t('routingPriorityPolicy.disabled') }}
                 </span>
               </div>
               <div class="mt-0.5 truncate font-mono text-xs text-muted-foreground">
@@ -291,6 +291,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowUp, GripVertical, Key, Layers, RefreshCw } from 'lucide-vue-next'
 
 import client from '@/api/client'
@@ -370,6 +371,7 @@ const props = defineProps<{
   showSchedulingMode?: boolean
   subtitle?: string
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:config': [value: RoutingGroupConfig]
@@ -377,11 +379,11 @@ const emit = defineEmits<{
   'update:scheduling-mode': [value: RoutingSchedulingMode]
 }>()
 
-const schedulingModes: Array<{ value: RoutingDefaultPolicy['scheduling_mode']; label: string }> = [
-  { value: 'cache_affinity', label: '缓存亲和' },
-  { value: 'load_balance', label: '负载均衡' },
-  { value: 'fixed_order', label: '固定顺序' },
-]
+const schedulingModes = computed<Array<{ value: RoutingDefaultPolicy['scheduling_mode']; label: string }>>(() => [
+  { value: 'cache_affinity', label: t('routingPriorityPolicy.cacheAffinity') },
+  { value: 'load_balance', label: t('routingPriorityPolicy.loadBalance') },
+  { value: 'fixed_order', label: t('routingPriorityPolicy.fixedOrder') },
+])
 
 const providers = ref<ProviderWithEndpointsSummary[]>([])
 const keysByFormat = ref<Record<string, GlobalKeySource[]>>({})
@@ -403,7 +405,7 @@ const showPriorityMode = computed(() => props.showPriorityMode !== false)
 const showSchedulingMode = computed(() => props.showSchedulingMode !== false)
 const effectivePriorityMode = computed(() => props.priorityMode ?? config.value.default_policy.priority_mode)
 const effectiveSchedulingMode = computed(() => props.schedulingMode ?? config.value.default_policy.scheduling_mode)
-const subtitle = computed(() => props.subtitle ?? '默认作用于全部模型')
+const subtitle = computed(() => props.subtitle ?? t('routingPriorityPolicy.defaultSubtitle'))
 const loading = computed(() => loadingProviders.value || loadingKeys.value)
 const apiFormats = computed(() => sortApiFormats(Object.keys(keysByFormat.value)))
 const providerById = computed(() => {
@@ -550,7 +552,7 @@ async function loadProviders(): Promise<void> {
     const response = await getProvidersSummary({ page: 1, page_size: 9999 })
     providers.value = response.items
   } catch (err) {
-    loadError.value = parseApiError(err, '加载 Provider 失败')
+    loadError.value = parseApiError(err, t('routingPriorityPolicy.loadProvidersFailed'))
     providers.value = []
   } finally {
     loadingProviders.value = false
@@ -576,7 +578,7 @@ async function loadGlobalKeys(force = false): Promise<void> {
       selectedApiFormat.value = sortApiFormats(Object.keys(next))[0] ?? ''
     }
   } catch (err) {
-    loadError.value = parseApiError(err, '加载全局 Key 失败')
+    loadError.value = parseApiError(err, t('routingPriorityPolicy.loadKeysFailed'))
   } finally {
     loadingKeys.value = false
   }
@@ -835,7 +837,7 @@ function buildPoolRow(
     id: `pool:${providerId}:${format}`,
     kind: 'pool',
     target_id: providerId,
-    name: provider?.name || keys[0]?.provider_name || '未知 Provider',
+    name: provider?.name || keys[0]?.provider_name || t('routingPriorityPolicy.unknownProvider'),
     masked: '[Pool]',
     is_active: (provider?.is_active ?? keys.some(key => key.provider_active)) && activeKeyCount > 0,
     api_formats: [format],

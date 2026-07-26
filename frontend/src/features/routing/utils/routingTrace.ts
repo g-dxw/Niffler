@@ -30,23 +30,23 @@ export interface RoutingDecisionTrace {
 }
 
 export function candidateTraceLabel(candidate: RoutingCandidateTrace): string {
-  const kind = candidate.candidate_kind === 'pool_group' ? '号池' : 'Provider'
+  const kind = candidate.candidate_kind === 'pool_group' ? i18n.global.t('routingTraceUi.pool') : 'Provider'
   const key = candidate.key_id ? ` / ${candidate.key_id}` : ''
   return `${kind} ${candidate.provider_id}${key}`
 }
 
 export function summarizeRoutingTrace(trace: RoutingDecisionTrace): string[] {
   const lines = [
-    `分组: ${trace.group_id ?? 'legacy'}`,
-    `来源: ${trace.selection_source}`,
-    `模型: ${trace.original_model} -> ${trace.resolved_model}`,
+    `${i18n.global.t('routingTraceUi.group')}: ${trace.group_id ?? 'legacy'}`,
+    `${i18n.global.t('routingTraceUi.source')}: ${trace.selection_source}`,
+    `${i18n.global.t('routingTraceUi.model')}: ${trace.original_model} -> ${trace.resolved_model}`,
   ]
 
   if (trace.selected_rules.length > 0) {
-    lines.push(`规则: ${trace.selected_rules.join(', ')}`)
+    lines.push(`${i18n.global.t('routingTraceUi.rules')}: ${trace.selected_rules.join(', ')}`)
   }
 
-  lines.push(`候选: ${trace.global_candidates.length}`)
+  lines.push(`${i18n.global.t('routingTraceUi.candidates')}: ${trace.global_candidates.length}`)
   return lines
 }
 
@@ -57,3 +57,4 @@ export function sortCandidateTraces(candidates: readonly RoutingCandidateTrace[]
     return leftOrder - rightOrder
   })
 }
+import { i18n } from '@/i18n'

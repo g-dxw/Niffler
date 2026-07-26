@@ -1,7 +1,7 @@
 <template>
   <CardSection
-    title="内容审查 / 账号保护"
-    description="在请求进入指定上游前先做内容审查"
+    :title="t('contentModeration.title')"
+    :description="t('contentModeration.description')"
   >
     <template #actions>
       <Button
@@ -9,7 +9,7 @@
         :disabled="loading || !hasChanges"
         @click="$emit('save')"
       >
-        {{ loading ? '保存中...' : '保存' }}
+        {{ loading ? t('contentModeration.saving') : t('contentModeration.save') }}
       </Button>
     </template>
 
@@ -17,10 +17,10 @@
       <div class="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card/60 px-4 py-3">
         <div class="min-w-0">
           <p class="text-sm font-medium text-foreground">
-            启用前置审查
+            {{ t('contentModeration.enabled') }}
           </p>
           <p class="mt-0.5 text-xs text-muted-foreground">
-            审查失败时放行请求，不产生审查扣费。
+            {{ t('contentModeration.failOpen') }}
           </p>
         </div>
         <Switch
@@ -36,7 +36,7 @@
             for="content-moderation-level"
             class="block text-sm font-medium"
           >
-            审查级别
+            {{ t('contentModeration.level') }}
           </Label>
           <Select
             :model-value="config.level"
@@ -50,16 +50,16 @@
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="off">
-                关闭
+                {{ t('contentModeration.off') }}
               </SelectItem>
               <SelectItem value="latest_user_input">
-                只审最新用户输入
+                {{ t('contentModeration.latest') }}
               </SelectItem>
               <SelectItem value="all_user_inputs">
-                审本次请求所有用户输入
+                {{ t('contentModeration.allInput') }}
               </SelectItem>
               <SelectItem value="full_request">
-                审完整请求
+                {{ t('contentModeration.full') }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -70,7 +70,7 @@
             for="content-moderation-model"
             class="block text-sm font-medium"
           >
-            审查模型
+            {{ t('contentModeration.model') }}
           </Label>
           <Input
             id="content-moderation-model"
@@ -86,14 +86,14 @@
             for="content-moderation-api-keys"
             class="block text-sm font-medium"
           >
-            审查 API Keys
+            {{ t('contentModeration.keys') }}
           </Label>
           <div
             v-if="savedApiKeyCount > 0"
             class="mt-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
           >
             <p class="text-xs text-muted-foreground">
-              已保存 {{ savedApiKeyCount }} 个 Key
+              {{ t('contentModeration.savedKeysCount', { count: savedApiKeyCount }) }}
             </p>
             <div
               v-if="savedApiKeyMasks.length > 0"
@@ -114,22 +114,22 @@
               :disabled="loading"
               @click="clearSavedApiKeys"
             >
-              清空已保存 Key
+              {{ t('contentModeration.clearKeys') }}
             </Button>
           </div>
           <Textarea
             id="content-moderation-api-keys"
             v-model="apiKeysText"
             class="mt-1 min-h-24 font-mono text-xs"
-            placeholder="粘贴新 Key，每行一个；留空保持已保存 Key 不变"
+            :placeholder="t('contentModeration.keyPlaceholder')"
           />
           <p class="mt-1 text-xs text-muted-foreground">
-            每行一个 Key，保存时会自动去空行和重复项；填写后会整体替换已保存 Key。
+            {{ t('contentModeration.keyHint') }}
             <span v-if="pendingApiKeyCount > 0">
-              保存后将替换为 {{ pendingApiKeyCount }} 个 Key。
+              {{ t('contentModeration.pendingKeys', { count: pendingApiKeyCount }) }}
             </span>
             <span v-else-if="config.api_keys_clear">
-              保存后会清空已保存 Key。
+              {{ t('contentModeration.clearPendingKeys') }}
             </span>
           </p>
         </div>
@@ -155,7 +155,7 @@
             for="content-moderation-timeout"
             class="block text-sm font-medium"
           >
-            超时时间 (ms)
+            {{ t('contentModeration.timeout') }}
           </Label>
           <Input
             id="content-moderation-timeout"
@@ -173,7 +173,7 @@
             for="content-moderation-retention"
             class="block text-sm font-medium"
           >
-            证据留存天数
+            {{ t('contentModeration.evidence') }}
           </Label>
           <Input
             id="content-moderation-retention"
@@ -191,7 +191,7 @@
             for="content-moderation-input-price"
             class="block text-sm font-medium"
           >
-            输入价格 / 100 万 tokens
+            {{ t('contentModeration.inputPrice') }}
           </Label>
           <Input
             id="content-moderation-input-price"
@@ -209,7 +209,7 @@
             for="content-moderation-output-price"
             class="block text-sm font-medium"
           >
-            输出价格 / 100 万 tokens
+            {{ t('contentModeration.outputPrice') }}
           </Label>
           <Input
             id="content-moderation-output-price"
@@ -244,7 +244,7 @@
             for="content-moderation-service-targets"
             class="block text-sm font-medium"
           >
-            上游服务 IDs
+            {{ t('contentModeration.upstreams') }}
           </Label>
           <Textarea
             id="content-moderation-service-targets"
@@ -259,7 +259,7 @@
             for="content-moderation-account-targets"
             class="block text-sm font-medium"
           >
-            上游账号 IDs
+            {{ t('contentModeration.accounts') }}
           </Label>
           <Textarea
             id="content-moderation-account-targets"
@@ -275,6 +275,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'

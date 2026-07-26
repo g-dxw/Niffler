@@ -10,17 +10,17 @@
         <div class="flex items-start gap-3">
           <div class="flex-1 min-w-0">
             <h3 class="text-lg font-semibold text-foreground leading-tight">
-              自适应热池指标
+              {{ t('poolDemandMetrics.title') }}
             </h3>
             <p class="text-xs text-muted-foreground">
-              {{ providerName || '当前 Provider' }}
+              {{ providerName || t('poolDemandMetrics.currentProvider') }}
             </p>
           </div>
           <Button
             variant="ghost"
             size="icon"
             class="h-8 w-8 shrink-0"
-            title="关闭"
+              :title="t('poolDemandMetrics.close')"
             @click="emit('update:modelValue', false)"
           >
             <X class="h-4 w-4" />
@@ -52,7 +52,7 @@
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 class="text-sm font-semibold">
-              最近采样
+              {{ t('poolDemandMetrics.recentSamples') }}
             </h3>
             <p class="text-xs text-muted-foreground">
               {{ sampleWindowText }}
@@ -77,7 +77,7 @@
           v-if="samples.length === 0"
           class="mt-4 flex h-56 items-center justify-center rounded-lg border border-dashed border-border/70 bg-muted/20 text-sm text-muted-foreground"
         >
-          暂无采样
+          {{ t('poolDemandMetrics.noSamples') }}
         </div>
 
         <div
@@ -89,7 +89,7 @@
             :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
             preserveAspectRatio="none"
             role="img"
-            aria-label="自适应热池趋势"
+            :aria-label="t('poolDemandMetrics.trend')"
           >
             <line
               v-for="tick in yTicks"
@@ -155,7 +155,7 @@
 
         <div class="mt-3 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
           <span>{{ firstSampleTime }}</span>
-          <span>峰值 {{ maxChartValueText }}</span>
+          <span>{{ t('poolDemandMetrics.peak', { value: maxChartValueText }) }}</span>
           <span>{{ lastSampleTime }}</span>
         </div>
       </section>
@@ -165,8 +165,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Button, Dialog } from '@/components/ui'
 import { X } from 'lucide-vue-next'
+
+const { t } = useI18n()
 
 export interface PoolDemandMetricSample {
   providerId: string
@@ -269,40 +272,40 @@ const summaryCards = computed(() => {
   const sample = latest.value
   return [
     {
-      label: '热池',
+      label: t('poolDemandMetrics.hotPool'),
       value: sample ? `${sample.hotCount} / ${sample.desiredHot}` : '0 / 0',
-      hint: '当前 / 目标',
+      hint: t('poolDemandMetrics.currentTarget'),
     },
     {
-      label: '处理中',
+      label: t('poolDemandMetrics.inFlight'),
       value: sample ? formatMetric(sample.inFlight) : '0',
-      hint: '正在执行',
+      hint: t('poolDemandMetrics.executing'),
     },
     {
       label: 'EMA',
       value: sample ? formatMetric(sample.emaInFlight, 1) : '0.0',
-      hint: '平滑热度',
+      hint: t('poolDemandMetrics.smoothedLoad'),
     },
     {
       label: 'Burst',
-      value: sample?.burstPending ? '补热中' : '空闲',
-      hint: '异步补位',
+      value: sample?.burstPending ? t('poolDemandMetrics.burstHeating') : t('poolDemandMetrics.idle'),
+      hint: t('poolDemandMetrics.asyncFill'),
     },
   ]
 })
 
 const legendItems = [
-  { label: '目标', dotClass: 'bg-indigo-500' },
-  { label: '热池', dotClass: 'bg-emerald-500' },
-  { label: '处理中', dotClass: 'bg-amber-500' },
+  { label: t('poolDemandMetrics.target'), dotClass: 'bg-indigo-500' },
+  { label: t('poolDemandMetrics.hotPool'), dotClass: 'bg-emerald-500' },
+  { label: t('poolDemandMetrics.inFlight'), dotClass: 'bg-amber-500' },
   { label: 'EMA', dotClass: 'bg-sky-500' },
   { label: 'Burst', dotClass: 'bg-red-500' },
 ]
 
 const sampleWindowText = computed(() => {
   const count = props.samples.length
-  if (count === 0) return '等待下一次采样'
-  return `最近 ${count} 个采样点`
+  if (count === 0) return t('poolDemandMetrics.waitingSample')
+  return t('poolDemandMetrics.sampleCount', { count })
 })
 
 const firstSampleTime = computed(() => formatSampleTime(props.samples[0]?.sampledAt))

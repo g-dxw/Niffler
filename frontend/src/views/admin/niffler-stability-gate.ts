@@ -1,4 +1,5 @@
 import type { NifflerStabilityObservation } from '@/api/niffler-core'
+import { i18n } from '@/i18n'
 
 export const STABILITY_REQUIRED_PASS_DAYS = 14
 export const STABILITY_OBSERVATION_FETCH_LIMIT = STABILITY_REQUIRED_PASS_DAYS + 1
@@ -51,7 +52,7 @@ export function getStabilityGateState(
     ready,
     consecutivePassDays,
     blockReason,
-    description: ready ? '第 5 批第六片可以开始' : blockReason
+    description: ready ? i18n.global.t('stabilityUi.ready') : blockReason
   }
 }
 
@@ -81,37 +82,37 @@ export function getStabilityGateBlockReason(
   nowUnixMs = Date.now()
 ): string {
   if (!latestObservation) {
-    return '还没有稳定观察记录'
+    return i18n.global.t('stabilityUi.noRecords')
   }
   if (latestObservation.window_start_unix_ms > currentUtcDayStartUnixMs(nowUnixMs)) {
-    return '观察窗口时间异常，不能开始第六片'
+    return i18n.global.t('stabilityUi.timeInvalid')
   }
   if (!isFreshStabilityObservation(latestObservation, nowUnixMs)) {
-    return '稳定观察任务超过 1 天没有更新，不能开始第六片'
+    return i18n.global.t('stabilityUi.stale')
   }
   if (!isCompletedStabilityObservation(latestObservation, nowUnixMs)
     && !isPassingStabilityObservation(latestObservation)) {
-    return '当前观察窗口未通过，不能开始第六片'
+    return i18n.global.t('stabilityUi.notPassed')
   }
 
   let expectedWindowStart = currentUtcDayStartUnixMs(nowUnixMs) - STABILITY_WINDOW_MS
   for (let index = 0; index < completedObservations.length; index += 1) {
     const item = completedObservations[index]
     if (item.window_start_unix_ms !== expectedWindowStart) {
-      return '最近观察窗口不连续，不能开始第六片'
+      return i18n.global.t('stabilityUi.notContinuous')
     }
     if (!isPassingStabilityObservation(item)) {
       return index === 0
-        ? '最新窗口未通过，不能开始第六片'
-        : '最近 14 个窗口中有未通过记录'
+        ? i18n.global.t('stabilityUi.latestFailed')
+        : i18n.global.t('stabilityUi.someFailed')
     }
     expectedWindowStart = item.window_start_unix_ms - STABILITY_WINDOW_MS
   }
 
   if (consecutivePassDays < STABILITY_REQUIRED_PASS_DAYS) {
-    return `还缺 ${STABILITY_REQUIRED_PASS_DAYS - consecutivePassDays} 个已结束观察窗口`
+    return i18n.global.t('stabilityUi.missing', { count: STABILITY_REQUIRED_PASS_DAYS - consecutivePassDays })
   }
-  return '还需要连续 14 天通过'
+  return i18n.global.t('stabilityUi.needDays')
 }
 
 export function isPassingStabilityObservation(item: NifflerStabilityObservation): boolean {

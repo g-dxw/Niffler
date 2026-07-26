@@ -3,10 +3,10 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h3 class="text-base font-semibold">
-          推理参数
+          {{ t('admin.modelDirectives.reasoning') }}
         </h3>
         <p class="mt-1 text-sm text-muted-foreground">
-          各端点可以分别启用推理参数，并配置推理程度到实际请求参数和值的映射。
+          {{ t('admin.modelDirectives.reasoningHint') }}
         </p>
       </div>
       <div class="flex items-center">
@@ -20,11 +20,11 @@
 
     <div class="overflow-hidden rounded-lg border">
       <div class="grid grid-cols-1 gap-2 border-b bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground lg:grid-cols-[minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1.8fr)_auto]">
-        <div>API 端点</div>
-        <div>推理程度</div>
-        <div>映射参数</div>
+        <div>{{ t('admin.modelDirectives.endpoint') }}</div>
+        <div>{{ t('admin.modelDirectives.effort') }}</div>
+        <div>{{ t('admin.modelDirectives.mapping') }}</div>
         <div class="md:text-right">
-          状态
+          {{ t('admin.modelDirectives.status') }}
         </div>
       </div>
       <div class="divide-y">
@@ -90,6 +90,7 @@
 
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Save } from 'lucide-vue-next'
 import Button from '@/components/ui/button.vue'
 import {
@@ -107,6 +108,8 @@ import {
   type ReasoningApiFormatConfig,
   type ModelDirectivesConfig,
 } from './modelDirectivesConfig'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   config: ModelDirectivesConfig

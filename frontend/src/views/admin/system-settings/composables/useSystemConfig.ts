@@ -3,6 +3,7 @@ import { useToast } from '@/composables/useToast'
 import { adminApi } from '@/api/admin'
 import { log } from '@/utils/logger'
 import { useSiteInfo } from '@/composables/useSiteInfo'
+import { useI18n } from 'vue-i18n'
 
 export type ContentModerationLevel = 'off' | 'latest_user_input' | 'all_user_inputs' | 'full_request'
 export type ContentModerationTargetKind = 'provider' | 'upstream_service' | 'upstream_account'
@@ -32,6 +33,8 @@ export interface SystemConfig {
   // 站点信息
   site_name: string
   site_subtitle: string
+  contact_us_format: 'markdown' | 'html'
+  contact_us_content: string
   // 网络代理
   system_proxy_node_id: string | null
   // 基础配置
@@ -89,6 +92,8 @@ const CONFIG_KEYS = [
   // 站点信息
   'site_name',
   'site_subtitle',
+  'contact_us_format',
+  'contact_us_content',
   // 网络代理
   'system_proxy_node_id',
   // 基础配置
@@ -251,6 +256,8 @@ function createDefaultConfig(): SystemConfig {
     // 站点信息
     site_name: 'Niffler',
     site_subtitle: 'AI Gateway',
+    contact_us_format: 'markdown',
+    contact_us_content: '',
     // 网络代理
     system_proxy_node_id: null,
     // 基础配置
@@ -306,6 +313,7 @@ function createDefaultConfig(): SystemConfig {
 }
 
 export function useSystemConfig() {
+  const { t } = useI18n()
   const { success, error } = useToast()
   const { refreshSiteInfo } = useSiteInfo()
 
@@ -326,7 +334,9 @@ export function useSystemConfig() {
     if (!originalConfig.value) return false
     return (
       systemConfig.value.site_name !== originalConfig.value.site_name ||
-      systemConfig.value.site_subtitle !== originalConfig.value.site_subtitle
+      systemConfig.value.site_subtitle !== originalConfig.value.site_subtitle ||
+      systemConfig.value.contact_us_format !== originalConfig.value.contact_us_format ||
+      systemConfig.value.contact_us_content !== originalConfig.value.contact_us_content
     )
   })
 
@@ -471,7 +481,7 @@ export function useSystemConfig() {
       }
       originalConfig.value = JSON.parse(JSON.stringify(systemConfig.value))
     } catch (err) {
-      error('加载系统配置失败')
+      error(t('systemConfigMessages.loadFailed'))
       log.error('加载系统配置失败:', err)
     }
   }
@@ -496,6 +506,8 @@ export function useSystemConfig() {
           value: systemConfig.value.site_subtitle,
           description: '站点副标题',
         },
+        { key: 'contact_us_format', value: systemConfig.value.contact_us_format, description: '联系我们内容格式' },
+        { key: 'contact_us_content', value: systemConfig.value.contact_us_content, description: '联系我们内容' },
       ]
       await Promise.all(
         configItems.map((item) =>
@@ -505,11 +517,13 @@ export function useSystemConfig() {
       if (originalConfig.value) {
         originalConfig.value.site_name = systemConfig.value.site_name
         originalConfig.value.site_subtitle = systemConfig.value.site_subtitle
+        originalConfig.value.contact_us_format = systemConfig.value.contact_us_format
+        originalConfig.value.contact_us_content = systemConfig.value.contact_us_content
       }
       await refreshSiteInfo()
-      success('站点信息已保存')
+      success(t('systemConfigMessages.siteSaved'))
     } catch (err) {
-      error('保存站点信息失败')
+      error(t('systemConfigMessages.siteSaveFailed'))
       log.error('保存站点信息失败:', err)
     } finally {
       siteInfoLoading.value = false
@@ -527,9 +541,9 @@ export function useSystemConfig() {
       if (originalConfig.value) {
         originalConfig.value.system_proxy_node_id = systemConfig.value.system_proxy_node_id
       }
-      success('网络代理配置已保存')
+      success(t('systemConfigMessages.proxySaved'))
     } catch (err) {
-      error('保存代理配置失败')
+      error(t('systemConfigMessages.proxySaveFailed'))
       log.error('保存代理配置失败:', err)
     } finally {
       proxyConfigLoading.value = false
@@ -688,9 +702,9 @@ export function useSystemConfig() {
         originalConfig.value.enable_openai_image_sync_heartbeat =
           systemConfig.value.enable_openai_image_sync_heartbeat
       }
-      success('基础配置已保存')
+      success(t('systemConfigMessages.basicSaved'))
     } catch (err) {
-      error('保存配置失败')
+      error(t('systemConfigMessages.saveFailed'))
       log.error('保存基础配置失败:', err)
     } finally {
       basicConfigLoading.value = false
@@ -711,9 +725,9 @@ export function useSystemConfig() {
         originalConfig.value.turnstile_secret_key = ''
         originalConfig.value.turnstile_secret_key_is_set = false
       }
-      success('Turnstile 密钥已清空')
+      success(t('systemConfigMessages.turnstileCleared'))
     } catch (err) {
-      error('清空 Turnstile 密钥失败')
+      error(t('systemConfigMessages.turnstileClearFailed'))
       log.error('清空 Turnstile 密钥失败:', err)
     } finally {
       basicConfigLoading.value = false
@@ -757,9 +771,9 @@ export function useSystemConfig() {
         originalConfig.value.max_response_body_size = systemConfig.value.max_response_body_size
         originalConfig.value.sensitive_headers = [...systemConfig.value.sensitive_headers]
       }
-      success('请求记录配置已保存')
+      success(t('systemConfigMessages.requestLogSaved'))
     } catch (err) {
-      error('保存配置失败')
+      error(t('systemConfigMessages.saveFailed'))
       log.error('保存请求记录配置失败:', err)
     } finally {
       logConfigLoading.value = false
@@ -782,9 +796,9 @@ export function useSystemConfig() {
       if (originalConfig.value) {
         originalConfig.value.content_moderation_account_protection = JSON.parse(JSON.stringify(savedValue))
       }
-      success('内容审查配置已保存')
+      success(t('systemConfigMessages.moderationSaved'))
     } catch (err) {
-      error('保存内容审查配置失败')
+      error(t('systemConfigMessages.moderationSaveFailed'))
       log.error('保存内容审查配置失败:', err)
     } finally {
       contentModerationLoading.value = false
@@ -878,9 +892,9 @@ export function useSystemConfig() {
         originalConfig.value.proxy_node_metrics_cleanup_batch_size =
           systemConfig.value.proxy_node_metrics_cleanup_batch_size
       }
-      success('请求记录清理配置已保存')
+      success(t('systemConfigMessages.cleanupSaved'))
     } catch (err) {
-      error('保存配置失败')
+      error(t('systemConfigMessages.saveFailed'))
       log.error('保存请求记录清理配置失败:', err)
     } finally {
       cleanupConfigLoading.value = false
@@ -896,9 +910,9 @@ export function useSystemConfig() {
         enabled,
         '是否启用自动清理任务'
       )
-      success(enabled ? '已启用自动清理' : '已禁用自动清理')
+      success(enabled ? t('systemConfigMessages.autoCleanupEnabled') : t('systemConfigMessages.autoCleanupDisabled'))
     } catch (err) {
-      error('保存配置失败')
+      error(t('systemConfigMessages.saveFailed'))
       log.error('保存自动清理配置失败:', err)
       systemConfig.value.enable_auto_cleanup = previousValue
     }

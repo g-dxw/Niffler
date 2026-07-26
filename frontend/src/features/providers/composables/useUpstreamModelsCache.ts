@@ -8,6 +8,7 @@ import { isAxiosError } from 'axios'
 import { adminApi } from '@/api/admin'
 import { parseUpstreamModelError } from '@/utils/errorParser'
 import type { UpstreamModel } from '@/api/endpoints/types'
+import { i18n } from '@/i18n'
 
 export type { UpstreamModel }
 
@@ -64,12 +65,12 @@ export function useUpstreamModelsCache() {
             fromCache: response.data.from_cache
           }
         } else {
-          const rawError = response.data?.error || '获取上游模型失败'
+          const rawError = response.data?.error || i18n.global.t('errorParserUi.upstreamFetchFailed')
           return { models: [], error: parseUpstreamModelError(rawError) }
         }
       } catch (err: unknown) {
         const rawError = isAxiosError(err) ? (err.response?.data?.detail ?? err.message) : (err instanceof Error ? err.message : String(err))
-        return { models: [], error: parseUpstreamModelError(rawError || '获取上游模型失败') }
+        return { models: [], error: parseUpstreamModelError(rawError || i18n.global.t('errorParserUi.upstreamFetchFailed')) }
       } finally {
         loadingMap.value.set(requestKey, false)
         pendingRequests.delete(requestKey)

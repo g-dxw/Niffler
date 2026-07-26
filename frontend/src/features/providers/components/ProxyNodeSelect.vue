@@ -8,10 +8,10 @@
       <SelectTrigger :class="triggerClass">
         <SelectValue
           :placeholder="proxyNodesStore.loading
-            ? '加载节点列表中...'
+            ? t('proxyNodeSelect.loading')
             : nodeOptions.length === 0
-              ? '暂无可用节点'
-              : '选择代理节点...'"
+              ? t('proxyNodeSelect.empty')
+              : t('proxyNodeSelect.placeholder')"
         />
       </SelectTrigger>
       <SelectContent>
@@ -29,6 +29,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Select,
   SelectTrigger,
@@ -38,6 +39,8 @@ import {
 } from '@/components/ui'
 import { useProxyNodesStore } from '@/stores/proxy-nodes'
 import { formatRegion } from '@/utils/region'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: string

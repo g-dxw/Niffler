@@ -16,6 +16,9 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   modelValue?: string
@@ -136,20 +139,20 @@ async function renderWidget() {
         emit('update:modelValue', '')
       },
       'error-callback': () => {
-        const message = '人机验证加载失败，请重试'
+        const message = t('turnstileErrors.loadFailed')
         errorMessage.value = message
         emit('update:modelValue', '')
         emit('error', message)
       },
       'timeout-callback': () => {
-        const message = '人机验证超时，请重试'
+        const message = t('turnstileErrors.timeout')
         errorMessage.value = message
         emit('update:modelValue', '')
         emit('error', message)
       },
     })
   } catch {
-    const message = '人机验证加载失败，请重试'
+    const message = t('turnstileErrors.loadFailed')
     errorMessage.value = message
     emit('update:modelValue', '')
     emit('error', message)

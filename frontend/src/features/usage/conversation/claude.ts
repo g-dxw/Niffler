@@ -32,6 +32,7 @@ import {
   createToolResultBlock as createToolResultRenderBlock,
   createEmptyRenderResult,
 } from './render'
+import { conversationText } from './i18n'
 
 /** Raw JSON object from API (loosely typed) */
 type RawObject = Record<string, unknown>
@@ -103,7 +104,7 @@ export class ClaudeParser implements ApiFormatParser {
    */
   parseRequest(requestBody: unknown): ParsedConversation {
     if (!requestBody) {
-      return createEmptyConversation('claude', '无请求体')
+      return createEmptyConversation('claude', conversationText('noRequest'))
     }
 
     try {
@@ -130,7 +131,7 @@ export class ClaudeParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('claude', `解析失败: ${e}`)
+      return createEmptyConversation('claude', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -139,7 +140,7 @@ export class ClaudeParser implements ApiFormatParser {
    */
   parseResponse(responseBody: unknown): ParsedConversation {
     if (!responseBody) {
-      return createEmptyConversation('claude', '无响应体')
+      return createEmptyConversation('claude', conversationText('noResponse'))
     }
 
     try {
@@ -161,7 +162,7 @@ export class ClaudeParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('claude', `解析失败: ${e}`)
+      return createEmptyConversation('claude', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -170,7 +171,7 @@ export class ClaudeParser implements ApiFormatParser {
    */
   parseStreamResponse(chunks: unknown[]): ParsedConversation {
     if (!chunks || chunks.length === 0) {
-      return createEmptyConversation('claude', '无响应数据')
+      return createEmptyConversation('claude', conversationText('noResponseData'))
     }
 
     try {
@@ -262,7 +263,7 @@ export class ClaudeParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('claude', `解析失败: ${e}`)
+      return createEmptyConversation('claude', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -375,7 +376,7 @@ export class ClaudeParser implements ApiFormatParser {
   private parseImageBlock(block: RawObject): ContentBlock | null {
     const source = block.source as RawObject | undefined
     if (!source) {
-      return createImageBlock('base64', { alt: '[图片]' })
+      return createImageBlock('base64', { alt: `[${conversationText('image')}]` })
     }
 
     if (source.type === 'base64') {
@@ -392,7 +393,7 @@ export class ClaudeParser implements ApiFormatParser {
       })
     }
 
-    return createImageBlock('base64', { alt: '[图片]' })
+    return createImageBlock('base64', { alt: `[${conversationText('image')}]` })
   }
 
   /**
@@ -429,7 +430,7 @@ export class ClaudeParser implements ApiFormatParser {
    */
   renderRequest(requestBody: unknown): RenderResult {
     if (!requestBody) {
-      return createEmptyRenderResult('无请求体')
+      return createEmptyRenderResult(conversationText('noRequest'))
     }
 
     try {
@@ -457,7 +458,7 @@ export class ClaudeParser implements ApiFormatParser {
 
       return { blocks, isStream }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -466,7 +467,7 @@ export class ClaudeParser implements ApiFormatParser {
    */
   renderResponse(responseBody: unknown): RenderResult {
     if (!responseBody) {
-      return createEmptyRenderResult('无响应体')
+      return createEmptyRenderResult(conversationText('noResponse'))
     }
 
     // 检查是否为流式响应
@@ -493,7 +494,7 @@ export class ClaudeParser implements ApiFormatParser {
 
       return { blocks, isStream: false }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -502,7 +503,7 @@ export class ClaudeParser implements ApiFormatParser {
    */
   private renderStreamResponse(chunks: unknown[]): RenderResult {
     if (!chunks || chunks.length === 0) {
-      return createEmptyRenderResult('无响应数据')
+      return createEmptyRenderResult(conversationText('noResponseData'))
     }
 
     try {
@@ -528,7 +529,7 @@ export class ClaudeParser implements ApiFormatParser {
 
       return { blocks, isStream: true }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -594,14 +595,14 @@ export class ClaudeParser implements ApiFormatParser {
 
       case 'thinking':
         return createCollapsibleBlock(
-          `思考过程 (${String(block.thinking || '').length} 字符)`,
+          conversationText('thinkingProcess', { count: String(block.thinking || '').length }),
           [createCodeBlock(String(block.thinking || ''))],
           { defaultOpen: false, className: 'thinking-block' }
         )
 
       case 'tool_use':
         return createToolUseRenderBlock(
-          String(block.name || '工具调用'),
+          String(block.name || conversationText('toolCall')),
           this.formatJson(block.input),
           typeof block.id === 'string' ? block.id : undefined
         )
@@ -645,14 +646,14 @@ export class ClaudeParser implements ApiFormatParser {
 
       case 'thinking':
         return createCollapsibleBlock(
-          `思考过程 (${block.thinking.length} 字符)`,
+          conversationText('thinkingProcess', { count: block.thinking.length }),
           [createCodeBlock(block.thinking)],
           { defaultOpen: false, className: 'thinking-block' }
         )
 
       case 'tool_use':
         return createToolUseRenderBlock(
-          block.toolName || '工具调用',
+          block.toolName || conversationText('toolCall'),
           this.formatJson(block.input),
           block.toolId
         )
@@ -670,7 +671,7 @@ export class ClaudeParser implements ApiFormatParser {
             ? `data:${block.mimeType || 'image/png'};base64,${block.data}`
             : block.url,
           mimeType: block.mimeType,
-          alt: block.alt || '图片',
+          alt: block.alt || conversationText('image'),
         })
 
       case 'error':
@@ -687,7 +688,7 @@ export class ClaudeParser implements ApiFormatParser {
   private renderImageBlock(block: RawObject): RenderBlock | null {
     const source = block.source as RawObject | undefined
     if (!source) {
-      return createImageRenderBlock({ alt: '[图片]' })
+      return createImageRenderBlock({ alt: `[${conversationText('image')}]` })
     }
 
     if (source.type === 'base64') {
@@ -704,7 +705,7 @@ export class ClaudeParser implements ApiFormatParser {
       })
     }
 
-    return createImageRenderBlock({ alt: '[图片]' })
+    return createImageRenderBlock({ alt: `[${conversationText('image')}]` })
   }
 
   /**
@@ -730,16 +731,16 @@ export class ClaudeParser implements ApiFormatParser {
     const types = new Set(content.map((b: RawObject) => b.type))
 
     if (types.has('thinking')) {
-      badges.push(createBadgeBlock('思考', 'secondary'))
+      badges.push(createBadgeBlock(conversationText('thinking'), 'secondary'))
     }
     if (types.has('tool_use')) {
-      badges.push(createBadgeBlock('工具调用', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolCall'), 'outline'))
     }
     if (types.has('tool_result')) {
-      badges.push(createBadgeBlock('工具结果', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolResult'), 'outline'))
     }
     if (types.has('image')) {
-      badges.push(createBadgeBlock('图片', 'secondary'))
+      badges.push(createBadgeBlock(conversationText('image'), 'secondary'))
     }
 
     return badges
@@ -760,16 +761,16 @@ export class ClaudeParser implements ApiFormatParser {
     const types = new Set(content.map(b => b.type))
 
     if (types.has('thinking')) {
-      badges.push(createBadgeBlock('思考', 'secondary'))
+      badges.push(createBadgeBlock(conversationText('thinking'), 'secondary'))
     }
     if (types.has('tool_use')) {
-      badges.push(createBadgeBlock('工具调用', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolCall'), 'outline'))
     }
     if (types.has('tool_result')) {
-      badges.push(createBadgeBlock('工具结果', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolResult'), 'outline'))
     }
     if (types.has('image')) {
-      badges.push(createBadgeBlock('图片', 'secondary'))
+      badges.push(createBadgeBlock(conversationText('image'), 'secondary'))
     }
 
     return badges
@@ -802,7 +803,7 @@ export class ClaudeParser implements ApiFormatParser {
       return content
         .map((item: RawObject) => {
           if (item.type === 'text') return String(item.text || '')
-          if (item.type === 'image') return '[图片]'
+          if (item.type === 'image') return `[${conversationText('image')}]`
           return ''
         })
         .filter(Boolean)
@@ -819,8 +820,8 @@ export class ClaudeParser implements ApiFormatParser {
     return content
       .map(block => {
         if (block.type === 'text') return block.text
-        if (block.type === 'image') return '[图片]'
-        if (block.type === 'error') return `[错误: ${block.message}]`
+        if (block.type === 'image') return `[${conversationText('image')}]`
+        if (block.type === 'error') return conversationText('error', { error: block.message })
         return ''
       })
       .filter(Boolean)

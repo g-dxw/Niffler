@@ -21,10 +21,10 @@
           </div>
           <div class="flex-1 min-w-0">
             <h3 class="text-lg font-semibold text-foreground leading-tight">
-              {{ isEditMode ? '编辑独立余额 API Key' : '创建独立余额 API Key' }}
+              {{ isEditMode ? t('standaloneKey.editTitle') : t('standaloneKey.createTitle') }}
             </h3>
             <p class="text-xs text-muted-foreground">
-              {{ isEditMode ? '修改密钥名称、有效期和访问限制' : '用于非注册用户调用接口，可设置初始余额或无限制额度' }}
+              {{ isEditMode ? t('standaloneKey.editDescription') : t('standaloneKey.createDescription') }}
             </p>
           </div>
         </div>
@@ -36,19 +36,19 @@
         <!-- 左侧：基础设置 -->
         <div class="pr-6 space-y-4">
           <div class="flex items-center gap-2 pb-2 border-b border-border/60">
-            <span class="text-sm font-medium">基础设置</span>
+            <span class="text-sm font-medium">{{ t('standaloneKey.basicSettings') }}</span>
           </div>
 
           <div class="space-y-2">
             <Label
               for="form-name"
               class="text-sm font-medium"
-            >密钥名称</Label>
+            >{{ t('standaloneKey.name') }}</Label>
             <Input
               id="form-name"
               v-model="form.name"
               type="text"
-              placeholder="例如: 用户A专用"
+              :placeholder="t('standaloneKey.namePlaceholder')"
               class="h-10"
             />
           </div>
@@ -57,7 +57,7 @@
             <Label
               for="form-expires-at"
               class="text-sm font-medium"
-            >有效期设置</Label>
+            >{{ t('standaloneKey.expirySettings') }}</Label>
             <div class="flex items-center gap-2">
               <div class="relative flex-1">
                 <Input
@@ -66,14 +66,14 @@
                   type="date"
                   :min="minExpiryDate"
                   class="h-9 pr-8"
-                  :placeholder="form.expires_at ? '' : '永不过期'"
+                  :placeholder="form.expires_at ? '' : t('standaloneKey.neverExpires')"
                   @update:model-value="(v) => form.expires_at = v || undefined"
                 />
                 <button
                   v-if="form.expires_at"
                   type="button"
                   class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  title="清空（永不过期）"
+                  :title="t('standaloneKey.clearExpiry')"
                   @click="clearExpiryDate"
                 >
                   <X class="h-4 w-4" />
@@ -89,11 +89,11 @@
                   class="h-3.5 w-3.5 rounded border-gray-300 cursor-pointer"
                   :disabled="!form.expires_at"
                 >
-                到期删除
+                {{ t('standaloneKey.deleteOnExpiry') }}
               </label>
             </div>
             <p class="text-xs text-muted-foreground">
-              {{ form.expires_at ? '到期后' + (form.auto_delete_on_expiry ? '自动删除' : '仅禁用') + '（当天 23:59 失效）' : '留空表示永不过期' }}
+              {{ form.expires_at ? t('standaloneKey.expiryBehavior', { action: form.auto_delete_on_expiry ? t('standaloneKey.autoDelete') : t('standaloneKey.disableOnly') }) : t('standaloneKey.blankNeverExpires') }}
             </p>
           </div>
         </div>
@@ -101,12 +101,12 @@
         <!-- 右侧：访问限制 -->
         <div class="pl-6 space-y-4 border-l border-border">
           <div class="flex items-center gap-2 pb-2 border-b border-border/60">
-            <span class="text-sm font-medium">访问限制</span>
+            <span class="text-sm font-medium">{{ t('standaloneKey.accessRestrictions') }}</span>
           </div>
 
           <!-- 提供商 -->
           <div class="space-y-2">
-            <Label class="text-sm font-medium">允许的提供商</Label>
+            <Label class="text-sm font-medium">{{ t('standaloneKey.allowedProviders') }}</Label>
             <div class="flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <MultiSelect
@@ -114,10 +114,10 @@
                   :options="providerOptions"
                   :search-threshold="0"
                   :disabled="form.provider_unrestricted"
-                  :placeholder="form.provider_unrestricted ? '不限制' : '未选择（全部禁用）'"
-                  empty-text="暂无可用提供商"
-                  no-results-text="未找到匹配的提供商"
-                  search-placeholder="搜索提供商名称..."
+                  :placeholder="form.provider_unrestricted ? t('standaloneKey.unrestricted') : t('standaloneKey.noneSelected')"
+                  :empty-text="t('standaloneKey.noProviders')"
+                  :no-results-text="t('standaloneKey.noProviderMatches')"
+                  :search-placeholder="t('standaloneKey.searchProviders')"
                 />
               </div>
               <Switch
@@ -129,7 +129,7 @@
 
           <!-- 端点 -->
           <div class="space-y-2">
-            <Label class="text-sm font-medium">允许的端点</Label>
+            <Label class="text-sm font-medium">{{ t('standaloneKey.allowedEndpoints') }}</Label>
             <div class="flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <MultiSelect
@@ -137,10 +137,10 @@
                   :options="apiFormatOptions"
                   :search-threshold="0"
                   :disabled="form.api_format_unrestricted"
-                  :placeholder="form.api_format_unrestricted ? '不限制' : '未选择（全部禁用）'"
-                  empty-text="暂无可用端点"
-                  no-results-text="未找到匹配的端点"
-                  search-placeholder="搜索端点..."
+                  :placeholder="form.api_format_unrestricted ? t('standaloneKey.unrestricted') : t('standaloneKey.noneSelected')"
+                  :empty-text="t('standaloneKey.noEndpoints')"
+                  :no-results-text="t('standaloneKey.noEndpointMatches')"
+                  :search-placeholder="t('standaloneKey.searchEndpoints')"
                 />
               </div>
               <Switch
@@ -152,7 +152,7 @@
 
           <!-- 模型 -->
           <div class="space-y-2">
-            <Label class="text-sm font-medium">允许的模型</Label>
+            <Label class="text-sm font-medium">{{ t('standaloneKey.allowedModels') }}</Label>
             <div class="flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <MultiSelect
@@ -160,10 +160,10 @@
                   :options="modelOptions"
                   :search-threshold="0"
                   :disabled="form.model_unrestricted"
-                  :placeholder="form.model_unrestricted ? '不限制' : '未选择（全部禁用）'"
-                  empty-text="暂无可用模型"
-                  no-results-text="未找到匹配的模型"
-                  search-placeholder="输入模型名搜索..."
+                  :placeholder="form.model_unrestricted ? t('standaloneKey.unrestricted') : t('standaloneKey.noneSelected')"
+                  :empty-text="t('standaloneKey.noModels')"
+                  :no-results-text="t('standaloneKey.noModelMatches')"
+                  :search-placeholder="t('standaloneKey.searchModels')"
                 />
               </div>
               <Switch
@@ -177,7 +177,7 @@
             <Label
               for="form-rate-limit"
               class="text-sm font-medium"
-            >速率限制 (请求/分钟)</Label>
+            >{{ t('standaloneKey.rateLimit') }}</Label>
             <div class="flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <Input
@@ -187,14 +187,14 @@
                   type="number"
                   min="0"
                   max="10000"
-                  placeholder="0 = 不限速"
+                  :placeholder="t('standaloneKey.noRateLimit')"
                   class="h-10"
                   @update:model-value="(v) => form.rate_limit = parseNumberInput(v, { min: 0, max: 10000 })"
                 />
                 <span
                   v-else
                   class="flex h-10 w-full items-center rounded-lg border bg-background px-3 text-sm text-muted-foreground opacity-60"
-                >跟随系统</span>
+                >{{ t('standaloneKey.followSystem') }}</span>
               </div>
               <Switch
                 v-model="form.rate_limit_inherited"
@@ -207,7 +207,7 @@
             <Label
               for="form-concurrent-limit"
               class="text-sm font-medium"
-            >并发限制</Label>
+            >{{ t('standaloneKey.concurrentLimit') }}</Label>
             <div class="flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <Input
@@ -217,14 +217,14 @@
                   type="number"
                   min="0"
                   max="10000"
-                  placeholder="0 = 不限制"
+                  :placeholder="t('standaloneKey.noConcurrentLimit')"
                   class="h-10"
                   @update:model-value="(v) => form.concurrent_limit = parseNumberInput(v, { min: 0, max: 10000 })"
                 />
                 <span
                   v-else
                   class="flex h-10 w-full items-center rounded-lg border bg-background px-3 text-sm text-muted-foreground opacity-60"
-                >不限制</span>
+                >{{ t('standaloneKey.unrestricted') }}</span>
               </div>
               <Switch
                 v-model="form.concurrent_limit_inherited"
@@ -232,17 +232,17 @@
               />
             </div>
             <p class="text-xs text-muted-foreground">
-              留空表示不限制，填 0 也表示不限制并发
+              {{ t('standaloneKey.concurrentHint') }}
             </p>
           </div>
 
           <div class="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
             <div class="flex items-center justify-between gap-3">
-              <Label class="text-sm font-medium">敏感信息保护</Label>
+              <Label class="text-sm font-medium">{{ t('standaloneKey.piiProtection') }}</Label>
               <Switch v-model="form.chat_pii_redaction_enabled" />
             </div>
             <div class="flex items-center justify-between gap-3">
-              <Label class="text-sm font-medium">占位符说明</Label>
+              <Label class="text-sm font-medium">{{ t('standaloneKey.placeholderNotice') }}</Label>
               <Switch
                 v-model="form.chat_pii_redaction_placeholder_notice"
                 :disabled="!form.chat_pii_redaction_enabled"
@@ -252,7 +252,7 @@
 
           <!-- 额度 -->
           <div class="space-y-2">
-            <Label class="text-sm font-medium">额度</Label>
+            <Label class="text-sm font-medium">{{ t('standaloneKey.quota') }}</Label>
             <div class="flex items-center gap-3">
               <div class="flex-1 min-w-0">
                 <Input
@@ -262,7 +262,7 @@
                   type="number"
                   step="0.01"
                   min="0.01"
-                  placeholder="初始额度 (USD)"
+                  :placeholder="t('standaloneKey.initialQuota')"
                   class="h-10"
                   @update:model-value="(v) => form.initial_balance_usd = parseNumberInput(v, { allowFloat: true, min: 0.01 })"
                 />
@@ -281,7 +281,7 @@
               v-if="isEditMode"
               class="text-xs text-muted-foreground"
             >
-              {{ form.unlimited_balance ? '该 Key 当前使用独立无限额度。' : '该 Key 当前按独立钱包余额限制；增减金额请在列表页使用“资金”操作。' }}
+              {{ form.unlimited_balance ? t('standaloneKey.unlimitedHint') : t('standaloneKey.walletHint') }}
             </p>
           </div>
         </div>
@@ -295,14 +295,14 @@
         class="h-10 px-5"
         @click="handleCancel"
       >
-        取消
+        {{ t('standaloneKey.cancel') }}
       </Button>
       <Button
         :disabled="saving"
         class="h-10 px-5"
         @click="handleSubmit"
       >
-        {{ saving ? (isEditMode ? '更新中...' : '创建中...') : (isEditMode ? '更新' : '创建') }}
+        {{ saving ? (isEditMode ? t('standaloneKey.updating') : t('standaloneKey.creating')) : (isEditMode ? t('standaloneKey.update') : t('standaloneKey.create')) }}
       </Button>
     </template>
   </Dialog>
@@ -310,6 +310,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Dialog,
   Button,
@@ -330,6 +331,8 @@ import {
   readChatPiiRedactionFeatureSettings,
 } from '@/utils/featureSettings'
 import type { ProviderWithEndpointsSummary, GlobalModelResponse } from '@/api/endpoints/types'
+
+const { t } = useI18n()
 
 export interface StandaloneKeyFormData {
   id?: string
@@ -445,13 +448,13 @@ const minExpiryDate = computed(() => {
 
 const balanceDisplayText = computed(() => {
   if (form.value.unlimited_balance) {
-    return '独立无限额度'
+    return t('standaloneKey.independentUnlimited')
   }
   if (isEditMode.value) {
     const currentBalance = form.value.current_balance_usd ?? form.value.initial_balance_usd ?? 0
-    return `当前独立钱包余额 $${currentBalance.toFixed(2)}`
+    return t('standaloneKey.currentBalance', { value: currentBalance.toFixed(2) })
   }
-  return '按独立钱包余额限制'
+  return t('standaloneKey.walletLimited')
 })
 
 function resetForm() {

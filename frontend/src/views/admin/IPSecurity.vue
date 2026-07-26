@@ -7,7 +7,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium text-muted-foreground">
-                黑名单 IP 数量
+                {{ t('admin.ip.blacklistCount') }}
               </p>
               <h3 class="text-2xl font-bold mt-2">
                 {{ blacklistData.total || blacklistStats.total || 0 }}
@@ -25,7 +25,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium text-muted-foreground">
-                白名单 IP 数量
+                {{ t('admin.ip.whitelistCount') }}
               </p>
               <h3 class="text-2xl font-bold mt-2">
                 {{ whitelistData.total || 0 }}
@@ -48,10 +48,10 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div class="shrink-0">
             <h3 class="text-sm sm:text-base font-semibold">
-              IP 黑名单
+              {{ t('admin.ip.blacklist') }}
             </h3>
             <p class="text-xs text-muted-foreground mt-0.5">
-              管理被禁止访问的 IP 地址
+              {{ t('admin.ip.blacklistHint') }}
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -59,7 +59,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="添加黑名单"
+              :title="t('admin.ip.addBlacklist')"
               @click="showAddBlacklistDialog = true"
             >
               <Plus class="w-3.5 h-3.5" />
@@ -91,7 +91,7 @@
             <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <div>
               <p class="font-medium text-foreground">
-                黑名单状态不可用，列表可能不是最新
+                {{ t('admin.ip.unavailable') }}
               </p>
               <p class="mt-1 text-xs">
                 {{ blacklistStats.error }}
@@ -105,7 +105,7 @@
           class="text-center py-8 text-muted-foreground"
         >
           <AlertCircle class="w-12 h-12 mx-auto mb-2 opacity-50" />
-          <p>无法获取黑名单列表</p>
+          <p>{{ t('admin.ip.blacklistFailed') }}</p>
           <p class="text-xs mt-1">
             {{ blacklistListError }}
           </p>
@@ -115,24 +115,24 @@
           class="text-center py-8 text-muted-foreground"
         >
           <ShieldX class="w-12 h-12 mx-auto mb-2 opacity-50" />
-          <p>暂无黑名单 IP</p>
+          <p>{{ t('admin.ip.blacklistEmpty') }}</p>
         </div>
         <div
           v-else
           class="space-y-4"
         >
           <div class="text-sm text-muted-foreground">
-            当前共有 <span class="font-semibold text-foreground">{{ blacklistData.total || blacklistStats.total || 0 }}</span> 个 IP 在黑名单中
+            {{ t('ipExtra.blacklistSummary', { count: blacklistData.total || blacklistStats.total || 0 }) }}
           </div>
 
           <Table class="hidden sm:table">
             <TableHeader>
               <TableRow>
-                <TableHead>IP 地址</TableHead>
-                <TableHead>原因</TableHead>
-                <TableHead>剩余时长</TableHead>
+                <TableHead>{{ t('admin.ip.address') }}</TableHead>
+                <TableHead>{{ t('admin.ip.reason') }}</TableHead>
+                <TableHead>{{ t('admin.ip.remaining') }}</TableHead>
                 <TableHead class="text-right">
-                  操作
+                  {{ t('admin.ip.actions') }}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -158,7 +158,7 @@
                     @click="handleRemoveFromBlacklist(entry.ip_address)"
                   >
                     <Trash2 class="w-4 h-4 mr-1.5" />
-                    移除
+                    {{ t('admin.ip.remove') }}
                   </Button>
                 </TableCell>
               </TableRow>
@@ -205,10 +205,10 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div class="shrink-0">
             <h3 class="text-sm sm:text-base font-semibold">
-              IP 白名单
+              {{ t('admin.ip.whitelist') }}
             </h3>
             <p class="text-xs text-muted-foreground mt-0.5">
-              管理可信任的 IP 地址（支持 CIDR 格式）
+              {{ t('admin.ip.whitelistHint') }}
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
@@ -216,7 +216,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="添加白名单"
+              :title="t('admin.ip.addWhitelist')"
               @click="showAddWhitelistDialog = true"
             >
               <Plus class="w-3.5 h-3.5" />
@@ -241,16 +241,16 @@
         class="text-center py-12 text-muted-foreground"
       >
         <ShieldCheck class="w-12 h-12 mx-auto mb-2 opacity-50" />
-        <p>暂无白名单 IP</p>
+        <p>{{ t('admin.ip.whitelistEmpty') }}</p>
       </div>
 
       <div v-else>
         <Table class="hidden sm:table">
           <TableHeader>
             <TableRow>
-              <TableHead>IP 地址 / CIDR</TableHead>
+              <TableHead>{{ t('admin.ip.cidr') }}</TableHead>
               <TableHead class="text-right">
-                操作
+                {{ t('admin.ip.actions') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -270,7 +270,7 @@
                   @click="handleRemoveFromWhitelist(ip)"
                 >
                   <Trash2 class="w-4 h-4 mr-1.5" />
-                  移除
+                  {{ t('admin.ip.remove') }}
                 </Button>
               </TableCell>
             </TableRow>
@@ -303,39 +303,39 @@
       <DialogContent class="sm:max-w-md !p-0 overflow-hidden">
         <DialogHeader class="!px-4 !py-3">
           <DialogTitle class="!text-base">
-            添加 IP 到黑名单
+            {{ t('admin.ip.addBlacklistTitle') }}
           </DialogTitle>
           <DialogDescription class="!mt-1">
-            被加入黑名单的 IP 将无法访问任何接口
+            {{ t('admin.ip.addBlacklistHint') }}
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-3 px-4 py-4">
           <div class="space-y-1.5">
-            <label class="text-sm font-medium">IP 地址</label>
+            <label class="text-sm font-medium">{{ t('admin.ip.address') }}</label>
             <Input
               v-model="blacklistForm.ip_address"
-              placeholder="例如: 192.168.1.100"
+              :placeholder="t('ipExtra.ipExample')"
               class="font-mono"
             />
           </div>
           <div class="space-y-1.5">
-            <label class="text-sm font-medium">原因</label>
+            <label class="text-sm font-medium">{{ t('admin.ip.reason') }}</label>
             <Input
               v-model="blacklistForm.reason"
-              placeholder="加入黑名单的原因"
+              :placeholder="t('ipExtra.reasonPlaceholder')"
               maxlength="200"
             />
           </div>
           <div class="space-y-1.5">
-            <label class="text-sm font-medium">过期时间（可选）</label>
+            <label class="text-sm font-medium">{{ t('admin.ip.expiry') }}</label>
             <Input
               v-model.number="blacklistForm.ttl"
               type="number"
-              placeholder="留空表示永久，单位：秒"
+              :placeholder="t('ipExtra.ttlPlaceholder')"
               min="1"
             />
             <p class="text-xs text-muted-foreground">
-              留空表示永久封禁，或输入秒数（如 3600 表示 1 小时）
+              {{ t('ipExtra.ttlHint') }}
             </p>
           </div>
         </div>
@@ -344,14 +344,14 @@
             variant="ghost"
             @click="showAddBlacklistDialog = false"
           >
-            取消
+            {{ t('admin.ip.cancel') }}
           </Button>
           <Button
             variant="destructive"
             :disabled="!blacklistForm.ip_address || !blacklistForm.reason"
             @click="handleAddToBlacklist"
           >
-            添加到黑名单
+            {{ t('admin.ip.addToBlacklist') }}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -362,22 +362,22 @@
       <DialogContent class="sm:max-w-md !p-0 overflow-hidden">
         <DialogHeader class="!px-4 !py-3">
           <DialogTitle class="!text-base">
-            添加 IP 到白名单
+            {{ t('admin.ip.addWhitelistTitle') }}
           </DialogTitle>
           <DialogDescription class="!mt-1">
-            白名单中的 IP 不受速率限制
+            {{ t('admin.ip.addWhitelistHint') }}
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-3 px-4 py-4">
           <div class="space-y-1.5">
-            <label class="text-sm font-medium">IP 地址或 CIDR</label>
+            <label class="text-sm font-medium">{{ t('admin.ip.addressOrCidr') }}</label>
             <Input
               v-model="whitelistForm.ip_address"
-              placeholder="例如: 192.168.1.0/24 或 192.168.1.100"
+              :placeholder="t('ipExtra.cidrExample')"
               class="font-mono"
             />
             <p class="text-xs text-muted-foreground leading-5">
-              支持单个 IP 或 CIDR 网段格式
+              {{ t('ipExtra.cidrHint') }}
             </p>
           </div>
         </div>
@@ -386,13 +386,13 @@
             variant="ghost"
             @click="showAddWhitelistDialog = false"
           >
-            取消
+            {{ t('admin.ip.cancel') }}
           </Button>
           <Button
             :disabled="!whitelistForm.ip_address"
             @click="handleAddToWhitelist"
           >
-            添加到白名单
+            {{ t('admin.ip.addToWhitelist') }}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -402,6 +402,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Plus, Trash2, ShieldX, ShieldCheck, AlertCircle } from 'lucide-vue-next'
 import {
   Card,
@@ -426,6 +427,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { parseApiError } from '@/utils/errorParser'
 
+const { t } = useI18n()
 const { success, error } = useToast()
 const { confirmDanger } = useConfirm()
 
@@ -476,7 +478,7 @@ async function loadBlacklist() {
       blacklistStats.value = {
         available: false,
         total: 0,
-        error: parseApiError(statsResult.reason, '无法获取黑名单统计')
+        error: parseApiError(statsResult.reason, t('ipExtra.statsFailed'))
       }
     }
 
@@ -487,10 +489,10 @@ async function loadBlacklist() {
         items: [],
         total: 0
       }
-      blacklistListError.value = parseApiError(listResult.reason, '无法获取黑名单列表')
+      blacklistListError.value = parseApiError(listResult.reason, t('ipExtra.listFailed'))
     }
   } catch (err: unknown) {
-    error(parseApiError(err, '无法获取黑名单数据'))
+    error(parseApiError(err, t('ipExtra.dataFailed')))
   } finally {
     loadingBlacklist.value = false
   }
@@ -504,7 +506,7 @@ async function loadWhitelist() {
   try {
     whitelistData.value = await whitelistApi.getList()
   } catch (err: unknown) {
-    error(parseApiError(err, '无法获取白名单列表'))
+    error(parseApiError(err, t('ipExtra.whitelistFailed')))
   } finally {
     loadingWhitelist.value = false
   }
@@ -521,13 +523,13 @@ async function handleAddToBlacklist() {
       ttl: blacklistForm.value.ttl
     })
 
-    success(`IP ${blacklistForm.value.ip_address} 已加入黑名单`)
+    success(t('ipExtra.addedBlacklist', { ip: blacklistForm.value.ip_address }))
 
     showAddBlacklistDialog.value = false
     blacklistForm.value = { ip_address: '', reason: '', ttl: undefined }
     await loadBlacklist()
   } catch (err: unknown) {
-    error(parseApiError(err, '无法添加 IP 到黑名单'))
+    error(parseApiError(err, t('ipExtra.addBlacklistFailed')))
   }
 }
 
@@ -540,13 +542,13 @@ async function handleAddToWhitelist() {
       ip_address: whitelistForm.value.ip_address
     })
 
-    success(`IP ${whitelistForm.value.ip_address} 已加入白名单`)
+    success(t('ipExtra.addedWhitelist', { ip: whitelistForm.value.ip_address }))
 
     showAddWhitelistDialog.value = false
     whitelistForm.value = { ip_address: '' }
     await loadWhitelist()
   } catch (err: unknown) {
-    error(parseApiError(err, '无法添加 IP 到白名单'))
+    error(parseApiError(err, t('ipExtra.addWhitelistFailed')))
   }
 }
 
@@ -555,8 +557,8 @@ async function handleAddToWhitelist() {
  */
 async function handleRemoveFromWhitelist(ip: string) {
   const confirmed = await confirmDanger(
-    `确定要从白名单移除 ${ip} 吗？\n\n此操作无法撤销。`,
-    '移除白名单'
+    t('ipExtra.removeWhitelistConfirm', { ip }),
+    t('ipExtra.removeWhitelistTitle')
   )
 
   if (!confirmed) return
@@ -564,11 +566,11 @@ async function handleRemoveFromWhitelist(ip: string) {
   try {
     await whitelistApi.remove(ip)
 
-    success(`IP ${ip} 已从白名单移除`)
+    success(t('ipExtra.removedWhitelist', { ip }))
 
     await loadWhitelist()
   } catch (err: unknown) {
-    error(parseApiError(err, '无法从白名单移除 IP'))
+    error(parseApiError(err, t('ipExtra.removeWhitelistFailed')))
   }
 }
 
@@ -577,8 +579,8 @@ async function handleRemoveFromWhitelist(ip: string) {
  */
 async function handleRemoveFromBlacklist(ip: string) {
   const confirmed = await confirmDanger(
-    `确定要从黑名单移除 ${ip} 吗？\n\n此操作无法撤销。`,
-    '移除黑名单'
+    t('ipExtra.removeBlacklistConfirm', { ip }),
+    t('ipExtra.removeBlacklistTitle')
   )
 
   if (!confirmed) return
@@ -586,28 +588,28 @@ async function handleRemoveFromBlacklist(ip: string) {
   try {
     await blacklistApi.remove(ip)
 
-    success(`IP ${ip} 已从黑名单移除`)
+    success(t('ipExtra.removedBlacklist', { ip }))
 
     await loadBlacklist()
   } catch (err: unknown) {
-    error(parseApiError(err, '无法从黑名单移除 IP'))
+    error(parseApiError(err, t('ipExtra.removeBlacklistFailed')))
   }
 }
 
 function formatBlacklistTTL(ttlSeconds?: number | null) {
-  if (ttlSeconds == null) return '永久'
-  if (ttlSeconds <= 0) return '即将过期'
+  if (ttlSeconds == null) return t('ipExtra.permanent')
+  if (ttlSeconds <= 0) return t('ipExtra.expiringSoon')
 
   const days = Math.floor(ttlSeconds / 86400)
-  if (days > 0) return `${days} 天`
+  if (days > 0) return t('ipExtra.days', { count: days })
 
   const hours = Math.floor(ttlSeconds / 3600)
-  if (hours > 0) return `${hours} 小时`
+  if (hours > 0) return t('ipExtra.hours', { count: hours })
 
   const minutes = Math.floor(ttlSeconds / 60)
-  if (minutes > 0) return `${minutes} 分钟`
+  if (minutes > 0) return t('ipExtra.minutes', { count: minutes })
 
-  return `${ttlSeconds} 秒`
+  return t('ipExtra.seconds', { count: ttlSeconds })
 }
 
 onMounted(() => {

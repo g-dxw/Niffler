@@ -3,10 +3,10 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-2xl font-semibold text-foreground">
-          邀请返利
+          {{ t('referralAdmin.title') }}
         </h1>
         <p class="mt-1 text-sm text-muted-foreground">
-          查看邀请关系、返利记录和失败返利处理状态
+          {{ t('referralAdmin.description') }}
         </p>
       </div>
       <Button
@@ -18,7 +18,7 @@
           class="mr-2 h-4 w-4"
           :class="{ 'animate-spin': loading }"
         />
-        刷新
+        {{ t('referralAdmin.refresh') }}
       </Button>
     </div>
 
@@ -40,35 +40,35 @@
     <Card class="overflow-hidden">
       <div class="border-b border-border px-5 py-4">
         <h2 class="text-base font-semibold">
-          邀请关系
+              {{ t('referralAdmin.relationships') }}
         </h2>
       </div>
       <div class="grid grid-cols-1 gap-3 border-b border-border/70 p-4 md:grid-cols-5">
         <Input
           v-model="relationshipFilters.inviter"
-          placeholder="邀请人"
+              :placeholder="t('referralAdmin.inviter')"
         />
         <Input
           v-model="relationshipFilters.invitee"
-          placeholder="被邀请人"
+              :placeholder="t('referralAdmin.invitee')"
         />
         <Input
           v-model="relationshipFilters.invite_code"
-          placeholder="邀请码"
+              :placeholder="t('referralAdmin.code')"
         />
         <Select v-model="firstPaidFilter">
           <SelectTrigger>
-            <SelectValue placeholder="首付状态" />
+            <SelectValue :placeholder="t('referralAdmin.firstPaid')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              全部
+              {{ t('referralAdmin.all') }}
             </SelectItem>
             <SelectItem value="true">
-              已首付
+              {{ t('referralAdmin.paid') }}
             </SelectItem>
             <SelectItem value="false">
-              未首付
+              {{ t('referralAdmin.unpaid') }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -76,7 +76,7 @@
           type="button"
           @click="loadRelationships"
         >
-          查询
+              {{ t('referralAdmin.query') }}
         </Button>
       </div>
 
@@ -84,11 +84,11 @@
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>邀请人</TableHead>
-              <TableHead>被邀请人</TableHead>
-              <TableHead>邀请码</TableHead>
-              <TableHead>绑定时间</TableHead>
-              <TableHead>首付状态</TableHead>
+              <TableHead>{{ t('referralAdmin.inviter') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.invitee') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.code') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.bindingTime') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.firstPaid') }}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -104,7 +104,7 @@
               <TableCell>{{ formatUnix(item.created_at_unix_secs) }}</TableCell>
               <TableCell>
                 <Badge :variant="item.first_paid_order_id ? 'success' : 'secondary'">
-                  {{ item.first_paid_order_id ? '已首付' : '未首付' }}
+                  {{ item.first_paid_order_id ? t('referralAdmin.paid') : t('referralAdmin.unpaid') }}
                 </Badge>
               </TableCell>
             </TableRow>
@@ -113,7 +113,7 @@
                 colspan="5"
                 class="py-8 text-center text-sm text-muted-foreground"
               >
-                暂无邀请关系
+                {{ t('referralAdmin.emptyRelationships') }}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -124,52 +124,52 @@
     <Card class="overflow-hidden">
       <div class="border-b border-border px-5 py-4">
         <h2 class="text-base font-semibold">
-          返利记录
+          {{ t('referralAdmin.records') }}
         </h2>
       </div>
       <div class="grid grid-cols-1 gap-3 border-b border-border/70 p-4 md:grid-cols-5">
         <Input
           v-model="rewardFilters.order_id"
-          placeholder="订单号"
+              :placeholder="t('referralAdmin.order')"
         />
         <Select v-model="rewardFilters.reward_type">
           <SelectTrigger>
-            <SelectValue placeholder="返利类型" />
+            <SelectValue :placeholder="t('referralAdmin.type')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              全部类型
+              {{ t('referralAdmin.all') }}
             </SelectItem>
             <SelectItem value="percent">
-              比例返利
+              {{ t('referralAdmin.ratio') }}
             </SelectItem>
             <SelectItem value="headcount">
-              人头返利
+              {{ t('referralAdmin.headcount') }}
             </SelectItem>
           </SelectContent>
         </Select>
         <Select v-model="rewardFilters.status">
           <SelectTrigger>
-            <SelectValue placeholder="状态" />
+            <SelectValue :placeholder="t('referralAdmin.status')" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              全部状态
+              {{ t('referralAdmin.all') }}
             </SelectItem>
             <SelectItem value="pending">
-              待发
+              {{ t('referralAdmin.pending') }}
             </SelectItem>
             <SelectItem value="failed">
-              失败
+              {{ t('referralAdmin.failed') }}
             </SelectItem>
             <SelectItem value="applied">
-              已发
+              {{ t('referralAdmin.issued') }}
             </SelectItem>
             <SelectItem value="voided">
-              已作废
+              {{ t('referralAdmin.voided') }}
             </SelectItem>
             <SelectItem value="reversed">
-              已冲回
+              {{ t('referralAdmin.reversed') }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -178,7 +178,7 @@
           class="md:col-start-5"
           @click="loadRewards"
         >
-          查询
+              {{ t('referralAdmin.query') }}
         </Button>
       </div>
 
@@ -186,14 +186,14 @@
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>类型</TableHead>
-              <TableHead>来源订单</TableHead>
-              <TableHead>金额</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>冲回</TableHead>
-              <TableHead>创建时间</TableHead>
+              <TableHead>{{ t('referralAdmin.type') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.sourceOrder') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.amount') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.status') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.reversal') }}</TableHead>
+              <TableHead>{{ t('referralAdmin.createdAt') }}</TableHead>
               <TableHead class="text-right">
-                操作
+                {{ t('referralAdmin.actions') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -218,7 +218,7 @@
                   v-if="item.pending_reversal_amount_usd > 0"
                   class="text-xs text-amber-600 dark:text-amber-400"
                 >
-                  / 待冲回 {{ formatUsd(item.pending_reversal_amount_usd) }}
+                  / {{ t('referralAdmin.pendingReversal', { amount: formatUsd(item.pending_reversal_amount_usd) }) }}
                 </span>
               </TableCell>
               <TableCell>{{ formatUnix(item.created_at_unix_secs) }}</TableCell>
@@ -231,7 +231,7 @@
                     :disabled="mutatingRewardId === item.id"
                     @click="retryReward(item)"
                   >
-                    补发
+                    {{ t('referralAdmin.retry') }}
                   </Button>
                   <Button
                     v-if="item.status === 'failed' || item.status === 'pending'"
@@ -240,7 +240,7 @@
                     :disabled="mutatingRewardId === item.id"
                     @click="voidReward(item)"
                   >
-                    作废
+                    {{ t('referralAdmin.void') }}
                   </Button>
                 </div>
               </TableCell>
@@ -250,7 +250,7 @@
                 colspan="7"
                 class="py-8 text-center text-sm text-muted-foreground"
               >
-                暂无返利记录
+                {{ t('referralAdmin.emptyRewards') }}
               </TableCell>
             </TableRow>
           </TableBody>
@@ -262,6 +262,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { RefreshCw } from 'lucide-vue-next'
 import {
   referralApi,
@@ -313,11 +316,11 @@ const rewardFilters = ref({
 const { success, error: showError } = useToast()
 
 const statCards = computed(() => [
-  { label: '总邀请', value: stats.value.total_invites },
-  { label: '有效邀请', value: stats.value.effective_invites },
-  { label: '已发返利', value: formatUsd(stats.value.paid_reward_usd) },
-  { label: '待发返利', value: formatUsd(stats.value.pending_reward_usd) },
-  { label: '已冲回返利', value: formatUsd(stats.value.reversed_reward_usd) },
+  { label: t('referralAdmin.totalInvites'), value: stats.value.total_invites },
+  { label: t('referralAdmin.effectiveInvites'), value: stats.value.effective_invites },
+  { label: t('referralAdmin.paidRewards'), value: formatUsd(stats.value.paid_reward_usd) },
+  { label: t('referralAdmin.pendingRewards'), value: formatUsd(stats.value.pending_reward_usd) },
+  { label: t('referralAdmin.reversedRewards'), value: formatUsd(stats.value.reversed_reward_usd) },
 ])
 
 function formatUsd(value: number): string {
@@ -330,23 +333,23 @@ function formatUnix(value?: number | null): string {
 }
 
 function getRewardTypeLabel(value: string): string {
-  if (value === 'percent') return '比例返利'
-  if (value === 'headcount') return '人头返利'
+  if (value === 'percent') return t('referralAdmin.ratio')
+  if (value === 'headcount') return t('referralAdmin.headcount')
   return value
 }
 
 function getRewardStatusLabel(value: string): string {
   switch (value) {
     case 'applied':
-      return '已发'
+      return t('referralAdmin.issued')
     case 'pending':
-      return '待发'
+      return t('referralAdmin.pending')
     case 'failed':
-      return '失败'
+      return t('referralAdmin.failed')
     case 'voided':
-      return '已作废'
+      return t('referralAdmin.voided')
     case 'reversed':
-      return '已冲回'
+      return t('referralAdmin.reversed')
     default:
       return value
   }
@@ -397,7 +400,7 @@ async function loadAll() {
   try {
     await Promise.all([loadRelationships(), loadRewards()])
   } catch {
-    showError('加载邀请返利数据失败')
+    showError(t('referralAdmin.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -406,11 +409,11 @@ async function loadAll() {
 async function retryReward(item: ReferralRewardRecord) {
   mutatingRewardId.value = item.id
   try {
-    const response = await referralApi.retryReferralReward(item.id, '管理员后台补发')
+    const response = await referralApi.retryReferralReward(item.id, t('referralAdmin.adminRetryReason'))
     replaceReward(response.reward)
-    success('返利已补发')
+    success(t('referralAdmin.retrySuccess'))
   } catch {
-    showError('补发失败')
+    showError(t('referralAdmin.retryFailed'))
   } finally {
     mutatingRewardId.value = null
   }
@@ -419,11 +422,11 @@ async function retryReward(item: ReferralRewardRecord) {
 async function voidReward(item: ReferralRewardRecord) {
   mutatingRewardId.value = item.id
   try {
-    const response = await referralApi.voidReferralReward(item.id, '管理员后台作废')
+    const response = await referralApi.voidReferralReward(item.id, t('referralAdmin.adminVoidReason'))
     replaceReward(response.reward)
-    success('返利已作废')
+    success(t('referralAdmin.voidSuccess'))
   } catch {
-    showError('作废失败')
+    showError(t('referralAdmin.voidFailed'))
   } finally {
     mutatingRewardId.value = null
   }

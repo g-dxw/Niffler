@@ -20,11 +20,41 @@ export interface PublicGlobalModel {
   config: Record<string, unknown> | null
   // 调用次数
   usage_count: number
+  health?: PublicModelHealth | null
+}
+
+export interface PublicModelHealth {
+  status: 'healthy' | 'degraded' | 'unavailable'
+  score: number | null
+  active_providers: number
+  active_endpoints: number
+  providers: string[]
 }
 
 export interface PublicGlobalModelListResponse {
   models: PublicGlobalModel[]
   total: number
+}
+
+export interface PublicModelGroup {
+  id: string
+  name: string
+  sales_multiplier: number
+  model_sales_multipliers?: Record<string, number> | null
+  allowed_models?: string[] | null
+  allowed_models_mode?: string
+}
+
+export interface PublicModelGroupListResponse {
+  groups: PublicModelGroup[]
+}
+
+export interface PublicModelGroupCatalog extends PublicModelGroup {
+  models: Array<PublicGlobalModel & { health: PublicModelHealth }>
+}
+
+export interface PublicModelGroupCatalogResponse {
+  groups: PublicModelGroupCatalog[]
 }
 
 /**
@@ -37,5 +67,15 @@ export async function getPublicGlobalModels(params?: {
   search?: string
 }): Promise<PublicGlobalModelListResponse> {
   const response = await client.get('/api/public/global-models', { params })
+  return response.data
+}
+
+export async function getPublicModelGroups(): Promise<PublicModelGroupListResponse> {
+  const response = await client.get('/api/public/model-groups')
+  return response.data
+}
+
+export async function getPublicModelGroupCatalog(): Promise<PublicModelGroupCatalogResponse> {
+  const response = await client.get('/api/public/model-groups/catalog')
   return response.data
 }

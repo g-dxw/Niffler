@@ -14,8 +14,10 @@ import { NETWORK_CONFIG, AUTH_CONFIG } from '@/config/constants'
 import router from '@/router'
 import { hasAuthIdentityChanged } from '@/utils/authToken'
 import { log } from '@/utils/logger'
+import { useI18n } from 'vue-i18n'
 
 const authStore = useAuthStore()
+const { t } = useI18n()
 
 // 立即检查token,如果存在就设置到store中
 const storedToken = apiClient.getToken()
@@ -44,11 +46,11 @@ if (typeof window !== 'undefined') {
 
       if (moduleLoadFailureCount < NETWORK_CONFIG.MODULE_LOAD_RETRY_LIMIT) {
         moduleLoadFailureCount++
-        log.info(`模块加载失败,尝试刷新页面 (${moduleLoadFailureCount}/${NETWORK_CONFIG.MODULE_LOAD_RETRY_LIMIT})`)
+        log.info(`${t('app.moduleLoadFailed')} (${moduleLoadFailureCount}/${NETWORK_CONFIG.MODULE_LOAD_RETRY_LIMIT})`)
         window.location.reload()
       } else {
         // 超过最大重试次数,显示友好提示
-        alert('页面加载失败,请手动刷新浏览器。如问题持续,请清除浏览器缓存后重试。')
+        alert(t('app.moduleLoadFailed'))
       }
       return
     }

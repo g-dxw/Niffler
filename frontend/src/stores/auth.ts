@@ -5,6 +5,7 @@ import apiClient from '@/api/client'
 import { log } from '@/utils/logger'
 import { parseApiError } from '@/utils/errorParser'
 import { getErrorStatus } from '@/types/api-error'
+import { i18n } from '@/i18n'
 
 export const useAuthStore = defineStore('auth', () => {
   // 初始化时从 localStorage 恢复 token
@@ -53,16 +54,16 @@ export const useAuthStore = defineStore('auth', () => {
       // 不要暴露后端的详细错误信息
       const status = getErrorStatus(err)
       if (status === 401) {
-        error.value = '邮箱或密码错误'
+        error.value = i18n.global.t('authErrors.invalidCredentials')
       } else if (status === 422) {
-        error.value = '请输入有效的邮箱地址'
+        error.value = i18n.global.t('authErrors.invalidEmail')
       } else if (status === 429) {
         // 限流错误，显示后端返回的具体信息
-        error.value = parseApiError(err, '请求过于频繁,请稍后重试')
+        error.value = parseApiError(err, i18n.global.t('authErrors.tooManyRequests'))
       } else if (status === 500) {
-        error.value = '服务器错误,请稍后重试'
+        error.value = i18n.global.t('authErrors.serverError')
       } else {
-        error.value = '登录失败,请检查网络连接'
+        error.value = i18n.global.t('authErrors.loginFailed')
       }
       return false
     } finally {

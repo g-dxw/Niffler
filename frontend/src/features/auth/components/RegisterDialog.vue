@@ -8,16 +8,16 @@
       <div class="flex flex-col items-center text-center">
         <div class="mb-4 rounded-3xl border border-primary/30 dark:border-[#cc785c]/30 bg-primary/5 dark:bg-transparent p-4 shadow-inner shadow-white/40 dark:shadow-[#cc785c]/10">
           <img
-            src="/aether_adaptive.svg"
+            src="/niffler-logo.svg"
             alt="Logo"
-            class="h-16 w-16"
+            class="h-16 w-16 dark:invert"
           >
         </div>
         <h2 class="text-2xl font-semibold text-slate-900 dark:text-white">
-          注册新账户
+          {{ t('registerDialog.title') }}
         </h2>
         <p class="mt-1 text-sm text-muted-foreground">
-          {{ emailConfigured ? '请填写您的信息完成注册' : '请填写用户名和密码完成注册' }}
+          {{ emailConfigured ? t('registerDialog.descriptionWithEmail') : t('registerDialog.descriptionWithoutEmail') }}
         </p>
       </div>
 
@@ -34,7 +34,7 @@
           class="space-y-2"
         >
           <Label for="reg-email">
-            邮箱
+            {{ t('registerDialog.email') }}
             <span
               v-if="requireEmailVerification"
               class="text-destructive"
@@ -42,7 +42,7 @@
             <span
               v-else
               class="text-muted-foreground text-xs"
-            >（可选）</span>
+            >{{ t('registerDialog.optional') }}</span>
           </Label>
           <Input
             id="reg-email"
@@ -59,7 +59,7 @@
           v-if="turnstileRequired"
           class="space-y-2"
         >
-          <Label>人机验证 <span class="text-destructive">*</span></Label>
+          <Label>{{ t('registerDialog.captcha') }} <span class="text-destructive">*</span></Label>
           <TurnstileWidget
             ref="turnstileWidgetRef"
             v-model="turnstileToken"
@@ -76,7 +76,7 @@
           class="space-y-3"
         >
           <div class="flex items-center justify-between">
-            <Label>验证码 <span class="text-destructive">*</span></Label>
+            <Label>{{ t('registerDialog.verificationCode') }} <span class="text-destructive">*</span></Label>
             <Button
               type="button"
               variant="link"
@@ -143,12 +143,12 @@
 
         <!-- Username -->
         <div class="space-y-2">
-          <Label for="reg-uname">用户名 <span class="text-destructive">*</span></Label>
+          <Label for="reg-uname">{{ t('registerDialog.username') }} <span class="text-destructive">*</span></Label>
           <Input
             id="reg-uname"
             v-model="formData.username"
             type="text"
-            placeholder="请输入用户名"
+            :placeholder="t('registerDialog.usernamePlaceholder')"
             required
             disable-autofill
             :disabled="isLoading"
@@ -164,7 +164,7 @@
 
         <!-- Password -->
         <div class="space-y-2">
-          <Label :for="`pwd-${formNonce}`">密码 <span class="text-destructive">*</span></Label>
+          <Label :for="`pwd-${formNonce}`">{{ t('registerDialog.password') }} <span class="text-destructive">*</span></Label>
           <Input
             :id="`pwd-${formNonce}`"
             v-model="formData.password"
@@ -172,7 +172,7 @@
             autocomplete="new-password"
             disable-autofill
             :name="`pwd-${formNonce}`"
-            :placeholder="getPasswordPolicyPlaceholder(props.passwordPolicyLevel)"
+            :placeholder="getPasswordPolicyPlaceholder(props.passwordPolicyLevel, translatePasswordPolicy)"
             required
             :disabled="isLoading"
           />
@@ -192,7 +192,7 @@
 
         <!-- Confirm Password -->
         <div class="space-y-2">
-          <Label :for="`pwd-confirm-${formNonce}`">确认密码 <span class="text-destructive">*</span></Label>
+          <Label :for="`pwd-confirm-${formNonce}`">{{ t('registerDialog.confirmPassword') }} <span class="text-destructive">*</span></Label>
           <Input
             :id="`pwd-confirm-${formNonce}`"
             v-model="formData.confirmPassword"
@@ -200,7 +200,7 @@
             autocomplete="new-password"
             disable-autofill
             :name="`pwd-confirm-${formNonce}`"
-            placeholder="再次输入密码"
+            :placeholder="t('registerDialog.confirmPasswordPlaceholder')"
             required
             :disabled="isLoading"
           />
@@ -208,7 +208,7 @@
             v-if="formData.confirmPassword && formData.password !== formData.confirmPassword"
             class="text-xs text-destructive"
           >
-            两次输入的密码不一致
+            {{ t('registerDialog.passwordMismatch') }}
           </p>
         </div>
 
@@ -216,7 +216,7 @@
           v-if="inviteCode"
           class="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground"
         >
-          已识别邀请码 <span class="font-mono font-semibold text-foreground">{{ inviteCode }}</span>
+          {{ t('registerDialog.inviteRecognized') }} <span class="font-mono font-semibold text-foreground">{{ inviteCode }}</span>
         </div>
 
         <div
@@ -230,38 +230,38 @@
               @update:checked="privacyAccepted = !!$event"
             />
             <span class="leading-6">
-              我已阅读并同意
+              {{ t('registerDialog.agreePrefix') }}
               <button
                 type="button"
                 class="font-medium text-primary underline-offset-4 hover:underline"
                 @click="privacyDialogOpen = true"
               >
-                隐私政策
+                {{ t('registerDialog.privacyPolicy') }}
               </button>
               <RouterLink
                 to="/privacy-policy"
                 target="_blank"
                 class="ml-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
-                新窗口打开
+                {{ t('registerDialog.openNewWindow') }}
               </RouterLink>
             </span>
           </label>
           <p class="mt-2 text-xs text-muted-foreground">
-            当前版本：{{ privacyPolicyVersion }}
+            {{ t('registerDialog.currentVersion', { version: privacyPolicyVersion }) }}
           </p>
         </div>
       </form>
 
       <!-- 登录链接 -->
       <div class="text-center text-sm">
-        已有账户？
+        {{ t('registerDialog.hasAccount') }}
         <Button
           variant="link"
           class="h-auto p-0"
           @click="handleSwitchToLogin"
         >
-          立即登录
+          {{ t('registerDialog.signInNow') }}
         </Button>
       </div>
     </div>
@@ -274,14 +274,14 @@
         :disabled="isLoading"
         @click="handleCancel"
       >
-        取消
+        {{ t('common.cancel') }}
       </Button>
       <Button
         class="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0"
         :disabled="isLoading || !canSubmit"
         @click="handleSubmit"
       >
-        {{ isLoading ? loadingText : '注册' }}
+        {{ isLoading ? loadingText : t('registerDialog.register') }}
       </Button>
     </template>
   </Dialog>
@@ -289,7 +289,7 @@
   <Dialog
     v-model="privacyDialogOpen"
     size="2xl"
-    title="隐私政策"
+    :title="t('registerDialog.privacyPolicy')"
   >
     <!-- eslint-disable vue/no-v-html -->
     <div
@@ -302,7 +302,7 @@
         type="button"
         @click="privacyDialogOpen = false"
       >
-        我知道了
+        {{ t('registerDialog.gotIt') }}
       </Button>
     </template>
   </Dialog>
@@ -311,6 +311,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import { authApi, type RegisterRequest, type RegistrationPrivacyPolicySettings } from '@/api/auth'
 import { useToast } from '@/composables/useToast'
@@ -363,7 +364,9 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<Emits>()
+const { t } = useI18n()
 const { success, error: showError } = useToast()
+const translatePasswordPolicy = (key: string, params?: Record<string, string | number>) => t(key, params ?? {})
 
 // Form nonce for password fields (prevent autofill)
 const formNonce = ref(createFormNonce())
@@ -467,7 +470,7 @@ const formData = ref({
 })
 
 const isLoading = ref(false)
-const loadingText = ref('注册中...')
+const loadingText = ref(t('registerDialog.registering'))
 const isSendingCode = ref(false)
 const emailVerified = ref(false)
 const verificationError = ref(false)
@@ -493,7 +496,7 @@ const resetTurnstile = () => {
 }
 
 const handleTurnstileError = (message: string) => {
-  showError(message, '人机验证失败')
+  showError(message, t('registerDialog.captchaFailed'))
 }
 
 const inviteCode = ref<string | null>(null)
@@ -503,7 +506,7 @@ const privacyPolicyEnabled = computed(() => !!props.privacyPolicy?.enabled)
 const privacyPolicyVersion = computed(() => props.privacyPolicy?.version || '1')
 const renderedPrivacyPolicy = computed(() => {
   const policy = props.privacyPolicy
-  if (!policy?.content) return '<p>暂无隐私政策内容</p>'
+  if (!policy?.content) return `<p>${t('registerDialog.noPrivacyContent')}</p>`
   if (policy.format === 'html') {
     return sanitizeHtml(policy.content)
   }
@@ -535,34 +538,34 @@ const canSendCode = computed(() => {
 })
 
 const sendCodeButtonText = computed(() => {
-  if (isSendingCode.value) return '发送中...'
-  if (emailVerified.value) return '验证成功'
-  if (cooldownSeconds.value > 0) return `${cooldownSeconds.value}秒后重试`
+  if (isSendingCode.value) return t('registerDialog.sending')
+  if (emailVerified.value) return t('registerDialog.verified')
+  if (cooldownSeconds.value > 0) return t('registerDialog.retryAfterSeconds', { seconds: cooldownSeconds.value })
   if (
     turnstileRequired.value &&
     currentTurnstileAction.value === 'send_verification_code' &&
     !turnstileToken.value
-  ) return '请先完成人机验证'
-  if (codeSentAt.value) return '重新发送验证码'
-  return '发送验证码'
+  ) return t('registerDialog.completeCaptchaFirst')
+  if (codeSentAt.value) return t('registerDialog.resendCode')
+  return t('registerDialog.sendCode')
 })
 
-const sendCodeLoadingText = computed(() => '正在发送验证码...')
+const sendCodeLoadingText = computed(() => t('registerDialog.sendingCode'))
 
 // 用户名验证
 const usernameRegex = /^[a-zA-Z0-9_.-]+$/
 const usernameError = computed(() => {
   const username = formData.value.username.trim()
   if (!username) return ''
-  if (username.length < 3) return '用户名长度至少为3个字符'
-  if (username.length > 30) return '用户名长度不能超过30个字符'
-  if (!usernameRegex.test(username)) return '用户名只能包含字母、数字、下划线、连字符和点号'
+  if (username.length < 3) return t('registerDialog.usernameTooShort')
+  if (username.length > 30) return t('registerDialog.usernameTooLong')
+  if (!usernameRegex.test(username)) return t('registerDialog.usernameInvalid')
   return ''
 })
 
-const passwordHint = computed(() => getPasswordPolicyHint(props.passwordPolicyLevel))
+const passwordHint = computed(() => getPasswordPolicyHint(props.passwordPolicyLevel, translatePasswordPolicy))
 const passwordError = computed(() =>
-  validatePasswordByPolicy(formData.value.password, props.passwordPolicyLevel)
+  validatePasswordByPolicy(formData.value.password, props.passwordPolicyLevel, translatePasswordPolicy)
 )
 
 const canSubmit = computed(() => {
@@ -623,7 +626,7 @@ const checkAndRestoreVerificationStatus = async (email: string) => {
         clearInterval(cooldownTimer.value)
         cooldownTimer.value = null
       }
-      showError(status.delivery_error || '验证码邮件发送失败，请重新发送验证码')
+      showError(status.delivery_error || t('registerDialog.codeEmailFailed'))
       return
     }
 
@@ -754,14 +757,14 @@ const resetForm = () => {
 
 const handleSendCode = async () => {
   if (!formData.value.email) {
-    showError('请输入邮箱')
+    showError(t('registerDialog.enterEmail'))
     return
   }
 
   // Basic email validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(formData.value.email)) {
-    showError('请输入有效的邮箱地址', '邮箱格式错误')
+    showError(t('registerDialog.enterValidEmail'), t('registerDialog.emailFormatError'))
     return
   }
 
@@ -781,8 +784,8 @@ const handleSendCode = async () => {
       }
 
       success(
-        response.message || `验证码正在发送，请稍后查收。有效期 ${expireMinutes.value} 分钟`,
-        '验证码发送中'
+        response.message || t('registerDialog.codeSendingNotice', { minutes: expireMinutes.value }),
+        t('registerDialog.codeSendingTitle')
       )
 
       // Start 60 second cooldown
@@ -794,11 +797,11 @@ const handleSendCode = async () => {
       })
     } else {
       resetTurnstile()
-      showError(response.message || '请稍后重试', '发送失败')
+      showError(response.message || t('registerDialog.tryAgainLater'), t('registerDialog.sendFailed'))
     }
   } catch (error: unknown) {
     resetTurnstile()
-    showError(parseApiError(error, '网络错误，请重试'), '发送失败')
+    showError(parseApiError(error, t('registerDialog.networkError')), t('registerDialog.sendFailed'))
   } finally {
     isSendingCode.value = false
     resetTurnstile()
@@ -812,7 +815,7 @@ const handleCodeComplete = async (code: string) => {
   if (emailVerified.value) return
 
   isLoading.value = true
-  loadingText.value = '验证中...'
+  loadingText.value = t('registerDialog.verifying')
   verificationError.value = false
 
   try {
@@ -820,16 +823,16 @@ const handleCodeComplete = async (code: string) => {
 
     if (response.success) {
       emailVerified.value = true
-      success('邮箱验证通过，请继续完成注册', '验证成功')
+      success(t('registerDialog.emailVerifiedContinue'), t('registerDialog.verified'))
     } else {
       verificationError.value = true
-      showError(response.message || '验证码错误', '验证失败')
+      showError(response.message || t('registerDialog.invalidCode'), t('registerDialog.verificationFailed'))
       // Clear the code input
       clearCodeInputs()
     }
   } catch (error: unknown) {
     verificationError.value = true
-    showError(parseApiError(error, '验证码错误，请重试'), '验证失败')
+    showError(parseApiError(error, t('registerDialog.invalidCodeRetry')), t('registerDialog.verificationFailed'))
     // Clear the code input
     clearCodeInputs()
   } finally {
@@ -840,18 +843,18 @@ const handleCodeComplete = async (code: string) => {
 const handleSubmit = async () => {
   // Validate password match
   if (formData.value.password !== formData.value.confirmPassword) {
-    showError('两次输入的密码不一致', '密码不匹配')
+    showError(t('registerDialog.passwordMismatch'), t('registerDialog.passwordMismatchTitle'))
     return
   }
 
   if (passwordError.value) {
-    showError(passwordError.value, '密码错误')
+    showError(passwordError.value, t('registerDialog.passwordError'))
     return
   }
 
   // Check email verification if required
   if (props.requireEmailVerification && !emailVerified.value) {
-    showError('请先完成邮箱验证')
+    showError(t('registerDialog.completeEmailVerification'))
     return
   }
   if (
@@ -859,17 +862,17 @@ const handleSubmit = async () => {
     currentTurnstileAction.value === 'register' &&
     !turnstileToken.value
   ) {
-    showError('请先完成人机验证')
+    showError(t('registerDialog.completeCaptchaFirst'))
     return
   }
 
   if (privacyPolicyEnabled.value && !privacyAccepted.value) {
-    showError('请先阅读并同意隐私政策')
+    showError(t('registerDialog.acceptPrivacyFirst'))
     return
   }
 
   isLoading.value = true
-  loadingText.value = '注册中...'
+  loadingText.value = t('registerDialog.registering')
 
   try {
     // 构建请求数据：邮箱可选
@@ -894,13 +897,13 @@ const handleSubmit = async () => {
 
     const response = await authApi.register(registerData)
 
-    success(response.message || '欢迎加入！请登录以继续', '注册成功')
+    success(response.message || t('registerDialog.welcome'), t('registerDialog.registerSuccess'))
 
     emit('success')
     isOpen.value = false
   } catch (error: unknown) {
     resetTurnstile()
-    showError(parseApiError(error, '注册失败，请重试'), '注册失败')
+    showError(parseApiError(error, t('registerDialog.registerFailedRetry')), t('registerDialog.registerFailed'))
   } finally {
     isLoading.value = false
     resetTurnstile()

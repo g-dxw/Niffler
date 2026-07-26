@@ -1,4 +1,5 @@
 import type { GlobalModelResponse } from '@/api/global-models'
+import { i18n } from '@/i18n'
 
 export type ProductPlanModelPriceKey =
   | 'input'
@@ -36,21 +37,21 @@ export function buildProductPlanModelPriceRows(
 ): ProductPlanModelPriceRow[] {
   if (!model) return []
   const rows: ProductPlanModelPriceRow[] = [
-    buildTokenPriceRow('input', '输入', getFirstTierPrice(model, 'input_price_per_1m'), multiplier),
-    buildTokenPriceRow('output', '输出', getFirstTierPrice(model, 'output_price_per_1m'), multiplier),
+    buildTokenPriceRow('input', i18n.global.t('pricingUi.input'), getFirstTierPrice(model, 'input_price_per_1m'), multiplier),
+    buildTokenPriceRow('output', i18n.global.t('pricingUi.output'), getFirstTierPrice(model, 'output_price_per_1m'), multiplier),
     buildTokenPriceRow(
       'cache_creation',
-      '缓存创建',
+      i18n.global.t('pricingUi.cacheCreation'),
       getFirstTierPrice(model, 'cache_creation_price_per_1m'),
       multiplier
     ),
-    buildTokenPriceRow('cache_read', '缓存读取', getFirstTierPrice(model, 'cache_read_price_per_1m'), multiplier),
+    buildTokenPriceRow('cache_read', i18n.global.t('pricingUi.cacheRead'), getFirstTierPrice(model, 'cache_read_price_per_1m'), multiplier),
     {
       key: 'request',
-      label: '固定请求费',
+      label: i18n.global.t('pricingUi.fixedRequest'),
       basePrice: toNonNegativeFiniteNumber(model.default_price_per_request),
       salesPrice: multiplyPrice(toNonNegativeFiniteNumber(model.default_price_per_request), multiplier),
-      unit: '/次',
+      unit: i18n.global.t('pricingUi.perRequest'),
     },
   ]
   return rows.filter(row => row.basePrice !== null)

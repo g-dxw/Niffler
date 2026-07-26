@@ -9,7 +9,7 @@
       <div class="px-4 sm:px-6 py-3 sm:py-3.5 border-b border-border/60">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <h3 class="text-sm sm:text-base font-semibold shrink-0">
-            我的 API Keys
+            {{ t('apiKeys.title') }}
           </h3>
 
           <!-- 操作按钮 -->
@@ -19,7 +19,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="创建新 API Key"
+              :title="t('apiKeys.create')"
               @click="openCreateApiKeyDialog"
             >
               <Plus class="w-3.5 h-3.5" />
@@ -39,7 +39,7 @@
         v-if="loading"
         class="flex items-center justify-center py-12"
       >
-        <LoadingState message="加载中..." />
+        <LoadingState :message="t('apiKeys.loading')" />
       </div>
 
       <!-- 空状态 -->
@@ -48,8 +48,8 @@
         class="flex items-center justify-center py-12"
       >
         <EmptyState
-          title="暂无 API 密钥"
-          description="创建你的第一个 API 密钥开始使用"
+          :title="t('apiKeys.empty')"
+          :description="t('apiKeys.emptyHint')"
           :icon="Key"
         >
           <template #actions>
@@ -59,7 +59,7 @@
               @click="openCreateApiKeyDialog"
             >
               <Plus class="mr-2 h-4 w-4" />
-              创建新 API Key
+              {{ t('apiKeys.create') }}
             </Button>
           </template>
         </EmptyState>
@@ -74,25 +74,25 @@
           <TableHeader>
             <TableRow class="border-b border-border/60 hover:bg-transparent">
               <TableHead class="min-w-[200px] h-12 font-semibold">
-                密钥名称
+                {{ t('apiKeys.name') }}
               </TableHead>
               <TableHead class="min-w-[160px] h-12 font-semibold">
-                密钥
+                {{ t('apiKeys.key') }}
               </TableHead>
               <TableHead class="min-w-[100px] h-12 font-semibold">
-                费用(USD)
+                {{ t('apiKeys.cost') }}
               </TableHead>
               <TableHead class="min-w-[100px] h-12 font-semibold">
-                请求次数
+                {{ t('apiKeys.requests') }}
               </TableHead>
               <TableHead class="min-w-[70px] h-12 font-semibold text-center">
-                状态
+                {{ t('apiKeys.status') }}
               </TableHead>
               <TableHead class="min-w-[100px] h-12 font-semibold">
-                最后使用
+                {{ t('apiKeys.lastUsed') }}
               </TableHead>
               <TableHead class="min-w-[80px] h-12 font-semibold text-center">
-                操作
+                {{ t('apiKeys.actions') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -112,10 +112,10 @@
                     {{ apiKey.name }}
                   </div>
                   <div class="text-xs text-muted-foreground mt-0.5">
-                    创建于 {{ formatDate(apiKey.created_at) }}
+                    {{ t('apiKeys.createdAt') }} {{ formatDate(apiKey.created_at) }}
                   </div>
                   <div class="text-xs text-muted-foreground mt-0.5">
-                    分组：{{ apiKey.group_name || '默认分组' }}
+                    {{ t('apiKeys.group') }}：{{ apiKey.group_name || t('apiKeys.defaultGroup') }}
                   </div>
                 </div>
               </TableCell>
@@ -130,7 +130,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-6 w-6"
-                    title="复制完整密钥"
+                    :title="t('apiKeys.copy')"
                     @click="copyApiKey(apiKey)"
                   >
                     <Copy class="h-3.5 w-3.5" />
@@ -162,14 +162,14 @@
                     :variant="apiKey.is_active ? 'success' : 'secondary'"
                     class="h-5 px-2 py-0 text-[10px] font-medium"
                   >
-                    {{ apiKey.is_active ? '活跃' : '禁用' }}
+                    {{ apiKey.is_active ? t('apiKeys.active') : t('apiKeys.disabled') }}
                   </Badge>
                   <Badge
                     v-if="apiKey.is_locked"
                     variant="warning"
                     class="h-5 px-2 py-0 text-[10px] font-medium"
                   >
-                    已锁定
+                    {{ t('apiKeys.locked') }}
                   </Badge>
                   <Badge
                     variant="secondary"
@@ -188,7 +188,7 @@
 
               <!-- 最后使用时间 -->
               <TableCell class="py-4 text-sm text-muted-foreground">
-                {{ apiKey.last_used_at ? formatRelativeTime(apiKey.last_used_at) : '从未使用' }}
+                {{ apiKey.last_used_at ? formatRelativeTime(apiKey.last_used_at) : t('apiKeys.neverUsed') }}
               </TableCell>
 
               <!-- 操作按钮 -->
@@ -198,7 +198,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    title="一键配置"
+                    :title="t('apiKeys.oneClick')"
                     @click="openInstallDialog(apiKey)"
                   >
                     <Terminal class="h-4 w-4" />
@@ -207,7 +207,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    :title="apiKey.is_locked ? '已锁定' : '导入 CC Switch'"
+                    :title="apiKey.is_locked ? t('apiKeys.locked') : t('apiKeys.importCc')"
                     :disabled="apiKey.is_locked"
                     @click="openCcSwitchDialog(apiKey)"
                   >
@@ -217,7 +217,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    :title="apiKey.is_locked ? '已锁定' : '编辑'"
+                    :title="apiKey.is_locked ? t('apiKeys.locked') : t('apiKeys.edit')"
                     :disabled="apiKey.is_locked"
                     @click="openEditApiKeyDialog(apiKey)"
                   >
@@ -227,7 +227,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    :title="apiKey.is_locked ? '已锁定' : (apiKey.is_active ? '禁用' : '启用')"
+                    :title="apiKey.is_locked ? t('apiKeys.locked') : (apiKey.is_active ? t('apiKeys.disabled') : t('apiKeys.active'))"
                     :disabled="apiKey.is_locked"
                     @click="toggleApiKey(apiKey)"
                   >
@@ -237,7 +237,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-8 w-8"
-                    :title="apiKey.is_locked ? '已锁定' : '删除'"
+                    :title="apiKey.is_locked ? t('apiKeys.locked') : t('apiKeys.delete')"
                     :disabled="apiKey.is_locked"
                     @click="confirmDelete(apiKey)"
                   >
@@ -253,13 +253,13 @@
       <!-- 移动端卡片列表 -->
       <div
         v-if="!loading && apiKeys.length > 0"
-        class="md:hidden space-y-3 p-4"
+        class="md:hidden space-y-3 overflow-x-auto p-4"
       >
         <Card
           v-for="apiKey in paginatedApiKeys"
           :key="apiKey.id"
           variant="default"
-          class="group hover:shadow-md hover:border-primary/30 transition-all duration-200"
+          class="group min-w-[560px] hover:shadow-md hover:border-primary/30 transition-all duration-200"
         >
           <div class="p-4">
             <!-- 第一行：名称、状态、操作 -->
@@ -272,14 +272,14 @@
                   :variant="apiKey.is_active ? 'success' : 'secondary'"
                   class="text-xs px-1.5 py-0"
                 >
-                  {{ apiKey.is_active ? '活跃' : '禁用' }}
+                  {{ apiKey.is_active ? t('apiKeys.active') : t('apiKeys.disabled') }}
                 </Badge>
                 <Badge
                   v-if="apiKey.is_locked"
                   variant="warning"
                   class="text-[10px] px-1.5 py-0"
                 >
-                  已锁定
+                  {{ t('apiKeys.locked') }}
                 </Badge>
                 <Badge
                   variant="secondary"
@@ -299,7 +299,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  title="一键配置"
+                  :title="t('apiKeys.oneClick')"
                   @click="openInstallDialog(apiKey)"
                 >
                   <Terminal class="h-3.5 w-3.5" />
@@ -308,7 +308,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  :title="apiKey.is_locked ? '已锁定' : '导入 CC Switch'"
+                  :title="apiKey.is_locked ? t('apiKeys.locked') : t('apiKeys.importCc')"
                   :disabled="apiKey.is_locked"
                   @click="openCcSwitchDialog(apiKey)"
                 >
@@ -318,7 +318,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  :title="apiKey.is_locked ? '已锁定' : '编辑'"
+                  :title="apiKey.is_locked ? t('apiKeys.locked') : t('apiKeys.edit')"
                   :disabled="apiKey.is_locked"
                   @click="openEditApiKeyDialog(apiKey)"
                 >
@@ -328,7 +328,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  title="复制"
+                  :title="t('apiKeys.copy')"
                   @click="copyApiKey(apiKey)"
                 >
                   <Copy class="h-3.5 w-3.5" />
@@ -337,7 +337,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  :title="apiKey.is_locked ? '已锁定' : (apiKey.is_active ? '禁用' : '启用')"
+                  :title="apiKey.is_locked ? t('apiKeys.locked') : (apiKey.is_active ? t('apiKeys.disabled') : t('apiKeys.active'))"
                   :disabled="apiKey.is_locked"
                   @click="toggleApiKey(apiKey)"
                 >
@@ -347,7 +347,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  :title="apiKey.is_locked ? '已锁定' : '删除'"
+                  :title="apiKey.is_locked ? t('apiKeys.locked') : t('apiKeys.delete')"
                   :disabled="apiKey.is_locked"
                   @click="confirmDelete(apiKey)"
                 >
@@ -362,11 +362,11 @@
                 <code class="font-mono text-muted-foreground">{{ apiKey.key_display || 'sk-••••••••' }}</code>
                 <span class="text-muted-foreground">•</span>
                 <span class="text-muted-foreground">
-                  {{ apiKey.last_used_at ? formatRelativeTime(apiKey.last_used_at) : '从未使用' }}
+                  {{ apiKey.last_used_at ? formatRelativeTime(apiKey.last_used_at) : t('apiKeys.neverUsed') }}
                 </span>
               </div>
               <div class="text-xs text-muted-foreground">
-                分组：{{ apiKey.group_name || '默认分组' }}
+                {{ t('apiKeys.group') }}：{{ apiKey.group_name || t('apiKeys.defaultGroup') }}
               </div>
               <div class="flex items-center gap-3 text-xs">
                 <span class="text-amber-600 dark:text-amber-500 font-semibold">
@@ -374,7 +374,7 @@
                 </span>
                 <span class="text-muted-foreground">•</span>
                 <span class="text-foreground font-medium">
-                  {{ formatNumber(apiKey.total_requests || 0) }} 次
+                  {{ t('apiKeys.requestCount', { count: formatNumber(apiKey.total_requests || 0) }) }}
                 </span>
                 <span class="text-muted-foreground">•</span>
                 <span class="text-muted-foreground">
@@ -408,7 +408,7 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                {{ editingApiKey ? '编辑 API 密钥' : '创建 API 密钥' }}
+                {{ editingApiKey ? t('apiKeys.edit') : t('apiKeys.createTitle') }}
               </h3>
             </div>
           </div>
@@ -420,17 +420,17 @@
           <Label
             for="key-name"
             class="text-sm font-semibold"
-          >密钥名称</Label>
+          >{{ t('apiKeys.name') }}</Label>
           <Input
             id="key-name"
             v-model="newKeyName"
-            placeholder="例如：生产环境密钥"
+            :placeholder="t('apiKeys.name')"
             class="h-11 border-border/60"
             autocomplete="off"
             required
           />
           <p class="text-xs text-muted-foreground">
-            给密钥起一个有意义的名称方便识别
+            {{ t('apiKeys.nameHint') }}
           </p>
         </div>
 
@@ -438,19 +438,19 @@
           <Label
             for="key-rate-limit"
             class="text-sm font-semibold"
-          >速率限制 (请求/分钟)</Label>
+          >{{ t('apiKeys.rateLimit') }}</Label>
           <Input
             id="key-rate-limit"
             :model-value="newKeyRateLimit ?? ''"
             type="number"
             min="0"
             max="10000"
-            placeholder="留空不限"
+            :placeholder="t('apiKeys.leaveUnlimited')"
             class="h-11 border-border/60"
             @update:model-value="(v) => newKeyRateLimit = parseNumberInput(v, { min: 0, max: 10000 })"
           />
           <p class="text-xs text-muted-foreground">
-            留空不限
+            {{ t('apiKeys.leaveUnlimited') }}
           </p>
         </div>
 
@@ -458,7 +458,7 @@
           <Label
             for="key-group"
             class="text-sm font-semibold"
-          >使用分组</Label>
+          >{{ t('apiKeys.group') }}</Label>
           <select
             id="key-group"
             v-model="selectedGroupId"
@@ -469,18 +469,18 @@
               v-if="apiKeyGroups.length === 0"
               value=""
             >
-              暂无可用分组
+              {{ t('apiKeys.groupEmpty') }}
             </option>
             <option
               v-for="group in apiKeyGroups"
               :key="group.id"
               :value="group.id"
             >
-              {{ group.name }}{{ group.visibility === 'internal' ? '（内部分组）' : '' }}
+              {{ group.name }}{{ group.visibility === 'internal' ? t('apiKeys.internalGroup') : '' }}
             </option>
           </select>
           <p class="text-xs text-muted-foreground">
-            分组决定这个 API Key 的按量可用范围、并发上限和钱包扣费倍率；已购买套餐按套餐自己的模型范围使用。
+            {{ t('apiKeys.groupDetailHint') }}
           </p>
         </div>
 
@@ -488,28 +488,28 @@
           <Label
             for="key-concurrent-limit"
             class="text-sm font-semibold"
-          >并发限制</Label>
+          >{{ t('apiKeys.concurrencyLimit') }}</Label>
           <Input
             id="key-concurrent-limit"
             :model-value="newKeyConcurrentLimit ?? ''"
             type="number"
             min="0"
             max="10000"
-            placeholder="0 = 不限并发"
+            :placeholder="t('apiKeys.concurrencyPlaceholder')"
             class="h-11 border-border/60"
             @update:model-value="(v) => newKeyConcurrentLimit = parseNumberInput(v, { min: 0, max: 10000 })"
           />
           <p class="text-xs text-muted-foreground">
-            {{ editingApiKey ? '留空表示保持当前值，填 0 表示不限并发' : '留空表示不限并发，填 0 也表示不限并发' }}
+            {{ editingApiKey ? t('apiKeys.editConcurrencyHint') : t('apiKeys.createConcurrencyHint') }}
           </p>
         </div>
 
         <div class="rounded-lg border border-border/60 bg-muted/30 p-4">
           <div class="flex items-center justify-between gap-4">
             <div>
-              <Label class="text-sm font-semibold">敏感信息保护</Label>
+              <Label class="text-sm font-semibold">{{ t('apiKeys.piiProtection') }}</Label>
               <p class="mt-1 text-xs text-muted-foreground">
-                {{ keyRedactionMode === 'inherit' ? '默认跟随账户设置' : '管理员开启功能后生效' }}
+                {{ keyRedactionMode === 'inherit' ? t('apiKeys.followAccountDefault') : t('apiKeys.adminFeatureRequired') }}
               </p>
             </div>
             <div class="flex items-center gap-2">
@@ -518,14 +518,14 @@
                 :variant="keyRedactionMode === 'inherit' ? 'default' : 'outline'"
                 @click="keyRedactionMode = 'inherit'"
               >
-                跟随账户
+                {{ t('apiKeys.followAccount') }}
               </Button>
               <Button
                 size="sm"
                 :variant="keyRedactionMode === 'custom' ? 'default' : 'outline'"
                 @click="keyRedactionMode = 'custom'"
               >
-                单独配置
+                {{ t('apiKeys.customConfig') }}
               </Button>
             </div>
           </div>
@@ -534,9 +534,9 @@
             class="mt-4 flex items-center justify-between gap-4 border-t border-border/50 pt-4"
           >
             <div>
-              <Label class="text-sm font-medium">启用保护</Label>
+              <Label class="text-sm font-medium">{{ t('apiKeys.enableProtection') }}</Label>
               <p class="mt-1 text-xs text-muted-foreground">
-                只影响此 API Key
+                {{ t('apiKeys.onlyThisKey') }}
               </p>
             </div>
             <Switch v-model="newKeyRedactionEnabled" />
@@ -546,9 +546,9 @@
             class="mt-4 flex items-center justify-between gap-4 border-t border-border/50 pt-4"
           >
             <div>
-              <Label class="text-sm font-medium">占位符说明</Label>
+              <Label class="text-sm font-medium">{{ t('apiKeys.placeholderNotice') }}</Label>
               <p class="mt-1 text-xs text-muted-foreground">
-                向模型说明占位符含义
+                {{ t('apiKeys.placeholderNoticeHint') }}
               </p>
             </div>
             <Switch v-model="newKeyRedactionInjectNotice" />
@@ -562,7 +562,7 @@
           class="h-11 px-6"
           @click="closeApiKeyDialog"
         >
-          取消
+          {{ t('apiKeys.cancel') }}
         </Button>
         <Button
           class="h-11 px-6 shadow-lg shadow-primary/20"
@@ -573,7 +573,7 @@
             v-if="creating"
             class="animate-spin h-4 w-4 mr-2"
           />
-          {{ creating ? (editingApiKey ? '保存中...' : '创建中...') : (editingApiKey ? '保存' : '创建') }}
+          {{ creating ? (editingApiKey ? t('apiKeys.saving') : t('apiKeys.creating')) : (editingApiKey ? t('apiKeys.save') : t('apiKeys.create')) }}
         </Button>
       </template>
     </Dialog>
@@ -591,10 +591,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                创建成功
+                {{ t('apiKeys.success') }}
               </h3>
               <p class="text-xs text-muted-foreground">
-                请妥善保管, 切勿泄露给他人
+                {{ t('apiKeys.keepSecret') }}
               </p>
             </div>
           </div>
@@ -603,7 +603,7 @@
 
       <div class="space-y-4">
         <div class="space-y-2">
-          <Label class="text-sm font-medium">API 密钥</Label>
+          <Label class="text-sm font-medium">{{ t('apiKeys.key') }}</Label>
           <div class="flex items-center gap-2">
             <Input
               type="text"
@@ -616,7 +616,7 @@
               class="h-11"
               @click="copyTextToClipboard(newKeyValue)"
             >
-              复制
+              {{ t('apiKeys.copy') }}
             </Button>
           </div>
         </div>
@@ -627,7 +627,7 @@
           class="h-10 px-5"
           @click="closeCreatedKeyDialog"
         >
-          确定
+          {{ t('apiKeys.confirm') }}
         </Button>
       </template>
     </Dialog>
@@ -645,10 +645,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                选择接入方式
+                {{ t('apiKeys.setupTitle') }}
               </h3>
               <p class="text-xs text-muted-foreground truncate">
-                当前密钥：{{ selectedSetupApiKey?.name || '未选择' }}
+                {{ t('apiKeys.key') }}: {{ selectedSetupApiKey?.name || t('apiKeys.unselected') }}
               </p>
             </div>
           </div>
@@ -657,7 +657,7 @@
 
       <div class="space-y-4">
         <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          推荐优先导入 CC Switch；如果只想在一台机器上快速配置，也可以生成一次性命令。
+          {{ t('apiKeys.setupChoiceHint') }}
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -667,14 +667,14 @@
             @click="chooseSetupCcSwitch"
           >
             <span class="mb-3 inline-flex items-center rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground">
-              推荐
+              {{ t('apiKeys.recommended') }}
             </span>
             <span class="flex items-center gap-2 text-base font-semibold text-foreground">
               <ExternalLink class="h-4 w-4 text-primary" />
-              导入 CC Switch
+              {{ t('apiKeys.importCc') }}
             </span>
             <span class="mt-2 block text-sm leading-6 text-muted-foreground">
-              适合已经用 CC Switch 管理服务的用户，导入后可以继续在 CC Switch 里切换和管理。
+              {{ t('apiKeys.ccSwitchChoiceHint') }}
             </span>
           </button>
 
@@ -684,14 +684,14 @@
             @click="chooseSetupInstall"
           >
             <span class="mb-3 inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-              命令配置
+              {{ t('apiKeys.commandSetup') }}
             </span>
             <span class="flex items-center gap-2 text-base font-semibold text-foreground">
               <Terminal class="h-4 w-4 text-primary" />
-              一键配置
+              {{ t('apiKeys.oneClick') }}
             </span>
             <span class="mt-2 block text-sm leading-6 text-muted-foreground">
-              生成 15 分钟内有效的一次性命令，复制到目标机器执行，不会在命令里暴露原始密钥。
+              {{ t('apiKeys.commandChoiceHint') }}
             </span>
           </button>
         </div>
@@ -703,7 +703,7 @@
           class="h-10 px-5"
           @click="showSetupChoiceDialog = false"
         >
-          稍后再说
+          {{ t('apiKeys.later') }}
         </Button>
       </template>
     </Dialog>
@@ -721,10 +721,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                一键配置
+                {{ t('apiKeys.oneClick') }}
               </h3>
               <p class="text-xs text-muted-foreground truncate">
-                当前密钥：{{ selectedInstallApiKey?.name || '未选择' }}
+                {{ t('apiKeys.key') }}: {{ selectedInstallApiKey?.name || t('apiKeys.unselected') }}
               </p>
             </div>
           </div>
@@ -733,11 +733,11 @@
 
       <div class="space-y-5">
         <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          选择要配置的工具和目标系统，Niffler 会生成 15 分钟内有效的一次性 install code。页面命令不会包含原始 API Key。
+          {{ t('apiKeys.installHint') }}
         </div>
 
         <div class="space-y-2">
-          <Label class="text-sm font-semibold">目标工具</Label>
+          <Label class="text-sm font-semibold">{{ t('apiKeys.targetTool') }}</Label>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               v-for="option in installCliOptions"
@@ -752,7 +752,7 @@
         </div>
 
         <div class="space-y-2">
-          <Label class="text-sm font-semibold">目标系统</Label>
+          <Label class="text-sm font-semibold">{{ t('apiKeys.targetSystem') }}</Label>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               v-for="option in installSystemOptions"
@@ -768,14 +768,14 @@
 
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-2">
-            <Label class="text-sm font-semibold">复制到目标机器执行</Label>
+            <Label class="text-sm font-semibold">{{ t('apiKeys.executeHint') }}</Label>
             <div class="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 class="gap-1.5"
                 :disabled="installLoading || !installCommand"
-                :title="installCopied ? '已复制' : '一键复制安装命令'"
+                :title="installCopied ? t('apiKeys.copied') : t('apiKeys.copyInstall')"
                 @click="copyInstallCommand"
               >
                 <CheckCircle
@@ -786,7 +786,7 @@
                   v-else
                   class="h-3.5 w-3.5"
                 />
-                {{ installCopied ? '已复制' : '一键复制' }}
+                {{ installCopied ? t('apiKeys.copied') : t('apiKeys.copyOnce') }}
               </Button>
               <Button
                 variant="ghost"
@@ -794,12 +794,12 @@
                 :disabled="installLoading || !selectedInstallApiKey"
                 @click="refreshInstallCommand"
               >
-                {{ installLoading ? '生成中...' : '重新生成' }}
+                {{ installLoading ? t('apiKeys.generating') : t('apiKeys.regenerate') }}
               </Button>
             </div>
           </div>
           <div class="rounded-lg border border-border/60 bg-background overflow-hidden">
-            <pre class="max-h-32 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ installCommand || '正在生成短命令...' }}</pre>
+            <pre class="max-h-32 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ installCommand || t('apiKeys.generatingCommand') }}</pre>
           </div>
           <p class="text-xs text-muted-foreground">
             {{ installCommandHint }}
@@ -813,14 +813,14 @@
           class="h-10 px-5"
           @click="showInstallDialog = false"
         >
-          关闭
+          {{ t('apiKeys.close') }}
         </Button>
         <Button
           class="h-10 px-5 shadow-lg shadow-primary/20"
           :disabled="!installCommand || installLoading"
           @click="copyInstallCommand"
         >
-          {{ installCopied ? '已复制' : '复制命令' }}
+          {{ installCopied ? t('apiKeys.copied') : t('apiKeys.copyCommand') }}
         </Button>
       </template>
     </Dialog>
@@ -838,10 +838,10 @@
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="text-lg font-semibold text-foreground leading-tight">
-                导入 CC Switch
+                {{ t('apiKeys.importCc') }}
               </h3>
               <p class="text-xs text-muted-foreground truncate">
-                当前密钥：{{ selectedCcSwitchApiKey?.name || '未选择' }}
+                {{ t('apiKeys.key') }}: {{ selectedCcSwitchApiKey?.name || t('apiKeys.unselected') }}
               </p>
             </div>
           </div>
@@ -850,11 +850,11 @@
 
       <div class="space-y-5">
         <div class="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-          会使用当前页面地址生成导入链接。域名或 IP 以后变了，重新导入一次即可。
+          {{ t('apiKeys.ccSwitchAddressHint') }}
         </div>
 
         <div class="space-y-2">
-          <Label class="text-sm font-semibold">导入到</Label>
+          <Label class="text-sm font-semibold">{{ t('apiKeys.importTo') }}</Label>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               v-for="option in ccSwitchAppOptions"
@@ -875,7 +875,7 @@
           <Label
             for="ccswitch-provider-name"
             class="text-sm font-semibold"
-          >名称</Label>
+          >{{ t('apiKeys.serviceName') }}</Label>
           <Input
             id="ccswitch-provider-name"
             v-model="ccSwitchProviderName"
@@ -884,7 +884,7 @@
             autocomplete="off"
           />
           <p class="text-xs text-muted-foreground">
-            这个名称会显示在 CC Switch 里，方便区分不同密钥。
+            {{ t('apiKeys.ccSwitchNameHint') }}
           </p>
         </div>
 
@@ -892,11 +892,11 @@
           <Label
             for="ccswitch-model"
             class="text-sm font-semibold"
-          >主模型（可选）</Label>
+          >{{ t('apiKeys.primaryModel') }}</Label>
           <Input
             id="ccswitch-model"
             v-model="ccSwitchModel"
-            placeholder="例如：gpt-5.5"
+            :placeholder="t('apiKeys.modelExample')"
             class="h-11 border-border/60"
             autocomplete="off"
           />
@@ -904,25 +904,25 @@
             v-if="ccSwitchApp === 'codex'"
             class="text-xs text-muted-foreground"
           >
-            Codex 默认使用 {{ DEFAULT_CCSWITCH_CODEX_MODEL }}，思考等级 {{ DEFAULT_CCSWITCH_CODEX_REASONING_EFFORT }}。
+            {{ t('apiKeys.codexDefaultHint', { model: DEFAULT_CCSWITCH_CODEX_MODEL, effort: DEFAULT_CCSWITCH_CODEX_REASONING_EFFORT }) }}
           </p>
           <p
             v-else
             class="text-xs text-muted-foreground"
           >
-            填写后，CC Switch 余额检查会按这个模型计算套餐额度；不填则显示账户总可用额度。
+            {{ t('apiKeys.balanceModelHint') }}
           </p>
         </div>
 
         <div class="rounded-lg border border-border/60 bg-background overflow-hidden">
           <div class="border-b border-border/60 px-3 py-2 text-xs font-semibold text-muted-foreground">
-            将导入的服务地址
+            {{ t('apiKeys.importEndpoint') }}
           </div>
           <pre class="max-h-24 overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs font-mono">{{ ccSwitchEndpointPreview }}</pre>
         </div>
 
         <p class="text-xs text-muted-foreground">
-          导入时会读取完整 API Key，并通过本机协议交给 CC Switch；余额检查会访问 /user/balance。
+          {{ t('apiKeys.importSecurityHint') }}
         </p>
       </div>
 
@@ -932,7 +932,7 @@
           class="h-10 px-5"
           @click="showCcSwitchDialog = false"
         >
-          取消
+          {{ t('apiKeys.cancel') }}
         </Button>
         <Button
           class="h-10 px-5 shadow-lg shadow-primary/20"
@@ -943,7 +943,7 @@
             v-if="ccSwitchImportLoading"
             class="animate-spin h-4 w-4 mr-2"
           />
-          {{ ccSwitchImportLoading ? '准备中...' : '导入' }}
+          {{ ccSwitchImportLoading ? t('apiKeys.preparing') : t('apiKeys.import') }}
         </Button>
       </template>
     </Dialog>
@@ -952,9 +952,9 @@
     <AlertDialog
       v-model="showDeleteDialog"
       type="danger"
-      title="确认删除"
-      :description="`确定要删除密钥 &quot;${keyToDelete?.name}&quot; 吗？此操作不可恢复。`"
-      confirm-text="删除"
+      :title="t('apiKeys.deleteTitle')"
+      :description="t('apiKeys.deleteConfirm', { name: keyToDelete?.name || '' })"
+      :confirm-text="t('apiKeys.delete')"
       :loading="deleting"
       @confirm="deleteApiKey"
       @cancel="showDeleteDialog = false"
@@ -964,6 +964,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { meApi, type ApiKey, type ApiKeyGroupOption, type InstallSessionTargetSystem, type InstallTargetCli, type ApiKeyInstallSession } from '@/api/me'
 import Card from '@/components/ui/card.vue'
 import Button from '@/components/ui/button.vue'
@@ -1003,6 +1004,7 @@ import {
   readChatPiiRedactionFeatureSettings,
 } from '@/utils/featureSettings'
 
+const { t, locale } = useI18n()
 const { success, error: showError } = useToast()
 
 const installCliOptions: Array<{ value: InstallTargetCli; label: string }> = [
@@ -1017,11 +1019,11 @@ const installSystemOptions: Array<{ value: InstallSessionTargetSystem; label: st
   { value: 'windows', label: 'Windows' }
 ]
 
-const ccSwitchAppOptions: Array<{ value: CcSwitchApp; label: string; description: string }> = [
-  { value: 'claude', label: 'Claude Code', description: '根地址' },
-  { value: 'codex', label: 'Codex', description: '自动加 /v1' },
-  { value: 'gemini', label: 'Gemini CLI', description: '根地址' },
-]
+const ccSwitchAppOptions = computed<Array<{ value: CcSwitchApp; label: string; description: string }>>(() => [
+  { value: 'claude', label: 'Claude Code', description: t('apiKeys.rootAddress') },
+  { value: 'codex', label: 'Codex', description: t('apiKeys.appendV1') },
+  { value: 'gemini', label: 'Gemini CLI', description: t('apiKeys.rootAddress') },
+])
 
 const apiKeys = ref<ApiKey[]>([])
 const apiKeyGroups = ref<ApiKeyGroupOption[]>([])
@@ -1079,9 +1081,9 @@ const installCommand = computed(() => {
 
 const installCommandHint = computed(() => {
   if (installSystem.value === 'windows') {
-    return 'Windows 请在 PowerShell 中执行。install code 使用后立即失效，如需再次执行请重新生成。'
+    return t('apiKeys.windowsInstallHint')
   }
-  return 'macOS / Linux 请在 sh 兼容终端中执行。install code 使用后立即失效，如需再次执行请重新生成。'
+  return t('apiKeys.unixInstallHint')
 })
 
 const ccSwitchBaseUrl = ref(getApiBaseOrigin())
@@ -1120,11 +1122,11 @@ async function loadApiKeys() {
     log.error('加载 API 密钥失败:', error)
     const status = getErrorStatus(error)
     if (status === undefined) {
-      showError('无法连接到服务器，请检查后端服务是否运行')
+      showError(t('apiKeys.serverUnavailable'))
     } else if (status === 401) {
-      showError('认证失败，请重新登录')
+      showError(t('apiKeys.authFailed'))
     } else {
-      showError(parseApiError(error, '加载 API 密钥失败'))
+      showError(parseApiError(error, t('apiKeys.loadFailed')))
     }
   } finally {
     loading.value = false
@@ -1139,7 +1141,7 @@ async function loadApiKeyGroups() {
     }
   } catch (error: unknown) {
     log.error('加载 API Key 分组失败:', error)
-    showError(parseApiError(error, '加载 API Key 分组失败'))
+    showError(parseApiError(error, t('apiKeys.loadGroupsFailed')))
   }
 }
 
@@ -1238,7 +1240,7 @@ async function refreshInstallCommand() {
     })
   } catch (error) {
     log.error('生成 CLI 安装命令失败:', error)
-    showError(parseApiError(error, '生成 CLI 安装命令失败'))
+    showError(parseApiError(error, t('apiKeys.generateInstallFailed')))
   } finally {
     installLoading.value = false
   }
@@ -1250,7 +1252,7 @@ async function copyInstallCommand() {
   if (!copied) return
 
   installCopied.value = true
-  success('安装命令已复制到剪贴板')
+  success(t('apiKeys.installCommandCopied'))
   clearInstallCopiedResetTimer()
   installCopiedResetTimer = setTimeout(() => {
     installCopied.value = false
@@ -1302,10 +1304,10 @@ async function importToCcSwitch() {
       model: ccSwitchModel.value,
     })
     window.location.href = deeplink
-    success('已打开 CC Switch 导入')
+    success(t('apiKeys.ccSwitchOpened'))
   } catch (error) {
     log.error('导入 CC Switch 失败:', error)
-    showError(parseApiError(error, '导入 CC Switch 失败'))
+    showError(parseApiError(error, t('apiKeys.ccSwitchImportFailed')))
   } finally {
     ccSwitchImportLoading.value = false
   }
@@ -1334,11 +1336,11 @@ function closeApiKeyDialog() {
 
 async function saveApiKey() {
   if (!newKeyName.value.trim()) {
-    showError('请输入密钥名称')
+    showError(t('apiKeys.enterName'))
     return
   }
   if (apiKeyGroups.value.length === 0 || !selectedGroupId.value) {
-    showError('当前没有可用分组，请联系管理员')
+    showError(t('apiKeys.noGroupsContactAdmin'))
     return
   }
 
@@ -1357,7 +1359,7 @@ async function saveApiKey() {
             })
           : null,
       })
-      success('API 密钥更新成功')
+      success(t('apiKeys.updated'))
     } else {
       const newKey = await meApi.createApiKey({
         name: newKeyName.value,
@@ -1376,13 +1378,13 @@ async function saveApiKey() {
       newKeyValue.value = newKey.key || ''
       pendingSetupApiKey.value = newKey
       showKeyDialog.value = true
-      success('API 密钥创建成功')
+      success(t('apiKeys.created'))
     }
     closeApiKeyDialog()
     await loadApiKeys()
   } catch (error) {
     log.error(editingApiKey.value ? '更新 API 密钥失败:' : '创建 API 密钥失败:', error)
-    showError(editingApiKey.value ? '更新 API 密钥失败' : '创建 API 密钥失败')
+    showError(editingApiKey.value ? t('apiKeys.updateFailed') : t('apiKeys.createFailed'))
   } finally {
     creating.value = false
   }
@@ -1401,10 +1403,10 @@ async function deleteApiKey() {
     await meApi.deleteApiKey(keyToDelete.value.id)
     apiKeys.value = apiKeys.value.filter(k => k.id !== keyToDelete.value?.id)
     showDeleteDialog.value = false
-    success('API 密钥已删除')
+    success(t('apiKeys.deleted'))
   } catch (error) {
     log.error('删除 API 密钥失败:', error)
-    showError('删除 API 密钥失败')
+    showError(t('apiKeys.deleteFailed'))
   } finally {
     deleting.value = false
     keyToDelete.value = null
@@ -1418,10 +1420,10 @@ async function toggleApiKey(apiKey: ApiKey) {
     if (index !== -1) {
       apiKeys.value[index].is_active = updated.is_active
     }
-    success(updated.is_active ? '密钥已启用' : '密钥已禁用')
+    success(updated.is_active ? t('apiKeys.enabled') : t('apiKeys.disabledSuccess'))
   } catch (error) {
     log.error('切换密钥状态失败:', error)
-    showError('操作失败')
+    showError(t('apiKeys.operationFailed'))
   }
 }
 
@@ -1431,11 +1433,11 @@ async function copyApiKey(apiKey: ApiKey) {
     const response = await meApi.getFullApiKey(apiKey.id)
     const copied = await copyTextToClipboard(response.key, false) // 不显示内部提示
     if (copied) {
-      success('完整密钥已复制到剪贴板')
+      success(t('apiKeys.fullKeyCopied'))
     }
   } catch (error) {
     log.error('复制密钥失败:', error)
-    showError('复制失败，请重试')
+    showError(t('apiKeys.copyFailedRetry'))
   }
 }
 
@@ -1443,7 +1445,7 @@ async function copyTextToClipboard(text: string, showToast: boolean = true): Pro
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text)
-      if (showToast) success('已复制到剪贴板')
+      if (showToast) success(t('apiKeys.copiedToClipboard'))
       return true
     } else {
       const textArea = document.createElement('textarea')
@@ -1458,12 +1460,12 @@ async function copyTextToClipboard(text: string, showToast: boolean = true): Pro
       try {
         const successful = document.execCommand('copy')
         if (successful && showToast) {
-          success('已复制到剪贴板')
+          success(t('apiKeys.copiedToClipboard'))
         }
         if (successful) {
           return true
         } else {
-          showError('复制失败，请手动复制')
+          showError(t('apiKeys.copyManually'))
           return false
         }
       } finally {
@@ -1472,7 +1474,7 @@ async function copyTextToClipboard(text: string, showToast: boolean = true): Pro
     }
   } catch (error) {
     log.error('复制失败:', error)
-    showError('复制失败，请手动选择文本进行复制')
+    showError(t('apiKeys.copySelectManually'))
     return false
   }
 }
@@ -1481,21 +1483,21 @@ function formatNumber(num: number | undefined | null): string {
   if (num === undefined || num === null) {
     return '0'
   }
-  return num.toLocaleString('zh-CN')
+  return num.toLocaleString(locale.value)
 }
 
 function formatConcurrentLimitSimple(concurrentLimit?: number | null): string {
   if (concurrentLimit == null || concurrentLimit === 0) {
-    return '不限并发'
+    return t('apiKeys.unlimitedConcurrency')
   }
-  return `${concurrentLimit} 并发`
+  return t('apiKeys.concurrencyValue', { count: concurrentLimit })
 }
 
 function formatDate(dateString?: string | null): string {
-  if (!dateString) return '未知'
+  if (!dateString) return t('common.unknown')
   const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return '未知'
-  return date.toLocaleDateString('zh-CN', {
+  if (Number.isNaN(date.getTime())) return t('common.unknown')
+  return date.toLocaleDateString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
@@ -1504,17 +1506,17 @@ function formatDate(dateString?: string | null): string {
 
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return '未知'
+  if (Number.isNaN(date.getTime())) return t('common.unknown')
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / (1000 * 60))
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins}分钟前`
-  if (diffHours < 24) return `${diffHours}小时前`
-  if (diffDays < 7) return `${diffDays}天前`
+  if (diffMins < 1) return t('apiKeys.justNow')
+  if (diffMins < 60) return t('apiKeys.minutesAgo', { count: diffMins })
+  if (diffHours < 24) return t('apiKeys.hoursAgo', { count: diffHours })
+  if (diffDays < 7) return t('apiKeys.daysAgo', { count: diffDays })
 
   return formatDate(dateString)
 }

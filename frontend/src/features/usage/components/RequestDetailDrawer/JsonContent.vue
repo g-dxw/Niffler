@@ -22,7 +22,7 @@
     >
       <div class="p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
         <div class="flex items-start gap-2">
-          <span class="text-amber-600 dark:text-amber-400 text-sm font-medium">Warning: 响应解析失败</span>
+          <span class="text-amber-600 dark:text-amber-400 text-sm font-medium">{{ t('requestDetailUi.parseWarning') }}</span>
           <span class="text-xs text-amber-700 dark:text-amber-300">{{ parseErrorMessage }}</span>
         </div>
       </div>
@@ -95,6 +95,7 @@
 import { ref, computed, watch } from 'vue'
 import { ChevronRight, ChevronDown } from 'lucide-vue-next'
 import Card from '@/components/ui/card.vue'
+import { useI18n } from 'vue-i18n'
 
 interface JsonLine {
   id: number
@@ -124,6 +125,7 @@ const props = defineProps<{
   isDark: boolean
   emptyMessage: string
 }>()
+const { t } = useI18n()
 
 /** Safely cast data to an object for property access in templates */
 const dataAsObject = computed(() => {

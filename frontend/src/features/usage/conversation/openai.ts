@@ -28,6 +28,7 @@ import {
   createToolResultBlock as createToolResultRenderBlock,
   createEmptyRenderResult,
 } from './render'
+import { conversationText } from './i18n'
 
 /** Raw JSON object from API (loosely typed) */
 type RawObject = Record<string, unknown>
@@ -176,7 +177,7 @@ export class OpenAIParser implements ApiFormatParser {
    */
   parseRequest(requestBody: unknown): ParsedConversation {
     if (!requestBody) {
-      return createEmptyConversation('openai', '无请求体')
+      return createEmptyConversation('openai', conversationText('noRequest'))
     }
 
     const body = requestBody as RawObject
@@ -226,7 +227,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('openai', `解析失败: ${e}`)
+      return createEmptyConversation('openai', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -280,7 +281,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('openai', `CLI 格式解析失败: ${e}`)
+      return createEmptyConversation('openai', conversationText('cliParseFailed', { error: e }))
     }
   }
 
@@ -338,7 +339,7 @@ export class OpenAIParser implements ApiFormatParser {
    */
   parseResponse(responseBody: unknown): ParsedConversation {
     if (!responseBody) {
-      return createEmptyConversation('openai', '无响应体')
+      return createEmptyConversation('openai', conversationText('noResponse'))
     }
 
     const body = responseBody as RawObject
@@ -399,7 +400,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('openai', `解析失败: ${e}`)
+      return createEmptyConversation('openai', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -444,7 +445,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('openai', `CLI 格式解析失败: ${e}`)
+      return createEmptyConversation('openai', conversationText('cliParseFailed', { error: e }))
     }
   }
 
@@ -453,7 +454,7 @@ export class OpenAIParser implements ApiFormatParser {
    */
   parseStreamResponse(chunks: unknown[]): ParsedConversation {
     if (!chunks || chunks.length === 0) {
-      return createEmptyConversation('openai', '无响应数据')
+      return createEmptyConversation('openai', conversationText('noResponseData'))
     }
 
     // 检测是否为 CLI 格式
@@ -543,7 +544,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('openai', `解析失败: ${e}`)
+      return createEmptyConversation('openai', conversationText('parseFailed', { error: e }))
     }
   }
 
@@ -670,7 +671,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return result
     } catch (e) {
-      return createEmptyConversation('openai', `CLI 格式解析失败: ${e}`)
+      return createEmptyConversation('openai', conversationText('cliParseFailed', { error: e }))
     }
   }
 
@@ -696,7 +697,7 @@ export class OpenAIParser implements ApiFormatParser {
           const imageUrl = part.image_url as RawObject | undefined
           contentBlocks.push(createImageBlock('url', {
             url: typeof imageUrl?.url === 'string' ? imageUrl.url : undefined,
-            alt: '[图片]',
+            alt: `[${conversationText('image')}]`,
           }))
         }
       }
@@ -758,7 +759,7 @@ export class OpenAIParser implements ApiFormatParser {
    */
   renderRequest(requestBody: unknown): RenderResult {
     if (!requestBody) {
-      return createEmptyRenderResult('无请求体')
+      return createEmptyRenderResult(conversationText('noRequest'))
     }
 
     const body = requestBody as RawObject
@@ -804,7 +805,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return { blocks, isStream }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -854,7 +855,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return { blocks, isStream }
     } catch (e) {
-      return createEmptyRenderResult(`CLI 格式渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('cliRenderFailed', { error: e }))
     }
   }
 
@@ -889,11 +890,11 @@ export class OpenAIParser implements ApiFormatParser {
 
     // function_call -> 工具调用
     if (itemType === 'function_call') {
-      const toolName = String(item.name || '工具调用')
+      const toolName = String(item.name || conversationText('toolCall'))
       const args = this.formatJson(item.arguments)
       return createMessageBlock('assistant', [
         createToolUseRenderBlock(toolName, args, String(item.call_id || item.id || '')),
-      ], { roleLabel: 'Assistant', badges: [createBadgeBlock('工具调用', 'outline')] })
+      ], { roleLabel: 'Assistant', badges: [createBadgeBlock(conversationText('toolCall'), 'outline')] })
     }
 
     // function_call_output -> 工具结果
@@ -903,7 +904,7 @@ export class OpenAIParser implements ApiFormatParser {
         : JSON.stringify(item.output, null, 2)
       return createMessageBlock('tool', [
         createToolResultRenderBlock(output),
-      ], { roleLabel: 'Tool', badges: [createBadgeBlock('工具结果', 'outline')] })
+      ], { roleLabel: 'Tool', badges: [createBadgeBlock(conversationText('toolResult'), 'outline')] })
     }
 
     return null
@@ -914,7 +915,7 @@ export class OpenAIParser implements ApiFormatParser {
    */
   renderResponse(responseBody: unknown): RenderResult {
     if (!responseBody) {
-      return createEmptyRenderResult('无响应体')
+      return createEmptyRenderResult(conversationText('noResponse'))
     }
 
     // 检查是否为流式响应
@@ -958,12 +959,12 @@ export class OpenAIParser implements ApiFormatParser {
 
         // 工具调用
         if (Array.isArray(message.tool_calls)) {
-          badges.push(createBadgeBlock('工具调用', 'outline'))
+          badges.push(createBadgeBlock(conversationText('toolCall'), 'outline'))
           for (const rawCall of message.tool_calls) {
             const call = rawCall as RawObject
             const fn = call.function as RawObject | undefined
             contentBlocks.push(createToolUseRenderBlock(
-              String(fn?.name || '工具调用'),
+              String(fn?.name || conversationText('toolCall')),
               this.formatJson(fn?.arguments),
               typeof call.id === 'string' ? call.id : undefined
             ))
@@ -980,7 +981,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return { blocks, isStream: false }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -1020,7 +1021,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return { blocks, isStream: false }
     } catch (e) {
-      return createEmptyRenderResult(`CLI 格式渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('cliRenderFailed', { error: e }))
     }
   }
 
@@ -1029,7 +1030,7 @@ export class OpenAIParser implements ApiFormatParser {
    */
   private renderStreamResponse(chunks: unknown[]): RenderResult {
     if (!chunks || chunks.length === 0) {
-      return createEmptyRenderResult('无响应数据')
+      return createEmptyRenderResult(conversationText('noResponseData'))
     }
 
     try {
@@ -1055,7 +1056,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       return { blocks, isStream: true }
     } catch (e) {
-      return createEmptyRenderResult(`渲染失败: ${e}`)
+      return createEmptyRenderResult(conversationText('renderFailed', { error: e }))
     }
   }
 
@@ -1079,11 +1080,11 @@ export class OpenAIParser implements ApiFormatParser {
         if (part.type === 'text') {
           contentBlocks.push(createTextRenderBlock(String(part.text || '')))
         } else if (part.type === 'image_url') {
-          badges.push(createBadgeBlock('图片', 'secondary'))
+          badges.push(createBadgeBlock(conversationText('image'), 'secondary'))
           const imageUrl = part.image_url as RawObject | undefined
           contentBlocks.push(createImageRenderBlock({
             src: typeof imageUrl?.url === 'string' ? imageUrl.url : undefined,
-            alt: '[图片]',
+            alt: `[${conversationText('image')}]`,
           }))
         }
       }
@@ -1091,12 +1092,12 @@ export class OpenAIParser implements ApiFormatParser {
 
     // 工具调用（assistant 消息）
     if (Array.isArray(msg.tool_calls)) {
-      badges.push(createBadgeBlock('工具调用', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolCall'), 'outline'))
       for (const rawCall of msg.tool_calls) {
         const call = rawCall as RawObject
         const fn = call.function as RawObject | undefined
         contentBlocks.push(createToolUseRenderBlock(
-          String(fn?.name || '工具调用'),
+          String(fn?.name || conversationText('toolCall')),
           this.formatJson(fn?.arguments),
           typeof call.id === 'string' ? call.id : undefined
         ))
@@ -1105,7 +1106,7 @@ export class OpenAIParser implements ApiFormatParser {
 
     // 工具结果（tool 消息）
     if (msg.tool_call_id) {
-      badges.push(createBadgeBlock('工具结果', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolResult'), 'outline'))
       const content = typeof msg.content === 'string'
         ? msg.content
         : JSON.stringify(msg.content, null, 2)
@@ -1146,7 +1147,7 @@ export class OpenAIParser implements ApiFormatParser {
 
       case 'tool_use':
         return createToolUseRenderBlock(
-          block.toolName || '工具调用',
+          block.toolName || conversationText('toolCall'),
           this.formatJson(block.input),
           block.toolId
         )
@@ -1164,7 +1165,7 @@ export class OpenAIParser implements ApiFormatParser {
             ? `data:${block.mimeType || 'image/png'};base64,${block.data}`
             : block.url,
           mimeType: block.mimeType,
-          alt: block.alt || '图片',
+          alt: block.alt || conversationText('image'),
         })
 
       default:
@@ -1193,13 +1194,13 @@ export class OpenAIParser implements ApiFormatParser {
     const types = new Set(content.map(b => b.type))
 
     if (types.has('tool_use')) {
-      badges.push(createBadgeBlock('工具调用', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolCall'), 'outline'))
     }
     if (types.has('tool_result')) {
-      badges.push(createBadgeBlock('工具结果', 'outline'))
+      badges.push(createBadgeBlock(conversationText('toolResult'), 'outline'))
     }
     if (types.has('image')) {
-      badges.push(createBadgeBlock('图片', 'secondary'))
+      badges.push(createBadgeBlock(conversationText('image'), 'secondary'))
     }
 
     return badges
@@ -1236,8 +1237,8 @@ export class OpenAIParser implements ApiFormatParser {
     return content
       .map(block => {
         if (block.type === 'text') return block.text
-        if (block.type === 'image') return '[图片]'
-        if (block.type === 'error') return `[错误: ${block.message}]`
+        if (block.type === 'image') return `[${conversationText('image')}]`
+        if (block.type === 'error') return conversationText('error', { error: block.message })
         return ''
       })
       .filter(Boolean)

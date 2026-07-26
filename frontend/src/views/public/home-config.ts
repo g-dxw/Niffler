@@ -14,35 +14,39 @@ export const SECTIONS = {
 export type SectionIndex = (typeof SECTIONS)[keyof typeof SECTIONS]
 
 // Section navigation configuration
-export const sections = [
-  { name: '首页' },
-  { name: 'Claude' },
-  { name: 'OpenAI' },
-  { name: 'Gemini' },
-  { name: '更多' }
-] as const
+export function createHomeSections(translate: (key: string) => string) {
+  return [
+    { name: translate('staticUi.home') },
+    { name: 'Claude' },
+    { name: 'OpenAI' },
+    { name: 'Gemini' },
+    { name: translate('staticUi.more') },
+  ] as const
+}
 
 // Feature cards data
-export const featureCards = [
-  {
-    icon: Layers,
-    title: 'Claude / OpenAI / Gemini',
-    desc: '已完整接入三大主流 AI 编程助手的标准 API',
-    status: 'completed' as const
-  },
-  {
-    icon: Puzzle,
-    title: '格式转换',
-    desc: '开启/关闭API格式相互转换、自定义请求头',
-    status: 'completed' as const
-  },
-  {
-    icon: Users,
-    title: '协同开发',
-    desc: '远程开发、Skill分享、Playground等功能即将到来',
-    status: 'in-progress' as const
-  }
-]
+export function createFeatureCards(translate: (key: string) => string) {
+  return [
+    {
+      icon: Layers,
+      title: 'Claude / OpenAI / Gemini',
+      desc: translate('staticUi.integratedAssistants'),
+      status: 'completed' as const,
+    },
+    {
+      icon: Puzzle,
+      title: translate('staticUi.formatConversion'),
+      desc: translate('staticUi.formatConversionDesc'),
+      status: 'completed' as const,
+    },
+    {
+      icon: Users,
+      title: translate('staticUi.collaboration'),
+      desc: translate('staticUi.collaborationDesc'),
+      status: 'in-progress' as const,
+    },
+  ]
+}
 
 // CLI configuration generators
 export function useCliConfigs(baseUrl: Ref<string>) {

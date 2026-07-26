@@ -21,7 +21,7 @@
             <div class="flex items-center justify-between gap-4 mb-3">
               <div class="flex items-center gap-3 flex-wrap">
                 <h3 class="text-lg font-semibold">
-                  请求详情
+                  {{ t('requestDetail.title') }}
                 </h3>
                 <div class="flex items-center gap-1 text-sm font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
                   <span>{{ detail?.model || '-' }}</span>
@@ -54,15 +54,15 @@
                   {{ detail.status_code }}
                 </Badge>
                 <Badge
-                  v-if="detail && resolveUsageStreamLabelSegments(detail).hasConversion"
-                  :variant="resolveUsageStreamLabelSegments(detail).client === '流式' ? 'secondary' : 'outline'"
-                  :class="resolveUsageStreamLabelSegments(detail).client === '流式'
+                  v-if="detail && hasStreamConversion(detail)"
+                  :variant="isClientStreaming(detail) ? 'secondary' : 'outline'"
+                  :class="isClientStreaming(detail)
                     ? 'text-xs inline-flex items-center gap-1'
                     : 'text-xs inline-flex items-center gap-1 border-border/60 text-muted-foreground'"
                 >
-                  <span>{{ resolveUsageStreamLabelSegments(detail).client }}</span>
+                  <span>{{ streamModeLabel(isClientStreaming(detail)) }}</span>
                   <span class="opacity-60">→</span>
-                  <span>{{ resolveUsageStreamLabelSegments(detail).upstream }}</span>
+                  <span>{{ streamModeLabel(isUsageUpstreamStream(detail)) }}</span>
                 </Badge>
                 <Badge
                   v-else-if="detail"
@@ -71,7 +71,7 @@
                     ? 'text-xs'
                     : 'text-xs border-border/60 text-muted-foreground'"
                 >
-                  {{ formatUsageStreamLabel(detail) }}
+                  {{ streamModeLabel(isUsageUpstreamStream(detail)) }}
                 </Badge>
               </div>
               <div class="flex items-center gap-1 shrink-0">
@@ -79,7 +79,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-8 w-8"
-                  title="回放请求"
+                  :title="t('requestDetail.replay')"
                   :disabled="loading"
                   @click="openReplayDialog"
                 >
@@ -102,7 +102,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-8 w-8"
-                  title="关闭"
+                  :title="t('requestDetail.close')"
                   @click="handleClose"
                 >
                   <X class="w-4 h-4" />
@@ -126,7 +126,7 @@
               <span class="opacity-40">|</span>
               <span>{{ formatApiFormat(detail.api_format) }}</span>
               <span class="opacity-40">|</span>
-              <span>用户: {{ detail.user?.username || 'Unknown' }}</span>
+              <span>{{ t('requestDetail.user') }}: {{ detail.user?.username || 'Unknown' }}</span>
             </div>
           </div>
 
@@ -178,7 +178,7 @@
                         variant="outline"
                         class="border-red-300 bg-white/60 text-[10px] text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
                       >
-                        调度阶段
+                        {{ t('requestDetail.routingStage') }}
                       </Badge>
                     </div>
                     <p class="text-sm leading-6 text-red-900 dark:text-red-100">
@@ -206,7 +206,7 @@
                   <!-- 扣费和响应时间（独立显示） -->
                   <div class="flex items-center mb-4">
                     <div class="flex items-start">
-                      <span class="text-xs text-muted-foreground w-[56px] pt-1">扣费</span>
+                      <span class="text-xs text-muted-foreground w-[56px] pt-1">{{ t('requestDetail.charge') }}</span>
                       <div class="space-y-0.5">
                         <div
                           v-if="detailChargeLines.length === 0"
@@ -219,7 +219,7 @@
                           :key="line.label"
                           class="text-sm font-semibold text-green-600 dark:text-green-400"
                         >
-                          {{ line.label }}扣除 ${{ line.amount.toFixed(6) }} · {{ formatDetailMultiplier(line.multiplier) }}
+                          {{ t('requestDetailExtra.chargeLine', { label: line.label, amount: line.amount.toFixed(6), multiplier: formatDetailMultiplier(line.multiplier) }) }}
                         </div>
                       </div>
                     </div>
@@ -228,7 +228,7 @@
                       class="h-6 mx-6"
                     />
                     <div class="flex items-center">
-                      <span class="text-xs text-muted-foreground w-[56px]">响应时间</span>
+                        <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetail.responseTime') }}</span>
                       <span class="text-lg font-bold">{{ detail.response_time_ms ? formatResponseTime(detail.response_time_ms).value : 'N/A' }}</span>
                       <span class="text-sm text-muted-foreground ml-1">{{ detail.response_time_ms ? formatResponseTime(detail.response_time_ms).unit : '' }}</span>
                     </div>
@@ -238,7 +238,7 @@
                         class="h-6 mx-6"
                       />
                       <div class="flex items-center">
-                        <span class="text-xs text-muted-foreground w-[56px]">输出速度</span>
+                        <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetail.outputSpeed') }}</span>
                         <span class="text-lg font-bold text-primary">{{ formatOutputRateValue(detailOutputRate) }}</span>
                         <span class="text-sm text-muted-foreground ml-1">tps</span>
                       </div>
@@ -251,7 +251,7 @@
                   >
                     <div class="rounded-md border border-border/50 bg-muted/20 px-3 py-2">
                       <div class="text-muted-foreground mb-1">
-                        首字时间
+                        {{ t('requestDetail.firstByteTime') }}
                       </div>
                       <div class="font-mono text-foreground">
                         {{ formatDurationMs(detail.first_byte_time_ms) }}
@@ -259,7 +259,7 @@
                     </div>
                     <div class="rounded-md border border-border/50 bg-muted/20 px-3 py-2">
                       <div class="text-muted-foreground mb-1">
-                        生成耗时
+                        {{ t('requestDetail.generationTime') }}
                       </div>
                       <div class="font-mono text-foreground">
                         {{ formatDurationMs(detailGenerationTimeMs) }}
@@ -267,7 +267,7 @@
                     </div>
                     <div class="rounded-md border border-border/50 bg-muted/20 px-3 py-2">
                       <div class="text-muted-foreground mb-1">
-                        输出 Tokens
+                        {{ t('requestDetail.outputTokens') }}
                       </div>
                       <div class="font-mono text-foreground">
                         {{ formatNumber(detailOutputTokens) }}
@@ -283,15 +283,15 @@
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground/70">{{ priceSourceLabel }}</span>
                     <span class="text-foreground">|</span>
                     <span class="font-mono text-foreground">
-                      本次扣费 = Token费用 <span class="font-medium">${{ tokenCostTotal.toFixed(6) }}</span>
+                      {{ t('requestDetailExtra.totalChargeEquals') }} {{ t('requestDetailExtra.tokenCost') }} <span class="font-medium">${{ tokenCostTotal.toFixed(6) }}</span>
                       <template v-if="perRequestCost > 0">
-                        + 按次费用 <span class="font-medium">${{ perRequestCost.toFixed(6) }}</span>
+                        + {{ t('requestDetailExtra.perRequestCost') }} <span class="font-medium">${{ perRequestCost.toFixed(6) }}</span>
                       </template>
                       <template v-if="imageOutputCostTotal > 0">
-                        + 图片输出费用 <span class="font-medium">${{ imageOutputCostTotal.toFixed(6) }}</span>
+                        + {{ t('requestDetailExtra.imageOutputCost') }} <span class="font-medium">${{ imageOutputCostTotal.toFixed(6) }}</span>
                       </template>
                       <template v-if="videoCostTotal > 0">
-                        + {{ detail.video_billing?.task_type === 'image' ? '图像' : detail.video_billing?.task_type === 'audio' ? '音频' : '视频' }}费用 <span class="font-medium">${{ videoCostTotal.toFixed(6) }}</span>
+                        + {{ getTaskTypeLabel(detail.video_billing?.task_type || 'video') }}{{ t('requestDetailExtra.costSuffix') }} <span class="font-medium">${{ videoCostTotal.toFixed(6) }}</span>
                       </template>
                     </span>
                   </div>
@@ -303,14 +303,14 @@
                   >
                     <!-- 阶梯标题 -->
                     <div class="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                      <span class="font-medium text-foreground">Token 计费</span>
-                      <span class="text-muted-foreground/60">(输入 {{ formatNumber(displayInputTokens) }} + 缓存创建 {{ cacheCreationSummaryText }} + 缓存读取 {{ formatNumber(detail.cache_read_input_tokens || 0) }})</span>
+                      <span class="font-medium text-foreground">{{ t('requestDetailExtra.tokenBilling') }}</span>
+                      <span class="text-muted-foreground/60">({{ t('requestDetailExtra.input') }} {{ formatNumber(displayInputTokens) }} + {{ t('requestDetailExtra.cacheCreation') }} {{ cacheCreationSummaryText }} + {{ t('requestDetailExtra.cacheRead') }} {{ formatNumber(detail.cache_read_input_tokens || 0) }})</span>
                       <Badge
                         v-if="displayTiers.length > 1"
                         variant="outline"
                         class="text-[10px] px-1.5 py-0 h-4"
                       >
-                        命中第 {{ currentTierIndex + 1 }} 阶
+                        {{ t('requestDetailExtra.tierHit', { index: currentTierIndex + 1 }) }}
                       </Badge>
                     </div>
 
@@ -330,7 +330,7 @@
                             class="font-medium"
                             :class="index === currentTierIndex ? 'text-primary' : 'text-muted-foreground'"
                           >
-                            第 {{ index + 1 }} 阶
+                            {{ t('requestDetailExtra.tierLabel', { index: index + 1 }) }}
                           </span>
                           <span class="text-muted-foreground">
                             {{ getTierRangeText(tier, index, displayTiers) }}
@@ -340,19 +340,19 @@
                             variant="default"
                             class="text-[10px] px-1.5 py-0 h-4"
                           >
-                            当前
+                            {{ t('requestDetailExtra.current') }}
                           </Badge>
                         </div>
                         <!-- 单价信息 -->
                         <div class="text-muted-foreground flex items-center gap-2 flex-wrap">
-                          <span>输入 ${{ formatPrice(tier.input_price_per_1m) }}/M</span>
-                          <span>输出 ${{ formatPrice(tier.output_price_per_1m) }}/M</span>
+                          <span>{{ t('requestDetailExtra.input') }} ${{ formatPrice(tier.input_price_per_1m) }}/M</span>
+                          <span>{{ t('requestDetailExtra.output') }} ${{ formatPrice(tier.output_price_per_1m) }}/M</span>
                           <span v-if="getTierActiveCacheCreationDisplay(tier)">
                             {{ getTierActiveCacheCreationDisplay(tier)?.label }}
                             ${{ formatPrice(getTierActiveCacheCreationDisplay(tier)?.price || 0) }}/M
                           </span>
                           <span v-if="shouldShowCacheReadPrice(tier)">
-                            缓存读取 ${{ formatPrice(getTierActiveCacheReadPrice(tier) ?? 0) }}/M
+                            {{ t('requestDetailExtra.cacheRead') }} ${{ formatPrice(getTierActiveCacheReadPrice(tier) ?? 0) }}/M
                           </span>
                         </div>
                       </div>
@@ -362,7 +362,7 @@
                         <!-- 输入 输出 -->
                         <div class="flex items-center">
                           <div class="flex items-center flex-1">
-                            <span class="text-xs text-muted-foreground w-[56px]">输入</span>
+                            <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetailExtra.input') }}</span>
                             <span class="text-sm font-semibold font-mono flex-1 text-center">{{ displayInputTokens }}</span>
                             <span class="text-xs font-mono">${{ effectiveInputCost.toFixed(6) }}</span>
                           </div>
@@ -371,7 +371,7 @@
                             class="h-4 mx-4"
                           />
                           <div class="flex items-center flex-1">
-                            <span class="text-xs text-muted-foreground w-[56px]">输出</span>
+                            <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetailExtra.output') }}</span>
                             <span class="text-sm font-semibold font-mono flex-1 text-center">{{ detail.tokens?.output || detail.output_tokens || 0 }}</span>
                             <span class="text-xs font-mono">${{ effectiveOutputCost.toFixed(6) }}</span>
                           </div>
@@ -379,7 +379,7 @@
                         <!-- 缓存创建 缓存读取 -->
                         <div class="flex items-center">
                           <div class="flex items-center flex-1">
-                            <span class="text-xs text-muted-foreground w-[56px]">{{ cacheCreationSplitRows.length > 0 ? '创建合计' : '缓存创建' }}</span>
+                            <span class="text-xs text-muted-foreground w-[56px]">{{ cacheCreationSplitRows.length > 0 ? t('requestDetailExtra.creationTotal') : t('requestDetailExtra.cacheCreation') }}</span>
                             <span class="text-sm font-semibold font-mono flex-1 text-center">{{ totalCacheCreationTokens }}</span>
                             <span class="text-xs font-mono">${{ effectiveCacheCreationCost.toFixed(6) }}</span>
                           </div>
@@ -388,7 +388,7 @@
                             class="h-4 mx-4"
                           />
                           <div class="flex items-center flex-1">
-                            <span class="text-xs text-muted-foreground w-[56px]">缓存读取</span>
+                            <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetailExtra.cacheRead') }}</span>
                             <span class="text-sm font-semibold font-mono flex-1 text-center">{{ detail.cache_read_input_tokens || 0 }}</span>
                             <span class="text-xs font-mono">${{ effectiveCacheReadCost.toFixed(6) }}</span>
                           </div>
@@ -422,18 +422,18 @@
                     class="space-y-2 mb-3"
                   >
                     <div class="flex items-center justify-between text-xs">
-                      <span class="font-medium text-foreground">按次计费</span>
+                      <span class="font-medium text-foreground">{{ t('requestDetailExtra.perRequestBilling') }}</span>
                     </div>
                     <div class="rounded-lg p-3 bg-primary/5 border border-primary/30 space-y-2">
                       <div
                         v-if="effectivePricePerRequest > 0"
                         class="flex items-center justify-end text-xs"
                       >
-                        <span class="text-muted-foreground">${{ effectivePricePerRequest.toFixed(6) }}/次</span>
+                        <span class="text-muted-foreground">${{ effectivePricePerRequest.toFixed(6) }}/{{ t('requestDetailExtra.requestUnit') }}</span>
                       </div>
                       <div class="flex items-center">
                         <div class="flex items-center flex-1">
-                          <span class="text-xs text-muted-foreground w-[56px]">请求次数</span>
+                          <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetailExtra.requestCount') }}</span>
                           <span class="text-sm font-semibold font-mono flex-1 text-center">1</span>
                           <span class="text-xs font-mono font-medium">${{ perRequestCost.toFixed(6) }}</span>
                         </div>
@@ -448,7 +448,7 @@
                   >
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2 text-xs">
                       <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-medium text-primary">图片输出</span>
+                        <span class="font-medium text-primary">{{ t('requestDetailExtra.imageOutput') }}</span>
                         <Badge
                           variant="outline"
                           class="text-[10px] px-1.5 py-0 h-4"
@@ -464,13 +464,13 @@
                         <span
                           v-if="imageOutputPricePerImage !== null"
                           class="font-mono"
-                        >{{ formatNumber(imageOutputCount) }} 张 × ${{ imageOutputPricePerImage.toFixed(6) }}/张 = ${{ imageOutputCostTotal.toFixed(6) }}</span>
+                        >{{ t('requestDetailExtra.imageFormula', { count: formatNumber(imageOutputCount), price: imageOutputPricePerImage.toFixed(6), total: imageOutputCostTotal.toFixed(6) }) }}</span>
                       </div>
                     </div>
 
                     <div class="flex items-center">
                       <div class="flex items-center flex-1">
-                        <span class="text-xs text-muted-foreground w-[56px]">数量</span>
+                        <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetailExtra.quantity') }}</span>
                         <span class="text-sm font-semibold font-mono flex-1 text-center">{{ formatNumber(imageOutputCount) }}</span>
                         <span class="text-xs font-mono">${{ imageOutputCostTotal.toFixed(6) }}</span>
                       </div>
@@ -479,7 +479,7 @@
                         class="h-4 mx-4"
                       />
                       <div class="flex items-center flex-1">
-                        <span class="text-xs text-muted-foreground w-[56px]">格式</span>
+                        <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetailExtra.format') }}</span>
                         <span class="text-sm font-semibold font-mono flex-1 text-center">{{ imageOutputFormat || '-' }}</span>
                         <span class="text-xs font-mono text-muted-foreground">{{ imageOutputBillingLabel }}</span>
                       </div>
@@ -516,7 +516,7 @@
                           v-else-if="detail.video_billing.video_price_per_second"
                           class="font-mono"
                         >
-                          ${{ detail.video_billing.video_price_per_second.toFixed(4) }}/秒
+                          ${{ detail.video_billing.video_price_per_second.toFixed(4) }}/{{ t('requestDetailExtra.secondUnit') }}
                         </span>
                       </div>
                     </div>
@@ -525,7 +525,7 @@
                     <div class="flex items-center">
                       <div class="flex items-center flex-1">
                         <span class="text-xs text-muted-foreground w-[56px]">
-                          {{ detail.video_billing.task_type === 'video' ? '时长' : detail.video_billing.task_type === 'audio' ? '时长' : '数量' }}
+                          {{ detail.video_billing.task_type === 'video' || detail.video_billing.task_type === 'audio' ? t('requestDetailExtra.duration') : t('requestDetailExtra.quantity') }}
                         </span>
                         <span class="text-sm font-semibold font-mono flex-1 text-center">
                           {{ detail.video_billing.duration_seconds ? formatDuration(detail.video_billing.duration_seconds) : '1' }}
@@ -537,7 +537,7 @@
                         class="h-4 mx-4 invisible"
                       />
                       <div class="flex items-center flex-1 invisible">
-                        <span class="text-xs text-muted-foreground w-[56px]">占位</span>
+                        <span class="text-xs text-muted-foreground w-[56px]">{{ t('requestDetailExtra.placeholder') }}</span>
                         <span class="text-sm font-semibold font-mono flex-1 text-center">0</span>
                         <span class="text-xs font-mono">$0.000000</span>
                       </div>
@@ -602,7 +602,7 @@
                         <!-- cURL 复制（仅在请求头/请求体 Tab） -->
                         <template v-if="['request-headers', 'request-body'].includes(activeTab)">
                           <button
-                            :title="curlCopied ? '已复制 cURL' : '复制 cURL'"
+                            :title="curlCopied ? t('requestDetailExtra.curlCopied') : t('requestDetailExtra.copyCurl')"
                             class="p-1 rounded transition-colors text-muted-foreground hover:bg-muted"
                             :disabled="curlCopying"
                             @click="copyCurlCommand"
@@ -622,7 +622,7 @@
                         <!-- 请求体/响应体专用：JSON/对话 视图切换 -->
                         <template v-if="supportsConversationView">
                           <button
-                            :title="contentViewMode === 'json' ? '切换到对话视图' : '切换到 JSON 视图'"
+                            :title="contentViewMode === 'json' ? t('requestDetailExtra.switchConversation') : t('requestDetailExtra.switchJson')"
                             class="p-1 rounded transition-colors"
                             :class="hasValidConversation || contentViewMode === 'conversation'
                               ? 'text-muted-foreground hover:bg-muted'
@@ -644,7 +644,7 @@
                         <!-- 请求头/响应头：对比模式 -->
                         <template v-if="canCompare">
                           <button
-                            title="对比"
+                            :title="t('requestDetailExtra.compare')"
                             class="p-1 rounded transition-colors"
                             :class="viewMode === 'compare' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
                             @click="viewMode = 'compare'"
@@ -657,7 +657,7 @@
                         <template v-if="showDataSourceToggle">
                           <div class="w-px h-3.5 bg-border mx-0.5" />
                           <button
-                            title="客户端"
+                            :title="t('requestDetailExtra.client')"
                             class="p-1 rounded transition-colors"
                             :class="activeDataSource === 'client' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
                             @click="setDataSource('client')"
@@ -665,7 +665,7 @@
                             <Monitor class="w-3.5 h-3.5" />
                           </button>
                           <button
-                            title="提供商"
+                            :title="t('requestDetailExtra.provider')"
                             class="p-1 rounded transition-colors"
                             :class="activeDataSource === 'provider' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
                             @click="setDataSource('provider')"
@@ -700,7 +700,7 @@
                         <ConversationView
                           v-else-if="contentViewMode === 'conversation'"
                           :render-result="requestRenderResult"
-                          empty-message="无请求体信息"
+                          :empty-message="t('requestDetailExtra.noRequestBody')"
                         />
                         <JsonContent
                           v-else
@@ -708,7 +708,7 @@
                           :view-mode="viewMode"
                           :expand-depth="currentExpandDepth"
                           :is-dark="isDark"
-                          empty-message="无请求体信息"
+                          :empty-message="t('requestDetailExtra.noRequestBody')"
                         />
                       </TabsContent>
 
@@ -725,9 +725,9 @@
                           :is-dark="isDark"
                           :client-headers="detail.client_response_headers"
                           :provider-headers="detail.response_headers"
-                          client-label="客户端响应头"
-                          provider-label="提供商响应头"
-                          empty-message="无响应头信息"
+                          :client-label="t('requestDetailExtra.clientResponseHeaders')"
+                          :provider-label="t('requestDetailExtra.providerResponseHeaders')"
+                          :empty-message="t('requestDetailExtra.noResponseHeaders')"
                         />
                         <JsonContent
                           v-else
@@ -735,7 +735,7 @@
                           :view-mode="viewMode"
                           :expand-depth="currentExpandDepth"
                           :is-dark="isDark"
-                          empty-message="无响应头信息"
+                          :empty-message="t('requestDetailExtra.noResponseHeaders')"
                         />
                       </TabsContent>
 
@@ -749,7 +749,7 @@
                         <ConversationView
                           v-else-if="contentViewMode === 'conversation'"
                           :render-result="responseRenderResult"
-                          empty-message="无响应体信息"
+                          :empty-message="t('requestDetailExtra.noResponseBody')"
                         />
                         <JsonContent
                           v-else
@@ -757,7 +757,7 @@
                           :view-mode="viewMode"
                           :expand-depth="currentExpandDepth"
                           :is-dark="isDark"
-                          empty-message="无响应体信息"
+                          :empty-message="t('requestDetailExtra.noResponseBody')"
                         />
                       </TabsContent>
 
@@ -767,7 +767,7 @@
                           :view-mode="viewMode"
                           :expand-depth="currentExpandDepth"
                           :is-dark="isDark"
-                          empty-message="无元数据信息"
+                          :empty-message="t('requestDetailExtra.noMetadata')"
                         />
                       </TabsContent>
                     </JsonContentPanel>
@@ -792,6 +792,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/ui/button.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 import { useClipboard } from '@/composables/useClipboard'
@@ -817,10 +818,9 @@ import {
   getGenerationTimeMs,
 } from '../performance'
 import {
-  formatUsageStreamLabel,
   isUsageUpstreamStream,
   resolveDisplayRequestStatus,
-  resolveUsageStreamLabelSegments,
+  resolveUsageStreamModes,
 } from '../utils/status'
 import { resolveRequestFailureNotice } from '../utils/errorNotice'
 
@@ -839,6 +839,8 @@ import {
   type RenderResult,
   type RenderBlock,
 } from '../conversation'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   isOpen: boolean
@@ -1039,7 +1041,7 @@ const fullRequestId = computed(() => detail.value?.request_id || detail.value?.i
 const displayRequestId = computed(() => formatShortRequestId(fullRequestId.value))
 const DETAIL_COST_EPSILON = 0.0000001
 type DetailChargeLine = {
-  label: '套餐' | '钱包'
+  label: string
   amount: number
   multiplier: number | null
 }
@@ -1068,17 +1070,30 @@ const detailChargeLines = computed<DetailChargeLine[]>(() => {
   const walletMultiplier = toNumber(breakdown?.wallet_multiplier)
   const lines: DetailChargeLine[] = []
   if (packageDebit > DETAIL_COST_EPSILON) {
-    lines.push({ label: '套餐', amount: packageDebit, multiplier: packageMultiplier })
+    lines.push({ label: t('requestDetailExtra.plan'), amount: packageDebit, multiplier: packageMultiplier })
   }
   if (walletDebit > DETAIL_COST_EPSILON) {
-    lines.push({ label: '钱包', amount: walletDebit, multiplier: walletMultiplier })
+    lines.push({ label: t('requestDetailExtra.wallet'), amount: walletDebit, multiplier: walletMultiplier })
   }
   return lines
 })
 const refreshButtonTitle = computed(() => {
-  if (autoRefreshing.value) return '停止自动刷新'
-  return isRequestCompleted() ? '刷新' : '开启自动刷新'
+  if (autoRefreshing.value) return t('requestDetailExtra.stopAutoRefresh')
+  return isRequestCompleted() ? t('requestDetailExtra.refresh') : t('requestDetailExtra.startAutoRefresh')
 })
+
+function streamModeLabel(streaming: boolean): string {
+  return streaming ? t('requestDetailExtra.streaming') : t('requestDetailExtra.standard')
+}
+
+function isClientStreaming(record: Parameters<typeof resolveUsageStreamModes>[0]): boolean {
+  return resolveUsageStreamModes(record).clientRequestedStream
+}
+
+function hasStreamConversion(record: Parameters<typeof resolveUsageStreamModes>[0]): boolean {
+  const modes = resolveUsageStreamModes(record)
+  return modes.clientRequestedStream !== modes.upstreamStream
+}
 const displayInputTokens = computed(() => {
   if (!detail.value) return 0
   return getEffectiveInputTokens({
@@ -1386,7 +1401,7 @@ const activeJsonPanelData = computed(() => {
 })
 
 const activeJsonPanelTitle = computed(() => {
-  if (viewMode.value === 'compare') return '对比'
+  if (viewMode.value === 'compare') return t('requestDetailExtra.compare')
   if (supportsConversationView.value && contentViewMode.value === 'conversation') return 'Chat'
   return 'JSON'
 })
@@ -1433,7 +1448,7 @@ const hasValidConversation = computed(() => {
 })
 
 const priceSourceLabel = computed(() => {
-  return detail.value?.tiered_pricing ? '本次请求生效价' : '历史价格快照'
+  return detail.value?.tiered_pricing ? t('requestDetailExtra.effectivePrice') : t('requestDetailExtra.historicalPrice')
 })
 
 const cacheCreationInputTokens5m = computed(() => {
@@ -1597,9 +1612,9 @@ const imageOutputRangeEnabled = computed(() => {
 })
 
 const imageOutputBillingLabel = computed(() => {
-  if (imageOutputMatrixEnabled.value) return '矩阵计费'
-  if (imageOutputRangeEnabled.value) return '像素区间'
-  return '默认计费'
+  if (imageOutputMatrixEnabled.value) return t('requestDetailExtra.matrixBilling')
+  if (imageOutputRangeEnabled.value) return t('requestDetailExtra.pixelRange')
+  return t('requestDetailExtra.defaultBilling')
 })
 
 const imageOutputPricingDescriptor = computed(() => {
@@ -1615,7 +1630,7 @@ const imageOutputPricingDescriptor = computed(() => {
     parts.push(formatPixels(imageOutputPixels.value))
   }
   if (parts.length > 0) return parts.join(' · ')
-  if (imageOutputPriceBucket.value === 'default') return '默认价'
+  if (imageOutputPriceBucket.value === 'default') return t('requestDetailExtra.defaultPrice')
   return null
 })
 
@@ -1728,7 +1743,7 @@ const cacheCreationSummaryText = computed(() => {
   if (cache5m > 0) parts.push(`5min ${formatNumber(cache5m)}`)
   if (cache1h > 0) parts.push(`1h ${formatNumber(cache1h)}`)
   const remaining = Math.max(0, total - cache5m - cache1h)
-  if (remaining > 0) parts.push(`其他 ${formatNumber(remaining)}`)
+  if (remaining > 0) parts.push(t('requestDetailExtra.otherTokens', { count: formatNumber(remaining) }))
   return parts.join(' + ')
 })
 
@@ -1750,7 +1765,7 @@ const cacheCreationSplitRows = computed(() => {
     const pricePer1M = getActiveCachePriceForTTL(5, 'cache_creation_price_per_1m')
     rows.push({
       key: '5m',
-      label: '5min 创建',
+      label: t('requestDetailExtra.cacheCreation5m'),
       tokens: cache5m,
       pricePer1M,
       cost: pricePer1M !== null ? (cache5m * pricePer1M) / 1_000_000 : null,
@@ -1761,7 +1776,7 @@ const cacheCreationSplitRows = computed(() => {
     const pricePer1M = getActiveCachePriceForTTL(60, 'cache_creation_price_per_1m')
     rows.push({
       key: '1h',
-      label: '1h 创建',
+      label: t('requestDetailExtra.cacheCreation1h'),
       tokens: cache1h,
       pricePer1M,
       cost: pricePer1M !== null ? (cache1h * pricePer1M) / 1_000_000 : null,
@@ -1823,13 +1838,13 @@ const hasTokenCost = computed(() => {
   return (inputTokens + outputTokens + cacheCreation + cacheRead) > 0 || tokenCostTotal.value > 0
 })
 
-const tabs = [
-  { name: 'request-headers', label: '请求头' },
-  { name: 'request-body', label: '请求体' },
-  { name: 'response-headers', label: '响应头' },
-  { name: 'response-body', label: '响应体' },
-  { name: 'metadata', label: '元数据' },
-]
+const tabs = computed(() => [
+  { name: 'request-headers', label: t('requestDetailExtra.requestHeaders') },
+  { name: 'request-body', label: t('requestDetailExtra.requestBody') },
+  { name: 'response-headers', label: t('requestDetailExtra.responseHeaders') },
+  { name: 'response-body', label: t('requestDetailExtra.responseBody') },
+  { name: 'metadata', label: t('requestDetailExtra.metadata') },
+])
 
 // 判断数据是否有实际内容（非空对象/数组）
 function hasContent(data: unknown): boolean {
@@ -1887,10 +1902,10 @@ function hasTierCacheCreationSplitPricing(tier: PricingTierLike | null | undefin
 }
 
 function formatCacheTtlLabel(ttlMinutes: number | null | undefined): string {
-  if (!ttlMinutes || ttlMinutes <= 0) return '缓存创建'
-  if (ttlMinutes >= 60) return '缓存创建(1h)'
-  if (ttlMinutes <= 5) return '缓存创建(5min)'
-  return `缓存创建(${ttlMinutes}min)`
+  if (!ttlMinutes || ttlMinutes <= 0) return t('requestDetailExtra.cacheCreation')
+  if (ttlMinutes >= 60) return t('requestDetailExtra.cacheCreation1h')
+  if (ttlMinutes <= 5) return t('requestDetailExtra.cacheCreation5m')
+  return t('requestDetailExtra.cacheCreationMinutes', { minutes: ttlMinutes })
 }
 
 function getTierActiveCacheCreationDisplay(
@@ -1920,7 +1935,7 @@ function getTierActiveCacheCreationDisplay(
   const fallbackPrice = toFiniteNumber(tier?.cache_creation_price_per_1m)
   if (fallbackPrice === null) return null
   return {
-    label: '缓存创建',
+    label: t('requestDetailExtra.cacheCreation'),
     price: fallbackPrice,
   }
 }
@@ -2008,7 +2023,7 @@ const currentResponseHeaderData = computed<Record<string, unknown> | null>(() =>
 const visibleTabs = computed(() => {
   if (!detail.value) return []
 
-  return tabs.filter(tab => {
+  return tabs.value.filter(tab => {
     switch (tab.name) {
       case 'request-headers':
         return hasContent(detail.value?.request_headers) || hasContent(detail.value?.provider_request_headers)
@@ -2175,7 +2190,7 @@ async function loadDetail(id: string, silent = false) {
     if (requestId !== loadDetailRequestId) return
     log.error('Failed to load request detail:', err)
     if (!silent) {
-      error.value = '加载请求详情失败'
+      error.value = t('requestDetailExtra.loadFailed')
     }
   } finally {
     if (!silent && requestId === loadDetailRequestId) {
@@ -2306,11 +2321,11 @@ function formatDuration(seconds: number): string {
 function getTaskTypeLabel(taskType: string): string {
   switch (taskType) {
     case 'video':
-      return '视频生成'
+      return t('requestDetailExtra.videoGeneration')
     case 'image':
-      return '图像生成'
+      return t('requestDetailExtra.imageGeneration')
     case 'audio':
-      return '音频生成'
+      return t('requestDetailExtra.audioGeneration')
     default:
       return taskType
   }
@@ -2336,8 +2351,8 @@ function parseImageSizePixels(size: string | null): number | null {
 }
 
 function formatImagePriceBucket(bucket: string): string {
-  if (bucket === 'default') return '默认价'
-  if (bucket === 'unbounded') return '无上限'
+  if (bucket === 'default') return t('requestDetailExtra.defaultPrice')
+  if (bucket === 'unbounded') return t('requestDetailExtra.unbounded')
   const match = bucket.match(/^<=([0-9]+)px$/)
   if (match) return `<= ${formatPixels(Number(match[1]))}`
   return bucket

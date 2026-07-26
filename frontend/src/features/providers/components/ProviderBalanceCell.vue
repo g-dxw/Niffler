@@ -5,7 +5,7 @@
     class="flex items-center gap-1.5 text-xs text-muted-foreground"
   >
     <Loader2 class="h-3 w-3 animate-spin" />
-    <span>加载中...</span>
+    <span>{{ t('providerBalance.loading') }}</span>
   </div>
   <!-- 显示从上游 API 查询的余额 -->
   <div
@@ -75,7 +75,7 @@
         <span
           class="text-[10px] text-amber-600 dark:text-amber-500"
           :title="getProviderCookieExpired(provider.id)?.message"
-        >签到 Cookie 已失效</span>
+        >{{ t('providerBalance.cookieExpired') }}</span>
       </div>
       <!-- 签到状态 -->
       <div
@@ -86,12 +86,12 @@
           v-if="getProviderCheckin(provider.id)?.success !== false"
           class="text-[10px] text-muted-foreground/60"
           :title="getProviderCheckin(provider.id)?.message"
-        >已签到</span>
+        >{{ t('providerBalance.checkedIn') }}</span>
         <span
           v-else
           class="text-[10px] text-destructive/70"
           :title="getProviderCheckin(provider.id)?.message"
-        >签到失败</span>
+        >{{ t('providerBalance.checkInFailed') }}</span>
       </div>
     </div>
   </div>
@@ -128,11 +128,14 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Loader2 } from 'lucide-vue-next'
 import Badge from '@/components/ui/badge.vue'
 import type { ProviderWithEndpointsSummary } from '@/api/endpoints'
 import { formatBillingType } from '@/utils/format'
 import type { BalanceExtraItem } from '@/features/providers/auth-templates'
+
+const { t } = useI18n()
 
 defineProps<{
   provider: ProviderWithEndpointsSummary

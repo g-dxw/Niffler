@@ -4,14 +4,14 @@
     @submit.prevent="$emit('submit')"
   >
     <p class="text-sm text-muted-foreground">
-      输入注册邮箱。如果账号可重置，系统会发送一封重置密码邮件。
+      {{ t('passwordResetRequest.description') }}
     </p>
     <div class="space-y-1.5">
       <Label
         for="password-reset-email"
         class="text-sm"
       >
-        邮箱
+        {{ t('passwordResetRequest.email') }}
       </Label>
       <Input
         id="password-reset-email"
@@ -39,7 +39,7 @@
       :aria-busy="loading"
       class="h-12 w-full"
     >
-      {{ loading ? '发送中...' : '发送重置邮件' }}
+      {{ loading ? t('passwordResetRequest.sending') : t('passwordResetRequest.send') }}
     </Button>
     <Button
       type="button"
@@ -49,15 +49,18 @@
       :data-state="loading ? 'disabled' : 'idle'"
       @click="$emit('back')"
     >
-      返回登录
+      {{ t('passwordResetRequest.backToLogin') }}
     </Button>
   </form>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'
+
+const { t } = useI18n()
 
 defineProps<{
   email: string

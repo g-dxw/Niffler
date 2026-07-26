@@ -18,7 +18,7 @@
         v-html="getOAuthIcon(providers[0].provider_type, providers[0].icon_url)"
       />
       <!-- eslint-enable vue/no-v-html -->
-      <span>使用 {{ providers[0].display_name }} 登录</span>
+      <span>{{ t('authCommon.signInWith', { provider: providers[0].display_name }) }}</span>
     </button>
 
     <div
@@ -49,8 +49,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { OAuthProviderInfo } from '@/api/oauth'
 import { getOAuthIcon } from '@/utils/oauth-icons'
+
+const { t } = useI18n()
 
 defineProps<{
   providers: OAuthProviderInfo[]

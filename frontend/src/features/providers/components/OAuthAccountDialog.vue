@@ -1,7 +1,7 @@
 <template>
   <Dialog
     :model-value="isOpen"
-    title="添加账号"
+    :title="t('oauthAccount.title')"
     :icon="UserPlus"
     size="md"
     @update:model-value="handleDialogUpdate"
@@ -18,7 +18,7 @@
             :class="selectedProxyNodeId
               ? 'text-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'"
-            :title="selectedProxyNodeId ? `代理: ${getSelectedNodeLabel()}` : '设置代理节点'"
+            :title="selectedProxyNodeId ? t('oauthAccount.proxySelected', { name: getSelectedNodeLabel() }) : t('oauthAccount.setProxy')"
           >
             <Globe class="w-4 h-4" />
           </button>
@@ -31,18 +31,18 @@
           <div class="space-y-2">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5">
-                <span class="text-xs font-medium">代理节点</span>
+                <span class="text-xs font-medium">{{ t('oauthAccount.proxyNode') }}</span>
                 <span
                   v-if="!proxyNodesStore.loading && proxyNodesStore.onlineNodes.length === 0"
                   class="text-[10px] text-muted-foreground"
-                >· 前往「模块管理 · 代理节点」添加</span>
+                >· {{ t('oauthAccount.addProxyHint') }}</span>
               </div>
               <button
                 v-if="selectedProxyNodeId"
                 class="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                 @click="selectedProxyNodeId = ''; proxyPopoverOpen = false"
               >
-                清除
+                {{ t('oauthAccount.clear') }}
               </button>
             </div>
             <ProxyNodeSelect
@@ -51,7 +51,7 @@
               @update:model-value="(v: string) => { selectedProxyNodeId = v; proxyPopoverOpen = false }"
             />
             <p class="text-[10px] text-muted-foreground">
-              {{ selectedProxyNodeId ? `${providerCredentialActionLabel}、刷新、额度查询均走此代理` : '未设置，依次回退到提供商代理 → 系统代理' }}
+              {{ selectedProxyNodeId ? t('oauthAccount.proxyUsage', { action: providerCredentialActionLabel }) : t('oauthAccount.proxyFallback') }}
             </p>
           </div>
         </PopoverContent>
@@ -73,7 +73,7 @@
           ]"
           @click="switchMode('oauth')"
         >
-          {{ isKiroProvider ? '设备授权' : '获取授权' }}
+          {{ isKiroProvider ? t('oauthAccount.deviceAuthorization') : t('oauthAccount.getAuthorization') }}
         </button>
         <button
           class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all"
@@ -129,10 +129,10 @@
                     </div>
                     <div class="space-y-1">
                       <p class="text-sm font-medium text-destructive">
-                        {{ device.status === 'expired' ? '授权已过期' : '授权失败' }}
+                        {{ device.status === 'expired' ? t('oauthAccount.expired') : t('oauthAccount.failed') }}
                       </p>
                       <p class="text-xs text-muted-foreground">
-                        {{ device.error || '请重试' }}
+                        {{ device.error || t('oauthAccount.retryHint') }}
                       </p>
                     </div>
                     <Button
@@ -140,7 +140,7 @@
                       variant="outline"
                       @click="resetDevice"
                     >
-                      重新开始
+                      {{ t('oauthAccount.restart') }}
                     </Button>
                   </div>
                 </div>
@@ -153,7 +153,7 @@
                   <div class="text-center">
                     <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-3" />
                     <p class="text-xs text-muted-foreground">
-                      正在注册设备...
+                      {{ t('oauthAccount.registeringDevice') }}
                     </p>
                   </div>
                 </div>
@@ -166,7 +166,7 @@
                   <div class="space-y-2 shrink-0">
                     <div class="flex items-center gap-2">
                       <span class="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-semibold shrink-0">1</span>
-                      <span class="text-xs font-medium">前往授权</span>
+                      <span class="text-xs font-medium">{{ t('oauthAccount.goAuthorize') }}</span>
                     </div>
                     <div class="flex gap-2 pl-6">
                       <Button
@@ -175,7 +175,7 @@
                         @click="openDeviceVerificationUrl"
                       >
                         <ExternalLink class="w-3 h-3 mr-1" />
-                        打开
+                        {{ t('oauthAccount.open') }}
                       </Button>
                       <Button
                         size="sm"
@@ -184,7 +184,7 @@
                         @click="copyToClipboard(device.verification_uri_complete)"
                       >
                         <Copy class="w-3 h-3 mr-1" />
-                        复制
+                        {{ t('oauthAccount.copy') }}
                       </Button>
                     </div>
                   </div>
@@ -192,7 +192,7 @@
                   <div class="flex min-h-0 flex-1 flex-col gap-2">
                     <div class="flex items-center gap-2">
                       <span class="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-semibold shrink-0">2</span>
-                      <span class="text-xs font-medium">粘贴回调 URL</span>
+                      <span class="text-xs font-medium">{{ t('oauthAccount.pasteCallback') }}</span>
                     </div>
                     <div class="min-h-0 flex-1 pl-6">
                       <Textarea
@@ -221,16 +221,16 @@
 
                     <div class="space-y-1">
                       <p class="text-sm font-medium">
-                        在浏览器中完成授权
+                        {{ t('oauthAccount.completeInBrowser') }}
                       </p>
                       <p class="text-xs text-muted-foreground">
-                        授权完成后此页面将自动更新
+                        {{ t('oauthAccount.autoUpdate') }}
                       </p>
                     </div>
 
                     <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <div class="animate-spin rounded-full h-3 w-3 border-[1.5px] border-primary/30 border-t-primary" />
-                      <span>剩余 {{ deviceCountdownFormatted }}</span>
+                      <span>{{ t('oauthAccount.remaining', { time: deviceCountdownFormatted }) }}</span>
                     </div>
 
                     <div
@@ -240,7 +240,7 @@
                       <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                           <ShieldCheck class="w-3.5 h-3.5 text-primary" />
-                          <span class="text-[10px] text-muted-foreground">MFA 验证码</span>
+                          <span class="text-[10px] text-muted-foreground">{{ t('oauthAccount.mfaCode') }}</span>
                         </div>
                         <div class="flex items-center gap-1.5">
                           <span
@@ -248,7 +248,7 @@
                           >{{ totp.code.value }}</span>
                           <button
                             class="p-1 rounded hover:bg-muted transition-colors"
-                            title="复制验证码"
+                            :title="t('oauthAccount.copyCode')"
                             @click="copyToClipboard(totp.code.value)"
                           >
                             <Copy class="w-3 h-3 text-muted-foreground" />
@@ -277,7 +277,7 @@
                         @click="openDeviceVerificationUrl"
                       >
                         <ExternalLink class="w-3.5 h-3.5 mr-1.5" />
-                        打开授权页面
+                        {{ t('oauthAccount.openAuthorizationPage') }}
                       </Button>
                       <Button
                         size="sm"
@@ -299,14 +299,14 @@
                     v-if="isSocialDeviceAuth"
                     class="text-xs text-muted-foreground text-center"
                   >
-                    授权后复制浏览器地址栏的 localhost 回调 URL。
+                    {{ t('oauthAccount.callbackHint') }}
                   </p>
 
                   <p
                     v-else-if="device.auth_type === 'builder_id'"
                     class="text-xs text-muted-foreground text-center"
                   >
-                    使用个人 AWS Builder ID 进行设备授权，无需额外配置。
+                    {{ t('oauthAccount.builderIdHint') }}
                   </p>
 
                   <div
@@ -334,7 +334,7 @@
                         <ComboboxAnchor class="relative w-full">
                           <ComboboxInput
                             :display-value="() => device.region"
-                            placeholder="输入或选择 Region"
+                            :placeholder="t('oauthAccount.regionPlaceholder')"
                             class="w-full h-8 px-2 pr-7 text-xs rounded-md border border-border bg-background font-mono focus:outline-none focus:ring-1 focus:ring-ring focus:relative focus:z-10"
                             spellcheck="false"
                             @input="(e: Event) => regionSearch = (e.target as HTMLInputElement).value"
@@ -350,7 +350,7 @@
                         >
                           <ComboboxViewport>
                             <ComboboxEmpty class="px-2 py-1.5 text-xs text-muted-foreground">
-                              {{ awsRegionsLoaded ? '无匹配结果，回车使用自定义值' : '加载中...' }}
+                              {{ awsRegionsLoaded ? t('oauthAccount.noRegionMatch') : t('oauthAccount.loading') }}
                             </ComboboxEmpty>
                             <ComboboxItem
                               v-for="r in filteredRegions"
@@ -369,11 +369,11 @@
                       </ComboboxRoot>
                     </div>
                     <div class="space-y-1.5">
-                      <label class="text-xs font-medium text-muted-foreground">TOTP Secret (可选, 2FA认证)</label>
+                      <label class="text-xs font-medium text-muted-foreground">{{ t('oauthAccount.totpSecret') }}</label>
                       <input
                         v-model="device.totp_secret"
                         type="text"
-                        placeholder="Base32 secret, 如 JBSWY3DPEHPK3PXP"
+                        :placeholder="t('oauthAccount.totpPlaceholder')"
                         class="w-full h-8 px-2 text-xs rounded-md border border-border bg-background font-mono focus:outline-none focus:ring-1 focus:ring-ring focus:relative focus:z-10"
                         spellcheck="false"
                       >
@@ -385,7 +385,7 @@
                     :disabled="device.starting || (device.auth_type === 'identity_center' && !device.start_url.trim())"
                     @click="startDeviceAuth"
                   >
-                    {{ device.starting ? '正在准备授权...' : '开始授权' }}
+                    {{ device.starting ? t('oauthAccount.preparing') : t('oauthAccount.startAuthorization') }}
                   </Button>
                 </div>
               </div>
@@ -401,7 +401,7 @@
               <div class="text-center">
                 <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-3" />
                 <p class="text-xs text-muted-foreground">
-                  正在准备授权...
+                  {{ t('oauthAccount.preparing') }}
                 </p>
               </div>
             </div>
@@ -410,7 +410,7 @@
               <div class="space-y-2">
                 <div class="flex items-center gap-2">
                   <span class="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-semibold shrink-0">1</span>
-                  <span class="text-xs font-medium">前往授权</span>
+                  <span class="text-xs font-medium">{{ t('oauthAccount.goAuthorize') }}</span>
                 </div>
                 <div class="flex gap-2 pl-6">
                   <Button
@@ -419,7 +419,7 @@
                     @click="openAuthorizationUrl"
                   >
                     <ExternalLink class="w-3 h-3 mr-1" />
-                    打开
+                    {{ t('oauthAccount.open') }}
                   </Button>
                   <Button
                     size="sm"
@@ -428,7 +428,7 @@
                     @click="copyToClipboard(oauth.authorization_url)"
                   >
                     <Copy class="w-3 h-3 mr-1" />
-                    复制
+                    {{ t('oauthAccount.copy') }}
                   </Button>
                 </div>
               </div>
@@ -436,7 +436,7 @@
               <div class="space-y-2">
                 <div class="flex items-center gap-2">
                   <span class="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-semibold shrink-0">2</span>
-                  <span class="text-xs font-medium">粘贴回调 URL</span>
+                  <span class="text-xs font-medium">{{ t('oauthAccount.pasteCallback') }}</span>
                 </div>
                 <div class="pl-6">
                   <Textarea
@@ -490,8 +490,8 @@
               />
             </div>
             <div class="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>进度 {{ importTask.processed }}/{{ importTask.total }}</span>
-              <span>成功 {{ importTask.success }} · 失败 {{ importTask.failed }}</span>
+              <span>{{ t('oauthAccount.progress', { processed: importTask.processed, total: importTask.total }) }}</span>
+              <span>{{ t('oauthAccount.resultSummary', { success: importTask.success, failed: importTask.failed }) }}</span>
             </div>
             <p
               v-if="importTask.message"
@@ -504,14 +504,14 @@
               class="space-y-1"
             >
               <p class="text-[11px] text-destructive">
-                最近错误
+                {{ t('oauthAccount.recentErrors') }}
               </p>
               <p
                 v-for="item in importTask.error_samples.slice(0, 3)"
                 :key="`${item.index}-${item.error || item.status}`"
                 class="text-[11px] text-destructive/90"
               >
-                #{{ item.index + 1 }} {{ item.error || '导入失败' }}
+                #{{ item.index + 1 }} {{ item.error || t('oauthAccount.importFailed') }}
               </p>
             </div>
           </div>
@@ -524,28 +524,28 @@
         variant="outline"
         @click="handleClose"
       >
-        取消
+        {{ t('oauthAccount.cancel') }}
       </Button>
       <Button
         v-if="mode === 'oauth' && showAuthorizationMode && !isKiroProvider"
         :disabled="!canCompleteOAuth"
         @click="handleCompleteOAuth"
       >
-        {{ oauth.completing ? '验证中...' : '验证' }}
+        {{ oauth.completing ? t('oauthAccount.verifying') : t('oauthAccount.verify') }}
       </Button>
       <Button
         v-if="mode === 'oauth' && isKiroSocialManualCallbackMode"
         :disabled="!canCompleteKiroSocialDeviceAuth"
         @click="completeDeviceAuth"
       >
-        {{ device.completing ? '验证中...' : '验证' }}
+        {{ device.completing ? t('oauthAccount.verifying') : t('oauthAccount.verify') }}
       </Button>
       <Button
         v-if="mode === 'import'"
         :disabled="!canImport"
         @click="handleImport"
       >
-        {{ importing ? (importTask ? `导入中 ${importTask.progress_percent}%` : '导入中...') : importButtonLabel }}
+        {{ importing ? (importTask ? t('oauthAccount.importingProgress', { progress: importTask.progress_percent }) : t('oauthAccount.importing')) : importButtonLabel }}
       </Button>
     </template>
   </Dialog>
@@ -553,6 +553,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Dialog, Button, Textarea, Popover, PopoverTrigger, PopoverContent } from '@/components/ui'
 import {
   ComboboxAnchor,
@@ -592,6 +593,7 @@ const props = defineProps<{
   providerId: string | null
   providerType: string | null
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -789,31 +791,31 @@ const canImport = computed(() => {
   return importText.value.trim().length > 0 && !importing.value
 })
 
-const importModeLabel = computed(() => (isGrokProvider.value ? '导入账号' : '导入授权'))
-const importButtonLabel = computed(() => (isGrokProvider.value ? '导入账号' : '导入'))
+const importModeLabel = computed(() => (isGrokProvider.value ? t('oauthAccount.importAccount') : t('oauthAccount.importAuthorization')))
+const importButtonLabel = computed(() => (isGrokProvider.value ? t('oauthAccount.importAccount') : t('oauthAccount.import')))
 const importDropTitle = computed(() => (
-  isGrokProvider.value ? '拖入 Grok 账号文件或点击选择' : '拖入授权文件或点击选择'
+  isGrokProvider.value ? t('oauthAccount.dropGrokFiles') : t('oauthAccount.dropAuthFiles')
 ))
 const importDropHint = computed(() => (
-  isGrokProvider.value ? '支持 .json / .txt，可多选、批量导入' : '支持 .json / .txt，可多选'
+  isGrokProvider.value ? t('oauthAccount.grokFileHint') : t('oauthAccount.authFileHint')
 ))
 const importManualPlaceholder = computed(() => (
   isGrokProvider.value
-    ? '粘贴 Grok sso/session token，支持每行一个；或粘贴包含 token、sso_token、access_token、plan_type、pool_tier 的 JSON'
-    : '粘贴 Refresh Token / Access Token 或 JSON 内容'
+    ? t('oauthAccount.grokPasteHint')
+    : t('oauthAccount.authPasteHint')
 ))
 const importManualDescription = computed(() => (
   isGrokProvider.value
-    ? 'plan_type / pool_tier 会作为账号套餐与能力特征保存，不是路由池选择。'
+    ? t('oauthAccount.grokPlanHint')
     : ''
 ))
 const importPasteToggleText = computed(() => (
-  isGrokProvider.value ? '或手动粘贴 Grok Token' : '或手动粘贴 Token'
+  isGrokProvider.value ? t('oauthAccount.pasteGrokToken') : t('oauthAccount.pasteToken')
 ))
 const importFileToggleText = computed(() => (
-  isGrokProvider.value ? '或选择 Grok Token 文件导入' : '或选择 JSON 文件导入'
+  isGrokProvider.value ? t('oauthAccount.chooseGrokFile') : t('oauthAccount.chooseJsonFile')
 ))
-const providerCredentialActionLabel = computed(() => (isGrokProvider.value ? '导入' : '授权'))
+const providerCredentialActionLabel = computed(() => (isGrokProvider.value ? t('oauthAccount.import') : t('oauthAccount.authorization')))
 
 function stopImportPolling() {
   if (importPollTimer) {
@@ -826,32 +828,32 @@ function stopImportPolling() {
 function getImportTaskStatusText(status: OAuthBatchImportTaskStatus): string {
   switch (status) {
     case 'submitted':
-      return '任务已提交'
+      return t('oauthAccount.taskSubmitted')
     case 'processing':
-      return '正在导入'
+      return t('oauthAccount.importingNow')
     case 'completed':
-      return '导入完成'
+      return t('oauthAccount.importComplete')
     case 'failed':
-      return '导入失败'
+      return t('oauthAccount.importFailed')
     default:
-      return '处理中'
+      return t('oauthAccount.processing')
   }
 }
 
 function getOAuthSuccessMessage(
-  action: '授权' | '导入',
+  action: string,
   options?: { email?: string | null; replaced?: boolean }
 ): string {
   const email = typeof options?.email === 'string' ? options.email.trim() : ''
   const replaced = options?.replaced === true
   if (email) {
     return replaced
-      ? `${action}成功: ${email}（已替换旧账号）`
-      : `${action}成功: ${email}`
+      ? t('oauthAccount.actionSuccessReplacedEmail', { action, email })
+      : t('oauthAccount.actionSuccessEmail', { action, email })
   }
   return replaced
-    ? `${action}成功，已替换旧账号`
-    : `${action}成功，账号已添加`
+    ? t('oauthAccount.actionSuccessReplaced', { action })
+    : t('oauthAccount.actionSuccessAdded', { action })
 }
 
 function getBatchImportSuccessMessage(task: OAuthBatchImportTaskStatusResponse): string {
@@ -860,26 +862,26 @@ function getBatchImportSuccessMessage(task: OAuthBatchImportTaskStatusResponse):
   const parts: string[] = []
 
   if (createdCount > 0) {
-    parts.push(`新增 ${createdCount} 个`)
+    parts.push(t('oauthAccount.createdCount', { count: createdCount }))
   }
   if (replacedCount > 0) {
-    parts.push(`替换 ${replacedCount} 个`)
+    parts.push(t('oauthAccount.replacedCount', { count: replacedCount }))
   }
   if (task.failed > 0) {
-    parts.push(`失败 ${task.failed} 个`)
+    parts.push(t('oauthAccount.failedCount', { count: task.failed }))
   }
 
   if (parts.length === 0) {
-    return task.failed > 0 ? `批量导入完成：失败 ${task.failed} 个` : '批量导入完成'
+    return task.failed > 0 ? t('oauthAccount.batchCompleteFailed', { count: task.failed }) : t('oauthAccount.batchComplete')
   }
   if (task.failed === 0 && createdCount > 0 && replacedCount === 0) {
-    return `批量导入成功：${createdCount} 个账号已添加`
+    return t('oauthAccount.batchCreated', { count: createdCount })
   }
   if (task.failed === 0 && createdCount === 0 && replacedCount > 0) {
-    return `批量导入成功：已替换 ${replacedCount} 个旧账号`
+    return t('oauthAccount.batchReplaced', { count: replacedCount })
   }
 
-  const prefix = task.failed > 0 ? '批量导入完成' : '批量导入成功'
+  const prefix = task.failed > 0 ? t('oauthAccount.batchComplete') : t('oauthAccount.batchSuccess')
   return `${prefix}：${parts.join('，')}`
 }
 
@@ -906,7 +908,7 @@ async function pollImportTaskStatus(taskId: string) {
         emit('saved')
         handleClose()
       } else {
-        showError(task.error || '批量导入失败', '导入失败')
+        showError(task.error || t('oauthAccount.batchFailed'), t('oauthAccount.importFailed'))
       }
       return
     }
@@ -914,7 +916,7 @@ async function pollImportTaskStatus(taskId: string) {
     if (task.status === 'failed') {
       stopImportPolling()
       importing.value = false
-      showError(task.error || task.message || '批量导入失败', '导入失败')
+      showError(task.error || task.message || t('oauthAccount.batchFailed'), t('oauthAccount.importFailed'))
       return
     }
 
@@ -1060,8 +1062,8 @@ async function initOAuth() {
     oauth.value.provider_type = resp.provider_type
   } catch (err: unknown) {
     if (requestId !== oauthInitRequestId) return
-    const errorMessage = parseApiError(err, '初始化授权失败')
-    showError(errorMessage, '错误')
+    const errorMessage = parseApiError(err, t('oauthAccount.initFailed'))
+    showError(errorMessage, t('oauthAccount.error'))
     mode.value = 'import'
   } finally {
     if (requestId === oauthInitRequestId) {
@@ -1081,13 +1083,13 @@ async function handleCompleteOAuth() {
       proxy_node_id: selectedProxyNodeId.value || undefined,
     })
     if (requestId !== oauthCompleteRequestId) return
-    success(getOAuthSuccessMessage('授权', result))
+    success(getOAuthSuccessMessage(t('oauthAccount.authorization'), result))
     emit('saved')
     handleClose()
   } catch (err: unknown) {
     if (requestId !== oauthCompleteRequestId) return
-    const errorMessage = parseApiError(err, '完成授权失败')
-    showError(errorMessage, '错误')
+    const errorMessage = parseApiError(err, t('oauthAccount.completeFailed'))
+    showError(errorMessage, t('oauthAccount.error'))
   } finally {
     if (requestId === oauthCompleteRequestId) {
       oauth.value.completing = false
@@ -1332,7 +1334,7 @@ async function handleImport() {
 
   const inputText = importText.value.trim()
   if (!inputText) {
-    showError('请输入凭据数据', '格式错误')
+    showError(t('oauthAccount.credentialsRequired'), t('oauthAccount.formatError'))
     return
   }
 
@@ -1369,20 +1371,20 @@ async function handleImport() {
       // 单条导入
       const parsed = parseImportText(inputText)
       if (!parsed) {
-        showError('无法解析输入内容，请检查格式', '格式错误')
+        showError(t('oauthAccount.parseFailed'), t('oauthAccount.formatError'))
         return
       }
       const result = await importProviderRefreshToken(props.providerId, {
         ...parsed,
         proxy_node_id: proxyNodeId,
       })
-      success(getOAuthSuccessMessage('导入', result))
+      success(getOAuthSuccessMessage(t('oauthAccount.import'), result))
       emit('saved')
       handleClose()
     }
   } catch (err: unknown) {
-    const errorMessage = parseApiError(err, '导入失败')
-    showError(errorMessage, '错误')
+    const errorMessage = parseApiError(err, t('oauthAccount.importFailed'))
+    showError(errorMessage, t('oauthAccount.error'))
   } finally {
     if (!keepImporting) {
       importing.value = false
@@ -1451,8 +1453,8 @@ async function startDeviceAuth() {
     }
   } catch (err: unknown) {
     if (requestId !== deviceAuthRequestId || device.value.auth_type !== requestedAuthType) return
-    const errorMessage = parseApiError(err, '发起设备授权失败')
-    showError(errorMessage, '错误')
+    const errorMessage = parseApiError(err, t('oauthAccount.startDeviceFailed'))
+    showError(errorMessage, t('oauthAccount.error'))
     device.value.status = 'error'
     device.value.error = errorMessage
   } finally {
@@ -1498,7 +1500,7 @@ async function pollDevice(withCallback = false) {
         stopDevicePolling()
         totp.stop()
         device.value.status = 'authorized'
-        success(getOAuthSuccessMessage('授权', result))
+        success(getOAuthSuccessMessage(t('oauthAccount.authorization'), result))
         emit('saved')
         handleClose()
         return
@@ -1514,18 +1516,18 @@ async function pollDevice(withCallback = false) {
       case 'expired':
         stopDevicePolling()
         device.value.status = 'expired'
-        device.value.error = result.error || '设备码已过期'
+        device.value.error = result.error || t('oauthAccount.deviceCodeExpired')
         return
       case 'error':
         stopDevicePolling()
         device.value.status = 'error'
-        device.value.error = result.error || '授权失败'
+        device.value.error = result.error || t('oauthAccount.failed')
         return
     }
   } catch (err: unknown) {
     if (withCallback) {
-      const errorMessage = parseApiError(err, '完成授权失败')
-      showError(errorMessage, '错误')
+      const errorMessage = parseApiError(err, t('oauthAccount.completeFailed'))
+      showError(errorMessage, t('oauthAccount.error'))
     }
     // 网络错误等，继续轮询
     if (!withCallback && !device.value.callback_required) {

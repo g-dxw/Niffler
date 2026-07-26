@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :model-value="internalOpen"
-    title="端点管理"
-    :description="`管理 ${provider?.name} 的 API 端点`"
+    :title="t('endpointForm.title')"
+    :description="t('endpointForm.description', { name: provider?.name || '' })"
     :icon="Settings"
     size="2xl"
     @update:model-value="handleDialogUpdate"
@@ -13,7 +13,7 @@
         v-if="localEndpoints.length > 0"
         class="space-y-3 max-h-[50vh] overflow-y-auto scrollbar-hide"
       >
-        <Label class="text-muted-foreground">已配置的端点</Label>
+        <Label class="text-muted-foreground">{{ t('endpointForm.configuredEndpoints') }}</Label>
 
         <!-- 端点卡片列表 -->
         <div class="space-y-3">
@@ -32,14 +32,14 @@
                   variant="secondary"
                   class="text-xs"
                 >
-                  停用
+                  {{ t('endpointForm.disabled') }}
                 </Badge>
               </div>
               <div class="flex items-center gap-1.5">
                 <!-- 格式转换按钮 -->
                 <span
                   class="mr-1"
-                  :title="isEndpointFormatConversionDisabled ? formatConversionDisabledTooltip : (endpoint.format_acceptance_config?.enabled ? '已启用格式转换（点击关闭）' : '启用格式转换')"
+                  :title="isEndpointFormatConversionDisabled ? formatConversionDisabledTooltip : (endpoint.format_acceptance_config?.enabled ? t('endpointForm.disableConversion') : t('endpointForm.enableConversion'))"
                 >
                   <Button
                     variant="ghost"
@@ -75,7 +75,7 @@
                   >
                     <div class="space-y-2">
                       <div class="flex items-center justify-between">
-                        <span class="text-xs font-medium">端点代理节点</span>
+                        <span class="text-xs font-medium">{{ t('endpointForm.endpointProxy') }}</span>
                         <Button
                           v-if="endpointProxyNodeId(endpoint)"
                           variant="ghost"
@@ -84,7 +84,7 @@
                           :disabled="savingEndpointId === endpoint.id"
                           @click="clearEndpointProxy(endpoint)"
                         >
-                          清除
+                          {{ t('endpointForm.clear') }}
                         </Button>
                       </div>
                       <ProxyNodeSelect
@@ -93,7 +93,7 @@
                         @update:model-value="setEndpointProxy(endpoint, $event)"
                       />
                       <p class="text-[10px] text-muted-foreground">
-                        {{ endpointProxyNodeId(endpoint) ? '当前使用端点级代理' : '未设置时按提供商代理、系统代理继续兜底' }}
+                        {{ endpointProxyNodeId(endpoint) ? t('endpointForm.endpointProxyActive') : t('endpointForm.endpointProxyFallback') }}
                       </p>
                     </div>
                   </PopoverContent>
@@ -114,7 +114,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7"
-                  :title="endpoint.is_active ? '停用' : '启用'"
+                  :title="endpoint.is_active ? t('endpointForm.disable') : t('endpointForm.enable')"
                   :disabled="togglingEndpointId === endpoint.id"
                   @click="handleToggleEndpoint(endpoint)"
                 >
@@ -126,7 +126,7 @@
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7 hover:text-destructive"
-                  title="删除"
+                  :title="t('endpointForm.delete')"
                   :disabled="deletingEndpointId === endpoint.id"
                   @click="handleDeleteEndpoint(endpoint)"
                 >
@@ -150,10 +150,10 @@
                     />
                   </div>
                   <div class="space-y-1.5">
-                    <Label class="text-xs text-muted-foreground">自定义路径</Label>
+                    <Label class="text-xs text-muted-foreground">{{ t('endpointForm.customPath') }}</Label>
                     <Input
                       :model-value="getDisplayedPath(endpoint)"
-                      :placeholder="getDefaultPath(endpoint.api_format, endpoint.base_url) || '留空使用默认'"
+                      :placeholder="getDefaultPath(endpoint.api_format, endpoint.base_url) || t('endpointForm.defaultPathPlaceholder')"
                       :disabled="isFixedProvider"
                       @update:model-value="(v) => updateEndpointField(endpoint.id, 'path', v)"
                     />
@@ -168,7 +168,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-9 w-9"
-                    title="保存"
+                    :title="t('endpointForm.save')"
                     :disabled="savingEndpointId === endpoint.id"
                     @click="saveEndpoint(endpoint)"
                   >
@@ -178,7 +178,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-9 w-9"
-                    title="撤销"
+                    :title="t('endpointForm.reset')"
                     @click="resetEndpointChanges(endpoint)"
                   >
                     <RotateCcw class="w-4 h-4" />
@@ -202,12 +202,12 @@
                         class="w-4 h-4 transition-transform text-muted-foreground"
                         :class="{ 'rotate-90': endpointRulesExpanded[endpoint.id] }"
                       />
-                      <span class="text-sm font-medium">请求/响应规则</span>
+                      <span class="text-sm font-medium">{{ t('endpointForm.requestResponseRules') }}</span>
                       <Badge
                         variant="secondary"
                         class="text-xs"
                       >
-                        {{ getTotalRulesCount(endpoint) }} 条
+                        {{ t('endpointForm.ruleCount', { count: getTotalRulesCount(endpoint) }) }}
                       </Badge>
                     </button>
                   </CollapsibleTrigger>
@@ -216,7 +216,7 @@
                     v-else
                     class="text-sm text-muted-foreground py-1.5"
                   >
-                    请求/响应规则
+                    {{ t('endpointForm.requestResponseRules') }}
                   </span>
                   <div class="flex-1" />
                   <div class="flex items-center gap-1 shrink-0">
@@ -225,7 +225,7 @@
                       variant="ghost"
                       size="icon"
                       class="h-7 w-7"
-                      title="保存规则"
+                      :title="t('endpointForm.saveRules')"
                       :disabled="savingEndpointId === endpoint.id"
                       @click="saveEndpoint(endpoint)"
                     >
@@ -235,67 +235,67 @@
                       variant="ghost"
                       size="sm"
                       class="h-7 text-xs px-2"
-                      :title="isEndpointRulesJsonMode(endpoint.id) ? '切回表单视图' : '切到 JSON 视图'"
+                      :title="isEndpointRulesJsonMode(endpoint.id) ? t('endpointForm.formView') : t('endpointForm.jsonView')"
                       @click="toggleEndpointRulesJsonMode(endpoint)"
                     >
                       <Code2 class="w-3 h-3 mr-1" />
-                      {{ isEndpointRulesJsonMode(endpoint.id) ? '表单' : 'JSON' }}
+                      {{ isEndpointRulesJsonMode(endpoint.id) ? t('endpointForm.form') : 'JSON' }}
                     </Button>
                     <Button
                       v-if="isEndpointRulesJsonMode(endpoint.id)"
                       variant="ghost"
                       size="sm"
                       class="h-7 px-2 text-xs"
-                      title="格式化 JSON"
+                      :title="t('endpointForm.formatJson')"
                       @click="formatEndpointRulesJson(endpoint.id)"
                     >
                       <AlignLeft class="w-3 h-3 mr-1" />
-                      格式化
+                      {{ t('endpointForm.format') }}
                     </Button>
                     <Button
                       v-if="!isEndpointRulesJsonMode(endpoint.id)"
                       variant="ghost"
                       size="sm"
                       class="h-7 text-xs px-2"
-                      title="添加请求头规则"
+                      :title="t('endpointForm.addHeaderRule')"
                       @click="handleAddEndpointRule(endpoint.id)"
                     >
                       <Plus class="w-3 h-3 mr-1" />
-                      请求头
+                      {{ t('endpointForm.requestHeader') }}
                     </Button>
                     <Button
                       v-if="!isEndpointRulesJsonMode(endpoint.id)"
                       variant="ghost"
                       size="sm"
                       class="h-7 text-xs px-2"
-                      title="添加请求体规则"
+                      :title="t('endpointForm.addBodyRule')"
                       @click="handleAddEndpointBodyRule(endpoint.id)"
                     >
                       <Plus class="w-3 h-3 mr-1" />
-                      请求体
+                      {{ t('endpointForm.requestBody') }}
                     </Button>
                     <Button
                       v-if="!isEndpointRulesJsonMode(endpoint.id)"
                       variant="ghost"
                       size="sm"
                       class="h-7 text-xs px-2"
-                      title="添加响应头规则"
+                      :title="t('endpointForm.addResponseHeaderRule')"
                       @click="handleAddEndpointResponseRule(endpoint.id)"
                     >
                       <Plus class="w-3 h-3 mr-1" />
-                      响应头
+                      {{ t('endpointForm.responseHeader') }}
                     </Button>
                     <Button
                       v-if="isFixedProvider && hasDefaultBodyRules(endpoint.api_format)"
                       variant="ghost"
                       size="sm"
                       class="h-7 text-xs px-2"
-                      title="重置请求体"
+                      :title="t('endpointForm.resetBodyRules')"
                       :disabled="resettingDefaultRulesEndpointId === endpoint.id"
                       @click="handleResetBodyRulesToDefault(endpoint)"
                     >
                       <RotateCcw class="w-3 h-3 mr-1" />
-                      重置请求体
+                      {{ t('endpointForm.resetBodyRules') }}
                     </Button>
                   </div>
                 </div>
@@ -327,7 +327,7 @@
                       class="flex items-center gap-1.5 text-xs text-muted-foreground px-2"
                     >
                       <GripVertical class="w-3.5 h-3.5" />
-                      <span>拖拽左侧手柄可调整规则执行顺序</span>
+                      <span>{{ t('endpointForm.dragHint') }}</span>
                     </div>
                     <!-- 请求头规则列表 - 主题色边框 -->
                     <template
@@ -348,7 +348,7 @@
                         <button
                           type="button"
                           class="h-7 w-6 shrink-0 inline-flex items-center justify-center rounded-sm text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing"
-                          title="拖拽排序"
+                          :title="t('endpointForm.dragSort')"
                           draggable="true"
                           @dragstart="(e) => handleHeaderRuleDragStart(endpoint.id, index, e)"
                           @dragend="() => handleHeaderRuleDragEnd(endpoint.id)"
@@ -357,12 +357,12 @@
                         </button>
                         <span
                           class="text-[10px] font-semibold text-primary shrink-0"
-                          title="请求头"
+                          :title="t('endpointForm.requestHeader')"
                         >H</span>
                         <Switch
                           :model-value="rule.enabled"
                           class="shrink-0 scale-75 origin-center"
-                          :title="rule.enabled ? '已启用，点击禁用这条请求头规则' : '已禁用，点击启用这条请求头规则'"
+                          :title="rule.enabled ? t('endpointForm.disableRule', { type: t('endpointForm.requestHeader') }) : t('endpointForm.enableRule', { type: t('endpointForm.requestHeader') })"
                           @update:model-value="(v: boolean) => updateEndpointRuleEnabled(endpoint.id, index, v)"
                         />
                         <Select
@@ -376,13 +376,13 @@
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="set">
-                              覆写
+                              {{ t('endpointForm.set') }}
                             </SelectItem>
                             <SelectItem value="drop">
-                              删除
+                              {{ t('endpointForm.drop') }}
                             </SelectItem>
                             <SelectItem value="rename">
-                              重命名
+                              {{ t('endpointForm.rename') }}
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -391,7 +391,7 @@
                           size="icon"
                           class="h-7 w-7 shrink-0"
                           :class="rule.condition ? 'text-primary' : ''"
-                          title="条件触发"
+                          :title="t('endpointForm.condition')"
                           @click="toggleEndpointRuleCondition(endpoint.id, index)"
                         >
                           <Filter class="w-3 h-3" />
@@ -399,7 +399,7 @@
                         <template v-if="rule.action === 'set'">
                           <Input
                             :model-value="rule.key"
-                            placeholder="名称"
+                            :placeholder="t('endpointFormExtra.namePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointRuleField(endpoint.id, index, 'key', v)"
@@ -407,7 +407,7 @@
                           <span class="text-muted-foreground text-xs">=</span>
                           <Input
                             :model-value="rule.value"
-                            placeholder="值"
+                            :placeholder="t('endpointFormExtra.valuePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointRuleField(endpoint.id, index, 'value', v)"
@@ -416,7 +416,7 @@
                         <template v-else-if="rule.action === 'drop'">
                           <Input
                             :model-value="rule.key"
-                            placeholder="要删除的名称"
+                            :placeholder="t('endpointFormExtra.nameToDeletePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointRuleField(endpoint.id, index, 'key', v)"
@@ -425,7 +425,7 @@
                         <template v-else-if="rule.action === 'rename'">
                           <Input
                             :model-value="rule.from"
-                            placeholder="原名"
+                            :placeholder="t('endpointFormExtra.oldNamePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointRuleField(endpoint.id, index, 'from', v)"
@@ -433,7 +433,7 @@
                           <span class="text-muted-foreground text-xs">→</span>
                           <Input
                             :model-value="rule.to"
-                            placeholder="新名"
+                            :placeholder="t('endpointFormExtra.newNamePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointRuleField(endpoint.id, index, 'to', v)"
@@ -451,7 +451,7 @@
                       <EndpointConditionEditor
                         v-if="rule.condition"
                         :model-value="rule.condition"
-                        path-hint="请求体字段路径"
+                        :path-hint="t('endpointFormExtra.requestBodyPathHint')"
                         removable
                         @update:model-value="(condition) => updateEndpointRuleCondition(endpoint.id, index, condition)"
                         @remove="clearEndpointRuleCondition(endpoint.id, index)"
@@ -477,7 +477,7 @@
                         <button
                           type="button"
                           class="h-7 w-6 shrink-0 inline-flex items-center justify-center rounded-sm text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing"
-                          title="拖拽排序"
+                          :title="t('endpointForm.dragSort')"
                           draggable="true"
                           @dragstart="(e) => handleResponseRuleDragStart(endpoint.id, index, e)"
                           @dragend="() => handleResponseRuleDragEnd(endpoint.id)"
@@ -486,12 +486,12 @@
                         </button>
                         <span
                           class="text-[10px] font-semibold text-sky-600 dark:text-sky-400 shrink-0"
-                          title="响应头"
+                          :title="t('endpointForm.responseHeader')"
                         >R</span>
                         <Switch
                           :model-value="rule.enabled"
                           class="shrink-0 scale-75 origin-center"
-                          :title="rule.enabled ? '已启用，点击禁用这条响应头规则' : '已禁用，点击启用这条响应头规则'"
+                          :title="rule.enabled ? t('endpointForm.disableRule', { type: t('endpointForm.responseHeader') }) : t('endpointForm.enableRule', { type: t('endpointForm.responseHeader') })"
                           @update:model-value="(v: boolean) => updateEndpointResponseRuleEnabled(endpoint.id, index, v)"
                         />
                         <Select
@@ -505,13 +505,13 @@
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="set">
-                              覆写
+                              {{ t('endpointForm.set') }}
                             </SelectItem>
                             <SelectItem value="drop">
-                              删除
+                              {{ t('endpointForm.drop') }}
                             </SelectItem>
                             <SelectItem value="rename">
-                              重命名
+                              {{ t('endpointForm.rename') }}
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -520,7 +520,7 @@
                           size="icon"
                           class="h-7 w-7 shrink-0"
                           :class="rule.condition ? 'text-primary' : ''"
-                          title="条件触发"
+                          :title="t('endpointForm.condition')"
                           @click="toggleEndpointResponseRuleCondition(endpoint.id, index)"
                         >
                           <Filter class="w-3 h-3" />
@@ -528,7 +528,7 @@
                         <template v-if="rule.action === 'set'">
                           <Input
                             :model-value="rule.key"
-                            placeholder="响应头名称"
+                            :placeholder="t('endpointFormExtra.responseHeaderNamePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointResponseRuleField(endpoint.id, index, 'key', v)"
@@ -536,7 +536,7 @@
                           <span class="text-muted-foreground text-xs">=</span>
                           <Input
                             :model-value="rule.value"
-                            placeholder="值"
+                            :placeholder="t('endpointFormExtra.valuePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointResponseRuleField(endpoint.id, index, 'value', v)"
@@ -545,7 +545,7 @@
                         <template v-else-if="rule.action === 'drop'">
                           <Input
                             :model-value="rule.key"
-                            placeholder="要删除的响应头"
+                            :placeholder="t('endpointFormExtra.responseHeaderToDeletePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointResponseRuleField(endpoint.id, index, 'key', v)"
@@ -554,7 +554,7 @@
                         <template v-else-if="rule.action === 'rename'">
                           <Input
                             :model-value="rule.from"
-                            placeholder="原名"
+                            :placeholder="t('endpointFormExtra.oldNamePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointResponseRuleField(endpoint.id, index, 'from', v)"
@@ -562,7 +562,7 @@
                           <span class="text-muted-foreground text-xs">→</span>
                           <Input
                             :model-value="rule.to"
-                            placeholder="新名"
+                            :placeholder="t('endpointFormExtra.newNamePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointResponseRuleField(endpoint.id, index, 'to', v)"
@@ -580,7 +580,7 @@
                       <EndpointConditionEditor
                         v-if="rule.condition"
                         :model-value="rule.condition"
-                        path-hint="响应体字段路径"
+                        :path-hint="t('endpointFormExtra.responseBodyPathHint')"
                         removable
                         @update:model-value="(condition) => updateEndpointResponseRuleCondition(endpoint.id, index, condition)"
                         @remove="clearEndpointResponseRuleCondition(endpoint.id, index)"
@@ -591,7 +591,7 @@
                       v-if="getEndpointEditBodyRules(endpoint.id).length > 0"
                       class="flex items-center gap-1 text-xs text-muted-foreground px-2"
                     >
-                      <span><code class="bg-muted px-1 rounded">.</code> 嵌套字段 / <code class="bg-muted px-1 rounded">[N]</code> 数组索引 / <code class="bg-muted px-1 rounded">[*]</code> 通配符；值为 JSON 格式</span>
+                      <span><code class="bg-muted px-1 rounded">.</code> {{ t('endpointForm.nestedField') }} / <code class="bg-muted px-1 rounded">[N]</code> {{ t('endpointForm.arrayIndex') }} / <code class="bg-muted px-1 rounded">[*]</code> {{ t('endpointForm.wildcard') }}; {{ t('endpointForm.valueJson') }}</span>
                       <div class="flex-1" />
                       <Popover
                         :open="bodyRuleHelpOpenEndpointId === endpoint.id"
@@ -601,8 +601,8 @@
                           <button
                             type="button"
                             class="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md hover:bg-muted/60"
-                            title="规则说明"
-                            aria-label="规则说明"
+                            :title="t('endpointForm.ruleHelp')"
+                            :aria-label="t('endpointForm.ruleHelp')"
                           >
                             <HelpCircle class="w-3.5 h-3.5 text-muted-foreground/60" />
                           </button>
@@ -616,47 +616,47 @@
                           <div class="text-xs space-y-2">
                             <div>
                               <div class="font-medium mb-0.5">
-                                路径语法
+                                {{ t('endpointForm.pathSyntax') }}
                               </div>
                               <div class="text-muted-foreground">
-                                <code>metadata.user_id</code> 嵌套字段<br>
-                                <code>messages[0].content</code> 数组索引<br>
-                                <code>tools[*].name</code> 通配符（遍历所有元素）<br>
-                                <code>tools[0-4].name</code> 范围（遍历索引 0~4）<br>
-                                <code>config\.v1.key</code> 转义点号
+                                <code>metadata.user_id</code> {{ t('endpointForm.nestedField') }}<br>
+                                <code>messages[0].content</code> {{ t('endpointForm.arrayIndex') }}<br>
+                                <code>tools[*].name</code> {{ t('endpointForm.wildcardAll') }}<br>
+                                <code>tools[0-4].name</code> {{ t('endpointForm.range') }}<br>
+                                <code>config\.v1.key</code> {{ t('endpointForm.escapedDot') }}
                               </div>
                             </div>
                             <div>
                               <div class="font-medium mb-0.5">
-                                值格式 (JSON)
+                                {{ t('endpointForm.valueFormat') }}
                               </div>
                               <div class="text-muted-foreground">
-                                <code>123</code> 数字 / <code>"text"</code> 字符串 / <code>true</code> 布尔<br>
-                                <code>{"k":"v"}</code> 对象 / <code>[1,2]</code> 数组 / <code>null</code><br>
-                                <code v-pre>{{$original}}</code> 引用原值
+                                <code>123</code> {{ t('endpointForm.number') }} / <code>"text"</code> {{ t('endpointForm.string') }} / <code>true</code> {{ t('endpointForm.boolean') }}<br>
+                                <code>{"k":"v"}</code> {{ t('endpointForm.object') }} / <code>[1,2]</code> {{ t('endpointForm.array') }} / <code>null</code><br>
+                                <code v-pre>{{$original}}</code> {{ t('endpointForm.originalValue') }}
                               </div>
                             </div>
                             <div>
                               <div class="font-medium mb-0.5">
-                                条件运算符
+                                {{ t('endpointForm.conditionOperators') }}
                               </div>
                               <div class="text-muted-foreground">
-                                <code>eq</code> <code>neq</code> 等于/不等于<br>
-                                <code>gt</code> <code>lt</code> <code>gte</code> <code>lte</code> 大小比较<br>
-                                <code>starts_with</code> <code>ends_with</code> <code>contains</code> 字符串匹配<br>
-                                <code>matches</code> 正则匹配<br>
-                                <code>exists</code> <code>not_exists</code> 字段存在性<br>
-                                <code>in</code> 在列表中（值填 <code>["a","b"]</code>）<br>
-                                <code>type_is</code> 类型判断（string/number/boolean/array/object/null）<br>
-                                条件路径支持 <code>$item.xxx</code> 引用通配符当前元素<br>
-                                可切换 <code>请求体</code>/<code>请求头</code> 数据源，并支持 <code>ALL</code>/<code>ANY</code> 组合条件
+                                <code>eq</code> <code>neq</code> {{ t('endpointFormExtra.operatorEquality') }}<br>
+                                <code>gt</code> <code>lt</code> <code>gte</code> <code>lte</code> {{ t('endpointFormExtra.operatorComparison') }}<br>
+                                <code>starts_with</code> <code>ends_with</code> <code>contains</code> {{ t('endpointFormExtra.operatorStringMatch') }}<br>
+                                <code>matches</code> {{ t('endpointFormExtra.operatorRegex') }}<br>
+                                <code>exists</code> <code>not_exists</code> {{ t('endpointFormExtra.operatorExistence') }}<br>
+                                <code>in</code> {{ t('endpointFormExtra.operatorIn') }} <code>["a","b"]</code><br>
+                                <code>type_is</code> {{ t('endpointFormExtra.operatorType') }} (string/number/boolean/array/object/null)<br>
+                                {{ t('endpointFormExtra.itemPathHint') }} <code>$item.xxx</code><br>
+                                {{ t('endpointFormExtra.conditionSourceHint') }} <code>{{ t('endpointForm.requestBody') }}</code>/<code>{{ t('endpointForm.requestHeader') }}</code>, <code>ALL</code>/<code>ANY</code>
                               </div>
                             </div>
                             <div class="text-muted-foreground">
-                              规则按顺序执行；条件判断使用客户端原始请求体或原始请求头，不受前面规则修改影响。
+                              {{ t('endpointFormExtra.ruleOrderHint') }}
                             </div>
                             <div class="text-muted-foreground">
-                              条件默认按客户端原始请求体匹配；切到 <code>请求头</code> 时按客户端原始请求头匹配。
+                              {{ t('endpointFormExtra.conditionDefaultHint') }} <code>{{ t('endpointForm.requestHeader') }}</code> {{ t('endpointFormExtra.conditionHeaderHint') }}
                             </div>
                           </div>
                         </PopoverContent>
@@ -682,7 +682,7 @@
                         <button
                           type="button"
                           class="h-7 w-6 shrink-0 inline-flex items-center justify-center rounded-sm text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing"
-                          title="拖拽排序"
+                          :title="t('endpointForm.dragSort')"
                           draggable="true"
                           @dragstart="(e) => handleBodyRuleDragStart(endpoint.id, index, e)"
                           @dragend="() => handleBodyRuleDragEnd(endpoint.id)"
@@ -691,12 +691,12 @@
                         </button>
                         <span
                           class="text-[10px] font-semibold text-muted-foreground shrink-0"
-                          title="请求体"
+                          :title="t('endpointForm.requestBody')"
                         >B</span>
                         <Switch
                           :model-value="rule.enabled"
                           class="shrink-0 scale-75 origin-center"
-                          :title="rule.enabled ? '已启用，点击禁用这条请求体规则' : '已禁用，点击启用这条请求体规则'"
+                          :title="rule.enabled ? t('endpointForm.disableRule', { type: t('endpointForm.requestBody') }) : t('endpointForm.enableRule', { type: t('endpointForm.requestBody') })"
                           @update:model-value="(v: boolean) => updateEndpointBodyRuleEnabled(endpoint.id, index, v)"
                         />
                         <Select
@@ -710,22 +710,22 @@
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="set">
-                              覆写
+                              {{ t('endpointForm.set') }}
                             </SelectItem>
                             <SelectItem value="drop">
-                              删除
+                              {{ t('endpointForm.drop') }}
                             </SelectItem>
                             <SelectItem value="rename">
-                              重命名
+                              {{ t('endpointForm.rename') }}
                             </SelectItem>
                             <SelectItem value="append">
-                              追加
+                              {{ t('endpointForm.append') }}
                             </SelectItem>
                             <SelectItem value="insert">
-                              插入
+                              {{ t('endpointForm.insert') }}
                             </SelectItem>
                             <SelectItem value="regex_replace">
-                              正则替换
+                              {{ t('endpointForm.regexReplace') }}
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -734,7 +734,7 @@
                           size="icon"
                           class="h-7 w-7 shrink-0"
                           :class="rule.condition ? 'text-primary' : ''"
-                          title="条件触发"
+                          :title="t('endpointForm.condition')"
                           @click="toggleBodyRuleCondition(endpoint.id, index)"
                         >
                           <Filter class="w-3 h-3" />
@@ -742,7 +742,7 @@
                         <template v-if="rule.action === 'set'">
                           <Input
                             :model-value="rule.path"
-                            placeholder="字段路径（如 metadata.user_id）"
+                            :placeholder="t('endpointFormExtra.fieldPathExamplePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'path', v)"
@@ -764,7 +764,7 @@
                         <template v-else-if="rule.action === 'drop'">
                           <Input
                             :model-value="rule.path"
-                            placeholder="要删除的字段路径"
+                            :placeholder="t('endpointFormExtra.fieldPathToDeletePlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'path', v)"
@@ -773,7 +773,7 @@
                         <template v-else-if="rule.action === 'rename'">
                           <Input
                             :model-value="rule.from"
-                            placeholder="原路径"
+                            :placeholder="t('endpointFormExtra.oldPathPlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'from', v)"
@@ -781,7 +781,7 @@
                           <span class="text-muted-foreground text-xs">→</span>
                           <Input
                             :model-value="rule.to"
-                            placeholder="新路径"
+                            :placeholder="t('endpointFormExtra.newPathPlaceholder')"
                             size="sm"
                             class="flex-1 min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'to', v)"
@@ -790,7 +790,7 @@
                         <template v-else-if="rule.action === 'append'">
                           <Input
                             :model-value="rule.path"
-                            placeholder="数组路径（如 messages）"
+                            :placeholder="t('endpointFormExtra.arrayPathExamplePlaceholder')"
                             size="sm"
                             class="flex-[2] min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'path', v)"
@@ -798,7 +798,7 @@
                           <span class="text-muted-foreground text-xs">+=</span>
                           <Input
                             :model-value="rule.value"
-                            placeholder="值 (JSON)"
+                            :placeholder="t('endpointFormExtra.jsonValuePlaceholder')"
                             size="sm"
                             class="flex-[3] min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'value', v)"
@@ -812,22 +812,22 @@
                         <template v-else-if="rule.action === 'insert'">
                           <Input
                             :model-value="rule.path"
-                            placeholder="数组路径（如 messages）"
+                            :placeholder="t('endpointFormExtra.arrayPathExamplePlaceholder')"
                             size="sm"
                             class="flex-[2] min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'path', v)"
                           />
                           <Input
                             :model-value="rule.index"
-                            placeholder="位置"
+                            :placeholder="t('endpointFormExtra.positionPlaceholder')"
                             size="sm"
                             class="w-14 h-7 text-xs shrink-0"
-                            title="插入位置（支持负数）"
+                            :title="t('endpointFormExtra.positionHint')"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'index', v)"
                           />
                           <Input
                             :model-value="rule.value"
-                            placeholder="值 (JSON)"
+                            :placeholder="t('endpointFormExtra.jsonValuePlaceholder')"
                             size="sm"
                             class="flex-[3] min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'value', v)"
@@ -841,14 +841,14 @@
                         <template v-else-if="rule.action === 'regex_replace'">
                           <Input
                             :model-value="rule.path"
-                            placeholder="字段路径"
+                            :placeholder="t('endpointFormExtra.fieldPathPlaceholder')"
                             size="sm"
                             class="flex-[2] min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'path', v)"
                           />
                           <Input
                             :model-value="rule.pattern"
-                            placeholder="正则"
+                            :placeholder="t('endpointFormExtra.regexPlaceholder')"
                             size="sm"
                             class="flex-[2] min-w-0 h-7 text-xs font-mono"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'pattern', v)"
@@ -856,7 +856,7 @@
                           <span class="text-muted-foreground text-xs">→</span>
                           <Input
                             :model-value="rule.replacement"
-                            placeholder="替换为"
+                            :placeholder="t('endpointFormExtra.replacementPlaceholder')"
                             size="sm"
                             class="flex-[2] min-w-0 h-7 text-xs"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'replacement', v)"
@@ -866,15 +866,15 @@
                             placeholder="ims"
                             size="sm"
                             class="w-12 h-7 text-xs shrink-0 font-mono"
-                            title="正则标志：i=忽略大小写 m=多行 s=dotall"
+                            :title="t('endpointFormExtra.regexFlagsHint')"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'flags', v)"
                           />
                           <Input
                             :model-value="rule.count"
-                            placeholder="全部"
+                            :placeholder="t('endpointFormExtra.allPlaceholder')"
                             size="sm"
                             class="w-14 h-7 text-xs shrink-0"
-                            title="替换次数；留空=默认全部，0=全部"
+                            :title="t('endpointFormExtra.replaceCountHint')"
                             @update:model-value="(v) => updateEndpointBodyRuleField(endpoint.id, index, 'count', v)"
                           />
                           <CheckCircle
@@ -922,7 +922,7 @@
             @update:open="handleFormatSelectOpen"
           >
             <SelectTrigger class="h-auto w-auto gap-1.5 !border-0 bg-transparent !shadow-none p-0 font-medium rounded-none flex-row-reverse !ring-0 !ring-offset-0 !outline-none [&>svg]:h-4 [&>svg]:w-4 [&>svg]:opacity-70">
-              <SelectValue placeholder="选择格式..." />
+              <SelectValue :placeholder="t('endpointForm.chooseFormat')" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem
@@ -941,7 +941,7 @@
             :disabled="!newEndpoint.api_format || (!newEndpoint.base_url?.trim() && !provider?.website?.trim()) || addingEndpoint"
             @click="handleAddEndpoint"
           >
-            添加
+            {{ t('endpointForm.add') }}
           </Button>
         </div>
         <!-- 卡片内容：URL 配置 -->
@@ -957,11 +957,11 @@
                 />
               </div>
               <div class="space-y-1.5">
-                <Label class="text-xs text-muted-foreground">自定义路径</Label>
+                <Label class="text-xs text-muted-foreground">{{ t('endpointForm.customPath') }}</Label>
                 <Input
                   v-model="newEndpoint.custom_path"
                   size="sm"
-                  :placeholder="newEndpointDefaultPath || '留空使用默认'"
+                  :placeholder="newEndpointDefaultPath || t('endpointForm.defaultPathPlaceholder')"
                 />
               </div>
             </div>
@@ -974,7 +974,7 @@
         v-if="localEndpoints.length === 0 && availableFormats.length === 0"
         class="text-center py-8 text-muted-foreground"
       >
-        <p>所有 API 格式都已配置</p>
+        <p>{{ t('endpointForm.allConfigured') }}</p>
       </div>
     </div>
 
@@ -983,7 +983,7 @@
         variant="outline"
         @click="handleClose"
       >
-        关闭
+        {{ t('endpointForm.close') }}
       </Button>
     </template>
   </Dialog>
@@ -991,10 +991,10 @@
   <!-- 删除端点确认弹窗 -->
   <AlertDialog
     :model-value="deleteConfirmOpen"
-    title="删除端点"
+    :title="t('endpointForm.deleteTitle')"
     :description="deleteConfirmDescription"
-    confirm-text="删除"
-    cancel-text="取消"
+    :confirm-text="t('endpointForm.delete')"
+    :cancel-text="t('endpointForm.cancel')"
     type="danger"
     @update:model-value="deleteConfirmOpen = $event"
     @confirm="confirmDeleteEndpoint"
@@ -1004,6 +1004,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Dialog,
   Button,
@@ -1055,6 +1056,8 @@ import {
   type EditableConditionNode,
   validateEditableCondition,
 } from './endpoint-rule-condition'
+
+const { t } = useI18n()
 
 // 编辑用的规则类型（统一的可编辑结构）
 interface EditableRule {
@@ -1123,10 +1126,10 @@ const isEndpointFormatConversionDisabled = computed(() => {
 // 获取禁用提示
 const formatConversionDisabledTooltip = computed(() => {
   if (props.systemFormatConversionEnabled) {
-    return '请先关闭系统级开关'
+    return t('endpointFormExtra.closeSystemFirst')
   }
   if (props.providerFormatConversionEnabled) {
-    return '请先关闭提供商级开关'
+    return t('endpointFormExtra.closeProviderFirst')
   }
   return ''
 })
@@ -1469,65 +1472,65 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 function readJsonRulesArray(root: Record<string, unknown>, key: keyof EndpointRulesJsonPayload, label: string): { value: unknown[]; error: string | null } {
   const raw = root[key]
   if (raw === undefined || raw === null) return { value: [], error: null }
-  if (!Array.isArray(raw)) return { value: [], error: `${label} 必须是数组或 null` }
+  if (!Array.isArray(raw)) return { value: [], error: t('endpointFormExtra.jsonArrayOrNull', { label }) }
   return { value: raw, error: null }
 }
 
 function validateJsonCondition(rule: Record<string, unknown>, label: string, index: number): string | null {
   const raw = rule.condition
   if (raw === undefined || raw === null) return null
-  if (!isJsonObject(raw)) return `${label}第 ${index + 1} 条：condition 必须是对象`
-  const shapeError = validateJsonConditionShape(raw, `${label}第 ${index + 1} 条：condition`)
+  if (!isJsonObject(raw)) return t('endpointFormExtra.conditionObjectError', { label, index: index + 1 })
+  const shapeError = validateJsonConditionShape(raw, t('endpointFormExtra.ruleFieldLabel', { label, index: index + 1, key: 'condition' }))
   if (shapeError) return shapeError
   const editable = conditionToEditable(raw as unknown as BodyRule['condition'])
   const err = validateEditableCondition(editable)
-  return err ? `${label}第 ${index + 1} 条：${err}` : null
+  return err ? t('endpointFormExtra.ruleErrorWithMessage', { label, index: index + 1, message: err }) : null
 }
 
 function validateJsonConditionShape(condition: Record<string, unknown>, label: string): string | null {
   if (Object.prototype.hasOwnProperty.call(condition, 'all')) {
-    if (!Array.isArray(condition.all)) return `${label}.all 必须是数组`
+    if (!Array.isArray(condition.all)) return t('endpointFormExtra.conditionArrayError', { label: `${label}.all` })
     for (let i = 0; i < condition.all.length; i++) {
       const child = condition.all[i]
-      if (!isJsonObject(child)) return `${label}.all[${i}] 必须是对象`
+      if (!isJsonObject(child)) return t('endpointFormExtra.conditionObjectPathError', { label: `${label}.all[${i}]` })
       const err = validateJsonConditionShape(child, `${label}.all[${i}]`)
       if (err) return err
     }
     return null
   }
   if (Object.prototype.hasOwnProperty.call(condition, 'any')) {
-    if (!Array.isArray(condition.any)) return `${label}.any 必须是数组`
+    if (!Array.isArray(condition.any)) return t('endpointFormExtra.conditionArrayError', { label: `${label}.any` })
     for (let i = 0; i < condition.any.length; i++) {
       const child = condition.any[i]
-      if (!isJsonObject(child)) return `${label}.any[${i}] 必须是对象`
+      if (!isJsonObject(child)) return t('endpointFormExtra.conditionObjectPathError', { label: `${label}.any[${i}]` })
       const err = validateJsonConditionShape(child, `${label}.any[${i}]`)
       if (err) return err
     }
     return null
   }
 
-  if (typeof condition.path !== 'string') return `${label}.path 必须是字符串`
+  if (typeof condition.path !== 'string') return t('endpointFormExtra.conditionStringError', { label: `${label}.path` })
   if (typeof condition.op !== 'string' || !CONDITION_JSON_OPS.has(condition.op)) {
-    return `${label}.op 无效`
+    return t('endpointFormExtra.conditionInvalidError', { label: `${label}.op` })
   }
   if (condition.source !== undefined && (typeof condition.source !== 'string' || !CONDITION_JSON_SOURCES.has(condition.source))) {
-    return `${label}.source 无效`
+    return t('endpointFormExtra.conditionInvalidError', { label: `${label}.source` })
   }
   return null
 }
 
 function requireJsonString(rule: Record<string, unknown>, key: string, label: string, index: number): string | null {
-  return typeof rule[key] === 'string' ? null : `${label}第 ${index + 1} 条：${key} 必须是字符串`
+  return typeof rule[key] === 'string' ? null : t('endpointFormExtra.ruleStringError', { label, index: index + 1, key })
 }
 
 function validateHeaderRuleJson(rule: unknown, label: string, index: number): string | null {
-  if (!isJsonObject(rule)) return `${label}第 ${index + 1} 条必须是对象`
+  if (!isJsonObject(rule)) return t('endpointFormExtra.ruleObjectError', { label, index: index + 1 })
   if (rule.enabled !== undefined && typeof rule.enabled !== 'boolean') {
-    return `${label}第 ${index + 1} 条：enabled 必须是布尔值`
+    return t('endpointFormExtra.ruleBooleanError', { label, index: index + 1, key: 'enabled' })
   }
   const action = rule.action
   if (action !== 'set' && action !== 'drop' && action !== 'rename') {
-    return `${label}第 ${index + 1} 条：action 必须是 set/drop/rename`
+    return t('endpointFormExtra.headerActionError', { label, index: index + 1 })
   }
   if (action === 'set') {
     return requireJsonString(rule, 'key', label, index)
@@ -1544,18 +1547,18 @@ function validateHeaderRuleJson(rule: unknown, label: string, index: number): st
 }
 
 function validateBodyRuleJson(rule: unknown, label: string, index: number): string | null {
-  if (!isJsonObject(rule)) return `${label}第 ${index + 1} 条必须是对象`
+  if (!isJsonObject(rule)) return t('endpointFormExtra.ruleObjectError', { label, index: index + 1 })
   if (rule.enabled !== undefined && typeof rule.enabled !== 'boolean') {
-    return `${label}第 ${index + 1} 条：enabled 必须是布尔值`
+    return t('endpointFormExtra.ruleBooleanError', { label, index: index + 1, key: 'enabled' })
   }
   const action = typeof rule.action === 'string' ? rule.action : ''
   if (!BODY_RULE_JSON_ACTIONS.has(action)) {
-    return `${label}第 ${index + 1} 条：action 无效`
+    return t('endpointFormExtra.ruleInvalidError', { label, index: index + 1, key: 'action' })
   }
 
   if (action === 'set' || action === 'append') {
     return requireJsonString(rule, 'path', label, index)
-      || (Object.prototype.hasOwnProperty.call(rule, 'value') ? null : `${label}第 ${index + 1} 条：value 不能为空`)
+      || (Object.prototype.hasOwnProperty.call(rule, 'value') ? null : t('endpointFormExtra.ruleRequiredError', { label, index: index + 1, key: 'value' }))
       || validateJsonCondition(rule, label, index)
   }
   if (action === 'drop') {
@@ -1569,19 +1572,19 @@ function validateBodyRuleJson(rule: unknown, label: string, index: number): stri
   }
   if (action === 'insert') {
     if (requireJsonString(rule, 'path', label, index)) return requireJsonString(rule, 'path', label, index)
-    if (!Number.isInteger(rule.index)) return `${label}第 ${index + 1} 条：index 必须是整数`
-    if (!Object.prototype.hasOwnProperty.call(rule, 'value')) return `${label}第 ${index + 1} 条：value 不能为空`
+    if (!Number.isInteger(rule.index)) return t('endpointFormExtra.ruleIntegerError', { label, index: index + 1, key: 'index' })
+    if (!Object.prototype.hasOwnProperty.call(rule, 'value')) return t('endpointFormExtra.ruleRequiredError', { label, index: index + 1, key: 'value' })
     return validateJsonCondition(rule, label, index)
   }
   if (action === 'regex_replace') {
     if (requireJsonString(rule, 'path', label, index)) return requireJsonString(rule, 'path', label, index)
     if (requireJsonString(rule, 'pattern', label, index)) return requireJsonString(rule, 'pattern', label, index)
-    if (typeof rule.replacement !== 'string') return `${label}第 ${index + 1} 条：replacement 必须是字符串`
-    if (rule.flags !== undefined && typeof rule.flags !== 'string') return `${label}第 ${index + 1} 条：flags 必须是字符串`
-    if (rule.count !== undefined && !Number.isInteger(rule.count)) return `${label}第 ${index + 1} 条：count 必须是整数`
+    if (typeof rule.replacement !== 'string') return t('endpointFormExtra.ruleStringError', { label, index: index + 1, key: 'replacement' })
+    if (rule.flags !== undefined && typeof rule.flags !== 'string') return t('endpointFormExtra.ruleStringError', { label, index: index + 1, key: 'flags' })
+    if (rule.count !== undefined && !Number.isInteger(rule.count)) return t('endpointFormExtra.ruleIntegerError', { label, index: index + 1, key: 'count' })
     return validateJsonCondition(rule, label, index)
   }
-  return `${label}第 ${index + 1} 条：action 无效`
+  return t('endpointFormExtra.ruleInvalidError', { label, index: index + 1, key: 'action' })
 }
 
 function parseEndpointRulesJsonDraft(draft: string): { value: EndpointRulesJsonPayload | null; error: string | null } {
@@ -1594,9 +1597,9 @@ function parseEndpointRulesJsonDraft(draft: string): { value: EndpointRulesJsonP
   try {
     parsed = JSON.parse(raw)
   } catch (error: unknown) {
-    return { value: null, error: error instanceof Error ? error.message : 'JSON 格式无效' }
+    return { value: null, error: error instanceof Error ? error.message : t('endpointFormExtra.invalidJson') }
   }
-  if (!isJsonObject(parsed)) return { value: null, error: '规则 JSON 必须是对象' }
+  if (!isJsonObject(parsed)) return { value: null, error: t('endpointFormExtra.rulesJsonObject') }
 
   const header = readJsonRulesArray(parsed, 'header_rules', 'header_rules')
   if (header.error) return { value: null, error: header.error }
@@ -1636,14 +1639,14 @@ function applyEndpointRulesJsonDraft(
   const parsed = parseEndpointRulesJsonDraft(endpointRulesJsonDraft.value[endpointId] ?? '')
   if (!parsed.value) {
     endpointRulesJsonError.value[endpointId] = parsed.error
-    if (notifyError) showError(parsed.error || '规则 JSON 无效')
+    if (notifyError) showError(parsed.error || t('endpointForm.invalidRulesJson'))
     return false
   }
 
   const state = ensureEndpointEditState(endpointId)
   if (!state) {
-    endpointRulesJsonError.value[endpointId] = '端点编辑状态不可用'
-    if (notifyError) showError('端点编辑状态不可用')
+    endpointRulesJsonError.value[endpointId] = t('endpointForm.editStateUnavailable')
+    if (notifyError) showError(t('endpointForm.editStateUnavailable'))
     return false
   }
 
@@ -1670,7 +1673,7 @@ function applyEndpointRulesJsonDraft(
   endpointRulesJsonDraft.value[endpointId] = stringifyEndpointRulesJsonPayload(parsed.value)
   endpointRulesJsonError.value[endpointId] = null
   endpointRulesJsonDirty.value[endpointId] = false
-  if (options.notify !== false) success('JSON 规则已应用')
+  if (options.notify !== false) success(t('endpointForm.jsonRulesApplied'))
   return true
 }
 
@@ -1801,7 +1804,7 @@ const availableFormats = computed(() => {
 const deleteConfirmDescription = computed(() => {
   if (!endpointToDelete.value) return ''
   const formatLabel = formatApiFormat(endpointToDelete.value.api_format)
-  return `确定要删除 ${formatLabel} 端点吗？关联密钥将移除对该 API 格式的支持。`
+  return t('endpointFormExtra.deleteConfirm', { format: formatLabel })
 })
 
 function defaultBodyRulesCacheKey(apiFormat: string): string {
@@ -1886,14 +1889,16 @@ function endpointProxyNodeId(endpoint: ProviderEndpoint): string {
 
 function getEndpointProxyNodeName(endpoint: ProviderEndpoint): string {
   const nodeId = endpointProxyNodeId(endpoint)
-  if (!nodeId) return '未知节点'
+  if (!nodeId) return t('endpointFormExtra.unknownNode')
   const node = proxyNodesStore.nodes.find(n => n.id === nodeId)
   return node ? node.name : `${nodeId.slice(0, 8)}...`
 }
 
 function getEndpointProxyTitle(endpoint: ProviderEndpoint): string {
   const nodeId = endpointProxyNodeId(endpoint)
-  return nodeId ? `端点代理: ${getEndpointProxyNodeName(endpoint)}` : '设置端点代理节点'
+  return nodeId
+    ? t('endpointFormExtra.endpointProxyLabel', { name: getEndpointProxyNodeName(endpoint) })
+    : t('endpointFormExtra.setEndpointProxy')
 }
 
 function handleEndpointProxyPopoverToggle(endpointId: string, open: boolean) {
@@ -1920,10 +1925,10 @@ async function setEndpointProxy(endpoint: ProviderEndpoint, nodeId: string) {
     })
     replaceLocalEndpoint(updated)
     endpointProxyPopoverOpen.value[endpoint.id] = false
-    success('端点代理已更新')
+    success(t('endpointForm.proxyUpdated'))
     emit('endpointUpdated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '更新代理失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.proxyUpdateFailed')), t('endpointForm.error'))
   } finally {
     savingEndpointId.value = null
   }
@@ -1935,10 +1940,10 @@ async function clearEndpointProxy(endpoint: ProviderEndpoint) {
     const updated = await updateEndpoint(endpoint.id, { proxy: null })
     replaceLocalEndpoint(updated)
     endpointProxyPopoverOpen.value[endpoint.id] = false
-    success('端点代理已清除')
+    success(t('endpointForm.proxyCleared'))
     emit('endpointUpdated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '清除代理失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.proxyClearFailed')), t('endpointForm.error'))
   } finally {
     savingEndpointId.value = null
   }
@@ -2288,7 +2293,7 @@ function validateRuleKeyForEndpoint(endpointId: string, key: string, index: numb
   if (!trimmedKey) return null
 
   if (RESERVED_HEADERS.has(trimmedKey)) {
-    return `"${key}" 是系统保留的请求头`
+    return t('endpointFormExtra.reservedRequestHeader', { name: key })
   }
 
   const rules = getEndpointEditRules(endpointId)
@@ -2301,7 +2306,7 @@ function validateRuleKeyForEndpoint(endpointId: string, key: string, index: numb
     )
   )
   if (duplicate >= 0) {
-    return '请求头名称重复'
+    return t('endpointFormExtra.duplicateRequestHeader')
   }
 
   return null
@@ -2322,7 +2327,7 @@ function validateRenameFromForEndpoint(endpointId: string, from: string, index: 
        (r.action === 'rename' && r.from.trim().toLowerCase() === trimmedFrom))
   )
   if (duplicate >= 0) {
-    return '该请求头已被其他规则处理'
+    return t('endpointFormExtra.requestHeaderAlreadyHandled')
   }
 
   return null
@@ -2334,7 +2339,7 @@ function validateRenameToForEndpoint(endpointId: string, to: string, index: numb
   if (!trimmedTo) return null
 
   if (RESERVED_HEADERS.has(trimmedTo)) {
-    return `"${to}" 是系统保留的请求头`
+    return t('endpointFormExtra.reservedRequestHeader', { name: to })
   }
 
   const rules = getEndpointEditRules(endpointId)
@@ -2346,7 +2351,7 @@ function validateRenameToForEndpoint(endpointId: string, to: string, index: numb
        (r.action === 'rename' && r.to.trim().toLowerCase() === trimmedTo))
   )
   if (duplicate >= 0) {
-    return '请求头名称重复'
+    return t('endpointFormExtra.duplicateRequestHeader')
   }
 
   return null
@@ -2475,13 +2480,13 @@ function validateBodyRulePathForEndpoint(endpointId: string, path: string, index
   const dotPart = raw.includes('[') ? raw.slice(0, raw.indexOf('[')) : raw
   const parts = dotPart ? parseBodyRulePathParts(dotPart) : [raw.split('[')[0] || raw]
   if (!parts) {
-    return '路径格式无效'
+    return t('endpointFormExtra.invalidPath')
   }
 
   // 提取顶层 key（去除数组索引部分）
   const topKey = (parts[0] || '').trim().toLowerCase()
   if (RESERVED_BODY_FIELDS.has(topKey)) {
-    return `"${parts[0]}" 是系统保留的顶层字段`
+    return t('endpointFormExtra.reservedTopLevelField', { name: parts[0] })
   }
 
   const normalizedPath = raw.toLowerCase()
@@ -2497,7 +2502,7 @@ function validateBodyRulePathForEndpoint(endpointId: string, path: string, index
     )
   )
   if (duplicate >= 0) {
-    return '字段路径重复'
+    return t('endpointFormExtra.duplicateFieldPath')
   }
 
   return null
@@ -2510,12 +2515,12 @@ function validateBodyRenameFromForEndpoint(endpointId: string, from: string, ind
 
   const parts = parseBodyRulePathParts(raw)
   if (!parts) {
-    return '路径格式无效（不允许 .a / a. / a..b）'
+    return t('endpointFormExtra.invalidPathDetailed')
   }
 
   const topKey = (parts[0] || '').trim().toLowerCase()
   if (RESERVED_BODY_FIELDS.has(topKey)) {
-    return `"${parts[0]}" 是系统保留的顶层字段`
+    return t('endpointFormExtra.reservedTopLevelField', { name: parts[0] })
   }
 
   const normalizedFrom = raw.toLowerCase()
@@ -2530,7 +2535,7 @@ function validateBodyRenameFromForEndpoint(endpointId: string, from: string, ind
        (r.action === 'rename' && r.from.trim().toLowerCase() === normalizedFrom))
   )
   if (duplicate >= 0) {
-    return '该路径已被其他规则处理'
+    return t('endpointFormExtra.pathAlreadyHandled')
   }
 
   return null
@@ -2543,12 +2548,12 @@ function validateBodyRenameToForEndpoint(endpointId: string, to: string, index: 
 
   const parts = parseBodyRulePathParts(raw)
   if (!parts) {
-    return '路径格式无效（不允许 .a / a. / a..b）'
+    return t('endpointFormExtra.invalidPathDetailed')
   }
 
   const topKey = (parts[0] || '').trim().toLowerCase()
   if (RESERVED_BODY_FIELDS.has(topKey)) {
-    return `"${parts[0]}" 是系统保留的顶层字段`
+    return t('endpointFormExtra.reservedTopLevelField', { name: parts[0] })
   }
 
   const normalizedTo = raw.toLowerCase()
@@ -2562,7 +2567,7 @@ function validateBodyRenameToForEndpoint(endpointId: string, to: string, index: 
        (r.action === 'rename' && r.to.trim().toLowerCase() === normalizedTo))
   )
   if (duplicate >= 0) {
-    return '字段路径重复'
+    return t('endpointFormExtra.duplicateFieldPath')
   }
 
   return null
@@ -2572,12 +2577,12 @@ function validateBodySetValue(rule: EditableBodyRule): string | null {
   if (rule.action !== 'set' && rule.action !== 'append' && rule.action !== 'insert') return null
 
   const raw = rule.value.trim()
-  if (!raw) return '值不能为空'
+  if (!raw) return t('endpointFormExtra.valueRequired')
   try {
     JSON.parse(prepareValueForJsonParse(raw))
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    return `JSON 格式错误：${msg}`
+    return t('endpointFormExtra.jsonFormatError', { message: msg })
   }
   return null
 }
@@ -2619,12 +2624,12 @@ function getRegexPatternValidation(rule: EditableBodyRule): boolean | null {
 // 获取正则验证提示
 function getRegexPatternValidationTip(rule: EditableBodyRule): string {
   const validation = getRegexPatternValidation(rule)
-  if (validation === null) return '输入正则表达式'
-  if (validation === true) return '有效的正则表达式'
+  if (validation === null) return t('endpointFormExtra.enterRegex')
+  if (validation === true) return t('endpointFormExtra.validRegex')
   try {
     new RegExp(rule.pattern.trim())
     // 正则有效但 flags 无效
-    return '无效的 flags（仅允许 i/m/s）'
+    return t('endpointFormExtra.invalidRegexFlags')
   } catch (err: unknown) {
     return err instanceof Error ? err.message : String(err)
   }
@@ -2633,11 +2638,11 @@ function getRegexPatternValidationTip(rule: EditableBodyRule): string {
 // 获取验证提示
 function getBodySetValueValidationTip(rule: EditableBodyRule): string {
   const validation = getBodySetValueValidation(rule)
-  if (validation === null) return '点击验证 JSON'
+  if (validation === null) return t('endpointFormExtra.validateJson')
   if (validation === true) {
     const parsed = restoreOriginalPlaceholder(JSON.parse(prepareValueForJsonParse(rule.value.trim())))
-    const type = Array.isArray(parsed) ? '数组' : typeof parsed === 'object' && parsed !== null ? '对象' : typeof parsed === 'string' ? '字符串' : typeof parsed === 'number' ? '数字' : typeof parsed === 'boolean' ? '布尔' : 'null'
-    return `有效的 JSON (${type})`
+    const type = Array.isArray(parsed) ? t('endpointForm.array') : typeof parsed === 'object' && parsed !== null ? t('endpointForm.object') : typeof parsed === 'string' ? t('endpointForm.string') : typeof parsed === 'number' ? t('endpointForm.number') : typeof parsed === 'boolean' ? t('endpointForm.boolean') : 'null'
+    return t('endpointFormExtra.validJson', { type })
   }
   try {
     JSON.parse(prepareValueForJsonParse(rule.value.trim()))
@@ -2700,43 +2705,43 @@ function getTotalRulesCount(endpoint: ProviderEndpoint): number {
 // 格式化请求头规则的显示标签
 function _formatHeaderRuleLabel(rule: EditableRule): string {
   if (rule.action === 'set') {
-    if (!rule.key) return '(未设置)'
+    if (!rule.key) return t('endpointFormExtra.notSet')
     return `${rule.key}=${rule.value || '...'}`
   } else if (rule.action === 'drop') {
-    if (!rule.key) return '(未设置)'
+    if (!rule.key) return t('endpointFormExtra.notSet')
     return `-${rule.key}`
   } else if (rule.action === 'rename') {
-    if (!rule.from || !rule.to) return '(未设置)'
+    if (!rule.from || !rule.to) return t('endpointFormExtra.notSet')
     return `${rule.from}→${rule.to}`
   }
-  return '(未知)'
+  return t('endpointFormExtra.unknown')
 }
 
 // 格式化请求体规则的显示标签
 function _formatBodyRuleLabel(rule: EditableBodyRule): string {
   if (rule.action === 'set') {
-    if (!rule.path) return '(未设置)'
+    if (!rule.path) return t('endpointFormExtra.notSet')
     return `${rule.path}=${rule.value || '...'}`
   } else if (rule.action === 'drop') {
-    if (!rule.path) return '(未设置)'
+    if (!rule.path) return t('endpointFormExtra.notSet')
     return `-${rule.path}`
   } else if (rule.action === 'rename') {
-    if (!rule.from || !rule.to) return '(未设置)'
+    if (!rule.from || !rule.to) return t('endpointFormExtra.notSet')
     return `${rule.from}→${rule.to}`
   } else if (rule.action === 'append') {
-    if (!rule.path) return '(未设置)'
+    if (!rule.path) return t('endpointFormExtra.notSet')
     return `${rule.path}[]+=${rule.value || '...'}`
   } else if (rule.action === 'insert') {
-    if (!rule.path) return '(未设置)'
-    const idx = rule.index?.trim() || '末尾'
+    if (!rule.path) return t('endpointFormExtra.notSet')
+    const idx = rule.index?.trim() || t('endpointFormExtra.endPosition')
     return `${rule.path}[${idx}]+=${rule.value || '...'}`
   } else if (rule.action === 'regex_replace') {
-    if (!rule.path || !rule.pattern) return '(未设置)'
+    if (!rule.path || !rule.pattern) return t('endpointFormExtra.notSet')
     const flags = rule.flags.trim()
     const count = rule.count.trim()
     return `${rule.path}: s/${rule.pattern}/${rule.replacement || ''}/${flags}${count ? ` ×${count}` : ''}`
   }
-  return '(未知)'
+  return t('endpointFormExtra.unknown')
 }
 
 // 检查端点请求体规则是否有修改
@@ -2828,7 +2833,7 @@ function getBodyValidationErrorForEndpoint(endpointId: string): string | null {
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
     if (!rule.enabled) continue
-    const prefix = `第 ${i + 1} 条请求体规则：`
+    const prefix = t('endpointFormExtra.bodyRulePrefix', { index: i + 1 })
 
     if (rule.action === 'set' || rule.action === 'drop') {
       const pathErr = validateBodyRulePathForEndpoint(endpointId, rule.path, i)
@@ -2851,29 +2856,29 @@ function getBodyValidationErrorForEndpoint(endpointId: string): string | null {
       const pathErr = validateBodyRulePathForEndpoint(endpointId, rule.path, i)
       if (pathErr) return `${prefix}${pathErr}`
       const indexStr = rule.index.trim()
-      if (!indexStr) return `${prefix}插入位置不能为空`
-      if (!isStrictIntegerString(indexStr)) return `${prefix}位置必须为整数`
+      if (!indexStr) return `${prefix}${t('endpointFormExtra.insertPositionRequired')}`
+      if (!isStrictIntegerString(indexStr)) return `${prefix}${t('endpointFormExtra.positionInteger')}`
       const valueErr = validateBodySetValue(rule)
       if (valueErr) return `${prefix}${valueErr}`
     } else if (rule.action === 'regex_replace') {
       const pathErr = validateBodyRulePathForEndpoint(endpointId, rule.path, i)
       if (pathErr) return `${prefix}${pathErr}`
-      if (!rule.pattern.trim()) return `${prefix}正则表达式不能为空`
+      if (!rule.pattern.trim()) return `${prefix}${t('endpointFormExtra.regexRequired')}`
       try {
         new RegExp(rule.pattern.trim())
       } catch (err: unknown) {
-        return `${prefix}正则表达式无效：${err instanceof Error ? err.message : String(err)}`
+        return `${prefix}${t('endpointFormExtra.regexInvalid', { message: err instanceof Error ? err.message : String(err) })}`
       }
       const flags = rule.flags.trim()
       if (flags) {
         const validFlags = new Set(['i', 'm', 's'])
         for (const f of flags) {
-          if (!validFlags.has(f)) return `${prefix}flags 仅允许 i/m/s，非法字符: ${f}`
+          if (!validFlags.has(f)) return `${prefix}${t('endpointFormExtra.flagsInvalidChar', { char: f })}`
         }
       }
       const count = rule.count.trim()
       if (count) {
-        if (!isStrictNonNegativeIntegerString(count)) return `${prefix}替换次数必须是大于等于 0 的整数`
+        if (!isStrictNonNegativeIntegerString(count)) return `${prefix}${t('endpointFormExtra.replaceCountInteger')}`
       }
     }
 
@@ -2965,7 +2970,7 @@ async function handleResetBodyRulesToDefault(endpoint: ProviderEndpoint) {
   try {
     const defaultRules = await loadDefaultBodyRulesForFormat(endpoint.api_format, true)
     if (!defaultRules.length) {
-      showError('该端点没有默认请求体规则')
+      showError(t('endpointForm.noDefaultBodyRules'))
       return
     }
 
@@ -2986,9 +2991,9 @@ async function handleResetBodyRulesToDefault(endpoint: ProviderEndpoint) {
     if (isEndpointRulesJsonMode(endpoint.id)) {
       refreshEndpointRulesJsonDraft(endpoint.id)
     }
-    success('已重置请求体为默认规则，请点击保存生效')
+    success(t('endpointForm.bodyRulesReset'))
   } catch (error: unknown) {
-    showError(parseApiError(error, '重置失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.resetFailed')), t('endpointForm.error'))
   } finally {
     resettingDefaultRulesEndpointId.value = null
   }
@@ -3028,7 +3033,7 @@ function getHeaderValidationErrorForEndpoint(endpointId: string): string | null 
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
     if (!rule.enabled) continue
-    const prefix = `第 ${i + 1} 条请求头规则：`
+    const prefix = t('endpointFormExtra.headerRulePrefix', { index: i + 1 })
     if (rule.action === 'set' || rule.action === 'drop') {
       const err = validateRuleKeyForEndpoint(endpointId, rule.key, i)
       if (err) return `${prefix}${err}`
@@ -3049,7 +3054,7 @@ function validateResponseHeaderNameForEndpoint(endpointId: string, name: string,
   if (!trimmedName) return null
 
   if ((field === 'key' || field === 'to') && RESERVED_RESPONSE_HEADERS.has(trimmedName)) {
-    return `"${name}" 是系统保留的响应头`
+    return t('endpointFormExtra.reservedResponseHeader', { name })
   }
 
   const rules = getEndpointEditResponseRules(endpointId)
@@ -3064,7 +3069,7 @@ function validateResponseHeaderNameForEndpoint(endpointId: string, name: string,
     )
   )
   if (duplicate >= 0) {
-    return field === 'from' ? '该响应头已被其他规则处理' : '响应头名称重复'
+    return field === 'from' ? t('endpointFormExtra.responseHeaderAlreadyHandled') : t('endpointFormExtra.duplicateResponseHeader')
   }
 
   return null
@@ -3075,7 +3080,7 @@ function getResponseHeaderValidationErrorForEndpoint(endpointId: string): string
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
     if (!rule.enabled) continue
-    const prefix = `第 ${i + 1} 条响应头规则：`
+    const prefix = t('endpointFormExtra.responseHeaderRulePrefix', { index: i + 1 })
     if (rule.action === 'set' || rule.action === 'drop') {
       const err = validateResponseHeaderNameForEndpoint(endpointId, rule.key, i, 'key')
       if (err) return `${prefix}${err}`
@@ -3221,10 +3226,10 @@ async function saveEndpoint(endpoint: ProviderEndpoint) {
     if (Object.keys(payload).length === 0) return
 
     await updateEndpoint(endpoint.id, payload)
-    success('端点已更新')
+    success(t('endpointForm.updated'))
     emit('endpointUpdated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '更新失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.updateFailed')), t('endpointForm.error'))
   } finally {
     savingEndpointId.value = null
   }
@@ -3240,10 +3245,10 @@ async function handleToggleFormatConversion(endpoint: ProviderEndpoint) {
     await updateEndpoint(endpoint.id, {
       format_acceptance_config: newEnabled ? { enabled: true } : null,
     })
-    success(newEnabled ? '已启用格式转换' : '已关闭格式转换')
+    success(newEnabled ? t('endpointForm.conversionEnabled') : t('endpointForm.conversionDisabled'))
     emit('endpointUpdated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '操作失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.operationFailed')), t('endpointForm.error'))
   } finally {
     togglingFormatEndpointId.value = null
   }
@@ -3275,11 +3280,11 @@ function getUpstreamStreamButtonClass(endpoint: ProviderEndpoint): string {
 
 // 获取上游流式按钮的提示文字
 function getUpstreamStreamTooltip(endpoint: ProviderEndpoint): string {
-  if (isUpstreamStreamPolicyLocked(endpoint)) return '固定流式（Codex OpenAI Responses，已锁定）'
+  if (isUpstreamStreamPolicyLocked(endpoint)) return t('endpointFormExtra.streamLocked')
   const policy = getCurrentUpstreamStreamPolicy(endpoint)
-  if (policy === 'force_stream') return '固定流式（点击切换为固定非流）'
-  if (policy === 'force_non_stream') return '固定非流（点击切换为跟随请求）'
-  return '跟随请求（点击切换为固定流式）'
+  if (policy === 'force_stream') return t('endpointFormExtra.forceStreamHint')
+  if (policy === 'force_non_stream') return t('endpointFormExtra.forceNonStreamHint')
+  return t('endpointFormExtra.followRequestHint')
 }
 
 // 循环切换上游流式策略并直接保存
@@ -3293,13 +3298,13 @@ async function handleCycleUpstreamStream(endpoint: ProviderEndpoint) {
   // 循环：auto -> force_stream -> force_non_stream -> auto
   if (currentPolicy === 'auto') {
     nextPolicy = 'force_stream'
-    nextLabel = '固定流式'
+    nextLabel = t('endpointFormExtra.forceStream')
   } else if (currentPolicy === 'force_stream') {
     nextPolicy = 'force_non_stream'
-    nextLabel = '固定非流'
+    nextLabel = t('endpointFormExtra.forceNonStream')
   } else {
     nextPolicy = 'auto'
-    nextLabel = '跟随请求'
+    nextLabel = t('endpointFormExtra.followRequest')
   }
 
   savingEndpointId.value = endpoint.id
@@ -3323,10 +3328,10 @@ async function handleCycleUpstreamStream(endpoint: ProviderEndpoint) {
       endpointEditStates.value[endpoint.id].upstreamStreamPolicy = nextPolicy
     }
 
-    success(`已切换为${nextLabel}`)
+    success(t('endpointForm.switchedTo', { label: nextLabel }))
     emit('endpointUpdated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '操作失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.operationFailed')), t('endpointForm.error'))
   } finally {
     savingEndpointId.value = null
   }
@@ -3339,7 +3344,7 @@ async function handleAddEndpoint() {
   // 如果没有输入 base_url，使用提供商的 website 作为默认值
   const baseUrl = newEndpoint.value.base_url || props.provider.website
   if (!baseUrl) {
-    showError('请输入 Base URL')
+    showError(t('endpointForm.baseUrlRequired'))
     return
   }
 
@@ -3352,12 +3357,12 @@ async function handleAddEndpoint() {
       custom_path: newEndpoint.value.custom_path || undefined,
       is_active: true,
     })
-    success(`已添加 ${formatApiFormat(newEndpoint.value.api_format)} 端点`)
+    success(t('endpointForm.added', { format: formatApiFormat(newEndpoint.value.api_format) }))
     // 重置表单，保留 URL
     newEndpoint.value = { api_format: '', base_url: baseUrl, custom_path: '' }
     emit('endpointCreated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '添加失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.addFailed')), t('endpointForm.error'))
   } finally {
     addingEndpoint.value = false
   }
@@ -3369,10 +3374,10 @@ async function handleToggleEndpoint(endpoint: ProviderEndpoint) {
   try {
     const newStatus = !endpoint.is_active
     await updateEndpoint(endpoint.id, { is_active: newStatus })
-    success(newStatus ? '端点已启用' : '端点已停用')
+    success(newStatus ? t('endpointForm.enabledSuccess') : t('endpointForm.disabledSuccess'))
     emit('endpointUpdated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '操作失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.operationFailed')), t('endpointForm.error'))
   } finally {
     togglingEndpointId.value = null
   }
@@ -3394,10 +3399,10 @@ async function confirmDeleteEndpoint() {
 
   try {
     await deleteEndpoint(endpoint.id)
-    success(`已删除 ${formatApiFormat(endpoint.api_format)} 端点`)
+    success(t('endpointForm.deleted', { format: formatApiFormat(endpoint.api_format) }))
     emit('endpointUpdated')
   } catch (error: unknown) {
-    showError(parseApiError(error, '删除失败'), '错误')
+    showError(parseApiError(error, t('endpointForm.deleteFailed')), t('endpointForm.error'))
   } finally {
     deletingEndpointId.value = null
     endpointToDelete.value = null

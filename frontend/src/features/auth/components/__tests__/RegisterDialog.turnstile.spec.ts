@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick } from 'vue'
+import { createApp, nextTick } from '@/test/vue'
 import RegisterDialog from '../RegisterDialog.vue'
 
 const { registerMock, toastErrorMock, toastSuccessMock } = vi.hoisted(() => ({

@@ -21,6 +21,8 @@ pub(crate) fn mount_public_support_routes(router: Router<AppState>) -> Router<Ap
         .route("/api/public/search/models", get(proxy_request))
         .route("/api/public/stats", get(proxy_request))
         .route("/api/public/global-models", get(proxy_request))
+        .route("/api/public/model-groups", get(proxy_request))
+        .route("/api/public/model-groups/catalog", get(proxy_request))
         .route("/api/public/health/api-formats", get(proxy_request))
         .route("/api/modules/auth-status", get(proxy_request))
         .route("/api/capabilities", get(proxy_request))

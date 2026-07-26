@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, type App, type Component } from 'vue'
+import { createApp, nextTick, type App, type Component } from '@/test/vue'
 import KeyFormDialog from '@/features/providers/components/KeyFormDialog.vue'
 import OAuthKeyEditDialog from '@/features/providers/components/OAuthKeyEditDialog.vue'
 import type { EndpointAPIKey } from '@/api/endpoints'

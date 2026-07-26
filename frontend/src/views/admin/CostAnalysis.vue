@@ -3,10 +3,10 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h1 class="text-lg font-semibold">
-          成本分析
+          {{ t('costAnalysis.title') }}
         </h1>
         <p class="text-xs text-muted-foreground">
-          成本趋势、预测与节省统计
+          {{ t('costAnalysis.description') }}
         </p>
       </div>
       <TimeRangePicker v-model="timeRange" />
@@ -15,29 +15,29 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Card class="p-4 space-y-2">
         <div class="text-xs text-muted-foreground">
-          用户扣费
+          {{ t('costAnalysis.userCharges') }}
         </div>
         <div class="text-lg font-semibold">
           {{ formatCurrency(financialSummary.income) }}
         </div>
         <div class="text-xs text-muted-foreground">
-          套餐和钱包实际记账金额
+          {{ t('costAnalysis.userChargesHint') }}
         </div>
       </Card>
       <Card class="p-4 space-y-2">
         <div class="text-xs text-muted-foreground">
-          平台成本
+          {{ t('costAnalysis.platformCost') }}
         </div>
         <div class="text-lg font-semibold">
           {{ formatCurrency(financialSummary.cost) }}
         </div>
         <div class="text-xs text-muted-foreground">
-          按实际服务账号成本倍率统计
+          {{ t('costAnalysis.platformCostHint') }}
         </div>
       </Card>
       <Card class="p-4 space-y-2">
         <div class="text-xs text-muted-foreground">
-          毛利
+          {{ t('costAnalysis.grossProfit') }}
         </div>
         <div
           class="text-lg font-semibold"
@@ -46,7 +46,7 @@
           {{ formatCurrency(financialSummary.profit) }}
         </div>
         <div class="text-xs text-muted-foreground">
-          毛利率 {{ financialSummary.marginText }}
+          {{ t('costAnalysis.margin', { value: financialSummary.marginText }) }}
         </div>
       </Card>
     </div>
@@ -54,35 +54,35 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Card class="p-4 space-y-2">
         <div class="text-xs text-muted-foreground">
-          缓存节省
+          {{ t('costAnalysis.cacheSavings') }}
         </div>
         <div class="text-lg font-semibold">
           {{ formatCurrency(costSavings?.cache_savings ?? 0) }}
         </div>
         <div class="text-xs text-muted-foreground">
-          读取成本 {{ formatCurrency(costSavings?.cache_read_cost ?? 0) }}
+          {{ t('costAnalysis.readCost', { value: formatCurrency(costSavings?.cache_read_cost ?? 0) }) }}
         </div>
       </Card>
       <Card class="p-4 space-y-2">
         <div class="text-xs text-muted-foreground">
-          缓存读取 Tokens
+          {{ t('costAnalysis.cacheReadTokens') }}
         </div>
         <div class="text-lg font-semibold">
           {{ formatTokens(costSavings?.cache_read_tokens ?? 0) }}
         </div>
         <div class="text-xs text-muted-foreground">
-          预计全额成本 {{ formatCurrency(costSavings?.estimated_full_cost ?? 0) }}
+          {{ t('costAnalysis.estimatedFullCost', { value: formatCurrency(costSavings?.estimated_full_cost ?? 0) }) }}
         </div>
       </Card>
       <Card class="p-4 space-y-2">
         <div class="text-xs text-muted-foreground">
-          缓存创建成本
+          {{ t('costAnalysis.cacheCreationCost') }}
         </div>
         <div class="text-lg font-semibold">
           {{ formatCurrency(costSavings?.cache_creation_cost ?? 0) }}
         </div>
         <div class="text-xs text-muted-foreground">
-          基于当前时间范围
+          {{ t('costAnalysis.currentRangeHint') }}
         </div>
       </Card>
     </div>
@@ -90,21 +90,21 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Card class="p-4">
         <CostForecastChart
-          title="成本趋势预测"
+          :title="t('costAnalysis.forecast')"
           :history="forecastHistory"
           :forecast="forecastFuture"
           :loading="forecastLoading"
         />
       </Card>
       <QuotaProgressCard
-        title="月卡消耗进度"
+        :title="t('costAnalysis.monthlyQuota')"
         :providers="quotaProviders"
         :loading="quotaLoading"
       />
     </div>
 
     <LeaderboardTable
-      title="API Key 用量排行"
+      :title="t('costAnalysis.keyLeaderboard')"
       :items="apiKeyLeaderboard"
       :metric="apiKeyLeaderboardMetric"
       :loading="apiKeyLeaderboardLoading"
@@ -141,6 +141,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Card from '@/components/ui/card.vue'
 import { Pagination } from '@/components/ui'
 import { TimeRangePicker } from '@/components/common'
@@ -152,6 +153,8 @@ import { formatCurrency, formatTokens } from '@/utils/format'
 import { getDateRangeFromPeriod } from '@/features/usage/composables'
 import type { DateRangeParams } from '@/features/usage/types'
 import type { ProviderStatsItem } from '@/features/usage/types'
+
+const { t } = useI18n()
 
 const timeRange = ref<DateRangeParams>(getDateRangeFromPeriod('last30days'))
 

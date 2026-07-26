@@ -24,6 +24,14 @@
         <slot name="sidebar" />
       </aside>
 
+      <button
+        v-if="mobileSidebarOpen"
+        type="button"
+        class="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] lg:hidden"
+      :aria-label="t('appShell.closeSidebar')"
+        @click="emit('close-mobile-sidebar')"
+      />
+
       <div
         class="app-shell__content"
         :class="contentClass"
@@ -45,12 +53,18 @@ const props = withDefaults(defineProps<{
   contentClass?: string
   mainClass?: string
   sidebarClass?: string
+  mobileSidebarOpen?: boolean
 }>(), {
   showNotice: false,
   contentClass: '',
   mainClass: '',
   sidebarClass: '',
+  mobileSidebarOpen: false,
 })
+
+const emit = defineEmits<{
+  (event: 'close-mobile-sidebar'): void
+}>()
 
 const showNotice = computed(() => props.showNotice)
 
@@ -58,4 +72,5 @@ const showNotice = computed(() => props.showNotice)
 const contentClass = computed(() => props.contentClass)
 const mainClass = computed(() => ['app-shell__main', props.mainClass].filter(Boolean).join(' '))
 const sidebarClass = computed(() => props.sidebarClass)
+const mobileSidebarOpen = computed(() => props.mobileSidebarOpen)
 </script>

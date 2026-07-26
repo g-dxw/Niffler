@@ -4,12 +4,12 @@
       <input
         v-model="draft.model"
         class="h-10 rounded-md border border-border bg-background px-3 text-sm"
-        placeholder="模型"
+        :placeholder="t('routingDryRun.modelPlaceholder')"
       >
       <input
         v-model="draft.api_format"
         class="h-10 rounded-md border border-border bg-background px-3 text-sm"
-        placeholder="API 格式"
+        :placeholder="t('routingDryRun.apiFormatPlaceholder')"
       >
     </div>
 
@@ -22,6 +22,7 @@
 
 <script setup lang="ts">
 import { reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import RoutingTraceViewer from './RoutingTraceViewer.vue'
 import type { RoutingDecisionTrace } from '../utils/routingTrace'
@@ -31,6 +32,7 @@ const props = defineProps<{
   model?: string
   apiFormat?: string
 }>()
+const { t } = useI18n()
 
 const draft = reactive({
   model: props.model ?? '',

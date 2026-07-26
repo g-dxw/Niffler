@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export type PoolHealthToggleKey =
   | 'health_policy_enabled'
   | 'probing_enabled'
@@ -29,28 +31,28 @@ export function buildPoolHealthToggleCards(): PoolHealthToggleCard[] {
   return [
     {
       key: 'health_policy_enabled',
-      label: '健康策略',
-      description: '按上游错误自动冷却并跳过异常账号。',
+      label: i18n.global.t('poolAdvancedUi.healthPolicy'),
+      description: i18n.global.t('poolAdvancedUi.healthPolicyDesc'),
     },
     {
       key: 'probing_enabled',
-      label: '自适应热池',
-      description: '自动维护热池，缺口时异步补位。',
+      label: i18n.global.t('poolAdvancedUi.adaptiveHotPool'),
+      description: i18n.global.t('poolAdvancedUi.adaptiveHotPoolDesc'),
     },
     {
       key: 'account_self_check_enabled',
-      label: '账号自检',
-      description: '定时确认账号状态，策略由提供商适配器内置。',
+      label: i18n.global.t('poolAdvancedUi.accountCheck'),
+      description: i18n.global.t('poolAdvancedUi.accountCheckDesc'),
     },
     {
       key: 'auto_remove_banned_keys',
-      label: '异常自动清除',
-      description: '检测到不可恢复账号异常，或 RT 与 AT 均失效时自动从号池移除。',
+      label: i18n.global.t('poolAdvancedUi.autoRemove'),
+      description: i18n.global.t('poolAdvancedUi.autoRemoveDesc'),
     },
     {
       key: 'skip_exhausted_accounts',
-      label: '跳过额度耗尽账号',
-      description: '当 Codex / Kiro 账号额度已耗尽时，直接标记为不可调度并在请求侧跳过。',
+      label: i18n.global.t('poolAdvancedUi.skipExhausted'),
+      description: i18n.global.t('poolAdvancedUi.skipExhaustedDesc'),
     },
   ]
 }

@@ -26,7 +26,7 @@
       type="button"
       class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/20 hover:text-muted-foreground/50 transition-colors"
       tabindex="-1"
-      :aria-label="isVisible ? '隐藏内容' : '显示内容'"
+      :aria-label="isVisible ? t('input.hideContent') : t('input.showContent')"
       @click="toggleVisibility"
     >
       <EyeOff
@@ -62,9 +62,12 @@
 
 <script setup lang="ts">
 import { computed, useAttrs, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import type { ClassValue } from 'clsx'
+
+const { t } = useI18n()
 
 const props = defineProps<Props>()
 

@@ -4,9 +4,11 @@ import { useToast } from '@/composables/useToast'
 import { adminApi } from '@/api/admin'
 import { log } from '@/utils/logger'
 import type { SystemConfig } from './useSystemConfig'
+import { useI18n } from 'vue-i18n'
 
 export function useScheduledTasks(systemConfig: Ref<SystemConfig>) {
   const { success, error } = useToast()
+  const { t } = useI18n()
 
   const checkinConfigLoading = ref(false)
 
@@ -47,11 +49,11 @@ export function useScheduledTasks(systemConfig: Ref<SystemConfig>) {
       await adminApi.updateSystemConfig(
         'enable_provider_checkin',
         enabled,
-        '是否启用 Provider 自动签到任务'
+    t('systemTaskUi.providerCheckinToggle')
       )
-      success(enabled ? '已启用自动签到' : '已禁用自动签到')
+      success(enabled ? t('scheduledTaskMessages.checkinEnabled') : t('scheduledTaskMessages.checkinDisabled'))
     } catch (err) {
-      error('保存配置失败')
+      error(t('scheduledTaskMessages.saveFailed'))
       log.error('保存自动签到配置失败:', err)
       systemConfig.value.enable_provider_checkin = previousValue
     }
@@ -64,11 +66,11 @@ export function useScheduledTasks(systemConfig: Ref<SystemConfig>) {
       await adminApi.updateSystemConfig(
         'enable_oauth_token_refresh',
         enabled,
-        '是否启用 OAuth Token 自动刷新任务'
+    t('systemTaskUi.tokenRefreshToggle')
       )
-      success(enabled ? '已启用 OAuth Token 自动刷新' : '已禁用 OAuth Token 自动刷新')
+      success(enabled ? t('scheduledTaskMessages.oauthRefreshEnabled') : t('scheduledTaskMessages.oauthRefreshDisabled'))
     } catch (err) {
-      error('保存配置失败')
+      error(t('scheduledTaskMessages.saveFailed'))
       log.error('保存 OAuth Token 自动刷新配置失败:', err)
       systemConfig.value.enable_oauth_token_refresh = previousValue
     }
@@ -83,7 +85,7 @@ export function useScheduledTasks(systemConfig: Ref<SystemConfig>) {
   async function handleCheckinTimeSave() {
     const newTime = systemConfig.value.provider_checkin_time
     if (!newTime || !/^\d{2}:\d{2}$/.test(newTime)) {
-      error('请输入有效的时间格式 (HH:MM)')
+      error(t('scheduledTaskMessages.invalidTime'))
       return
     }
 
@@ -92,12 +94,12 @@ export function useScheduledTasks(systemConfig: Ref<SystemConfig>) {
       await adminApi.updateSystemConfig(
         'provider_checkin_time',
         newTime,
-        'Provider 自动签到执行时间（HH:MM 格式）'
+    t('systemTaskUi.checkinTime')
       )
       previousCheckinTime.value = newTime
-      success(`签到时间已设置为 ${newTime}`)
+      success(t('scheduledTaskMessages.checkinTimeSaved', { time: newTime }))
     } catch (err) {
-      error('保存签到时间失败')
+      error(t('scheduledTaskMessages.checkinTimeFailed'))
       log.error('保存签到时间失败:', err)
     } finally {
       checkinConfigLoading.value = false
@@ -109,8 +111,8 @@ export function useScheduledTasks(systemConfig: Ref<SystemConfig>) {
     {
       id: 'provider-checkin',
       icon: CalendarCheck,
-      title: 'Provider 自动签到',
-      description: '自动执行已配置 Provider 的签到任务',
+    title: t('systemTaskUi.providerCheckin'),
+    description: t('systemTaskUi.providerCheckinDesc'),
       enabled: systemConfig.value.enable_provider_checkin,
       hasTimeConfig: true,
       hour: checkinHour.value,
@@ -125,8 +127,8 @@ export function useScheduledTasks(systemConfig: Ref<SystemConfig>) {
     {
       id: 'oauth-token-refresh',
       icon: RefreshCw,
-      title: 'OAuth Token 自动刷新',
-      description: '主动刷新即将过期的 OAuth Token（动态调度）',
+    title: t('systemTaskUi.tokenRefresh'),
+    description: t('systemTaskUi.tokenRefreshDesc'),
       enabled: systemConfig.value.enable_oauth_token_refresh,
       hasTimeConfig: false,
       hour: '',

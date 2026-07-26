@@ -4,10 +4,10 @@
       <div class="px-5 py-4 border-b border-border/60 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h3 class="text-base font-semibold">
-            钱包管理
+            {{ t('walletManagement.title') }}
           </h3>
           <p class="text-xs text-muted-foreground mt-1">
-            统一管理资金流水、退款审批、支付订单与支付回调
+            {{ t('walletManagement.description') }}
           </p>
         </div>
       </div>
@@ -16,19 +16,19 @@
         <Tabs v-model="activeTab">
           <TabsList class="tabs-button-list grid w-full max-w-[960px] grid-cols-2 sm:grid-cols-5">
             <TabsTrigger value="ledger">
-              资金流水
+              {{ t('walletManagement.ledger') }}
             </TabsTrigger>
             <TabsTrigger value="orders">
-              支付订单
+              {{ t('walletManagement.orders') }}
             </TabsTrigger>
             <TabsTrigger value="refunds">
-              退款审批
+              {{ t('walletManagement.refunds') }}
             </TabsTrigger>
             <TabsTrigger value="callbacks">
-              回调日志
+              {{ t('walletManagement.callbacks') }}
             </TabsTrigger>
             <TabsTrigger value="redeem_codes">
-              兑换码
+              {{ t('walletManagement.redemption') }}
             </TabsTrigger>
           </TabsList>
 
@@ -40,34 +40,34 @@
               <div class="flex flex-wrap items-center gap-2">
                 <Select v-model="ledgerCategoryFilter">
                   <SelectTrigger class="w-[170px]">
-                    <SelectValue placeholder="一级分类" />
+                    <SelectValue :placeholder="t('walletManagement.category')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
-                      全部分类
+                      {{ t('walletManagement.allCategories') }}
                     </SelectItem>
                     <SelectItem value="recharge">
-                      充值
+                      {{ t('walletManagement.recharge') }}
                     </SelectItem>
                     <SelectItem value="gift">
-                      赠款
+                      {{ t('walletManagement.gift') }}
                     </SelectItem>
                     <SelectItem value="adjust">
-                      调账
+                      {{ t('walletManagement.adjustment') }}
                     </SelectItem>
                     <SelectItem value="refund">
-                      退款
+                      {{ t('walletManagement.refund') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
 
                 <Select v-model="ledgerReasonFilter">
                   <SelectTrigger class="w-[180px]">
-                    <SelectValue placeholder="二级分类" />
+                    <SelectValue :placeholder="t('walletManagement.subcategory')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
-                      全部二级
+                      {{ t('walletManagement.allSubcategories') }}
                     </SelectItem>
                     <SelectItem
                       v-for="option in ledgerReasonOptions"
@@ -81,17 +81,17 @@
 
                 <Select v-model="ledgerOwnerFilter">
                   <SelectTrigger class="w-[170px]">
-                    <SelectValue placeholder="归属类型" />
+                    <SelectValue :placeholder="t('walletManagement.ownerType')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
-                      全部归属
+                      {{ t('walletManagement.allOwners') }}
                     </SelectItem>
                     <SelectItem value="user">
-                      用户钱包
+                      {{ t('walletManagement.userWallet') }}
                     </SelectItem>
                     <SelectItem value="api_key">
-                      独立密钥钱包
+                      {{ t('walletManagement.keyWallet') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -100,13 +100,13 @@
                   v-model="ledgerUserSearch"
                   type="search"
                   class="w-[260px]"
-                  placeholder="搜索用户名 / 邮箱 / 用户ID"
+                  :placeholder="t('walletManagement.searchUser')"
                 />
               </div>
 
               <div class="flex items-center justify-between gap-3">
                 <div class="text-sm text-muted-foreground">
-                  共 {{ ledgerTotal }} 条
+                  {{ t('walletManagement.total') }} {{ ledgerTotal }} {{ t('walletManagement.records') }}
                 </div>
                 <RefreshButton
                   :loading="loadingLedger"
@@ -135,7 +135,7 @@
                         :resizable="true"
                         @resize-start="handleLedgerTableColumnResizeStart"
                       >
-                        时间
+                        {{ t('walletManagement.time') }}
                       </SortableTableHead>
                       <SortableTableHead
                         :sortable="false"
@@ -143,7 +143,7 @@
                         :resizable="true"
                         @resize-start="handleLedgerTableColumnResizeStart"
                       >
-                        归属
+                        {{ t('walletManagement.owner') }}
                       </SortableTableHead>
                       <SortableTableHead
                         :sortable="false"
@@ -151,7 +151,7 @@
                         :resizable="true"
                         @resize-start="handleLedgerTableColumnResizeStart"
                       >
-                        类型
+                        {{ t('walletManagement.type') }}
                       </SortableTableHead>
                       <SortableTableHead
                         :sortable="false"
@@ -159,7 +159,7 @@
                         :resizable="true"
                         @resize-start="handleLedgerTableColumnResizeStart"
                       >
-                        金额
+                        {{ t('walletManagement.amount') }}
                       </SortableTableHead>
                       <SortableTableHead
                         :sortable="false"
@@ -167,7 +167,7 @@
                         :resizable="true"
                         @resize-start="handleLedgerTableColumnResizeStart"
                       >
-                        余额变化
+                        {{ t('walletManagement.balanceChange') }}
                       </SortableTableHead>
                       <SortableTableHead
                         :sortable="false"
@@ -175,7 +175,7 @@
                         :resizable="true"
                         @resize-start="handleLedgerTableColumnResizeStart"
                       >
-                        说明
+                        {{ t('walletManagement.note') }}
                       </SortableTableHead>
                       <SortableTableHead
                         class="text-right"
@@ -185,7 +185,7 @@
                         :resizable="true"
                         @resize-start="handleLedgerTableColumnResizeStart"
                       >
-                        操作
+                        {{ t('walletManagement.actions') }}
                       </SortableTableHead>
                     </TableRow>
                   </TableHeader>
@@ -235,8 +235,8 @@
                           v-if="tx.recharge_balance_before !== null && tx.recharge_balance_before !== undefined && tx.gift_balance_before !== null && tx.gift_balance_before !== undefined"
                           class="text-[11px] text-muted-foreground mt-0.5"
                         >
-                          充 {{ Number(tx.recharge_balance_before).toFixed(4) }}→{{ Number(tx.recharge_balance_after ?? 0).toFixed(4) }}
-                          · 赠 {{ Number(tx.gift_balance_before).toFixed(4) }}→{{ Number(tx.gift_balance_after ?? 0).toFixed(4) }}
+                          {{ t('walletExtra.rechargeShort') }} {{ Number(tx.recharge_balance_before).toFixed(4) }}→{{ Number(tx.recharge_balance_after ?? 0).toFixed(4) }}
+                          · {{ t('walletExtra.giftShort') }} {{ Number(tx.gift_balance_before).toFixed(4) }}→{{ Number(tx.gift_balance_after ?? 0).toFixed(4) }}
                         </div>
                       </TableCell>
                       <TableCell
@@ -251,7 +251,7 @@
                           variant="outline"
                           @click="openLedgerDrawer(tx)"
                         >
-                          详情
+                          {{ t('walletManagement.details') }}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -261,8 +261,8 @@
                         class="py-12"
                       >
                         <EmptyState
-                          title="暂无资金流水"
-                          description="当前筛选条件下没有资金动作记录"
+                          :title="t('walletManagement.emptyLedger')"
+                          :description="t('walletManagement.emptyLedgerHint')"
                         />
                       </TableCell>
                     </TableRow>
@@ -288,40 +288,40 @@
               <div class="flex flex-wrap items-center gap-2">
                 <Select v-model="refundStatusFilter">
                   <SelectTrigger class="w-[170px]">
-                    <SelectValue placeholder="退款状态" />
+                    <SelectValue :placeholder="t('walletManagement.refundStatus')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
-                      全部状态
+                      {{ t('walletManagement.allStatus') }}
                     </SelectItem>
                     <SelectItem value="pending_approval">
-                      待审批
+                      {{ t('walletManagement.pending') }}
                     </SelectItem>
                     <SelectItem value="approved">
-                      已审批
+                      {{ t('walletManagement.approved') }}
                     </SelectItem>
                     <SelectItem value="processing">
-                      处理中
+                      {{ t('walletManagement.processing') }}
                     </SelectItem>
                     <SelectItem value="succeeded">
-                      已完成
+                      {{ t('walletManagement.completed') }}
                     </SelectItem>
                     <SelectItem value="failed">
-                      已失败
+                      {{ t('walletManagement.failed') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
 
                 <Select v-model="refundOwnerFilter">
                   <SelectTrigger class="w-[170px]">
-                    <SelectValue placeholder="归属类型" />
+                    <SelectValue :placeholder="t('walletManagement.ownerType')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
-                      全部归属
+                      {{ t('walletManagement.allOwners') }}
                     </SelectItem>
                     <SelectItem value="user">
-                      用户钱包
+                      {{ t('walletManagement.userWallet') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -330,13 +330,13 @@
                   v-model="refundUserSearch"
                   type="search"
                   class="w-[260px]"
-                  placeholder="搜索用户名 / 邮箱 / 用户ID"
+                  :placeholder="t('walletManagement.searchUser')"
                 />
               </div>
 
               <div class="flex items-center justify-between gap-3">
                 <div class="text-sm text-muted-foreground">
-                  共 {{ refundTotal }} 条
+                  {{ t('walletManagement.total') }} {{ refundTotal }} {{ t('walletManagement.records') }}
                 </div>
                 <RefreshButton
                   :loading="loadingRefunds"
@@ -361,28 +361,28 @@
                   <TableHeader>
                     <TableRow>
                       <SortableTableHead :sortable="false" resize-column-key="owner" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        归属
+                        {{ t('walletManagement.owner') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="refundNo" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        退款单号
+                        {{ t('walletManagement.refundNo') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        金额
+                        {{ t('walletManagement.amount') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="mode" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        模式
+                        {{ t('walletManagement.mode') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        状态
+                        {{ t('walletManagement.status') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="reason" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        原因
+                        {{ t('walletManagement.reason') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="created" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        申请时间
+                        {{ t('walletManagement.appliedAt') }}
                       </SortableTableHead>
                       <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRefundTableColumnResizeStart">
-                        操作
+                        {{ t('walletManagement.actions') }}
                       </SortableTableHead>
                     </TableRow>
                   </TableHeader>
@@ -437,7 +437,7 @@
                             variant="outline"
                             @click="openRefundDrawer(refund)"
                           >
-                            审批
+                            {{ t('walletManagement.review') }}
                           </Button>
                         </div>
                       </TableCell>
@@ -448,8 +448,8 @@
                         class="py-12"
                       >
                         <EmptyState
-                          title="暂无退款申请"
-                          description="当前筛选条件下没有退款单"
+                          :title="t('walletManagement.emptyRefunds')"
+                          :description="t('walletManagement.emptyRefundsHint')"
                         />
                       </TableCell>
                     </TableRow>
@@ -474,72 +474,72 @@
             <div class="flex flex-wrap items-center gap-2">
               <Select v-model="orderStatusFilter">
                 <SelectTrigger class="w-[180px]">
-                  <SelectValue placeholder="订单状态" />
+                  <SelectValue :placeholder="t('walletManagement.orderStatus')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部状态
+                    {{ t('walletManagement.allStatus') }}
                   </SelectItem>
                   <SelectItem value="pending">
-                    待支付
+                    {{ t('walletManagement.awaitingPayment') }}
                   </SelectItem>
                   <SelectItem value="paid">
-                    已支付
+                    {{ t('walletManagement.paid') }}
                   </SelectItem>
                   <SelectItem value="credited">
-                    已到账
+                    {{ t('walletManagement.credited') }}
                   </SelectItem>
                   <SelectItem value="failed">
-                    支付失败
+                    {{ t('walletManagement.paymentFailed') }}
                   </SelectItem>
                   <SelectItem value="expired">
-                    已过期
+                    {{ t('walletManagement.expired') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
 
               <Select v-model="orderKindFilter">
                 <SelectTrigger class="w-[180px]">
-                  <SelectValue placeholder="订单内容" />
+                  <SelectValue :placeholder="t('walletManagement.orderContent')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部订单
+                    {{ t('walletManagement.allOrders') }}
                   </SelectItem>
                   <SelectItem value="wallet_recharge">
-                    钱包充值
+                    {{ t('walletManagement.walletRecharge') }}
                   </SelectItem>
                   <SelectItem value="plan_purchase">
-                    套餐购买
+                    {{ t('walletManagement.planPurchase') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
 
               <Select v-model="orderMethodFilter">
                 <SelectTrigger class="w-[180px]">
-                  <SelectValue placeholder="支付方式" />
+                  <SelectValue :placeholder="t('walletManagement.paymentMethod')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部方式
+                    {{ t('walletManagement.allMethods') }}
                   </SelectItem>
                   <SelectItem value="alipay">
-                    支付宝
+                    {{ t('walletManagement.alipay') }}
                   </SelectItem>
                   <SelectItem value="wechat">
-                    微信支付
+                    {{ t('walletManagement.wechatPay') }}
                   </SelectItem>
                   <SelectItem value="admin_manual">
-                    人工充值
+                    {{ t('walletManagement.manualRecharge') }}
                   </SelectItem>
                   <SelectItem value="card_code">
-                    充值卡
+                    {{ t('walletManagement.rechargeCard') }}
                   </SelectItem>
                   <SelectItem value="gift_code">
-                    礼品卡
+                    {{ t('walletManagement.giftCard') }}
                   </SelectItem>
                   <SelectItem value="card_recharge">
-                    卡密充值
+                    {{ t('walletManagement.cardRecharge') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -548,7 +548,7 @@
                 v-model="orderUserSearch"
                 type="search"
                 class="w-[260px]"
-                placeholder="搜索用户名 / 邮箱 / 用户ID"
+                :placeholder="t('walletManagement.searchUser')"
               />
 
               <RefreshButton
@@ -573,28 +573,28 @@
                   <TableHeader>
                     <TableRow>
                       <SortableTableHead :sortable="false" resize-column-key="orderNo" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        订单号
+                        {{ t('walletManagement.orderNo') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="wallet" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        钱包名称
+                        {{ t('walletManagement.walletName') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="content" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        订单内容
+                        {{ t('walletManagement.orderContent') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        金额
+                        {{ t('walletManagement.amount') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="method" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        支付方式
+                        {{ t('walletManagement.paymentMethod') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        状态
+                        {{ t('walletManagement.status') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="created" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        创建时间
+                        {{ t('walletManagement.createdAt') }}
                       </SortableTableHead>
                       <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handlePaymentOrderTableColumnResizeStart">
-                        操作
+                        {{ t('walletManagement.actions') }}
                       </SortableTableHead>
                     </TableRow>
                   </TableHeader>
@@ -653,7 +653,7 @@
                             :disabled="submittingOrderAction"
                             @click="expireOrder(order.id)"
                           >
-                            过期
+                            {{ t('walletManagement.expireAction') }}
                           </Button>
                           <Button
                             v-if="canFailOrder(order.status)"
@@ -662,7 +662,7 @@
                             :disabled="submittingOrderAction"
                             @click="failOrder(order.id)"
                           >
-                            失败
+                            {{ t('walletManagement.failAction') }}
                           </Button>
                         </div>
                       </TableCell>
@@ -673,8 +673,8 @@
                         class="py-10"
                       >
                         <EmptyState
-                          title="暂无支付订单"
-                          description="当前筛选条件下没有数据"
+                          :title="t('walletManagement.emptyOrders')"
+                          :description="t('walletManagement.emptyDataHint')"
                         />
                       </TableCell>
                     </TableRow>
@@ -699,17 +699,17 @@
             <div class="flex items-center gap-2">
               <Select v-model="callbackMethodFilter">
                 <SelectTrigger class="w-[180px]">
-                  <SelectValue placeholder="支付方式" />
+                  <SelectValue :placeholder="t('walletManagement.paymentMethod')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    全部方式
+                    {{ t('walletManagement.allMethods') }}
                   </SelectItem>
                   <SelectItem value="alipay">
-                    支付宝
+                    {{ t('walletManagement.alipay') }}
                   </SelectItem>
                   <SelectItem value="wechat">
-                    微信支付
+                    {{ t('walletManagement.wechatPay') }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -733,22 +733,22 @@
                   <TableHeader>
                     <TableRow>
                       <SortableTableHead :sortable="false" resize-column-key="callbackKey" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
-                        回调键
+                        {{ t('walletManagement.callbackKey') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="orderNo" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
-                        订单号
+                        {{ t('walletManagement.orderNo') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="method" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
-                        方式
+                        {{ t('walletManagement.method') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="signature" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
-                        验签
+                        {{ t('walletManagement.signature') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
-                        状态
+                        {{ t('walletManagement.status') }}
                       </SortableTableHead>
                       <SortableTableHead :sortable="false" resize-column-key="time" :resizable="true" @resize-start="handleCallbackTableColumnResizeStart">
-                        时间
+                        {{ t('walletManagement.time') }}
                       </SortableTableHead>
                     </TableRow>
                   </TableHeader>
@@ -772,7 +772,7 @@
                       <TableCell>{{ paymentMethodLabel(callback.payment_method) }}</TableCell>
                       <TableCell>
                         <Badge :variant="callback.signature_valid ? 'success' : 'destructive'">
-                          {{ callback.signature_valid ? '通过' : '失败' }}
+                          {{ callback.signature_valid ? t('walletManagement.passed') : t('walletManagement.failed') }}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -790,8 +790,8 @@
                         class="py-10"
                       >
                         <EmptyState
-                          title="暂无回调日志"
-                          description="当前筛选条件下没有数据"
+                          :title="t('walletManagement.emptyCallbacks')"
+                          :description="t('walletManagement.emptyDataHint')"
                         />
                       </TableCell>
                     </TableRow>
@@ -817,10 +817,10 @@
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <h4 class="text-sm font-semibold">
-                    批量生成兑换码
+                    {{ t('walletManagement.generateCodes') }}
                   </h4>
                   <p class="text-xs text-muted-foreground mt-1">
-                    生成后本会话可切换显示明文；页面刷新后仅保留脱敏码。
+                    {{ t('walletManagement.generateHint') }}
                   </p>
                 </div>
                 <RefreshButton
@@ -831,11 +831,11 @@
 
               <div class="grid gap-3 lg:grid-cols-4">
                 <div class="space-y-1.5">
-                  <Label>批次名称</Label>
+                  <Label>{{ t('walletManagement.batchName') }}</Label>
                   <Input v-model="redeemBatchForm.name" />
                 </div>
                 <div class="space-y-1.5">
-                  <Label>面额 (USD)</Label>
+                  <Label>{{ t('walletManagement.faceValue') }}</Label>
                   <Input
                     v-model.number="redeemBatchForm.amount_usd"
                     type="number"
@@ -844,7 +844,7 @@
                   />
                 </div>
                 <div class="space-y-1.5">
-                  <Label>生成数量</Label>
+                  <Label>{{ t('walletManagement.generateCount') }}</Label>
                   <Input
                     v-model.number="redeemBatchForm.total_count"
                     type="number"
@@ -853,7 +853,7 @@
                   />
                 </div>
                 <div class="space-y-1.5">
-                  <Label>过期时间（可选）</Label>
+                  <Label>{{ t('walletManagement.optionalExpiry') }}</Label>
                   <Input
                     v-model="redeemBatchForm.expires_at"
                     type="datetime-local"
@@ -862,11 +862,11 @@
               </div>
 
               <div class="space-y-1.5">
-                <Label>备注（可选）</Label>
+                <Label>{{ t('walletManagement.optionalNote') }}</Label>
                 <Textarea
                   v-model="redeemBatchForm.description"
                   rows="3"
-                  placeholder="例如：五一活动 / 线下渠道 / KOC 发放"
+                  :placeholder="t('walletManagement.notePlaceholder')"
                 />
               </div>
 
@@ -876,13 +876,13 @@
                   :disabled="!canExportLatestGeneratedRedeemCodes"
                   @click="exportLatestGeneratedRedeemCodes"
                 >
-                  导出最近生成
+                  {{ t('walletManagement.exportLatest') }}
                 </Button>
                 <Button
                   :disabled="submittingRedeemBatch"
                   @click="submitRedeemCodeBatch"
                 >
-                  {{ submittingRedeemBatch ? '生成中...' : '生成兑换码' }}
+                  {{ submittingRedeemBatch ? t('walletManagement.generating') : t('walletManagement.generate') }}
                 </Button>
               </div>
 
@@ -890,9 +890,9 @@
                 v-if="latestGeneratedRedeemBatch"
                 class="rounded-xl border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground"
               >
-                最近生成批次:
+                {{ t('walletManagement.latestBatch') }}:
                 <span class="font-medium text-foreground">{{ latestGeneratedRedeemBatch.name }}</span>
-                · {{ latestGeneratedRedeemCodes.length }} 个兑换码
+                · {{ t('walletManagement.codeCount', { count: latestGeneratedRedeemCodes.length }) }}
               </div>
             </div>
 
@@ -901,22 +901,22 @@
                 <div class="flex flex-wrap items-center gap-2">
                   <Select v-model="redeemBatchStatusFilter">
                     <SelectTrigger class="w-[180px]">
-                      <SelectValue placeholder="批次状态" />
+                      <SelectValue :placeholder="t('walletManagement.batchStatus')" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">
-                        全部状态
+                        {{ t('walletManagement.allStatus') }}
                       </SelectItem>
                       <SelectItem value="active">
-                        可用
+                        {{ t('walletManagement.available') }}
                       </SelectItem>
                       <SelectItem value="disabled">
-                        已停用
+                        {{ t('walletManagement.disabled') }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
                   <div class="text-sm text-muted-foreground">
-                    共 {{ redeemBatchTotal }} 个批次
+                    {{ t('walletManagement.batchCount', { count: redeemBatchTotal }) }}
                   </div>
                 </div>
 
@@ -933,19 +933,19 @@
                       <TableHeader>
                         <TableRow>
                           <SortableTableHead :sortable="false" resize-column-key="batch" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
-                            批次
+                            {{ t('walletManagement.batch') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="amount" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
-                            面额
+                            {{ t('walletManagement.faceValueShort') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="count" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
-                            数量
+                            {{ t('walletManagement.quantity') }}
                           </SortableTableHead>
                           <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
-                            状态
+                            {{ t('walletManagement.status') }}
                           </SortableTableHead>
                           <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemBatchTableColumnResizeStart">
-                            操作
+                            {{ t('walletManagement.actions') }}
                           </SortableTableHead>
                         </TableRow>
                       </TableHeader>
@@ -964,18 +964,18 @@
                               {{ batch.name }}
                             </div>
                             <div class="text-xs text-muted-foreground mt-1">
-                              过期: {{ formatDateTime(batch.expires_at) }}
+                              {{ t('walletManagement.expiry') }}: {{ formatDateTime(batch.expires_at) }}
                             </div>
                           </TableCell>
                           <TableCell class="tabular-nums">
                             {{ formatCurrency(batch.amount_usd) }}
                           </TableCell>
                           <TableCell class="text-xs text-muted-foreground">
-                            {{ batch.redeemed_count }} / {{ batch.total_count }} 已使用
+                            {{ t('walletManagement.usedCount', { used: batch.redeemed_count, total: batch.total_count }) }}
                           </TableCell>
                           <TableCell>
                             <Badge :variant="batch.status === 'active' ? 'success' : 'secondary'">
-                              {{ batch.status === 'active' ? '可用' : '已停用' }}
+                              {{ batch.status === 'active' ? t('walletManagement.available') : t('walletManagement.disabled') }}
                             </Badge>
                           </TableCell>
                           <TableCell class="text-right">
@@ -985,7 +985,7 @@
                                 variant="outline"
                                 @click="selectRedeemBatch(batch)"
                               >
-                                查看码
+                                {{ t('walletManagement.viewCodes') }}
                               </Button>
                               <Button
                                 v-if="batch.status === 'active'"
@@ -993,7 +993,7 @@
                                 variant="destructive"
                                 @click="disableRedeemBatch(batch.id)"
                               >
-                                停用批次
+                                {{ t('walletManagement.disableBatch') }}
                               </Button>
                               <Button
                                 v-if="batch.status === 'disabled'"
@@ -1002,7 +1002,7 @@
                                 :disabled="batch.redeemed_count > 0"
                                 @click="deleteRedeemBatch(batch)"
                               >
-                                删除批次
+                                {{ t('walletManagement.deleteBatch') }}
                               </Button>
                             </div>
                           </TableCell>
@@ -1013,8 +1013,8 @@
                             class="py-10"
                           >
                             <EmptyState
-                              title="暂无兑换码批次"
-                              description="创建批次后会在这里显示"
+                              :title="t('walletManagement.emptyBatches')"
+                              :description="t('walletManagement.emptyBatchesHint')"
                             />
                           </TableCell>
                         </TableRow>
@@ -1055,14 +1055,14 @@
                     {{ currentRedeemBatch.name }}
                   </h3>
                   <p class="mt-1 text-xs text-muted-foreground">
-                    面额 {{ formatCurrency(currentRedeemBatch.amount_usd) }} · 剩余 {{ currentRedeemBatch.active_count }} · 共 {{ redeemCodeTotal }} 个兑换码
+                    {{ t('walletExtra.batchSummary', { amount: formatCurrency(currentRedeemBatch.amount_usd), remaining: currentRedeemBatch.active_count, total: redeemCodeTotal }) }}
                   </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   class="h-9 w-9 shrink-0"
-                  title="关闭"
+                  :title="t('walletExtra.close')"
                   @click="closeRedeemCodesDrawer"
                 >
                   <X class="h-4 w-4" />
@@ -1073,7 +1073,7 @@
             <div class="min-w-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center gap-2">
-                  <span class="text-xs text-muted-foreground">显示明文</span>
+                  <span class="text-xs text-muted-foreground">{{ t('walletExtra.showPlaintext') }}</span>
                   <Switch
                     :model-value="showPlainRedeemCodes"
                     :disabled="!canRevealPlainRedeemCodes"
@@ -1082,20 +1082,20 @@
                 </div>
                 <Select v-model="redeemCodeStatusFilter">
                   <SelectTrigger class="w-[180px]">
-                    <SelectValue placeholder="码状态" />
+                    <SelectValue :placeholder="t('walletExtra.codeStatus')" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
-                      全部状态
+                      {{ t('walletExtra.allStatuses') }}
                     </SelectItem>
                     <SelectItem value="active">
-                      可用
+                      {{ t('walletExtra.active') }}
                     </SelectItem>
                     <SelectItem value="disabled">
-                      已停用
+                      {{ t('walletExtra.disabled') }}
                     </SelectItem>
                     <SelectItem value="redeemed">
-                      已兑换
+                      {{ t('walletExtra.redeemed') }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -1104,8 +1104,8 @@
               <div class="rounded-xl border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
                 {{
                   canRevealPlainRedeemCodes
-                    ? '当前批次属于本次生成，已支持明文显示开关。'
-                    : '仅当前会话内最近生成的一批兑换码支持明文显示；其余批次仅显示脱敏码。'
+                    ? t('walletExtra.plaintextAvailableHint')
+                    : t('walletExtra.plaintextUnavailableHint')
                 }}
               </div>
 
@@ -1128,19 +1128,19 @@
                     <TableHeader>
                       <TableRow>
                         <SortableTableHead :sortable="false" resize-column-key="code" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                          兑换码
+                          {{ t('walletExtra.redeemCode') }}
                         </SortableTableHead>
                         <SortableTableHead :sortable="false" resize-column-key="status" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                          状态
+                          {{ t('walletExtra.status') }}
                         </SortableTableHead>
                         <SortableTableHead :sortable="false" resize-column-key="redeemer" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                          兑换用户
+                          {{ t('walletExtra.redeemedBy') }}
                         </SortableTableHead>
                         <SortableTableHead :sortable="false" resize-column-key="order" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                          关联订单
+                          {{ t('walletExtra.relatedOrder') }}
                         </SortableTableHead>
                         <SortableTableHead class="text-right" :sortable="false" align="right" resize-column-key="actions" :resizable="true" @resize-start="handleRedeemCodeTableColumnResizeStart">
-                          操作
+                          {{ t('walletExtra.actions') }}
                         </SortableTableHead>
                       </TableRow>
                     </TableHeader>
@@ -1150,7 +1150,7 @@
                           colspan="5"
                           class="py-10 text-center text-sm text-muted-foreground"
                         >
-                          正在加载兑换码...
+                          {{ t('walletExtra.loadingCodes') }}
                         </TableCell>
                       </TableRow>
                       <TableRow
@@ -1184,7 +1184,7 @@
                             variant="outline"
                             @click="disableRedeemCode(code.id)"
                           >
-                            停用
+                            {{ t('walletExtra.disable') }}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -1194,8 +1194,8 @@
                           class="py-10"
                         >
                           <EmptyState
-                            title="暂无兑换码"
-                            description="当前筛选条件下没有兑换码"
+                            :title="t('walletExtra.noCodes')"
+                            :description="t('walletExtra.noCodesFiltered')"
                           />
                         </TableCell>
                       </TableRow>
@@ -1232,17 +1232,17 @@
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <h3 class="text-lg font-semibold text-foreground leading-tight">
-                    流水详情
+                    {{ t('walletExtra.ledgerDetails') }}
                   </h3>
                   <p class="text-xs text-muted-foreground">
-                    资金动作审计信息
+                    {{ t('walletExtra.ledgerAudit') }}
                   </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   class="h-9 w-9 shrink-0"
-                  title="关闭"
+                  :title="t('walletExtra.close')"
                   @click="closeLedgerDrawer"
                 >
                   <X class="h-4 w-4" />
@@ -1276,7 +1276,7 @@
               <div class="grid gap-3 sm:grid-cols-2">
                 <div class="rounded-xl border border-border/60 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    归属
+                    {{ t('walletExtra.owner') }}
                   </div>
                   <div class="mt-1 text-sm font-medium">
                     {{ ownerDisplayName(currentLedger.owner_name, currentLedger.owner_type) }}
@@ -1294,7 +1294,7 @@
                 </div>
                 <div class="rounded-xl border border-border/60 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    余额变化
+                    {{ t('walletExtra.balanceChange') }}
                   </div>
                   <div class="mt-1 text-sm font-medium tabular-nums">
                     {{ currentLedger.balance_before.toFixed(4) }} → {{ currentLedger.balance_after.toFixed(4) }}
@@ -1303,8 +1303,8 @@
                     v-if="currentLedger.recharge_balance_before !== null && currentLedger.recharge_balance_before !== undefined && currentLedger.gift_balance_before !== null && currentLedger.gift_balance_before !== undefined"
                     class="mt-1 text-xs text-muted-foreground tabular-nums"
                   >
-                    充 {{ Number(currentLedger.recharge_balance_before).toFixed(4) }}→{{ Number(currentLedger.recharge_balance_after ?? 0).toFixed(4) }}
-                    · 赠 {{ Number(currentLedger.gift_balance_before).toFixed(4) }}→{{ Number(currentLedger.gift_balance_after ?? 0).toFixed(4) }}
+                    {{ t('walletExtra.rechargeShort') }} {{ Number(currentLedger.recharge_balance_before).toFixed(4) }}→{{ Number(currentLedger.recharge_balance_after ?? 0).toFixed(4) }}
+                    · {{ t('walletExtra.giftShort') }} {{ Number(currentLedger.gift_balance_before).toFixed(4) }}→{{ Number(currentLedger.gift_balance_after ?? 0).toFixed(4) }}
                   </div>
                 </div>
               </div>
@@ -1312,7 +1312,7 @@
               <div class="grid gap-3 sm:grid-cols-2">
                 <div class="rounded-xl border border-border/60 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    关联类型
+                    {{ t('walletExtra.relatedType') }}
                   </div>
                   <div class="mt-1 text-sm font-medium break-all">
                     {{ walletLinkTypeLabel(currentLedger.link_type) }}
@@ -1320,7 +1320,7 @@
                 </div>
                 <div class="rounded-xl border border-border/60 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    交易ID
+                    {{ t('walletExtra.transactionId') }}
                   </div>
                   <div class="mt-1 text-sm font-mono break-all">
                     {{ currentLedger.id }}
@@ -1334,19 +1334,19 @@
               >
                 <div class="rounded-xl border border-border/60 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    支付方式
+                    {{ t('walletExtra.paymentMethod') }}
                   </div>
                   <div class="mt-1 text-sm font-medium">
-                    <span v-if="loadingLedgerOrderNo">加载中...</span>
+                    <span v-if="loadingLedgerOrderNo">{{ t('walletExtra.loading') }}</span>
                     <span v-else>{{ ledgerPaymentMethodDisplay }}</span>
                   </div>
                 </div>
                 <div class="rounded-xl border border-border/60 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    支付订单号
+                    {{ t('walletExtra.paymentOrderNo') }}
                   </div>
                   <div class="mt-1 text-sm font-mono break-all">
-                    <span v-if="loadingLedgerOrderNo">加载中...</span>
+                    <span v-if="loadingLedgerOrderNo">{{ t('walletExtra.loading') }}</span>
                     <span v-else>{{ ledgerPaymentOrderNo || '-' }}</span>
                   </div>
                 </div>
@@ -1354,10 +1354,10 @@
 
               <div class="rounded-xl border border-border/60 p-3">
                 <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  操作用户
+                  {{ t('walletExtra.operator') }}
                 </div>
                 <div class="mt-1 text-sm font-medium">
-                  {{ currentLedger.operator_name || (currentLedger.operator_id ? '已删除用户' : '系统自动') }}
+                  {{ currentLedger.operator_name || (currentLedger.operator_id ? t('walletExtra.deletedUser') : t('walletExtra.systemAutomatic')) }}
                 </div>
                 <div class="mt-1 text-xs text-muted-foreground">
                   ID: {{ currentLedger.operator_id || '-' }}
@@ -1366,13 +1366,13 @@
                   v-if="currentLedger.operator_email"
                   class="mt-1 text-xs text-muted-foreground"
                 >
-                  邮箱: {{ currentLedger.operator_email }}
+                  {{ t('walletExtra.emailLabel', { email: currentLedger.operator_email }) }}
                 </div>
               </div>
 
               <div class="rounded-xl border border-border/60 p-3">
                 <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  说明
+                  {{ t('walletExtra.note') }}
                 </div>
                 <div class="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
                   {{ currentLedger.description || '-' }}
@@ -1399,17 +1399,17 @@
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <h3 class="text-lg font-semibold text-foreground leading-tight">
-                    退款审批
+                    {{ t('walletExtra.refundReview') }}
                   </h3>
                   <p class="text-xs text-muted-foreground">
-                    退款单: {{ currentRefund.refund_no }}
+                    {{ t('walletExtra.refundNo', { no: currentRefund.refund_no }) }}
                   </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   class="h-9 w-9 shrink-0"
-                  title="关闭"
+                  :title="t('walletExtra.close')"
                   @click="closeRefundDrawer"
                 >
                   <X class="h-4 w-4" />
@@ -1422,7 +1422,7 @@
                 <div class="grid gap-3 sm:grid-cols-2">
                   <div>
                     <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      归属
+                      {{ t('walletExtra.owner') }}
                     </div>
                     <div class="mt-1 text-sm font-medium">
                       {{ ownerDisplayName(currentRefund.owner_name, currentRefund.owner_type) }}
@@ -1433,7 +1433,7 @@
                   </div>
                   <div>
                     <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      金额
+                      {{ t('walletExtra.amount') }}
                     </div>
                     <div class="mt-1 text-sm font-semibold tabular-nums">
                       {{ formatCurrency(currentRefund.amount_usd) }}
@@ -1441,7 +1441,7 @@
                   </div>
                   <div>
                     <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      退款模式
+                      {{ t('walletExtra.refundMode') }}
                     </div>
                     <div class="mt-1 text-sm">
                       {{ refundModeLabel(currentRefund.refund_mode) }}
@@ -1449,7 +1449,7 @@
                   </div>
                   <div>
                     <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      状态
+                      {{ t('walletExtra.status') }}
                     </div>
                     <div class="mt-1">
                       <Badge :variant="refundStatusBadge(currentRefund.status)">
@@ -1459,7 +1459,7 @@
                   </div>
                   <div class="sm:col-span-2">
                     <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      申请原因
+                      {{ t('walletExtra.requestReason') }}
                     </div>
                     <div class="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
                       {{ currentRefund.reason || '-' }}
@@ -1470,7 +1470,7 @@
                     class="sm:col-span-2"
                   >
                     <div class="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      失败原因
+                      {{ t('walletExtra.failureReason') }}
                     </div>
                     <div class="mt-1 text-sm text-rose-600 whitespace-pre-wrap break-words">
                       {{ currentRefund.failure_reason }}
@@ -1483,10 +1483,10 @@
                 v-if="canFailRefund(currentRefund.status)"
                 class="rounded-xl border border-border/60 p-4 space-y-2"
               >
-                <Label>驳回原因</Label>
+                <Label>{{ t('walletExtra.rejectionReason') }}</Label>
                 <Input
                   v-model="failRefundForm.reason"
-                  placeholder="请填写驳回原因"
+                  :placeholder="t('walletExtra.rejectionReasonPlaceholder')"
                 />
               </div>
 
@@ -1495,11 +1495,11 @@
                 class="rounded-xl border border-border/60 p-4 space-y-3"
               >
                 <div class="space-y-1.5">
-                  <Label>网关退款号（可选）</Label>
+                  <Label>{{ t('walletExtra.gatewayRefundNoOptional') }}</Label>
                   <Input v-model="completeRefundForm.gateway_refund_id" />
                 </div>
                 <div class="space-y-1.5">
-                  <Label>打款凭证 / 参考号（可选）</Label>
+                  <Label>{{ t('walletExtra.payoutReferenceOptional') }}</Label>
                   <Input v-model="completeRefundForm.payout_reference" />
                 </div>
               </div>
@@ -1511,7 +1511,7 @@
                   variant="outline"
                   @click="closeRefundDrawer"
                 >
-                  关闭
+                  {{ t('walletExtra.close') }}
                 </Button>
                 <Button
                   v-if="canProcessRefund(currentRefund.status)"
@@ -1519,14 +1519,14 @@
                   :disabled="submittingRefundAction"
                   @click="processRefund(currentRefund)"
                 >
-                  {{ submittingRefundAction ? '处理中...' : '处理退款' }}
+                  {{ submittingRefundAction ? t('walletExtra.processing') : t('walletExtra.processRefund') }}
                 </Button>
                 <Button
                   v-if="canCompleteRefund(currentRefund.status)"
                   :disabled="submittingRefundAction"
                   @click="submitCompleteRefund"
                 >
-                  {{ submittingRefundAction ? '提交中...' : '确认完成' }}
+                  {{ submittingRefundAction ? t('walletExtra.submitting') : t('walletExtra.confirmComplete') }}
                 </Button>
                 <Button
                   v-if="canFailRefund(currentRefund.status)"
@@ -1534,7 +1534,7 @@
                   :disabled="submittingRefundAction"
                   @click="submitFailRefund"
                 >
-                  {{ submittingRefundAction ? '提交中...' : '驳回退款' }}
+                  {{ submittingRefundAction ? t('walletExtra.submitting') : t('walletExtra.rejectRefund') }}
                 </Button>
               </div>
             </div>
@@ -1547,21 +1547,21 @@
       <template #header>
         <div class="px-6 py-4 border-b border-border">
           <h3 class="text-lg font-semibold">
-            {{ currentOrder ? paymentOrderCreditDialogTitle(currentOrder) : '处理订单' }}
+            {{ currentOrder ? paymentOrderCreditDialogTitle(currentOrder) : t('walletExtra.processOrder') }}
           </h3>
           <p class="text-xs text-muted-foreground mt-1">
-            订单: {{ currentOrder?.order_no || '-' }}
+            {{ t('walletExtra.orderNo', { no: currentOrder?.order_no || '-' }) }}
           </p>
         </div>
       </template>
       <div class="space-y-4">
         <div class="space-y-1.5">
-          <Label>网关订单号（可选）</Label>
+          <Label>{{ t('walletExtra.gatewayOrderNoOptional') }}</Label>
           <Input v-model="creditForm.gateway_order_id" />
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div class="space-y-1.5">
-            <Label>实付金额（可选）</Label>
+            <Label>{{ t('walletExtra.paidAmountOptional') }}</Label>
             <Input
               v-model.number="creditForm.pay_amount"
               type="number"
@@ -1570,11 +1570,11 @@
             />
           </div>
           <div class="space-y-1.5">
-            <Label>币种（可选）</Label>
+            <Label>{{ t('walletExtra.currencyOptional') }}</Label>
             <Input v-model="creditForm.pay_currency" />
           </div>
           <div class="space-y-1.5">
-            <Label>汇率（可选）</Label>
+            <Label>{{ t('walletExtra.exchangeRateOptional') }}</Label>
             <Input
               v-model.number="creditForm.exchange_rate"
               type="number"
@@ -1589,13 +1589,13 @@
           variant="outline"
           @click="showCreditDialog = false"
         >
-          取消
+          {{ t('walletExtra.cancel') }}
         </Button>
         <Button
           :disabled="submittingOrderAction"
           @click="submitCreditOrder"
         >
-          {{ submittingOrderAction ? '提交中...' : (currentOrder ? paymentOrderCreditActionLabel(currentOrder) : '确认') }}
+          {{ submittingOrderAction ? t('walletExtra.submitting') : (currentOrder ? paymentOrderCreditActionLabel(currentOrder) : t('walletExtra.confirm')) }}
         </Button>
       </template>
     </Dialog>
@@ -1604,6 +1604,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import {
   Badge,
@@ -1676,18 +1677,19 @@ type LedgerReasonOption = {
   category: LedgerCategory
 }
 
-const LEDGER_REASON_OPTIONS: LedgerReasonOption[] = [
-  { value: 'topup_admin_manual', label: '人工充值', category: 'recharge' },
-  { value: 'topup_gateway', label: '支付充值', category: 'recharge' },
-  { value: 'topup_card_code', label: '卡密充值', category: 'recharge' },
-  { value: 'gift_initial', label: '初始赠款', category: 'gift' },
-  { value: 'gift_campaign', label: '活动赠款', category: 'gift' },
-  { value: 'gift_expire_reclaim', label: '赠款回收', category: 'gift' },
-  { value: 'adjust_admin', label: '人工调账', category: 'adjust' },
-  { value: 'adjust_system', label: '系统调账', category: 'adjust' },
-  { value: 'refund_out', label: '退款扣减', category: 'refund' },
-  { value: 'refund_revert', label: '退款回补', category: 'refund' },
-]
+const { t } = useI18n()
+const LEDGER_REASON_OPTIONS = computed<LedgerReasonOption[]>(() => [
+  { value: 'topup_admin_manual', label: t('walletExtra.manualTopup'), category: 'recharge' },
+  { value: 'topup_gateway', label: t('walletExtra.gatewayTopup'), category: 'recharge' },
+  { value: 'topup_card_code', label: t('walletExtra.cardTopup'), category: 'recharge' },
+  { value: 'gift_initial', label: t('walletExtra.initialGift'), category: 'gift' },
+  { value: 'gift_campaign', label: t('walletExtra.campaignGift'), category: 'gift' },
+  { value: 'gift_expire_reclaim', label: t('walletExtra.giftReclaim'), category: 'gift' },
+  { value: 'adjust_admin', label: t('walletExtra.manualAdjustment'), category: 'adjust' },
+  { value: 'adjust_system', label: t('walletExtra.systemAdjustment'), category: 'adjust' },
+  { value: 'refund_out', label: t('walletExtra.refundDeduction'), category: 'refund' },
+  { value: 'refund_revert', label: t('walletExtra.refundReversal'), category: 'refund' },
+])
 
 const { success, error: showError } = useToast()
 
@@ -1825,9 +1827,9 @@ const ledgerOwnerFilter = ref('all')
 const ledgerUserSearch = ref('')
 const ledgerReasonOptions = computed(() => {
   if (ledgerCategoryFilter.value === 'all') {
-    return LEDGER_REASON_OPTIONS
+    return LEDGER_REASON_OPTIONS.value
   }
-  return LEDGER_REASON_OPTIONS.filter((option) => option.category === ledgerCategoryFilter.value)
+  return LEDGER_REASON_OPTIONS.value.filter((option) => option.category === ledgerCategoryFilter.value)
 })
 
 const refundItems = ref<AdminGlobalRefund[]>([])
@@ -2048,7 +2050,7 @@ async function loadWalletMetaMap() {
     walletMetaMap.value = wallets.reduce<Record<string, { ownerName: string; ownerType: 'user' | 'api_key' }>>(
       (acc, wallet) => {
         const ownerName =
-          wallet.owner_name || (wallet.owner_type === 'user' ? '未命名用户' : '未命名密钥')
+          wallet.owner_name || (wallet.owner_type === 'user' ? t('walletExtra.unnamedUser') : t('walletExtra.unnamedKey'))
         acc[wallet.id] = {
           ownerName,
           ownerType: wallet.owner_type,
@@ -2078,7 +2080,7 @@ async function loadLedger() {
     ledgerTotal.value = resp.total
   } catch (error) {
     log.error('加载全局资金流水失败:', error)
-    showError(parseApiError(error, '加载全局资金流水失败'))
+    showError(parseApiError(error, t('walletExtra.loadLedgerFailed')))
   } finally {
     loadingLedger.value = false
   }
@@ -2102,7 +2104,7 @@ async function loadRefunds() {
     }
   } catch (error) {
     log.error('加载全局退款列表失败:', error)
-    showError(parseApiError(error, '加载全局退款列表失败'))
+    showError(parseApiError(error, t('walletExtra.loadRefundsFailed')))
   } finally {
     loadingRefunds.value = false
   }
@@ -2124,7 +2126,7 @@ async function loadOrders() {
     orderTotal.value = resp.total
   } catch (error) {
     log.error('加载支付订单失败:', error)
-    showError(parseApiError(error, '加载支付订单失败'))
+    showError(parseApiError(error, t('walletExtra.loadOrdersFailed')))
   } finally {
     loadingOrders.value = false
   }
@@ -2148,7 +2150,7 @@ async function loadCallbacks() {
     callbackTotal.value = resp.total
   } catch (error) {
     log.error('加载支付回调失败:', error)
-    showError(parseApiError(error, '加载支付回调失败'))
+    showError(parseApiError(error, t('walletExtra.loadCallbacksFailed')))
   } finally {
     loadingCallbacks.value = false
   }
@@ -2181,7 +2183,7 @@ async function loadRedeemCodeBatches() {
     }
   } catch (error) {
     log.error('加载兑换码批次失败:', error)
-    showError(parseApiError(error, '加载兑换码批次失败'))
+    showError(parseApiError(error, t('walletExtra.loadBatchesFailed')))
   } finally {
     loadingRedeemBatches.value = false
   }
@@ -2209,7 +2211,7 @@ async function loadRedeemCodes(batchId = selectedRedeemBatchId.value || undefine
     redeemCodeTotal.value = resp.total
   } catch (error) {
     log.error('加载兑换码列表失败:', error)
-    showError(parseApiError(error, '加载兑换码列表失败'))
+    showError(parseApiError(error, t('walletExtra.loadCodesFailed')))
   } finally {
     loadingRedeemCodes.value = false
   }
@@ -2242,15 +2244,15 @@ function exportRedeemCodesCsv(batch: RedeemCodeBatch, codes: Array<{ id: string;
 
 async function submitRedeemCodeBatch() {
   if (!redeemBatchForm.name.trim()) {
-    showError('请填写批次名称')
+    showError(t('walletExtra.batchNameRequired'))
     return
   }
   if (!redeemBatchForm.amount_usd || redeemBatchForm.amount_usd <= 0) {
-    showError('请填写有效面额')
+    showError(t('walletExtra.validAmountRequired'))
     return
   }
   if (!redeemBatchForm.total_count || redeemBatchForm.total_count <= 0) {
-    showError('请填写有效数量')
+    showError(t('walletExtra.validQuantityRequired'))
     return
   }
 
@@ -2267,7 +2269,7 @@ async function submitRedeemCodeBatch() {
     latestGeneratedRedeemBatch.value = resp.batch
     latestGeneratedRedeemCodes.value = resp.codes
     showPlainRedeemCodes.value = true
-    success('兑换码批次已创建')
+    success(t('walletExtra.batchCreated'))
     redeemBatchForm.name = ''
     redeemBatchForm.description = ''
     redeemBatchForm.expires_at = ''
@@ -2278,7 +2280,7 @@ async function submitRedeemCodeBatch() {
     showRedeemCodesDrawer.value = true
   } catch (error) {
     log.error('创建兑换码批次失败:', error)
-    showError(parseApiError(error, '创建兑换码批次失败'))
+    showError(parseApiError(error, t('walletExtra.createBatchFailed')))
   } finally {
     submittingRedeemBatch.value = false
   }
@@ -2286,11 +2288,11 @@ async function submitRedeemCodeBatch() {
 
 function exportLatestGeneratedRedeemCodes() {
   if (!latestGeneratedRedeemBatch.value || latestGeneratedRedeemCodes.value.length === 0) {
-    showError('当前没有可导出的新生成兑换码')
+    showError(t('walletExtra.noNewCodesToExport'))
     return
   }
   exportRedeemCodesCsv(latestGeneratedRedeemBatch.value, latestGeneratedRedeemCodes.value)
-  success('CSV 已导出')
+  success(t('walletExtra.csvExported'))
 }
 
 function displayRedeemCode(code: RedeemCodeRecord) {
@@ -2303,26 +2305,26 @@ function displayRedeemCode(code: RedeemCodeRecord) {
 async function disableRedeemBatch(batchId: string) {
   try {
     await adminPaymentsApi.disableRedeemCodeBatch(batchId)
-    success('批次已停用')
+    success(t('walletExtra.batchDisabled'))
     await loadRedeemCodeBatches()
   } catch (error) {
     log.error('停用兑换码批次失败:', error)
-    showError(parseApiError(error, '停用兑换码批次失败'))
+    showError(parseApiError(error, t('walletExtra.disableBatchFailed')))
   }
 }
 
 async function deleteRedeemBatch(batch: RedeemCodeBatch) {
   if (batch.redeemed_count > 0) {
-    showError('已有兑换记录的批次不能删除')
+    showError(t('walletExtra.redeemedBatchCannotDelete'))
     return
   }
-  if (!window.confirm(`确认删除批次「${batch.name}」吗？删除后无法恢复。`)) {
+  if (!window.confirm(t('walletExtra.deleteBatchConfirm', { name: batch.name }))) {
     return
   }
 
   try {
     await adminPaymentsApi.deleteRedeemCodeBatch(batch.id)
-    success('批次已删除')
+    success(t('walletExtra.batchDeleted'))
     if (selectedRedeemBatchId.value === batch.id) {
       showRedeemCodesDrawer.value = false
       selectedRedeemBatchId.value = null
@@ -2339,29 +2341,29 @@ async function deleteRedeemBatch(batch: RedeemCodeBatch) {
     await loadRedeemCodeBatches()
   } catch (error) {
     log.error('删除兑换码批次失败:', error)
-    showError(parseApiError(error, '删除兑换码批次失败'))
+    showError(parseApiError(error, t('walletExtra.deleteBatchFailed')))
   }
 }
 
 async function disableRedeemCode(codeId: string) {
   try {
     await adminPaymentsApi.disableRedeemCode(codeId)
-    success('兑换码已停用')
+    success(t('walletExtra.codeDisabled'))
     await Promise.all([loadRedeemCodes(), loadRedeemCodeBatches()])
   } catch (error) {
     log.error('停用兑换码失败:', error)
-    showError(parseApiError(error, '停用兑换码失败'))
+    showError(parseApiError(error, t('walletExtra.disableCodeFailed')))
   }
 }
 
 function orderWalletName(walletId: string) {
-  return walletMetaMap.value[walletId]?.ownerName || '未知钱包'
+  return walletMetaMap.value[walletId]?.ownerName || t('walletExtra.unknownWallet')
 }
 
 function orderWalletTypeLabel(walletId: string) {
   const ownerType = walletMetaMap.value[walletId]?.ownerType
-  if (!ownerType) return '未知归属'
-  return ownerType === 'user' ? '用户钱包' : '独立密钥钱包'
+  if (!ownerType) return t('walletExtra.unknownOwner')
+  return ownerType === 'user' ? t('walletExtra.userWallet') : t('walletExtra.independentKeyWallet')
 }
 
 function openLedgerDrawer(tx: AdminLedgerTransaction) {
@@ -2435,12 +2437,12 @@ async function processRefund(refund: AdminGlobalRefund) {
   submittingRefundAction.value = true
   try {
     await adminWalletApi.processRefund(refund.wallet_id, refund.id)
-    success('退款已进入 processing')
+    success(t('walletExtra.refundProcessing'))
     await Promise.all([loadRefunds(), loadLedger()])
     syncCurrentRefund(refund.id)
   } catch (error) {
     log.error('处理退款失败:', error)
-    showError(parseApiError(error, '处理退款失败'))
+    showError(parseApiError(error, t('walletExtra.processRefundFailed')))
   } finally {
     submittingRefundAction.value = false
   }
@@ -2449,7 +2451,7 @@ async function processRefund(refund: AdminGlobalRefund) {
 async function submitFailRefund() {
   if (!currentRefund.value) return
   if (!failRefundForm.reason.trim()) {
-    showError('请填写驳回原因')
+    showError(t('walletExtra.rejectionReasonRequired'))
     return
   }
 
@@ -2458,12 +2460,12 @@ async function submitFailRefund() {
     await adminWalletApi.failRefund(currentRefund.value.wallet_id, currentRefund.value.id, {
       reason: failRefundForm.reason.trim(),
     })
-    success('退款已驳回')
+    success(t('walletExtra.refundRejected'))
     await Promise.all([loadRefunds(), loadLedger()])
     syncCurrentRefund(currentRefund.value.id)
   } catch (error) {
     log.error('驳回退款失败:', error)
-    showError(parseApiError(error, '驳回退款失败'))
+    showError(parseApiError(error, t('walletExtra.rejectRefundFailed')))
   } finally {
     submittingRefundAction.value = false
   }
@@ -2478,12 +2480,12 @@ async function submitCompleteRefund() {
       gateway_refund_id: completeRefundForm.gateway_refund_id || undefined,
       payout_reference: completeRefundForm.payout_reference || undefined,
     })
-    success('退款已完成')
+    success(t('walletExtra.refundCompleted'))
     await Promise.all([loadRefunds(), loadLedger()])
     syncCurrentRefund(currentRefund.value.id)
   } catch (error) {
     log.error('完成退款失败:', error)
-    showError(parseApiError(error, '完成退款失败'))
+    showError(parseApiError(error, t('walletExtra.completeRefundFailed')))
   } finally {
     submittingRefundAction.value = false
   }
@@ -2509,13 +2511,13 @@ async function submitCreditOrder() {
       pay_currency: creditForm.pay_currency || undefined,
       exchange_rate: creditForm.exchange_rate,
     })
-    success(`订单已${actionLabel.replace('确认', '')}`)
+    success(t('walletExtra.orderActionCompleted', { action: actionLabel }))
     showCreditDialog.value = false
     await Promise.all([loadOrders(), loadLedger(), loadWalletMetaMap()])
   } catch (error) {
     const actionLabel = paymentOrderCreditActionLabel(currentOrder.value)
     log.error(`${actionLabel}失败:`, error)
-    showError(parseApiError(error, `${actionLabel}失败`))
+    showError(parseApiError(error, t('walletExtra.orderActionFailed', { action: actionLabel })))
   } finally {
     submittingOrderAction.value = false
   }
@@ -2525,11 +2527,11 @@ async function expireOrder(orderId: string) {
   submittingOrderAction.value = true
   try {
     await adminPaymentsApi.expireOrder(orderId)
-    success('订单已标记过期')
+    success(t('walletExtra.orderMarkedExpired'))
     await loadOrders()
   } catch (error) {
     log.error('标记过期失败:', error)
-    showError(parseApiError(error, '标记过期失败'))
+    showError(parseApiError(error, t('walletExtra.markExpiredFailed')))
   } finally {
     submittingOrderAction.value = false
   }
@@ -2539,11 +2541,11 @@ async function failOrder(orderId: string) {
   submittingOrderAction.value = true
   try {
     await adminPaymentsApi.failOrder(orderId)
-    success('订单已标记失败')
+    success(t('walletExtra.orderMarkedFailed'))
     await loadOrders()
   } catch (error) {
     log.error('标记失败失败:', error)
-    showError(parseApiError(error, '标记失败失败'))
+    showError(parseApiError(error, t('walletExtra.markFailedFailed')))
   } finally {
     submittingOrderAction.value = false
   }
@@ -2566,18 +2568,18 @@ function canCreditOrder(status: string) {
 }
 
 function paymentOrderCreditActionLabel(order: PaymentOrder) {
-  return order.order_kind === 'plan_purchase' ? '确认发放' : '确认到账'
+  return order.order_kind === 'plan_purchase' ? t('walletExtra.confirmFulfillment') : t('walletExtra.confirmCredit')
 }
 
 function paymentOrderCreditDialogTitle(order: PaymentOrder) {
-  return order.order_kind === 'plan_purchase' ? '人工发放' : '人工到账'
+  return order.order_kind === 'plan_purchase' ? t('walletExtra.manualFulfillment') : t('walletExtra.manualCredit')
 }
 
 function paymentOrderFulfillmentLabel(status: string | null | undefined) {
   const labels: Record<string, string> = {
-    pending: '待发放',
-    fulfilled: '已发放',
-    failed: '发放失败',
+    pending: t('walletExtra.fulfillmentPending'),
+    fulfilled: t('walletExtra.fulfilled'),
+    failed: t('walletExtra.fulfillmentFailed'),
   }
   if (!status) return ''
   return labels[status] || status
@@ -2658,12 +2660,12 @@ function handleRedeemCodePageSizeChange(size: number) {
 }
 
 function ownerTypeLabel(ownerType: 'user' | 'api_key') {
-  return ownerType === 'user' ? '用户钱包' : '独立密钥'
+  return ownerType === 'user' ? t('walletExtra.userWallet') : t('walletExtra.independentKey')
 }
 
 function ownerDisplayName(name: string | null | undefined, ownerType: 'user' | 'api_key') {
   if (name) return name
-  return ownerType === 'user' ? '未命名用户' : '未命名密钥'
+  return ownerType === 'user' ? t('walletExtra.unnamedUser') : t('walletExtra.unnamedKey')
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -2678,9 +2680,9 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 function redeemCodeStatusLabel(status: string) {
-  if (status === 'active') return '可用'
-  if (status === 'disabled') return '已停用'
-  if (status === 'redeemed') return '已兑换'
+  if (status === 'active') return t('walletExtra.active')
+  if (status === 'disabled') return t('walletExtra.disabled')
+  if (status === 'redeemed') return t('walletExtra.redeemed')
   return status
 }
 

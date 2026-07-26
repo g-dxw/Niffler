@@ -1,7 +1,7 @@
 <template>
   <CardSection
-    title="定时任务"
-    description="配置系统后台定时任务"
+    :title="t('scheduledTasks.title')"
+    :description="t('scheduledTasks.description')"
   >
     <div class="space-y-3">
       <template
@@ -55,7 +55,7 @@
                 @update:model-value="(val: string) => task.updateTime(val, task.minute)"
               >
                 <SelectTrigger class="w-16 h-8 text-xs px-2 justify-center gap-1">
-                  <SelectValue placeholder="时" />
+                  <SelectValue :placeholder="t('scheduledTasks.hour')" />
                 </SelectTrigger>
                 <SelectContent class="min-w-0">
                   <SelectItem
@@ -73,7 +73,7 @@
                 @update:model-value="(val: string) => task.updateTime(task.hour, val)"
               >
                 <SelectTrigger class="w-16 h-8 text-xs px-2 justify-center gap-1">
-                  <SelectValue placeholder="分" />
+                  <SelectValue :placeholder="t('scheduledTasks.minute')" />
                 </SelectTrigger>
                 <SelectContent class="min-w-0">
                   <SelectItem
@@ -131,6 +131,9 @@ import SelectContent from '@/components/ui/select-content.vue'
 import SelectItem from '@/components/ui/select-item.vue'
 import { CardSection } from '@/components/layout'
 import type { Component } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface ScheduledTask {
   id: string

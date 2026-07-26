@@ -4,7 +4,7 @@
     <div class="p-4 border-b border-border/60">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold flex items-center gap-2">
-          模型映射
+          {{ t('providerModelMapping.title') }}
         </h3>
         <Button
           variant="outline"
@@ -13,7 +13,7 @@
           @click="openAddDialog"
         >
           <Plus class="w-3.5 h-3.5 mr-1.5" />
-          添加映射
+          {{ t('providerModelMapping.add') }}
         </Button>
       </div>
     </div>
@@ -66,11 +66,11 @@
                 variant="default"
                 class="text-xs shrink-0"
               >
-                精确
+                {{ t('providerModelMapping.exact') }}
               </Badge>
               <!-- 分隔符 + 映射数量 -->
               <span class="text-xs text-muted-foreground shrink-0">
-                | {{ item.mappings.length }} 个映射
+                | {{ t('providerModelMapping.mappingCount', { count: item.mappings.length }) }}
               </span>
               <Badge
                 v-if="item.group"
@@ -98,11 +98,11 @@
                 variant="secondary"
                 class="text-xs shrink-0"
               >
-                正则
+                {{ t('providerModelMapping.regex') }}
               </Badge>
               <!-- 分隔符 + 映射数量 -->
               <span class="text-xs text-muted-foreground shrink-0">
-                | {{ item.mappings.length }} 个映射
+                | {{ t('providerModelMapping.mappingCount', { count: item.mappings.length }) }}
               </span>
               <!-- Key 数量 -->
               <span
@@ -123,7 +123,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8"
-              title="编辑映射"
+              :title="t('providerModelMapping.edit')"
               @click="item.group && editGroup(item.group)"
             >
               <Edit class="w-3.5 h-3.5" />
@@ -132,7 +132,7 @@
               variant="ghost"
               size="icon"
               class="h-8 w-8 hover:text-destructive"
-              title="删除映射"
+              :title="t('providerModelMapping.delete')"
               @click="item.group && deleteGroup(item.group)"
             >
               <Trash2 class="w-3.5 h-3.5" />
@@ -163,7 +163,7 @@
                 variant="ghost"
                 size="icon"
                 class="h-7 w-7 shrink-0"
-                title="测试映射"
+                :title="t('providerModelMapping.test')"
                 :disabled="testingMapping === `${item.key}-${mapping.name}`"
                 @click="testMapping(item, mapping)"
               >
@@ -193,7 +193,7 @@
               <div class="flex items-center gap-3">
                 <!-- 第一列：Key 名称 + sk -->
                 <div class="flex flex-col shrink-0">
-                  <span class="font-medium text-sm">{{ keyItem.keyName || '未命名密钥' }}</span>
+                  <span class="font-medium text-sm">{{ keyItem.keyName || t('providerModelMapping.unnamedKey') }}</span>
                   <span class="text-xs text-muted-foreground font-mono">
                     {{ keyItem.maskedKey }}
                   </span>
@@ -228,7 +228,7 @@
                     variant="ghost"
                     size="icon"
                     class="h-7 w-7 shrink-0"
-                    title="测试映射"
+                    :title="t('providerModelMapping.test')"
                     :disabled="testingMapping === `${item.key}-${keyItem.keyId}-${match.name}`"
                     @click="testRegexMapping(item, keyItem, match)"
                   >
@@ -252,7 +252,7 @@
         v-if="shouldPaginateMappings"
         class="px-4 py-2 flex items-center justify-between text-xs text-muted-foreground"
       >
-        <span>共 {{ combinedMappings.length }} 个映射</span>
+        <span>{{ t('providerModelMapping.totalMappings', { count: combinedMappings.length }) }}</span>
         <div class="flex items-center gap-1.5">
           <Button
             variant="ghost"
@@ -284,10 +284,10 @@
     >
       <Tag class="w-12 h-12 mx-auto mb-3 opacity-50" />
       <p class="text-sm">
-        暂无模型映射
+        {{ t('providerModelMapping.empty') }}
       </p>
       <p class="text-xs mt-1">
-        点击上方"添加映射"按钮为模型创建名称映射
+        {{ t('providerModelMapping.emptyHint') }}
       </p>
     </div>
   </Card>
@@ -307,10 +307,10 @@
   <!-- 删除确认对话框 -->
   <AlertDialog
     v-model="deleteConfirmOpen"
-    title="删除映射"
+    :title="t('providerModelMapping.delete')"
     :description="deleteConfirmDescription"
-    confirm-text="删除"
-    cancel-text="取消"
+    :confirm-text="t('providerModelMapping.deleteAction')"
+    :cancel-text="t('providerModelMapping.cancel')"
     type="danger"
     @confirm="confirmDelete"
     @cancel="deleteConfirmOpen = false"
@@ -346,6 +346,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useSmartPagination } from '@/composables/useSmartPagination'
 import { useModelTest } from '@/composables/useModelTest'
 import { Tag, Plus, Edit, Trash2, ChevronRight, Loader2, Play } from 'lucide-vue-next'
@@ -410,6 +411,7 @@ const props = defineProps<{
   mappingPreview?: ProviderMappingPreviewResponse | null
   loading?: boolean
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'refresh': []
@@ -493,8 +495,8 @@ function getEndpointIdsKey(endpointIds: string[] | undefined): string {
 }
 
 function getGroupEndpointScopeLabel(group: AliasGroup): string {
-  if (!group.endpointIds || group.endpointIds.length === 0) return '全部端点'
-  return `${group.endpointIds.length} 端点`
+  if (!group.endpointIds || group.endpointIds.length === 0) return t('providerModelMapping.allEndpoints')
+  return t('providerModelMapping.endpointCount', { count: group.endpointIds.length })
 }
 
 // 精确映射分组（来自 provider_model_mappings）
@@ -638,7 +640,7 @@ const deleteConfirmDescription = computed(() => {
   const modelName = model.global_model_display_name || model.provider_model_name
   const aliasNames = aliases.map(a => a.name).join(', ')
   const endpointScope = getGroupEndpointScopeLabel(deletingGroup.value)
-  return `确定要删除模型「${modelName}」在「${endpointScope}」下的 ${aliases.length} 个映射吗？\n\n映射名称：${aliasNames}`
+  return t('providerModelMapping.deleteConfirm', { model: modelName, scope: endpointScope, count: aliases.length, aliases: aliasNames })
 })
 
 // 切换展开状态
@@ -700,12 +702,12 @@ async function confirmDelete() {
       provider_model_mappings: newAliases.length > 0 ? newAliases : null
     })
 
-    showSuccess('映射已删除')
+    showSuccess(t('providerModelMapping.deleted'))
     deleteConfirmOpen.value = false
     deletingGroup.value = null
     emit('refresh')
   } catch (err: unknown) {
-    showError(parseApiError(err, '删除失败'), '错误')
+    showError(parseApiError(err, t('providerModelMapping.deleteFailed')), t('providerModelMapping.error'))
   }
 }
 
@@ -762,7 +764,7 @@ function runMappingTest(
 ) {
   const endpoints = endpointsOverride ?? activeEndpoints.value
   if (endpoints.length === 0) {
-    showError('暂无可用于测试的活跃端点')
+    showError(t('providerModelMapping.noTestEndpoint'))
     return
   }
   pendingMappingKey.value = testingKey
@@ -814,19 +816,19 @@ async function handleStartMappingTest() {
   if (modelTest.testing.value || !testingModelName.value) return
   const endpoint = selectedTestEndpoint.value || selectableTestEndpoints.value[0]
   if (!endpoint) {
-    showError('请选择要测试的端点')
+    showError(t('providerModelMapping.selectTestEndpoint'))
     return
   }
 
   const { value: requestHeaders, error: requestHeadersError } = parsedTestRequestHeaders.value
   if (!requestHeaders || requestHeadersError) {
-    showError(`测试请求头无效: ${requestHeadersError || '无效 JSON'}`)
+    showError(t('providerModelMapping.invalidHeaders', { error: requestHeadersError || t('providerModelMapping.invalidJson') }))
     return
   }
 
   const { value: requestBody, error } = parsedTestRequestBody.value
   if (!requestBody || error) {
-    showError(`测试请求体无效: ${error || '无效 JSON'}`)
+    showError(t('providerModelMapping.invalidBody', { error: error || t('providerModelMapping.invalidJson') }))
     return
   }
 
@@ -835,7 +837,7 @@ async function handleStartMappingTest() {
   await modelTest.startTest({
     mode: 'direct',
     modelName: testingModelName.value,
-    displayLabel: `[${endpoint.api_format}] 映射 "${testingModelName.value}"`,
+    displayLabel: t('providerModelMapping.testLabel', { format: endpoint.api_format, model: testingModelName.value }),
     apiFormat: endpoint.api_format,
     endpointId: endpoint.id,
     endpointBaseUrl: endpoint.base_url,

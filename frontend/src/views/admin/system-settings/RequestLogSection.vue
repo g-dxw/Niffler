@@ -1,7 +1,7 @@
 <template>
   <CardSection
-    title="请求记录"
-    description="控制请求/响应详情的入库方式和内容"
+    :title="t('requestLog.title')"
+    :description="t('requestLog.description')"
   >
     <template #actions>
       <Button
@@ -9,7 +9,7 @@
         :disabled="loading || !hasChanges"
         @click="$emit('save')"
       >
-        {{ loading ? '保存中...' : '保存' }}
+        {{ loading ? t('requestLog.saving') : t('requestLog.save') }}
       </Button>
     </template>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -18,7 +18,7 @@
           for="request-log-level"
           class="block text-sm font-medium mb-2"
         >
-          记录详细程度
+          {{ t('requestLog.level') }}
         </Label>
         <Select
           :model-value="requestRecordLevel"
@@ -32,18 +32,18 @@
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="basic">
-              BASIC - 基本信息 (~1KB/条)
+              {{ t('requestLog.basic') }}
             </SelectItem>
             <SelectItem value="headers">
-              HEADERS - 含请求头 (~2-3KB/条)
+              {{ t('requestLog.headers') }}
             </SelectItem>
             <SelectItem value="full">
-              FULL - 完整请求响应（短期审计）
+              {{ t('requestLog.full') }}
             </SelectItem>
           </SelectContent>
         </Select>
         <p class="mt-1 text-xs text-muted-foreground">
-          默认只记录基本信息；完整正文建议只保留 24-48 小时，敏感请求头会自动脱敏
+          {{ t('requestLog.hint') }}
         </p>
       </div>
 
@@ -52,7 +52,7 @@
           for="max-request-body-size"
           class="block text-sm font-medium"
         >
-          最大请求体大小 (KB)
+          {{ t('requestLog.requestSize') }}
         </Label>
         <Input
           id="max-request-body-size"
@@ -64,7 +64,7 @@
           @update:model-value="$emit('update:maxRequestBodySizeKB', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          默认 256 KiB，超过此大小的请求体会被截断记录
+          {{ t('requestLog.requestSizeHint') }}
         </p>
       </div>
 
@@ -73,7 +73,7 @@
           for="max-response-body-size"
           class="block text-sm font-medium"
         >
-          最大响应体大小 (KB)
+          {{ t('requestLog.responseSize') }}
         </Label>
         <Input
           id="max-response-body-size"
@@ -85,7 +85,7 @@
           @update:model-value="$emit('update:maxResponseBodySizeKB', Number($event))"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          默认 256 KiB，超过此大小的响应体会被截断记录
+          {{ t('requestLog.responseSizeHint') }}
         </p>
       </div>
 
@@ -94,7 +94,7 @@
           for="sensitive-headers"
           class="block text-sm font-medium"
         >
-          敏感请求头
+          {{ t('requestLog.sensitive') }}
         </Label>
         <Input
           id="sensitive-headers"
@@ -104,7 +104,7 @@
           @update:model-value="$emit('update:sensitiveHeadersStr', $event)"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          逗号分隔，这些请求头会被脱敏处理
+          {{ t('requestLog.sensitiveHint') }}
         </p>
       </div>
     </div>
@@ -112,6 +112,9 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import Button from '@/components/ui/button.vue'
 import Input from '@/components/ui/input.vue'
 import Label from '@/components/ui/label.vue'

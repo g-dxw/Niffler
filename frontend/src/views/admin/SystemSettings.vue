@@ -4,25 +4,37 @@
       <!-- 主内容 -->
       <div class="flex-1 min-w-0">
         <PageHeader
-          title="系统设置"
-          description="管理系统级别的配置和参数"
+          :title="t('systemSettings.title')"
+          :description="t('systemSettings.description')"
         />
 
-        <div class="mt-6 space-y-6">
+        <Tabs v-model="activeTab" class="mt-6">
+          <TabsList class="grid w-full grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-5">
+            <TabsTrigger v-for="tab in settingsTabs" :key="tab.value" :value="tab.value">
+              {{ tab.label }}
+            </TabsTrigger>
+          </TabsList>
+          <div class="mt-6 space-y-6">
           <!-- 站点信息 -->
           <SiteInfoSection
+            v-show="activeTab === 'site'"
             id="section-site-info"
             :site-name="systemConfig.site_name"
             :site-subtitle="systemConfig.site_subtitle"
+            :contact-us-format="systemConfig.contact_us_format"
+            :contact-us-content="systemConfig.contact_us_content"
             :loading="siteInfoLoading"
             :has-changes="hasSiteInfoChanges"
             @save="saveSiteInfo"
             @update:site-name="systemConfig.site_name = $event"
             @update:site-subtitle="systemConfig.site_subtitle = $event"
+            @update:contact-us-format="systemConfig.contact_us_format = $event"
+            @update:contact-us-content="systemConfig.contact_us_content = $event"
           />
 
           <!-- 数据管理 -->
           <DataManagementSection
+            v-show="activeTab === 'data'"
             id="section-data-mgmt"
             :config-export-loading="exportLoading"
             :config-import-loading="importLoading"
@@ -36,6 +48,7 @@
 
           <!-- 网络代理 -->
           <ProxyConfigSection
+            v-show="activeTab === 'network'"
             id="section-proxy"
             :proxy-node-id="systemConfig.system_proxy_node_id"
             :online-nodes="proxyNodesStore.onlineNodes"
@@ -48,6 +61,7 @@
 
           <!-- 基础配置 -->
           <BasicConfigSection
+            v-show="activeTab === 'site'"
             id="section-basic"
             :default-user-initial-gift-usd="systemConfig.default_user_initial_gift_usd"
             :rate-limit-per-minute="systemConfig.rate_limit_per_minute"
@@ -98,6 +112,7 @@
 
           <!-- 请求记录配置 -->
           <RequestLogSection
+            v-show="activeTab === 'network'"
             id="section-request-log"
             :request-record-level="systemConfig.request_record_level"
             :max-request-body-size-k-b="maxRequestBodySizeKB"
@@ -114,6 +129,7 @@
 
           <!-- 内容审查 / 账号保护 -->
           <ContentModerationSection
+            v-show="activeTab === 'security'"
             id="section-content-moderation"
             :config="systemConfig.content_moderation_account_protection"
             :loading="contentModerationLoading"
@@ -124,6 +140,7 @@
 
           <!-- 请求记录清理策略 -->
           <CleanupPolicySection
+            v-show="activeTab === 'data'"
             id="section-cleanup"
             :enable-auto-cleanup="systemConfig.enable_auto_cleanup"
             :detail-log-retention-days="systemConfig.detail_log_retention_days"
@@ -156,47 +173,21 @@
 
           <!-- 定时任务 -->
           <ScheduledTasksSection
+            v-show="activeTab === 'data'"
             id="section-scheduled"
             :scheduled-tasks="scheduledTasks"
           />
 
           <!-- 系统版本信息 -->
           <SystemInfoSection
+            v-show="activeTab === 'diagnostics'"
             id="section-sysinfo"
             :system-version="systemVersion"
           />
-        </div>
+          </div>
+        </Tabs>
       </div>
 
-      <!-- 右侧悬浮目录 -->
-      <nav class="hidden lg:block w-44 shrink-0">
-        <div class="sticky top-1/2 -translate-y-1/2">
-          <div class="relative">
-            <!-- 竖线：通过绝对定位，以圆点中心为基准 -->
-            <div class="absolute right-[3px] top-0 bottom-0 w-px bg-border" />
-            <ul class="relative text-sm">
-              <li
-                v-for="item in tocItems"
-                :key="item.id"
-              >
-                <button
-                  class="relative flex items-center justify-end w-full text-right pr-4 pl-2 py-1.5 transition-all duration-200"
-                  :class="activeSection === item.id
-                    ? 'text-primary font-medium'
-                    : 'text-muted-foreground hover:text-foreground'"
-                  @click="scrollToSection(item.id)"
-                >
-                  {{ item.label }}
-                  <span
-                    class="absolute right-0 w-[7px] h-[7px] rounded-full transition-all duration-200"
-                    :class="activeSection === item.id ? 'bg-primary scale-125' : 'bg-border'"
-                  />
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </nav>
     </div>
 
     <!-- 导入配置对话框 -->
@@ -250,8 +241,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { PageHeader, PageContainer } from '@/components/layout'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui'
 import { useProxyNodesStore } from '@/stores/proxy-nodes'
 
 // Composables
@@ -276,66 +269,16 @@ import UsersImportDialog from './system-settings/UsersImportDialog.vue'
 import AggregateImportDialog from './system-settings/AggregateImportDialog.vue'
 
 const proxyNodesStore = useProxyNodesStore()
+const { t } = useI18n()
 
-// TOC 目录导航
-const tocItems = [
-  { id: 'section-site-info', label: '站点信息' },
-  { id: 'section-data-mgmt', label: '数据管理' },
-  { id: 'section-proxy', label: '网络代理' },
-  { id: 'section-basic', label: '基础配置' },
-  { id: 'section-request-log', label: '请求记录' },
-  { id: 'section-content-moderation', label: '内容审查' },
-  { id: 'section-cleanup', label: '记录清理策略' },
-  { id: 'section-scheduled', label: '定时任务' },
-  { id: 'section-sysinfo', label: '系统信息' },
+const settingsTabs = [
+  { value: 'site', label: t('systemSettings.site') },
+  { value: 'security', label: t('systemSettings.security') },
+  { value: 'network', label: t('systemSettings.network') },
+  { value: 'data', label: t('systemSettings.data') },
+  { value: 'diagnostics', label: t('systemSettings.diagnostics') },
 ]
-
-const activeSection = ref(tocItems[0].id)
-let observer: IntersectionObserver | null = null
-
-function getScrollContainer(): HTMLElement | null {
-  return document.querySelector('.app-shell__content')
-}
-
-function scrollToSection(id: string) {
-  const el = document.getElementById(id)
-  const container = getScrollContainer()
-  if (el && container) {
-    const offset = 80
-    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - offset
-    container.scrollTo({ top, behavior: 'smooth' })
-  }
-}
-
-function setupScrollSpy() {
-  const sectionIds = tocItems.map(item => item.id)
-  const container = getScrollContainer()
-  if (!container) return
-
-  const visibleSections = new Set<string>()
-
-  observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          visibleSections.add(entry.target.id)
-        } else {
-          visibleSections.delete(entry.target.id)
-        }
-      }
-      const topId = sectionIds.find(id => visibleSections.has(id))
-      if (topId) {
-        activeSection.value = topId
-      }
-    },
-    { root: container, rootMargin: '-80px 0px -60% 0px', threshold: 0 }
-  )
-
-  for (const id of sectionIds) {
-    const el = document.getElementById(id)
-    if (el) observer.observe(el)
-  }
-}
+const activeTab = ref('site')
 
 // System config composable
 const {
@@ -442,14 +385,5 @@ onMounted(async () => {
   ])
   // 配置加载完成后初始化定时任务的原始值
   initPreviousValues()
-  await nextTick()
-  setupScrollSpy()
-})
-
-onBeforeUnmount(() => {
-  if (observer) {
-    observer.disconnect()
-    observer = null
-  }
 })
 </script>

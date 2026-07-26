@@ -3,7 +3,7 @@
     <!-- 左侧：记录范围和每页数量 -->
     <div class="flex items-center justify-between sm:justify-start gap-3 text-sm text-muted-foreground">
       <span class="font-medium whitespace-nowrap">
-        显示 <span class="text-foreground font-semibold">{{ recordRange.start }}-{{ recordRange.end }}</span> 条，共 <span class="text-foreground font-semibold">{{ total }}</span> 条
+        {{ t('pagination.showing') }} <span class="text-foreground font-semibold">{{ recordRange.start }}-{{ recordRange.end }}</span>，{{ t('pagination.total', { count: total }) }}
       </span>
       <Select
         v-if="showPageSizeSelector"
@@ -21,7 +21,7 @@
             :key="size"
             :value="String(size)"
           >
-            {{ size }} 条/页
+            {{ t('pagination.perPage', { count: size }) }}
           </SelectItem>
         </SelectContent>
       </Select>
@@ -55,7 +55,7 @@
         v-if="totalPages > 7"
         class="flex items-center gap-1.5 ml-2 text-sm text-muted-foreground"
       >
-        <span class="hidden sm:inline">跳至</span>
+        <span class="hidden sm:inline">{{ t('pagination.goTo') }}</span>
         <input
           v-model="jumpPageInput"
           type="text"
@@ -66,7 +66,7 @@
           @blur="handleJumpPage"
           @input="filterNumericInput"
         >
-        <span class="hidden sm:inline">页</span>
+        <span class="hidden sm:inline">{{ t('pagination.page') }}</span>
       </div>
     </div>
   </div>
@@ -74,7 +74,10 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Button, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui'
+
+const { t } = useI18n()
 
 interface Props {
   current: number

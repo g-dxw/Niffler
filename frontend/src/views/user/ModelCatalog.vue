@@ -7,7 +7,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <!-- 左侧：标题 -->
           <h3 class="text-sm sm:text-base font-semibold shrink-0">
-            可用模型
+            {{ t('modelCatalog.title') }}
           </h3>
 
           <!-- 右侧：操作区 -->
@@ -19,7 +19,7 @@
                 id="model-search"
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索模型名称..."
+                :placeholder="t('modelCatalog.search')"
                 class="w-32 sm:w-44 pl-8 pr-3 h-8 text-sm bg-background/50 border-border/60 focus:border-primary/40 transition-colors"
               />
             </div>
@@ -38,16 +38,16 @@
           <TableHeader>
             <TableRow class="border-b border-border/60 hover:bg-transparent">
               <TableHead class="w-[140px] h-12 font-semibold">
-                模型名称
+                {{ t('modelCatalog.name') }}
               </TableHead>
               <TableHead class="w-[140px] h-12 font-semibold text-center">
-                价格 ($/M)
+                {{ t('modelCatalog.price') }}
               </TableHead>
               <TableHead class="w-[80px] h-12 font-semibold text-center">
-                调用次数
+                {{ t('modelCatalog.requests') }}
               </TableHead>
               <TableHead class="w-[70px] h-12 font-semibold text-center">
-                状态
+                {{ t('modelCatalog.status') }}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -65,7 +65,7 @@
                 colspan="4"
                 class="text-center py-12 text-muted-foreground"
               >
-                没有找到匹配的模型
+                {{ t('modelCatalog.empty') }}
               </TableCell>
             </TableRow>
             <template v-else>
@@ -93,7 +93,7 @@
                       <span>{{ model.name }}</span>
                       <button
                         class="p-0.5 rounded hover:bg-muted transition-colors"
-                        title="复制模型 ID"
+                        :title="t('modelCatalog.copyId')"
                         @click.stop="copyToClipboard(model.name)"
                       >
                         <Copy class="w-3 h-3" />
@@ -113,13 +113,13 @@
                       <span
                         v-if="hasTieredPricing(model)"
                         class="ml-1 text-muted-foreground"
-                        title="阶梯计费"
-                      >[阶梯]</span>
+                        :title="t('modelCatalog.tiered')"
+                      >{{ t('modelCatalog.tiered') }}</span>
                     </div>
                     <!-- 按次计费 -->
                     <div v-if="model.default_price_per_request && model.default_price_per_request > 0">
-                      <span class="text-muted-foreground">按次:</span>
-                      <span class="font-mono ml-1">${{ model.default_price_per_request.toFixed(3) }}/次</span>
+                      <span class="text-muted-foreground">{{ t('modelCatalog.perRequest') }}</span>
+                      <span class="font-mono ml-1">${{ model.default_price_per_request.toFixed(3) }}/{{ t('modelCatalog.perRequestUnit') }}</span>
                     </div>
                     <!-- 无计费配置 -->
                     <div
@@ -135,7 +135,7 @@
                 </TableCell>
                 <TableCell class="py-4 text-center">
                   <Badge :variant="model.is_active ? 'success' : 'secondary'">
-                    {{ model.is_active ? '可用' : '停用' }}
+                    {{ model.is_active ? t('common.available') : t('common.unavailable') }}
                   </Badge>
                 </TableCell>
               </TableRow>
@@ -179,7 +179,7 @@
                 </div>
               </div>
               <Badge :variant="model.is_active ? 'success' : 'secondary'">
-                {{ model.is_active ? '可用' : '停用' }}
+                {{ model.is_active ? t('common.available') : t('common.unavailable') }}
               </Badge>
             </div>
 
@@ -191,7 +191,7 @@
               >
                 In: ${{ getFirstTierPrice(model, 'input')?.toFixed(2) || '-' }} / Out: ${{ getFirstTierPrice(model, 'output')?.toFixed(2) || '-' }}
               </span>
-              <span class="font-mono">{{ formatUsageCount(model.usage_count || 0) }} 次</span>
+                      <span class="font-mono">{{ formatUsageCount(model.usage_count || 0) }} {{ t('modelCatalog.callsUnit') }}</span>
             </div>
           </div>
         </div>
@@ -218,6 +218,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted, watch } from 'vue'
 import {
   Loader2,
@@ -248,6 +249,7 @@ import { log } from '@/utils/logger'
 import { parseApiError } from '@/utils/errorParser'
 import { getModelCapabilityLabels } from './model-catalog-helpers'
 
+const { t } = useI18n()
 const { error: showError } = useToast()
 const { copyToClipboard } = useClipboard()
 
@@ -309,7 +311,7 @@ async function loadModels() {
     models.value = (response.models || []) as PublicGlobalModel[]
   } catch (err: unknown) {
     log.error('加载模型失败:', err)
-    showError(parseApiError(err, ''), '加载模型失败')
+    showError(parseApiError(err, ''), t('modelCatalog.loadFailed'))
   } finally {
     loading.value = false
   }

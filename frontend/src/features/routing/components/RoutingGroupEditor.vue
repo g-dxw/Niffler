@@ -2,7 +2,7 @@
   <section class="space-y-4">
     <div class="grid gap-3">
       <label class="space-y-1 text-sm">
-        <span class="text-muted-foreground">允许模型</span>
+        <span class="text-muted-foreground">{{ t('routingGroupEditor.allowedModels') }}</span>
         <input
           v-model="allowedModelsText"
           class="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import RoutingModelPolicyEditor from './RoutingModelPolicyEditor.vue'
 import { normalizeRoutingGroupConfig, type RoutingGroupConfig, type RoutingModelPolicy } from '../utils/routingPolicy'
@@ -27,6 +28,7 @@ import { normalizeRoutingGroupConfig, type RoutingGroupConfig, type RoutingModel
 const props = defineProps<{
   config: RoutingGroupConfig
 }>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:config': [value: RoutingGroupConfig]

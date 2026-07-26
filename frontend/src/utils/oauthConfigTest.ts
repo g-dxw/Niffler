@@ -12,10 +12,10 @@ export interface OAuthConfigTestSummary {
 function describeSecretStatus(status: string | undefined): string | null {
   const normalized = (status || '').trim().toLowerCase()
   if (!normalized || normalized === 'likely_valid' || normalized === 'configured') return null
-  if (normalized === 'invalid') return 'Secret 无效'
-  if (normalized === 'unsupported') return 'Secret 不受支持'
-  if (normalized === 'not_provided') return 'Secret 未提供'
-  if (normalized === 'unknown') return 'Secret 未验证'
+  if (normalized === 'invalid') return i18n.global.t('oauthTestUi.secretInvalid')
+  if (normalized === 'unsupported') return i18n.global.t('oauthTestUi.secretUnsupported')
+  if (normalized === 'not_provided') return i18n.global.t('oauthTestUi.secretMissing')
+  if (normalized === 'unknown') return i18n.global.t('oauthTestUi.secretUnknown')
   return `Secret: ${status}`
 }
 
@@ -24,10 +24,10 @@ export function summarizeOAuthConfigTest(result: OAuthProviderTestResponse): OAu
   const warnings: string[] = []
 
   if (!result.authorization_url_reachable) {
-    failures.push('Authorization URL 不可达')
+    failures.push(i18n.global.t('oauthTestUi.authorizationUnreachable'))
   }
   if (!result.token_url_reachable) {
-    failures.push('Token URL 不可达')
+    failures.push(i18n.global.t('oauthTestUi.tokenUnreachable'))
   }
 
   const secretStatus = (result.secret_status || '').trim().toLowerCase()
@@ -41,7 +41,7 @@ export function summarizeOAuthConfigTest(result: OAuthProviderTestResponse): OAu
   if (failures.length > 0) {
     return {
       severity: 'error',
-      message: `测试失败：${failures.join('，')}`,
+      message: i18n.global.t('oauthTestUi.failed', { items: failures.join(i18n.global.locale.value === 'en-US' ? ', ' : '，') }),
       failures,
       warnings,
     }
@@ -50,7 +50,7 @@ export function summarizeOAuthConfigTest(result: OAuthProviderTestResponse): OAu
   if (warnings.length > 0) {
     return {
       severity: 'warning',
-      message: `测试完成，但有未确认项：${warnings.join('，')}`,
+      message: i18n.global.t('oauthTestUi.completedWarnings', { items: warnings.join(i18n.global.locale.value === 'en-US' ? ', ' : '，') }),
       failures,
       warnings,
     }
@@ -58,8 +58,9 @@ export function summarizeOAuthConfigTest(result: OAuthProviderTestResponse): OAu
 
   return {
     severity: 'success',
-    message: '测试通过',
+    message: i18n.global.t('oauthTestUi.passed'),
     failures,
     warnings,
   }
 }
+import { i18n } from '@/i18n'

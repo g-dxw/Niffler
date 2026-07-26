@@ -1,5 +1,8 @@
 import { DEFAULT_IMAGE_STUDIO_SETTINGS } from '../constants'
 import type { ImageStudioSettings, ImageTask, ImageTaskStatus } from '../types'
+import { i18n } from '@/i18n'
+
+const t = i18n.global.t
 
 const VALID_STATUSES = new Set<ImageTaskStatus>(['pending', 'running', 'success', 'error', 'cancelled'])
 export const IMAGE_TASK_LIMIT = 300
@@ -59,7 +62,7 @@ export function loadImageTasks(userId: string): ImageTask[] {
         apiKeyId: typeof value.apiKeyId === 'string' ? value.apiKeyId : '',
       } as ImageTask
       if (task.status === 'pending' || task.status === 'running') {
-        return [{ ...task, status: 'cancelled', error: '页面刷新，任务已中断', finishedAt: Date.now() }]
+        return [{ ...task, status: 'cancelled', error: t('imageTaskErrors.pageReloaded'), finishedAt: Date.now() }]
       }
       return [task]
     })

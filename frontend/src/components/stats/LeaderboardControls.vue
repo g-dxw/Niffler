@@ -12,17 +12,17 @@
       @update:model-value="emitMetric"
     >
       <SelectTrigger class="h-8 text-xs w-28">
-        <SelectValue placeholder="指标" />
+        <SelectValue :placeholder="t('leaderboard.metric')" />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="requests">
-          请求数
+          {{ t('leaderboard.requests') }}
         </SelectItem>
         <SelectItem value="tokens">
           Tokens
         </SelectItem>
         <SelectItem value="cost">
-          成本
+          {{ t('leaderboard.cost') }}
         </SelectItem>
       </SelectContent>
     </Select>
@@ -30,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { TimeRangePicker } from '@/components/common'
 import {
   Select,
@@ -39,6 +40,8 @@ import {
   SelectValue
 } from '@/components/ui'
 import type { DateRangeParams } from '@/features/usage/types'
+
+const { t } = useI18n()
 
 type LeaderboardMetric = 'requests' | 'tokens' | 'cost'
 type LeaderboardTimeRangePreset = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'last90days' | 'custom'

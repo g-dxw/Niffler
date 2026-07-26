@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useDarkMode } from '@/composables/useDarkMode'
 
 const { isDark } = useDarkMode()
+const { t } = useI18n()
 
 const DESIGN_W = 760
 const DESIGN_H = 420
@@ -314,39 +316,39 @@ const shadows = computed(() => {
             class="w-full h-[26px] rounded-xl flex items-center justify-center font-sans text-[10px] font-semibold"
             :style="{ border: `1px solid ${colors.cardBorder}`, color: colors.textMain }"
           >
-            统一模型规范 / 协议聚合
+            {{ t('architectureDiagram.unifiedProtocol') }}
           </div>
           <div class="w-full flex gap-1.5">
             <div
               class="flex-1 rounded-full flex items-center justify-center h-[26px] font-sans font-semibold text-[10px]"
               :style="{ backgroundColor: colors.brandSoft, color: colors.textMain }"
             >
-              多端鉴权
+              {{ t('architectureDiagram.authentication') }}
             </div>
             <div
               class="flex-1 rounded-full flex items-center justify-center h-[26px] font-sans font-semibold text-[10px]"
               :style="{ backgroundColor: colors.brandSoft, color: colors.textMain }"
             >
-              配额管控
+              {{ t('architectureDiagram.quota') }}
             </div>
             <div
               class="flex-1 rounded-full flex items-center justify-center h-[26px] font-sans font-semibold text-[10px]"
               :style="{ backgroundColor: colors.brandSoft, color: colors.textMain }"
             >
-              全局并发
+              {{ t('architectureDiagram.concurrency') }}
             </div>
             <div
               class="flex-1 rounded-full flex items-center justify-center h-[26px] font-sans font-semibold text-[10px]"
               :style="{ backgroundColor: colors.brandSoft, color: colors.textMain }"
             >
-              缓存亲和
+              {{ t('architectureDiagram.cacheAffinity') }}
             </div>
           </div>
           <div
             class="w-full h-[28px] rounded-xl flex items-center justify-center font-sans text-[10px] font-semibold"
             :style="{ border: `1px solid ${colors.cardBorder}`, color: colors.textMain }"
           >
-            智能调度 / 故障转移
+            {{ t('architectureDiagram.schedulingFailover') }}
           </div>
         </div>
 
@@ -362,7 +364,7 @@ const shadows = computed(() => {
           <span
             class="font-sans text-[10px] font-bold"
             :style="{ color: colors.textMain }"
-          >格式转换</span>
+          >{{ t('architectureDiagram.formatConversion') }}</span>
         </div>
         <div
           class="absolute left-[295px] top-[250px] w-[170px] h-[28px] rounded-full flex items-center justify-center gap-1.5 z-20"
@@ -375,7 +377,7 @@ const shadows = computed(() => {
           <span
             class="font-sans text-[10px] font-bold"
             :style="{ color: colors.textMain }"
-          >反向代理</span>
+          >{{ t('architectureDiagram.reverseProxy') }}</span>
         </div>
         <div
           class="absolute left-[487px] top-[250px] w-[170px] h-[28px] rounded-full flex items-center justify-center gap-1.5 z-20"
@@ -388,7 +390,7 @@ const shadows = computed(() => {
           <span
             class="font-sans text-[10px] font-bold"
             :style="{ color: colors.textMain }"
-          >原生直通</span>
+          >{{ t('architectureDiagram.nativePassthrough') }}</span>
         </div>
 
         <!-- Junction dots (z-40, above SVG lines) -->
@@ -436,7 +438,7 @@ const shadows = computed(() => {
             <span
               class="font-sans text-[10px] font-bold"
               :style="{ color: colors.textMain }"
-            >Claude 响应</span>
+            >{{ t('architectureDiagram.claudeResponse') }}</span>
           </div>
           <div
             class="absolute left-[320px] w-[120px] h-[36px] rounded-full flex items-center justify-center gap-2"
@@ -449,7 +451,7 @@ const shadows = computed(() => {
             <span
               class="font-sans text-[10px] font-bold"
               :style="{ color: colors.textMain }"
-            >OpenAI 响应</span>
+            >{{ t('architectureDiagram.openaiResponse') }}</span>
           </div>
           <div
             class="absolute left-[512px] w-[120px] h-[36px] rounded-full flex items-center justify-center gap-2"
@@ -462,7 +464,7 @@ const shadows = computed(() => {
             <span
               class="font-sans text-[10px] font-bold"
               :style="{ color: colors.textMain }"
-            >Gemini 响应</span>
+            >{{ t('architectureDiagram.geminiResponse') }}</span>
           </div>
         </div>
       </div>

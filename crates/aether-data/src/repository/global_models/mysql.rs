@@ -571,6 +571,16 @@ impl GlobalModelReadRepository for MysqlGlobalModelReadRepository {
             .await
     }
 
+    async fn list_admin_provider_models_by_global_model_ids(
+        &self,
+        global_model_ids: &[String],
+    ) -> Result<Vec<StoredAdminProviderModel>, DataLayerError> {
+        self.load_memory()
+            .await?
+            .list_admin_provider_models_by_global_model_ids(global_model_ids)
+            .await
+    }
+
     async fn list_provider_model_stats(
         &self,
         provider_ids: &[String],

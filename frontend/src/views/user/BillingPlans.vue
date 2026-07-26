@@ -1,8 +1,8 @@
 <template>
   <PageContainer>
     <PageHeader
-      title="套餐中心"
-      description="购买周期额度或会员权益"
+      :title="t('billing.title')"
+      :description="t('billing.description')"
     />
 
     <div class="mt-6 space-y-6">
@@ -10,13 +10,13 @@
         v-if="loading"
         class="py-16"
       >
-        <LoadingState message="正在加载套餐..." />
+        <LoadingState :message="t('billing.loading')" />
       </div>
 
       <template v-else>
         <CardSection
-          title="当前权益"
-          description="只展示仍在有效期内的套餐权益"
+          :title="t('billing.current')"
+          :description="t('billing.currentHint')"
         >
           <div
             v-if="activeEntitlements.length"
@@ -36,11 +36,11 @@
                     {{ formatDate(item.starts_at) }} - {{ formatDate(item.expires_at) }}
                   </div>
                   <div class="mt-1 text-xs text-muted-foreground">
-                    获得：{{ formatDate(item.created_at) }}
+                    {{ t('billing.grantedAt') }}: {{ formatDate(item.created_at) }}
                   </div>
                 </div>
                 <Badge variant="success">
-                  生效中
+                    {{ t('billing.active') }}
                 </Badge>
               </div>
               <div class="mt-3 flex flex-wrap gap-1.5">
@@ -56,14 +56,14 @@
           </div>
           <EmptyState
             v-else
-            title="暂无有效套餐"
-            description="购买套餐后，有效权益会显示在这里"
+            :title="t('billing.empty')"
+            :description="t('billing.emptyHint')"
           />
         </CardSection>
 
         <CardSection
-          title="可购买套餐"
-          description="支付成功后由回调自动发放权益"
+          :title="t('billing.available')"
+          :description="t('billing.availableHint')"
         >
           <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <Card
@@ -77,7 +77,7 @@
                     {{ plan.title }}
                   </h3>
                   <p class="mt-1 min-h-[32px] text-xs text-muted-foreground">
-                    {{ plan.description || '标准套餐' }}
+                    {{ plan.description || t('billing.standard') }}
                   </p>
                 </div>
                 <Badge variant="outline">
@@ -117,7 +117,7 @@
                 <Select v-model="selectedPaymentOptionKey">
                   <SelectTrigger>
                     <SelectValue
-                      :placeholder="paymentOptions.length ? '选择支付方式' : '暂无可用支付方式'"
+                      :placeholder="paymentOptions.length ? t('billing.choosePayment') : t('billing.noPayment')"
                     />
                   </SelectTrigger>
                   <SelectContent>
@@ -140,7 +140,7 @@
                   @click="checkoutPlan(plan)"
                 >
                   <CreditCard class="mr-2 h-4 w-4" />
-                  {{ checkoutLoadingPlanId === plan.id ? '创建订单中...' : '购买套餐' }}
+                  {{ checkoutLoadingPlanId === plan.id ? t('billing.creating') : t('billing.buy') }}
                 </Button>
               </div>
             </Card>
@@ -150,8 +150,8 @@
               class="xl:col-span-3"
             >
               <EmptyState
-                title="暂无可购买套餐"
-                description="管理员上架套餐后会显示在这里"
+                :title="t('billing.noPlans')"
+                :description="t('billing.noPlansHint')"
               />
             </div>
           </div>
@@ -164,10 +164,10 @@
           <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <div class="text-sm font-medium">
-                最新订单：<span class="font-mono">{{ latestCheckout.order.order_no }}</span>
+                {{ t('billing.latestOrder') }}: <span class="font-mono">{{ latestCheckout.order.order_no }}</span>
               </div>
               <div class="mt-1 text-xs text-muted-foreground">
-                应付 {{ latestCheckout.order.pay_amount ?? '-' }} {{ latestCheckout.order.pay_currency || '' }}
+                {{ t('billing.amountDue') }} {{ latestCheckout.order.pay_amount ?? '-' }} {{ latestCheckout.order.pay_currency || '' }}
               </div>
             </div>
             <div class="flex flex-wrap gap-2">
@@ -176,14 +176,14 @@
                 variant="outline"
                 @click="openPaymentUrl(latestPaymentUrl)"
               >
-                打开支付链接
+                {{ t('billing.openPayment') }}
               </Button>
               <Button
                 v-if="latestCancelUrl"
                 variant="ghost"
                 @click="cancelLatestCheckout"
               >
-                取消这笔支付
+                {{ t('billing.cancelPayment') }}
               </Button>
             </div>
           </div>
@@ -195,6 +195,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { CreditCard } from 'lucide-vue-next'
 import {
   billingApi,
@@ -227,6 +228,7 @@ import {
   type BillingEntitlementsInput,
 } from '@/utils/billingEntitlements'
 
+const { t, locale } = useI18n()
 const { success, error: showError } = useToast()
 
 const loading = ref(true)
@@ -302,7 +304,7 @@ async function loadPlans() {
     plans.value = response.items
   } catch (err) {
     log.error('加载套餐失败:', err)
-    showError(parseApiError(err, '加载套餐失败'))
+    showError(parseApiError(err, t('billing.loadPlansFailed')))
   }
 }
 
@@ -313,7 +315,7 @@ async function loadEntitlements() {
     window.dispatchEvent(new CustomEvent(BILLING_SUMMARY_REFRESH_EVENT))
   } catch (err) {
     log.error('加载套餐权益失败:', err)
-    showError(parseApiError(err, '加载套餐权益失败'))
+    showError(parseApiError(err, t('billing.loadEntitlementsFailed')))
   }
 }
 
@@ -326,20 +328,20 @@ async function loadRechargeOptions() {
     }
   } catch (err) {
     log.error('加载支付通道失败:', err)
-    showError(parseApiError(err, '加载支付通道失败'))
+    showError(parseApiError(err, t('billing.loadPaymentMethodsFailed')))
   }
 }
 
 async function checkoutPlan(plan: BillingPlan) {
   if (hasMatchingActivePlan(plan)) {
-    const confirmed = window.confirm('你已经有这个套餐，购买成功后会从当前到期时间后继续生效。确定继续购买吗？')
+    const confirmed = window.confirm(t('billing.renewConfirm'))
     if (!confirmed) return
   }
   checkoutLoadingPlanId.value = plan.id
   try {
     const option = selectedPaymentOption.value
     if (!option) {
-      showError('请选择支付方式')
+      showError(t('billing.paymentRequired'))
       return
     }
     const response = await billingApi.checkout(plan.id, {
@@ -348,11 +350,11 @@ async function checkoutPlan(plan: BillingPlan) {
       payment_channel: option.payment_channel,
     })
     latestCheckout.value = response
-    success('套餐订单已创建')
+    success(t('billing.orderCreated'))
     submitPaymentInstructions(response.payment_instructions)
   } catch (err) {
     log.error('创建套餐订单失败:', err)
-    showError(parseApiError(err, '创建套餐订单失败'))
+    showError(parseApiError(err, t('billing.createOrderFailed')))
   } finally {
     checkoutLoadingPlanId.value = null
   }
@@ -373,13 +375,13 @@ function submitPaymentInstructions(instructions: Record<string, unknown> | null 
   }
   const opened = window.open(paymentUrl, '_blank', 'noopener,noreferrer')
   if (!opened) {
-    showError('浏览器拦截了支付窗口，请点击“打开支付链接”手动打开')
+    showError(t('billing.popupBlocked'))
   }
 }
 
 function cancelLatestCheckout() {
   if (!latestCancelUrl.value) return
-  const confirmed = window.confirm('确定取消这笔支付吗？取消后需要重新创建订单。')
+  const confirmed = window.confirm(t('billing.cancelConfirm'))
   if (!confirmed) return
   window.location.href = latestCancelUrl.value
 }
@@ -412,7 +414,7 @@ function hasMatchingActivePlan(plan: BillingPlan): boolean {
 
 function replacementNotice(plan: BillingPlan): string {
   if (hasMatchingActivePlan(plan)) {
-    return '你已经有这个套餐，购买成功后会从当前到期时间后继续生效。'
+    return t('billing.renewNotice')
   }
   return ''
 }
@@ -420,15 +422,15 @@ function replacementNotice(plan: BillingPlan): string {
 function entitlementLabels(items: BillingEntitlementsInput): string[] {
   return normalizeBillingEntitlements(items).map((item) => {
     if (item.type === 'wallet_credit') {
-      return `附赠余额 $${Number(item.amount_usd || 0).toFixed(2)}`
+      return t('billing.walletCredit', { amount: Number(item.amount_usd || 0).toFixed(2) })
     }
     if (item.type === 'daily_quota') {
       return quotaEntitlementLabel(item)
     }
     if (item.type === 'membership_group') {
-      return `会员组 ${item.grant_user_groups.join(', ')}`
+      return t('billing.membershipGroups', { groups: item.grant_user_groups.join(', ') })
     }
-    return '未知权益'
+    return t('billing.unknownEntitlement')
   })
 }
 
@@ -443,36 +445,36 @@ function quotaEntitlementLabel(item: DailyQuotaEntitlement): string {
   const fiveHour = Number(item.five_hour_quota_usd ?? limits.five_hour_limit_usd ?? 0)
   const weekly = Number(item.weekly_quota_usd ?? limits.weekly_limit_usd ?? 0)
   const monthly = Number(item.monthly_quota_usd ?? limits.monthly_limit_usd ?? 0)
-  if (daily > 0) parts.push(`24小时 $${daily.toFixed(2)}`)
+  if (daily > 0) parts.push(t('billing.quota24Hours', { amount: daily.toFixed(2) }))
   if (fiveHour > 0) parts.push(`5H $${fiveHour.toFixed(2)}`)
-  if (weekly > 0) parts.push(`7天 $${weekly.toFixed(2)}`)
-  if (monthly > 0) parts.push(`30天 $${monthly.toFixed(2)}`)
-  const quotaText = parts.join(' / ') || '用量额度'
+  if (weekly > 0) parts.push(t('billing.quota7Days', { amount: weekly.toFixed(2) }))
+  if (monthly > 0) parts.push(t('billing.quota30Days', { amount: monthly.toFixed(2) }))
+  const quotaText = parts.join(' / ') || t('billing.usageQuota')
   const labels = [quotaModelScopeLabel(item.allowed_global_model_ids)]
-  const multiplierLabel = quotaConsumptionMultiplierLabel(item)
+  const multiplierLabel = quotaConsumptionMultiplierLabel(item, t)
   if (multiplierLabel) labels.push(multiplierLabel)
   return `${quotaText} · ${labels.join(' · ')}`
 }
 
 function quotaModelScopeLabel(modelIds?: string[]): string {
   if (!Array.isArray(modelIds) || modelIds.length === 0) {
-    return '全部模型'
+    return t('billing.allModels')
   }
-  return `可用模型 ${modelIds.length} 个`
+  return t('billing.availableModels', { count: modelIds.length })
 }
 
 function formatDuration(unit: BillingDurationUnit, value: number): string {
   const labels: Record<BillingDurationUnit, string> = {
-    day: '天',
-    month: '个月',
-    year: '年',
-    custom: '自定义周期',
+    day: t('billing.durationDay'),
+    month: t('billing.durationMonth'),
+    year: t('billing.durationYear'),
+    custom: t('billing.durationCustom'),
   }
   return unit === 'custom' ? `${value} ${labels[unit]}` : `${value}${labels[unit]}`
 }
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '-'
-  return new Date(value).toLocaleDateString('zh-CN')
+  return new Date(value).toLocaleDateString(locale.value)
 }
 </script>

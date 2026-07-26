@@ -43,6 +43,13 @@ pub(crate) async fn build_admin_endpoint_health_status_payload(
     crate::handlers::admin::build_admin_endpoint_health_status_payload(state, lookback_hours).await
 }
 
+pub(crate) async fn build_admin_global_model_routing_payload(
+    state: &AdminAppState<'_>,
+    global_model_id: &str,
+) -> Option<serde_json::Value> {
+    crate::handlers::admin::build_admin_global_model_routing_payload(state, global_model_id).await
+}
+
 pub(crate) async fn maybe_build_local_admin_video_tasks_response(
     state: &AdminAppState<'_>,
     request_context: &AdminRequestContext<'_>,
