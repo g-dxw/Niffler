@@ -821,7 +821,10 @@
                       class="flex flex-col gap-1 min-w-[140px] max-w-[208px]"
                     >
                       <div class="flex items-center justify-between text-[10px] leading-none">
-                        <span class="text-muted-foreground font-medium shrink-0">{{ getQuotaProgressLabel(item.label) }}</span>
+                        <span
+                          data-testid="pool-quota-progress-label"
+                          class="text-muted-foreground font-medium shrink-0"
+                        >{{ getQuotaProgressLabel(item.label) }}</span>
                         <span
                           v-if="getQuotaProgressResetDisplayText(item)"
                           data-testid="pool-quota-reset-text"
@@ -859,23 +862,22 @@
                 <TableCell class="py-3 px-2 align-middle">
                   <div
                     v-if="isPoolKeyCycleStatsDisplay(key)"
-                    class="mx-auto w-[188px] text-[10px] leading-4"
+                    class="mx-auto w-[188px] overflow-x-auto text-[10px] leading-4"
                     data-testid="pool-stats-cycle-groups"
                   >
                     <div
-                      class="grid min-h-16 w-[188px] grid-cols-[38px_64px_10px_64px] items-center gap-x-1"
+                      v-if="getPoolKeyCycleStatsGroups(key).length > 0"
+                      class="grid min-h-16 min-w-[188px] items-center gap-x-1"
+                      :style="getPoolKeyCycleStatsGridStyle(key)"
                       data-testid="pool-stats-cycle-grid"
                     >
                       <span aria-hidden="true" />
                       <span
+                        v-for="group in getPoolKeyCycleStatsGroups(key)"
+                        :key="`${key.key_id}-${group.code}-desktop-cycle-heading`"
                         class="text-center text-[9px] font-semibold text-muted-foreground/80"
-                        data-testid="pool-stats-cycle-group-5h"
-                      >5H</span>
-                      <span class="text-center text-muted-foreground/50">|</span>
-                      <span
-                        class="text-center text-[9px] font-semibold text-muted-foreground/80"
-                        data-testid="pool-stats-cycle-group-weekly"
-                  >{{ t('poolManagement.week') }}</span>
+                        :data-testid="`pool-stats-cycle-group-${group.code}`"
+                      >{{ group.label }}</span>
 
                       <template
                         v-for="row in getPoolKeyCycleStatsRows(key)"
@@ -883,19 +885,20 @@
                       >
                         <span class="text-muted-foreground truncate">{{ row.label }}</span>
                         <span
+                          v-for="(metric, metricIndex) in row.values"
+                          :key="`${key.key_id}-${row.key}-${metricIndex}-desktop-cycle-value`"
                           class="min-w-0 truncate text-center tabular-nums text-foreground/90"
-                          :class="row.fiveH.missing ? 'text-muted-foreground/80' : ''"
-                          :data-testid="`pool-stats-5h-${row.key}`"
-                          :title="row.fiveH.value"
-                        >{{ row.fiveH.value }}</span>
-                        <span class="text-center text-muted-foreground/50">|</span>
-                        <span
-                          class="min-w-0 truncate text-center tabular-nums text-foreground/90"
-                          :class="row.weekly.missing ? 'text-muted-foreground/80' : ''"
-                          :data-testid="`pool-stats-weekly-${row.key}`"
-                          :title="row.weekly.value"
-                        >{{ row.weekly.value }}</span>
+                          :class="metric.missing ? 'text-muted-foreground/80' : ''"
+                          :data-testid="`pool-stats-${getPoolKeyCycleStatsGroups(key)[metricIndex]?.code}-${row.key}`"
+                          :title="metric.value"
+                        >{{ metric.value }}</span>
                       </template>
+                    </div>
+                    <div
+                      v-else
+                      class="flex min-h-16 items-center justify-center text-muted-foreground"
+                    >
+                      {{ t('quotaUi.noWindows') }}
                     </div>
                   </div>
                   <div
@@ -1213,19 +1216,18 @@
                 <div class="space-y-1 text-center">
                   <template v-if="isPoolKeyCycleStatsDisplay(key)">
                     <div
-                      class="grid min-h-16 w-[188px] grid-cols-[38px_64px_10px_64px] items-center gap-x-1 text-left"
+                      v-if="getPoolKeyCycleStatsGroups(key).length > 0"
+                      class="grid min-h-16 min-w-[188px] items-center gap-x-1 text-left"
+                      :style="getPoolKeyCycleStatsGridStyle(key)"
                       data-testid="pool-mobile-stats-cycle-grid"
                     >
                       <span aria-hidden="true" />
                       <span
+                        v-for="group in getPoolKeyCycleStatsGroups(key)"
+                        :key="`${key.key_id}-${group.code}-mobile-cycle-heading`"
                         class="text-center text-[10px] font-semibold text-foreground"
-                        data-testid="pool-mobile-stats-cycle-group-5h"
-                      >5H</span>
-                      <span class="text-center text-muted-foreground/50">|</span>
-                      <span
-                        class="text-center text-[10px] font-semibold text-foreground"
-                        data-testid="pool-mobile-stats-cycle-group-weekly"
-                  >{{ t('poolManagement.week') }}</span>
+                        :data-testid="`pool-mobile-stats-cycle-group-${group.code}`"
+                      >{{ group.label }}</span>
 
                       <template
                         v-for="row in getPoolKeyCycleStatsRows(key)"
@@ -1233,17 +1235,19 @@
                       >
                         <span class="text-muted-foreground truncate">{{ row.label }}</span>
                         <span
+                          v-for="(metric, metricIndex) in row.values"
+                          :key="`${key.key_id}-${row.key}-${metricIndex}-mobile-cycle-value`"
                           class="min-w-0 truncate text-center font-medium text-foreground/90 tabular-nums"
-                          :class="row.fiveH.missing ? 'text-muted-foreground/80' : ''"
-                          :title="row.fiveH.value"
-                        >{{ row.fiveH.value }}</span>
-                        <span class="text-center text-muted-foreground/50">|</span>
-                        <span
-                          class="min-w-0 truncate text-center font-medium text-foreground/90 tabular-nums"
-                          :class="row.weekly.missing ? 'text-muted-foreground/80' : ''"
-                          :title="row.weekly.value"
-                        >{{ row.weekly.value }}</span>
+                          :class="metric.missing ? 'text-muted-foreground/80' : ''"
+                          :title="metric.value"
+                        >{{ metric.value }}</span>
                       </template>
+                    </div>
+                    <div
+                      v-else
+                      class="flex min-h-16 items-center justify-center text-muted-foreground"
+                    >
+                      {{ t('quotaUi.noWindows') }}
                     </div>
                   </template>
                   <template v-else>
@@ -1355,13 +1359,16 @@
                     class="flex flex-col gap-1 min-w-0"
                   >
                     <div class="flex items-center justify-between text-[10px] leading-none">
-                      <span class="text-muted-foreground font-medium shrink-0">{{ getQuotaProgressLabel(item.label) }}</span>
-                        <span
-                          v-if="getQuotaProgressResetDisplayText(item)"
-                          data-testid="pool-quota-reset-text"
-                          class="text-muted-foreground/80 tabular-nums truncate"
-                          :title="getQuotaProgressResetDisplayText(item)"
-                        >{{ getQuotaProgressResetDisplayText(item) }}</span>
+                      <span
+                        data-testid="pool-quota-progress-label"
+                        class="text-muted-foreground font-medium shrink-0"
+                      >{{ getQuotaProgressLabel(item.label) }}</span>
+                      <span
+                        v-if="getQuotaProgressResetDisplayText(item)"
+                        data-testid="pool-quota-reset-text"
+                        class="text-muted-foreground/80 tabular-nums truncate"
+                        :title="getQuotaProgressResetDisplayText(item)"
+                      >{{ getQuotaProgressResetDisplayText(item) }}</span>
                     </div>
                     <div class="flex items-center gap-1.5">
                       <div class="relative flex-1 h-1.5 rounded-full bg-border overflow-hidden">
@@ -1808,6 +1815,7 @@ import {
 } from '@/features/pool/utils/poolManagementState'
 import {
   buildPoolStatsDisplay,
+  hasPendingCodexCycleStats,
   type PoolCodexCycleStatsGroup,
   type PoolStatsDisplay,
   type PoolStatsMetric,
@@ -1887,12 +1895,17 @@ let selectProviderRequestId = 0
 let providerDataRequestId = 0
 let keysRequestId = 0
 let keysSearchDebounceTimer: number | null = null
+let codexCycleStatsReloadTimer: number | null = null
+let codexCycleStatsReloadAttempts = 0
+let codexCycleStatsReloadContext = ''
 let demandMetricsPollingTimer: number | null = null
 let demandMetricsRequestId = 0
 let suppressFiltersWatch = false
 let hasHydratedInitialProviderSelection = false
 const POOL_OVERVIEW_CACHE_TTL_MS = 10 * 1000
 const POOL_KEYS_CACHE_TTL_MS = 10 * 1000
+const CODEX_CYCLE_STATS_RELOAD_INTERVAL_MS = 1000
+const CODEX_CYCLE_STATS_RELOAD_MAX_ATTEMPTS = 5
 const POOL_SCHEDULING_PRESETS_CACHE_TTL_MS = 5 * 60 * 1000
 const POOL_DEMAND_METRICS_SAMPLES_LIMIT = 120
 const POOL_DEMAND_METRICS_POLL_INTERVAL_MS = 10 * 1000
@@ -2621,8 +2634,7 @@ interface QuotaProgressItem {
 interface PoolCodexCycleStatsRow {
   key: PoolStatsMetric['key']
   label: string
-  fiveH: PoolStatsMetric
-  weekly: PoolStatsMetric
+  values: PoolStatsMetric[]
 }
 
 const CODEX_CYCLE_STAT_KEYS: Array<PoolStatsMetric['key']> = ['request_count', 'total_tokens', 'total_cost_usd']
@@ -2723,7 +2735,7 @@ function createMissingCycleMetric(key: PoolStatsMetric['key']): PoolStatsMetric 
   return {
     key,
     label: CODEX_CYCLE_STAT_LABELS[key],
-    value: '—',
+    value: t('commonUi.statisticsPending'),
     missing: true,
   }
 }
@@ -2737,19 +2749,21 @@ function findCycleMetric(
 
 function getPoolKeyCycleStatsRows(key: PoolKeyDetail): PoolCodexCycleStatsRow[] {
   const groups = getPoolKeyCycleStatsGroups(key)
-  const fiveHGroup = groups.find(group => group.code === '5h')
-  const weeklyGroup = groups.find(group => group.code === 'weekly')
 
   return CODEX_CYCLE_STAT_KEYS.map((metricKey) => {
-    const fiveH = findCycleMetric(fiveHGroup, metricKey)
-    const weekly = findCycleMetric(weeklyGroup, metricKey)
     return {
       key: metricKey,
       label: CODEX_CYCLE_STAT_LABELS[metricKey],
-      fiveH,
-      weekly,
+      values: groups.map(group => findCycleMetric(group, metricKey)),
     }
   })
+}
+
+function getPoolKeyCycleStatsGridStyle(key: PoolKeyDetail): Record<string, string> {
+  const groupCount = Math.max(getPoolKeyCycleStatsGroups(key).length, 1)
+  return {
+    gridTemplateColumns: `38px repeat(${groupCount}, minmax(0, 1fr))`,
+  }
 }
 
 function getPoolKeyAccountStatsMetrics(key: PoolKeyDetail): PoolStatsMetric[] {
@@ -2777,6 +2791,52 @@ const refreshCurrentPageLoading = computed(() => {
 
 function resetKeyPage(page = currentPage.value, pageSizeValue = pageSize.value): void {
   keyPage.value = createEmptyKeyPage(page, pageSizeValue)
+}
+
+function clearCodexCycleStatsReload(): void {
+  if (codexCycleStatsReloadTimer !== null) {
+    clearTimeout(codexCycleStatsReloadTimer)
+    codexCycleStatsReloadTimer = null
+  }
+  codexCycleStatsReloadAttempts = 0
+  codexCycleStatsReloadContext = ''
+}
+
+function scheduleCodexCycleStatsReload(
+  keys: PoolKeyDetail[],
+  providerId: string,
+  context: string,
+): void {
+  const hasPendingStats = keys.some(key =>
+    hasPendingCodexCycleStats(key, key.provider_type ?? selectedProviderType.value),
+  )
+  if (!hasPendingStats) {
+    clearCodexCycleStatsReload()
+    return
+  }
+
+  if (codexCycleStatsReloadContext !== context) {
+    clearCodexCycleStatsReload()
+    codexCycleStatsReloadContext = context
+  }
+  if (
+    codexCycleStatsReloadTimer !== null
+    || codexCycleStatsReloadAttempts >= CODEX_CYCLE_STATS_RELOAD_MAX_ATTEMPTS
+  ) {
+    return
+  }
+
+  codexCycleStatsReloadTimer = window.setTimeout(() => {
+    codexCycleStatsReloadTimer = null
+    if (
+      selectedProviderId.value !== providerId
+      || codexCycleStatsReloadContext !== context
+    ) {
+      return
+    }
+    codexCycleStatsReloadAttempts += 1
+    void loadKeys()
+  }, CODEX_CYCLE_STATS_RELOAD_INTERVAL_MS)
 }
 
 function refreshOverviewInBackground(): void {
@@ -2980,6 +3040,20 @@ async function loadKeys(options: { cacheTtlMs?: number } = {}) {
     }
     keyPage.value = nextPage
     keysLoadedOnce.value = true
+    scheduleCodexCycleStatsReload(
+      nextPage.keys,
+      providerId,
+      JSON.stringify([
+        providerId,
+        page,
+        pageSizeValue,
+        search ?? '',
+        status,
+        planType ?? '',
+        sortByValue ?? '',
+        sortByValue ? sortOrder.value : '',
+      ]),
+    )
   } catch (err) {
     if (requestId !== keysRequestId || selectedProviderId.value !== providerId) return
     resetKeyPage(page, pageSizeValue)
@@ -4254,7 +4328,6 @@ function getQuotaProgressLabel(label: string): string {
 }
 
 function getQuotaProgressCountdown(item: QuotaProgressItem) {
-  if (!['5H', '周', 'Spark5H', 'Spark周', 'Auto', 'Fast', 'Expert', 'Heavy', 'Grok 4.3'].includes(item.label)) return null
   if (item.resetAtSeconds == null && item.resetSeconds == null) return null
   return getCodexResetCountdown(
     item.resetAtSeconds,
@@ -4469,6 +4542,30 @@ function getGrokQuotaWindowLabel(window: QuotaWindowSnapshot): string {
   return GROK_QUOTA_MODE_LABELS[normalized] || GROK_QUOTA_MODE_LABELS[code.toLowerCase()] || label || code || '模式'
 }
 
+function getCodexQuotaWindowLabel(window: QuotaWindowSnapshot): string {
+  const code = String(window.code || '').trim().toLowerCase()
+  if (code === '5h') return '5H'
+  if (code === 'weekly' || code === '7d') return '周'
+  if (code === '1m' || code === 'monthly') return '月'
+  if (code === 'spark_5h' || code === 'spark:5h') return 'Spark5H'
+  if (code === 'spark_weekly' || code === 'spark_7d' || code === 'spark:weekly' || code === 'spark:7d') return 'Spark周'
+
+  const label = String(window.label || '').trim()
+  if (label) return normalizeQuotaLabel(label)
+
+  const windowMinutes = Number(window.window_minutes ?? 0)
+  const windowSeconds = Number(window.window_seconds ?? 0)
+  const totalMinutes = windowMinutes > 0
+    ? windowMinutes
+    : windowSeconds > 0
+      ? Math.ceil(windowSeconds / 60)
+      : 0
+  if (totalMinutes === 300) return '5H'
+  if (totalMinutes === 10_080) return '周'
+  if (totalMinutes === 43_200) return '月'
+  return String(window.code || '额度').trim() || '额度'
+}
+
 function buildQuotaProgressItemsFromSnapshot(key: PoolKeyDetail): QuotaProgressItem[] {
   const quota = getQuotaSnapshot(key)
   if (!quota) return []
@@ -4476,27 +4573,23 @@ function buildQuotaProgressItemsFromSnapshot(key: PoolKeyDetail): QuotaProgressI
   const providerType = getQuotaSnapshotProviderType(key)
 
   if (providerType === 'codex') {
-    const items: QuotaProgressItem[] = []
     const quotaResetAtSeconds = getQuotaSnapshotResetAtSeconds(quota)
     const quotaResetSeconds = getQuotaSnapshotResetSeconds(quota)
-    for (const [label, code] of [
-      ['5H', '5h'],
-      ['周', 'weekly'],
-      ['Spark5H', 'spark_5h'],
-      ['Spark周', 'spark_weekly'],
-    ] as const) {
-      const window = getQuotaSnapshotWindow(quota, code)
-      const remainingPercent = getQuotaWindowRemainingPercent(window)
-      if (remainingPercent == null) continue
-      items.push({
-        label,
-        remainingPercent,
-        resetAtSeconds: normalizeUnixSeconds(window?.reset_at ?? quotaResetAtSeconds ?? null),
-        resetSeconds: normalizeRemainingSeconds(window?.reset_seconds ?? quotaResetSeconds ?? null),
-        updatedAtSeconds: getQuotaSnapshotUpdatedAtSeconds(quota),
+    const windows = Array.isArray(quota.windows) ? quota.windows : []
+    return windows
+      .map((window): QuotaProgressItem | null => {
+        const remainingPercent = getQuotaWindowRemainingPercent(window)
+        if (remainingPercent == null) return null
+        return {
+          label: getCodexQuotaWindowLabel(window),
+          remainingPercent,
+          detail: getQuotaWindowValueText(window),
+          resetAtSeconds: normalizeUnixSeconds(window.reset_at ?? quotaResetAtSeconds ?? null),
+          resetSeconds: normalizeRemainingSeconds(window.reset_seconds ?? quotaResetSeconds ?? null),
+          updatedAtSeconds: getQuotaSnapshotUpdatedAtSeconds(quota),
+        }
       })
-    }
-    return items
+      .filter((item): item is QuotaProgressItem => item != null)
   }
 
   if (providerType === 'kiro') {
@@ -4635,6 +4728,9 @@ function resolveCodexQuotaCountdown(
   const codexWindowCodeByLabel: Record<string, string> = {
     '5H': '5h',
     '周': 'weekly',
+    '7D': 'weekly',
+    '月': '1m',
+    '1M': '1m',
     Spark5H: 'spark_5h',
     Spark周: 'spark_weekly',
   }
@@ -4679,6 +4775,9 @@ function parseQuotaResetRemainingSeconds(detail: string | undefined): number | n
 function parseQuotaProgressItems(key: PoolKeyDetail): QuotaProgressItem[] {
   const snapshotItems = buildQuotaProgressItemsFromSnapshot(key)
   if (snapshotItems.length > 0) {
+    if (getQuotaSnapshotProviderType(key) === 'codex') {
+      return snapshotItems
+    }
     return snapshotItems.sort((a, b) => {
       const orderDiff = getQuotaLabelOrder(a.label) - getQuotaLabelOrder(b.label)
       if (orderDiff !== 0) return orderDiff
@@ -4810,6 +4909,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopDemandMetricsPolling()
+  clearCodexCycleStatsReload()
   if (keysSearchDebounceTimer !== null) {
     clearTimeout(keysSearchDebounceTimer)
     keysSearchDebounceTimer = null

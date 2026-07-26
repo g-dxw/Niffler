@@ -695,6 +695,7 @@ pub struct StoredProviderApiKeyUsageSummary {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProviderApiKeyWindowUsageRequest {
     pub provider_api_key_id: String,
+    pub window_scope: String,
     pub window_code: String,
     pub start_unix_secs: u64,
     pub end_unix_secs: u64,
@@ -703,7 +704,10 @@ pub struct ProviderApiKeyWindowUsageRequest {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct StoredProviderApiKeyWindowUsageSummary {
     pub provider_api_key_id: String,
+    pub window_scope: String,
     pub window_code: String,
+    pub start_unix_secs: u64,
+    pub end_unix_secs: u64,
     pub request_count: u64,
     pub total_tokens: u64,
     pub total_cost_usd: f64,
@@ -1754,6 +1758,23 @@ pub trait UsageWriteRepository: Send + Sync {
     async fn rebuild_api_key_usage_stats(&self) -> Result<u64, crate::DataLayerError>;
 
     async fn rebuild_provider_api_key_usage_stats(&self) -> Result<u64, crate::DataLayerError>;
+
+    async fn ensure_provider_api_key_codex_window_usage_stats(
+        &self,
+        provider_api_key_id: &str,
+    ) -> Result<bool, crate::DataLayerError> {
+        let _ = provider_api_key_id;
+        Ok(false)
+    }
+
+    async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, crate::DataLayerError> {
+        let _ = (windows, reset_at_unix_secs);
+        Ok(0)
+    }
 
     async fn cleanup_stale_pending_requests(
         &self,

@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{collections::BTreeSet, io::Write};
 
 use aether_data_contracts::repository::usage::{
     parse_usage_body_ref, usage_body_ref, UsageBodyField, UsageCleanupExecutionMode,
@@ -12,19 +12,25 @@ use sqlx::Row;
 use tracing::warn;
 
 use super::SqlxUsageReadRepository;
-use crate::{driver::postgres::PostgresPool, error::postgres_error, DataLayerError};
+use crate::{
+    driver::postgres::PostgresPool, error::postgres_error, DataLayerError, UsageObjectStore,
+};
 
-const DELETE_OLD_USAGE_RECORDS_SQL: &str = r#"
+const SELECT_OLD_USAGE_RECORD_BATCH_SQL: &str = r#"
 WITH doomed AS (
-    SELECT id
+    SELECT id, request_id
     FROM usage
     WHERE created_at < $1
     ORDER BY created_at ASC, id ASC
     LIMIT $2
 )
-DELETE FROM usage AS usage_rows
-USING doomed
-WHERE usage_rows.id = doomed.id
+SELECT id, request_id
+FROM doomed
+"#;
+const DELETE_USAGE_RECORD_BATCH_SQL: &str = r#"
+DELETE FROM usage
+WHERE id = ANY($1)
+  AND created_at < $2
 "#;
 const SELECT_USAGE_LEGACY_BODY_REF_METADATA_BATCH_SQL: &str = r#"
 SELECT id, request_id, request_metadata
@@ -203,6 +209,16 @@ const DELETE_USAGE_BODY_BLOBS_SQL: &str = r#"
 DELETE FROM usage_body_blobs
 WHERE request_id = ANY($1)
 "#;
+const SELECT_USAGE_BODY_OBJECTS_BY_REQUEST_IDS_SQL: &str = r#"
+SELECT body_ref, request_id, object_key, storage_status
+FROM usage_body_objects
+WHERE request_id = ANY($1)
+ORDER BY request_id ASC, body_ref ASC
+"#;
+const DELETE_USAGE_BODY_OBJECTS_SQL: &str = r#"
+DELETE FROM usage_body_objects
+WHERE request_id = ANY($1)
+"#;
 const CLEAR_USAGE_HTTP_AUDIT_BODY_REFS_SQL: &str = r#"
 UPDATE usage_http_audits
 SET request_body_ref = NULL,
@@ -366,6 +382,14 @@ struct UsageBodyCleanupRow {
     request_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UsageBodyObjectCleanupRow {
+    body_ref: String,
+    request_id: String,
+    object_key: Option<String>,
+    storage_status: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ExpiredApiKeyRow<'a> {
     id: &'a str,
@@ -494,6 +518,7 @@ impl SqlxUsageReadRepository {
                     &self.pool,
                     window.compressed_cutoff,
                     batch_size,
+                    self.usage_object_store.as_deref(),
                 )
                 .await?
             } else {
@@ -510,7 +535,13 @@ impl SqlxUsageReadRepository {
         }
 
         let records_deleted = if targets.records {
-            delete_old_usage_records(&self.pool, window.log_cutoff, batch_size).await?
+            delete_old_usage_records(
+                &self.pool,
+                window.log_cutoff,
+                batch_size,
+                self.usage_object_store.as_deref(),
+            )
+            .await?
         } else {
             0
         };
@@ -531,6 +562,7 @@ impl SqlxUsageReadRepository {
                 window.compressed_cutoff,
                 batch_size,
                 targets.records.then_some(window.log_cutoff),
+                self.usage_object_store.as_deref(),
             )
             .await?
         } else {
@@ -694,6 +726,7 @@ async fn cleanup_usage_compressed_body_fields(
     pool: &PostgresPool,
     cutoff_time: DateTime<Utc>,
     batch_size: usize,
+    object_store: Option<&UsageObjectStore>,
 ) -> Result<usize, DataLayerError> {
     let mut total_cleaned = 0usize;
     loop {
@@ -707,30 +740,45 @@ async fn cleanup_usage_compressed_body_fields(
         if rows.is_empty() {
             break;
         }
-        let ids = rows.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
         let request_ids = rows
             .iter()
             .map(|row| row.request_id.clone())
             .collect::<Vec<_>>();
 
+        let cleanable_request_ids =
+            delete_usage_body_objects_before_references(pool, &request_ids, object_store).await?;
+        if cleanable_request_ids.is_empty() {
+            warn!(
+                cutoff_time = %cutoff_time,
+                "usage cleanup stopped because no body objects could be deleted"
+            );
+            break;
+        }
+        let cleanable_request_ids = cleanable_request_ids.into_iter().collect::<BTreeSet<_>>();
+        let cleanable_ids = rows
+            .iter()
+            .filter(|row| cleanable_request_ids.contains(&row.request_id))
+            .map(|row| row.id.clone())
+            .collect::<Vec<_>>();
+
         let cleaned = sqlx::query(CLEAR_USAGE_COMPRESSED_BODY_FIELDS_SQL)
-            .bind(ids)
+            .bind(cleanable_ids)
             .execute(pool)
             .await
             .map_err(postgres_error)?
             .rows_affected();
         sqlx::query(DELETE_USAGE_BODY_BLOBS_SQL)
-            .bind(&request_ids)
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
         sqlx::query(CLEAR_USAGE_HTTP_AUDIT_BODY_REFS_SQL)
-            .bind(&request_ids)
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
         sqlx::query(DELETE_EMPTY_USAGE_HTTP_AUDITS_SQL)
-            .bind(request_ids)
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
@@ -983,19 +1031,59 @@ async fn delete_old_usage_records(
     pool: &PostgresPool,
     cutoff_time: DateTime<Utc>,
     batch_size: usize,
+    object_store: Option<&UsageObjectStore>,
 ) -> Result<usize, DataLayerError> {
     let mut total_deleted = 0usize;
     loop {
-        let deleted = sqlx::query(DELETE_OLD_USAGE_RECORDS_SQL)
+        let rows = sqlx::query(SELECT_OLD_USAGE_RECORD_BATCH_SQL)
             .bind(cutoff_time)
             .bind(i64::try_from(batch_size).unwrap_or(i64::MAX))
+            .fetch_all(pool)
+            .await
+            .map_err(postgres_error)?;
+        if rows.is_empty() {
+            break;
+        }
+        let rows = rows
+            .into_iter()
+            .map(|row| {
+                Ok(UsageBodyCleanupRow {
+                    id: row.try_get::<String, _>("id").map_err(postgres_error)?,
+                    request_id: row
+                        .try_get::<String, _>("request_id")
+                        .map_err(postgres_error)?,
+                })
+            })
+            .collect::<Result<Vec<_>, DataLayerError>>()?;
+        let request_ids = rows
+            .iter()
+            .map(|row| row.request_id.clone())
+            .collect::<Vec<_>>();
+        let cleanable_request_ids =
+            delete_usage_body_objects_before_references(pool, &request_ids, object_store).await?;
+        if cleanable_request_ids.is_empty() {
+            warn!(
+                cutoff_time = %cutoff_time,
+                "usage record cleanup stopped because no body objects could be deleted"
+            );
+            break;
+        }
+        let cleanable_request_ids = cleanable_request_ids.into_iter().collect::<BTreeSet<_>>();
+        let ids = rows
+            .iter()
+            .filter(|row| cleanable_request_ids.contains(&row.request_id))
+            .map(|row| row.id.clone())
+            .collect::<Vec<_>>();
+        let deleted = sqlx::query(DELETE_USAGE_RECORD_BATCH_SQL)
+            .bind(ids)
+            .bind(cutoff_time)
             .execute(pool)
             .await
             .map_err(postgres_error)?
             .rows_affected();
         let deleted = usize::try_from(deleted).unwrap_or(usize::MAX);
         total_deleted += deleted;
-        if deleted < batch_size {
+        if deleted == 0 || deleted < batch_size {
             break;
         }
     }
@@ -1155,6 +1243,7 @@ async fn cleanup_usage_stale_body_fields(
     cutoff_time: DateTime<Utc>,
     batch_size: usize,
     newer_than: Option<DateTime<Utc>>,
+    object_store: Option<&UsageObjectStore>,
 ) -> Result<usize, DataLayerError> {
     if matches!(newer_than, Some(value) if value >= cutoff_time) {
         warn!(
@@ -1184,30 +1273,45 @@ async fn cleanup_usage_stale_body_fields(
         if rows.is_empty() {
             break;
         }
-        let ids = rows.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
         let request_ids = rows
             .iter()
             .map(|row| row.request_id.clone())
             .collect::<Vec<_>>();
 
+        let cleanable_request_ids =
+            delete_usage_body_objects_before_references(pool, &request_ids, object_store).await?;
+        if cleanable_request_ids.is_empty() {
+            warn!(
+                cutoff_time = %cutoff_time,
+                "usage stale body cleanup stopped because no body objects could be deleted"
+            );
+            break;
+        }
+        let cleanable_request_ids = cleanable_request_ids.into_iter().collect::<BTreeSet<_>>();
+        let cleanable_ids = rows
+            .iter()
+            .filter(|row| cleanable_request_ids.contains(&row.request_id))
+            .map(|row| row.id.clone())
+            .collect::<Vec<_>>();
+
         let cleaned = sqlx::query(CLEAR_USAGE_BODY_FIELDS_SQL)
-            .bind(ids)
+            .bind(cleanable_ids)
             .execute(pool)
             .await
             .map_err(postgres_error)?
             .rows_affected();
         sqlx::query(DELETE_USAGE_BODY_BLOBS_SQL)
-            .bind(&request_ids)
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
         sqlx::query(CLEAR_USAGE_HTTP_AUDIT_BODY_REFS_SQL)
-            .bind(&request_ids)
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
         sqlx::query(DELETE_EMPTY_USAGE_HTTP_AUDITS_SQL)
-            .bind(request_ids)
+            .bind(cleanable_request_ids.iter().cloned().collect::<Vec<_>>())
             .execute(pool)
             .await
             .map_err(postgres_error)?;
@@ -1218,6 +1322,89 @@ async fn cleanup_usage_stale_body_fields(
         }
     }
     Ok(total_cleaned)
+}
+
+async fn delete_usage_body_objects_before_references(
+    pool: &PostgresPool,
+    request_ids: &[String],
+    object_store: Option<&UsageObjectStore>,
+) -> Result<Vec<String>, DataLayerError> {
+    if request_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows = sqlx::query(SELECT_USAGE_BODY_OBJECTS_BY_REQUEST_IDS_SQL)
+        .bind(request_ids)
+        .fetch_all(pool)
+        .await
+        .map_err(postgres_error)?
+        .into_iter()
+        .map(|row| {
+            Ok(UsageBodyObjectCleanupRow {
+                body_ref: row
+                    .try_get::<String, _>("body_ref")
+                    .map_err(postgres_error)?,
+                request_id: row
+                    .try_get::<String, _>("request_id")
+                    .map_err(postgres_error)?,
+                object_key: row
+                    .try_get::<Option<String>, _>("object_key")
+                    .map_err(postgres_error)?,
+                storage_status: row
+                    .try_get::<String, _>("storage_status")
+                    .map_err(postgres_error)?,
+            })
+        })
+        .collect::<Result<Vec<_>, DataLayerError>>()?;
+
+    let mut blocked = BTreeSet::new();
+    for row in &rows {
+        if let Some(object_key) = row
+            .object_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+        {
+            let Some(object_store) = object_store else {
+                blocked.insert(row.request_id.clone());
+                warn!(
+                    body_ref = %row.body_ref,
+                    storage_status = %row.storage_status,
+                    "usage body object cleanup skipped because object store is not configured"
+                );
+                continue;
+            };
+            if let Err(err) = object_store.delete(object_key).await {
+                blocked.insert(row.request_id.clone());
+                warn!(
+                    body_ref = %row.body_ref,
+                    object_key,
+                    error = %err,
+                    "usage body object deletion failed; database reference is retained"
+                );
+            }
+        } else if row.storage_status == "available" {
+            blocked.insert(row.request_id.clone());
+            warn!(
+                body_ref = %row.body_ref,
+                "usage body object is marked available without an object key"
+            );
+        }
+    }
+
+    let cleanable = request_ids
+        .iter()
+        .filter(|request_id| !blocked.contains(*request_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !cleanable.is_empty() {
+        sqlx::query(DELETE_USAGE_BODY_OBJECTS_SQL)
+            .bind(&cleanable)
+            .execute(pool)
+            .await
+            .map_err(postgres_error)?;
+    }
+    Ok(cleanable)
 }
 
 async fn compress_usage_body_fields(

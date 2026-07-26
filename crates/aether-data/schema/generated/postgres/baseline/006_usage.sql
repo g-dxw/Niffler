@@ -135,13 +135,57 @@ CREATE TABLE IF NOT EXISTS public.usage_counter_deltas (
     removed_last_used_at_unix_secs bigint,
     usage_created_at_unix_secs bigint,
     created_at timestamp with time zone NOT NULL,
-    processed_at timestamp with time zone
+    processed_at timestamp with time zone,
+    available_at timestamp with time zone NOT NULL
 );
 
 ALTER TABLE ONLY public.usage_counter_deltas ADD CONSTRAINT usage_counter_deltas_pkey PRIMARY KEY (id);
-CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_unprocessed ON public.usage_counter_deltas USING btree (created_at, id);
+CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_ready ON public.usage_counter_deltas USING btree (available_at, created_at, id);
 CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_processed ON public.usage_counter_deltas USING btree (processed_at, created_at, id);
 CREATE INDEX IF NOT EXISTS ix_usage_counter_deltas_request_kind ON public.usage_counter_deltas USING btree (request_id, kind, target_id);
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_counters (
+    provider_api_key_id character varying(64) NOT NULL,
+    window_scope character varying(64) DEFAULT 'account' NOT NULL,
+    window_code character varying(128) NOT NULL,
+    window_start_unix_secs bigint NOT NULL,
+    window_end_unix_secs bigint NOT NULL,
+    request_count bigint DEFAULT 0 NOT NULL,
+    total_tokens bigint DEFAULT 0 NOT NULL,
+    total_cost_usd numeric DEFAULT 0 NOT NULL,
+    rebuilt_at timestamp with time zone,
+    updated_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.provider_api_key_window_usage_counters ADD CONSTRAINT provider_api_key_window_usage_counters_pkey PRIMARY KEY (provider_api_key_id, window_scope, window_code, window_start_unix_secs, window_end_unix_secs);
+ALTER TABLE ONLY public.provider_api_key_window_usage_counters ADD CONSTRAINT provider_api_key_window_usage_counters_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_resets (
+    provider_api_key_id character varying(64) NOT NULL,
+    window_scope character varying(64) DEFAULT 'account' NOT NULL,
+    window_start_unix_secs bigint NOT NULL,
+    window_end_unix_secs bigint NOT NULL,
+    usage_reset_at_unix_secs bigint NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.provider_api_key_window_usage_resets ADD CONSTRAINT provider_api_key_window_usage_resets_pkey PRIMARY KEY (provider_api_key_id, window_scope, window_start_unix_secs, window_end_unix_secs);
+ALTER TABLE ONLY public.provider_api_key_window_usage_resets ADD CONSTRAINT provider_api_key_window_usage_resets_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_applications (
+    delta_id character varying(36) NOT NULL,
+    provider_api_key_id character varying(64) NOT NULL,
+    window_scope character varying(64) NOT NULL,
+    window_code character varying(128) NOT NULL,
+    window_start_unix_secs bigint NOT NULL,
+    window_end_unix_secs bigint NOT NULL,
+    applied_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.provider_api_key_window_usage_applications ADD CONSTRAINT provider_api_key_window_usage_applications_pkey PRIMARY KEY (delta_id, provider_api_key_id, window_scope, window_code, window_start_unix_secs, window_end_unix_secs);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_window_usage_applications_key ON public.provider_api_key_window_usage_applications USING btree (provider_api_key_id, window_code, window_end_unix_secs);
+ALTER TABLE ONLY public.provider_api_key_window_usage_applications ADD CONSTRAINT provider_api_key_window_usage_applications_delta_fkey FOREIGN KEY (delta_id) REFERENCES public.usage_counter_deltas(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.provider_api_key_window_usage_applications ADD CONSTRAINT provider_api_key_window_usage_applications_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
 
 CREATE TABLE IF NOT EXISTS public.usage_settlement_snapshots (
     request_id character varying(128) NOT NULL,

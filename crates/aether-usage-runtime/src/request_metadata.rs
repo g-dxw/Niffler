@@ -111,6 +111,7 @@ fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<St
     copy_non_null_value(source, target, "billing_rule_snapshot");
     copy_non_null_value(source, target, "scheduling_audit");
     copy_non_null_value(source, target, "content_moderation");
+    copy_non_null_value(source, target, "usage_body_objects");
     copy_number(source, target, "content_moderation_cost_usd");
     copy_number(source, target, "content_moderation_actual_cost_usd");
     copy_number(source, target, "model_cost_usd");
@@ -170,6 +171,7 @@ fn move_allowed_metadata_fields(mut source: Map<String, Value>, target: &mut Map
     remove_non_null_value(&mut source, target, "billing_rule_snapshot");
     remove_non_null_value(&mut source, target, "scheduling_audit");
     remove_non_null_value(&mut source, target, "content_moderation");
+    remove_non_null_value(&mut source, target, "usage_body_objects");
     remove_number(&mut source, target, "content_moderation_cost_usd");
     remove_number(&mut source, target, "content_moderation_actual_cost_usd");
     remove_number(&mut source, target, "model_cost_usd");

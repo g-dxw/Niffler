@@ -680,13 +680,14 @@ pub(crate) fn provider_api_key_usage_contribution(
     let provider_cost_usd = if usage.billing_status == "settled" {
         usage
             .settlement_base_cost_usd()
-            .filter(|value| *value > 0.0)
+            .filter(|value| value.is_finite())
+            .map(|value| value.max(0.0))
             .unwrap_or(usage.total_cost_usd)
             .max(0.0)
     } else {
         0.0
     };
-    let has_provider_cost = provider_cost_usd > 0.0;
+    let is_settled = usage.billing_status == "settled";
 
     Some(ProviderApiKeyUsageContribution {
         key_id,
@@ -705,17 +706,13 @@ pub(crate) fn provider_api_key_usage_contribution(
         },
         last_used_at_unix_secs: Some(usage.created_at_unix_ms),
         usage_created_at_unix_secs: Some(usage.created_at_unix_ms),
-        window_request_count: i64::from(has_provider_cost),
-        window_total_tokens: if has_provider_cost {
+        window_request_count: i64::from(is_settled),
+        window_total_tokens: if is_settled {
             i64::try_from(usage.total_tokens).unwrap_or(i64::MAX)
         } else {
             0
         },
-        window_total_cost_usd: if has_provider_cost {
-            provider_cost_usd
-        } else {
-            0.0
-        },
+        window_total_cost_usd: if is_settled { provider_cost_usd } else { 0.0 },
     })
 }
 
@@ -1067,6 +1064,62 @@ mod tests {
         assert_eq!(contribution.window_total_cost_usd, 0.25);
         assert_eq!(contribution.window_request_count, 1);
         assert_eq!(contribution.window_total_tokens, 20);
+    }
+
+    #[test]
+    fn provider_key_window_usage_counts_settled_zero_cost_requests() {
+        let mut usage = StoredRequestUsageAudit::new(
+            "usage-zero-cost".to_string(),
+            "request-zero-cost".to_string(),
+            None,
+            None,
+            None,
+            None,
+            "OpenAI".to_string(),
+            "gpt-5".to_string(),
+            None,
+            Some("provider-1".to_string()),
+            None,
+            Some("provider-key-1".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            false,
+            12,
+            8,
+            20,
+            0.5,
+            0.5,
+            Some(200),
+            None,
+            None,
+            Some(120),
+            None,
+            "completed".to_string(),
+            "settled".to_string(),
+            123,
+            124,
+            Some(125),
+        )
+        .expect("usage should build");
+        usage.request_metadata = Some(json!({
+            "settlement_snapshot": {
+                "base_cost_usd": 0.0
+            }
+        }));
+
+        let contribution =
+            provider_api_key_usage_contribution(&usage).expect("contribution should exist");
+
+        assert_eq!(contribution.total_cost_usd, 0.0);
+        assert_eq!(contribution.window_request_count, 1);
+        assert_eq!(contribution.window_total_tokens, 20);
+        assert_eq!(contribution.window_total_cost_usd, 0.0);
     }
 
     #[test]

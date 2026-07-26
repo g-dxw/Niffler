@@ -162,6 +162,66 @@ END $mig$;
 
 
 --
+-- Name: provider_api_key_window_usage_applications provider_api_key_window_usage_applications_delta_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.provider_api_key_window_usage_applications
+    ADD CONSTRAINT provider_api_key_window_usage_applications_delta_fkey FOREIGN KEY (delta_id) REFERENCES public.usage_counter_deltas(id) ON DELETE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+
+--
+-- Name: provider_api_key_window_usage_applications provider_api_key_window_usage_applications_key_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.provider_api_key_window_usage_applications
+    ADD CONSTRAINT provider_api_key_window_usage_applications_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+
+--
+-- Name: provider_api_key_window_usage_counters provider_api_key_window_usage_counters_key_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.provider_api_key_window_usage_counters
+    ADD CONSTRAINT provider_api_key_window_usage_counters_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+
+--
+-- Name: provider_api_key_window_usage_resets provider_api_key_window_usage_resets_key_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+DO $mig$ BEGIN
+  ALTER TABLE ONLY public.provider_api_key_window_usage_resets
+    ADD CONSTRAINT provider_api_key_window_usage_resets_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+  WHEN invalid_table_definition THEN NULL;
+END $mig$;
+
+
+
+--
 -- Name: gemini_file_mappings gemini_file_mappings_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 

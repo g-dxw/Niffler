@@ -739,17 +739,23 @@ pub fn build_sync_terminal_usage_payload_seed(
     let has_provider_response = provider_response_full.is_some();
     let client_response = payload.client_body_json.as_ref().cloned();
     let has_client_response = client_response.is_some();
-    let provider_response_body_state = Some(UsageBodyCaptureState::from_capture_parts(
-        has_provider_response,
-        false,
-        false,
-    ));
-    let client_response_body_state = Some(UsageBodyCaptureState::from_capture_parts(
-        has_client_response,
-        false,
-        false,
-    ));
     let context = payload.report_context.as_ref().and_then(Value::as_object);
+    let provider_response_body_state = context_usage_body_object_state(context, "response_body")
+        .or_else(|| {
+            Some(UsageBodyCaptureState::from_capture_parts(
+                has_provider_response,
+                false,
+                false,
+            ))
+        });
+    let client_response_body_state =
+        context_usage_body_object_state(context, "client_response_body").or_else(|| {
+            Some(UsageBodyCaptureState::from_capture_parts(
+                has_client_response,
+                false,
+                false,
+            ))
+        });
     let provider_response_headers = context_usage_value(context, "provider_response_headers")
         .or_else(|| headers_to_json(&payload.headers));
     let client_response_headers = context_usage_value(context, "client_response_headers")
@@ -774,6 +780,23 @@ pub fn build_sync_terminal_usage_payload_seed(
             provider_response_body_state,
             client_response_body_state,
         ),
+    }
+}
+
+fn context_usage_body_object_state(
+    context: Option<&Map<String, Value>>,
+    field: &str,
+) -> Option<UsageBodyCaptureState> {
+    let status = context?
+        .get("usage_body_objects")?
+        .as_object()?
+        .get(field)?
+        .get("storage_status")?
+        .as_str()?;
+    match status {
+        "available" => Some(UsageBodyCaptureState::Reference),
+        "unavailable" => Some(UsageBodyCaptureState::Unavailable),
+        _ => None,
     }
 }
 

@@ -21,8 +21,10 @@ mod wallet;
 mod write;
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use crate::maintenance::DatabasePoolSummary;
+use crate::UsageObjectStore;
 pub use leases::DataLeaseBackends;
 pub use mysql::MysqlBackend;
 pub use postgres::PostgresBackend;
@@ -85,11 +87,20 @@ impl DataBackends {
     pub fn from_config(config: DataLayerConfig) -> Result<Self, DataLayerError> {
         config.validate()?;
 
+        let usage_object_store = config
+            .usage_object_store
+            .as_ref()
+            .map(UsageObjectStore::from_config)
+            .transpose()?
+            .map(Arc::new);
         let database = config.effective_database();
         let postgres = match database.clone() {
-            Some(database) if database.driver == DatabaseDriver::Postgres => Some(
-                PostgresBackend::from_config(database.to_postgres_config()?)?,
-            ),
+            Some(database) if database.driver == DatabaseDriver::Postgres => {
+                Some(PostgresBackend::from_config_with_usage_object_store(
+                    database.to_postgres_config()?,
+                    usage_object_store,
+                )?)
+            }
             _ => None,
         };
         let mysql = match database.clone() {
@@ -162,6 +173,12 @@ impl DataBackends {
 
     pub fn write(&self) -> &DataWriteRepositories {
         &self.write
+    }
+
+    pub fn usage_object_store(&self) -> Option<Arc<UsageObjectStore>> {
+        self.postgres
+            .as_ref()
+            .and_then(PostgresBackend::usage_object_store)
     }
 
     pub fn has_runtime_backends(&self) -> bool {
@@ -261,6 +278,7 @@ mod tests {
                 statement_cache_capacity: 64,
                 require_ssl: false,
             }),
+            usage_object_store: None,
         })
         .expect("postgres backend should build");
 
@@ -308,6 +326,7 @@ mod tests {
                 pool: SqlPoolConfig::default(),
             }),
             postgres: None,
+            usage_object_store: None,
         })
         .expect("mysql backend should build");
 
@@ -359,6 +378,7 @@ mod tests {
                 pool: SqlPoolConfig::default(),
             }),
             postgres: None,
+            usage_object_store: None,
         })
         .expect("sqlite backend should build");
 

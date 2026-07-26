@@ -6,7 +6,7 @@ use crate::error::{SqlResultExt, SqlxResultExt};
 use crate::repository::system::{
     AdminSystemPurgeSummary, AdminSystemPurgeTarget, AdminSystemStats, StoredSystemConfigEntry,
 };
-use crate::DataLayerError;
+use crate::{DataLayerError, UsageObjectStore};
 
 const POSTGRES_FIND_SYSTEM_CONFIG_VALUE_SQL: &str = r#"
 SELECT value
@@ -85,7 +85,9 @@ impl PostgresBackend {
     ) -> Result<AdminSystemPurgeSummary, DataLayerError> {
         let mut tx = self.pool().begin().await.map_postgres_err()?;
         let mut summary = AdminSystemPurgeSummary::default();
-        purge_postgres_admin_system_data(&mut tx, target, &mut summary).await?;
+        let object_store = self.usage_object_store();
+        purge_postgres_admin_system_data(&mut tx, target, object_store.as_deref(), &mut summary)
+            .await?;
         tx.commit().await.map_postgres_err()?;
         Ok(summary)
     }
@@ -99,7 +101,14 @@ impl PostgresBackend {
         }
         let mut tx = self.pool().begin().await.map_postgres_err()?;
         let mut summary = AdminSystemPurgeSummary::default();
-        purge_postgres_request_bodies_batch(&mut tx, batch_size, &mut summary).await?;
+        let object_store = self.usage_object_store();
+        purge_postgres_request_bodies_batch(
+            &mut tx,
+            batch_size,
+            object_store.as_deref(),
+            &mut summary,
+        )
+        .await?;
         tx.commit().await.map_postgres_err()?;
         Ok(summary)
     }
@@ -555,6 +564,7 @@ const ADMIN_STATS_PURGE_TABLES: &[&str] = &[
 ];
 
 const ADMIN_USAGE_CHILD_TABLES: &[&str] = &[
+    "usage_body_objects",
     "usage_body_blobs",
     "usage_http_audits",
     "usage_routing_snapshots",
@@ -610,6 +620,7 @@ fn checked_sql_identifier(value: &str) -> Result<&str, DataLayerError> {
 async fn purge_postgres_admin_system_data(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     target: AdminSystemPurgeTarget,
+    object_store: Option<&UsageObjectStore>,
     summary: &mut AdminSystemPurgeSummary,
 ) -> Result<(), DataLayerError> {
     match target {
@@ -678,6 +689,9 @@ WHERE provider_id IS NOT NULL
             purge_postgres_non_admin_users(tx, summary).await?;
         }
         AdminSystemPurgeTarget::Usage => {
+            while purge_postgres_usage_body_objects_batch(tx, 500, object_store, summary).await?
+                == 500
+            {}
             pg_delete_table(tx, "request_candidates", summary).await?;
             for table in ADMIN_USAGE_CHILD_TABLES {
                 pg_delete_table(tx, table, summary).await?;
@@ -730,6 +744,9 @@ WHERE request_count <> 0
             pg_delete_table(tx, "audit_logs", summary).await?;
         }
         AdminSystemPurgeTarget::RequestBodies => {
+            while purge_postgres_usage_body_objects_batch(tx, 500, object_store, summary).await?
+                == 500
+            {}
             pg_delete_table(tx, "usage_body_blobs", summary).await?;
             pg_execute_if_table_has_columns(
                 tx,
@@ -1617,9 +1634,11 @@ WHERE user_id IN ({non_admin_users})
 async fn purge_postgres_request_bodies_batch(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     batch_size: usize,
+    object_store: Option<&UsageObjectStore>,
     summary: &mut AdminSystemPurgeSummary,
 ) -> Result<(), DataLayerError> {
     let limit = i64::try_from(batch_size).unwrap_or(i64::MAX);
+    purge_postgres_usage_body_objects_batch(tx, batch_size, object_store, summary).await?;
     pg_execute_batch_if_table(
         tx,
         "usage_body_blobs",
@@ -1714,6 +1733,68 @@ WHERE audits.request_id = batch.request_id
     )
     .await?;
     Ok(())
+}
+
+async fn purge_postgres_usage_body_objects_batch(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    batch_size: usize,
+    object_store: Option<&UsageObjectStore>,
+    summary: &mut AdminSystemPurgeSummary,
+) -> Result<usize, DataLayerError> {
+    if batch_size == 0 || !pg_table_exists(tx, "usage_body_objects").await? {
+        return Ok(0);
+    }
+
+    let rows = sqlx::query(
+        r#"
+SELECT body_ref, object_key, storage_status
+FROM public.usage_body_objects
+ORDER BY body_ref ASC
+LIMIT $1
+"#,
+    )
+    .bind(i64::try_from(batch_size).unwrap_or(i64::MAX))
+    .fetch_all(&mut **tx)
+    .await
+    .map_postgres_err()?;
+    if rows.is_empty() {
+        return Ok(0);
+    }
+
+    let mut body_refs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let body_ref = row.try_get::<String, _>("body_ref").map_postgres_err()?;
+        let object_key = row
+            .try_get::<Option<String>, _>("object_key")
+            .map_postgres_err()?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let storage_status = row
+            .try_get::<String, _>("storage_status")
+            .map_postgres_err()?;
+        if let Some(object_key) = object_key {
+            let object_store = object_store.ok_or_else(|| {
+                DataLayerError::UnexpectedValue(format!(
+                    "cannot purge usage body object {body_ref}: usage object store is not configured"
+                ))
+            })?;
+            object_store.delete(&object_key).await?;
+        } else if storage_status == "available" {
+            return Err(DataLayerError::UnexpectedValue(format!(
+                "cannot purge usage body object {body_ref}: available object has no object key"
+            )));
+        }
+        body_refs.push(body_ref);
+    }
+
+    let deleted = sqlx::query("DELETE FROM public.usage_body_objects WHERE body_ref = ANY($1)")
+        .bind(&body_refs)
+        .execute(&mut **tx)
+        .await
+        .map_postgres_err()?
+        .rows_affected();
+    summary.add("usage_body_objects", deleted);
+    Ok(usize::try_from(deleted).unwrap_or(usize::MAX))
 }
 
 async fn purge_mysql_request_bodies_batch(

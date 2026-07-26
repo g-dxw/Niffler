@@ -15,7 +15,9 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::clock::current_unix_secs;
-use crate::handlers::shared::sync_provider_key_quota_status_snapshot;
+use crate::handlers::shared::{
+    merge_codex_metadata_bucket, sync_provider_key_quota_status_snapshot,
+};
 use crate::log_ids::short_request_id;
 use crate::{AppState, GatewayError};
 
@@ -25,6 +27,7 @@ const CODEX_QUOTA_CACHE_MAX_ENTRIES: usize = 4096;
 type HeaderFingerprintCache = Mutex<HashMap<String, (String, Instant)>>;
 
 static CODEX_QUOTA_HEADER_FINGERPRINT_CACHE: OnceLock<HeaderFingerprintCache> = OnceLock::new();
+static CODEX_WINDOW_USAGE_IDENTITY_CACHE: OnceLock<HeaderFingerprintCache> = OnceLock::new();
 static GROK_CHINESE_WAIT_DURATION_RE: OnceLock<Regex> = OnceLock::new();
 static GROK_ENGLISH_WAIT_DURATION_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -51,6 +54,10 @@ pub(crate) async fn apply_local_report_effect(state: &AppState, effect: LocalRep
 
 fn codex_quota_header_fingerprint_cache() -> &'static HeaderFingerprintCache {
     CODEX_QUOTA_HEADER_FINGERPRINT_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn codex_window_usage_identity_cache() -> &'static HeaderFingerprintCache {
+    CODEX_WINDOW_USAGE_IDENTITY_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn report_context_key_id(report_context: Option<&Value>) -> Option<String> {
@@ -114,9 +121,113 @@ fn fingerprint_codex_payload(value: &Value) -> Option<String> {
 }
 
 fn get_cached_codex_quota_fingerprint(key_id: &str, now: Instant) -> Option<String> {
-    let mut cache = codex_quota_header_fingerprint_cache()
-        .lock()
-        .expect("codex realtime quota cache should lock");
+    get_cached_header_fingerprint(codex_quota_header_fingerprint_cache(), key_id, now)
+}
+
+fn set_cached_codex_quota_fingerprint(key_id: &str, fingerprint: String, now: Instant) {
+    set_cached_header_fingerprint(
+        codex_quota_header_fingerprint_cache(),
+        key_id,
+        fingerprint,
+        now,
+    );
+}
+
+fn codex_window_usage_identity(status_snapshot: Option<&Value>) -> Option<String> {
+    let windows = status_snapshot?.get("quota")?.get("windows")?.as_array()?;
+    let mut identities = windows
+        .iter()
+        .filter_map(Value::as_object)
+        .filter_map(|window| {
+            let scope = window
+                .get("scope")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("account")
+                .to_ascii_lowercase();
+            if matches!(scope.as_str(), "feature" | "model" | "workspace") {
+                return None;
+            }
+            let code = window
+                .get("code")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())?
+                .to_ascii_lowercase();
+            let reset_at = window
+                .get("reset_at")
+                .and_then(admin_provider_quota_pure::coerce_json_u64)?;
+            let window_seconds = window
+                .get("window_seconds")
+                .and_then(admin_provider_quota_pure::coerce_json_u64)
+                .or_else(|| {
+                    window
+                        .get("window_minutes")
+                        .and_then(admin_provider_quota_pure::coerce_json_u64)
+                        .and_then(|minutes| minutes.checked_mul(60))
+                })
+                .or(match code.as_str() {
+                    "5h" => Some(18_000),
+                    "7d" | "weekly" => Some(604_800),
+                    "1m" | "monthly" => Some(2_592_000),
+                    _ => None,
+                })?;
+            if window_seconds == 0 || reset_at < window_seconds {
+                return None;
+            }
+            let window_start = reset_at.saturating_sub(window_seconds);
+            (window_start < reset_at).then(|| format!("{scope}:{code}:{window_start}:{reset_at}"))
+        })
+        .collect::<Vec<_>>();
+    if identities.is_empty() {
+        return None;
+    }
+    identities.sort();
+    identities.dedup();
+    Some(identities.join("|"))
+}
+
+fn reserve_codex_window_usage_initialization(
+    key_id: &str,
+    status_snapshot: Option<&Value>,
+    now: Instant,
+) -> bool {
+    let identity =
+        codex_window_usage_identity(status_snapshot).unwrap_or_else(|| "no-account-windows".into());
+    if get_cached_header_fingerprint(codex_window_usage_identity_cache(), key_id, now).as_deref()
+        == Some(identity.as_str())
+    {
+        return false;
+    }
+
+    // Reserve the identity before rebuilding so concurrent responses do not start the same scan.
+    // Failures remain throttled until the short cache entry expires.
+    set_cached_header_fingerprint(codex_window_usage_identity_cache(), key_id, identity, now);
+    true
+}
+
+async fn ensure_codex_window_usage_stats_for_snapshot(
+    state: &AppState,
+    key_id: &str,
+    status_snapshot: Option<&Value>,
+    now: Instant,
+) -> Result<(), GatewayError> {
+    if !reserve_codex_window_usage_initialization(key_id, status_snapshot, now) {
+        return Ok(());
+    }
+
+    state
+        .ensure_provider_api_key_codex_window_usage_stats(key_id)
+        .await?;
+    Ok(())
+}
+
+fn get_cached_header_fingerprint(
+    cache: &'static HeaderFingerprintCache,
+    key_id: &str,
+    now: Instant,
+) -> Option<String> {
+    let mut cache = cache.lock().expect("codex fingerprint cache should lock");
     match cache.get(key_id) {
         Some((fingerprint, expires_at)) if *expires_at > now => Some(fingerprint.clone()),
         Some(_) => {
@@ -127,10 +238,13 @@ fn get_cached_codex_quota_fingerprint(key_id: &str, now: Instant) -> Option<Stri
     }
 }
 
-fn set_cached_codex_quota_fingerprint(key_id: &str, fingerprint: String, now: Instant) {
-    let mut cache = codex_quota_header_fingerprint_cache()
-        .lock()
-        .expect("codex realtime quota cache should lock");
+fn set_cached_header_fingerprint(
+    cache: &'static HeaderFingerprintCache,
+    key_id: &str,
+    fingerprint: String,
+    now: Instant,
+) {
+    let mut cache = cache.lock().expect("codex fingerprint cache should lock");
     cache.insert(
         key_id.to_string(),
         (
@@ -139,12 +253,10 @@ fn set_cached_codex_quota_fingerprint(key_id: &str, fingerprint: String, now: In
                 .unwrap_or(now),
         ),
     );
-
     cache.retain(|_, (_, expires_at)| *expires_at > now);
     if cache.len() <= CODEX_QUOTA_CACHE_MAX_ENTRIES {
         return;
     }
-
     let mut entries = cache
         .iter()
         .map(|(key, (_, expires_at))| (key.clone(), *expires_at))
@@ -168,17 +280,9 @@ fn merge_metadata_object(
         .cloned()
         .unwrap_or_default();
     if section_key == "codex" {
-        if let (Some(current_object), Some(section_object)) = (
-            merged.get(section_key).and_then(Value::as_object),
-            section_value.as_object(),
-        ) {
-            let mut next = current_object.clone();
-            for (field, field_value) in section_object {
-                next.insert(field.clone(), field_value.clone());
-            }
-            merged.insert(section_key.to_string(), Value::Object(next));
-            return Some(Value::Object(merged));
-        }
+        let next = merge_codex_metadata_bucket(merged.get(section_key), &section_value);
+        merged.insert(section_key.to_string(), next);
+        return Some(Value::Object(merged));
     }
     merged.insert(section_key.to_string(), section_value);
     Some(Value::Object(merged))
@@ -716,6 +820,21 @@ async fn sync_codex_quota_from_response_headers(
         return Ok(false);
     };
     if current_fingerprint == incoming_fingerprint {
+        if let Err(error) = ensure_codex_window_usage_stats_for_snapshot(
+            state,
+            &key_id,
+            key.status_snapshot.as_ref(),
+            now,
+        )
+        .await
+        {
+            warn!(
+                event_name = "codex_window_usage_init_failed",
+                provider_api_key_id = %key_id,
+                error = ?error,
+                "codex quota is unchanged but local window usage initialization failed"
+            );
+        }
         set_cached_codex_quota_fingerprint(&key_id, incoming_fingerprint, now);
         return Ok(false);
     }
@@ -738,6 +857,21 @@ async fn sync_codex_quota_from_response_headers(
         .await?
         .is_some();
     if updated {
+        if let Err(error) = ensure_codex_window_usage_stats_for_snapshot(
+            state,
+            &key_id,
+            updated_key.status_snapshot.as_ref(),
+            now,
+        )
+        .await
+        {
+            warn!(
+                event_name = "codex_window_usage_init_failed",
+                provider_api_key_id = %key_id,
+                error = ?error,
+                "codex quota was saved but local window usage initialization failed"
+            );
+        }
         set_cached_codex_quota_fingerprint(&key_id, incoming_fingerprint, now);
     }
     Ok(updated)
@@ -751,12 +885,77 @@ pub(crate) fn clear_local_report_effect_caches_for_tests() {
             .expect("codex realtime quota cache should lock")
             .clear();
     }
+    if let Some(cache) = CODEX_WINDOW_USAGE_IDENTITY_CACHE.get() {
+        cache
+            .lock()
+            .expect("codex window usage cache should lock")
+            .clear();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn codex_window_usage_identity_uses_account_window_bounds_only() {
+        let identity = codex_window_usage_identity(Some(&json!({
+            "quota": {
+                "windows": [
+                    {
+                        "code": "weekly",
+                        "scope": "account",
+                        "window_minutes": 10_080,
+                        "reset_at": 2_000_000,
+                        "usage_reset_at": 1_500_000,
+                        "used_ratio": 0.25
+                    },
+                    {
+                        "code": "weekly",
+                        "scope": "feature",
+                        "window_minutes": 10_080,
+                        "reset_at": 3_000_000
+                    }
+                ]
+            }
+        })))
+        .expect("account window identity should exist");
+
+        assert_eq!(identity, "account:weekly:1395200:2000000");
+    }
+
+    #[test]
+    fn codex_window_usage_initialization_is_throttled_by_full_window_identity() {
+        clear_local_report_effect_caches_for_tests();
+        let snapshot = json!({
+            "quota": {
+                "windows": [{
+                    "code": "weekly",
+                    "scope": "account",
+                    "window_minutes": 10_080,
+                    "reset_at": 2_000_000
+                }]
+            }
+        });
+        let now = Instant::now();
+
+        assert!(reserve_codex_window_usage_initialization(
+            "key-1",
+            Some(&snapshot),
+            now
+        ));
+        assert!(!reserve_codex_window_usage_initialization(
+            "key-1",
+            Some(&snapshot),
+            now
+        ));
+        assert!(reserve_codex_window_usage_initialization(
+            "key-1",
+            Some(&snapshot),
+            now + Duration::from_secs(CODEX_QUOTA_CACHE_TTL_SECONDS + 1)
+        ));
+    }
 
     #[test]
     fn grok_quota_feedback_decrements_the_matching_window() {

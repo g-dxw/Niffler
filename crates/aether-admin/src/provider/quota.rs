@@ -242,10 +242,9 @@ pub fn build_codex_quota_exhausted_fallback_metadata(
         );
     }
     object.insert("updated_at".to_string(), json!(updated_at_unix_secs));
-    object.insert("primary_used_percent".to_string(), json!(100.0));
-    if normalize_codex_plan_type(plan_type) != Some("free".to_string()) {
-        object.insert("secondary_used_percent".to_string(), json!(100.0));
-    }
+    object.insert("has_credits".to_string(), json!(false));
+    object.insert("credits_balance".to_string(), json!(0.0));
+    object.insert("credits_unlimited".to_string(), json!(false));
     serde_json::Value::Object(object)
 }
 
@@ -314,6 +313,181 @@ fn codex_window_has_materialized_limit(
         .is_some_and(|used_percent| used_percent > 0.0)
 }
 
+fn codex_window_duration_seconds(
+    source: &serde_json::Map<String, serde_json::Value>,
+) -> Option<u64> {
+    source
+        .get("limit_window_seconds")
+        .and_then(coerce_json_u64)
+        .or_else(|| codex_window_minutes(source).and_then(|minutes| minutes.checked_mul(60)))
+}
+
+fn codex_window_duration_label(seconds: u64) -> String {
+    if seconds == 300 * 60 {
+        "5H".to_string()
+    } else if seconds == 7 * 24 * 60 * 60 {
+        "7D".to_string()
+    } else if seconds == 30 * 24 * 60 * 60 {
+        "1M".to_string()
+    } else {
+        let total_minutes = seconds.saturating_add(59) / 60;
+        let days = total_minutes / (24 * 60);
+        let hours = (total_minutes % (24 * 60)) / 60;
+        let minutes = total_minutes % 60;
+        let mut parts = Vec::new();
+        if days > 0 {
+            parts.push(format!("{days}天"));
+        }
+        if hours > 0 {
+            parts.push(format!("{hours}小时"));
+        }
+        if minutes > 0 || parts.is_empty() {
+            parts.push(format!("{minutes}分钟"));
+        }
+        parts.join("")
+    }
+}
+
+fn codex_window_duration_code(seconds: u64) -> String {
+    if seconds == 300 * 60 {
+        "5h".to_string()
+    } else if seconds == 7 * 24 * 60 * 60 {
+        "weekly".to_string()
+    } else if seconds == 30 * 24 * 60 * 60 {
+        "1m".to_string()
+    } else {
+        format!("window_{seconds}s")
+    }
+}
+
+fn codex_window_feature_slug(value: &str) -> String {
+    let slug = value
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let slug = slug.trim_matches('_');
+    if slug.is_empty() {
+        "feature".to_string()
+    } else {
+        slug.to_string()
+    }
+}
+
+fn codex_window_metadata(
+    source: &serde_json::Map<String, serde_json::Value>,
+    namespace: Option<&str>,
+    limit_name: Option<&str>,
+    role: &str,
+    updated_at_unix_secs: u64,
+) -> Option<serde_json::Value> {
+    if !codex_window_has_materialized_limit(source, updated_at_unix_secs) {
+        return None;
+    }
+
+    let duration_seconds = codex_window_duration_seconds(source)?;
+    if duration_seconds == 0 {
+        return None;
+    }
+    let duration_code = codex_window_duration_code(duration_seconds);
+    let code = namespace
+        .filter(|namespace| !namespace.is_empty())
+        .map(|namespace| format!("{namespace}:{duration_code}"))
+        .unwrap_or_else(|| duration_code.clone());
+    let label = match limit_name {
+        Some(limit_name) if !limit_name.trim().is_empty() => {
+            format!(
+                "{} {}",
+                limit_name.trim(),
+                codex_window_duration_label(duration_seconds)
+            )
+        }
+        _ => codex_window_duration_label(duration_seconds),
+    };
+    let mut window = serde_json::Map::new();
+    window.insert("code".to_string(), json!(code));
+    window.insert("label".to_string(), json!(label));
+    window.insert(
+        "scope".to_string(),
+        json!(if namespace.is_some() {
+            "feature"
+        } else {
+            "account"
+        }),
+    );
+    window.insert("source_role".to_string(), json!(role));
+    if let Some(limit_name) = limit_name.filter(|value| !value.trim().is_empty()) {
+        window.insert("limit_name".to_string(), json!(limit_name.trim()));
+    }
+    window.insert(
+        "used_percent".to_string(),
+        source
+            .get("used_percent")
+            .and_then(coerce_json_f64)
+            .map_or(serde_json::Value::Null, |value| json!(value)),
+    );
+    window.insert(
+        "reset_after_seconds".to_string(),
+        source
+            .get("reset_after_seconds")
+            .and_then(coerce_json_u64)
+            .map_or(serde_json::Value::Null, |value| json!(value)),
+    );
+    window.insert(
+        "reset_at".to_string(),
+        source
+            .get("reset_at")
+            .and_then(coerce_json_u64)
+            .map_or(serde_json::Value::Null, |value| json!(value)),
+    );
+    window.insert("window_seconds".to_string(), json!(duration_seconds));
+    if duration_seconds % 60 == 0 {
+        window.insert("window_minutes".to_string(), json!(duration_seconds / 60));
+    }
+    Some(serde_json::Value::Object(window))
+}
+
+fn codex_push_window_metadata(
+    windows: &mut Vec<serde_json::Value>,
+    source: Option<&serde_json::Map<String, serde_json::Value>>,
+    namespace: Option<&str>,
+    limit_name: Option<&str>,
+    role: &str,
+    updated_at_unix_secs: u64,
+) {
+    let Some(source) = source else {
+        return;
+    };
+    let Some(mut window) =
+        codex_window_metadata(source, namespace, limit_name, role, updated_at_unix_secs)
+    else {
+        return;
+    };
+    let Some(window_object) = window.as_object_mut() else {
+        return;
+    };
+    let code = window_object
+        .get("code")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    if windows.iter().any(|item| {
+        item.get("code")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|existing| existing.eq_ignore_ascii_case(&code))
+    }) {
+        window_object.insert("code".to_string(), json!(format!("{code}:{role}")));
+    }
+    windows.push(window);
+}
+
 fn codex_write_window_if_materialized(
     target: &mut serde_json::Map<String, serde_json::Value>,
     source: &serde_json::Map<String, serde_json::Value>,
@@ -373,6 +547,24 @@ pub fn parse_codex_wham_usage_response(
         .cloned()
         .unwrap_or_default();
 
+    let mut windows = Vec::new();
+    codex_push_window_metadata(
+        &mut windows,
+        Some(&primary_window),
+        None,
+        None,
+        "primary",
+        updated_at_unix_secs,
+    );
+    codex_push_window_metadata(
+        &mut windows,
+        Some(&secondary_window),
+        None,
+        None,
+        "secondary",
+        updated_at_unix_secs,
+    );
+
     let has_paid_plan = plan_type.as_deref() != Some("free");
     let use_paid_windows = has_paid_plan
         && (!secondary_window.is_empty()
@@ -423,6 +615,47 @@ pub fn parse_codex_wham_usage_response(
             );
         }
     }
+    if let Some(additional_rate_limits) = root
+        .get("additional_rate_limits")
+        .and_then(serde_json::Value::as_array)
+    {
+        for item in additional_rate_limits
+            .iter()
+            .filter_map(serde_json::Value::as_object)
+        {
+            let limit_name = item
+                .get("limit_name")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let namespace = limit_name.map(|value| {
+                if value == CODEX_SPARK_LIMIT_NAME {
+                    "spark".to_string()
+                } else {
+                    format!("feature:{}", codex_window_feature_slug(value))
+                }
+            });
+            let Some(rate_limit) = item
+                .get("rate_limit")
+                .and_then(serde_json::Value::as_object)
+            else {
+                continue;
+            };
+            for (role, key) in [
+                ("primary", "primary_window"),
+                ("secondary", "secondary_window"),
+            ] {
+                codex_push_window_metadata(
+                    &mut windows,
+                    rate_limit.get(key).and_then(serde_json::Value::as_object),
+                    namespace.as_deref(),
+                    limit_name,
+                    role,
+                    updated_at_unix_secs,
+                );
+            }
+        }
+    }
 
     if let Some(credits) = root.get("credits").and_then(serde_json::Value::as_object) {
         if let Some(value) = credits.get("has_credits").and_then(coerce_json_bool) {
@@ -436,6 +669,9 @@ pub fn parse_codex_wham_usage_response(
         }
     }
 
+    if !windows.is_empty() {
+        result.insert("windows".to_string(), json!(windows));
+    }
     if result.is_empty() {
         return None;
     }
@@ -624,6 +860,23 @@ pub fn parse_codex_usage_headers(
 
     let primary_window = read_window("primary");
     let secondary_window = read_window("secondary");
+    let mut windows = Vec::new();
+    codex_push_window_metadata(
+        &mut windows,
+        Some(&primary_window),
+        None,
+        None,
+        "primary",
+        updated_at_unix_secs,
+    );
+    codex_push_window_metadata(
+        &mut windows,
+        Some(&secondary_window),
+        None,
+        None,
+        "secondary",
+        updated_at_unix_secs,
+    );
     let has_paid_plan = plan_type.as_deref() != Some("free");
     let use_paid_windows = has_paid_plan
         && (!secondary_window.is_empty()
@@ -686,6 +939,9 @@ pub fn parse_codex_usage_headers(
         result.insert("credits_unlimited".to_string(), json!(value));
     }
 
+    if !windows.is_empty() {
+        result.insert("windows".to_string(), json!(windows));
+    }
     if result.is_empty() {
         return None;
     }
@@ -1203,13 +1459,15 @@ pub fn parse_chatgpt_web_conversation_init_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        codex_build_invalid_state, codex_runtime_invalid_reason,
-        parse_chatgpt_web_conversation_init_response, parse_codex_backend_me_response,
+        build_codex_quota_exhausted_fallback_metadata, codex_build_invalid_state,
+        codex_runtime_invalid_reason, parse_chatgpt_web_conversation_init_response,
+        parse_codex_backend_me_response, parse_codex_usage_headers,
         parse_codex_wham_usage_response, OAUTH_ACCOUNT_BLOCK_PREFIX, OAUTH_EXPIRED_PREFIX,
         OAUTH_REFRESH_FAILED_PREFIX, OAUTH_REQUEST_FAILED_PREFIX,
     };
     use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogKey;
     use serde_json::json;
+    use std::collections::BTreeMap;
 
     #[test]
     fn codex_runtime_invalid_reason_marks_401_as_expired() {
@@ -1240,6 +1498,51 @@ mod tests {
     #[test]
     fn codex_runtime_invalid_reason_ignores_generic_403() {
         assert_eq!(codex_runtime_invalid_reason(403, Some("forbidden")), None);
+    }
+
+    #[test]
+    fn codex_quota_exhausted_fallback_does_not_fabricate_windows() {
+        let metadata = build_codex_quota_exhausted_fallback_metadata(Some("plus"), 1_777_000_000);
+
+        assert_eq!(metadata["has_credits"], json!(false));
+        assert_eq!(metadata["credits_balance"], json!(0.0));
+        assert_eq!(metadata["credits_unlimited"], json!(false));
+        assert!(metadata.get("primary_used_percent").is_none());
+        assert!(metadata.get("secondary_used_percent").is_none());
+    }
+
+    #[test]
+    fn codex_usage_headers_with_only_weekly_window_do_not_create_five_hour_window() {
+        let headers = BTreeMap::from([
+            ("x-codex-plan-type".to_string(), "team".to_string()),
+            (
+                "x-codex-primary-used-percent".to_string(),
+                "12.5".to_string(),
+            ),
+            (
+                "x-codex-primary-window-minutes".to_string(),
+                "10080".to_string(),
+            ),
+            (
+                "x-codex-primary-reset-after-seconds".to_string(),
+                "600".to_string(),
+            ),
+        ]);
+
+        let metadata =
+            parse_codex_usage_headers(&headers, 1_777_000_000).expect("headers should parse");
+
+        assert_eq!(metadata["primary_used_percent"], json!(12.5));
+        assert_eq!(metadata["primary_window_minutes"], json!(10080u64));
+        assert!(metadata.get("secondary_used_percent").is_none());
+        assert!(metadata.get("secondary_window_minutes").is_none());
+        let windows = metadata["windows"]
+            .as_array()
+            .expect("generic quota windows should exist");
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0]["code"], json!("weekly"));
+        assert_eq!(windows[0]["label"], json!("7D"));
+        assert_eq!(windows[0]["window_seconds"], json!(604_800u64));
     }
 
     #[test]
@@ -1444,6 +1747,110 @@ mod tests {
             parsed.get("spark_secondary_window_minutes"),
             Some(&json!(10_080u64))
         );
+    }
+
+    #[test]
+    fn preserves_all_codex_windows_by_upstream_duration() {
+        let parsed = parse_codex_wham_usage_response(
+            &json!({
+                "plan_type": "team",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 25.0,
+                        "limit_window_seconds": 18_000,
+                        "reset_after_seconds": 9000,
+                        "reset_at": 1_800_000_000u64
+                    },
+                    "secondary_window": {
+                        "used_percent": 10.0,
+                        "limit_window_seconds": 604_800,
+                        "reset_after_seconds": 300000,
+                        "reset_at": 1_900_000_000u64
+                    }
+                },
+                "additional_rate_limits": [{
+                    "limit_name": "Monthly",
+                    "rate_limit": {
+                        "primary_window": {
+                            "used_percent": 5.0,
+                            "limit_window_seconds": 2_592_000,
+                            "reset_after_seconds": 1_000_000,
+                            "reset_at": 2_000_000_000u64
+                        }
+                    }
+                }, {
+                    "limit_name": "Experimental",
+                    "rate_limit": {
+                        "primary_window": {
+                            "used_percent": 1.0,
+                            "limit_window_seconds": 12_345,
+                            "reset_after_seconds": 600,
+                            "reset_at": 2_100_000_000u64
+                        }
+                    }
+                }]
+            }),
+            1_777_000_000,
+        )
+        .expect("codex wham usage should parse");
+
+        let windows = parsed["windows"]
+            .as_array()
+            .expect("generic quota windows should exist");
+        assert_eq!(windows.len(), 4);
+        assert!(windows.iter().any(|window| {
+            window["code"] == json!("5h")
+                && window["label"] == json!("5H")
+                && window["window_seconds"] == json!(18_000u64)
+                && window["scope"] == json!("account")
+        }));
+        assert!(windows.iter().any(|window| {
+            window["code"] == json!("weekly")
+                && window["label"] == json!("7D")
+                && window["window_seconds"] == json!(604_800u64)
+                && window["scope"] == json!("account")
+        }));
+        assert!(windows.iter().any(|window| {
+            window["code"] == json!("feature:monthly:1m")
+                && window["label"] == json!("Monthly 1M")
+                && window["window_seconds"] == json!(2_592_000u64)
+                && window["scope"] == json!("feature")
+        }));
+        assert!(windows.iter().any(|window| {
+            window["code"] == json!("feature:experimental:window_12345s")
+                && window["label"] == json!("Experimental 3小时26分钟")
+                && window["window_seconds"] == json!(12_345u64)
+                && window.get("window_minutes").is_none()
+                && window["scope"] == json!("feature")
+        }));
+    }
+
+    #[test]
+    fn preserves_codex_monthly_window_when_it_is_the_only_window() {
+        let parsed = parse_codex_wham_usage_response(
+            &json!({
+                "plan_type": "team",
+                "rate_limit": {
+                    "primary_window": {
+                        "used_percent": 32.0,
+                        "limit_window_seconds": 2_592_000,
+                        "reset_after_seconds": 1_000_000,
+                        "reset_at": 2_000_000_000u64
+                    }
+                }
+            }),
+            1_777_000_000,
+        )
+        .expect("codex wham usage should parse");
+
+        let windows = parsed["windows"]
+            .as_array()
+            .expect("generic quota windows should exist");
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0]["code"], json!("1m"));
+        assert_eq!(windows[0]["label"], json!("1M"));
+        assert_eq!(windows[0]["scope"], json!("account"));
+        assert_eq!(windows[0]["used_percent"], json!(32.0));
     }
 
     #[test]

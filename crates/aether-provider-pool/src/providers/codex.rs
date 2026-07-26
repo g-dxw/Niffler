@@ -153,9 +153,57 @@ fn codex_window_used_percent_exhausted(bucket: &Map<String, Value>, prefix: &str
         .is_some_and(|value| value >= 100.0 && !codex_window_reset_elapsed(bucket, prefix))
 }
 
+fn codex_metadata_window_exhausted(
+    bucket: &Map<String, Value>,
+    window: &Map<String, Value>,
+) -> bool {
+    let scope = window
+        .get("scope")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("account");
+    if scope.eq_ignore_ascii_case("feature")
+        || scope.eq_ignore_ascii_case("model")
+        || scope.eq_ignore_ascii_case("workspace")
+    {
+        return false;
+    }
+    let used_percent = provider_pool_json_f64(window.get("used_percent"))
+        .or_else(|| provider_pool_json_f64(window.get("used_ratio")).map(|value| value * 100.0));
+    let Some(used_percent) = used_percent else {
+        return false;
+    };
+    let snapshot_observed_at = provider_pool_timestamp_unix_secs(
+        bucket
+            .get("updated_at")
+            .or_else(|| bucket.get("observed_at")),
+    );
+    used_percent >= 100.0 - 1e-6
+        && !provider_pool_reset_deadline_elapsed(
+            window,
+            snapshot_observed_at,
+            provider_pool_current_unix_secs().unwrap_or(0),
+        )
+}
+
 pub(crate) fn quota_exhausted_from_bucket(bucket: &Map<String, Value>) -> bool {
     if provider_pool_json_bool(bucket.get("credits_unlimited")) == Some(true) {
         return false;
+    }
+    let generic_windows = bucket
+        .get("windows")
+        .and_then(Value::as_array)
+        .map(|windows| {
+            windows
+                .iter()
+                .filter_map(Value::as_object)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !generic_windows.is_empty() {
+        return generic_windows
+            .iter()
+            .any(|window| codex_metadata_window_exhausted(bucket, window));
     }
     let has_window_data = provider_pool_json_f64(bucket.get("primary_used_percent")).is_some()
         || provider_pool_json_f64(bucket.get("secondary_used_percent")).is_some();

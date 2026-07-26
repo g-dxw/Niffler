@@ -251,6 +251,16 @@ struct GatewayDataArgs {
     #[arg(long, env = "AETHER_GATEWAY_DATA_REDIS_KEY_PREFIX")]
     redis_key_prefix: Option<String>,
 
+    #[arg(long, env = "AETHER_USAGE_OBJECT_STORE_URL")]
+    usage_object_store_url: Option<String>,
+
+    #[arg(
+        long,
+        env = "AETHER_USAGE_OBJECT_STORE_PREFIX",
+        default_value = "usage"
+    )]
+    usage_object_store_prefix: String,
+
     #[arg(
         long,
         env = "AETHER_GATEWAY_DATA_POSTGRES_MIN_CONNECTIONS",
@@ -412,16 +422,29 @@ impl GatewayDataArgs {
     fn to_config(&self) -> GatewayDataConfig {
         let database = self.effective_sql_database_config();
 
-        let config = match database {
+        let mut config = match database {
             Some(database) => GatewayDataConfig::from_database_config(database),
             None => GatewayDataConfig::disabled(),
         };
 
-        match self.effective_encryption_key() {
+        config = match self.effective_encryption_key() {
             Some(value) => {
                 warm_python_fernet_secret(&value);
                 config.with_encryption_key(value)
             }
+            None => config,
+        };
+
+        match self
+            .usage_object_store_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(url) => config.with_usage_object_store(aether_data::UsageObjectStoreConfig::new(
+                url,
+                self.usage_object_store_prefix.trim(),
+            )),
             None => config,
         }
     }
@@ -677,6 +700,10 @@ struct Args {
     /// 容器内健康检查入口：根据当前 bind 端口探测本地 /health。
     #[arg(long, hide = true, default_value_t = false)]
     healthcheck: bool,
+
+    /// Print embedded PostgreSQL migration versions without connecting to a database.
+    #[arg(long, hide = true, default_value_t = false)]
+    print_postgres_migration_manifest: bool,
 
     #[arg(
         long,
@@ -1044,6 +1071,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    if args.print_postgres_migration_manifest {
+        print!("{}", postgres_migration_manifest_text());
+        return Ok(());
+    }
     if let Some(command) = args.command.as_ref() {
         init_service_runtime(args.runtime_config()?)?;
         return run_data_command(command).await;
@@ -1271,6 +1302,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         background_tasks.shutdown().await;
     }
     Ok(())
+}
+
+fn postgres_migration_manifest_text() -> String {
+    let mut output = aether_data::lifecycle::migrate::embedded_postgres_migration_versions()
+        .into_iter()
+        .map(|version| version.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    output.push('\n');
+    output
 }
 
 async fn run_data_command(command: &DataCommand) -> Result<(), Box<dyn std::error::Error>> {
@@ -1628,10 +1669,10 @@ fn pending_backfills_error(
 mod tests {
     use super::{
         ensure_database_backfills_are_current, ensure_database_schema_is_current,
-        pending_backfills_error, pending_schema_error, resolve_healthcheck_url, Args,
-        DatabaseDriverArg, DeploymentTopologyArg, GatewayDataArgs, GatewayFrontdoorArgs,
-        GatewayLogDestinationArg, GatewayLogFormatArg, GatewayLogRotationArg, GatewayLoggingArgs,
-        GatewayRateLimitArgs, GatewayUsageArgs, NodeRoleArg, RuntimeBackendArg,
+        pending_backfills_error, pending_schema_error, postgres_migration_manifest_text,
+        resolve_healthcheck_url, Args, DatabaseDriverArg, DeploymentTopologyArg, GatewayDataArgs,
+        GatewayFrontdoorArgs, GatewayLogDestinationArg, GatewayLogFormatArg, GatewayLogRotationArg,
+        GatewayLoggingArgs, GatewayRateLimitArgs, GatewayUsageArgs, NodeRoleArg, RuntimeBackendArg,
         VideoTaskTruthSourceArg,
     };
     use aether_data::{DatabaseDriver, SqlDatabaseConfig, SqlPoolConfig};
@@ -1642,6 +1683,7 @@ mod tests {
             command: None,
             app_port: 8084,
             healthcheck: false,
+            print_postgres_migration_manifest: false,
             healthcheck_timeout_ms: 3_000,
             deployment_topology: DeploymentTopologyArg::SingleNode,
             node_role: NodeRoleArg::All,
@@ -1670,6 +1712,8 @@ mod tests {
                 encryption_key: None,
                 redis_url: None,
                 redis_key_prefix: None,
+                usage_object_store_url: None,
+                usage_object_store_prefix: "usage".to_string(),
                 postgres_min_connections: 1,
                 postgres_max_connections: 20,
                 postgres_acquire_timeout_ms: 10_000,
@@ -1716,6 +1760,22 @@ mod tests {
             resolve_healthcheck_url(8084).unwrap(),
             "http://127.0.0.1:8084/health"
         );
+    }
+
+    #[test]
+    fn postgres_migration_manifest_is_sorted_and_includes_latest_versions() {
+        let versions = postgres_migration_manifest_text()
+            .lines()
+            .map(|line| {
+                line.parse::<i64>()
+                    .expect("manifest line should be numeric")
+            })
+            .collect::<Vec<_>>();
+
+        assert!(versions.contains(&20260723120000));
+        assert!(versions.contains(&20260723121000));
+        assert!(versions.contains(&20260723122000));
+        assert!(versions.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[test]

@@ -672,9 +672,13 @@ name = "processed_at"
 type = "timestamp"
 nullable = true
 
+[[table.usage_counter_deltas.columns]]
+name = "available_at"
+type = "timestamp"
+
 [[table.usage_counter_deltas.indexes]]
-name = "ix_usage_counter_deltas_unprocessed"
-columns = ["created_at", "id"]
+name = "ix_usage_counter_deltas_ready"
+columns = ["available_at", "created_at", "id"]
 
 [[table.usage_counter_deltas.indexes]]
 name = "ix_usage_counter_deltas_processed"
@@ -683,6 +687,178 @@ columns = ["processed_at", "created_at", "id"]
 [[table.usage_counter_deltas.indexes]]
 name = "ix_usage_counter_deltas_request_kind"
 columns = ["request_id", "kind", "target_id"]
+
+[table.provider_api_key_window_usage_counters]
+domain = "usage"
+order = 16
+primary_key = [
+  "provider_api_key_id",
+  "window_scope",
+  "window_code",
+  "window_start_unix_secs",
+  "window_end_unix_secs",
+]
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "provider_api_key_id"
+type = "text_id"
+length = 64
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "window_scope"
+type = "text"
+length = 64
+default = "account"
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "window_code"
+type = "text"
+length = 128
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "window_start_unix_secs"
+type = "unix_seconds"
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "window_end_unix_secs"
+type = "unix_seconds"
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "request_count"
+type = "int64"
+default = 0
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "total_tokens"
+type = "int64"
+default = 0
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "total_cost_usd"
+type = "decimal_money"
+default = 0
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "rebuilt_at"
+type = "timestamp"
+nullable = true
+
+[[table.provider_api_key_window_usage_counters.columns]]
+name = "updated_at"
+type = "timestamp"
+
+[[table.provider_api_key_window_usage_counters.foreign_keys]]
+name = "provider_api_key_window_usage_counters_key_fkey"
+columns = ["provider_api_key_id"]
+references_table = "provider_api_keys"
+references_columns = ["id"]
+on_delete = "cascade"
+
+[table.provider_api_key_window_usage_resets]
+domain = "usage"
+order = 17
+primary_key = [
+  "provider_api_key_id",
+  "window_scope",
+  "window_start_unix_secs",
+  "window_end_unix_secs",
+]
+
+[[table.provider_api_key_window_usage_resets.columns]]
+name = "provider_api_key_id"
+type = "text_id"
+length = 64
+
+[[table.provider_api_key_window_usage_resets.columns]]
+name = "window_scope"
+type = "text"
+length = 64
+default = "account"
+
+[[table.provider_api_key_window_usage_resets.columns]]
+name = "window_start_unix_secs"
+type = "unix_seconds"
+
+[[table.provider_api_key_window_usage_resets.columns]]
+name = "window_end_unix_secs"
+type = "unix_seconds"
+
+[[table.provider_api_key_window_usage_resets.columns]]
+name = "usage_reset_at_unix_secs"
+type = "unix_seconds"
+
+[[table.provider_api_key_window_usage_resets.columns]]
+name = "updated_at"
+type = "timestamp"
+
+[[table.provider_api_key_window_usage_resets.foreign_keys]]
+name = "provider_api_key_window_usage_resets_key_fkey"
+columns = ["provider_api_key_id"]
+references_table = "provider_api_keys"
+references_columns = ["id"]
+on_delete = "cascade"
+
+[table.provider_api_key_window_usage_applications]
+domain = "usage"
+order = 18
+primary_key = [
+  "delta_id",
+  "provider_api_key_id",
+  "window_scope",
+  "window_code",
+  "window_start_unix_secs",
+  "window_end_unix_secs",
+]
+
+[[table.provider_api_key_window_usage_applications.columns]]
+name = "delta_id"
+type = "text"
+length = 36
+
+[[table.provider_api_key_window_usage_applications.columns]]
+name = "provider_api_key_id"
+type = "text_id"
+length = 64
+
+[[table.provider_api_key_window_usage_applications.columns]]
+name = "window_scope"
+type = "text"
+length = 64
+
+[[table.provider_api_key_window_usage_applications.columns]]
+name = "window_code"
+type = "text"
+length = 128
+
+[[table.provider_api_key_window_usage_applications.columns]]
+name = "window_start_unix_secs"
+type = "unix_seconds"
+
+[[table.provider_api_key_window_usage_applications.columns]]
+name = "window_end_unix_secs"
+type = "unix_seconds"
+
+[[table.provider_api_key_window_usage_applications.columns]]
+name = "applied_at"
+type = "timestamp"
+
+[[table.provider_api_key_window_usage_applications.indexes]]
+name = "ix_provider_api_key_window_usage_applications_key"
+columns = ["provider_api_key_id", "window_code", "window_end_unix_secs"]
+
+[[table.provider_api_key_window_usage_applications.foreign_keys]]
+name = "provider_api_key_window_usage_applications_delta_fkey"
+columns = ["delta_id"]
+references_table = "usage_counter_deltas"
+references_columns = ["id"]
+on_delete = "cascade"
+
+[[table.provider_api_key_window_usage_applications.foreign_keys]]
+name = "provider_api_key_window_usage_applications_key_fkey"
+columns = ["provider_api_key_id"]
+references_table = "provider_api_keys"
+references_columns = ["id"]
+on_delete = "cascade"
 
 [table.usage_settlement_snapshots]
 domain = "usage"

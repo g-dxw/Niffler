@@ -188,7 +188,11 @@ const USAGE_REQUEST_BODY_DETAIL_COLUMNS: &[&str] = &[
     "client_response_body_compressed",
 ];
 
-const REQUEST_BODY_DETAIL_TABLES: &[&str] = &["usage_body_blobs", "usage_http_audits"];
+const REQUEST_BODY_DETAIL_TABLES: &[&str] = &[
+    "usage_body_objects",
+    "usage_body_blobs",
+    "usage_http_audits",
+];
 const LIFECYCLE_TABLES: &[&str] = &["_sqlx_migrations", "schema_backfills"];
 
 pub fn encode_jsonl(records: &[DataExportRecord]) -> Result<String, DataLayerError> {

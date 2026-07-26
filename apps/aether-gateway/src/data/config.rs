@@ -1,5 +1,5 @@
 use aether_data::driver::postgres::PostgresPoolConfig;
-use aether_data::{DataLayerConfig, SqlDatabaseConfig};
+use aether_data::{DataLayerConfig, SqlDatabaseConfig, UsageObjectStoreConfig};
 use std::fmt;
 
 #[derive(Clone, Default)]
@@ -7,6 +7,7 @@ pub struct GatewayDataConfig {
     database: Option<SqlDatabaseConfig>,
     postgres: Option<PostgresPoolConfig>,
     encryption_key: Option<String>,
+    usage_object_store: Option<UsageObjectStoreConfig>,
 }
 
 impl fmt::Debug for GatewayDataConfig {
@@ -15,6 +16,7 @@ impl fmt::Debug for GatewayDataConfig {
             .field("database", &self.database)
             .field("postgres", &self.postgres)
             .field("has_encryption_key", &self.encryption_key.is_some())
+            .field("has_usage_object_store", &self.usage_object_store.is_some())
             .finish()
     }
 }
@@ -29,6 +31,7 @@ impl GatewayDataConfig {
             database: Some(SqlDatabaseConfig::from_postgres_config(postgres.clone())),
             postgres: Some(postgres),
             encryption_key: None,
+            usage_object_store: None,
         }
     }
 
@@ -38,6 +41,7 @@ impl GatewayDataConfig {
             database: Some(database),
             postgres,
             encryption_key: None,
+            usage_object_store: None,
         }
     }
 
@@ -71,6 +75,11 @@ impl GatewayDataConfig {
         self.encryption_key.as_deref()
     }
 
+    pub fn with_usage_object_store(mut self, config: UsageObjectStoreConfig) -> Self {
+        self.usage_object_store = Some(config);
+        self
+    }
+
     pub fn with_redis_url(
         self,
         _url: impl Into<String>,
@@ -87,6 +96,7 @@ impl GatewayDataConfig {
         DataLayerConfig {
             database: self.database.clone(),
             postgres: self.postgres.clone(),
+            usage_object_store: self.usage_object_store.clone(),
         }
     }
 }

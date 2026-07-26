@@ -7,7 +7,8 @@ use super::{
     provider_api_key_usage_is_error, provider_api_key_usage_is_success,
     strip_deprecated_usage_display_fields, usage_can_recover_terminal_failure,
     usage_request_metadata_client_family, InMemoryUsageReadRepository, PendingUsageCleanupSummary,
-    StoredRequestUsageAudit, UpsertUsageRecord, UsageWriteRepository,
+    ProviderApiKeyWindowUsageRequest, StoredRequestUsageAudit, UpsertUsageRecord,
+    UsageWriteRepository,
 };
 use crate::driver::mysql::MysqlPool;
 use crate::error::SqlResultExt;
@@ -226,7 +227,54 @@ impl MysqlUsageReadRepository {
             .iter()
             .map(map_usage_row)
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(InMemoryUsageReadRepository::seed(items))
+        let reset_rows = sqlx::query(
+            r#"
+SELECT
+  provider_api_key_id,
+  window_scope,
+  window_start_unix_secs,
+  window_end_unix_secs,
+  usage_reset_at_unix_secs
+FROM provider_api_key_window_usage_resets
+"#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_sql_err()?;
+        let mut resets = BTreeMap::new();
+        for row in reset_rows {
+            let start = row
+                .try_get::<i64, _>("window_start_unix_secs")
+                .map_sql_err()?;
+            let end = row
+                .try_get::<i64, _>("window_end_unix_secs")
+                .map_sql_err()?;
+            let reset_at = row
+                .try_get::<i64, _>("usage_reset_at_unix_secs")
+                .map_sql_err()?;
+            let (Ok(start), Ok(end), Ok(reset_at)) = (
+                u64::try_from(start),
+                u64::try_from(end),
+                u64::try_from(reset_at),
+            ) else {
+                continue;
+            };
+            resets.insert(
+                (
+                    row.try_get::<String, _>("provider_api_key_id")
+                        .map_sql_err()?,
+                    row.try_get::<String, _>("window_scope")
+                        .map_sql_err()?
+                        .to_ascii_lowercase(),
+                    start,
+                    end,
+                ),
+                reset_at,
+            );
+        }
+        let repository = InMemoryUsageReadRepository::seed(items);
+        repository.replace_provider_api_key_window_resets(resets);
+        Ok(repository)
     }
 }
 
@@ -446,6 +494,69 @@ WHERE id = ?
         Ok(stats.len() as u64)
     }
 
+    async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, DataLayerError> {
+        let reset_at = i64::try_from(reset_at_unix_secs).map_err(|_| {
+            DataLayerError::InvalidInput(
+                "provider api key window usage reset time is out of range".to_string(),
+            )
+        })?;
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let mut reset_windows = 0_u64;
+        for window in windows {
+            let provider_api_key_id = window.provider_api_key_id.trim();
+            let window_scope = window.window_scope.trim();
+            if provider_api_key_id.is_empty()
+                || window_scope.is_empty()
+                || window.start_unix_secs >= window.end_unix_secs
+                || reset_at_unix_secs < window.start_unix_secs
+                || reset_at_unix_secs >= window.end_unix_secs
+            {
+                continue;
+            }
+            let start = i64::try_from(window.start_unix_secs).map_err(|_| {
+                DataLayerError::InvalidInput(
+                    "provider api key window usage start is out of range".to_string(),
+                )
+            })?;
+            let end = i64::try_from(window.end_unix_secs).map_err(|_| {
+                DataLayerError::InvalidInput(
+                    "provider api key window usage end is out of range".to_string(),
+                )
+            })?;
+            sqlx::query(
+                r#"
+INSERT INTO provider_api_key_window_usage_resets (
+  provider_api_key_id,
+  window_scope,
+  window_start_unix_secs,
+  window_end_unix_secs,
+  usage_reset_at_unix_secs,
+  updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  usage_reset_at_unix_secs = VALUES(usage_reset_at_unix_secs),
+  updated_at = VALUES(updated_at)
+"#,
+            )
+            .bind(provider_api_key_id)
+            .bind(window_scope.to_ascii_lowercase())
+            .bind(start)
+            .bind(end)
+            .bind(reset_at)
+            .bind(reset_at)
+            .execute(&mut *tx)
+            .await
+            .map_sql_err()?;
+            reset_windows = reset_windows.saturating_add(1);
+        }
+        tx.commit().await.map_sql_err()?;
+        Ok(reset_windows)
+    }
+
     async fn cleanup_stale_pending_requests(
         &self,
         cutoff_unix_secs: u64,
@@ -649,7 +760,7 @@ fn provider_key_base_cost_usd_mysql(
         })
         .filter(|value| *value > 0.0);
     direct_base_cost
-        .filter(|value| *value > 0.0)
+        .filter(|value| *value >= 0.0)
         .or_else(|| sales_multiplier.map(|multiplier| total_cost_usd / multiplier))
         .unwrap_or(total_cost_usd)
         .max(0.0)
@@ -1020,6 +1131,17 @@ mod tests {
         );
         assert_eq!(
             provider_key_base_cost_usd_mysql("pending", 2.0, Some(&metadata)),
+            0.0
+        );
+
+        let zero_base_cost = serde_json::json!({
+            "settlement_snapshot": {
+                "base_cost_usd": 0.0
+            }
+        })
+        .to_string();
+        assert_eq!(
+            provider_key_base_cost_usd_mysql("settled", 2.0, Some(&zero_base_cost)),
             0.0
         );
     }

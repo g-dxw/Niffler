@@ -1068,7 +1068,7 @@ async fn gateway_sorts_admin_pool_keys_by_imported_and_last_used_time() {
 }
 
 #[tokio::test]
-async fn gateway_pool_list_reads_materialized_codex_cycle_usage_from_quota_windows() {
+async fn gateway_pool_list_ignores_legacy_codex_cycle_usage_without_window_stats() {
     const RESET_AT: u64 = 4_102_444_800;
 
     let mut provider = sample_provider("provider-codex", "codex", 10).with_transport_fields(
@@ -1266,31 +1266,19 @@ async fn gateway_pool_list_reads_materialized_codex_cycle_usage_from_quota_windo
     let usage_key_payload = key_by_id(keys, "key-codex-cycle");
     let five_hour_window = window_by_code(usage_key_payload, "5h");
     let weekly_window = window_by_code(usage_key_payload, "weekly");
-    assert_eq!(five_hour_window["usage"]["request_count"], json!(2));
-    assert_eq!(five_hour_window["usage"]["total_tokens"], json!(225));
-    assert_eq!(
-        five_hour_window["usage"]["total_cost_usd"],
-        json!("0.30000000")
-    );
-    assert_eq!(weekly_window["usage"]["request_count"], json!(3));
-    assert_eq!(weekly_window["usage"]["total_tokens"], json!(375));
-    assert_eq!(
-        weekly_window["usage"]["total_cost_usd"],
-        json!("0.60000000")
-    );
+    assert!(five_hour_window.get("usage").is_none());
+    assert!(weekly_window.get("usage").is_none());
     assert_eq!(usage_key_payload["request_count"], json!(4));
     assert_eq!(usage_key_payload["total_tokens"], json!(999));
     assert_eq!(usage_key_payload["total_cost_usd"], json!("9.99000000"));
 
     let zero_key_payload = key_by_id(keys, "key-codex-zero");
-    assert_eq!(
-        window_by_code(zero_key_payload, "5h")["usage"]["request_count"],
-        json!(0)
-    );
-    assert_eq!(
-        window_by_code(zero_key_payload, "weekly")["usage"]["total_tokens"],
-        json!(0)
-    );
+    assert!(window_by_code(zero_key_payload, "5h")
+        .get("usage")
+        .is_none());
+    assert!(window_by_code(zero_key_payload, "weekly")
+        .get("usage")
+        .is_none());
 
     let invalid_key_payload = key_by_id(keys, "key-codex-invalid");
     assert!(window_by_code(invalid_key_payload, "5h")
@@ -1302,7 +1290,7 @@ async fn gateway_pool_list_reads_materialized_codex_cycle_usage_from_quota_windo
 }
 
 #[tokio::test]
-async fn gateway_pool_list_uses_snapshot_codex_cycle_usage_without_live_usage_reader_overlay() {
+async fn gateway_pool_list_uses_window_usage_reader_instead_of_snapshot_usage() {
     let now_unix_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time should be after unix epoch")
@@ -1424,12 +1412,25 @@ async fn gateway_pool_list_uses_snapshot_codex_cycle_usage_without_live_usage_re
             .expect("quota window should exist")
     };
 
-    assert!(window_by_code("5h").get("usage").is_none());
-    assert!(window_by_code("weekly").get("usage").is_none());
+    assert_eq!(window_by_code("5h")["usage"]["request_count"], json!(1));
+    assert_eq!(window_by_code("5h")["usage"]["total_tokens"], json!(30));
+    assert_eq!(
+        window_by_code("5h")["usage"]["total_cost_usd"],
+        json!("0.10000000")
+    );
+    assert_eq!(window_by_code("weekly")["usage"]["request_count"], json!(2));
+    assert_eq!(
+        window_by_code("weekly")["usage"]["total_tokens"],
+        json!(100)
+    );
+    assert_eq!(
+        window_by_code("weekly")["usage"]["total_cost_usd"],
+        json!("0.30000000")
+    );
 }
 
 #[tokio::test]
-async fn gateway_pool_list_uses_persisted_codex_cycle_usage_without_usage_fact_override() {
+async fn gateway_pool_list_ignores_persisted_codex_cycle_usage_without_window_stats() {
     let now_unix_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time should be after unix epoch")
@@ -1539,12 +1540,8 @@ async fn gateway_pool_list_uses_persisted_codex_cycle_usage_without_usage_fact_o
         .find(|window| window["code"] == json!("5h"))
         .expect("5h window should exist");
 
-    assert_eq!(weekly["usage"]["request_count"], json!(1));
-    assert_eq!(weekly["usage"]["total_tokens"], json!(50));
-    assert_eq!(weekly["usage"]["total_cost_usd"], json!("0.05000000"));
-    assert_eq!(five_hour["usage"]["request_count"], json!(9));
-    assert_eq!(five_hour["usage"]["total_tokens"], json!(700));
-    assert_eq!(five_hour["usage"]["total_cost_usd"], json!("0.70000000"));
+    assert!(weekly.get("usage").is_none());
+    assert!(five_hour.get("usage").is_none());
 }
 
 #[tokio::test]
@@ -2253,7 +2250,7 @@ async fn gateway_formats_codex_quota_countdown_from_reset_after_seconds() {
     assert_eq!(keys.len(), 1);
     assert_eq!(
         keys[0]["account_quota"],
-        "周剩余 90.0% (3天2小时后重置) | 5H剩余 67.0% (3小时50分钟后重置)"
+        "7D剩余 90.0% (3天2小时后重置) | 5H剩余 67.0% (3小时50分钟后重置)"
     );
 }
 
@@ -2888,7 +2885,7 @@ async fn gateway_codex_quota_resets_to_full_after_countdown_elapsed() {
     .expect("json body should parse");
     let keys = payload["keys"].as_array().expect("keys should be array");
     assert_eq!(keys.len(), 1);
-    assert_eq!(keys[0]["account_quota"], "周剩余 100.0% | 5H剩余 100.0%");
+    assert_eq!(keys[0]["account_quota"], "7D剩余 100.0% | 5H剩余 100.0%");
 }
 
 #[tokio::test]

@@ -765,10 +765,31 @@ async fn assert_candidate_success(
     repository: &InMemoryRequestCandidateRepository,
     request_id: &str,
 ) {
-    let stored_candidates = repository
-        .list_by_request_id(request_id)
-        .await
-        .expect("request candidate trace should read");
+    let timeout = std::time::Duration::from_secs(30);
+    let deadline = tokio::time::Instant::now() + timeout;
+    let stored_candidates = loop {
+        let stored_candidates = repository
+            .list_by_request_id(request_id)
+            .await
+            .expect("request candidate trace should read");
+        if stored_candidates
+            .first()
+            .is_some_and(|candidate| candidate.status == RequestCandidateStatus::Success)
+        {
+            break stored_candidates;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            let observed = stored_candidates
+                .first()
+                .map(|candidate| format!("{:?}", candidate.status))
+                .unwrap_or_else(|| "<missing>".to_string());
+            panic!(
+                "request candidate should reach success within {:?}, last observed status: {observed}",
+                timeout
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 }

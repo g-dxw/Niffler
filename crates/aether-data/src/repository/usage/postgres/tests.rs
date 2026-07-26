@@ -1,11 +1,13 @@
 use chrono::{TimeZone, Utc};
 use serde_json::json;
+use std::collections::HashSet;
 
 use super::{
     attach_compressed_body_refs, attach_usage_http_audit_body_refs,
     attach_usage_routing_snapshot_metadata, attach_usage_settlement_pricing_snapshot_metadata,
-    inflate_usage_json_value, prepare_request_metadata_for_body_storage,
-    prepare_usage_body_storage, resolved_read_usage_body_ref, resolved_write_usage_body_ref,
+    delete_unreferenced_usage_body_objects, inflate_usage_json_value,
+    prepare_request_metadata_for_body_storage, prepare_usage_body_storage,
+    resolved_read_usage_body_ref, resolved_write_usage_body_ref,
     split_dashboard_daily_aggregate_range, split_dashboard_hourly_aggregate_range, usage_body_ref,
     usage_http_audit_body_refs, usage_http_audit_capture_mode, usage_routing_snapshot_from_usage,
     usage_settlement_pricing_snapshot_from_usage, AggregateRangeSplit, SqlxUsageReadRepository,
@@ -14,6 +16,7 @@ use super::{
 };
 use crate::driver::postgres::{PostgresPoolConfig, PostgresPoolFactory};
 use crate::repository::usage::UpsertUsageRecord;
+use crate::{UsageObjectStore, UsageObjectStoreConfig};
 use aether_data_contracts::repository::usage::UsageBodyField;
 
 #[tokio::test]
@@ -235,43 +238,97 @@ fn usage_sql_summarizes_usage_by_provider_api_key_ids_in_database() {
 }
 
 #[test]
-fn usage_sql_rebuilds_provider_key_window_usage_into_status_snapshot() {
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
-        .contains("UPDATE provider_api_keys AS keys"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
-        .contains("usage_billing_facts"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
-        .contains("provider_type', ''))) = 'codex'"));
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL.contains("'{quota,windows}'")
-    );
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL.contains("'{usage}'"));
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL.contains("WHEN '5h' THEN 300")
-    );
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
-        .contains("WHEN 'weekly' THEN 10080"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
-        .contains("\"usage\".billing_status = 'settled'"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
-        .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_STATS_SQL
-        .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("FROM requested"));
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("LEFT JOIN LATERAL"));
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("FROM \"usage\""));
+fn usage_sql_stores_provider_key_window_usage_outside_status_snapshot() {
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("JOIN provider_api_key_window_usage_counters AS counters"));
+    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
+        .contains("counters.rebuilt_at IS NOT NULL"));
+    assert!(!super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("FROM \"usage\""));
     assert!(
         !super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("FROM usage_billing_facts")
     );
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
-        .contains("usage_row.final_billing_status = 'settled'"));
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("usage_facts.is_billable"));
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
-        .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
-        .contains("settlement.billing_total_cost_usd"));
-    assert!(super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL
-        .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
+    assert!(!super::SUMMARIZE_PROVIDER_API_KEY_WINDOW_USAGE_SQL.contains("status_snapshot"));
+
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("INSERT INTO provider_api_key_window_usage_counters")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("FROM valid_windows")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("usage_facts.billing_status = 'settled'")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("LEFT JOIN usage_settlement_snapshots AS settlement")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("settlement.settlement_snapshot ->> 'base_cost_usd'")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}'")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("raw_usage.request_metadata ->> 'sales_multiplier'")
+    );
+    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains(
+        "raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}'"
+    ));
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("/ provider_cost_inputs.sales_multiplier")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("INSERT INTO provider_api_key_window_usage_applications")
+    );
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("delta.kind = 'provider_api_key_window'")
+    );
+    assert!(!super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains("jsonb_set"));
+    assert!(!super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains("'{usage}'"));
+}
+
+#[test]
+fn usage_sql_applies_window_deltas_once_and_waits_for_window_refresh() {
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL.contains("FROM UNNEST("));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("INSERT INTO provider_api_key_window_usage_applications"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("ON CONFLICT DO NOTHING"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("INSERT INTO provider_api_key_window_usage_counters"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("waiting_for_window_refresh"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("usage_created_at_unix_secs >= valid_windows.window_end_unix_secs"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("OR NOT classifications.has_valid_windows"));
+    assert!(
+        super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL.contains("AS ready_to_complete")
+    );
+    assert!(!super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL.contains("jsonb_set"));
+}
+
+#[test]
+fn usage_counter_claims_only_ready_rows_and_defers_window_refresh_waiters() {
+    assert!(super::CLAIM_USAGE_COUNTER_DELTAS_SQL.contains("available_at <= NOW()"));
+    assert!(super::CLAIM_USAGE_COUNTER_DELTAS_SQL
+        .contains("ORDER BY available_at ASC, created_at ASC, id ASC"));
+    assert!(super::INSERT_USAGE_COUNTER_DELTA_SQL.contains("created_at,\n  available_at"));
+    assert!(super::INSERT_USAGE_COUNTER_DELTA_SQL.contains("NOW(), NOW()"));
+    assert!(
+        !super::CLAIM_USAGE_COUNTER_DELTAS_SQL.contains("(kind = 'provider_api_key_window') ASC")
+    );
+    assert!(super::DEFER_USAGE_COUNTER_DELTAS_SQL.contains("NOW() + INTERVAL '30 seconds'"));
+    assert!(super::DEFER_USAGE_COUNTER_DELTAS_SQL.contains("processed_at IS NULL"));
 }
 
 #[test]
@@ -302,15 +359,20 @@ fn usage_sql_moves_shared_counter_updates_behind_outbox() {
     assert!(source.contains("enqueue_provider_api_key_usage_delta_in_tx("));
     assert!(source.contains("enqueue_model_usage_delta_in_tx("));
     assert!(source.contains("apply_provider_api_key_main_usage_delta_in_tx("));
-    assert!(source.contains("apply_provider_api_key_codex_window_usage_delta_in_tx("));
+    assert!(source.contains("apply_provider_api_key_codex_window_usage_deltas_in_tx("));
+    assert!(source.contains("USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW"));
     assert!(source.contains("USAGE_COUNTER_KIND_PROVIDER_MONTHLY"));
     assert!(source.contains("apply_provider_monthly_usage_delta_in_tx("));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL.contains("$1::TEXT[]"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL.contains("$6::BIGINT[]"));
     assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
-        .contains("WITH ORDINALITY AS item(window_item, ordinality)"));
-    assert!(!super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
-        .contains("WITH ORDINALITY AS item(window, ordinality)"));
+        .contains("window_item ->> 'window_seconds'"));
     assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
-        .contains("status_snapshot::jsonb"));
+        .contains("'9223372036854775807'"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("WHEN 'weekly' THEN 604800"));
+    assert!(super::APPLY_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_DELTA_SQL
+        .contains("scope NOT IN ('feature', 'model', 'workspace')"));
 }
 
 #[test]
@@ -355,7 +417,12 @@ fn usage_sql_rebuild_matches_online_provider_key_usage_semantics() {
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
         .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}'"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
         .contains("raw_usage.request_metadata ->> 'sales_multiplier'"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL.contains(
+        "raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}'"
+    ));
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
         .contains("settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier'"));
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
@@ -563,7 +630,7 @@ fn usage_sql_raw_aggregates_use_canonical_billing_facts() {
         .contains("FROM usage_billing_facts AS \"usage\""));
     assert!(super::SUMMARIZE_USAGE_TOTALS_BY_USER_IDS_SQL
         .contains("FROM usage_billing_facts AS \"usage\""));
-    assert!(source.contains("apply_provider_api_key_codex_window_usage_delta_in_tx"));
+    assert!(source.contains("apply_provider_api_key_codex_window_usage_deltas_in_tx"));
 }
 
 #[test]
@@ -908,7 +975,13 @@ fn recovered_stale_usage_sql_finalizes_settlement_state() {
 #[test]
 fn prepare_usage_body_storage_detaches_small_payloads_into_blob_storage() {
     let payload = json!({"message": "hello"});
-    let storage = prepare_usage_body_storage(Some(&payload)).expect("storage should serialize");
+    let storage = prepare_usage_body_storage(
+        Some(&payload),
+        None,
+        "req-small-1",
+        UsageBodyField::RequestBody,
+    )
+    .expect("storage should serialize");
 
     assert!(storage.inline_json.is_none());
     let compressed = storage
@@ -926,7 +999,13 @@ fn prepare_usage_body_storage_compresses_large_payloads() {
     let payload = json!({
         "content": "x".repeat(MAX_INLINE_USAGE_BODY_BYTES + 128)
     });
-    let storage = prepare_usage_body_storage(Some(&payload)).expect("storage should serialize");
+    let storage = prepare_usage_body_storage(
+        Some(&payload),
+        None,
+        "req-large-1",
+        UsageBodyField::RequestBody,
+    )
+    .expect("storage should serialize");
 
     assert!(storage.inline_json.is_none());
     let compressed = storage
@@ -939,14 +1018,86 @@ fn prepare_usage_body_storage_compresses_large_payloads() {
     );
 }
 
+#[tokio::test]
+async fn failed_write_cleanup_preserves_referenced_object_and_deletes_new_version() {
+    let root = std::env::temp_dir().join(format!(
+        "aether-usage-object-cleanup-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&root).expect("create cleanup test object store");
+    let store = UsageObjectStore::from_config(&UsageObjectStoreConfig::new(
+        format!("file://{}", root.display()),
+        "usage-test",
+    ))
+    .expect("build cleanup test object store");
+    let previous_key = store.object_key("request-repeat-1", "response_body", "json.gz");
+    let uncommitted_key = store.object_key("request-repeat-1", "response_body", "json.gz");
+    store
+        .put(
+            &previous_key,
+            b"previous".to_vec(),
+            8,
+            "previous-hash".to_string(),
+            "application/json",
+            Some("gzip"),
+            "json",
+        )
+        .await
+        .expect("write previous object");
+    store
+        .put(
+            &uncommitted_key,
+            b"uncommitted".to_vec(),
+            11,
+            "uncommitted-hash".to_string(),
+            "application/json",
+            Some("gzip"),
+            "json",
+        )
+        .await
+        .expect("write uncommitted object");
+
+    delete_unreferenced_usage_body_objects(
+        &store,
+        &[previous_key.clone(), uncommitted_key.clone()],
+        &HashSet::from([previous_key.clone()]),
+    )
+    .await;
+
+    assert_eq!(
+        store
+            .get(&previous_key)
+            .await
+            .expect("referenced object should remain")
+            .as_ref(),
+        b"previous"
+    );
+    assert!(store.get(&uncommitted_key).await.is_err());
+    store
+        .delete(&previous_key)
+        .await
+        .expect("delete previous object");
+    std::fs::remove_dir_all(root).expect("remove cleanup test object store");
+}
+
 #[test]
 fn prepare_request_metadata_for_body_storage_strips_body_ref_compatibility_keys() {
-    let detached = prepare_usage_body_storage(Some(&json!({
-        "content": "x".repeat(MAX_INLINE_USAGE_BODY_BYTES + 32)
-    })))
+    let detached = prepare_usage_body_storage(
+        Some(&json!({
+            "content": "x".repeat(MAX_INLINE_USAGE_BODY_BYTES + 32)
+        })),
+        None,
+        "req-123",
+        UsageBodyField::RequestBody,
+    )
     .expect("detached storage should build");
-    let inline =
-        prepare_usage_body_storage(Some(&json!({"message": "inline"}))).expect("inline body");
+    let inline = prepare_usage_body_storage(
+        Some(&json!({"message": "inline"})),
+        None,
+        "req-123",
+        UsageBodyField::ProviderRequestBody,
+    )
+    .expect("inline body");
 
     let metadata = prepare_request_metadata_for_body_storage(
         Some(json!({

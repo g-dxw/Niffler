@@ -16,6 +16,7 @@ use aether_data_contracts::repository::pool_scores::{
     GetPoolMemberScoresByIdsQuery, PoolMemberIdentity, StoredPoolMemberScore,
 };
 use aether_data_contracts::repository::provider_catalog::StoredProviderCatalogKey;
+use aether_data_contracts::repository::usage::StoredProviderApiKeyWindowUsageSummary;
 use axum::{
     body::Body,
     http,
@@ -25,9 +26,76 @@ use axum::{
 use serde_json::json;
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
-    time::{SystemTime, UNIX_EPOCH},
+    collections::{BTreeMap, BTreeSet, HashMap},
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use tracing::warn;
+
+const ADMIN_POOL_CODEX_WINDOW_USAGE_INIT_TTL: Duration = Duration::from_secs(30);
+const ADMIN_POOL_CODEX_WINDOW_USAGE_INIT_CACHE_MAX_ENTRIES: usize = 4096;
+
+static ADMIN_POOL_CODEX_WINDOW_USAGE_INIT_CACHE: OnceLock<Mutex<HashMap<String, Instant>>> =
+    OnceLock::new();
+
+fn admin_pool_codex_window_usage_init_cache() -> &'static Mutex<HashMap<String, Instant>> {
+    ADMIN_POOL_CODEX_WINDOW_USAGE_INIT_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn reserve_admin_pool_codex_window_usage_initializations(
+    requests: &[aether_data_contracts::repository::usage::ProviderApiKeyWindowUsageRequest],
+) -> Vec<String> {
+    let now = Instant::now();
+    let mut cache = admin_pool_codex_window_usage_init_cache()
+        .lock()
+        .expect("admin pool codex window usage init cache should lock");
+    cache.retain(|_, expires_at| *expires_at > now);
+
+    let mut key_ids = BTreeSet::new();
+    for request in requests {
+        let cache_key = format!(
+            "{}:{}",
+            request.provider_api_key_id,
+            pool_payloads::admin_pool_codex_window_usage_identity(request)
+        );
+        if cache.contains_key(&cache_key) {
+            continue;
+        }
+        if cache.len() >= ADMIN_POOL_CODEX_WINDOW_USAGE_INIT_CACHE_MAX_ENTRIES {
+            break;
+        }
+        cache.insert(cache_key, now + ADMIN_POOL_CODEX_WINDOW_USAGE_INIT_TTL);
+        key_ids.insert(request.provider_api_key_id.clone());
+    }
+    key_ids.into_iter().collect()
+}
+
+fn schedule_admin_pool_codex_window_usage_initialization(
+    state: &AdminAppState<'_>,
+    requests: Vec<aether_data_contracts::repository::usage::ProviderApiKeyWindowUsageRequest>,
+) {
+    let key_ids = reserve_admin_pool_codex_window_usage_initializations(&requests);
+    if key_ids.is_empty() {
+        return;
+    }
+
+    let app = state.cloned_app();
+    tokio::spawn(async move {
+        for key_id in key_ids {
+            if let Err(error) = app
+                .ensure_provider_api_key_codex_window_usage_stats(&key_id)
+                .await
+            {
+                warn!(
+                    event_name = "admin_pool_codex_window_usage_init_failed",
+                    provider_api_key_id = %key_id,
+                    error = ?error,
+                    "failed to initialize codex window usage counters from admin pool list"
+                );
+            }
+        }
+    });
+}
 
 fn admin_pool_plan_label(code: &str) -> &'static str {
     match code {
@@ -480,6 +548,44 @@ pub(super) async fn build_admin_pool_list_keys_response(
         }
         _ => AdminProviderPoolRuntimeState::default(),
     };
+    let window_usage_requests = keys
+        .iter()
+        .flat_map(|key| {
+            pool_payloads::admin_pool_codex_window_usage_requests(key, &provider.provider_type)
+        })
+        .collect::<Vec<_>>();
+    let window_usage_summaries = state
+        .summarize_usage_by_provider_api_key_windows(&window_usage_requests)
+        .await?;
+    let available_window_identities = window_usage_summaries
+        .iter()
+        .map(|summary| {
+            (
+                summary.provider_api_key_id.clone(),
+                pool_payloads::admin_pool_codex_window_usage_summary_identity(summary),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let missing_window_usage_requests = window_usage_requests
+        .iter()
+        .filter(|request| {
+            !available_window_identities.contains(&(
+                request.provider_api_key_id.clone(),
+                pool_payloads::admin_pool_codex_window_usage_identity(request),
+            ))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    schedule_admin_pool_codex_window_usage_initialization(state, missing_window_usage_requests);
+    let mut window_usage_by_key =
+        BTreeMap::<String, BTreeMap<String, StoredProviderApiKeyWindowUsageSummary>>::new();
+    for summary in window_usage_summaries {
+        let identity = pool_payloads::admin_pool_codex_window_usage_summary_identity(&summary);
+        window_usage_by_key
+            .entry(summary.provider_api_key_id.clone())
+            .or_default()
+            .insert(identity, summary);
+    }
     let items = keys
         .into_iter()
         .map(|key| {
@@ -491,7 +597,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
                 &runtime,
                 pool_config.clone(),
                 pool_scores_by_key_id.get(&key.id),
-                None,
+                window_usage_by_key.get(&key.id),
                 now_unix_secs,
             )
         })
