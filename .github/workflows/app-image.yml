@@ -12,6 +12,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release_checks:
+    name: Verify deployment tooling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check deployment scripts
+        run: |
+          bash -n scripts/check-deploy-ancestry.sh
+          bash -n scripts/deploy-ci-artifact.sh
+          bash -n scripts/tests/test-deploy-ancestry.sh
+          bash scripts/tests/test-deploy-ancestry.sh
+
   frontend:
     name: Build frontend
     runs-on: ubuntu-latest
@@ -75,7 +88,7 @@ jobs:
 
   image:
     name: Build image tar
-    needs: [frontend, gateway]
+    needs: [release_checks, frontend, gateway]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -99,6 +112,7 @@ jobs:
           docker build \
             --file ./Dockerfile.app \
             --build-arg TARGETARCH=amd64 \
+            --build-arg AETHER_VERSION="${GITHUB_SHA}" \
             --tag niffler-app:latest \
             --tag niffler-app:${GITHUB_SHA} \
             .

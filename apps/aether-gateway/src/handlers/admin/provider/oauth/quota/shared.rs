@@ -3,7 +3,8 @@ use crate::handlers::admin::provider::shared::payloads::{
 };
 use crate::handlers::admin::request::{AdminAppState, AdminGatewayProviderTransportSnapshot};
 use crate::handlers::shared::{
-    sync_provider_key_oauth_status_snapshot, sync_provider_key_quota_status_snapshot,
+    merge_codex_metadata_bucket, sync_provider_key_oauth_status_snapshot,
+    sync_provider_key_quota_status_snapshot,
 };
 use crate::GatewayError;
 use aether_admin::provider::quota as admin_provider_quota_pure;
@@ -112,17 +113,9 @@ fn merge_upstream_metadata(
     if let Some(update_object) = updates.as_object() {
         for (key, value) in update_object {
             if key == "codex" {
-                if let (Some(current_object), Some(update_object)) = (
-                    merged.get(key).and_then(serde_json::Value::as_object),
-                    value.as_object(),
-                ) {
-                    let mut next = current_object.clone();
-                    for (field, field_value) in update_object {
-                        next.insert(field.clone(), field_value.clone());
-                    }
-                    merged.insert(key.clone(), serde_json::Value::Object(next));
-                    continue;
-                }
+                let next = merge_codex_metadata_bucket(merged.get(key), value);
+                merged.insert(key.clone(), next);
+                continue;
             }
             merged.insert(key.clone(), value.clone());
         }
@@ -260,10 +253,27 @@ pub(crate) async fn persist_provider_quota_refresh_state(
         .duration_since(UNIX_EPOCH)
         .ok()
         .map(|duration| duration.as_secs());
-    Ok(state
+    let updated = state
         .update_provider_catalog_key(&latest_key)
         .await?
-        .is_some())
+        .is_some();
+    if updated
+        && quota_snapshot_provider_type
+            .as_deref()
+            .is_some_and(|provider_type| provider_type.eq_ignore_ascii_case("codex"))
+    {
+        if let Err(error) = state
+            .ensure_provider_api_key_codex_window_usage_stats(key_id)
+            .await
+        {
+            warn!(
+                provider_api_key_id = %key_id,
+                error = ?error,
+                "failed to initialize codex window usage counters after quota refresh"
+            );
+        }
+    }
+    Ok(updated)
 }
 
 pub(super) async fn execute_provider_quota_plan(

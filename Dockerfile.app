@@ -12,6 +12,9 @@ FROM gcr.io/distroless/static-debian12
 
 # TARGETARCH 由 buildx 自动注入: amd64 或 arm64
 ARG TARGETARCH
+ARG AETHER_VERSION=unknown
+
+LABEL org.opencontainers.image.revision="${AETHER_VERSION}"
 
 COPY dist/aether-gateway-${TARGETARCH} /usr/local/bin/aether-gateway
 COPY dist/frontend/ /srv/frontend

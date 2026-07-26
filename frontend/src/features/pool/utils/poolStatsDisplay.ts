@@ -4,7 +4,7 @@ import { i18n } from '@/i18n'
 
 export type PoolStatsMetricKey = 'request_count' | 'total_tokens' | 'total_cost_usd'
 export type PoolStatsDisplayKind = 'account_total' | 'codex_cycle'
-export type PoolCodexCycleWindowCode = '5h' | 'weekly'
+export type PoolCodexCycleWindowCode = string
 
 export interface PoolStatsKeyInput {
   request_count?: number | null
@@ -14,11 +14,21 @@ export interface PoolStatsKeyInput {
     quota?: {
       windows?: Array<{
         code?: string | null
+        label?: string | null
+        scope?: string | null
+        window_seconds?: number | null
+        window_minutes?: number | null
         usage?: QuotaWindowUsageSnapshot | null
       } | null> | null
     } | null
   } | null
 }
+
+type PoolStatsQuotaWindow = NonNullable<
+  NonNullable<
+    NonNullable<PoolStatsKeyInput['status_snapshot']>['quota']
+  >['windows']
+>[number]
 
 export interface PoolStatsMetric {
   key: PoolStatsMetricKey
@@ -45,11 +55,27 @@ export interface PoolCodexCycleStatsDisplay {
 
 export type PoolStatsDisplay = PoolAccountTotalStatsDisplay | PoolCodexCycleStatsDisplay
 
-const MISSING_STAT_VALUE = '—'
-const CODEX_CYCLE_WINDOW_CODES: PoolCodexCycleWindowCode[] = ['5h', 'weekly']
+const MISSING_STAT_VALUE = '统计中'
 
 export function isCodexProviderType(providerType: string | null | undefined): boolean {
   return String(providerType || '').trim().toLowerCase() === 'codex'
+}
+
+export function hasPendingCodexCycleStats(
+  key: PoolStatsKeyInput,
+  providerType: string | null | undefined,
+): boolean {
+  if (!isCodexProviderType(providerType)) return false
+  const windows = key.status_snapshot?.quota?.windows
+  if (!Array.isArray(windows)) return false
+
+  return windows
+    .filter(window => window != null)
+    .filter((window) => {
+      const scope = String(window?.scope || 'account').trim().toLowerCase()
+      return !['feature', 'model', 'workspace'].includes(scope)
+    })
+    .some(window => normalizeWindowCode(window?.code) !== '' && window?.usage == null)
 }
 
 export function formatPoolStatInteger(value: number | null | undefined): string {
@@ -115,15 +141,32 @@ function normalizeWindowCode(value: unknown): string {
   return String(value || '').trim().toLowerCase()
 }
 
-function getQuotaWindowUsage(
-  key: PoolStatsKeyInput,
-  code: PoolCodexCycleWindowCode,
-): QuotaWindowUsageSnapshot | null {
-  const windows = key.status_snapshot?.quota?.windows
-  if (!Array.isArray(windows)) return null
+function formatWindowDuration(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return ''
+  if (totalMinutes % (30 * 24 * 60) === 0) return `${totalMinutes / (30 * 24 * 60)}M`
+  if (totalMinutes % (7 * 24 * 60) === 0) return `${totalMinutes / (7 * 24 * 60)}周`
+  if (totalMinutes % (24 * 60) === 0) return `${totalMinutes / (24 * 60)}D`
+  if (totalMinutes % 60 === 0) return `${totalMinutes / 60}H`
+  return `${totalMinutes}分钟`
+}
 
-  const window = windows.find(item => normalizeWindowCode(item?.code) === code)
-  return window?.usage ?? null
+function quotaWindowLabel(window: NonNullable<PoolStatsQuotaWindow>): string {
+  const explicitLabel = String(window?.label || '').trim()
+  if (explicitLabel) return explicitLabel
+  const seconds = Number(window?.window_seconds ?? 0)
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return formatWindowDuration(Math.ceil(seconds / 60))
+  }
+  const minutes = Number(window?.window_minutes ?? 0)
+  if (Number.isFinite(minutes) && minutes > 0) {
+    return formatWindowDuration(minutes)
+  }
+  const code = normalizeWindowCode(window?.code)
+  if (code === '5h') return '5H'
+  if (code === 'weekly') return '周'
+  if (code === '7d') return '7D'
+  if (code === '1m' || code === 'monthly') return '月'
+  return String(window?.code || '窗口').trim()
 }
 
 function buildAccountTotalMetrics(key: PoolStatsKeyInput): PoolStatsMetric[] {
@@ -154,13 +197,25 @@ export function buildAccountTotalStatsDisplay(
 export function buildCodexCycleStatsDisplay(
   key: PoolStatsKeyInput,
 ): PoolCodexCycleStatsDisplay {
+  const windows = key.status_snapshot?.quota?.windows
+  const groups = Array.isArray(windows)
+    ? windows
+        .filter(window => window != null)
+        .filter((window) => {
+          const scope = String(window?.scope || 'account').trim().toLowerCase()
+          return !['feature', 'model', 'workspace'].includes(scope)
+        })
+        .filter(window => normalizeWindowCode(window?.code) !== '')
+        .map(window => ({
+          code: normalizeWindowCode(window?.code),
+          label: quotaWindowLabel(window),
+          metrics: buildCycleMetrics(window?.usage ?? null),
+        }))
+    : []
+
   return {
     kind: 'codex_cycle',
-    groups: CODEX_CYCLE_WINDOW_CODES.map(code => ({
-      code,
-      label: code === 'weekly' ? i18n.global.t('commonUi.weekly') : '5H',
-      metrics: buildCycleMetrics(getQuotaWindowUsage(key, code)),
-    })),
+    groups,
   }
 }
 

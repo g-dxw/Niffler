@@ -1,11 +1,13 @@
 use crate::database::SqlDatabaseConfig;
 use crate::driver::postgres::PostgresPoolConfig;
-use crate::DataLayerError;
+use crate::{DataLayerError, UsageObjectStoreConfig};
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct DataLayerConfig {
     pub database: Option<SqlDatabaseConfig>,
     pub postgres: Option<PostgresPoolConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_object_store: Option<UsageObjectStoreConfig>,
 }
 
 impl DataLayerConfig {
@@ -13,6 +15,7 @@ impl DataLayerConfig {
         Self {
             database: Some(database),
             postgres: None,
+            usage_object_store: None,
         }
     }
 
@@ -20,6 +23,7 @@ impl DataLayerConfig {
         Self {
             database: Some(SqlDatabaseConfig::from_postgres_config(postgres)),
             postgres: None,
+            usage_object_store: None,
         }
     }
 
@@ -37,6 +41,9 @@ impl DataLayerConfig {
         }
         if let Some(postgres) = &self.postgres {
             postgres.validate()?;
+        }
+        if let Some(object_store) = &self.usage_object_store {
+            object_store.validate()?;
         }
         Ok(())
     }
@@ -66,6 +73,7 @@ mod tests {
                 statement_cache_capacity: 64,
                 require_ssl: false,
             }),
+            usage_object_store: None,
         };
 
         assert!(config.validate().is_ok());
@@ -86,6 +94,7 @@ mod tests {
                 statement_cache_capacity: 64,
                 require_ssl: false,
             }),
+            usage_object_store: None,
         };
 
         assert!(config.validate().is_err());
@@ -109,6 +118,7 @@ mod tests {
                 statement_cache_capacity: 64,
                 require_ssl: false,
             }),
+            usage_object_store: None,
         };
 
         let effective = config

@@ -50,8 +50,8 @@ pub use crate::formats::openai::chat::stream::{
     OpenAIResponsesProviderState,
 };
 pub use crate::formats::openai::image::stream::{
-    maybe_build_openai_image_sync_finalize_product, OpenAiImageStreamState,
-    OpenAiImageSyncFinalizeProduct,
+    maybe_build_openai_image_sync_finalize_product, maybe_extract_openai_image_sync_failure_body,
+    OpenAiImageStreamState, OpenAiImageSyncFinalizeProduct,
 };
 pub use crate::formats::openai::shared::{
     copy_request_number_field, copy_request_number_field_as,

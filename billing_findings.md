@@ -37,6 +37,6 @@
 - `crates/aether-data/src/repository/settlement/postgres.rs`：`consume_daily_quota_postgres` 入参使用 `input.base_cost_usd`；钱包补扣使用 `(input.base_cost_usd - quota.debited_usd) * sales_multiplier`。
 - `crates/aether-data/src/repository/settlement/mod.rs`：`settlement_wallet_charge_multiplier` 从 `total_cost_usd / base_cost_usd` 反推销售倍率。
 - `apps/aether-gateway/src/handlers/public/support/wallet/reads.rs`：钱包余额接口把 quota availability 映射为 `daily_quota` 和 `package_balance`。
-- `crates/aether-data/src/repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_stats_sql.sql`：Codex 窗口统计按 provider key 和窗口时间汇总 `usage_billing_facts.total_cost_usd`。
-- `crates/aether-data/src/repository/usage/postgres/queries/summarize_provider_api_key_window_usage_sql.sql`：管理端按窗口实时汇总 provider key 用量。
+- `crates/aether-data/src/repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql`：Codex 窗口统计按账号和当前真实窗口从 `usage_billing_facts` 重建基础费用。
+- `crates/aether-data/src/repository/usage/postgres/queries/summarize_provider_api_key_window_usage_sql.sql`：管理端按账号和窗口读取独立的预计算统计，不在列表请求中实时汇总历史用量。
 - `apps/aether-gateway/src/ai_serving/mod.rs`、`apps/aether-gateway/src/control/auth/resolution.rs`：认证上下文携带 `sales_multiplier` 和 `model_sales_multipliers`。

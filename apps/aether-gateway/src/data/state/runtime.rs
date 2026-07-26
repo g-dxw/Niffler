@@ -1058,6 +1058,35 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn ensure_provider_api_key_codex_window_usage_stats(
+        &self,
+        provider_api_key_id: &str,
+    ) -> Result<bool, DataLayerError> {
+        match &self.usage_writer {
+            Some(repository) => {
+                repository
+                    .ensure_provider_api_key_codex_window_usage_stats(provider_api_key_id)
+                    .await
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub(crate) async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[aether_data_contracts::repository::usage::ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, DataLayerError> {
+        match &self.usage_writer {
+            Some(repository) => {
+                repository
+                    .reset_provider_api_key_codex_window_usage_stats(windows, reset_at_unix_secs)
+                    .await
+            }
+            None => Ok(0),
+        }
+    }
+
     pub(crate) async fn flush_usage_counter_deltas(
         &self,
         batch_size: usize,

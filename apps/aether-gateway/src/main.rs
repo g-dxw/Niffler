@@ -251,6 +251,16 @@ struct GatewayDataArgs {
     #[arg(long, env = "AETHER_GATEWAY_DATA_REDIS_KEY_PREFIX")]
     redis_key_prefix: Option<String>,
 
+    #[arg(long, env = "AETHER_USAGE_OBJECT_STORE_URL")]
+    usage_object_store_url: Option<String>,
+
+    #[arg(
+        long,
+        env = "AETHER_USAGE_OBJECT_STORE_PREFIX",
+        default_value = "usage"
+    )]
+    usage_object_store_prefix: String,
+
     #[arg(
         long,
         env = "AETHER_GATEWAY_DATA_POSTGRES_MIN_CONNECTIONS",
@@ -412,16 +422,29 @@ impl GatewayDataArgs {
     fn to_config(&self) -> GatewayDataConfig {
         let database = self.effective_sql_database_config();
 
-        let config = match database {
+        let mut config = match database {
             Some(database) => GatewayDataConfig::from_database_config(database),
             None => GatewayDataConfig::disabled(),
         };
 
-        match self.effective_encryption_key() {
+        config = match self.effective_encryption_key() {
             Some(value) => {
                 warm_python_fernet_secret(&value);
                 config.with_encryption_key(value)
             }
+            None => config,
+        };
+
+        match self
+            .usage_object_store_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(url) => config.with_usage_object_store(aether_data::UsageObjectStoreConfig::new(
+                url,
+                self.usage_object_store_prefix.trim(),
+            )),
             None => config,
         }
     }
@@ -1670,6 +1693,8 @@ mod tests {
                 encryption_key: None,
                 redis_url: None,
                 redis_key_prefix: None,
+                usage_object_store_url: None,
+                usage_object_store_prefix: "usage".to_string(),
                 postgres_min_connections: 1,
                 postgres_max_connections: 20,
                 postgres_acquire_timeout_ms: 10_000,

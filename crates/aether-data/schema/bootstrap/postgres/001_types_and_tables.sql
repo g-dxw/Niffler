@@ -1361,9 +1361,91 @@ CREATE TABLE IF NOT EXISTS public.usage_counter_deltas (
     usage_created_at_unix_secs bigint,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     processed_at timestamp with time zone,
+    available_at timestamp with time zone DEFAULT '-infinity'::timestamp with time zone NOT NULL,
     CONSTRAINT usage_counter_deltas_pkey PRIMARY KEY (id),
     CONSTRAINT usage_counter_deltas_kind_check CHECK (
-        kind IN ('api_key', 'provider_api_key', 'model', 'provider_monthly', 'proxy_node', 'management_token', 'api_key_last_used')
+        kind IN ('api_key', 'provider_api_key', 'provider_api_key_window', 'model', 'provider_monthly', 'proxy_node', 'management_token', 'api_key_last_used')
+    )
+);
+
+
+
+--
+-- Name: provider_api_key_window_usage_counters; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_counters (
+    provider_api_key_id text NOT NULL,
+    window_scope text DEFAULT 'account'::text NOT NULL,
+    window_code text NOT NULL,
+    window_start_unix_secs bigint NOT NULL,
+    window_end_unix_secs bigint NOT NULL,
+    request_count bigint DEFAULT 0 NOT NULL,
+    total_tokens bigint DEFAULT 0 NOT NULL,
+    total_cost_usd numeric(20,8) DEFAULT 0 NOT NULL,
+    rebuilt_at timestamp with time zone,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT provider_api_key_window_usage_counters_pkey PRIMARY KEY (
+        provider_api_key_id,
+        window_scope,
+        window_code,
+        window_start_unix_secs,
+        window_end_unix_secs
+    ),
+    CONSTRAINT provider_api_key_window_usage_counters_range_check
+        CHECK (window_start_unix_secs < window_end_unix_secs),
+    CONSTRAINT provider_api_key_window_usage_counters_nonnegative_check
+        CHECK (request_count >= 0 AND total_tokens >= 0 AND total_cost_usd >= 0)
+);
+
+
+
+--
+-- Name: provider_api_key_window_usage_resets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_resets (
+    provider_api_key_id text NOT NULL,
+    window_scope text DEFAULT 'account'::text NOT NULL,
+    window_start_unix_secs bigint NOT NULL,
+    window_end_unix_secs bigint NOT NULL,
+    usage_reset_at_unix_secs bigint NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT provider_api_key_window_usage_resets_pkey PRIMARY KEY (
+        provider_api_key_id,
+        window_scope,
+        window_start_unix_secs,
+        window_end_unix_secs
+    ),
+    CONSTRAINT provider_api_key_window_usage_resets_range_check
+        CHECK (
+            window_start_unix_secs < window_end_unix_secs
+            AND usage_reset_at_unix_secs >= window_start_unix_secs
+            AND usage_reset_at_unix_secs < window_end_unix_secs
+        )
+);
+
+
+
+--
+-- Name: provider_api_key_window_usage_applications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_window_usage_applications (
+    delta_id character varying(36) NOT NULL,
+    provider_api_key_id text NOT NULL,
+    window_scope text NOT NULL,
+    window_code text NOT NULL,
+    window_start_unix_secs bigint NOT NULL,
+    window_end_unix_secs bigint NOT NULL,
+    applied_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT provider_api_key_window_usage_applications_pkey PRIMARY KEY (
+        delta_id,
+        provider_api_key_id,
+        window_scope,
+        window_code,
+        window_start_unix_secs,
+        window_end_unix_secs
     )
 );
 

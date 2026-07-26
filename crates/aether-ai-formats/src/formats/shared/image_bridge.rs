@@ -384,6 +384,18 @@ pub fn build_openai_image_response_from_response_stream_sync_body(
     provider_body_json: &Value,
     report_context: Option<&Value>,
 ) -> Option<Value> {
+    if provider_body_json
+        .get("status")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some_and(|status| status != "completed")
+        || provider_body_json
+            .get("error")
+            .is_some_and(|error| !error.is_null())
+    {
+        return None;
+    }
     let output = provider_body_json.get("output").and_then(Value::as_array)?;
     let images = output
         .iter()
@@ -1059,6 +1071,46 @@ mod tests {
             "https://assets.example/generated.png"
         );
         assert!(converted["data"][0].get("b64_json").is_none());
+    }
+
+    #[test]
+    fn rejects_failed_responses_image_stream_bodies() {
+        let converted = build_openai_image_response_from_response_stream_sync_body(
+            &json!({
+                "status": "failed",
+                "error": {
+                    "code": "server_error",
+                    "message": "Upstream failed"
+                },
+                "output": [{
+                    "type": "image_generation_call",
+                    "status": "completed",
+                    "result": "aGVsbG8="
+                }]
+            }),
+            None,
+        );
+
+        assert!(converted.is_none());
+    }
+
+    #[test]
+    fn accepts_completed_responses_image_body_with_null_error() {
+        let converted = build_openai_image_response_from_response_stream_sync_body(
+            &json!({
+                "status": "completed",
+                "error": null,
+                "output": [{
+                    "type": "image_generation_call",
+                    "status": "completed",
+                    "result": "aGVsbG8="
+                }]
+            }),
+            None,
+        )
+        .expect("completed response should convert");
+
+        assert_eq!(converted["data"][0]["b64_json"], "aGVsbG8=");
     }
 
     #[test]

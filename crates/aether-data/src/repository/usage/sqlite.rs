@@ -3122,6 +3122,12 @@ WHERE provider_api_key_id IN (
                     "provider api key window usage window_code cannot be empty".to_string(),
                 ));
             }
+            let window_scope = request.window_scope.trim();
+            if window_scope.is_empty() {
+                return Err(DataLayerError::InvalidInput(
+                    "provider api key window usage window_scope cannot be empty".to_string(),
+                ));
+            }
             if request.start_unix_secs >= request.end_unix_secs {
                 return Err(DataLayerError::InvalidInput(
                     "provider api key window usage range must be non-empty".to_string(),
@@ -3139,14 +3145,34 @@ WHERE provider_api_key_id = ?
   AND created_at_unix_ms >= ?
   AND created_at_unix_ms < ?
   AND billing_status = 'settled'
-  AND {cost_expr} > 0
 "#,
                 cost_expr = sqlite_provider_api_key_window_cost_expr(),
             );
 
+            let stored_reset = sqlx::query_scalar::<_, i64>(
+                r#"
+SELECT usage_reset_at_unix_secs
+FROM provider_api_key_window_usage_resets
+WHERE provider_api_key_id = ?
+  AND window_scope = ?
+  AND window_start_unix_secs = ?
+  AND window_end_unix_secs = ?
+"#,
+            )
+            .bind(provider_api_key_id)
+            .bind(window_scope.to_ascii_lowercase())
+            .bind(request.start_unix_secs as i64)
+            .bind(request.end_unix_secs as i64)
+            .fetch_optional(&self.pool)
+            .await
+            .map_sql_err()?
+            .and_then(|value| u64::try_from(value).ok());
+            let effective_start = stored_reset
+                .unwrap_or(request.start_unix_secs)
+                .max(request.start_unix_secs);
             let row = sqlx::query(&sql)
                 .bind(provider_api_key_id)
-                .bind(request.start_unix_secs as i64)
+                .bind(effective_start as i64)
                 .bind(request.end_unix_secs as i64)
                 .fetch_one(&self.pool)
                 .await
@@ -3154,7 +3180,10 @@ WHERE provider_api_key_id = ?
 
             summaries.push(StoredProviderApiKeyWindowUsageSummary {
                 provider_api_key_id: provider_api_key_id.to_string(),
+                window_scope: window_scope.to_ascii_lowercase(),
                 window_code: window_code.to_string(),
+                start_unix_secs: request.start_unix_secs,
+                end_unix_secs: request.end_unix_secs,
                 request_count: sqlite_aggregate_u64(&row, "request_count")?,
                 total_tokens: sqlite_aggregate_u64(&row, "total_tokens")?,
                 total_cost_usd: sqlite_real(&row, "total_cost_usd")?,
@@ -3470,6 +3499,74 @@ WHERE id = ?
         }
 
         Ok(rows.len() as u64)
+    }
+
+    async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, DataLayerError> {
+        let reset_at = i64::try_from(reset_at_unix_secs).map_err(|_| {
+            DataLayerError::InvalidInput(
+                "provider api key window usage reset time is out of range".to_string(),
+            )
+        })?;
+        let mut tx = self.pool.begin().await.map_sql_err()?;
+        let mut reset_windows = 0_u64;
+        for window in windows {
+            let provider_api_key_id = window.provider_api_key_id.trim();
+            let window_scope = window.window_scope.trim();
+            if provider_api_key_id.is_empty()
+                || window_scope.is_empty()
+                || window.start_unix_secs >= window.end_unix_secs
+                || reset_at_unix_secs < window.start_unix_secs
+                || reset_at_unix_secs >= window.end_unix_secs
+            {
+                continue;
+            }
+            let start = i64::try_from(window.start_unix_secs).map_err(|_| {
+                DataLayerError::InvalidInput(
+                    "provider api key window usage start is out of range".to_string(),
+                )
+            })?;
+            let end = i64::try_from(window.end_unix_secs).map_err(|_| {
+                DataLayerError::InvalidInput(
+                    "provider api key window usage end is out of range".to_string(),
+                )
+            })?;
+            sqlx::query(
+                r#"
+INSERT INTO provider_api_key_window_usage_resets (
+  provider_api_key_id,
+  window_scope,
+  window_start_unix_secs,
+  window_end_unix_secs,
+  usage_reset_at_unix_secs,
+  updated_at
+) VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (
+  provider_api_key_id,
+  window_scope,
+  window_start_unix_secs,
+  window_end_unix_secs
+) DO UPDATE SET
+  usage_reset_at_unix_secs = excluded.usage_reset_at_unix_secs,
+  updated_at = excluded.updated_at
+"#,
+            )
+            .bind(provider_api_key_id)
+            .bind(window_scope.to_ascii_lowercase())
+            .bind(start)
+            .bind(end)
+            .bind(reset_at)
+            .bind(reset_at)
+            .execute(&mut *tx)
+            .await
+            .map_sql_err()?;
+            reset_windows = reset_windows.saturating_add(1);
+        }
+        tx.commit().await.map_sql_err()?;
+        Ok(reset_windows)
     }
 
     async fn cleanup_stale_pending_requests(
@@ -3959,8 +4056,8 @@ mod tests {
     use super::{SqliteUsageReadRepository, SqliteUsageWriteRepository};
     use crate::lifecycle::migrate::run_sqlite_migrations;
     use crate::repository::usage::{
-        UpsertUsageRecord, UsageAuditListQuery, UsageDashboardSummaryQuery, UsageReadRepository,
-        UsageWriteRepository,
+        ProviderApiKeyWindowUsageRequest, UpsertUsageRecord, UsageAuditListQuery,
+        UsageDashboardSummaryQuery, UsageReadRepository, UsageWriteRepository,
     };
 
     #[tokio::test]
@@ -4053,6 +4150,66 @@ mod tests {
         assert_eq!(existing.status, "failed");
         assert_eq!(existing.billing_status, "void");
         assert_eq!(existing.updated_at_unix_secs, 1_000);
+    }
+
+    #[tokio::test]
+    async fn sqlite_codex_window_usage_reset_persists_and_changes_the_read_boundary() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("sqlite pool should connect");
+        run_sqlite_migrations(&pool)
+            .await
+            .expect("sqlite migrations should run");
+        seed_stats_targets(&pool).await;
+
+        let writer = SqliteUsageWriteRepository::new(pool.clone());
+        writer
+            .upsert(sample_usage(
+                "request-before-window-reset",
+                "completed",
+                "settled",
+                100,
+            ))
+            .await
+            .expect("usage before reset should upsert");
+        writer
+            .upsert(sample_usage(
+                "request-after-window-reset",
+                "completed",
+                "settled",
+                200,
+            ))
+            .await
+            .expect("usage after reset should upsert");
+
+        let window = ProviderApiKeyWindowUsageRequest {
+            provider_api_key_id: "provider-key-1".to_string(),
+            window_scope: "account".to_string(),
+            window_code: "weekly".to_string(),
+            start_unix_secs: 1,
+            end_unix_secs: 1_000,
+        };
+        let reset_windows = writer
+            .reset_provider_api_key_codex_window_usage_stats(std::slice::from_ref(&window), 150)
+            .await
+            .expect("window reset should persist");
+        assert_eq!(reset_windows, 1);
+
+        let reader = SqliteUsageReadRepository::new(pool);
+        let summaries = reader
+            .summarize_usage_by_provider_api_key_windows(&[window])
+            .await
+            .expect("window usage should read");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].window_scope, "account");
+        assert_eq!(summaries[0].window_code, "weekly");
+        assert_eq!(summaries[0].start_unix_secs, 1);
+        assert_eq!(summaries[0].end_unix_secs, 1_000);
+        assert_eq!(summaries[0].request_count, 1);
+        assert_eq!(summaries[0].total_tokens, 7);
+        assert!((summaries[0].total_cost_usd - 0.5).abs() < f64::EPSILON);
     }
 
     #[tokio::test]

@@ -2007,6 +2007,51 @@ async fn local_finalize_handles_openai_image_stream_response_from_output_item_do
 }
 
 #[tokio::test]
+async fn local_finalize_rejects_openai_image_stream_response_when_failed_event_is_present() {
+    let payload = GatewaySyncReportRequest {
+        trace_id: "trace-openai-image-finalize-failed-123".to_string(),
+        report_kind: "openai_image_sync_finalize".to_string(),
+        report_context: Some(json!({
+            "client_api_format": "openai:image",
+            "provider_api_format": "openai:image",
+            "model": "gpt-image-2",
+            "mapped_model": "gpt-5.4",
+            "image_request": {
+                "operation": "generate",
+                "response_format": "b64_json",
+                "output_format": "png"
+            }
+        })),
+        status_code: 200,
+        headers: BTreeMap::from([(
+            "content-type".to_string(),
+            "text/event-stream".to_string(),
+        )]),
+        body_json: None,
+        client_body_json: None,
+        body_base64: Some(base64::engine::general_purpose::STANDARD.encode(
+            concat!(
+                "event: response.output_item.done\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"ig_fail_123\",\"type\":\"image_generation_call\",\"status\":\"generating\",\"output_format\":\"png\",\"result\":\"aGVsbG8=\"}}\n\n",
+                "event: response.failed\n",
+                "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"Upstream failed\"}}}\n\n"
+            )
+            .as_bytes(),
+        )),
+        telemetry: None,
+    };
+
+    let outcome = maybe_build_local_core_sync_finalize_response(
+        "trace-openai-image-finalize-failed-123",
+        &test_decision(),
+        &payload,
+    )
+    .expect("image finalize should not error");
+
+    assert!(outcome.is_none());
+}
+
+#[tokio::test]
 async fn local_finalize_returns_b64_json_even_when_url_response_format_requested() {
     let payload = GatewaySyncReportRequest {
         trace_id: "trace-openai-image-finalize-url-123".to_string(),

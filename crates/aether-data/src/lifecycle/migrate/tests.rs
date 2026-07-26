@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use sqlx::{migrate::AppliedMigration, query, query_scalar, Connection, PgConnection, PgPool};
+use sqlx::{migrate::AppliedMigration, query, query_scalar, Connection, PgConnection, PgPool, Row};
 
 use super::{
     all_up_migrations, pending_migrations_from_applied, prepare_database_for_startup,
@@ -323,6 +323,9 @@ fn empty_database_snapshot_covers_current_cutoff_versions() {
 #[test]
 fn empty_database_snapshot_sql_includes_usage_body_blobs_and_audit_admin_role() {
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("'audit_admin'"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL
+        .contains("CREATE TABLE IF NOT EXISTS public.usage_body_objects"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("ix_usage_body_objects_request_id"));
     assert!(
         EMPTY_DATABASE_SNAPSHOT_SQL.contains("CREATE TABLE IF NOT EXISTS public.usage_body_blobs")
     );
@@ -401,7 +404,7 @@ fn empty_database_snapshot_sql_includes_usage_body_blobs_and_audit_admin_role() 
         ));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL
         .contains("CREATE TABLE IF NOT EXISTS public.usage_counter_deltas"));
-    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("ix_usage_counter_deltas_unprocessed"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("ix_usage_counter_deltas_ready"));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("idx_entitlement_usage_entitlement_date"));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("idx_provider_api_keys_provider_default_sort"));
     assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("idx_video_tasks_due_poll"));
@@ -506,6 +509,752 @@ fn provider_api_keys_api_key_is_nullable() {
     assert!(normalization_migration
         .sql
         .contains("ALTER COLUMN api_key DROP NOT NULL"));
+}
+
+#[test]
+fn provider_api_key_window_usage_migration_defines_required_tables_and_queue_kind() {
+    let migration = POSTGRES_MIGRATOR
+        .iter()
+        .find(|migration| migration.version == 20260723120000)
+        .expect("provider key window usage migration should be embedded");
+
+    assert!(migration
+        .sql
+        .contains("provider_api_key_window_usage_counters"));
+    assert!(migration
+        .sql
+        .contains("provider_api_key_window_usage_applications"));
+    assert!(migration
+        .sql
+        .contains("provider_api_key_window_usage_resets"));
+    assert!(migration.sql.contains("'provider_api_key_window'"));
+    assert!(migration.sql.contains("available_at"));
+    assert!(migration.sql.contains("ON DELETE CASCADE"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("provider_api_key_window_usage_counters"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("provider_api_key_window_usage_applications"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("provider_api_key_window_usage_resets"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("'provider_api_key_window'"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("available_at"));
+}
+
+#[test]
+fn provider_api_key_window_usage_index_migrations_are_concurrent_and_single_statement() {
+    let create_migration = POSTGRES_MIGRATOR
+        .iter()
+        .find(|migration| migration.version == 20260723121000)
+        .expect("provider key window ready-index migration should be embedded");
+    let drop_migration = POSTGRES_MIGRATOR
+        .iter()
+        .find(|migration| migration.version == 20260723122000)
+        .expect("provider key window old-index cleanup migration should be embedded");
+
+    assert!(create_migration.no_tx);
+    assert!(create_migration
+        .sql
+        .contains("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_usage_counter_deltas_ready"));
+    assert!(!create_migration.sql.contains("DROP INDEX CONCURRENTLY"));
+    assert!(drop_migration.no_tx);
+    assert!(drop_migration
+        .sql
+        .contains("DROP INDEX CONCURRENTLY IF EXISTS public.ix_usage_counter_deltas_unprocessed"));
+    assert!(!drop_migration.sql.contains("CREATE INDEX CONCURRENTLY"));
+}
+
+#[tokio::test]
+async fn provider_api_key_window_usage_migration_runs_on_existing_schema() {
+    let Some(server) = ManagedPostgresServer::try_start()
+        .await
+        .expect("postgres migration test should start or skip")
+    else {
+        return;
+    };
+    let pool = PgPool::connect(server.database_url())
+        .await
+        .expect("pool should connect");
+    let migration = POSTGRES_MIGRATOR
+        .iter()
+        .find(|migration| migration.version == 20260723120000)
+        .expect("provider key window usage migration should be embedded");
+
+    sqlx::raw_sql(
+        r#"
+CREATE TABLE public.provider_api_keys (
+  id text PRIMARY KEY
+);
+CREATE TABLE public.usage_counter_deltas (
+  id character varying(36) PRIMARY KEY,
+  kind character varying(64) NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  processed_at timestamp with time zone,
+  CONSTRAINT usage_counter_deltas_kind_check CHECK (
+    kind IN ('api_key', 'provider_api_key')
+  )
+);
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("pre-migration schema should build");
+
+    sqlx::raw_sql(migration.sql.as_ref())
+        .execute(&pool)
+        .await
+        .expect("provider key window usage migration should run");
+
+    assert!(
+        table_exists(&pool, "provider_api_key_window_usage_counters")
+            .await
+            .expect("counter table lookup should succeed")
+    );
+    assert!(
+        table_exists(&pool, "provider_api_key_window_usage_applications")
+            .await
+            .expect("application table lookup should succeed")
+    );
+    assert!(table_exists(&pool, "provider_api_key_window_usage_resets")
+        .await
+        .expect("reset table lookup should succeed"));
+    query(
+        "INSERT INTO public.usage_counter_deltas (id, kind) VALUES ('delta-1', 'provider_api_key_window')",
+    )
+    .execute(&pool)
+    .await
+    .expect("new queue kind should satisfy migrated constraint");
+}
+
+#[tokio::test]
+async fn provider_api_key_window_usage_sql_handles_refresh_and_zero_cost_rebuild() {
+    let Some(server) = ManagedPostgresServer::try_start()
+        .await
+        .expect("postgres window usage test should start or skip")
+    else {
+        return;
+    };
+    let pool = PgPool::connect(server.database_url())
+        .await
+        .expect("pool should connect");
+    prepare_database_for_startup(&pool)
+        .await
+        .expect("clean database bootstrap should succeed");
+
+    query(
+        r#"
+INSERT INTO public.providers (id, name, provider_type)
+VALUES ('provider-window-test', 'Window test', 'codex')
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider should insert");
+    query(
+        r#"
+INSERT INTO public.provider_api_keys (
+  id,
+  name,
+  provider_id,
+  total_tokens,
+  total_cost_usd,
+  status_snapshot
+) VALUES (
+  'provider-key-window-test',
+  'Window key',
+  'provider-window-test',
+  0,
+  0,
+  $1
+)
+"#,
+    )
+    .bind(serde_json::json!({
+        "quota": {
+            "windows": [
+                {
+                    "code": "5h",
+                    "scope": "account",
+                    "window_seconds": 1_000,
+                    "reset_at": 2_000
+                },
+                {
+                    "code": "weekly",
+                    "scope": "account",
+                    "window_seconds": 3_000,
+                    "reset_at": 3_000
+                }
+            ]
+        }
+    }))
+    .execute(&pool)
+    .await
+    .expect("provider key should insert");
+
+    let apply_sql = include_str!(
+        "../../repository/usage/postgres/queries/apply_provider_api_key_codex_window_usage_delta_sql.sql"
+    );
+    let apply_delta = |delta_id: &str, provider_api_key_id: &str, created_at: i64| {
+        sqlx::query(apply_sql)
+            .bind(vec![delta_id.to_string()])
+            .bind(vec![provider_api_key_id.to_string()])
+            .bind(vec![1_i64])
+            .bind(vec![100_i64])
+            .bind(vec![0.25_f64])
+            .bind(vec![created_at])
+    };
+
+    query(
+        r#"
+INSERT INTO public.usage_counter_deltas (
+  id,
+  request_id,
+  kind,
+  target_id,
+  window_request_count_delta,
+  window_total_tokens_delta,
+  window_total_cost_usd_delta,
+  usage_created_at_unix_secs
+) VALUES (
+  'delta-window-1',
+  'request-window-1',
+  'provider_api_key_window',
+  'provider-key-window-test',
+  1,
+  100,
+  0.25,
+  1500
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("first window delta should insert");
+
+    let rows = apply_delta("delta-window-1", "provider-key-window-test", 1_500)
+        .fetch_all(&pool)
+        .await
+        .expect("first window delta should apply");
+    assert!(rows
+        .iter()
+        .all(|row| row.get::<bool, _>("ready_to_complete")));
+
+    apply_delta("delta-window-1", "provider-key-window-test", 1_500)
+        .fetch_all(&pool)
+        .await
+        .expect("repeated window delta should remain idempotent");
+    let first_counts: Vec<(String, i64)> = query(
+        r#"
+SELECT window_code, request_count
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-window-test'
+ORDER BY window_code
+"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("window counters should read")
+    .into_iter()
+    .map(|row| (row.get("window_code"), row.get("request_count")))
+    .collect();
+    assert_eq!(
+        first_counts,
+        vec![("5h".to_string(), 1), ("weekly".to_string(), 1)]
+    );
+
+    query(
+        r#"
+UPDATE public.provider_api_keys
+SET status_snapshot = $1
+WHERE id = 'provider-key-window-test'
+"#,
+    )
+    .bind(serde_json::json!({
+        "quota": {
+            "windows": [
+                {
+                    "code": "5h",
+                    "scope": "account",
+                    "window_seconds": 1_000,
+                    "reset_at": 1_600
+                },
+                {
+                    "code": "weekly",
+                    "scope": "account",
+                    "window_seconds": 3_000,
+                    "reset_at": 3_000
+                }
+            ]
+        }
+    }))
+    .execute(&pool)
+    .await
+    .expect("stale short window should update");
+    query(
+        r#"
+INSERT INTO public.usage_counter_deltas (
+  id,
+  request_id,
+  kind,
+  target_id,
+  window_request_count_delta,
+  window_total_tokens_delta,
+  window_total_cost_usd_delta,
+  usage_created_at_unix_secs
+) VALUES (
+  'delta-window-2',
+  'request-window-2',
+  'provider_api_key_window',
+  'provider-key-window-test',
+  1,
+  100,
+  0.25,
+  1700
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("second window delta should insert");
+    let rows = apply_delta("delta-window-2", "provider-key-window-test", 1_700)
+        .fetch_all(&pool)
+        .await
+        .expect("second window delta should partially apply");
+    assert!(rows
+        .iter()
+        .all(|row| !row.get::<bool, _>("ready_to_complete")));
+
+    query(
+        r#"
+UPDATE public.provider_api_keys
+SET status_snapshot = $1
+WHERE id = 'provider-key-window-test'
+"#,
+    )
+    .bind(serde_json::json!({
+        "quota": {
+            "windows": [
+                {
+                    "code": "5h",
+                    "scope": "account",
+                    "window_seconds": 1_000,
+                    "reset_at": 2_600
+                },
+                {
+                    "code": "weekly",
+                    "scope": "account",
+                    "window_seconds": 3_000,
+                    "reset_at": 3_000
+                }
+            ]
+        }
+    }))
+    .execute(&pool)
+    .await
+    .expect("refreshed short window should update");
+    let rows = apply_delta("delta-window-2", "provider-key-window-test", 1_700)
+        .fetch_all(&pool)
+        .await
+        .expect("second window delta should finish after refresh");
+    assert!(rows
+        .iter()
+        .all(|row| row.get::<bool, _>("ready_to_complete")));
+
+    let weekly_request_count: i64 = query_scalar(
+        r#"
+SELECT request_count
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-window-test'
+  AND window_code = 'weekly'
+  AND window_end_unix_secs = 3000
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("weekly counter should read");
+    assert_eq!(weekly_request_count, 2);
+
+    query(
+        r#"
+UPDATE public.provider_api_keys
+SET status_snapshot = '{"quota":{"windows":[]}}'::json
+WHERE id = 'provider-key-window-test'
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("empty windows should update");
+    let rows = apply_delta("delta-window-2", "provider-key-window-test", 1_700)
+        .fetch_all(&pool)
+        .await
+        .expect("window delta without active windows should complete");
+    assert!(rows
+        .iter()
+        .all(|row| row.get::<bool, _>("ready_to_complete")));
+
+    query(
+        r#"
+INSERT INTO public.provider_api_keys (
+  id,
+  name,
+  provider_id,
+  total_tokens,
+  total_cost_usd,
+  status_snapshot
+) VALUES (
+  'provider-key-rebuild-test',
+  'Rebuild key',
+  'provider-window-test',
+  0,
+  0,
+  '{"quota":{"windows":[{"code":"weekly","scope":"account","window_seconds":1000,"reset_at":2000}]}}'::json
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("rebuild provider key should insert");
+    query(
+        r#"
+INSERT INTO public.usage (
+  id,
+  request_id,
+  provider_name,
+  model,
+  provider_id,
+  provider_api_key_id,
+  input_tokens,
+  output_tokens,
+  total_tokens,
+  total_cost_usd,
+  request_metadata,
+  status,
+  billing_status,
+  created_at
+) VALUES
+  (
+    'usage-zero-cost-window',
+    'request-zero-cost-window',
+    'Window test',
+    'gpt-test',
+    'provider-window-test',
+    'provider-key-rebuild-test',
+    10,
+    20,
+    30,
+    0,
+    '{"settlement_snapshot":{"base_cost_usd":0}}'::jsonb,
+    'completed',
+    'settled',
+    to_timestamp(1500)
+  ),
+  (
+    'usage-multiplier-window',
+    'request-multiplier-window',
+    'Window test',
+    'gpt-test',
+    'provider-window-test',
+    'provider-key-rebuild-test',
+    10,
+    10,
+    20,
+    0.5,
+    '{"sales_multiplier":0.25}'::jsonb,
+    'completed',
+    'settled',
+    to_timestamp(1600)
+  )
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("zero cost usage should insert");
+    query(include_str!(
+        "../../repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql"
+    ))
+    .bind("provider-key-rebuild-test")
+    .execute(&pool)
+    .await
+    .expect("zero cost window usage should rebuild");
+
+    let rebuilt = query(
+        r#"
+SELECT request_count, total_tokens, CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-rebuild-test'
+  AND window_code = 'weekly'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("rebuilt counter should read");
+    assert_eq!(rebuilt.get::<i64, _>("request_count"), 2);
+    assert_eq!(rebuilt.get::<i64, _>("total_tokens"), 50);
+    assert_eq!(rebuilt.get::<f64, _>("total_cost_usd"), 2.0);
+
+    let reset_windows: i64 = sqlx::query_scalar(include_str!(
+        "../../repository/usage/postgres/queries/reset_provider_api_key_codex_window_usage_sql.sql"
+    ))
+    .bind(vec!["provider-key-rebuild-test".to_string()])
+    .bind(vec!["account".to_string()])
+    .bind(vec![1_000_i64])
+    .bind(vec![2_000_i64])
+    .bind(1_550_i64)
+    .fetch_one(&pool)
+    .await
+    .expect("window reset boundary should persist");
+    assert_eq!(reset_windows, 1);
+    query(include_str!(
+        "../../repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql"
+    ))
+    .bind("provider-key-rebuild-test")
+    .execute(&pool)
+    .await
+    .expect("reset window usage should rebuild");
+
+    let reset_rebuilt = query(
+        r#"
+SELECT request_count, total_tokens, CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-rebuild-test'
+  AND window_code = 'weekly'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("reset counter should read");
+    assert_eq!(reset_rebuilt.get::<i64, _>("request_count"), 1);
+    assert_eq!(reset_rebuilt.get::<i64, _>("total_tokens"), 20);
+    assert_eq!(reset_rebuilt.get::<f64, _>("total_cost_usd"), 2.0);
+
+    query(
+        r#"
+UPDATE public.provider_api_keys
+SET status_snapshot = '{"quota":{"windows":[]}}'::json
+WHERE id = 'provider-key-rebuild-test'
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("rebuild window should disappear");
+    query(include_str!(
+        "../../repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql"
+    ))
+    .bind("provider-key-rebuild-test")
+    .execute(&pool)
+    .await
+    .expect("missing window should invalidate counters");
+
+    let counters_after_disappear: i64 = query_scalar(
+        "SELECT COUNT(*)::BIGINT FROM provider_api_key_window_usage_counters WHERE provider_api_key_id = 'provider-key-rebuild-test'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("stale counter count should read");
+    assert_eq!(counters_after_disappear, 0);
+    let resets_after_disappear: i64 = query_scalar(
+        "SELECT COUNT(*)::BIGINT FROM provider_api_key_window_usage_resets WHERE provider_api_key_id = 'provider-key-rebuild-test'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("reset boundary count should read");
+    assert_eq!(resets_after_disappear, 1);
+
+    query(
+        r#"
+UPDATE public.provider_api_keys
+SET status_snapshot = '{"quota":{"windows":[{"code":"7d","scope":"account","window_seconds":1000,"reset_at":2000}]}}'::json
+WHERE id = 'provider-key-rebuild-test'
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("renamed window should restore");
+    let restored_missing: bool = query_scalar(include_str!(
+        "../../repository/usage/postgres/queries/provider_api_key_codex_window_usage_missing_sql.sql"
+    ))
+    .bind("provider-key-rebuild-test")
+    .fetch_one(&pool)
+    .await
+    .expect("restored window readiness should read");
+    assert!(restored_missing);
+    query(include_str!(
+        "../../repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql"
+    ))
+    .bind("provider-key-rebuild-test")
+    .execute(&pool)
+    .await
+    .expect("restored window should rebuild");
+
+    let restored = query(
+        r#"
+SELECT window_code, request_count, total_tokens,
+       CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-rebuild-test'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("restored counter should read");
+    assert_eq!(restored.get::<String, _>("window_code"), "7d");
+    assert_eq!(restored.get::<i64, _>("request_count"), 1);
+    assert_eq!(restored.get::<i64, _>("total_tokens"), 20);
+    assert_eq!(restored.get::<f64, _>("total_cost_usd"), 2.0);
+
+    query(
+        r#"
+INSERT INTO public.provider_api_keys (
+  id,
+  name,
+  provider_id,
+  total_tokens,
+  total_cost_usd,
+  status_snapshot
+) VALUES (
+  'provider-key-increment-first',
+  'Increment first key',
+  'provider-window-test',
+  0,
+  0,
+  '{"quota":{"windows":[{"code":"weekly","scope":"account","window_seconds":1000,"reset_at":2000}]}}'::json
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("increment-first provider key should insert");
+    query(
+        r#"
+INSERT INTO public.usage (
+  id,
+  request_id,
+  provider_name,
+  model,
+  provider_id,
+  provider_api_key_id,
+  input_tokens,
+  output_tokens,
+  total_tokens,
+  total_cost_usd,
+  request_metadata,
+  status,
+  billing_status,
+  created_at
+) VALUES
+  (
+    'usage-increment-first-history',
+    'request-increment-first-history',
+    'Window test',
+    'gpt-test',
+    'provider-window-test',
+    'provider-key-increment-first',
+    10,
+    10,
+    20,
+    0.4,
+    '{"base_cost_usd":0.4}'::jsonb,
+    'completed',
+    'settled',
+    to_timestamp(1200)
+  ),
+  (
+    'usage-increment-first-current',
+    'request-increment-first-current',
+    'Window test',
+    'gpt-test',
+    'provider-window-test',
+    'provider-key-increment-first',
+    10,
+    10,
+    20,
+    0.6,
+    '{"base_cost_usd":0.6}'::jsonb,
+    'completed',
+    'settled',
+    to_timestamp(1500)
+  )
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("increment-first usage should insert");
+    query(
+        r#"
+INSERT INTO public.usage_counter_deltas (
+  id,
+  request_id,
+  kind,
+  target_id,
+  window_request_count_delta,
+  window_total_tokens_delta,
+  window_total_cost_usd_delta,
+  usage_created_at_unix_secs
+) VALUES (
+  'delta-increment-first',
+  'request-increment-first-current',
+  'provider_api_key_window',
+  'provider-key-increment-first',
+  1,
+  20,
+  0.6,
+  1500
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("increment-first delta should insert");
+    apply_delta(
+        "delta-increment-first",
+        "provider-key-increment-first",
+        1_500,
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("increment-first delta should apply");
+
+    let incremental_counter = query(
+        r#"
+SELECT request_count, rebuilt_at IS NULL AS needs_rebuild
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-increment-first'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("incremental counter should read");
+    assert_eq!(incremental_counter.get::<i64, _>("request_count"), 1);
+    assert!(incremental_counter.get::<bool, _>("needs_rebuild"));
+
+    let increment_first_missing: bool = query_scalar(include_str!(
+        "../../repository/usage/postgres/queries/provider_api_key_codex_window_usage_missing_sql.sql"
+    ))
+    .bind("provider-key-increment-first")
+    .fetch_one(&pool)
+    .await
+    .expect("increment-first readiness should read");
+    assert!(increment_first_missing);
+    query(include_str!(
+        "../../repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql"
+    ))
+    .bind("provider-key-increment-first")
+    .execute(&pool)
+    .await
+    .expect("increment-first counter should rebuild");
+
+    let increment_first_rebuilt = query(
+        r#"
+SELECT request_count, total_tokens,
+       CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd,
+       rebuilt_at IS NOT NULL AS rebuilt
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-increment-first'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("rebuilt increment-first counter should read");
+    assert_eq!(increment_first_rebuilt.get::<i64, _>("request_count"), 2);
+    assert_eq!(increment_first_rebuilt.get::<i64, _>("total_tokens"), 40);
+    assert_eq!(increment_first_rebuilt.get::<f64, _>("total_cost_usd"), 1.0);
+    assert!(increment_first_rebuilt.get::<bool, _>("rebuilt"));
 }
 
 #[test]
@@ -639,6 +1388,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260609120000,
             20260620090000,
             20260622100000,
+            20260723120000,
         ]
     );
     assert_eq!(
@@ -675,6 +1425,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260609120000,
             20260620090000,
             20260622100000,
+            20260723120000,
         ]
     );
 }
@@ -1214,6 +1965,10 @@ fn pending_migrations_from_applied_skips_versions_already_applied() {
             20260615120000,
             20260620090000,
             20260622100000,
+            20260723120000,
+            20260723121000,
+            20260723122000,
+            20260725100000,
         ]
     );
 }
@@ -1251,6 +2006,10 @@ fn pending_migrations_from_applied_after_empty_database_snapshot_stamp_returns_p
             20260615120000,
             20260620090000,
             20260622100000,
+            20260723120000,
+            20260723121000,
+            20260723122000,
+            20260725100000,
         ],
         "empty database snapshot-stamped databases should run only post-snapshot incrementals on first startup"
     );
@@ -1309,6 +2068,7 @@ async fn sqlite_migrations_create_core_config_tables() {
         "refund_requests",
         "redeem_code_batches",
         "redeem_codes",
+        "provider_api_key_window_usage_resets",
     ] {
         let exists: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -1382,6 +2142,9 @@ async fn postgres_migrations_create_core_config_tables_when_url_is_set() {
         "proxy_nodes",
         "usage",
         "usage_settlement_snapshots",
+        "provider_api_key_window_usage_counters",
+        "provider_api_key_window_usage_resets",
+        "provider_api_key_window_usage_applications",
         "wallets",
         "wallet_transactions",
         "wallet_daily_usage_ledgers",
@@ -1471,6 +2234,7 @@ async fn mysql_migrations_create_core_config_tables_when_url_is_set() {
         "proxy_nodes",
         "usage",
         "usage_settlement_snapshots",
+        "provider_api_key_window_usage_resets",
         "wallets",
         "wallet_transactions",
         "wallet_daily_usage_ledgers",

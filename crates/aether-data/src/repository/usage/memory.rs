@@ -45,6 +45,7 @@ pub struct InMemoryUsageReadRepository {
     by_request_id: RwLock<BTreeMap<String, StoredRequestUsageAudit>>,
     detached_bodies: RwLock<BTreeMap<String, Value>>,
     provider_usage_windows: RwLock<Vec<StoredProviderUsageWindow>>,
+    provider_api_key_window_resets: RwLock<BTreeMap<(String, String, u64, u64), u64>>,
     auth_api_keys: Option<Arc<InMemoryAuthApiKeySnapshotRepository>>,
     provider_catalog: Option<Arc<InMemoryProviderCatalogReadRepository>>,
 }
@@ -64,6 +65,7 @@ impl InMemoryUsageReadRepository {
             by_request_id: RwLock::new(by_request_id),
             detached_bodies: RwLock::new(BTreeMap::new()),
             provider_usage_windows: RwLock::new(Vec::new()),
+            provider_api_key_window_resets: RwLock::new(BTreeMap::new()),
             auth_api_keys: None,
             provider_catalog: None,
         }
@@ -117,6 +119,7 @@ impl InMemoryUsageReadRepository {
             by_request_id: RwLock::new(by_request_id),
             detached_bodies: RwLock::new(detached_bodies),
             provider_usage_windows: RwLock::new(Vec::new()),
+            provider_api_key_window_resets: RwLock::new(BTreeMap::new()),
             auth_api_keys: None,
             provider_catalog: None,
         }
@@ -130,9 +133,20 @@ impl InMemoryUsageReadRepository {
             by_request_id: self.by_request_id,
             detached_bodies: self.detached_bodies,
             provider_usage_windows: RwLock::new(items.into_iter().collect()),
+            provider_api_key_window_resets: self.provider_api_key_window_resets,
             auth_api_keys: self.auth_api_keys,
             provider_catalog: self.provider_catalog,
         }
+    }
+
+    pub(crate) fn replace_provider_api_key_window_resets(
+        &self,
+        resets: BTreeMap<(String, String, u64, u64), u64>,
+    ) {
+        *self
+            .provider_api_key_window_resets
+            .write()
+            .expect("usage repository reset lock") = resets;
     }
 
     pub fn with_auth_api_key_repository(
@@ -966,8 +980,10 @@ fn usage_total_tokens(item: &StoredRequestUsageAudit) -> u64 {
 
 fn official_base_cost_usd(item: &StoredRequestUsageAudit) -> f64 {
     item.settlement_base_cost_usd()
-        .filter(|value| *value > 0.0)
+        .filter(|value| value.is_finite())
+        .map(|value| value.max(0.0))
         .unwrap_or(item.total_cost_usd)
+        .max(0.0)
 }
 
 fn usage_is_success(item: &StoredRequestUsageAudit) -> bool {
@@ -2390,6 +2406,10 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
         requests: &[ProviderApiKeyWindowUsageRequest],
     ) -> Result<Vec<StoredProviderApiKeyWindowUsageSummary>, DataLayerError> {
         let usage = self.by_request_id.read().expect("usage repository lock");
+        let resets = self
+            .provider_api_key_window_resets
+            .read()
+            .expect("usage repository reset lock");
         let mut summaries = Vec::with_capacity(requests.len());
 
         for request in requests {
@@ -2405,6 +2425,12 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
                     "provider api key window usage window_code cannot be empty".to_string(),
                 ));
             }
+            let window_scope = request.window_scope.trim();
+            if window_scope.is_empty() {
+                return Err(DataLayerError::InvalidInput(
+                    "provider api key window usage window_scope cannot be empty".to_string(),
+                ));
+            }
             if request.start_unix_secs >= request.end_unix_secs {
                 return Err(DataLayerError::InvalidInput(
                     "provider api key window usage range must be non-empty".to_string(),
@@ -2413,23 +2439,36 @@ impl UsageReadRepository for InMemoryUsageReadRepository {
 
             let mut summary = StoredProviderApiKeyWindowUsageSummary {
                 provider_api_key_id: provider_api_key_id.to_string(),
+                window_scope: window_scope.to_ascii_lowercase(),
                 window_code: window_code.to_string(),
+                start_unix_secs: request.start_unix_secs,
+                end_unix_secs: request.end_unix_secs,
                 ..StoredProviderApiKeyWindowUsageSummary::default()
             };
+            let effective_start = resets
+                .get(&(
+                    provider_api_key_id.to_string(),
+                    window_scope.to_ascii_lowercase(),
+                    request.start_unix_secs,
+                    request.end_unix_secs,
+                ))
+                .copied()
+                .unwrap_or(request.start_unix_secs)
+                .max(request.start_unix_secs);
 
             for item in usage.values() {
                 if item.provider_api_key_id.as_deref() != Some(provider_api_key_id) {
                     continue;
                 }
-                if item.created_at_unix_ms < request.start_unix_secs
+                if item.created_at_unix_ms < effective_start
                     || item.created_at_unix_ms >= request.end_unix_secs
                 {
                     continue;
                 }
-                let window_cost_usd = official_base_cost_usd(item);
-                if item.billing_status != "settled" || window_cost_usd <= 0.0 {
+                if item.billing_status != "settled" {
                     continue;
                 }
+                let window_cost_usd = official_base_cost_usd(item);
 
                 summary.request_count = summary.request_count.saturating_add(1);
                 summary.total_tokens = summary.total_tokens.saturating_add(item.total_tokens);
@@ -3042,6 +3081,41 @@ impl UsageWriteRepository for InMemoryUsageReadRepository {
         }
         provider_catalog.rebuild_usage_stats(&aggregates);
         Ok(aggregates.len() as u64)
+    }
+
+    async fn reset_provider_api_key_codex_window_usage_stats(
+        &self,
+        windows: &[ProviderApiKeyWindowUsageRequest],
+        reset_at_unix_secs: u64,
+    ) -> Result<u64, DataLayerError> {
+        let mut resets = self
+            .provider_api_key_window_resets
+            .write()
+            .expect("usage repository reset lock");
+        let mut reset_windows = 0_u64;
+        for window in windows {
+            let provider_api_key_id = window.provider_api_key_id.trim();
+            let window_scope = window.window_scope.trim();
+            if provider_api_key_id.is_empty()
+                || window_scope.is_empty()
+                || window.start_unix_secs >= window.end_unix_secs
+                || reset_at_unix_secs < window.start_unix_secs
+                || reset_at_unix_secs >= window.end_unix_secs
+            {
+                continue;
+            }
+            resets.insert(
+                (
+                    provider_api_key_id.to_string(),
+                    window_scope.to_ascii_lowercase(),
+                    window.start_unix_secs,
+                    window.end_unix_secs,
+                ),
+                reset_at_unix_secs,
+            );
+            reset_windows = reset_windows.saturating_add(1);
+        }
+        Ok(reset_windows)
     }
 }
 
@@ -4760,12 +4834,14 @@ mod tests {
             .summarize_usage_by_provider_api_key_windows(&[
                 ProviderApiKeyWindowUsageRequest {
                     provider_api_key_id: "provider-key-1".to_string(),
+                    window_scope: "account".to_string(),
                     window_code: "5h".to_string(),
                     start_unix_secs: 1_711_000_000,
                     end_unix_secs: 1_711_000_300,
                 },
                 ProviderApiKeyWindowUsageRequest {
                     provider_api_key_id: "provider-key-empty".to_string(),
+                    window_scope: "account".to_string(),
                     window_code: "weekly".to_string(),
                     start_unix_secs: 1_711_000_000,
                     end_unix_secs: 1_711_000_300,
@@ -4801,6 +4877,7 @@ mod tests {
         let usage = repository
             .summarize_usage_by_provider_api_key_windows(&[ProviderApiKeyWindowUsageRequest {
                 provider_api_key_id: "provider-key-1".to_string(),
+                window_scope: "account".to_string(),
                 window_code: "5h".to_string(),
                 start_unix_secs: 1_711_000_000,
                 end_unix_secs: 1_711_000_300,
@@ -4811,6 +4888,66 @@ mod tests {
         assert_eq!(usage[0].request_count, 1);
         assert_eq!(usage[0].total_tokens, 150);
         assert_eq!(usage[0].total_cost_usd, 1.0);
+    }
+
+    #[tokio::test]
+    async fn provider_api_key_window_usage_counts_settled_zero_cost_requests() {
+        let mut zero_cost = sample_usage("req-zero-cost", 1_711_000_000);
+        zero_cost.total_cost_usd = 0.5;
+        zero_cost.actual_total_cost_usd = 0.5;
+        zero_cost.request_metadata = Some(json!({
+            "settlement_snapshot": {
+                "base_cost_usd": 0.0
+            }
+        }));
+
+        let repository = InMemoryUsageReadRepository::seed(vec![zero_cost]);
+        let usage = repository
+            .summarize_usage_by_provider_api_key_windows(&[ProviderApiKeyWindowUsageRequest {
+                provider_api_key_id: "provider-key-1".to_string(),
+                window_scope: "account".to_string(),
+                window_code: "5h".to_string(),
+                start_unix_secs: 1_711_000_000,
+                end_unix_secs: 1_711_000_300,
+            }])
+            .await
+            .expect("window summary should succeed");
+
+        assert_eq!(usage[0].request_count, 1);
+        assert_eq!(usage[0].total_tokens, 150);
+        assert_eq!(usage[0].total_cost_usd, 0.0);
+    }
+
+    #[tokio::test]
+    async fn provider_api_key_window_usage_applies_independent_reset_boundary() {
+        let repository = InMemoryUsageReadRepository::seed(vec![
+            sample_usage("req-before-reset", 1_711_000_000),
+            sample_usage("req-after-reset", 1_711_000_250),
+        ]);
+        let request = ProviderApiKeyWindowUsageRequest {
+            provider_api_key_id: "provider-key-1".to_string(),
+            window_scope: "account".to_string(),
+            window_code: "weekly".to_string(),
+            start_unix_secs: 1_711_000_000,
+            end_unix_secs: 1_711_000_300,
+        };
+
+        let reset_count = repository
+            .reset_provider_api_key_codex_window_usage_stats(
+                std::slice::from_ref(&request),
+                1_711_000_200,
+            )
+            .await
+            .expect("window reset should succeed");
+        assert_eq!(reset_count, 1);
+
+        let usage = repository
+            .summarize_usage_by_provider_api_key_windows(&[request])
+            .await
+            .expect("window summary should succeed");
+        assert_eq!(usage[0].request_count, 1);
+        assert_eq!(usage[0].total_tokens, 150);
+        assert_eq!(usage[0].total_cost_usd, 0.12);
     }
 
     #[tokio::test]

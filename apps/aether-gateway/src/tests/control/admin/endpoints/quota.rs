@@ -383,7 +383,15 @@ async fn gateway_marks_codex_quota_exhausted_when_wham_usage_returns_payment_req
             .as_ref()
             .and_then(|value| value.get("codex"))
             .and_then(|value| value.get("primary_used_percent")),
-        Some(&json!(100.0))
+        None
+    );
+    assert_eq!(
+        reloaded[0]
+            .upstream_metadata
+            .as_ref()
+            .and_then(|value| value.get("codex"))
+            .and_then(|value| value.get("secondary_used_percent")),
+        None
     );
 
     gateway_handle.abort();

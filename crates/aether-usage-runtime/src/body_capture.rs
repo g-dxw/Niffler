@@ -9,17 +9,6 @@ use serde_json::{json, Map, Value};
 use crate::event::UsageEvent;
 use crate::runtime::{UsageBodyCapturePolicy, UsageRequestRecordLevel};
 
-const TRUNCATED_BODY_STRING_SUFFIX: &str = "...[truncated]";
-
-#[derive(Debug)]
-struct LimitedUsageBodyCapture {
-    value: Value,
-    source_bytes: Option<u64>,
-    stored_bytes: Option<u64>,
-    truncated: bool,
-    reason: Option<&'static str>,
-}
-
 struct UsageBodyCapturePayloadMut<'a> {
     request_id: &'a str,
     request_body: &'a mut Option<Value>,
@@ -167,37 +156,33 @@ impl UsageBodyCaptureEngine {
 
         deduplicate_provider_request_body_capture(&mut payload);
 
-        apply_usage_body_capture_limit(
+        apply_usage_body_capture(
             UsageBodyField::RequestBody,
             "request",
-            self.policy.max_request_body_bytes,
             payload.request_body,
             payload.request_body_ref,
             payload.request_body_state,
             payload.request_metadata,
         );
-        apply_usage_body_capture_limit(
+        apply_usage_body_capture(
             UsageBodyField::ProviderRequestBody,
             "provider_request",
-            self.policy.max_request_body_bytes,
             payload.provider_request_body,
             payload.provider_request_body_ref,
             payload.provider_request_body_state,
             payload.request_metadata,
         );
-        apply_usage_body_capture_limit(
+        apply_usage_body_capture(
             UsageBodyField::ResponseBody,
             "response",
-            self.policy.max_response_body_bytes,
             payload.response_body,
             payload.response_body_ref,
             payload.response_body_state,
             payload.request_metadata,
         );
-        apply_usage_body_capture_limit(
+        apply_usage_body_capture(
             UsageBodyField::ClientResponseBody,
             "client_response",
-            self.policy.max_response_body_bytes,
             payload.client_response_body,
             payload.client_response_body_ref,
             payload.client_response_body_state,
@@ -286,10 +271,9 @@ fn disable_usage_body_capture_field(
     );
 }
 
-fn apply_usage_body_capture_limit(
+fn apply_usage_body_capture(
     field: UsageBodyField,
     metadata_key: &str,
-    max_bytes: Option<usize>,
     body: &mut Option<Value>,
     body_ref: &mut Option<String>,
     state: &mut Option<UsageBodyCaptureState>,
@@ -301,12 +285,17 @@ fn apply_usage_body_capture_limit(
     }
 
     if let Some(body_ref_value) = body_ref.as_ref() {
-        *state = Some(UsageBodyCaptureState::Reference);
+        let next_state = if matches!(state, Some(UsageBodyCaptureState::Unavailable)) {
+            UsageBodyCaptureState::Unavailable
+        } else {
+            UsageBodyCaptureState::Reference
+        };
+        *state = Some(next_state);
         sync_usage_body_ref_metadata(request_metadata, field, Some(body_ref_value));
         upsert_body_capture_metadata_value_entry(
             request_metadata,
             metadata_key,
-            Some(UsageBodyCaptureState::Reference),
+            Some(next_state),
             None,
             None,
             None,
@@ -331,106 +320,18 @@ fn apply_usage_body_capture_limit(
         return;
     };
 
-    let limited = limit_usage_body_capture_value(value, max_bytes);
-    let next_state = if limited.truncated {
-        UsageBodyCaptureState::Truncated
-    } else {
-        UsageBodyCaptureState::Inline
-    };
-    *state = Some(next_state);
-    *body = Some(limited.value);
+    let source_bytes = json_serialized_len(&value);
+    *state = Some(UsageBodyCaptureState::Inline);
+    *body = Some(value);
     sync_usage_body_ref_metadata(request_metadata, field, None);
     upsert_body_capture_metadata_value_entry(
         request_metadata,
         metadata_key,
-        Some(next_state),
-        limited.stored_bytes,
-        limited.source_bytes,
-        limited.reason,
+        Some(UsageBodyCaptureState::Inline),
+        source_bytes,
+        source_bytes,
+        None,
     );
-}
-
-fn limit_usage_body_capture_value(
-    value: Value,
-    max_bytes: Option<usize>,
-) -> LimitedUsageBodyCapture {
-    let source_bytes = json_serialized_len(&value);
-    let Some(limit) = max_bytes.filter(|value| *value > 0) else {
-        return LimitedUsageBodyCapture {
-            stored_bytes: source_bytes,
-            source_bytes,
-            value,
-            truncated: false,
-            reason: None,
-        };
-    };
-    let Some(source_len) = source_bytes else {
-        return LimitedUsageBodyCapture {
-            stored_bytes: None,
-            source_bytes: None,
-            value,
-            truncated: false,
-            reason: None,
-        };
-    };
-    if source_len <= limit as u64 {
-        return LimitedUsageBodyCapture {
-            stored_bytes: Some(source_len),
-            source_bytes: Some(source_len),
-            value,
-            truncated: false,
-            reason: None,
-        };
-    }
-
-    let truncated_value = match value {
-        Value::String(text) => Value::String(truncate_usage_body_string(&text, limit)),
-        other => json!({
-            "truncated": true,
-            "reason": "body_capture_limit_exceeded",
-            "max_bytes": limit,
-            "source_bytes": source_len,
-            "value_kind": usage_value_kind(&other),
-        }),
-    };
-    let stored_bytes = json_serialized_len(&truncated_value);
-    LimitedUsageBodyCapture {
-        value: truncated_value,
-        source_bytes: Some(source_len),
-        stored_bytes,
-        truncated: true,
-        reason: Some("body_capture_limit_exceeded"),
-    }
-}
-
-fn truncate_usage_body_string(value: &str, max_bytes: usize) -> String {
-    let mut end = value.len();
-    while end > 0 {
-        while end > 0 && !value.is_char_boundary(end) {
-            end -= 1;
-        }
-        let mut candidate = value[..end].to_string();
-        candidate.push_str(TRUNCATED_BODY_STRING_SUFFIX);
-        if json_serialized_len(&candidate).is_some_and(|bytes| bytes <= max_bytes as u64) {
-            return candidate;
-        }
-        end = value[..end]
-            .char_indices()
-            .last()
-            .map(|(index, _)| index)
-            .unwrap_or(0);
-        if end == 0 {
-            break;
-        }
-    }
-
-    json!({
-        "truncated": true,
-        "reason": "body_capture_limit_exceeded",
-        "max_bytes": max_bytes,
-        "value_kind": "string",
-    })
-    .to_string()
 }
 
 fn json_serialized_len<T: Serialize>(value: &T) -> Option<u64> {
@@ -747,23 +648,11 @@ fn trim_owned_non_empty_string(value: String) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-fn usage_value_kind(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "bool",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         build_plan_body_capture_metadata, sync_usage_body_ref_metadata,
-        trim_owned_non_empty_string, truncate_usage_body_string,
-        upsert_body_capture_metadata_value_entry,
+        trim_owned_non_empty_string, upsert_body_capture_metadata_value_entry,
     };
     use aether_data_contracts::repository::usage::{
         usage_body_ref, UsageBodyCaptureState, UsageBodyField,
@@ -870,17 +759,6 @@ mod tests {
     }
 
     #[test]
-    fn truncate_usage_body_string_respects_json_byte_limit() {
-        let limit = 32usize;
-        let truncated = truncate_usage_body_string("x".repeat(256).as_str(), limit);
-
-        assert!(truncated.ends_with("...[truncated]"));
-        assert!(serde_json::to_vec(&truncated)
-            .ok()
-            .is_some_and(|bytes| bytes.len() <= limit));
-    }
-
-    #[test]
     fn full_record_level_reuses_request_body_ref_for_identical_provider_request_body() {
         let body = json!({
             "model": "gpt-5.5",
@@ -927,6 +805,39 @@ mod tests {
                 .and_then(|value| value.get("provider_request_body_ref"))
                 .and_then(Value::as_str),
             Some(request_ref.as_str())
+        );
+    }
+
+    #[test]
+    fn full_record_level_preserves_body_beyond_legacy_byte_limit() {
+        let body = json!({
+            "model": "gpt-5.5",
+            "input": "x".repeat(300 * 1024),
+        });
+        let mut event = UsageEvent::new(
+            UsageEventType::Completed,
+            "req-large-body-1",
+            UsageEventData {
+                provider_name: "openai".to_string(),
+                model: "gpt-5.5".to_string(),
+                request_body: Some(body.clone()),
+                ..UsageEventData::default()
+            },
+        );
+
+        super::apply_usage_body_capture_policy_to_event(
+            UsageBodyCapturePolicy {
+                record_level: UsageRequestRecordLevel::Full,
+                max_request_body_bytes: Some(256 * 1024),
+                max_response_body_bytes: Some(256 * 1024),
+            },
+            &mut event,
+        );
+
+        assert_eq!(event.data.request_body, Some(body));
+        assert_eq!(
+            event.data.request_body_state,
+            Some(UsageBodyCaptureState::Inline)
         );
     }
 }
