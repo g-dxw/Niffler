@@ -245,6 +245,11 @@
               v-if="getActualModel(record)"
               class="text-[11px] text-muted-foreground truncate block"
             >-> {{ getActualModel(record) }}</span>
+            <span
+              v-if="getReasoningEffort(record)"
+              data-usage-model-badge="reasoning"
+              class="mt-0.5 inline-flex rounded border border-border/60 px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
+            >{{ getReasoningEffort(record) }}</span>
           </div>
           <div
             class="flex flex-col items-end flex-shrink-0"
@@ -718,6 +723,11 @@
               v-else
               class="block break-all leading-4"
             >{{ record.model }}</span>
+            <span
+              v-if="getReasoningEffort(record)"
+              data-usage-model-badge="reasoning"
+              class="mt-1 inline-flex rounded border border-border/60 px-1 py-0.5 text-[10px] font-normal leading-none text-muted-foreground"
+            >{{ getReasoningEffort(record) }}</span>
           </TableCell>
           <TableCell
             v-if="isAdmin && isColumnVisible('provider')"
@@ -1851,12 +1861,23 @@ function getActualModel(record: UsageRecord): string | null {
   return null
 }
 
+function getReasoningEffort(record: UsageRecord): string | null {
+  const requested = record.requested_reasoning_effort?.trim()
+  const actual = record.reasoning_effort?.trim()
+  if (requested && actual && requested.toLowerCase() !== actual.toLowerCase()) {
+    return `${requested} -> ${actual}`
+  }
+  return actual || requested || null
+}
+
 // 获取模型列的 tooltip
 function getModelTooltip(record: UsageRecord): string {
   const actualModel = getActualModel(record)
+  const reasoningEffort = getReasoningEffort(record)
+  const reasoningSuffix = reasoningEffort ? `\nReasoning: ${reasoningEffort}` : ''
   if (actualModel) {
-    return `${record.model} -> ${actualModel}`
+    return `${record.model} -> ${actualModel}${reasoningSuffix}`
   }
-  return record.model
+  return `${record.model}${reasoningSuffix}`
 }
 </script>

@@ -106,6 +106,8 @@ export interface UsageRecord {
   model: string
   target_model?: string | null  // 映射后的目标模型名（若无映射则为空）
   model_version?: string | null  // Provider 返回的实际模型版本（列表轻量字段）
+  requested_reasoning_effort?: string | null
+  reasoning_effort?: string | null
   api_format?: string
   endpoint_api_format?: string  // 端点原生格式
   has_format_conversion?: boolean  // 是否发生了格式转换

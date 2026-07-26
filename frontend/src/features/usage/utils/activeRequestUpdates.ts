@@ -69,6 +69,16 @@ export function applyUsageActiveRequestUpdate(
   if ('target_model' in update && (typeof update.target_model === 'string' || update.target_model === null)) {
     record.target_model = update.target_model
   }
+  if ('requested_reasoning_effort' in update) {
+    record.requested_reasoning_effort = typeof update.requested_reasoning_effort === 'string'
+      ? update.requested_reasoning_effort
+      : null
+  }
+  if ('reasoning_effort' in update) {
+    record.reasoning_effort = typeof update.reasoning_effort === 'string'
+      ? update.reasoning_effort
+      : null
+  }
 
   if ('provider' in update && typeof update.provider === 'string' && isVisibleProvider(update.provider)) {
     record.provider = update.provider

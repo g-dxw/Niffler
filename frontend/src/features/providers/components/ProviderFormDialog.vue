@@ -66,6 +66,9 @@
                   <SelectItem value="grok">
                     Grok
                   </SelectItem>
+                  <SelectItem value="grok_oauth">
+                    Grok OAuth
+                  </SelectItem>
                   <SelectItem value="kiro">
                     Kiro
                   </SelectItem>
@@ -98,6 +101,9 @@
                   </SelectItem>
                   <SelectItem value="grok">
                     Grok
+                  </SelectItem>
+                  <SelectItem value="grok_oauth">
+                    Grok OAuth
                   </SelectItem>
                   <SelectItem value="kiro">
                     Kiro

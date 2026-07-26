@@ -14,4 +14,10 @@ describe('providerTypeUtils', () => {
     expect(isOAuthAccountProviderType('GROK')).toBe(true)
     expect(isKeyManagedProviderType('grok')).toBe(false)
   })
+
+  it('routes Grok OAuth through account management', () => {
+    expect(isOAuthAccountProviderType('grok_oauth')).toBe(true)
+    expect(isOAuthAccountProviderType('GROK_OAUTH')).toBe(true)
+    expect(isKeyManagedProviderType('grok_oauth')).toBe(false)
+  })
 })

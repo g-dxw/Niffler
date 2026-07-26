@@ -644,6 +644,12 @@ fn build_users_me_usage_record_payload(
             auth_api_key_reader_available,
         ),
     });
+    if let Some(reasoning_effort) = item.provider_reasoning_effort() {
+        payload["reasoning_effort"] = json!(reasoning_effort);
+    }
+    if let Some(requested_reasoning_effort) = item.requested_reasoning_effort() {
+        payload["requested_reasoning_effort"] = json!(requested_reasoning_effort);
+    }
 
     if item.target_model.is_some() {
         payload["target_model"] = json!(item.target_model.clone());
@@ -714,6 +720,12 @@ fn build_users_me_usage_active_payload(
         "target_model": item.target_model,
         "has_fallback": item.has_fallback(),
     });
+    if let Some(reasoning_effort) = item.provider_reasoning_effort() {
+        payload["reasoning_effort"] = json!(reasoning_effort);
+    }
+    if let Some(requested_reasoning_effort) = item.requested_reasoning_effort() {
+        payload["requested_reasoning_effort"] = json!(requested_reasoning_effort);
+    }
     if include_actual_cost {
         payload["actual_cost"] = json!(round_to(item.actual_total_cost_usd, 6));
         payload["actual_model_cost"] = json!(users_me_usage_metadata_number(

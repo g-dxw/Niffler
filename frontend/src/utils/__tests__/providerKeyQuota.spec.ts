@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { getQuotaDisplayText } from '../providerKeyQuota'
+import { getGrokOAuthQuotaFreshness, getQuotaDisplayText } from '../providerKeyQuota'
 
 describe('providerKeyQuota', () => {
   it('does not invent a Codex quota when upstream returned no current window', () => {
@@ -128,4 +128,79 @@ describe('providerKeyQuota', () => {
       },
     }, 'grok')).toBe('Auto剩余 40.0% (60/150) | Heavy剩余 0.0% (0/20)')
   })
+
+  it('formats Grok OAuth weekly and monthly billing windows', () => {
+    expect(getQuotaDisplayText({
+      status_snapshot: {
+        oauth: {
+          code: 'valid',
+        },
+        account: {
+          code: 'ok',
+          blocked: false,
+        },
+        quota: {
+          provider_type: 'grok_oauth',
+          code: 'ok',
+          exhausted: false,
+          plan_type: 'super',
+          windows: [
+            {
+              code: 'weekly',
+              remaining_ratio: 0.75,
+            },
+            {
+              code: 'monthly',
+              unit: 'usd',
+              remaining_ratio: 0.7,
+              remaining_value: 105,
+              limit_value: 150,
+            },
+          ],
+        },
+      },
+    }, 'grok_oauth')).toBe('周剩余 75.0% | 月剩余 70.0% ($105/$150)')
+  })
+  it('marks Grok OAuth quota snapshots stale after one hour', () => {
+    const input = {
+      status_snapshot: {
+        quota: {
+          provider_type: 'grok_oauth',
+          code: 'ok',
+          exhausted: false,
+          freshness: 'fresh',
+          updated_at: 1_700_000_000,
+        },
+      },
+    }
+
+    expect(getGrokOAuthQuotaFreshness(input, 'grok_oauth', 1_700_003_599)).toEqual({
+      updatedAtSeconds: 1_700_000_000,
+      isStale: false,
+    })
+    expect(getGrokOAuthQuotaFreshness(input, 'grok_oauth', 1_700_003_600)).toEqual({
+      updatedAtSeconds: 1_700_000_000,
+      isStale: true,
+    })
+    input.status_snapshot.quota.freshness = 'stale'
+    expect(getGrokOAuthQuotaFreshness(input, 'grok_oauth', 1_700_000_001)).toEqual({
+      updatedAtSeconds: 1_700_000_000,
+      isStale: true,
+    })
+    expect(getGrokOAuthQuotaFreshness(input, 'codex', 1_700_003_600)).toEqual({
+      updatedAtSeconds: 1_700_000_000,
+      isStale: true,
+    })
+    expect(getGrokOAuthQuotaFreshness({
+      status_snapshot: {
+        quota: {
+          provider_type: 'codex',
+          code: 'ok',
+          exhausted: false,
+          updated_at: 1_700_000_000,
+        },
+      },
+    }, 'grok_oauth', 1_700_003_600)).toBeNull()
+  })
+
 })

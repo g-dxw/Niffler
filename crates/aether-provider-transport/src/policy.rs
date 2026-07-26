@@ -363,6 +363,22 @@ mod tests {
     }
 
     #[test]
+    fn accepts_grok_oauth_responses_with_persisted_auth_config() {
+        let mut transport = sample_transport("grok_oauth", "openai:responses", Some("cli"));
+        transport.key.auth_type = "oauth".to_string();
+        transport.key.decrypted_auth_config =
+            Some(r#"{"provider_type":"grok_oauth","expires_at":4102444800}"#.to_string());
+
+        assert_eq!(
+            local_standard_transport_unsupported_reason_with_network(
+                &transport,
+                "openai:responses"
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn embedding_policy_accepts_embedding_endpoint_kind_aliases_only() {
         for endpoint_kind in [None, Some(""), Some(" embedding "), Some("EMBEDDINGS")] {
             let transport = sample_transport("openai", "openai:embedding", endpoint_kind);

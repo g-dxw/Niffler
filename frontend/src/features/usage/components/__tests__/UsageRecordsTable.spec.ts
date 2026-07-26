@@ -444,4 +444,15 @@ describe('UsageRecordsTable', () => {
     expect(root.textContent).toContain('0.50s / 1.00s')
     expect(root.textContent).toContain('gpt-5')
   })
+  it('shows the provider default reasoning effort when the request omitted it', () => {
+    const root = mountUsageRecordsTable([buildRecord({
+      model: 'grok-4.5',
+      requested_reasoning_effort: null,
+      reasoning_effort: 'high',
+    })])
+
+    expect(root.querySelector('[data-usage-model-badge="reasoning"]')?.textContent?.trim())
+      .toBe('high')
+  })
+
 })

@@ -81,6 +81,28 @@ pub enum LocalAuthConfigAbsorption {
     },
 }
 
+pub fn apply_local_auth_config_header_overrides(
+    headers: &mut BTreeMap<String, String>,
+    raw_auth_config: Option<&str>,
+) {
+    let Some(raw_auth_config) = raw_auth_config
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return;
+    };
+    let Ok(parsed) = serde_json::from_str::<Value>(raw_auth_config) else {
+        return;
+    };
+    let Some(object) = parsed.as_object() else {
+        return;
+    };
+
+    let mut overrides = BTreeMap::new();
+    collect_auth_config_header_overrides(object, &mut overrides);
+    headers.extend(overrides);
+}
+
 pub fn absorb_local_auth_config_safe_subset(
     base_url: &str,
     header_rules: Option<Value>,
@@ -136,6 +158,38 @@ fn parse_local_auth_config_safe_subset(raw: &str) -> Result<LocalAuthConfigSafeS
         query,
         path,
     })
+}
+
+fn collect_auth_config_header_overrides(
+    object: &serde_json::Map<String, Value>,
+    out: &mut BTreeMap<String, String>,
+) {
+    for (key, value) in object {
+        match key.trim().to_ascii_lowercase().as_str() {
+            "headers" | "extra_headers" | "extraheaders" => {
+                let Some(object) = value.as_object() else {
+                    continue;
+                };
+                for (raw_key, raw_value) in object {
+                    let Some(key) = normalize_auth_config_header_name(raw_key) else {
+                        continue;
+                    };
+                    let Some(value) = parse_static_auth_config_value(raw_value) else {
+                        continue;
+                    };
+                    if http::header::HeaderValue::from_str(&value).is_ok() {
+                        out.insert(key, value);
+                    }
+                }
+            }
+            "transport" | "request" => {
+                if let Some(nested) = value.as_object() {
+                    collect_auth_config_header_overrides(nested, out);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn parse_local_auth_config_object(
@@ -377,9 +431,13 @@ fn split_path_and_query(path: &str) -> Option<(String, BTreeMap<String, String>)
 
 #[cfg(test)]
 mod tests {
+    use aether_oauth::provider::providers::apply_grok_oauth_auth_config_defaults;
     use serde_json::json;
 
-    use super::{absorb_local_auth_config_safe_subset, LocalAuthConfigAbsorption};
+    use super::{
+        absorb_local_auth_config_safe_subset, apply_local_auth_config_header_overrides,
+        LocalAuthConfigAbsorption,
+    };
 
     #[test]
     fn absorbs_static_headers_and_query_into_existing_transport_fields() {
@@ -481,6 +539,38 @@ mod tests {
                 Some(r#"{"query":{"key":"secret"}}"#),
             ),
             LocalAuthConfigAbsorption::Unsupported
+        );
+    }
+
+    #[test]
+    fn applies_grok_oauth_cli_identity_headers_from_persisted_auth_config() {
+        let mut auth_config = serde_json::Map::new();
+        auth_config.insert("provider_type".to_string(), json!("grok_oauth"));
+        auth_config.insert("refresh_token".to_string(), json!("redacted-refresh-token"));
+        apply_grok_oauth_auth_config_defaults(&mut auth_config);
+
+        let mut headers = std::collections::BTreeMap::from([(
+            "authorization".to_string(),
+            "Bearer runtime-access-token".to_string(),
+        )]);
+        let raw_auth_config = serde_json::Value::Object(auth_config).to_string();
+        apply_local_auth_config_header_overrides(&mut headers, Some(&raw_auth_config));
+
+        assert_eq!(
+            headers.get("authorization"),
+            Some(&"Bearer runtime-access-token".to_string())
+        );
+        assert_eq!(
+            headers.get("x-xai-token-auth"),
+            Some(&"xai-grok-cli".to_string())
+        );
+        assert_eq!(
+            headers.get("x-grok-client-version"),
+            Some(&"0.2.93".to_string())
+        );
+        assert_eq!(
+            headers.get("user-agent"),
+            Some(&"xai-grok-workspace/0.2.93".to_string())
         );
     }
 

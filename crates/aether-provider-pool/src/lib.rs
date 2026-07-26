@@ -16,15 +16,17 @@ pub use presets::{
 pub use provider::{ProviderPoolAdapter, ProviderPoolMemberInput};
 pub use providers::{
     build_antigravity_pool_quota_request, build_chatgpt_web_pool_quota_request,
-    build_codex_pool_quota_request, build_kiro_pool_quota_request,
-    enrich_chatgpt_web_quota_metadata, grok_mode_id_for_model, grok_pool_tier_from_quota_bucket,
-    grok_quota_window_key_for_model, grok_supported_quota_windows_for_tier,
-    normalize_chatgpt_web_image_quota_limit, AntigravityProviderPoolAdapter,
-    ChatGptWebProviderPoolAdapter, CodexProviderPoolAdapter, DefaultProviderPoolAdapter,
-    GrokProviderPoolAdapter, KiroPoolQuotaAuthInput, KiroProviderPoolAdapter,
-    UnsupportedQuotaProviderPoolAdapter, ANTIGRAVITY_FETCH_AVAILABLE_MODELS_PATH,
-    CHATGPT_WEB_CONVERSATION_INIT_PATH, CHATGPT_WEB_DEFAULT_BASE_URL, CODEX_WHAM_USAGE_URL,
-    KIRO_USAGE_LIMITS_PATH, KIRO_USAGE_SDK_VERSION,
+    build_codex_pool_quota_request, build_grok_oauth_pool_billing_request,
+    build_kiro_pool_quota_request, enrich_chatgpt_web_quota_metadata, grok_mode_id_for_model,
+    grok_pool_tier_from_quota_bucket, grok_quota_window_key_for_model,
+    grok_supported_quota_windows_for_tier, normalize_chatgpt_web_image_quota_limit,
+    AntigravityProviderPoolAdapter, ChatGptWebProviderPoolAdapter, CodexProviderPoolAdapter,
+    DefaultProviderPoolAdapter, GrokOAuthProviderPoolAdapter, GrokProviderPoolAdapter,
+    KiroPoolQuotaAuthInput, KiroProviderPoolAdapter, UnsupportedQuotaProviderPoolAdapter,
+    ANTIGRAVITY_FETCH_AVAILABLE_MODELS_PATH, CHATGPT_WEB_CONVERSATION_INIT_PATH,
+    CHATGPT_WEB_DEFAULT_BASE_URL, CODEX_WHAM_USAGE_URL, GROK_OAUTH_BILLING_MONTHLY_PATH,
+    GROK_OAUTH_BILLING_WEEKLY_PATH, GROK_OAUTH_DEFAULT_BASE_URL, KIRO_USAGE_LIMITS_PATH,
+    KIRO_USAGE_SDK_VERSION,
 };
 pub use quota::{
     provider_pool_key_account_quota_exhausted, provider_pool_key_scheduling_label,
@@ -68,6 +70,7 @@ mod tests {
                 "codex",
                 "gemini_cli",
                 "grok",
+                "grok_oauth",
                 "kiro",
                 "vertex_ai"
             ]
@@ -85,11 +88,19 @@ mod tests {
 
         assert_eq!(
             service.provider_types_for_capability(ProviderPoolCapability::QuotaRefresh),
-            ["antigravity", "chatgpt_web", "codex", "grok", "kiro"]
+            [
+                "antigravity",
+                "chatgpt_web",
+                "codex",
+                "grok",
+                "grok_oauth",
+                "kiro"
+            ]
         );
         assert!(service.supports_quota_refresh("codex"));
         assert!(service.supports_quota_refresh("antigravity"));
         assert!(service.supports_quota_refresh("grok"));
+        assert!(service.supports_quota_refresh("grok_oauth"));
         assert!(!service.supports_quota_refresh("gemini_cli"));
         assert_eq!(
             service.quota_refresh_unsupported_message("claude_code"),
@@ -141,6 +152,96 @@ mod tests {
             Some("application/json")
         );
         assert_eq!(spec.model_name.as_deref(), Some("codex-wham-usage"));
+    }
+
+    #[test]
+    fn grok_oauth_billing_requests_use_cli_identity_and_billing_windows() {
+        let auth_config = json!({
+            "headers": {
+                "X-XAI-Token-Auth": "xai-grok-cli",
+                "x-grok-client-version": "0.2.93",
+                "User-Agent": "xai-grok-workspace/0.2.93"
+            }
+        });
+        let weekly = build_grok_oauth_pool_billing_request(
+            "key-1",
+            "https://cli-chat-proxy.grok.com/v1/",
+            ("Authorization".to_string(), "Bearer access".to_string()),
+            Some(&auth_config),
+            true,
+        )
+        .expect("weekly billing request should build");
+        let monthly = build_grok_oauth_pool_billing_request(
+            "key-1",
+            "https://cli-chat-proxy.grok.com/v1",
+            ("authorization".to_string(), "Bearer access".to_string()),
+            Some(&auth_config),
+            false,
+        )
+        .expect("monthly billing request should build");
+
+        assert_eq!(weekly.method, "GET");
+        assert_eq!(
+            weekly.url,
+            "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+        );
+        assert_eq!(monthly.url, "https://cli-chat-proxy.grok.com/v1/billing");
+        assert_eq!(
+            weekly.headers.get("authorization").map(String::as_str),
+            Some("Bearer access")
+        );
+        assert_eq!(
+            weekly.headers.get("x-xai-token-auth").map(String::as_str),
+            Some("xai-grok-cli")
+        );
+        assert_eq!(
+            weekly
+                .headers
+                .get("x-grok-client-version")
+                .map(String::as_str),
+            Some("0.2.93")
+        );
+        assert_eq!(
+            weekly.headers.get("user-agent").map(String::as_str),
+            Some("grok-pager/0.2.93 grok-shell/0.2.93 (macos; aarch64)")
+        );
+        assert_eq!(
+            monthly.headers.get("user-agent").map(String::as_str),
+            Some("grok-pager/0.2.93 grok-shell/0.2.93 (macos; aarch64)")
+        );
+        assert_eq!(weekly.provider_api_format, "grok_oauth:billing");
+        assert!(!ProviderPoolService::with_builtin_adapters()
+            .adapter("grok_oauth")
+            .capabilities()
+            .supports(ProviderPoolCapability::QuotaReset));
+    }
+
+    #[test]
+    fn grok_oauth_billing_user_agent_tracks_configured_cli_version() {
+        let auth_config = json!({
+            "headers": {
+                "x-grok-client-version": "0.2.95"
+            }
+        });
+        let spec = build_grok_oauth_pool_billing_request(
+            "key-1",
+            GROK_OAUTH_DEFAULT_BASE_URL,
+            ("authorization".to_string(), "Bearer access".to_string()),
+            Some(&auth_config),
+            true,
+        )
+        .expect("billing request should build");
+
+        assert_eq!(
+            spec.headers
+                .get("x-grok-client-version")
+                .map(String::as_str),
+            Some("0.2.95")
+        );
+        assert_eq!(
+            spec.headers.get("user-agent").map(String::as_str),
+            Some("grok-pager/0.2.95 grok-shell/0.2.95 (macos; aarch64)")
+        );
     }
 
     #[test]
@@ -251,7 +352,10 @@ mod tests {
             .find(|item| item["name"] == "recent_refresh")
             .expect("recent_refresh should exist");
 
-        assert_eq!(free_first["providers"], json!(["codex", "grok", "kiro"]));
+        assert_eq!(
+            free_first["providers"],
+            json!(["codex", "grok", "grok_oauth", "kiro"])
+        );
         assert_eq!(
             recent_refresh["providers"],
             json!(["codex", "grok", "kiro"])

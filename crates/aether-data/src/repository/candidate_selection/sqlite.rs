@@ -548,6 +548,15 @@ fn push_key_auth_channel_sql_filter(
         r#" = 'gemini:generate_content'
     )
     OR (
+      LOWER(TRIM(p.provider_type)) = 'grok_oauth'
+      AND LOWER(TRIM(pak.auth_type)) = 'oauth'
+      AND "#,
+    );
+    builder.push_bind(api_format.clone());
+    builder.push(
+        r#" = 'openai:responses'
+    )
+    OR (
       LOWER(TRIM(p.provider_type)) = 'vertex_ai'
       AND (
         (
@@ -575,6 +584,7 @@ fn push_key_auth_channel_sql_filter(
         'claude_code_api',
         'codex',
         'gemini_cli',
+        'grok_oauth',
         'vertex_ai',
         'antigravity',
         'kiro'
@@ -835,6 +845,7 @@ fn key_auth_channel_matches(row: &CandidateSelectionRow, api_format: &str) -> bo
         "gemini_cli" | "antigravity" => {
             auth_type == "oauth" && api_format == "gemini:generate_content"
         }
+        "grok_oauth" => auth_type == "oauth" && api_format == "openai:responses",
         "grok" => {
             auth_type == "oauth"
                 && matches!(
@@ -1251,6 +1262,34 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["key-claude-code-api-bearer"]
         );
+
+        let grok_responses = repository
+            .list_for_exact_api_format_and_requested_model_page(
+                &StoredRequestedModelCandidateRowsQuery {
+                    api_format: "openai:responses".to_string(),
+                    requested_model_name: "grok-4".to_string(),
+                    offset: 0,
+                    limit: 10,
+                },
+            )
+            .await
+            .expect("Grok OAuth Responses rows should load");
+        assert_eq!(grok_responses.len(), 1);
+        assert_eq!(grok_responses[0].provider_type, "grok_oauth");
+        assert_eq!(grok_responses[0].key_id, "key-grok-oauth");
+
+        let grok_chat = repository
+            .list_for_exact_api_format_and_requested_model_page(
+                &StoredRequestedModelCandidateRowsQuery {
+                    api_format: "openai:chat".to_string(),
+                    requested_model_name: "grok-4".to_string(),
+                    offset: 0,
+                    limit: 10,
+                },
+            )
+            .await
+            .expect("Grok OAuth Chat rows should be filtered");
+        assert!(grok_chat.is_empty());
     }
 
     async fn seed_candidate_selection(pool: &sqlx::SqlitePool) {
@@ -1278,6 +1317,11 @@ INSERT INTO providers (
 )
 VALUES ('provider-chatgpt-web', 'ChatGPT Web', 'chatgpt_web', 20, 1, 1, 1);
 
+INSERT INTO providers (
+  id, name, provider_type, provider_priority, is_active, created_at, updated_at
+)
+VALUES ('provider-grok-oauth', 'Grok OAuth', 'grok_oauth', 11, 1, 1, 1);
+
 INSERT INTO provider_endpoints (
   id, provider_id, name, base_url, api_format, is_active, created_at, updated_at
 )
@@ -1285,6 +1329,15 @@ VALUES (
   'endpoint-chatgpt-web', 'provider-chatgpt-web', 'ChatGPT Web Image',
   'https://chatgpt.com', 'openai:image', 1, 1, 1
 );
+
+INSERT INTO provider_endpoints (
+  id, provider_id, name, base_url, api_format, is_active, created_at, updated_at
+)
+VALUES
+  ('endpoint-grok-oauth-responses', 'provider-grok-oauth', 'Grok Responses',
+   'https://cli-chat-proxy.grok.com/v1', 'openai:responses', 1, 1, 1),
+  ('endpoint-grok-oauth-chat', 'provider-grok-oauth', 'Legacy Grok Chat',
+   'https://cli-chat-proxy.grok.com/v1', 'openai:chat', 1, 1, 1);
 
 INSERT INTO provider_api_keys (
   id, provider_id, name, auth_type, api_formats, internal_priority, is_active, created_at, updated_at
@@ -1314,13 +1367,21 @@ VALUES
   ('key-claude-code-api-bearer', 'provider-claude-code-api', 'Bearer', 'bearer', '["claude:messages"]', 10, 1, 1, 1),
   ('key-claude-code-api-api-key', 'provider-claude-code-api', 'API Key', 'api_key', '["claude:messages"]', 20, 1, 1, 1);
 
+INSERT INTO provider_api_keys (
+  id, provider_id, name, auth_type, api_formats, internal_priority, is_active, created_at, updated_at
+)
+VALUES
+  ('key-grok-oauth', 'provider-grok-oauth', 'OAuth', 'oauth', NULL, 10, 1, 1, 1),
+  ('key-grok-oauth-api-key', 'provider-grok-oauth', 'API Key', 'api_key', NULL, 20, 1, 1, 1);
+
 INSERT INTO global_models (
   id, name, config, is_active, created_at, updated_at
 )
 VALUES
   ('global-1', 'gpt-5', '{"model_mappings":["alias-global"],"streaming":true}', 1, 1, 1),
   ('global-image-1', 'gpt-image-2', NULL, 1, 1, 1),
-  ('global-claude-1', 'claude-sonnet', NULL, 1, 1, 1);
+  ('global-claude-1', 'claude-sonnet', NULL, 1, 1, 1),
+  ('global-grok-oauth-1', 'grok-4', '{"streaming":true}', 1, 1, 1);
 
 INSERT INTO models (
   id, provider_id, global_model_id, provider_model_name, provider_model_mappings,
@@ -1337,6 +1398,10 @@ VALUES (
 ),
 (
   'model-claude-code-api', 'provider-claude-code-api', 'global-claude-1', 'claude-sonnet',
+  NULL, 1, 1, 1, 1, 1
+),
+(
+  'model-grok-oauth', 'provider-grok-oauth', 'global-grok-oauth-1', 'grok-4',
   NULL, 1, 1, 1, 1, 1
 );
 "#,

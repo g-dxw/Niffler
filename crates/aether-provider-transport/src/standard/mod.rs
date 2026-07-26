@@ -245,6 +245,10 @@ pub fn build_standard_provider_request_headers(
         )
     };
 
+    crate::apply_local_auth_config_header_overrides(
+        &mut headers,
+        input.transport.key.decrypted_auth_config.as_deref(),
+    );
     let protected_headers = if uses_vertex_query_auth {
         &["content-type"][..]
     } else {

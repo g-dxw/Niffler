@@ -45,6 +45,23 @@ pub(super) fn default_provider_quota_execution_timeouts(
     }
 }
 
+pub(super) fn resolve_provider_quota_execution_timeouts(
+    configured: Option<ExecutionTimeouts>,
+    proxy: Option<&ProxySnapshot>,
+) -> ExecutionTimeouts {
+    let defaults = default_provider_quota_execution_timeouts(proxy);
+    let Some(mut timeouts) = configured else {
+        return defaults;
+    };
+    timeouts.connect_ms = timeouts.connect_ms.or(defaults.connect_ms);
+    timeouts.read_ms = timeouts.read_ms.or(defaults.read_ms);
+    timeouts.write_ms = timeouts.write_ms.or(defaults.write_ms);
+    timeouts.pool_ms = timeouts.pool_ms.or(defaults.pool_ms);
+    timeouts.total_ms = timeouts.total_ms.or(defaults.total_ms);
+    timeouts.first_byte_ms = timeouts.first_byte_ms.or(defaults.first_byte_ms);
+    timeouts
+}
+
 pub(super) fn provider_auto_remove_banned_keys(config: Option<&serde_json::Value>) -> bool {
     admin_provider_quota_pure::provider_auto_remove_banned_keys(config)
 }
@@ -59,6 +76,31 @@ pub(super) fn should_auto_remove_oauth_invalid_key(
         candidate_reason,
         now_unix_secs,
     )
+}
+
+pub(crate) async fn quota_key_auto_removed(
+    state: &AdminAppState<'_>,
+    key_id: &str,
+) -> Result<bool, GatewayError> {
+    if key_id.trim().is_empty() {
+        return Ok(false);
+    }
+    Ok(state
+        .read_provider_catalog_keys_by_ids(&[key_id.to_string()])
+        .await?
+        .is_empty())
+}
+
+pub(crate) fn oauth_refresh_auto_removed_result(
+    key: &StoredProviderCatalogKey,
+) -> serde_json::Value {
+    serde_json::json!({
+        "key_id": key.id,
+        "key_name": key.name,
+        "status": "auto_removed",
+        "message": "OAuth refresh 失败且凭证已不可用，已自动删除",
+        "auto_removed": true,
+    })
 }
 
 pub(crate) fn normalize_string_id_list(values: Option<Vec<String>>) -> Option<Vec<String>> {

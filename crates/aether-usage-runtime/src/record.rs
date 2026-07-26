@@ -1,7 +1,10 @@
 use aether_data_contracts::repository::usage::UpsertUsageRecord;
 use aether_data_contracts::DataLayerError;
 
-use crate::request_metadata::sanitize_usage_request_metadata;
+use crate::request_metadata::{
+    attach_client_request_body_metadata, attach_provider_request_body_metadata,
+    sanitize_usage_request_metadata,
+};
 use crate::{UsageEvent, UsageEventType};
 
 fn metadata_string(metadata: Option<&serde_json::Value>, key: &str) -> Option<String> {
@@ -29,10 +32,18 @@ pub fn build_upsert_usage_record_from_event(
     event: &UsageEvent,
 ) -> Result<UpsertUsageRecord, DataLayerError> {
     let (status, billing_status) = lifecycle_status_and_billing(event.event_type);
-    let data = event.data.clone();
+    let mut data = event.data.clone();
     let billing_status = billing_status_override(&data)
         .unwrap_or(billing_status)
         .to_string();
+    let request_metadata = attach_client_request_body_metadata(
+        data.request_metadata.take(),
+        data.request_body.as_ref(),
+    );
+    let request_metadata = attach_provider_request_body_metadata(
+        request_metadata,
+        data.provider_request_body.as_ref(),
+    );
     let now_unix_secs = event.timestamp_ms / 1_000;
 
     Ok(UpsertUsageRecord {
@@ -78,55 +89,53 @@ pub fn build_upsert_usage_record_from_event(
         request_headers: data.request_headers,
         request_body: data.request_body,
         request_body_ref: empty_to_none(data.request_body_ref)
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "request_body_ref")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "request_body_ref")),
         request_body_state: data.request_body_state,
         provider_request_headers: data.provider_request_headers,
         provider_request_body: data.provider_request_body,
-        provider_request_body_ref: empty_to_none(data.provider_request_body_ref).or_else(|| {
-            metadata_string(data.request_metadata.as_ref(), "provider_request_body_ref")
-        }),
+        provider_request_body_ref: empty_to_none(data.provider_request_body_ref)
+            .or_else(|| metadata_string(request_metadata.as_ref(), "provider_request_body_ref")),
         provider_request_body_state: data.provider_request_body_state,
         response_headers: data.response_headers,
         response_body: data.response_body,
         response_body_ref: empty_to_none(data.response_body_ref)
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "response_body_ref")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "response_body_ref")),
         response_body_state: data.response_body_state,
         client_response_headers: data.client_response_headers,
         client_response_body: data.client_response_body,
-        client_response_body_ref: empty_to_none(data.client_response_body_ref).or_else(|| {
-            metadata_string(data.request_metadata.as_ref(), "client_response_body_ref")
-        }),
+        client_response_body_ref: empty_to_none(data.client_response_body_ref)
+            .or_else(|| metadata_string(request_metadata.as_ref(), "client_response_body_ref")),
         client_response_body_state: data.client_response_body_state,
         candidate_id: data
             .candidate_id
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "candidate_id")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "candidate_id")),
         candidate_index: data
             .candidate_index
-            .or_else(|| metadata_u64(data.request_metadata.as_ref(), "candidate_index")),
+            .or_else(|| metadata_u64(request_metadata.as_ref(), "candidate_index")),
         key_name: data
             .key_name
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "key_name")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "key_name")),
         planner_kind: data
             .planner_kind
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "planner_kind")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "planner_kind")),
         route_family: data
             .route_family
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "route_family")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "route_family")),
         route_kind: data
             .route_kind
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "route_kind")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "route_kind")),
         execution_path: data
             .execution_path
-            .or_else(|| metadata_string(data.request_metadata.as_ref(), "execution_path")),
+            .or_else(|| metadata_string(request_metadata.as_ref(), "execution_path")),
         local_execution_runtime_miss_reason: data.local_execution_runtime_miss_reason.or_else(
             || {
                 metadata_string(
-                    data.request_metadata.as_ref(),
+                    request_metadata.as_ref(),
                     "local_execution_runtime_miss_reason",
                 )
             },
         ),
-        request_metadata: sanitize_usage_request_metadata(data.request_metadata),
+        request_metadata: sanitize_usage_request_metadata(request_metadata),
         finalized_at_unix_secs: Some(now_unix_secs),
         created_at_unix_ms: Some(now_unix_secs),
         updated_at_unix_secs: now_unix_secs,
@@ -346,5 +355,41 @@ mod tests {
                 "billing_snapshot": { "status": "complete" }
             }))
         );
+    }
+
+    #[test]
+    fn records_requested_and_provider_reasoning_efforts() {
+        let record = build_upsert_usage_record_from_event(&UsageEvent {
+            event_type: UsageEventType::Completed,
+            request_id: "req-reasoning".to_string(),
+            timestamp_ms: 1_700_000_000_000,
+            data: UsageEventData {
+                provider_name: "Grok OAuth".to_string(),
+                model: "grok-4.5".to_string(),
+                request_body: Some(serde_json::json!({
+                    "model": "grok-4.5"
+                })),
+                provider_request_body: Some(serde_json::json!({
+                    "model": "grok-4.5",
+                    "reasoning": { "effort": "high" }
+                })),
+                ..UsageEventData::default()
+            },
+        })
+        .expect("record should build");
+
+        assert_eq!(
+            record
+                .request_metadata
+                .as_ref()
+                .and_then(|value| value.get("provider_reasoning_effort"))
+                .and_then(serde_json::Value::as_str),
+            Some("high")
+        );
+        assert!(record
+            .request_metadata
+            .as_ref()
+            .and_then(|value| value.get("requested_reasoning_effort"))
+            .is_none());
     }
 }

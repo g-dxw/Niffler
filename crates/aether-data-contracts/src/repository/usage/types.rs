@@ -2,6 +2,82 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
+pub const PROVIDER_REASONING_EFFORT_METADATA_KEY: &str = "provider_reasoning_effort";
+pub const REQUESTED_REASONING_EFFORT_METADATA_KEY: &str = "requested_reasoning_effort";
+
+pub fn extract_provider_reasoning_effort_from_body(value: Option<&Value>) -> Option<String> {
+    let object = value.and_then(Value::as_object)?;
+    object
+        .get("reasoning_effort")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            object
+                .get("reasoning")
+                .and_then(Value::as_object)
+                .and_then(|reasoning| reasoning.get("effort"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            object
+                .get("output_config")
+                .and_then(Value::as_object)
+                .and_then(|output_config| output_config.get("effort"))
+                .and_then(Value::as_str)
+        })
+        .and_then(normalize_provider_reasoning_effort)
+}
+
+fn normalize_provider_reasoning_effort(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 64 {
+        return None;
+    }
+    Some(normalized)
+}
+
+fn request_body_capture_is_authoritative(
+    request_body: Option<&Value>,
+    request_body_state: Option<UsageBodyCaptureState>,
+) -> bool {
+    let Some(request_body) = request_body else {
+        return false;
+    };
+    if matches!(
+        request_body_state,
+        Some(
+            UsageBodyCaptureState::None
+                | UsageBodyCaptureState::Truncated
+                | UsageBodyCaptureState::Disabled
+                | UsageBodyCaptureState::Unavailable
+        )
+    ) {
+        return false;
+    }
+    !request_body.as_object().is_some_and(|body| {
+        body.get("truncated").and_then(Value::as_bool) == Some(true)
+            && body.get("reason").and_then(Value::as_str) == Some("body_capture_limit_exceeded")
+    })
+}
+
+fn resolve_reasoning_effort_from_request_capture(
+    request_body: Option<&Value>,
+    request_body_state: Option<UsageBodyCaptureState>,
+    request_metadata: Option<&Value>,
+    metadata_key: &str,
+) -> Option<String> {
+    if request_body_capture_is_authoritative(request_body, request_body_state) {
+        return extract_provider_reasoning_effort_from_body(request_body);
+    }
+    if request_body_state == Some(UsageBodyCaptureState::None) {
+        return None;
+    }
+    request_metadata
+        .and_then(Value::as_object)
+        .and_then(|metadata| metadata.get(metadata_key))
+        .and_then(Value::as_str)
+        .and_then(normalize_provider_reasoning_effort)
+}
+
 /// Joined usage read model assembled from the accounting row plus the newer audit/snapshot
 /// satellite tables.
 ///
@@ -439,6 +515,24 @@ impl StoredRequestUsageAudit {
 
     pub fn trace_id(&self) -> Option<&str> {
         self.request_metadata_string("trace_id")
+    }
+
+    pub fn provider_reasoning_effort(&self) -> Option<String> {
+        resolve_reasoning_effort_from_request_capture(
+            self.provider_request_body.as_ref(),
+            self.provider_request_body_state,
+            self.request_metadata.as_ref(),
+            PROVIDER_REASONING_EFFORT_METADATA_KEY,
+        )
+    }
+
+    pub fn requested_reasoning_effort(&self) -> Option<String> {
+        resolve_reasoning_effort_from_request_capture(
+            self.request_body.as_ref(),
+            self.request_body_state,
+            self.request_metadata.as_ref(),
+            REQUESTED_REASONING_EFFORT_METADATA_KEY,
+        )
     }
 
     pub fn body_ref(&self, field: UsageBodyField) -> Option<&str> {
@@ -2485,5 +2579,28 @@ mod tests {
         usage.request_body = None;
         assert_eq!(usage.preferred_request_body_source_field(), None);
         assert_eq!(usage.curl_body_source(), "unavailable");
+    }
+
+    #[test]
+    fn requested_and_provider_reasoning_efforts_remain_independent() {
+        let mut usage = sample_usage();
+        usage.request_body = Some(json!({
+            "reasoning": { "effort": "XHigh" }
+        }));
+        usage.provider_request_body = Some(json!({
+            "reasoning_effort": "max"
+        }));
+        usage.request_metadata = Some(json!({
+            "requested_reasoning_effort": "low",
+            "provider_reasoning_effort": "medium"
+        }));
+
+        assert_eq!(usage.requested_reasoning_effort().as_deref(), Some("xhigh"));
+        assert_eq!(usage.provider_reasoning_effort().as_deref(), Some("max"));
+
+        usage.request_body = None;
+        usage.provider_request_body = None;
+        assert_eq!(usage.requested_reasoning_effort().as_deref(), Some("low"));
+        assert_eq!(usage.provider_reasoning_effort().as_deref(), Some("medium"));
     }
 }

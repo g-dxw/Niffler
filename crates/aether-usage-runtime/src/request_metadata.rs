@@ -2,6 +2,10 @@ use aether_ai_formats::api::{
     sanitize_request_path, sanitize_request_path_and_query, sanitize_request_query_string,
 };
 use aether_contracts::ExecutionPlan;
+use aether_data_contracts::repository::usage::{
+    extract_provider_reasoning_effort_from_body, PROVIDER_REASONING_EFFORT_METADATA_KEY,
+    REQUESTED_REASONING_EFFORT_METADATA_KEY,
+};
 use serde_json::{json, Map, Value};
 
 const MAX_USAGE_REQUEST_METADATA_DEPTH: usize = 32;
@@ -68,6 +72,52 @@ pub(crate) fn sanitize_usage_request_metadata_ref(value: Option<&Value>) -> Opti
     (!filtered.is_empty()).then_some(Value::Object(filtered))
 }
 
+fn attach_reasoning_effort_metadata(
+    metadata: Option<Value>,
+    request_body: Option<&Value>,
+    metadata_key: &str,
+) -> Option<Value> {
+    let request_body_is_object = request_body.and_then(Value::as_object).is_some();
+    let reasoning_effort = extract_provider_reasoning_effort_from_body(request_body);
+    if !request_body_is_object && reasoning_effort.is_none() {
+        return metadata;
+    }
+
+    let mut object = match metadata {
+        Some(Value::Object(object)) => object,
+        _ => Map::new(),
+    };
+    if request_body_is_object {
+        object.remove(metadata_key);
+    }
+    if let Some(reasoning_effort) = reasoning_effort {
+        object.insert(metadata_key.to_string(), Value::String(reasoning_effort));
+    }
+    (!object.is_empty()).then_some(Value::Object(object))
+}
+
+pub(crate) fn attach_client_request_body_metadata(
+    metadata: Option<Value>,
+    request_body: Option<&Value>,
+) -> Option<Value> {
+    attach_reasoning_effort_metadata(
+        metadata,
+        request_body,
+        REQUESTED_REASONING_EFFORT_METADATA_KEY,
+    )
+}
+
+pub(crate) fn attach_provider_request_body_metadata(
+    metadata: Option<Value>,
+    provider_request_body: Option<&Value>,
+) -> Option<Value> {
+    attach_reasoning_effort_metadata(
+        metadata,
+        provider_request_body,
+        PROVIDER_REASONING_EFFORT_METADATA_KEY,
+    )
+}
+
 fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<String, Value>) {
     copy_non_empty_string(source, target, "trace_id");
     copy_non_empty_string(source, target, "source");
@@ -76,6 +126,8 @@ fn copy_allowed_metadata_fields(source: &Map<String, Value>, target: &mut Map<St
     copy_non_empty_string(source, target, "client_ip");
     copy_non_empty_string(source, target, "user_agent");
     copy_non_empty_string(source, target, "client_family");
+    copy_non_empty_string(source, target, REQUESTED_REASONING_EFFORT_METADATA_KEY);
+    copy_non_empty_string(source, target, PROVIDER_REASONING_EFFORT_METADATA_KEY);
     copy_bool(source, target, "client_requested_stream");
     copy_bool(source, target, "upstream_is_stream");
     copy_non_null_value(source, target, "client_session_affinity");
@@ -136,6 +188,8 @@ fn move_allowed_metadata_fields(mut source: Map<String, Value>, target: &mut Map
     remove_non_empty_string(&mut source, target, "client_ip");
     remove_non_empty_string(&mut source, target, "user_agent");
     remove_non_empty_string(&mut source, target, "client_family");
+    remove_non_empty_string(&mut source, target, REQUESTED_REASONING_EFFORT_METADATA_KEY);
+    remove_non_empty_string(&mut source, target, PROVIDER_REASONING_EFFORT_METADATA_KEY);
     remove_bool(&mut source, target, "client_requested_stream");
     remove_bool(&mut source, target, "upstream_is_stream");
     remove_non_null_value(&mut source, target, "client_session_affinity");

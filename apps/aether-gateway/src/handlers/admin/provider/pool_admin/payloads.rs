@@ -299,9 +299,15 @@ fn admin_pool_format_codex_window_minutes(total_minutes: u64) -> String {
 fn admin_pool_codex_quota_part_from_window_value(
     quota_snapshot: &serde_json::Map<String, serde_json::Value>,
     window: &serde_json::Map<String, serde_json::Value>,
+    fallback_label: Option<&str>,
     now_unix_secs: u64,
     show_reset_without_consumption: bool,
 ) -> Option<String> {
+    let label = fallback_label
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| admin_pool_codex_window_label(window));
     let used_percent = admin_pool_quota_window_used_percent(window)?;
     let reset_seconds =
         admin_pool_quota_window_reset_seconds(quota_snapshot, window, now_unix_secs);
@@ -312,7 +318,7 @@ fn admin_pool_codex_quota_part_from_window_value(
     };
     let mut part = format!(
         "{}剩余 {}",
-        admin_pool_codex_window_label(window),
+        label,
         admin_pool_format_percent(100.0 - effective_used_percent)
     );
     if show_reset_without_consumption
@@ -339,6 +345,7 @@ fn admin_pool_build_codex_account_quota_from_snapshot(
         if let Some(part) = admin_pool_codex_quota_part_from_window_value(
             quota_snapshot,
             window,
+            None,
             now_unix_secs,
             exhausted,
         ) {
@@ -368,6 +375,39 @@ fn admin_pool_build_codex_account_quota_from_snapshot(
     }
 
     None
+}
+
+fn admin_pool_build_grok_oauth_account_quota_from_snapshot(
+    quota_snapshot: &serde_json::Map<String, serde_json::Value>,
+) -> Option<String> {
+    let now_unix_secs = chrono::Utc::now().timestamp().max(0) as u64;
+    let exhausted = quota_snapshot
+        .get("exhausted")
+        .and_then(admin_provider_quota_pure::coerce_json_bool)
+        .unwrap_or(false);
+    let parts = [("weekly", "周"), ("monthly", "月")]
+        .into_iter()
+        .filter_map(|(code, label)| {
+            let window = admin_pool_quota_window(quota_snapshot, code)?;
+            admin_pool_codex_quota_part_from_window_value(
+                quota_snapshot,
+                window,
+                Some(label),
+                now_unix_secs,
+                exhausted,
+            )
+        })
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        quota_snapshot
+            .get("label")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    } else {
+        Some(parts.join(" | "))
+    }
 }
 
 fn admin_pool_current_unix_secs() -> u64 {
@@ -1004,6 +1044,13 @@ fn admin_pool_build_account_quota(
                 return Some(account_quota);
             }
         }
+        "grok_oauth" => {
+            if let Some(account_quota) =
+                admin_pool_build_grok_oauth_account_quota_from_snapshot(quota_snapshot)
+            {
+                return Some(account_quota);
+            }
+        }
         "gemini_cli" => {
             if let Some(account_quota) =
                 admin_pool_build_gemini_cli_account_quota_from_snapshot(quota_snapshot)
@@ -1609,6 +1656,33 @@ mod tests {
         assert_eq!(
             admin_pool_build_account_quota("grok", Some(quota_snapshot)),
             Some("Auto剩余 40.0% (60/150) | Heavy剩余 0.0% (0/20)".to_string())
+        );
+    }
+
+    #[test]
+    fn grok_oauth_billing_quota_is_rendered_for_pool_rows() {
+        let quota_snapshot = json!({
+            "provider_type": "grok_oauth",
+            "code": "ok",
+            "exhausted": false,
+            "windows": [
+                {
+                    "code": "weekly",
+                    "scope": "account",
+                    "remaining_ratio": 0.75
+                },
+                {
+                    "code": "monthly",
+                    "scope": "account",
+                    "remaining_ratio": 0.70
+                }
+            ]
+        });
+        let quota_snapshot = quota_snapshot.as_object().unwrap();
+
+        assert_eq!(
+            admin_pool_build_account_quota("grok_oauth", Some(quota_snapshot)),
+            Some("周剩余 75.0% | 月剩余 70.0%".to_string())
         );
     }
 }

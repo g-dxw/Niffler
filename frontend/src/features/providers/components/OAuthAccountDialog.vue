@@ -436,13 +436,15 @@
               <div class="space-y-2">
                 <div class="flex items-center gap-2">
                   <span class="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-semibold shrink-0">2</span>
-                  <span class="text-xs font-medium">{{ t('oauthAccount.pasteCallback') }}</span>
+                  <span class="text-xs font-medium">
+                    {{ isGrokOAuthProvider ? '粘贴授权码' : t('oauthAccount.pasteCallback') }}
+                  </span>
                 </div>
                 <div class="pl-6">
                   <Textarea
                     v-model="oauth.callback_url"
                     :disabled="oauthBusy"
-                    placeholder="http://localhost:xxx/callback?code=..."
+                    :placeholder="isGrokOAuthProvider ? '粘贴 xAI 页面显示的授权码' : 'http://localhost:xxx/callback?code=...'"
                     class="min-h-[120px] text-xs font-mono break-all !rounded-xl"
                     spellcheck="false"
                   />
@@ -743,6 +745,7 @@ const isOpen = computed(() => props.open)
 
 const isKiroProvider = computed(() => (props.providerType || '').toLowerCase() === 'kiro')
 const isGrokProvider = computed(() => (props.providerType || '').toLowerCase() === 'grok')
+const isGrokOAuthProvider = computed(() => (props.providerType || '').toLowerCase() === 'grok_oauth')
 const showAuthorizationMode = computed(() => !isGrokProvider.value)
 const defaultMode = computed<DialogMode>(() => (isGrokProvider.value ? 'import' : 'oauth'))
 
@@ -1079,7 +1082,7 @@ async function handleCompleteOAuth() {
   oauth.value.completing = true
   try {
     const result = await completeProviderLevelOAuth(props.providerId, {
-      callback_url: oauth.value.callback_url.trim(),
+      callback_url: normalizeOAuthCallbackUrl(oauth.value.callback_url),
       proxy_node_id: selectedProxyNodeId.value || undefined,
     })
     if (requestId !== oauthCompleteRequestId) return
@@ -1094,6 +1097,29 @@ async function handleCompleteOAuth() {
     if (requestId === oauthCompleteRequestId) {
       oauth.value.completing = false
     }
+  }
+}
+
+function normalizeOAuthCallbackUrl(input: string): string {
+  const trimmed = input.trim()
+  if (!isGrokOAuthProvider.value) return trimmed
+
+  try {
+    if (new URL(trimmed).searchParams.has('code')) return trimmed
+  } catch {
+    // xAI displays a bare authorization code instead of redirecting to localhost.
+  }
+
+  try {
+    const state = new URL(oauth.value.authorization_url).searchParams.get('state')
+    if (!state) return trimmed
+
+    const callbackUrl = new URL(oauth.value.redirect_uri)
+    callbackUrl.searchParams.set('code', trimmed)
+    callbackUrl.searchParams.set('state', state)
+    return callbackUrl.toString()
+  } catch {
+    return trimmed
   }
 }
 

@@ -18,6 +18,7 @@ use crate::formats::openai::responses::codex::{
     apply_codex_openai_responses_special_body_edits_with_bridge_config,
     apply_openai_responses_compact_special_body_edits, codex_hosted_image_generation_tool_allowed,
 };
+use crate::formats::openai::responses::grok_oauth::apply_grok_oauth_responses_reasoning_default;
 use crate::formats::shared::standard_normalize::build_local_openai_chat_request_body_with_model_directives;
 
 #[allow(clippy::too_many_arguments)]
@@ -145,6 +146,12 @@ pub fn build_standard_request_body_with_model_directives_and_request_headers(
             enable_codex_image_generation_tool,
         );
     }
+    apply_grok_oauth_responses_reasoning_default(
+        &mut provider_request_body,
+        provider_type,
+        provider_api_format,
+        mapped_model,
+    );
     apply_openai_responses_compact_special_body_edits(
         &mut provider_request_body,
         provider_api_format,
@@ -1499,5 +1506,45 @@ mod tests {
             claude["tools"][0]["input_schema"].get("required").is_some(),
             "surface conversion should preserve the Claude tool schema before transport envelopes"
         );
+    }
+
+    #[test]
+    fn grok_oauth_grok_4_5_records_the_effective_reasoning_effort() {
+        let request = json!({
+            "model": "grok-4.5",
+            "input": "hello"
+        });
+        let converted = build_standard_request_body(
+            &request,
+            "openai:responses",
+            "grok-4.5",
+            "grok_oauth",
+            "openai:responses",
+            "/v1/responses",
+            true,
+            None,
+            None,
+        )
+        .expect("Grok OAuth Responses request should build");
+        assert_eq!(converted["reasoning"]["effort"], "high");
+
+        let explicit_request = json!({
+            "model": "grok-4.5",
+            "input": "hello",
+            "reasoning": {"effort": "medium"}
+        });
+        let explicit = build_standard_request_body(
+            &explicit_request,
+            "openai:responses",
+            "grok-4.5",
+            "grok_oauth",
+            "openai:responses",
+            "/v1/responses",
+            true,
+            None,
+            None,
+        )
+        .expect("explicit Grok OAuth reasoning effort should build");
+        assert_eq!(explicit["reasoning"]["effort"], "medium");
     }
 }
