@@ -705,6 +705,10 @@ struct Args {
     #[arg(long, hide = true, default_value_t = false)]
     print_postgres_migration_manifest: bool,
 
+    /// Verify that the configured PostgreSQL migration history is compatible with this binary.
+    #[arg(long, hide = true, default_value_t = false)]
+    check_postgres_migration_compatibility: bool,
+
     #[arg(
         long,
         hide = true,
@@ -1075,6 +1079,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         print!("{}", postgres_migration_manifest_text());
         return Ok(());
     }
+    if args.check_postgres_migration_compatibility {
+        return run_postgres_migration_compatibility_check(&args).await;
+    }
     if let Some(command) = args.command.as_ref() {
         init_service_runtime(args.runtime_config()?)?;
         return run_data_command(command).await;
@@ -1312,6 +1319,30 @@ fn postgres_migration_manifest_text() -> String {
         .join("\n");
     output.push('\n');
     output
+}
+
+async fn run_postgres_migration_compatibility_check(
+    args: &Args,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let database = required_sql_database_config(&args.data)?;
+    if database.driver != DatabaseDriver::Postgres {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--check-postgres-migration-compatibility requires a PostgreSQL database URL",
+        )
+        .into());
+    }
+
+    let state = AppState::new()?.with_data_config(args.data.to_config())?;
+    let pending = state
+        .pending_database_migrations()
+        .await?
+        .ok_or_else(|| std::io::Error::other("PostgreSQL data backend is not configured"))?;
+    println!(
+        "PostgreSQL migration compatibility verified; pending migrations: {}",
+        pending.len()
+    );
+    Ok(())
 }
 
 async fn run_data_command(command: &DataCommand) -> Result<(), Box<dyn std::error::Error>> {
@@ -1684,6 +1715,7 @@ mod tests {
             app_port: 8084,
             healthcheck: false,
             print_postgres_migration_manifest: false,
+            check_postgres_migration_compatibility: false,
             healthcheck_timeout_ms: 3_000,
             deployment_topology: DeploymentTopologyArg::SingleNode,
             node_role: NodeRoleArg::All,
@@ -2083,6 +2115,31 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("AETHER_DATABASE_DRIVER/AETHER_DATABASE_URL"));
         assert!(message.contains("--migrate"));
+    }
+
+    #[tokio::test]
+    async fn postgres_migration_compatibility_check_requires_database_url() {
+        let args = test_args();
+        let error = super::run_postgres_migration_compatibility_check(&args)
+            .await
+            .expect_err("missing database URL should fail");
+        assert!(error
+            .to_string()
+            .contains("AETHER_DATABASE_DRIVER/AETHER_DATABASE_URL"));
+    }
+
+    #[tokio::test]
+    async fn postgres_migration_compatibility_check_rejects_non_postgres_database() {
+        let mut args = test_args();
+        args.data.database_driver = Some(DatabaseDriverArg::Sqlite);
+        args.data.database_url = Some("sqlite::memory:".to_string());
+
+        let error = super::run_postgres_migration_compatibility_check(&args)
+            .await
+            .expect_err("SQLite should not satisfy a PostgreSQL release check");
+        assert!(error
+            .to_string()
+            .contains("requires a PostgreSQL database URL"));
     }
 
     #[tokio::test]

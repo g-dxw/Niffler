@@ -370,6 +370,14 @@ jobs:
           AETHER_TEST_POSTGRES_URL: postgres://aether:aether@127.0.0.1:5432/aether_test
         run: cargo test -p aether-data postgres_migrations_create_core_config_tables_when_url_is_set --lib -- --nocapture
 
+      - name: Run release migration compatibility smoke test
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
+          AETHER_DATABASE_DRIVER: postgres
+          AETHER_DATABASE_URL: postgres://aether:aether@127.0.0.1:5432/aether_test
+        run: cargo run -p aether-gateway --bin aether-gateway -- --check-postgres-migration-compatibility
+
       - name: Run Postgres core export smoke test
         env:
           RUSTC_WRAPPER: sccache
