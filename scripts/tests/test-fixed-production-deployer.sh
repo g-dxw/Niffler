@@ -47,14 +47,12 @@ case "${1:-}" in
     compose)
         shift
         case "${1:-}" in
-            version|up|ps)
+            version|up)
                 exit 0
                 ;;
-            exec)
-                if [[ "$*" == *"COUNT(*)"* ]]; then
-                    printf '0\n'
-                else
-                    printf '%s\n' "$FAKE_APPLIED_MIGRATIONS"
+            ps)
+                if [ "${2:-}" = "-q" ] && [ "${3:-}" = "frontdoor" ]; then
+                    printf 'frontdoor-container\n'
                 fi
                 exit 0
                 ;;
@@ -74,9 +72,20 @@ case "${1:-}" in
     load)
         exit 0
         ;;
+    inspect)
+        if [ "${2:-}" = "frontdoor-container" ]; then
+            printf 'AETHER_DATABASE_DRIVER=postgres\n'
+            printf 'AETHER_DATABASE_URL=postgres://example.invalid/aether\n'
+            exit 0
+        fi
+        ;;
     run)
-        printf '%s\n' "$FAKE_TARGET_MIGRATIONS"
-        exit 0
+        if [ "${FAKE_MIGRATION_COMPATIBLE:-true}" = "true" ]; then
+            printf 'PostgreSQL migration compatibility verified; pending migrations: 0\n'
+            exit 0
+        fi
+        echo 'VersionMissing(20260723121000)' >&2
+        exit 1
         ;;
 esac
 echo "unexpected fake docker invocation: $*" >&2
@@ -99,10 +108,9 @@ export REPO_URL="https://example.invalid/Niffler.git"
 export RELEASE_ROOT
 export FAKE_MAIN_COMMIT="$TARGET_COMMIT"
 export FAKE_TARGET_COMMIT="$TARGET_COMMIT"
-export FAKE_TARGET_MIGRATIONS=$'20260723120000\n20260723121000\n20260723122000'
-export FAKE_APPLIED_MIGRATIONS=$'20260723120000\n20260723121000'
 export FAKE_DOCKER_LOG="$DOCKER_LOG"
 export FAKE_CURL_FAIL=false
+export FAKE_MIGRATION_COMPATIBLE=true
 
 reset_fixture() {
     rm -rf "$REMOTE_DIR" "$RELEASE_ROOT"
@@ -150,17 +158,17 @@ assert_contains "$TEST_ROOT/not-main.out" "is not current origin/main"
 assert_not_contains "$DOCKER_LOG" "load -i"
 
 reset_fixture
-export FAKE_TARGET_MIGRATIONS=$'20260723120000'
+export FAKE_MIGRATION_COMPATIBLE=false
 if run_deployer "$TARGET_COMMIT" >"$TEST_ROOT/missing-migration.out" 2>&1; then
     echo "missing-migration deployment unexpectedly succeeded" >&2
     exit 1
 fi
-assert_contains "$TEST_ROOT/missing-migration.out" "missing production migration versions"
+assert_contains "$TEST_ROOT/missing-migration.out" "incompatible with the active production PostgreSQL migration history"
 assert_not_contains "$DOCKER_LOG" "compose up"
 test "$(cat "$REMOTE_DIR/.niffler-deployed-commit")" = "$CURRENT_COMMIT"
 
 reset_fixture
-export FAKE_TARGET_MIGRATIONS=$'20260723120000\n20260723121000\n20260723122000'
+export FAKE_MIGRATION_COMPATIBLE=true
 export FAKE_CURL_FAIL=true
 if run_deployer "$TARGET_COMMIT" >"$TEST_ROOT/health-failure.out" 2>&1; then
     echo "health-failure deployment unexpectedly succeeded" >&2

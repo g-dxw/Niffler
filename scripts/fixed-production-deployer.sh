@@ -140,7 +140,7 @@ if [ ! -f "$REMOTE_DIR/docker-compose.yml" ]; then
     die "compose file not found: $REMOTE_DIR/docker-compose.yml"
 fi
 
-for command_name in git docker curl awk grep sort comm mktemp install cp mv date sed tr; do
+for command_name in git docker curl awk grep mktemp install cp mv date sed tr chmod; do
     command -v "$command_name" >/dev/null 2>&1 || die "required command not found: $command_name"
 done
 
@@ -233,39 +233,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-TARGET_MANIFEST="$TMP_DIR/target-migrations.txt"
-APPLIED_MANIFEST="$TMP_DIR/applied-migrations.txt"
-MISSING_MANIFEST="$TMP_DIR/missing-migrations.txt"
-
-docker run --rm --entrypoint /usr/local/bin/aether-gateway \
-    "$TARGET_IMAGE" --print-postgres-migration-manifest \
-    | sort -n -u > "$TARGET_MANIFEST"
-if [ ! -s "$TARGET_MANIFEST" ] \
-    || grep -Evq '^[0-9]+$' "$TARGET_MANIFEST"; then
-    die "target image returned an invalid PostgreSQL migration manifest"
-fi
-
 cd "$REMOTE_DIR"
-DIRTY_MIGRATIONS="$(
-    "${DC[@]}" exec -T postgres \
-        psql -U postgres -d aether -At \
-        -c "SELECT COUNT(*) FROM public._sqlx_migrations WHERE NOT success"
-)"
-if [ "$DIRTY_MIGRATIONS" != "0" ]; then
-    die "production database contains $DIRTY_MIGRATIONS dirty migration record(s)"
+FRONTDOOR_CONTAINER="$("${DC[@]}" ps -q frontdoor)"
+if [ -z "$FRONTDOOR_CONTAINER" ]; then
+    die "frontdoor container is not running; cannot read the active production database environment"
 fi
-"${DC[@]}" exec -T postgres \
-    psql -U postgres -d aether -At \
-    -c "SELECT version FROM public._sqlx_migrations WHERE success ORDER BY version" \
-    | sort -n -u > "$APPLIED_MANIFEST"
-if grep -Evq '^[0-9]+$' "$APPLIED_MANIFEST"; then
-    die "production database returned an invalid applied migration manifest"
-fi
-comm -23 "$APPLIED_MANIFEST" "$TARGET_MANIFEST" > "$MISSING_MANIFEST"
-if [ -s "$MISSING_MANIFEST" ]; then
-    echo "Target image is missing production migration versions:" >&2
-    sed -n '1,40p' "$MISSING_MANIFEST" >&2
-    exit 1
+CURRENT_ENV_FILE="$TMP_DIR/frontdoor.env"
+docker inspect "$FRONTDOOR_CONTAINER" \
+    --format '{{range .Config.Env}}{{println .}}{{end}}' > "$CURRENT_ENV_FILE"
+chmod 0600 "$CURRENT_ENV_FILE"
+if ! docker run --rm \
+    --network "container:$FRONTDOOR_CONTAINER" \
+    --env-file "$CURRENT_ENV_FILE" \
+    --entrypoint /usr/local/bin/aether-gateway \
+    "$TARGET_IMAGE" \
+    --check-postgres-migration-compatibility; then
+    die "target image is incompatible with the active production PostgreSQL migration history"
 fi
 
 ENV_PATH="$REMOTE_DIR/.env"

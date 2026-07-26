@@ -37,7 +37,11 @@
 - 首次部署没有现有应用镜像时，只检查待上线提交是否包含最新 `main`。
 - 明确回滚必须额外传入 `--allow-rollback`，跳过提交继承检查；不能将该参数用于普通发布。
 - 固定部署器从公开 Git 远端自行同步 `main`，不信任客户端传入的主线提交号。
-- 镜像提供内嵌 PostgreSQL 迁移版本清单；固定部署器只读查询生产 `_sqlx_migrations`，目标镜像缺少任一已执行版本时必须在重启容器前停止。
+- 镜像提供只读 PostgreSQL 迁移兼容检查入口。固定部署器使用当前
+  `frontdoor` 容器的实际环境和网络运行目标镜像，由目标镜像直接检查生产
+  `_sqlx_migrations`；数据库可以是外部 PostgreSQL，不要求同一 Compose 项目中
+  存在名为 `postgres` 的服务。
+- 生产迁移记录为脏状态，或目标镜像缺少任一已执行版本时，必须在重启容器前停止。
 - 固定部署器保留当前镜像标签，使用准确提交标签重建服务并通过 `docker compose up --wait` 等待健康。
 - 新服务未按时健康、源站健康请求失败或公开健康请求失败时，固定部署器自动恢复旧镜像和旧服务。
 - 只有新服务全部健康后，服务器才写入 `.niffler-deployed-commit`，记录本次实际上线的完整提交号。
@@ -84,8 +88,9 @@ GH_REPO=ryfineZ/Niffler \
 ```
 
 这个脚本会下载指定提交对应的 `Build App Image` 工作流产物并传到服务器，
-随后调用固定部署器。固定部署器重新确认远端 `main`、当前生产提交、镜像标签和
-迁移清单后，才重启 `frontdoor` 和 `background`。Postgres 和 Redis 不需要重启。
+随后调用固定部署器。固定部署器重新确认远端 `main`、当前生产提交、镜像标签，
+并让目标镜像使用当前 `frontdoor` 的实际数据库环境完成只读迁移兼容检查后，才
+重启 `frontdoor` 和 `background`。Postgres 和 Redis 不需要重启。
 
 如果指定提交没有成功的 `Build App Image` 工作流、不是远端 `main`、没有包含
 当前线上提交或缺少生产已执行迁移，发布会直接停止。需要先完成分支合并并重新触发 CI。
@@ -138,6 +143,8 @@ GH_REPO=ryfineZ/Niffler \
 - `Build App Image` 的 `Verify deployment tooling` 任务通过后才运行最终镜像封装。
 - GitHub Actions 的 `Build App Image` 工作流成功，且日志不再出现官方 action 运行在 Node 20 的弃用警告。
 - 正常发布目标不等于远端 `main` 时，固定部署器必须拒绝执行。
+- 数据库部署在 Compose 项目之外时，固定部署器仍必须通过目标镜像完成只读迁移
+  兼容检查，不能依赖 `docker compose exec postgres`。
 - 目标镜像缺少生产已执行迁移时，固定部署器必须在重建容器前拒绝执行。
 - 新容器健康失败时，固定部署器必须恢复旧镜像，且部署状态文件保持旧提交。
 - 服务器执行发布脚本后，`docker compose ps` 显示应用容器健康，状态文件、
