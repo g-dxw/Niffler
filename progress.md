@@ -1,5 +1,63 @@
 # Progress Log
 
+## 2026-07-27 GitHub 受保护生产发布与双人审核
+
+- 用户同意继续配置 GitHub 生产发布环境和第二名审核者。
+- 已启用文件化计划，创建分支 `codex/secure-production-deploy-20260727`。
+- 正在执行 Phase 1，只读审计 GitHub Actions、环境、Secrets、协作者、工作流和
+  生产主机权限；尚未生成密钥、修改服务器授权或写入 GitHub Secret。
+- 前一轮审查误清理的 172 个本地上游版本标签已从 `upstream` 全部恢复，
+  远端仓库和代码提交未受影响。
+- GitHub 审计确认仓库没有环境、Secrets、Variables、Deploy Keys 或 Runner，
+  只有 `ryfineZ` 一名管理员。
+- 生产主机审计确认当前入口直接登录 root，唯一授权公钥无命令限制，且没有专用
+  发布用户；下一步必须先确定受限账户和受控命令协议，不能直接上传 Actions 密钥。
+- 已检查 `Build App Image` 和 `deploy-ci-artifact.sh`：现有协议要求 SSH 用户查询
+  Docker 状态并运行任意远程脚本，不能直接降权复用。
+- 已核对 GitHub 官方环境与 Actions 安全文档：生产 Secret 应放在仅允许 `main`
+  的环境中，第二名维护者作为环境审核者并禁止自行批准；生产 Job 使用的 Action
+  应固定到完整提交 SHA。
+- 已确认生产 `.env` 和 Compose 文件仅 root 可读，专用发布用户不需要也不应加入
+  Docker 组；固定部署器已经覆盖主线、镜像 revision、迁移、健康和回退验证。
+- Phase 1 完成，进入 Phase 2：先更新发布设计与运维文档，再修改脚本和工作流。
+- 已先更新 `docs/operations/ci-image-deploy.md`，记录 GitHub 环境保护、专用用户、
+  固定 SSH 协议、root 包装器、密钥轮换和验证要求。
+- Phase 2 完成，进入 Phase 3：实现并测试受限发布链路。
+- 已先新增受限 SSH、root 包装器和安装脚本的安全边界测试；首次运行按预期失败，
+  原因是三个实现脚本尚不存在。
+- 已实现受限 SSH 命令分派器、root 固定参数包装器和服务器安装脚本；只允许查询
+  状态、上传准确提交镜像和部署该提交，不向 Actions 开放交互式 shell 或 Docker。
+- 首次成功路径验证发现 macOS 的 `/var` 与 `/private/var` 真实路径差异，正在修正
+  包装器的目录边界比较；权限、提交号、所有者、模式和文件大小检查保持不变。
+- 路径规范化修正后，受限生产访问测试已全部通过。
+- 已先新增发布客户端下载、上传哈希核对、固定命令调用和禁止回滚的测试；下一步
+  实现 `deploy-ci-artifact.sh` 的受限 Actions 模式。
+- `deploy-ci-artifact.sh` 已支持受限 Actions 模式：沿用成功 CI 产物和提交继承
+  检查，通过固定 SSH 命令查询、上传、核对 SHA-256 后部署，并禁止自动化回滚。
+- 已新增独立 `Deploy Production` 工作流：仅允许 `main`，要求输入提交等于当前
+  `main`，使用 `production` 环境、主机指纹校验、串行发布和完整 SHA 固定 Action。
+- 已将新脚本和测试接入 `Build App Image` 与 `Release Tooling CI`；受限入口、
+  发布客户端、固定部署器、提交继承和生产工作流安全测试均已通过。
+- 隔离 Ubuntu 容器首次安装验证因新增脚本尚未设置可执行位而停止，容器和生产
+  均未发生配置变更；正在修正文件模式后重试。
+- 新脚本已设置可执行位；隔离 Ubuntu 24.04 容器安装验证通过：用户和目录权限
+  正确，固定 `status` 命令可经白名单 sudo 执行，任意 `/bin/true` sudo 被拒绝。
+- 生产主机只读兼容性检查通过：Ubuntu 22.04、OpenSSH 8.9、sudo 1.9.9 和安装
+  所需命令齐全，SSH 严格权限检查开启，客户端环境变量注入关闭。
+- 安全复核发现并修正主机密钥信任范围：新增独立验证脚本，只将指纹精确匹配的
+  扫描密钥写入 `known_hosts`；双密钥和完全不匹配回归测试均通过。
+- 全部新增和修改 Shell 脚本已通过 ShellCheck，生产工作流 YAML 语法检查通过。
+- 已创建本地安全发布提交；首次推送遇到 GitHub 空响应，API 确认远端没有创建
+  该分支，正在保留本地提交并安全重试。
+- HTTPS 推送因当前 OAuth 令牌没有 `workflow` 权限被 GitHub 拒绝，随后使用已认证
+  的 GitHub SSH 身份成功创建远端分支；API 已确认远端与本地提交 SHA 一致。
+- PR #12 首轮 `Release tooling` 失败，日志确认 Linux 的 `stat -f` 返回文件系统
+  信息而非文件属性；已修正跨平台参数顺序，准备同时在 macOS 和 Linux 重跑。
+- macOS 回归通过；最小 Ubuntu 复验继续发现测试写死依赖 `shasum`，已改为与生产
+  脚本相同的 `sha256sum` 优先策略。
+- Ubuntu 24.04 普通用户环境中，受限生产访问和主机密钥验证测试均已通过；Linux
+  与 macOS 的属性读取和摘要计算路径现已分别覆盖。
+
 ## 2026-07-23 Codex 上游配额窗口
 
 - 已确认当前任务范围扩大为所有上游窗口，至少包含 5H、7D、1M。

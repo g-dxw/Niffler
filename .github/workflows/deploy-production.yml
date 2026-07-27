@@ -1,0 +1,100 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full 40-character main commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy approved main image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://niffler.org
+    steps:
+      - name: Check out approved main
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact main commit
+        env:
+          TARGET_COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${TARGET_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "commit must be a lowercase 40-character Git SHA" >&2
+            exit 1
+          fi
+          if [[ "${TARGET_COMMIT}" != "${GITHUB_SHA}" ]]; then
+            echo "commit must equal the current main commit ${GITHUB_SHA}" >&2
+            exit 1
+          fi
+
+      - name: Configure verified production SSH
+        env:
+          SSH_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_HOST_FINGERPRINT: ${{ secrets.PRODUCTION_SSH_HOST_FINGERPRINT }}
+          SSH_USER: ${{ vars.PRODUCTION_SSH_USER }}
+          SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${SSH_USER}" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+            echo "PRODUCTION_SSH_USER is invalid" >&2
+            exit 1
+          fi
+          if [[ -z "${SSH_PRIVATE_KEY}" ]]; then
+            echo "PRODUCTION_SSH_PRIVATE_KEY is required" >&2
+            exit 1
+          fi
+
+          ssh_dir="${RUNNER_TEMP}/niffler-production-ssh"
+          install -d -m 0700 "${ssh_dir}"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${ssh_dir}/id_ed25519"
+          chmod 0600 "${ssh_dir}/id_ed25519"
+          ssh-keygen -y -f "${ssh_dir}/id_ed25519" >/dev/null
+
+          scripts/verify-ssh-host-key.sh \
+            --host "${SSH_HOST}" \
+            --port "${SSH_PORT}" \
+            --fingerprint "${SSH_HOST_FINGERPRINT}" \
+            --output "${ssh_dir}/known_hosts"
+
+      - name: Deploy verified CI artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_COMMIT: ${{ inputs.commit }}
+          SSH_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          SSH_USER: ${{ vars.PRODUCTION_SSH_USER }}
+          SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh_dir="${RUNNER_TEMP}/niffler-production-ssh"
+          export SSH_OPTS="-p ${SSH_PORT} -i ${ssh_dir}/id_ed25519 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts"
+          scripts/deploy-ci-artifact.sh \
+            --host "${SSH_USER}@${SSH_HOST}" \
+            --commit "${TARGET_COMMIT}" \
+            --restricted-actions
+
+      - name: Remove production SSH material
+        if: always()
+        run: |
+          ssh_dir="${RUNNER_TEMP}/niffler-production-ssh"
+          rm -f -- "${ssh_dir}/id_ed25519" "${ssh_dir}/known_hosts"
+          rmdir -- "${ssh_dir}" 2>/dev/null || true

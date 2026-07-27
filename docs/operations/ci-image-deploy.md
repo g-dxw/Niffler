@@ -73,6 +73,103 @@
 - 服务器 `.env` 中的 `APP_IMAGE` 应设置为 `niffler-app:latest`，由 `docker load` 后的本地镜像提供。
 - 服务器应用目录新增 `.niffler-deployed-commit` 状态文件，不改变数据库、Redis 或业务数据。
 
+## GitHub 受保护生产环境
+
+### 目标与非目标
+
+GitHub `production` 环境负责保护专用 SSH 凭证，并在人工审核后调用服务器已有的
+固定部署器。它不替代固定部署器的主线、迁移、健康和回退判断。
+
+本阶段不执行以下操作：
+
+- 不在每次 `main` 推送后自动发布；
+- 不允许拉取请求或任意分支接触生产 Secret；
+- 不上传或复用管理员个人 SSH 私钥；
+- 不让 Actions SSH 用户加入 Docker 组或获得任意 root 命令；
+- 不把自托管 Runner 安装到生产主机；
+- 不从 GitHub 工作流提供普通发布之外的回滚入口。
+
+### GitHub 环境保护
+
+`production` 环境必须同时满足：
+
+- 只允许 `main` 分支部署；
+- required reviewers 同时包含仓库所有者和第二名维护者；
+- 禁止发起人批准自己的部署；
+- 禁止管理员绕过环境保护；
+- SSH 私钥、主机地址和主机密钥指纹保存为环境 Secret；
+- SSH 用户和端口保存为环境 Variable；
+- 生产 Job 只声明 `contents: read` 和 `actions: read`；
+- 生产 Job 使用的第三方 Action 固定到经过核对的完整提交 SHA。
+
+环境 Secret 只在 required reviewer 批准后提供给 Runner。工作流仍必须显式检查
+`github.ref == 'refs/heads/main'`，不能只依赖环境名称。
+
+### 服务器最小权限边界
+
+生产主机新增 `niffler-deploy` 用户。该用户：
+
+- 不属于 Docker 组；
+- 不能读取 `/opt/niffler-app/.env` 或 `docker-compose.yml`；
+- 没有普通 sudo 权限；
+- 只能通过专用 Ed25519 公钥登录；
+- `authorized_keys` 使用 `restrict` 和固定命令，禁止交互 Shell、PTY、端口转发、
+  Agent 转发和 X11 转发。
+
+固定 SSH 命令只接受三种协议：
+
+```text
+status
+upload <40 位小写提交号>
+deploy <40 位小写提交号>
+```
+
+- `status` 只返回 `.niffler-deployed-commit`；
+- `upload` 从标准输入接收镜像文件，写入用户专属目录，限制最大文件大小并返回
+  SHA-256；
+- `deploy` 只允许通过 sudo 调用 root 所有的固定包装器。
+
+root 包装器只接受 `status` 和 `deploy <提交号>`。执行部署前必须验证：
+
+- 调用者是 `niffler-deploy`；
+- 提交号格式正确；
+- 镜像是专用目录中的普通文件，不是符号链接；
+- 文件所有者、权限和真实路径符合预期；
+- 镜像复制到 root 所有的发布临时目录后，再交给
+  `/opt/niffler-release/bin/deploy-production`；
+- 远端目录、服务名、状态文件和健康地址全部使用固定值，Actions 不能传入。
+
+专用 SSH 密钥即代表“允许发布经过审核的 `main` 镜像”，仍属于高权限生产凭证。
+如果 Secret、维护者权限或工作流存在泄露迹象，必须同时删除服务器公钥和 GitHub
+环境 Secret，再生成新密钥；不能只修改其中一侧。
+
+### 工作流
+
+生产发布使用独立的手动工作流，不在镜像构建尚未结束时发布：
+
+1. 为准确 `main` 提交运行并等待 `Build App Image` 成功；
+2. 从 `main` 手动触发 `Deploy Production`，输入同一准确提交号；
+3. Job 进入 `production` 环境等待另一名维护者批准；
+4. Runner 核对 SSH 主机密钥指纹；
+5. 发布脚本查找该提交的成功镜像工作流，验证当前生产提交继承关系；
+6. 通过受限 SSH 协议上传镜像并调用固定部署器；
+7. 固定部署器完成镜像、迁移、健康和自动回退检查；
+8. 工作流结束后删除 Runner 上的私钥和临时文件。
+
+同一时间只允许一个生产发布，后发任务不能取消正在执行的生产发布。
+
+### 验证要求
+
+- 非 `main` ref 触发时，生产 Job 必须在读取 Secret 前停止；
+- 未经环境审核时，Runner 不得获得环境 Secret；
+- 错误主机密钥指纹必须停止连接；
+- 固定 SSH 命令拒绝空命令、未知命令、额外参数和非法提交号；
+- 上传拒绝超限文件、路径逃逸和符号链接；
+- root 包装器拒绝非专用调用者、错误所有者和不符合规则的上传文件；
+- 专用用户不能执行 Docker 命令、读取生产配置或运行其它 sudo 命令；
+- 工作流只能部署已有成功 `Build App Image` 的当前 `main` 准确提交；
+- 部署后仍按本文既有要求执行两轮生产健康检查。
+
 ## 发布方式
 
 使用 CI 镜像文件发布。以 hd0526 为例：
@@ -135,6 +232,10 @@ GH_REPO=ryfineZ/Niffler \
 - `bash -n deploy.sh`
 - `bash -n scripts/deploy-ci-artifact.sh`
 - `bash -n scripts/fixed-production-deployer.sh`
+- `bash scripts/tests/test-actions-production-access.sh`
+- `bash scripts/tests/test-deploy-ci-restricted.sh`
+- `bash scripts/tests/test-production-workflow.sh`
+- `bash scripts/tests/test-verify-ssh-host-key.sh`
 - `bash scripts/tests/test-deploy-ancestry.sh`
 - `bash scripts/tests/test-fixed-production-deployer.sh`
 - 不传 `--run-id`、`--commit` 和 `--allow-latest-for-local` 时，`scripts/deploy-ci-artifact.sh` 必须拒绝执行。
@@ -166,3 +267,6 @@ ssh hd0526 'sudo install -m 0755 /tmp/deploy-production /opt/niffler-release/bin
 当前仓库没有 Actions 专用部署密钥或自托管运行器，因此生产发布暂由已授权管理员
 从本机调用固定部署器。配置专用发布凭证后，再将同一固定入口接入受保护的 GitHub
 `production` 环境；不得上传个人 SSH 私钥。
+
+GitHub 环境和 Secret 完成配置、专用用户安全验证通过后，上述临时说明由
+`Deploy Production` 工作流取代；管理员本机入口仍只作为紧急恢复手段保留。

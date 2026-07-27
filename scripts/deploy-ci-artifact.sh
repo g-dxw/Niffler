@@ -25,6 +25,7 @@ RUN_ID=""
 COMMIT_REF=""
 ALLOW_LATEST_FOR_LOCAL=false
 ALLOW_ROLLBACK=false
+RESTRICTED_ACTIONS=false
 
 usage() {
     cat <<'EOF'
@@ -37,6 +38,7 @@ Options:
   --commit <sha>           Git commit SHA; script resolves the successful workflow run for it
   --allow-latest-for-local Allow latest successful run selection. Only for local verification or temporary diagnostics.
   --allow-rollback         Explicitly deploy a commit that does not contain main or the current production commit.
+  --restricted-actions     Use the fixed production SSH protocol. Rollback is not available.
   -h, --help               Show help
 
 Environment:
@@ -93,6 +95,10 @@ while [ $# -gt 0 ]; do
             ALLOW_ROLLBACK=true
             shift
             ;;
+        --restricted-actions)
+            RESTRICTED_ACTIONS=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -111,15 +117,24 @@ if [ -z "$DEPLOY_HOST" ]; then
     exit 1
 fi
 
-for command_name in gh ssh scp; do
+REQUIRED_COMMANDS=(gh ssh)
+if [ "$RESTRICTED_ACTIONS" != true ]; then
+    REQUIRED_COMMANDS+=(scp)
+fi
+for command_name in "${REQUIRED_COMMANDS[@]}"; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         echo "Required command not found: $command_name"
         exit 1
     fi
 done
+read -r -a SSH_OPTIONS <<< "$SSH_OPTS"
 
 if [ -n "$RUN_ID" ] && [ -n "$COMMIT_REF" ]; then
     echo "Use only one of --run-id or --commit"
+    exit 1
+fi
+if [ "$RESTRICTED_ACTIONS" = true ] && [ "$ALLOW_ROLLBACK" = true ]; then
+    echo "The restricted Actions protocol does not allow --allow-rollback."
     exit 1
 fi
 
@@ -190,8 +205,11 @@ if ! git -C "$REPO_ROOT" cat-file -e "${TARGET_COMMIT}^{commit}" 2>/dev/null; th
     git -C "$REPO_ROOT" fetch --quiet "$GIT_REMOTE" "$TARGET_COMMIT"
 fi
 
-DEPLOYED_STATE="$(ssh $SSH_OPTS "$DEPLOY_HOST" bash -s -- \
-    "$REMOTE_DIR" "$APP_IMAGE" "$DEPLOY_STATE_FILE" <<'REMOTE_STATE'
+if [ "$RESTRICTED_ACTIONS" = true ]; then
+    DEPLOYED_STATE="$(ssh "${SSH_OPTIONS[@]}" "$DEPLOY_HOST" status)"
+else
+    DEPLOYED_STATE="$(ssh "${SSH_OPTIONS[@]}" "$DEPLOY_HOST" bash -s -- \
+        "$REMOTE_DIR" "$APP_IMAGE" "$DEPLOY_STATE_FILE" <<'REMOTE_STATE'
 set -euo pipefail
 
 REMOTE_DIR="$1"
@@ -233,7 +251,8 @@ fi
 
 printf '%s\n' "__unknown__"
 REMOTE_STATE
-)"
+    )"
+fi
 
 CURRENT_DEPLOYED_COMMIT=""
 case "$DEPLOYED_STATE" in
@@ -291,28 +310,51 @@ if [ ! -f "$IMAGE_TAR" ]; then
     exit 1
 fi
 
-echo ">>> Uploading image tar to $DEPLOY_HOST:$REMOTE_TAR..."
-scp $SSH_OPTS "$IMAGE_TAR" "$DEPLOY_HOST:$REMOTE_TAR"
+if [ "$RESTRICTED_ACTIONS" = true ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+        LOCAL_IMAGE_SHA256="$(sha256sum "$IMAGE_TAR" | awk '{print $1}')"
+    else
+        LOCAL_IMAGE_SHA256="$(shasum -a 256 "$IMAGE_TAR" | awk '{print $1}')"
+    fi
+    echo ">>> Uploading image tar through the restricted production protocol..."
+    UPLOAD_RESULT="$(
+        # TARGET_COMMIT is a validated lowercase 40-character SHA.
+        # shellcheck disable=SC2029
+        ssh "${SSH_OPTIONS[@]}" "$DEPLOY_HOST" \
+            upload "$TARGET_COMMIT" < "$IMAGE_TAR"
+    )"
+    if [ "$UPLOAD_RESULT" != "uploaded_sha256=$LOCAL_IMAGE_SHA256" ]; then
+        echo "Uploaded artifact SHA-256 does not match the local artifact." >&2
+        exit 1
+    fi
+    echo ">>> Handing the verified artifact to the restricted production deployer..."
+    # TARGET_COMMIT is a validated lowercase 40-character SHA.
+    # shellcheck disable=SC2029
+    ssh "${SSH_OPTIONS[@]}" "$DEPLOY_HOST" deploy "$TARGET_COMMIT"
+else
+    echo ">>> Uploading image tar to $DEPLOY_HOST:$REMOTE_TAR..."
+    scp "${SSH_OPTIONS[@]}" "$IMAGE_TAR" "$DEPLOY_HOST:$REMOTE_TAR"
 
-echo ">>> Handing the verified artifact to the fixed production deployer..."
-read -r -a LOCAL_SERVICES <<< "$APP_SERVICES"
-REMOTE_DEPLOY_ARGS=(
-    --image-tar "$REMOTE_TAR"
-    --target "$TARGET_COMMIT"
-    --remote-dir "$REMOTE_DIR"
-    --state-file "$DEPLOY_STATE_FILE"
-)
-for service in "${LOCAL_SERVICES[@]}"; do
-    REMOTE_DEPLOY_ARGS+=(--service "$service")
-done
-if [ "$ALLOW_ROLLBACK" = true ]; then
-    REMOTE_DEPLOY_ARGS+=(--allow-rollback)
-fi
+    echo ">>> Handing the verified artifact to the fixed production deployer..."
+    read -r -a LOCAL_SERVICES <<< "$APP_SERVICES"
+    REMOTE_DEPLOY_ARGS=(
+        --image-tar "$REMOTE_TAR"
+        --target "$TARGET_COMMIT"
+        --remote-dir "$REMOTE_DIR"
+        --state-file "$DEPLOY_STATE_FILE"
+    )
+    for service in "${LOCAL_SERVICES[@]}"; do
+        REMOTE_DEPLOY_ARGS+=(--service "$service")
+    done
+    if [ "$ALLOW_ROLLBACK" = true ]; then
+        REMOTE_DEPLOY_ARGS+=(--allow-rollback)
+    fi
 
-ssh $SSH_OPTS "$DEPLOY_HOST" bash -s -- \
-    "$FIXED_DEPLOYER_PATH" "${REMOTE_DEPLOY_ARGS[@]}" <<'REMOTE_SCRIPT'
+    ssh "${SSH_OPTIONS[@]}" "$DEPLOY_HOST" bash -s -- \
+        "$FIXED_DEPLOYER_PATH" "${REMOTE_DEPLOY_ARGS[@]}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 exec "$@"
 REMOTE_SCRIPT
+fi
 
 echo ">>> Done."
