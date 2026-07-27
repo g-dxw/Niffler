@@ -27,7 +27,7 @@ die() {
 
 file_size() {
     local file_path="$1"
-    stat -f '%z' "$file_path" 2>/dev/null || stat -c '%s' "$file_path"
+    stat -c '%s' "$file_path" 2>/dev/null || stat -f '%z' "$file_path"
 }
 
 file_sha256() {

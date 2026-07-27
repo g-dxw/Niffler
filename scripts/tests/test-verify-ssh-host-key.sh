@@ -50,8 +50,8 @@ if grep -Fq "$(awk '{print $2}' "$UNTRUSTED_PUBLIC_KEY")" "$KNOWN_HOSTS"; then
     echo "untrusted host key was written to known_hosts" >&2
     exit 1
 fi
-test "$(stat -f '%Lp' "$KNOWN_HOSTS" 2>/dev/null \
-    || stat -c '%a' "$KNOWN_HOSTS")" = "600"
+test "$(stat -c '%a' "$KNOWN_HOSTS" 2>/dev/null \
+    || stat -f '%Lp' "$KNOWN_HOSTS")" = "600"
 
 if "$VERIFY_SCRIPT" \
     --host example.test \

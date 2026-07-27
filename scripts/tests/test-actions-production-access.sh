@@ -89,11 +89,17 @@ upload_output="$(
         | SSH_ORIGINAL_COMMAND="upload $TARGET_COMMIT" bash "$SSH_COMMAND"
 )"
 test -f "$UPLOAD_DIR/niffler-app-$TARGET_COMMIT.tar"
-test "$(stat -f '%Lp' "$UPLOAD_DIR/niffler-app-$TARGET_COMMIT.tar" 2>/dev/null \
-    || stat -c '%a' "$UPLOAD_DIR/niffler-app-$TARGET_COMMIT.tar")" = "600"
-expected_upload_hash="$(
-    printf 'valid-image' | shasum -a 256 | awk '{print $1}'
-)"
+test "$(stat -c '%a' "$UPLOAD_DIR/niffler-app-$TARGET_COMMIT.tar" 2>/dev/null \
+    || stat -f '%Lp' "$UPLOAD_DIR/niffler-app-$TARGET_COMMIT.tar")" = "600"
+if command -v sha256sum >/dev/null 2>&1; then
+    expected_upload_hash="$(
+        printf 'valid-image' | sha256sum | awk '{print $1}'
+    )"
+else
+    expected_upload_hash="$(
+        printf 'valid-image' | shasum -a 256 | awk '{print $1}'
+    )"
+fi
 test "$upload_output" = "uploaded_sha256=$expected_upload_hash"
 
 export ACTIONS_MAX_UPLOAD_BYTES=4

@@ -34,17 +34,17 @@ die() {
 
 file_size() {
     local file_path="$1"
-    stat -f '%z' "$file_path" 2>/dev/null || stat -c '%s' "$file_path"
+    stat -c '%s' "$file_path" 2>/dev/null || stat -f '%z' "$file_path"
 }
 
 file_mode() {
     local file_path="$1"
-    stat -f '%Lp' "$file_path" 2>/dev/null || stat -c '%a' "$file_path"
+    stat -c '%a' "$file_path" 2>/dev/null || stat -f '%Lp' "$file_path"
 }
 
 file_uid() {
     local file_path="$1"
-    stat -f '%u' "$file_path" 2>/dev/null || stat -c '%u' "$file_path"
+    stat -c '%u' "$file_path" 2>/dev/null || stat -f '%u' "$file_path"
 }
 
 validate_target_commit() {

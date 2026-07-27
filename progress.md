@@ -51,6 +51,12 @@
   该分支，正在保留本地提交并安全重试。
 - HTTPS 推送因当前 OAuth 令牌没有 `workflow` 权限被 GitHub 拒绝，随后使用已认证
   的 GitHub SSH 身份成功创建远端分支；API 已确认远端与本地提交 SHA 一致。
+- PR #12 首轮 `Release tooling` 失败，日志确认 Linux 的 `stat -f` 返回文件系统
+  信息而非文件属性；已修正跨平台参数顺序，准备同时在 macOS 和 Linux 重跑。
+- macOS 回归通过；最小 Ubuntu 复验继续发现测试写死依赖 `shasum`，已改为与生产
+  脚本相同的 `sha256sum` 优先策略。
+- Ubuntu 24.04 普通用户环境中，受限生产访问和主机密钥验证测试均已通过；Linux
+  与 macOS 的属性读取和摘要计算路径现已分别覆盖。
 
 ## 2026-07-23 Codex 上游配额窗口
 

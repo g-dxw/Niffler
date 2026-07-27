@@ -47,6 +47,9 @@ in_progress
 | 提交前同步 `origin/main` 遇到 GitHub HTTP/2 framing 错误 | 执行普通 `git fetch origin main` | 本地引用未改变；改用 GitHub API 核对远端准确提交，必要时再以 HTTP/1.1 重试 |
 | 首次以 HTTP/1.1 推送安全发布分支收到 GitHub 空响应 | 推送本地安全发布提交 | 先用 GitHub API 检查远端是否实际收到分支；未收到再安全重试 |
 | 重试推送时 HTTPS 因 OAuth 令牌缺少 `workflow` 权限被拒绝 | 临时增加 SSH URL 并推送现有分支 | 同一命令的 SSH 目标成功创建远端分支；API 已核对远端与本地提交 SHA 完全一致 |
+| PR 首轮 `Release tooling` 在 Linux 上将 `stat -f` 文件系统信息当成文件大小 | 运行受限上传跨平台测试 | GNU 与 macOS 的 `stat` 参数语义不同；所有属性读取改为先尝试 GNU `-c`，再回退 macOS `-f` |
+| 最小 Ubuntu 容器缺少测试中写死的 `shasum` | 在 Linux 容器复验跨平台修复 | 测试与生产实现保持一致，先使用 `sha256sum`，仅在不可用时回退 `shasum` |
+| Ubuntu 容器以 root 运行单元测试时触发生产模式并查找 `niffler-deploy` | 直接使用容器默认用户复验 GitHub Runner 行为 | 保留 root 无法启用测试覆盖的安全边界；改用容器内普通用户运行测试 |
 
 ## Codex 上游配额窗口与真实展示（2026-07-23）
 
