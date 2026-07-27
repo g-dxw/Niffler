@@ -116,6 +116,11 @@ GitHub `production` 环境负责保护专用 SSH 凭证，并在人工审核后�
 - `authorized_keys` 使用 `restrict` 和固定命令，禁止交互 Shell、PTY、端口转发、
   Agent 转发和 X11 转发。
 
+专用用户的 home 和 `.ssh` 目录由 `root` 所有并使用 `0755`，`authorized_keys`
+由 `root` 所有并使用 `0644`。OpenSSH 会以目标用户身份读取授权文件，因此目录和
+公钥文件必须可遍历、可读；`root` 所有权保证专用用户仍不能替换授权文件。只有
+`uploads` 子目录由 `niffler-deploy` 所有并使用 `0700`。
+
 固定 SSH 命令只接受三种协议：
 
 ```text
