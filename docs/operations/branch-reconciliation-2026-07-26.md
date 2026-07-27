@@ -41,6 +41,7 @@
 - `archive/20260726-rollback-deploy-8a6709c1`
 - `archive/20260726-grok-oauth-provider`
 - `archive/20260726-rollback-commit-0257a5fc`
+- `archive/20260726-pr7-new-ui`
 
 ## 行为变化
 
@@ -140,3 +141,83 @@ bash scripts/tests/test-deploy-ancestry.sh
 - `0257a5fcd`：有意删除功能的历史回退；
 - Grok 分支的 718 个提交来自另一条上游合并历史，真实业务工作仍为
   `9087b7133`、`4ad96eae0`、`384f685ca`。
+
+## Grok OAuth 整合与生产发布
+
+Grok 原分支没有整体合并。三个真实业务提交按当前主线架构完成语义移植，
+通过 PR #10 合入：
+
+- `9087b7133`：Grok OAuth Provider；
+- `4ad96eae0`：OAuth 与 Provider 公共结构调整；
+- `384f685ca`：推理强度、配额自检和配额状态展示。
+
+应用发布提交为 `f7602638bfaae70de7a3e268c11a2c64b7ceaab7`。这是普通合并提交，
+两个父提交分别为此前稳定主线 `c2c84e3305bb4ec47546e3b3d4b0705eba01fb0b`
+和 Grok 整合分支头 `5da631bc22f5ca243b8c121cfff1668ad645509f`。
+
+PR #10 的前端、发布工具、Rust 格式、Clippy、工作区测试和 PostgreSQL 冒烟
+检查全部通过。GitHub Actions 运行 `30216236429` 为该准确提交生成生产镜像。
+固定发布器完成提交继承、镜像标签和外部 PostgreSQL 迁移兼容检查后发布，
+待执行迁移数为 0。两轮生产验收均确认：
+
+- `frontdoor` 与 `background` 运行 `f7602638` 镜像并保持健康，重启次数为 0；
+- 部署状态、准确镜像、`latest` 镜像和发布提交一致；
+- 源站健康、公开首页、`/_gateway/health`、站点信息和公开模型接口正常；
+- 最近日志没有迁移缺失、持续重启、`panic`、`fatal` 或严重错误。
+
+## 最终分支审计
+
+最终清理前重新获取全部远端引用，并逐分支执行
+`git rev-list --count origin/main..<branch>`。除下列已归档例外外，所有待删分支
+的独有提交数均为 0：
+
+| 对象 | 独有提交 | 结论 |
+|------|----------|------|
+| `origin/rollback/deploy-8a6709c1` | `f63be41ba` | 已由后续自动版本管理实现替代，准确提交已归档 |
+| `backup/rollback-commit-0257a5fc` | `0257a5fc` | 历史回退，准确提交已归档 |
+| `codex/grok-oauth-provider-20260719` | 分支头 `d9cdff900` | 真实业务提交已移植，原混合历史已归档 |
+| PR #7 `g-dxw/codex/new-ui` | `21e606057` | 另一种前端冲突解决，没有额外业务功能，准确提交已归档 |
+
+PR #7 的四个冲突文件与核心整合提交逐项比较后，确认差异只在于中文硬编码；
+最终主线保留相同的动态额度窗口功能，并使用中英文资源显示“统计中、窗口、
+周/月、暂无数据”等文本。因此 PR #7 没有需要继续合入的功能，已关闭而未合并。
+
+## 分支清理结果
+
+2026-07-27 在用户确认准确名单后，删除以下 11 个远端分支：
+
+- `codex/fix-codex-lite-tools`
+- `codex/fix-external-postgres-preflight-20260726`
+- `codex/fix-image-heartbeat-timeout`
+- `codex/fix-sub2api-import`
+- `codex/integrate-grok-oauth`
+- `codex/integrate-production-main`
+- `codex/reconcile-production-main-20260726`
+- `codex/restore-image-studio`
+- `codex/restore-main-and-guard`
+- `hotfix/ci-rust-checks-after-5xx`
+- `rollback/deploy-8a6709c1`
+
+同时删除以下 16 个本地分支：
+
+- `backup/before-reset-8a6709c1-454ac928`
+- `backup/rollback-commit-0257a5fc`
+- `codex/fix-codex-lite-tools`
+- `codex/fix-external-postgres-preflight-20260726`
+- `codex/fix-image-heartbeat-timeout`
+- `codex/fix-sub2api-import`
+- `codex/grok-oauth-provider-20260719`
+- `codex/integrate-grok-oauth`
+- `codex/integrate-production-main`
+- `codex/reconcile-production-main-20260726`
+- `codex/restore-image-studio`
+- `codex/restore-main-and-guard`
+- `hotfix/ci-rust-checks-after-5xx`
+- `niffler-core-refactor-phase1`
+- `pr-5`
+- `rollback/deploy-8a6709c1`
+
+三个附加工作树和临时 PR 审计引用已经移除。清理完成时，本地和远端都只剩
+`main`，工作区干净；六个归档标签均已从远端解引用到预期提交。再次检查
+`https://niffler.org/`、`/_gateway/health`、站点信息和公开模型接口，均返回
+HTTP 200。
