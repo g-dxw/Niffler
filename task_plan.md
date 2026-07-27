@@ -46,6 +46,7 @@ in_progress
 | 生产工作流会在一个扫描指纹匹配后保存同次扫描返回的全部主机密钥 | 逐项复核主机密钥验证与 `known_hosts` 写入关系 | 先新增双密钥回归测试；改为只保存指纹精确匹配的主机密钥 |
 | 提交前同步 `origin/main` 遇到 GitHub HTTP/2 framing 错误 | 执行普通 `git fetch origin main` | 本地引用未改变；改用 GitHub API 核对远端准确提交，必要时再以 HTTP/1.1 重试 |
 | 首次以 HTTP/1.1 推送安全发布分支收到 GitHub 空响应 | 推送本地安全发布提交 | 先用 GitHub API 检查远端是否实际收到分支；未收到再安全重试 |
+| 重试推送时 HTTPS 因 OAuth 令牌缺少 `workflow` 权限被拒绝 | 临时增加 SSH URL 并推送现有分支 | 同一命令的 SSH 目标成功创建远端分支；API 已核对远端与本地提交 SHA 完全一致 |
 
 ## Codex 上游配额窗口与真实展示（2026-07-23）
 
