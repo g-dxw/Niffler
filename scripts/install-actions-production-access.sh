@@ -96,8 +96,9 @@ if id -nG "$DEPLOY_USER" | tr ' ' '\n' | grep -Fxq docker; then
 fi
 usermod -L "$DEPLOY_USER"
 
+install -d -o root -g root -m 0755 "$DEPLOY_HOME"
 install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 0700 "$DEPLOY_HOME/uploads"
-install -d -o root -g root -m 0700 "$DEPLOY_HOME/.ssh"
+install -d -o root -g root -m 0755 "$DEPLOY_HOME/.ssh"
 install -d -o root -g root -m 0755 "$RELEASE_BIN"
 install -o root -g root -m 0755 \
     "$SCRIPT_DIR/actions-production-ssh-command.sh" \
@@ -115,7 +116,7 @@ trap cleanup EXIT
 
 printf 'restrict,command="%s" %s\n' "$SSH_COMMAND_TARGET" "$public_key" \
     > "$authorized_keys_tmp"
-install -o root -g root -m 0600 \
+install -o root -g root -m 0644 \
     "$authorized_keys_tmp" \
     "$DEPLOY_HOME/.ssh/authorized_keys"
 

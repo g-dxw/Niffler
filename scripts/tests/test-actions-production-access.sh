@@ -16,6 +16,11 @@ for script_path in "$SSH_COMMAND" "$DEPLOY_ENTRYPOINT" "$INSTALLER"; do
     fi
     bash -n "$script_path"
 done
+home_install_pattern="install -d -o root -g root -m 0755 \"\$DEPLOY_HOME\""
+ssh_install_pattern="install -d -o root -g root -m 0755 \"\$DEPLOY_HOME/.ssh\""
+grep -Fq "$home_install_pattern" "$INSTALLER"
+grep -Fq "$ssh_install_pattern" "$INSTALLER"
+grep -Fq "install -o root -g root -m 0644" "$INSTALLER"
 
 CURRENT_USER="$(id -un)"
 CURRENT_UID="$(id -u)"

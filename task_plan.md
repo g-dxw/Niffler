@@ -50,6 +50,7 @@ in_progress
 | PR 首轮 `Release tooling` 在 Linux 上将 `stat -f` 文件系统信息当成文件大小 | 运行受限上传跨平台测试 | GNU 与 macOS 的 `stat` 参数语义不同；所有属性读取改为先尝试 GNU `-c`，再回退 macOS `-f` |
 | 最小 Ubuntu 容器缺少测试中写死的 `shasum` | 在 Linux 容器复验跨平台修复 | 测试与生产实现保持一致，先使用 `sha256sum`，仅在不可用时回退 `shasum` |
 | Ubuntu 容器以 root 运行单元测试时触发生产模式并查找 `niffler-deploy` | 直接使用容器默认用户复验 GitHub Runner 行为 | 保留 root 无法启用测试覆盖的安全边界；改用容器内普通用户运行测试 |
+| 生产专用密钥首次登录被 OpenSSH 拒绝 | 安装器将 `.ssh` 设为 root `0700`、授权文件设为 root `0600` | 临时私钥已删除且 Secrets 未写入；先记录 OpenSSH 读取要求，再改为 root 所有、用户只读不可写并执行真实 sshd 验证 |
 
 ## Codex 上游配额窗口与真实展示（2026-07-23）
 
