@@ -23,10 +23,22 @@ jobs:
           bash -n scripts/check-deploy-ancestry.sh
           bash -n scripts/deploy-ci-artifact.sh
           bash -n scripts/fixed-production-deployer.sh
+          bash -n scripts/actions-production-ssh-command.sh
+          bash -n scripts/actions-production-deploy.sh
+          bash -n scripts/install-actions-production-access.sh
+          bash -n scripts/verify-ssh-host-key.sh
           bash -n scripts/tests/test-deploy-ancestry.sh
           bash -n scripts/tests/test-fixed-production-deployer.sh
+          bash -n scripts/tests/test-actions-production-access.sh
+          bash -n scripts/tests/test-deploy-ci-restricted.sh
+          bash -n scripts/tests/test-production-workflow.sh
+          bash -n scripts/tests/test-verify-ssh-host-key.sh
           bash scripts/tests/test-deploy-ancestry.sh
           bash scripts/tests/test-fixed-production-deployer.sh
+          bash scripts/tests/test-actions-production-access.sh
+          bash scripts/tests/test-deploy-ci-restricted.sh
+          bash scripts/tests/test-production-workflow.sh
+          bash scripts/tests/test-verify-ssh-host-key.sh
 
   frontend:
     name: Build frontend

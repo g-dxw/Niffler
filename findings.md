@@ -1,5 +1,62 @@
 # Findings
 
+## 2026-07-27 GitHub 受保护生产发布与双人审核
+
+- `main` 当前规则集已经禁止删除、强制推送和非 PR 变更，只允许普通合并，并要求
+  `check`、`Frontend`、`Release tooling` 三项检查。
+- 仓库当前只有一名具有写权限的维护者，因此最低批准数仍为 0。
+- 仓库是公开仓库；GitHub 当前没有 Environment、Actions Secret、Actions
+  Variable、Deploy Key 或自托管 Runner。
+- Actions 允许使用全部第三方 Action，未强制固定到提交 SHA；工作流默认权限为
+ 只读，不能代为批准 PR。
+- 生产发布由授权管理员从本机调用 `/opt/niffler-release/bin/deploy-production`；
+  GitHub 尚未配置专用生产发布凭证或受保护的 `production` 环境。
+- `hd0526` 当前 SSH 身份是 `root`，唯一一条 `authorized_keys` 记录没有
+  `command=`、`restrict`、`from=` 或 `no-*` 限制；服务器不存在
+  `niffler-deploy` 专用用户。
+- Docker Socket、固定发布器、发布状态目录和应用目录均由 `root` 管理。直接把
+  Actions 新密钥加入现有 root 授权会获得完整服务器控制权，不符合最小权限要求。
+- 生产固定部署器与仓库脚本 SHA-256 一致，线上应用仍为 `f7602638`，当前
+  `main=89fecfb7` 只多出分支整合文档，不存在应用代码差异。
+- 新方案必须确保只有受保护 `main` 的准确提交在环境审批后能够使用生产凭证，
+  且凭证不能复用个人 SSH 身份。
+- `Build App Image` 已有测试环境 SSH 部署范例，会核对服务器主机密钥指纹，但
+  当前生产流程没有 `production` Job；工作流也允许从手动选择的 ref 构建。
+- 现有 `deploy-ci-artifact.sh` 会先通过远程脚本读取 Docker 和状态文件，再用
+  SCP 上传镜像并执行固定部署器。这个协议默认远端 SSH 用户可以访问 Docker，
+  不适合直接套用到无 Docker 权限的专用发布用户。
+- GitHub 官方环境保护支持把环境 Secret 限制到指定分支，并在审核通过前不向
+  Runner 提供 Secret。公开仓库可使用 required reviewers、禁止自行批准和禁止
+  管理员绕过。
+- GitHub 官方安全建议指出，只有完整提交 SHA 能让第三方 Action 引用保持不可变。
+  当前仓库允许全部 Action，工作流仍使用 `@v5`、`@v7` 等浮动标签；任何接触生产
+  Secret 的新 Job 至少必须固定自身使用的 Action，启用全仓库强制前需先机械更新
+  全部现有工作流。
+- 推荐的服务器边界是：创建无 Docker 组权限的 `niffler-deploy` 用户，只允许
+  上传到本人专用目录；通过 root 所有的固定包装器校验提交号、文件所有者、真实
+  路径和参数后，再调用固定部署器。不能允许 Actions 任意执行 root shell。
+- 生产 SSH 使用非默认端口；Actions 需要将主机、端口、用户和服务端 Ed25519
+  指纹分别存入 `production` 环境，不能依赖本机 `~/.ssh/config` 别名。
+- `/opt/niffler-app/.env` 和 `docker-compose.yml` 都是 `root:root 0600`，
+  专用用户无法读取生产密钥或 Compose 配置；部署状态文件为 0644，可作为只读
+  状态查询来源。
+- 固定部署器已经验证目标必须等于远端 `main`、镜像 revision 必须等于目标提交、
+  PostgreSQL 迁移必须兼容，并在健康失败时自动回退。受限包装器只需固定参数和
+  文件边界，不应复制这些发布判断。
+- 现有固定部署器测试具备假 Git、Docker 和健康端点，可扩展包装器测试，覆盖非法
+  提交号、路径逃逸、错误所有者、符号链接、非专用调用者和成功转交。
+- 新增受限协议不接受交互式 shell、SCP 或任意远程参数；自动发布不开放
+  `--allow-rollback`，紧急回滚仍保留在管理员本机入口。
+- Runner 会在上传前计算镜像 SHA-256，并要求服务器返回同一摘要后才调用部署；
+  服务器包装器仍会独立验证文件真实路径、所有者、模式、大小和镜像提交标签。
+- `Deploy Production` 只使用固定到完整提交
+  `93cb6efe18208431cddfb8368fd83d5badbf9bfd` 的 `actions/checkout`，输入目标必须
+  等于工作流从 `main` 检出的 `GITHUB_SHA`。
+- 工作流最初的主机密钥验证只确认扫描结果中存在期望指纹，却会将其它未匹配密钥
+  一并写入 `known_hosts`；必须只保留逐条计算后与环境指纹精确一致的密钥。
+- 修正后会逐条解析扫描密钥、独立计算 SHA-256 指纹，并只安装匹配记录；回归测试
+  已确认同次扫描中的其它有效密钥不会进入 `known_hosts`。
+
 ## 2026-07-23 Codex 上游配额窗口
 
 - 用户要求覆盖的不只是 5H，还包括 7D（周额度）、1M（月额度）和上游以后可能返回的其它窗口。
