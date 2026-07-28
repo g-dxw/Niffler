@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/ryfineZ/Niffler.git}"
 RELEASE_ROOT="${RELEASE_ROOT:-/opt/niffler-release}"
+REQUIRED_BRANCH="main"
 REMOTE_DIR="/opt/niffler-app"
 IMAGE_TAR=""
 TARGET_COMMIT=""
@@ -13,6 +14,8 @@ PUBLIC_HEALTH_URL="https://niffler.org/_gateway/health"
 SOURCE_HEALTH_URL="http://127.0.0.1:8084/_gateway/health"
 HEALTH_TIMEOUT_SECONDS=180
 ALLOW_ROLLBACK=false
+CHECK_POSTGRES_MIGRATIONS=true
+ENFORCE_CURRENT_ANCESTRY=true
 SERVICES=()
 
 usage() {
@@ -25,6 +28,11 @@ Options:
   --remote-dir <path>           Compose directory, default /opt/niffler-app
   --service <name>              Compose service to recreate; repeat as needed
   --state-file <name>           Deployed commit state file name
+  --required-branch <branch>    Exact remote branch the target must match, default main
+  --skip-postgres-migration-check
+                                Skip the production PostgreSQL compatibility preflight
+  --allow-non-ancestor-current Allow replacing an older test lineage while still requiring
+                                the exact current remote branch commit
   --public-health-url <url>     Public health endpoint
   --source-health-url <url>     Source health endpoint
   --health-timeout <seconds>    Compose health wait timeout, default 180
@@ -77,6 +85,19 @@ while [ $# -gt 0 ]; do
             DEPLOY_STATE_FILE="$2"
             shift 2
             ;;
+        --required-branch)
+            require_option_value "$1" "${2:-}"
+            REQUIRED_BRANCH="$2"
+            shift 2
+            ;;
+        --skip-postgres-migration-check)
+            CHECK_POSTGRES_MIGRATIONS=false
+            shift
+            ;;
+        --allow-non-ancestor-current)
+            ENFORCE_CURRENT_ANCESTRY=false
+            shift
+            ;;
         --public-health-url)
             require_option_value "$1" "${2:-}"
             PUBLIC_HEALTH_URL="$2"
@@ -112,6 +133,12 @@ if [ -z "$IMAGE_TAR" ] || [ -z "$TARGET_COMMIT" ]; then
 fi
 if [[ ! "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
     die "target commit must be a lowercase 40-character SHA"
+fi
+if [[ ! "$REQUIRED_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] \
+    || [[ "$REQUIRED_BRANCH" == /* ]] \
+    || [[ "$REQUIRED_BRANCH" == */ ]] \
+    || [[ "$REQUIRED_BRANCH" == *..* ]]; then
+    die "required branch is invalid"
 fi
 if [[ ! "$HEALTH_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
     die "health timeout must be a positive integer"
@@ -158,22 +185,22 @@ if [ ! -d "$RELEASE_REPO" ]; then
     git init --bare "$RELEASE_REPO" >/dev/null
 fi
 
-REMOTE_MAIN_COMMIT="$(
-    git ls-remote "$REPO_URL" refs/heads/main \
+REMOTE_REQUIRED_COMMIT="$(
+    git ls-remote "$REPO_URL" "refs/heads/$REQUIRED_BRANCH" \
         | awk 'NR == 1 { print $1 }'
 )"
-if [[ ! "$REMOTE_MAIN_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-    die "unable to resolve origin/main from $REPO_URL"
+if [[ ! "$REMOTE_REQUIRED_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+    die "unable to resolve origin/$REQUIRED_BRANCH from $REPO_URL"
 fi
-if [ "$ALLOW_ROLLBACK" != true ] && [ "$TARGET_COMMIT" != "$REMOTE_MAIN_COMMIT" ]; then
-    die "normal deployment target $TARGET_COMMIT is not current origin/main $REMOTE_MAIN_COMMIT"
+if [ "$ALLOW_ROLLBACK" != true ] && [ "$TARGET_COMMIT" != "$REMOTE_REQUIRED_COMMIT" ]; then
+    die "normal deployment target $TARGET_COMMIT is not current origin/$REQUIRED_BRANCH $REMOTE_REQUIRED_COMMIT"
 fi
 
 git --git-dir="$RELEASE_REPO" fetch --quiet --force "$REPO_URL" \
-    "+refs/heads/main:refs/heads/main" \
+    "+refs/heads/$REQUIRED_BRANCH:refs/heads/$REQUIRED_BRANCH" \
     "+refs/tags/archive/*:refs/tags/archive/*"
 if ! git --git-dir="$RELEASE_REPO" cat-file -e "${TARGET_COMMIT}^{commit}" 2>/dev/null; then
-    die "target commit is not reachable from origin/main or an archive tag: $TARGET_COMMIT"
+    die "target commit is not reachable from origin/$REQUIRED_BRANCH or an archive tag: $TARGET_COMMIT"
 fi
 
 STATE_PATH="$REMOTE_DIR/$DEPLOY_STATE_FILE"
@@ -183,13 +210,41 @@ if [ -s "$STATE_PATH" ]; then
     if [[ ! "$CURRENT_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
         die "invalid deployed commit state: $STATE_PATH"
     fi
-    if [ "$ALLOW_ROLLBACK" != true ]; then
+    if [ "$ALLOW_ROLLBACK" != true ] && [ "$ENFORCE_CURRENT_ANCESTRY" = true ]; then
         if ! git --git-dir="$RELEASE_REPO" cat-file -e "${CURRENT_COMMIT}^{commit}" 2>/dev/null; then
             die "current production commit is not available in the fixed release repository"
         fi
         if ! git --git-dir="$RELEASE_REPO" merge-base --is-ancestor \
             "$CURRENT_COMMIT" "$TARGET_COMMIT"; then
             die "target does not contain current production commit $CURRENT_COMMIT"
+        fi
+    fi
+fi
+
+if [ -z "$CURRENT_COMMIT" ] \
+    && docker image inspect "$APP_IMAGE_REPOSITORY:latest" >/dev/null 2>&1; then
+    CURRENT_COMMIT="$(
+        docker image inspect "$APP_IMAGE_REPOSITORY:latest" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            2>/dev/null || true
+    )"
+    if [[ ! "$CURRENT_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+        CURRENT_COMMIT="$(
+            docker image inspect "$APP_IMAGE_REPOSITORY:latest" \
+                --format '{{range .RepoTags}}{{println .}}{{end}}' \
+                2>/dev/null \
+                | awk -F: '$NF ~ /^[0-9a-f]{40}$/ { print $NF; exit }'
+        )"
+    fi
+    if [[ ! "$CURRENT_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+        CURRENT_COMMIT=""
+    elif [ "$ALLOW_ROLLBACK" != true ] && [ "$ENFORCE_CURRENT_ANCESTRY" = true ]; then
+        if ! git --git-dir="$RELEASE_REPO" cat-file -e "${CURRENT_COMMIT}^{commit}" 2>/dev/null; then
+            die "current deployed image commit is not available in the fixed release repository"
+        fi
+        if ! git --git-dir="$RELEASE_REPO" merge-base --is-ancestor \
+            "$CURRENT_COMMIT" "$TARGET_COMMIT"; then
+            die "target does not contain current deployed image commit $CURRENT_COMMIT"
         fi
     fi
 fi
@@ -234,21 +289,23 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$REMOTE_DIR"
-FRONTDOOR_CONTAINER="$("${DC[@]}" ps -q frontdoor)"
-if [ -z "$FRONTDOOR_CONTAINER" ]; then
-    die "frontdoor container is not running; cannot read the active production database environment"
-fi
-CURRENT_ENV_FILE="$TMP_DIR/frontdoor.env"
-docker inspect "$FRONTDOOR_CONTAINER" \
-    --format '{{range .Config.Env}}{{println .}}{{end}}' > "$CURRENT_ENV_FILE"
-chmod 0600 "$CURRENT_ENV_FILE"
-if ! docker run --rm \
-    --network "container:$FRONTDOOR_CONTAINER" \
-    --env-file "$CURRENT_ENV_FILE" \
-    --entrypoint /usr/local/bin/aether-gateway \
-    "$TARGET_IMAGE" \
-    --check-postgres-migration-compatibility; then
-    die "target image is incompatible with the active production PostgreSQL migration history"
+if [ "$CHECK_POSTGRES_MIGRATIONS" = true ]; then
+    FRONTDOOR_CONTAINER="$("${DC[@]}" ps -q frontdoor)"
+    if [ -z "$FRONTDOOR_CONTAINER" ]; then
+        die "frontdoor container is not running; cannot read the active production database environment"
+    fi
+    CURRENT_ENV_FILE="$TMP_DIR/frontdoor.env"
+    docker inspect "$FRONTDOOR_CONTAINER" \
+        --format '{{range .Config.Env}}{{println .}}{{end}}' > "$CURRENT_ENV_FILE"
+    chmod 0600 "$CURRENT_ENV_FILE"
+    if ! docker run --rm \
+        --network "container:$FRONTDOOR_CONTAINER" \
+        --env-file "$CURRENT_ENV_FILE" \
+        --entrypoint /usr/local/bin/aether-gateway \
+        "$TARGET_IMAGE" \
+        --check-postgres-migration-compatibility; then
+        die "target image is incompatible with the active production PostgreSQL migration history"
+    fi
 fi
 
 ENV_PATH="$REMOTE_DIR/.env"
@@ -279,6 +336,7 @@ rollback() {
     echo "Deployment failed; restoring $ROLLBACK_IMAGE..." >&2
     docker image tag "$TARGET_IMAGE" \
         "$APP_IMAGE_REPOSITORY:failed-${TARGET_COMMIT:0:12}-$TIMESTAMP"
+    docker image tag "$ROLLBACK_IMAGE" "$APP_IMAGE_REPOSITORY:latest"
     set_app_image "$ROLLBACK_IMAGE"
     if ! "${DC[@]}" up -d --no-build --force-recreate \
         --wait --wait-timeout "$HEALTH_TIMEOUT_SECONDS" "${SERVICES[@]}"; then
@@ -313,4 +371,4 @@ printf '%s\n' "$TARGET_COMMIT" > "$STATE_TMP"
 install -m 0644 "$STATE_TMP" "$STATE_PATH"
 rm -f "$STATE_TMP" "$IMAGE_TAR"
 "${DC[@]}" ps
-echo "Production deployment verified: $TARGET_COMMIT"
+echo "Deployment verified for origin/$REQUIRED_BRANCH: $TARGET_COMMIT"

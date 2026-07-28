@@ -131,6 +131,19 @@ run_deployer() {
         --public-health-url "https://public.test/health"
 }
 
+run_test_deployer() {
+    bash "$DEPLOYER" \
+        --image-tar "$REMOTE_DIR/image.tar" \
+        --target "$1" \
+        --remote-dir "$REMOTE_DIR" \
+        --service app \
+        --required-branch test \
+        --skip-postgres-migration-check \
+        --allow-non-ancestor-current \
+        --source-health-url "http://source.test/health" \
+        --public-health-url "https://public.test/health"
+}
+
 assert_contains() {
     local file="$1"
     local expected="$2"
@@ -178,16 +191,25 @@ assert_contains "$TEST_ROOT/health-failure.out" "restoring niffler-app:rollback-
 test "$(grep -c '^compose up ' "$DOCKER_LOG")" -eq 2
 test "$(cat "$REMOTE_DIR/.niffler-deployed-commit")" = "$CURRENT_COMMIT"
 assert_contains "$REMOTE_DIR/.env" "APP_IMAGE=niffler-app:rollback-"
+assert_contains "$DOCKER_LOG" "image tag niffler-app:rollback-"
 
 reset_fixture
 export FAKE_CURL_FAIL=false
 run_deployer "$TARGET_COMMIT" >"$TEST_ROOT/success.out" 2>&1
-assert_contains "$TEST_ROOT/success.out" "Production deployment verified"
+assert_contains "$TEST_ROOT/success.out" "Deployment verified for origin/main"
 assert_contains "$DOCKER_LOG" "inspect frontdoor-container --format"
 assert_contains "$DOCKER_LOG" "run --rm --network container:frontdoor-container --env-file"
 assert_contains "$DOCKER_LOG" "--check-postgres-migration-compatibility"
 test "$(cat "$REMOTE_DIR/.niffler-deployed-commit")" = "$TARGET_COMMIT"
 test ! -e "$REMOTE_DIR/image.tar"
 assert_contains "$REMOTE_DIR/.env" "APP_IMAGE=niffler-app:$TARGET_COMMIT"
+
+reset_fixture
+export FAKE_CURL_FAIL=false
+run_test_deployer "$TARGET_COMMIT" >"$TEST_ROOT/test-success.out" 2>&1
+assert_contains "$TEST_ROOT/test-success.out" "Deployment verified for origin/test"
+assert_not_contains "$DOCKER_LOG" "ps -q frontdoor"
+assert_not_contains "$DOCKER_LOG" "--check-postgres-migration-compatibility"
+assert_contains "$DOCKER_LOG" "compose up"
 
 echo "fixed production deployer tests passed"

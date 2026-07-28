@@ -37,6 +37,7 @@ jobs:
           bash -n scripts/tests/test-fixed-production-deployer.sh
           bash -n scripts/tests/test-actions-production-access.sh
           bash -n scripts/tests/test-deploy-ci-restricted.sh
+          bash -n scripts/tests/test-test-deploy-ci.sh
           bash -n scripts/tests/test-production-workflow.sh
           bash -n scripts/tests/test-verify-ssh-host-key.sh
 
@@ -53,5 +54,6 @@ jobs:
         run: |
           bash scripts/tests/test-actions-production-access.sh
           bash scripts/tests/test-deploy-ci-restricted.sh
+          bash scripts/tests/test-test-deploy-ci.sh
           bash scripts/tests/test-production-workflow.sh
           bash scripts/tests/test-verify-ssh-host-key.sh

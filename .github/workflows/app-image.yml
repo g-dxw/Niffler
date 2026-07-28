@@ -37,6 +37,7 @@ jobs:
           bash -n scripts/tests/test-fixed-production-deployer.sh
           bash -n scripts/tests/test-actions-production-access.sh
           bash -n scripts/tests/test-deploy-ci-restricted.sh
+          bash -n scripts/tests/test-test-deploy-ci.sh
           bash -n scripts/tests/test-production-workflow.sh
           bash -n scripts/tests/test-verify-ssh-host-key.sh
           bash scripts/tests/test-deploy-ancestry.sh
@@ -45,6 +46,7 @@ jobs:
           bash scripts/tests/test-fixed-production-deployer.sh
           bash scripts/tests/test-actions-production-access.sh
           bash scripts/tests/test-deploy-ci-restricted.sh
+          bash scripts/tests/test-test-deploy-ci.sh
           bash scripts/tests/test-production-workflow.sh
           bash scripts/tests/test-verify-ssh-host-key.sh
 
@@ -240,4 +242,6 @@ jobs:
           scripts/deploy-ci-artifact.sh \
             --host "${{ vars.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
             --remote-dir "${{ vars.MYLINGWEAVE_REMOTE_DIR }}" \
-            --run-id "${{ github.run_id }}"
+            --run-id "${{ github.run_id }}" \
+            --test-deployment \
+            --public-health-url "${{ vars.MYLINGWEAVE_PUBLIC_URL }}"

@@ -16,6 +16,8 @@ grep -Fq 'url: ${{ vars.MYLINGWEAVE_PUBLIC_URL }}' "$WORKFLOW"
 grep -Fq 'SSH_USER: ${{ vars.MYLINGWEAVE_USER }}' "$WORKFLOW"
 grep -Fq 'REMOTE_DIR: ${{ vars.MYLINGWEAVE_REMOTE_DIR }}' "$WORKFLOW"
 grep -Fq -- '--run-id "${{ github.run_id }}"' "$WORKFLOW"
+grep -Fq -- '--test-deployment' "$WORKFLOW"
+grep -Fq -- '--public-health-url "${{ vars.MYLINGWEAVE_PUBLIC_URL }}"' "$WORKFLOW"
 
 test -f "$PROMOTION_WORKFLOW"
 grep -Fq "pull_request_target:" "$PROMOTION_WORKFLOW"
