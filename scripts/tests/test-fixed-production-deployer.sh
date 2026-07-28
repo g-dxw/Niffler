@@ -43,16 +43,20 @@ cat > "$FAKE_BIN/docker" <<'FAKE_DOCKER'
 #!/bin/bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
+printf 'env APP_IMAGE=%s command=%s\n' "${APP_IMAGE:-}" "$*" >> "$FAKE_DOCKER_LOG"
 case "${1:-}" in
     compose)
         shift
         case "${1:-}" in
-            version|up)
+            version|up|run)
                 exit 0
                 ;;
             ps)
-                if [ "${2:-}" = "-q" ] && [ "${3:-}" = "frontdoor" ]; then
-                    printf 'frontdoor-container\n'
+                if [ "${2:-}" = "-q" ]; then
+                    if [ "${FAKE_CONTEXT_RUNNING:-true}" = "false" ]; then
+                        exit 0
+                    fi
+                    printf '%s-container\n' "${3:-unknown}"
                 fi
                 exit 0
                 ;;
@@ -60,6 +64,10 @@ case "${1:-}" in
         ;;
     image)
         if [ "${2:-}" = "inspect" ]; then
+            if [ "${FAKE_HAS_CURRENT_IMAGE:-true}" = "false" ] \
+                && [[ "$*" == *"niffler-app:latest"* ]]; then
+                exit 1
+            fi
             if [[ "$*" == *"--format"* ]]; then
                 printf '%s\n' "$FAKE_TARGET_COMMIT"
             fi
@@ -73,7 +81,7 @@ case "${1:-}" in
         exit 0
         ;;
     inspect)
-        if [ "${2:-}" = "frontdoor-container" ]; then
+        if [[ "${2:-}" == *-container ]]; then
             printf 'AETHER_DATABASE_DRIVER=postgres\n'
             printf 'AETHER_DATABASE_URL=postgres://example.invalid/aether\n'
             exit 0
@@ -111,6 +119,8 @@ export FAKE_TARGET_COMMIT="$TARGET_COMMIT"
 export FAKE_DOCKER_LOG="$DOCKER_LOG"
 export FAKE_CURL_FAIL=false
 export FAKE_MIGRATION_COMPATIBLE=true
+export FAKE_HAS_CURRENT_IMAGE=true
+export FAKE_CONTEXT_RUNNING=true
 
 reset_fixture() {
     rm -rf "$REMOTE_DIR" "$RELEASE_ROOT"
@@ -120,6 +130,19 @@ reset_fixture() {
     printf '%s\n' "$CURRENT_COMMIT" > "$REMOTE_DIR/.niffler-deployed-commit"
     : > "$REMOTE_DIR/image.tar"
     : > "$DOCKER_LOG"
+    export FAKE_HAS_CURRENT_IMAGE=true
+    export FAKE_CONTEXT_RUNNING=true
+}
+
+reset_first_test_fixture() {
+    rm -rf "$REMOTE_DIR" "$RELEASE_ROOT"
+    mkdir -p "$REMOTE_DIR"
+    : > "$REMOTE_DIR/docker-compose.yml"
+    printf 'APP_IMAGE=ghcr.io/example/old-image\n' > "$REMOTE_DIR/.env"
+    : > "$REMOTE_DIR/image.tar"
+    : > "$DOCKER_LOG"
+    export FAKE_HAS_CURRENT_IMAGE=false
+    export FAKE_CONTEXT_RUNNING=false
 }
 
 run_deployer() {
@@ -127,6 +150,33 @@ run_deployer() {
         --image-tar "$REMOTE_DIR/image.tar" \
         --target "$1" \
         --remote-dir "$REMOTE_DIR" \
+        --source-health-url "http://source.test/health" \
+        --public-health-url "https://public.test/health"
+}
+
+run_test_deployer() {
+    bash "$DEPLOYER" \
+        --image-tar "$REMOTE_DIR/image.tar" \
+        --target "$1" \
+        --remote-dir "$REMOTE_DIR" \
+        --service app \
+        --required-branch test \
+        --migration-context-service app \
+        --allow-non-ancestor-current \
+        --source-health-url "http://source.test/health" \
+        --public-health-url "https://public.test/health"
+}
+
+run_first_test_deployer() {
+    bash "$DEPLOYER" \
+        --image-tar "$REMOTE_DIR/image.tar" \
+        --target "$1" \
+        --remote-dir "$REMOTE_DIR" \
+        --service app \
+        --required-branch test \
+        --migration-context-service app \
+        --bootstrap-migration-context \
+        --allow-non-ancestor-current \
         --source-health-url "http://source.test/health" \
         --public-health-url "https://public.test/health"
 }
@@ -163,7 +213,7 @@ if run_deployer "$TARGET_COMMIT" >"$TEST_ROOT/missing-migration.out" 2>&1; then
     echo "missing-migration deployment unexpectedly succeeded" >&2
     exit 1
 fi
-assert_contains "$TEST_ROOT/missing-migration.out" "incompatible with the active production PostgreSQL migration history"
+assert_contains "$TEST_ROOT/missing-migration.out" "incompatible with the active PostgreSQL migration history"
 assert_not_contains "$DOCKER_LOG" "compose up"
 test "$(cat "$REMOTE_DIR/.niffler-deployed-commit")" = "$CURRENT_COMMIT"
 
@@ -178,16 +228,45 @@ assert_contains "$TEST_ROOT/health-failure.out" "restoring niffler-app:rollback-
 test "$(grep -c '^compose up ' "$DOCKER_LOG")" -eq 2
 test "$(cat "$REMOTE_DIR/.niffler-deployed-commit")" = "$CURRENT_COMMIT"
 assert_contains "$REMOTE_DIR/.env" "APP_IMAGE=niffler-app:rollback-"
+assert_contains "$DOCKER_LOG" "image tag niffler-app:rollback-"
 
 reset_fixture
 export FAKE_CURL_FAIL=false
 run_deployer "$TARGET_COMMIT" >"$TEST_ROOT/success.out" 2>&1
-assert_contains "$TEST_ROOT/success.out" "Production deployment verified"
+assert_contains "$TEST_ROOT/success.out" "Deployment verified for origin/main"
 assert_contains "$DOCKER_LOG" "inspect frontdoor-container --format"
 assert_contains "$DOCKER_LOG" "run --rm --network container:frontdoor-container --env-file"
 assert_contains "$DOCKER_LOG" "--check-postgres-migration-compatibility"
 test "$(cat "$REMOTE_DIR/.niffler-deployed-commit")" = "$TARGET_COMMIT"
 test ! -e "$REMOTE_DIR/image.tar"
 assert_contains "$REMOTE_DIR/.env" "APP_IMAGE=niffler-app:$TARGET_COMMIT"
+
+reset_fixture
+export FAKE_CURL_FAIL=false
+run_test_deployer "$TARGET_COMMIT" >"$TEST_ROOT/test-success.out" 2>&1
+assert_contains "$TEST_ROOT/test-success.out" "Deployment verified for origin/test"
+assert_contains "$DOCKER_LOG" "compose ps -q app"
+assert_contains "$DOCKER_LOG" "inspect app-container --format"
+assert_contains "$DOCKER_LOG" "--network container:app-container"
+assert_contains "$DOCKER_LOG" "--check-postgres-migration-compatibility"
+assert_contains "$DOCKER_LOG" "compose up"
+
+reset_first_test_fixture
+export FAKE_CURL_FAIL=false
+if run_first_test_deployer "$TARGET_COMMIT" >"$TEST_ROOT/first-test-no-marker.out" 2>&1; then
+    echo "first test deployment without environment marker unexpectedly succeeded" >&2
+    exit 1
+fi
+assert_contains "$TEST_ROOT/first-test-no-marker.out" "test environment marker is missing"
+assert_not_contains "$DOCKER_LOG" "compose up"
+
+printf 'niffler-test-v1\n' > "$REMOTE_DIR/.niffler-test-environment"
+run_first_test_deployer "$TARGET_COMMIT" >"$TEST_ROOT/first-test-success.out" 2>&1
+assert_contains "$TEST_ROOT/first-test-success.out" "preparing first test deployment"
+assert_contains "$TEST_ROOT/first-test-success.out" "Deployment verified for origin/test"
+assert_contains "$DOCKER_LOG" "compose up -d --no-build postgres redis"
+assert_contains "$DOCKER_LOG" "compose run --rm --no-deps --entrypoint /usr/local/bin/aether-gateway app --check-postgres-migration-compatibility"
+assert_contains "$DOCKER_LOG" "env APP_IMAGE=niffler-app:$TARGET_COMMIT command=compose run"
+assert_contains "$DOCKER_LOG" "compose up -d --no-build --force-recreate --wait --wait-timeout"
 
 echo "fixed production deployer tests passed"

@@ -21,7 +21,8 @@
 
 ## 行为变化
 
-- 主应用镜像构建不再跟随 `main` 推送自动执行，需要在 GitHub Actions 手动触发 `Build App Image`。
+- `test` 更新后自动运行 `Build App Image` 并部署测试环境；生产镜像仍只为准确的
+  `main` 提交手动触发，生产不会因 `main` 推送自动上线。
 - 当前线上只使用 Linux amd64，因此 `Build App Image` 只构建 amd64 的 `aether-gateway`。
 - `Build App Image` 只产出 `niffler-app-linux-amd64` 镜像文件，不再推送 GHCR 镜像，避免重复构建和上传。
 - `Build App Image` 使用 Node 22 运行时的官方 GitHub Actions，避免 CI 运行时升级影响生产镜像产物。
@@ -49,6 +50,149 @@
 - `--allow-latest-for-local` 只允许本地验证或临时排查使用，不能作为生产发布命令。
 - 所有合并请求都运行 Rust、前端和发布工具检查，`main` 只接受这三组检查通过的
   合并请求。
+
+## 测试到生产的晋级链
+
+```text
+g-dxw 功能分支
+       |
+       v
+PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验收
+       |                                                       |
+       +---------------------- PR ------------------------------+
+                               |
+                               v
+                     ryfineZ/Niffler:main
+                               |
+                    手动构建准确 main 镜像
+                               |
+                    production 环境双人审批
+                               |
+                               v
+                            生产环境
+```
+
+- `ryfineZ/Niffler` 是唯一发布源；个人 fork 只用于开发分支和发起合并请求。
+- 常规修改只能先进入受保护 `test`，由 `test` 推送自动构建准确提交镜像并部署测试环境。
+- 同一时间的 `test` 发布按提交顺序排队，不能取消正在执行的远端部署，避免 SSH 中断让
+  测试环境停在半更新状态。
+- 测试发布只接受当前上游 `test` 的准确提交，并调用服务器上 root 所有、不可由待部署
+  分支替换的 `/opt/niffler-test/bin/deploy-test`。测试环境使用独立 PostgreSQL；已有
+  `app` 容器时，部署前从该容器读取实际数据库环境并执行迁移兼容检查。首次部署没有
+  `app` 容器时，只允许测试流程启动 PostgreSQL 和 Redis，并按测试 `.env` 执行同一项
+  兼容检查。两种情况都会验证镜像提交标签、Compose 健康状态、源站健康地址和公开健康地址；
+  已有版本的部署失败时自动恢复旧镜像。
+- 测试验收后，由上游 `test` 向 `main` 发起晋级合并请求。
+- `Promotion policy` 检查拒绝普通功能分支直接进入 `main`，也拒绝 fork 中名为
+  `test` 的分支冒充上游集成分支。该检查使用 `pull_request_target`，只检出并执行
+  `main` 基线中的守卫脚本，不执行合并请求提供的脚本，也不授予写权限。
+- 紧急修复使用 `hotfix/*`。同一修复必须先通过合并请求进入 `test` 并完成测试部署，
+  随后才允许向 `main` 发起生产修复合并请求；守卫会核对两条合并请求的准确 head SHA，
+  合并测试后追加的未测试提交不能直接进入 `main`。
+- `main` 合并后仍按受保护生产流程手动构建、手动触发并由另一名维护者批准，不自动上线。
+
+### 一次性测试服务器准备
+
+这部分由能够通过 VPS 控制台、VNC 或已获授权管理员密钥登录 `test01` 的维护者完成。
+如果服务器只接受公钥登录，而当前管理员密钥不可用，必须先在供应商控制台恢复管理员入口；
+不能临时打开公网密码登录作为替代方案。
+
+1. 使用独立的 Actions Ed25519 密钥，不得复用个人或 root 登录私钥。当前测试密钥的
+   公钥位于本机 `~/Workspace/Projects/vps_nodes/niffler-test-deploy.pub`；只将该公钥授权给
+   测试部署账号 `niffler-test-deploy`，私钥只保存到 GitHub `test` Environment。
+2. 在受信任的 `main` 工作区准备好 `docker-compose.yml` 和测试专用 `.env`，并将本机
+   `niffler-test-deploy.pub` 上传或通过服务器控制台写入
+   `/tmp/niffler-test-deploy.pub` 后，以 root 执行以下初始化。`.env` 必须使用独立的
+   PostgreSQL、Redis、JWT 和加密密钥，不能复制生产值；测试应用使用默认端口 `8084`。
+
+   ```bash
+   install -d -o root -g root -m 0755 /opt/niffler-test/bin
+   id -u niffler-test-deploy >/dev/null 2>&1 || \
+     useradd --create-home --shell /bin/bash niffler-test-deploy
+   passwd -l niffler-test-deploy
+   usermod -aG docker niffler-test-deploy
+
+   install -d -o root -g root -m 0755 /home/niffler-test-deploy/.ssh
+   install -o root -g root -m 0644 \
+     /tmp/niffler-test-deploy.pub \
+     /home/niffler-test-deploy/.ssh/authorized_keys
+
+   install -d -o root -g niffler-test-deploy -m 2770 \
+     /opt/niffler-test /opt/niffler-test/logs /opt/niffler-test/.release
+   printf 'niffler-test-v1\n' > /opt/niffler-test/.niffler-test-environment
+   chown root:root /opt/niffler-test/.niffler-test-environment
+   chmod 0444 /opt/niffler-test/.niffler-test-environment
+   install -o root -g niffler-test-deploy -m 0660 \
+     docker-compose.yml /opt/niffler-test/docker-compose.yml
+   install -o root -g niffler-test-deploy -m 0660 \
+     .env /opt/niffler-test/.env
+   install -o root -g root -m 0755 \
+     scripts/fixed-production-deployer.sh /opt/niffler-test/bin/deploy-test
+   ```
+
+3. 测试 `.env` 至少应明确设置 `COMPOSE_PROJECT_NAME=niffler_test` 和
+   `APP_IMAGE=niffler-app:latest`，并让 `postgres`、`redis` 和 `app` 使用完全隔离的测试
+   数据。`APP_PORT` 必须与该主机 HTTPS 反向代理的本地上游端口相同；当前测试主机已经由
+   Nginx 对外提供 `https://niffler-test.123.253.224.101.sslip.io`，原部署约定为
+   `APP_PORT=18084`。恢复管理员访问后，先用 `nginx -T` 核实实际 upstream，再同步设置
+   `.env` 的 `APP_PORT` 和 GitHub Variable `MYLINGWEAVE_SOURCE_HEALTH_URL`。不要删除或
+   改写 `.niffler-test-environment` 标记文件；工作流会在首次部署前检查它，以防错误地把
+   测试部署指向生产目录。首次 Actions 部署会自行启动 PostgreSQL、Redis 和 `app`；不需要
+   预先手工拉取或启动应用镜像。
+4. 在创建 `test` 分支前，必须验证 HTTPS 反向代理持续监听公网 `80` 和 `443`，并将
+   `niffler-test.123.253.224.101.sslip.io` 转发到与 `APP_PORT` 相同的本地地址。当前主机
+   已检测到 Nginx 返回该域名的健康检查 200，不能在未核对现有配置前再额外安装或替换为
+   Caddy。证书签发和反向代理必须可用；否则部署器的 HTTPS 公网健康检查会拒绝本次部署。
+5. `niffler-test-deploy` 可以操作这个专用测试 Compose 项目和 Docker，因此该账号只能用于
+   独立测试主机，不能复用于生产主机。虽然普通文件权限会阻止它直接改写 root 所有的
+   `/opt/niffler-test/bin/deploy-test`，Docker 组本身等同于主机管理员权限；因此该固定
+   部署器是防止日常误改的运行约束，不是针对测试密钥泄露的安全边界。先验证公钥认证和
+   目录权限：
+
+   ```bash
+   ssh -i ~/Workspace/Projects/vps_nodes/niffler-test-deploy \
+     niffler-test-deploy@123.253.224.101 \
+     'docker compose version && test -w /opt/niffler-test/.release'
+   curl -fsS https://niffler-test.123.253.224.101.sslip.io/_gateway/health
+   ```
+
+6. 独立保存以下信息，交给仓库管理员配置：
+   - 主机：`123.253.224.101`（SSH 端口为默认的 `22`，Secret 中不要附加端口）
+   - 用户：`niffler-test-deploy`
+   - 目录：`/opt/niffler-test`
+   - 源站健康地址：`http://127.0.0.1:18084/_gateway/health`（恢复管理员访问后以 Nginx
+     实际 upstream 为准）
+   - 计划公网地址：`https://niffler-test.123.253.224.101.sslip.io`
+   - ED25519 主机指纹：
+     `SHA256:jyUey+3oSoZHEdiApa8gKRRlKDyLsDorjCPPRAIaILw`
+
+### 一次性 GitHub 管理员配置
+
+仓库所有者完成以下设置后，再创建长期 `test` 分支：
+
+1. 创建 `test` Environment，不要求人工审批，只允许 `test` 分支部署。
+2. 在 `test` Environment 中配置 Secret：
+   - `MYLINGWEAVE_HOST` = `123.253.224.101`
+   - `MYLINGWEAVE_SSH_KEY` = 独立 Actions Ed25519 私钥的完整内容
+   - `MYLINGWEAVE_SSH_HOST_FINGERPRINT` =
+     `SHA256:jyUey+3oSoZHEdiApa8gKRRlKDyLsDorjCPPRAIaILw`
+3. 在同一个 Environment 中配置 Variable：
+   - `MYLINGWEAVE_USER` = `niffler-test-deploy`
+   - `MYLINGWEAVE_REMOTE_DIR` = `/opt/niffler-test`
+   - `MYLINGWEAVE_SOURCE_HEALTH_URL` =
+     `http://127.0.0.1:18084/_gateway/health`
+   - `MYLINGWEAVE_PUBLIC_URL` =
+     `https://niffler-test.123.253.224.101.sslip.io`
+4. 创建保护 `test` 的 Ruleset：禁止删除和强制推送，要求合并请求、至少一名他人批准、
+   解决全部对话，并严格要求 `check`、`Frontend`、`Release tooling` 三项检查。
+5. 在现有 `main` Ruleset 中增加必过检查 `Promotion policy`，并增加 required deployment
+   `test`，确保 PR 的准确 head SHA 已成功部署到测试环境。
+6. 在 `production` Environment 的 required reviewers 中同时加入 `ryfineZ` 和 `g-dxw`，
+   保留禁止发起人自审和禁止管理员绕过。
+
+首次落地顺序为：合并本次流水线修改到 `main`，通过服务器控制台或已有管理员密钥完成
+测试账号、Compose 配置、固定部署器和专用密钥准备，完成上述管理员配置，从最新 `main`
+创建 `test`，等待首次 `Build App Image` 自动运行并验证测试部署，然后开始使用常规晋级链。
 
 ## 主线保护
 
