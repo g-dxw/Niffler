@@ -88,15 +88,17 @@ export FAKE_SCP_LOG="$SCP_LOG"
 GH_REPO="ryfineZ/Niffler" \
     bash "$DEPLOY_SCRIPT" \
         --host "deploy@example.test" \
-        --remote-dir "/opt/niffler-test" \
-        --run-id "123456" \
-        --test-deployment \
-        --public-health-url "https://test.example.test/"
+    --remote-dir "/opt/niffler-test" \
+    --run-id "123456" \
+    --test-deployment \
+    --source-health-url "http://127.0.0.1:18084/_gateway/health" \
+    --public-health-url "https://test.example.test/"
 
 grep -Fq -- "/opt/niffler-test/bin/deploy-test" "$SSH_LOG"
 grep -Fq -- "RELEASE_ROOT=/opt/niffler-test/.release" "$SSH_LOG"
 grep -Fq -- "--required-branch test" "$SSH_LOG"
 grep -Fq -- "--migration-context-service app" "$SSH_LOG"
+grep -Fq -- "--bootstrap-migration-context" "$SSH_LOG"
 grep -Fq -- "--allow-non-ancestor-current" "$SSH_LOG"
 grep -Fq -- "--service app" "$SSH_LOG"
 grep -Fq -- "--source-health-url http://127.0.0.1:18084/_gateway/health" "$SSH_LOG"
@@ -113,5 +115,29 @@ if bash "$DEPLOY_SCRIPT" \
     exit 1
 fi
 grep -Fq "requires an https --public-health-url" "$TEST_ROOT/http-url.out"
+
+if bash "$DEPLOY_SCRIPT" \
+    --host "deploy@example.test" \
+    --remote-dir "/opt/not-niffler-test" \
+    --run-id "123456" \
+    --test-deployment \
+    --source-health-url "http://127.0.0.1:18084/_gateway/health" \
+    --public-health-url "https://test.example.test" >"$TEST_ROOT/remote-dir.out" 2>&1; then
+    echo "unexpected test deployment remote directory succeeded" >&2
+    exit 1
+fi
+grep -Fq "requires --remote-dir /opt/niffler-test" "$TEST_ROOT/remote-dir.out"
+
+if bash "$DEPLOY_SCRIPT" \
+    --host "deploy@example.test" \
+    --remote-dir "/opt/niffler-test" \
+    --run-id "123456" \
+    --test-deployment \
+    --source-health-url "https://source.example.test/_gateway/health" \
+    --public-health-url "https://test.example.test" >"$TEST_ROOT/source-url.out" 2>&1; then
+    echo "non-local source test URL unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "requires a local --source-health-url" "$TEST_ROOT/source-url.out"
 
 echo "test CI deployment tests passed"

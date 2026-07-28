@@ -20,6 +20,7 @@ ANCESTRY_CHECK_SCRIPT="$SCRIPT_DIR/check-deploy-ancestry.sh"
 FIXED_DEPLOYER_PATH="/opt/niffler-release/bin/deploy-production"
 TEST_DEPLOYMENT=false
 PUBLIC_HEALTH_URL=""
+SOURCE_HEALTH_URL=""
 
 DEPLOY_HOST=""
 REMOTE_DIR="/opt/niffler-app"
@@ -44,6 +45,8 @@ Options:
   --test-deployment        Deploy the exact current test branch commit with the test policy.
   --public-health-url <url>
                            Public test base URL used for post-deploy health verification.
+  --source-health-url <url>
+                           Local test health URL used for post-deploy verification.
   -h, --help               Show help
 
 Environment:
@@ -113,6 +116,11 @@ while [ $# -gt 0 ]; do
             PUBLIC_HEALTH_URL="${2%/}"
             shift 2
             ;;
+        --source-health-url)
+            require_option_value "$1" "${2:-}"
+            SOURCE_HEALTH_URL="${2%/}"
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -162,6 +170,14 @@ if [ "$TEST_DEPLOYMENT" = true ]; then
     fi
     if [[ "$PUBLIC_HEALTH_URL" != https://* ]]; then
         echo "Test deployment requires an https --public-health-url."
+        exit 1
+    fi
+    if [[ ! "$SOURCE_HEALTH_URL" =~ ^http://127\.0\.0\.1:[1-9][0-9]{0,4}/_gateway/health$ ]]; then
+        echo "Test deployment requires a local --source-health-url ending in /_gateway/health."
+        exit 1
+    fi
+    if [ "$REMOTE_DIR" != "/opt/niffler-test" ]; then
+        echo "Test deployment requires --remote-dir /opt/niffler-test."
         exit 1
     fi
     BRANCH="test"
@@ -386,8 +402,9 @@ else
         REMOTE_DEPLOY_ARGS+=(
             --required-branch test
             --migration-context-service app
+            --bootstrap-migration-context
             --allow-non-ancestor-current
-            --source-health-url http://127.0.0.1:18084/_gateway/health
+            --source-health-url "$SOURCE_HEALTH_URL"
             --public-health-url "$PUBLIC_HEALTH_URL/_gateway/health"
         )
         REMOTE_COMMAND=(

@@ -171,9 +171,10 @@ jobs:
           SSH_HOST_FINGERPRINT: ${{ secrets.MYLINGWEAVE_SSH_HOST_FINGERPRINT }}
           SSH_USER: ${{ vars.MYLINGWEAVE_USER }}
           REMOTE_DIR: ${{ vars.MYLINGWEAVE_REMOTE_DIR }}
+          SOURCE_HEALTH_URL: ${{ vars.MYLINGWEAVE_SOURCE_HEALTH_URL }}
         run: |
           set -euo pipefail
-          for value_name in SSH_HOST SSH_PRIVATE_KEY SSH_HOST_FINGERPRINT SSH_USER REMOTE_DIR; do
+          for value_name in SSH_HOST SSH_PRIVATE_KEY SSH_HOST_FINGERPRINT SSH_USER REMOTE_DIR SOURCE_HEALTH_URL; do
             if [[ -z "${!value_name}" ]]; then
               echo "${value_name} is required for the test environment" >&2
               exit 1
@@ -183,8 +184,12 @@ jobs:
             echo "MYLINGWEAVE_USER is invalid" >&2
             exit 1
           fi
-          if [[ "${REMOTE_DIR}" != /* ]]; then
-            echo "MYLINGWEAVE_REMOTE_DIR must be an absolute path" >&2
+          if [[ "${REMOTE_DIR}" != "/opt/niffler-test" ]]; then
+            echo "MYLINGWEAVE_REMOTE_DIR must be /opt/niffler-test" >&2
+            exit 1
+          fi
+          if [[ ! "${SOURCE_HEALTH_URL}" =~ ^http://127\.0\.0\.1:[1-9][0-9]{0,4}/_gateway/health$ ]]; then
+            echo "MYLINGWEAVE_SOURCE_HEALTH_URL must be a local /_gateway/health URL" >&2
             exit 1
           fi
 
@@ -238,10 +243,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           APP_IMAGE: niffler-app:${{ github.sha }}
+          SOURCE_HEALTH_URL: ${{ vars.MYLINGWEAVE_SOURCE_HEALTH_URL }}
         run: |
           scripts/deploy-ci-artifact.sh \
             --host "${{ vars.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
             --remote-dir "${{ vars.MYLINGWEAVE_REMOTE_DIR }}" \
             --run-id "${{ github.run_id }}" \
             --test-deployment \
+            --source-health-url "${SOURCE_HEALTH_URL}" \
             --public-health-url "${{ vars.MYLINGWEAVE_PUBLIC_URL }}"

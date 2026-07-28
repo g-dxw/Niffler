@@ -77,9 +77,11 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
 - 同一时间的 `test` 发布按提交顺序排队，不能取消正在执行的远端部署，避免 SSH 中断让
   测试环境停在半更新状态。
 - 测试发布只接受当前上游 `test` 的准确提交，并调用服务器上 root 所有、不可由待部署
-  分支替换的 `/opt/niffler-test/bin/deploy-test`。测试环境使用独立 PostgreSQL；部署前
-  从测试 `app` 容器读取实际数据库环境并执行迁移兼容检查，同时验证镜像提交标签、
-  Compose 健康状态、源站健康地址和公开健康地址，失败时恢复旧镜像。
+  分支替换的 `/opt/niffler-test/bin/deploy-test`。测试环境使用独立 PostgreSQL；已有
+  `app` 容器时，部署前从该容器读取实际数据库环境并执行迁移兼容检查。首次部署没有
+  `app` 容器时，只允许测试流程启动 PostgreSQL 和 Redis，并按测试 `.env` 执行同一项
+  兼容检查。两种情况都会验证镜像提交标签、Compose 健康状态、源站健康地址和公开健康地址；
+  已有版本的部署失败时自动恢复旧镜像。
 - 测试验收后，由上游 `test` 向 `main` 发起晋级合并请求。
 - `Promotion policy` 检查拒绝普通功能分支直接进入 `main`，也拒绝 fork 中名为
   `test` 的分支冒充上游集成分支。该检查使用 `pull_request_target`，只检出并执行
@@ -91,30 +93,65 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
 
 ### 一次性测试服务器准备
 
-这部分由能够管理 `test01` 的维护者完成，不需要 GitHub 仓库管理员权限：
+这部分由能够通过 VPS 控制台、VNC 或已获授权管理员密钥登录 `test01` 的维护者完成。
+如果服务器只接受公钥登录，而当前管理员密钥不可用，必须先在供应商控制台恢复管理员入口；
+不能临时打开公网密码登录作为替代方案。
 
-1. 使用独立的 Actions Ed25519 密钥，不得复用个人或 root 登录私钥；公钥只授权给
-   测试部署账号 `ops`，私钥仅交给 GitHub `test` Environment。本机 SSH 别名
-   `test01` 使用的专用密钥为 `~/.ssh/opsbot_test_ed25519`。
-2. 合并本次流水线修改后，从受信任的 `main` 安装测试固定部署器：
+1. 使用独立的 Actions Ed25519 密钥，不得复用个人或 root 登录私钥。当前测试密钥的
+   公钥位于本机 `~/Workspace/Projects/vps_nodes/niffler-test-deploy.pub`；只将该公钥授权给
+   测试部署账号 `niffler-test-deploy`，私钥只保存到 GitHub `test` Environment。
+2. 在受信任的 `main` 工作区准备好 `docker-compose.yml` 和测试专用 `.env`，并将本机
+   `niffler-test-deploy.pub` 上传或通过服务器控制台写入
+   `/tmp/niffler-test-deploy.pub` 后，以 root 执行以下初始化。`.env` 必须使用独立的
+   PostgreSQL、Redis、JWT 和加密密钥，不能复制生产值；测试应用使用默认端口 `8084`。
 
    ```bash
-   scp scripts/fixed-production-deployer.sh test01:/tmp/deploy-test
-   ssh test01 \
-     'sudo install -d -o root -g ops -m 2750 /opt/niffler-test/bin &&
-      sudo install -o root -g root -m 0755 /tmp/deploy-test /opt/niffler-test/bin/deploy-test'
+   install -d -o root -g root -m 0755 /opt/niffler-test/bin
+   id -u niffler-test-deploy >/dev/null 2>&1 || \
+     useradd --create-home --shell /bin/bash niffler-test-deploy
+   passwd -l niffler-test-deploy
+   usermod -aG docker niffler-test-deploy
+
+   install -d -o root -g root -m 0755 /home/niffler-test-deploy/.ssh
+   install -o root -g root -m 0644 \
+     /tmp/niffler-test-deploy.pub \
+     /home/niffler-test-deploy/.ssh/authorized_keys
+
+   install -d -o root -g niffler-test-deploy -m 2770 \
+     /opt/niffler-test /opt/niffler-test/logs /opt/niffler-test/.release
+   printf 'niffler-test-v1\n' > /opt/niffler-test/.niffler-test-environment
+   chown root:root /opt/niffler-test/.niffler-test-environment
+   chmod 0444 /opt/niffler-test/.niffler-test-environment
+   install -o root -g niffler-test-deploy -m 0660 \
+     docker-compose.yml /opt/niffler-test/docker-compose.yml
+   install -o root -g niffler-test-deploy -m 0660 \
+     .env /opt/niffler-test/.env
+   install -o root -g root -m 0755 \
+     scripts/fixed-production-deployer.sh /opt/niffler-test/bin/deploy-test
    ```
 
-3. 确认 `ops` 能读取测试 Compose 配置、更新 `/opt/niffler-test/.env`、访问 Docker，
-   但不能修改 `/opt/niffler-test/bin/deploy-test`。
-4. 测试 Compose 使用 PostgreSQL，并确保 `app` 容器环境中存在正确的
-   `AETHER_DATABASE_DRIVER=postgres` 和测试库 `AETHER_DATABASE_URL`；测试数据库必须与
-   生产数据库完全隔离。启用自动部署前先完成一次服务器初始化部署，确保测试 PostgreSQL
-   和现有 `app` 容器健康，固定部署器才能从当前容器读取准确的数据库环境做迁移预检。
+3. 测试 `.env` 至少应明确设置 `COMPOSE_PROJECT_NAME=niffler_test`、`APP_PORT=8084` 和
+   `APP_IMAGE=niffler-app:latest`，并让 `postgres`、`redis` 和 `app` 使用完全隔离的测试
+   数据。不要删除或改写 `.niffler-test-environment` 标记文件；工作流会在首次部署前检查它，
+   以防错误地把测试部署指向生产目录。首次 Actions 部署会自行启动 PostgreSQL、Redis 和
+   `app`；不需要预先手工拉取或启动应用镜像。
+4. `niffler-test-deploy` 可以操作这个专用测试 Compose 项目和 Docker，因此该账号只能用于
+   独立测试主机，不能复用于生产主机。虽然普通文件权限会阻止它直接改写 root 所有的
+   `/opt/niffler-test/bin/deploy-test`，Docker 组本身等同于主机管理员权限；因此该固定
+   部署器是防止日常误改的运行约束，不是针对测试密钥泄露的安全边界。先验证公钥认证和
+   目录权限：
+
+   ```bash
+   ssh -i ~/Workspace/Projects/vps_nodes/niffler-test-deploy \
+     niffler-test-deploy@123.253.224.101 \
+     'docker compose version && test -w /opt/niffler-test/.release'
+   ```
+
 5. 独立保存以下信息，交给仓库管理员配置：
    - 主机：`123.253.224.101`（SSH 端口为默认的 `22`，Secret 中不要附加端口）
-   - 用户：`ops`
+   - 用户：`niffler-test-deploy`
    - 目录：`/opt/niffler-test`
+   - 源站健康地址：`http://127.0.0.1:8084/_gateway/health`
    - 计划公网地址：`https://niffler-test.123.253.224.101.sslip.io`
    - ED25519 主机指纹：
      `SHA256:jyUey+3oSoZHEdiApa8gKRRlKDyLsDorjCPPRAIaILw`
@@ -130,8 +167,10 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
    - `MYLINGWEAVE_SSH_HOST_FINGERPRINT` =
      `SHA256:jyUey+3oSoZHEdiApa8gKRRlKDyLsDorjCPPRAIaILw`
 3. 在同一个 Environment 中配置 Variable：
-   - `MYLINGWEAVE_USER` = `ops`
+   - `MYLINGWEAVE_USER` = `niffler-test-deploy`
    - `MYLINGWEAVE_REMOTE_DIR` = `/opt/niffler-test`
+   - `MYLINGWEAVE_SOURCE_HEALTH_URL` =
+     `http://127.0.0.1:8084/_gateway/health`
    - `MYLINGWEAVE_PUBLIC_URL` =
      `https://niffler-test.123.253.224.101.sslip.io`
 4. 创建保护 `test` 的 Ruleset：禁止删除和强制推送，要求合并请求、至少一名他人批准、
@@ -141,9 +180,9 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
 6. 在 `production` Environment 的 required reviewers 中同时加入 `ryfineZ` 和 `g-dxw`，
    保留禁止发起人自审和禁止管理员绕过。
 
-首次落地顺序为：合并本次流水线修改到 `main`，安装测试固定部署器并准备专用密钥，
-完成上述管理员配置，从最新 `main` 创建 `test`，等待首次 `Build App Image` 自动运行并
-验证测试部署，然后开始使用常规晋级链。
+首次落地顺序为：合并本次流水线修改到 `main`，通过服务器控制台或已有管理员密钥完成
+测试账号、Compose 配置、固定部署器和专用密钥准备，完成上述管理员配置，从最新 `main`
+创建 `test`，等待首次 `Build App Image` 自动运行并验证测试部署，然后开始使用常规晋级链。
 
 ## 主线保护
 

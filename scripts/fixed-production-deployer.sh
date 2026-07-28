@@ -16,6 +16,8 @@ HEALTH_TIMEOUT_SECONDS=180
 ALLOW_ROLLBACK=false
 ENFORCE_CURRENT_ANCESTRY=true
 MIGRATION_CONTEXT_SERVICE="frontdoor"
+BOOTSTRAP_MIGRATION_CONTEXT=false
+TEST_ENVIRONMENT_MARKER=".niffler-test-environment"
 SERVICES=()
 
 usage() {
@@ -31,6 +33,10 @@ Options:
   --required-branch <branch>    Exact remote branch the target must match, default main
   --migration-context-service <name>
                                 Compose service whose network and environment reach PostgreSQL
+  --bootstrap-migration-context
+                                For a first test deployment, start PostgreSQL and Redis and run
+                                the migration check from the target Compose service when no active
+                                migration-context container exists
   --allow-non-ancestor-current Allow replacing an older test lineage while still requiring
                                 the exact current remote branch commit
   --public-health-url <url>     Public health endpoint
@@ -95,6 +101,10 @@ while [ $# -gt 0 ]; do
             MIGRATION_CONTEXT_SERVICE="$2"
             shift 2
             ;;
+        --bootstrap-migration-context)
+            BOOTSTRAP_MIGRATION_CONTEXT=true
+            shift
+            ;;
         --allow-non-ancestor-current)
             ENFORCE_CURRENT_ANCESTRY=false
             shift
@@ -155,8 +165,20 @@ done
 if [[ ! "$MIGRATION_CONTEXT_SERVICE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
     die "invalid migration context service name"
 fi
+if [ "$BOOTSTRAP_MIGRATION_CONTEXT" = true ] && [ "$REQUIRED_BRANCH" != "test" ]; then
+    die "bootstrap migration context is only allowed for the test branch"
+fi
 if [[ "$REMOTE_DIR" != /* ]] || [ "$REMOTE_DIR" = "/" ]; then
     die "remote directory must be an explicit absolute application directory"
+fi
+if [ "$BOOTSTRAP_MIGRATION_CONTEXT" = true ]; then
+    TEST_MARKER_PATH="$REMOTE_DIR/$TEST_ENVIRONMENT_MARKER"
+    if [ ! -f "$TEST_MARKER_PATH" ] || [ -L "$TEST_MARKER_PATH" ]; then
+        die "test environment marker is missing: $TEST_MARKER_PATH"
+    fi
+    if [ "$(tr -d '\r\n' < "$TEST_MARKER_PATH")" != "niffler-test-v1" ]; then
+        die "test environment marker is invalid: $TEST_MARKER_PATH"
+    fi
 fi
 if [[ "$RELEASE_ROOT" != /* ]] || [ "$RELEASE_ROOT" = "/" ]; then
     die "release root must be an explicit absolute directory"
@@ -295,19 +317,35 @@ trap cleanup EXIT
 cd "$REMOTE_DIR"
 MIGRATION_CONTEXT_CONTAINER="$("${DC[@]}" ps -q "$MIGRATION_CONTEXT_SERVICE")"
 if [ -z "$MIGRATION_CONTEXT_CONTAINER" ]; then
-    die "$MIGRATION_CONTEXT_SERVICE container is not running; cannot read the active PostgreSQL environment"
-fi
-CURRENT_ENV_FILE="$TMP_DIR/$MIGRATION_CONTEXT_SERVICE.env"
-docker inspect "$MIGRATION_CONTEXT_CONTAINER" \
-    --format '{{range .Config.Env}}{{println .}}{{end}}' > "$CURRENT_ENV_FILE"
-chmod 0600 "$CURRENT_ENV_FILE"
-if ! docker run --rm \
-    --network "container:$MIGRATION_CONTEXT_CONTAINER" \
-    --env-file "$CURRENT_ENV_FILE" \
-    --entrypoint /usr/local/bin/aether-gateway \
-    "$TARGET_IMAGE" \
-    --check-postgres-migration-compatibility; then
-    die "target image is incompatible with the active PostgreSQL migration history"
+    if [ "$BOOTSTRAP_MIGRATION_CONTEXT" != true ]; then
+        die "$MIGRATION_CONTEXT_SERVICE container is not running; cannot read the active PostgreSQL environment"
+    fi
+    if [ -n "$CURRENT_COMMIT" ]; then
+        die "$MIGRATION_CONTEXT_SERVICE container is not running for an existing deployment"
+    fi
+    echo "No active $MIGRATION_CONTEXT_SERVICE container; preparing first test deployment."
+    if ! "${DC[@]}" up -d --no-build postgres redis; then
+        die "failed to start PostgreSQL and Redis for the first test deployment"
+    fi
+    if ! APP_IMAGE="$TARGET_IMAGE" "${DC[@]}" run --rm --no-deps \
+        --entrypoint /usr/local/bin/aether-gateway \
+        "$MIGRATION_CONTEXT_SERVICE" \
+        --check-postgres-migration-compatibility; then
+        die "target image is incompatible with the test PostgreSQL migration history"
+    fi
+else
+    CURRENT_ENV_FILE="$TMP_DIR/$MIGRATION_CONTEXT_SERVICE.env"
+    docker inspect "$MIGRATION_CONTEXT_CONTAINER" \
+        --format '{{range .Config.Env}}{{println .}}{{end}}' > "$CURRENT_ENV_FILE"
+    chmod 0600 "$CURRENT_ENV_FILE"
+    if ! docker run --rm \
+        --network "container:$MIGRATION_CONTEXT_CONTAINER" \
+        --env-file "$CURRENT_ENV_FILE" \
+        --entrypoint /usr/local/bin/aether-gateway \
+        "$TARGET_IMAGE" \
+        --check-postgres-migration-compatibility; then
+        die "target image is incompatible with the active PostgreSQL migration history"
+    fi
 fi
 
 ENV_PATH="$REMOTE_DIR/.env"
