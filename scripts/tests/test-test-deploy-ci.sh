@@ -39,7 +39,8 @@ set -euo pipefail
 case "${1:-} ${2:-}" in
     "run view")
         printf '%s\t%s\t%s\t%s\n' \
-            "$FAKE_TARGET_COMMIT" "in_progress" "__pending__" "Build App Image"
+            "$FAKE_TARGET_COMMIT" "in_progress" "__pending__" \
+            "${FAKE_RUN_WORKFLOW_NAME:-__missing__}"
         ;;
     "run download")
         download_dir=""
@@ -91,6 +92,7 @@ GITHUB_ACTIONS=true \
 GITHUB_RUN_ID="123456" \
 GITHUB_SHA="$TARGET_COMMIT" \
 GITHUB_WORKFLOW="Build App Image" \
+GITHUB_WORKFLOW_REF="ryfineZ/Niffler/.github/workflows/app-image.yml@refs/heads/test" \
 GITHUB_REF_NAME="test" \
     bash "$DEPLOY_SCRIPT" \
         --host "deploy@example.test" \
@@ -112,10 +114,12 @@ grep -Fq -- "--public-health-url https://test.example.test/_gateway/health" "$SS
 grep -Fq -- "deploy@example.test:/tmp/niffler-app-linux-amd64.tar" "$SCP_LOG"
 
 if GH_REPO="ryfineZ/Niffler" \
+    FAKE_RUN_WORKFLOW_NAME="Build App Image" \
     GITHUB_ACTIONS=true \
     GITHUB_RUN_ID="654321" \
     GITHUB_SHA="$TARGET_COMMIT" \
     GITHUB_WORKFLOW="Build App Image" \
+    GITHUB_WORKFLOW_REF="ryfineZ/Niffler/.github/workflows/app-image.yml@refs/heads/test" \
     GITHUB_REF_NAME="test" \
         bash "$DEPLOY_SCRIPT" \
             --host "deploy@example.test" \
@@ -131,10 +135,12 @@ fi
 grep -Fq "is not a successful completed run" "$TEST_ROOT/unrelated-run.out"
 
 if GH_REPO="ryfineZ/Niffler" \
+    FAKE_RUN_WORKFLOW_NAME="Build App Image" \
     GITHUB_ACTIONS=true \
     GITHUB_RUN_ID="123456" \
     GITHUB_SHA="$TARGET_COMMIT" \
     GITHUB_WORKFLOW="Build App Image" \
+    GITHUB_WORKFLOW_REF="ryfineZ/Niffler/.github/workflows/app-image.yml@refs/heads/test" \
     GITHUB_REF_NAME="main" \
         bash "$DEPLOY_SCRIPT" \
             --host "deploy@example.test" \
@@ -148,6 +154,48 @@ if GH_REPO="ryfineZ/Niffler" \
     exit 1
 fi
 grep -Fq "is not a successful completed run" "$TEST_ROOT/non-test-branch.out"
+
+if GH_REPO="ryfineZ/Niffler" \
+    FAKE_RUN_WORKFLOW_NAME="Unexpected Workflow" \
+    GITHUB_ACTIONS=true \
+    GITHUB_RUN_ID="123456" \
+    GITHUB_SHA="$TARGET_COMMIT" \
+    GITHUB_WORKFLOW="Build App Image" \
+    GITHUB_WORKFLOW_REF="ryfineZ/Niffler/.github/workflows/app-image.yml@refs/heads/test" \
+    GITHUB_REF_NAME="test" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "deploy@example.test" \
+            --remote-dir "/opt/niffler-test" \
+            --run-id "123456" \
+            --test-deployment \
+            --source-health-url "http://127.0.0.1:18084/_gateway/health" \
+            --public-health-url "https://test.example.test" \
+            >"$TEST_ROOT/wrong-workflow-name.out" 2>&1; then
+    echo "incorrect workflow name unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "belongs to 'Unexpected Workflow'" "$TEST_ROOT/wrong-workflow-name.out"
+
+if GH_REPO="ryfineZ/Niffler" \
+    FAKE_RUN_WORKFLOW_NAME="Build App Image" \
+    GITHUB_ACTIONS=true \
+    GITHUB_RUN_ID="123456" \
+    GITHUB_SHA="$TARGET_COMMIT" \
+    GITHUB_WORKFLOW="Build App Image" \
+    GITHUB_WORKFLOW_REF="ryfineZ/Niffler/.github/workflows/other.yml@refs/heads/test" \
+    GITHUB_REF_NAME="test" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "deploy@example.test" \
+            --remote-dir "/opt/niffler-test" \
+            --run-id "123456" \
+            --test-deployment \
+            --source-health-url "http://127.0.0.1:18084/_gateway/health" \
+            --public-health-url "https://test.example.test" \
+            >"$TEST_ROOT/wrong-workflow-ref.out" 2>&1; then
+    echo "incorrect workflow ref unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "is not a successful completed run" "$TEST_ROOT/wrong-workflow-ref.out"
 
 if bash "$DEPLOY_SCRIPT" \
     --host "deploy@example.test" \
