@@ -41,7 +41,8 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "123456"
         ;;
     "run view")
-        printf '%s\t%s\t%s\n' "$FAKE_TARGET_COMMIT" "success" "Build App Image"
+        printf '%s\t%s\t%s\t%s\n' \
+            "$FAKE_TARGET_COMMIT" "completed" "success" "Build App Image"
         ;;
     "run download")
         download_dir=""

@@ -38,7 +38,8 @@ cat > "$FAKE_BIN/gh" <<'FAKE_GH'
 set -euo pipefail
 case "${1:-} ${2:-}" in
     "run view")
-        printf '%s\t%s\t%s\n' "$FAKE_TARGET_COMMIT" "success" "Build App Image"
+        printf '%s\t%s\t%s\t%s\n' \
+            "$FAKE_TARGET_COMMIT" "in_progress" "__pending__" "Build App Image"
         ;;
     "run download")
         download_dir=""
@@ -86,6 +87,11 @@ export FAKE_SSH_LOG="$SSH_LOG"
 export FAKE_SCP_LOG="$SCP_LOG"
 
 GH_REPO="ryfineZ/Niffler" \
+GITHUB_ACTIONS=true \
+GITHUB_RUN_ID="123456" \
+GITHUB_SHA="$TARGET_COMMIT" \
+GITHUB_WORKFLOW="Build App Image" \
+GITHUB_REF_NAME="test" \
     bash "$DEPLOY_SCRIPT" \
         --host "deploy@example.test" \
     --remote-dir "/opt/niffler-test" \
@@ -104,6 +110,44 @@ grep -Fq -- "--service app" "$SSH_LOG"
 grep -Fq -- "--source-health-url http://127.0.0.1:18084/_gateway/health" "$SSH_LOG"
 grep -Fq -- "--public-health-url https://test.example.test/_gateway/health" "$SSH_LOG"
 grep -Fq -- "deploy@example.test:/tmp/niffler-app-linux-amd64.tar" "$SCP_LOG"
+
+if GH_REPO="ryfineZ/Niffler" \
+    GITHUB_ACTIONS=true \
+    GITHUB_RUN_ID="654321" \
+    GITHUB_SHA="$TARGET_COMMIT" \
+    GITHUB_WORKFLOW="Build App Image" \
+    GITHUB_REF_NAME="test" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "deploy@example.test" \
+            --remote-dir "/opt/niffler-test" \
+            --run-id "123456" \
+            --test-deployment \
+            --source-health-url "http://127.0.0.1:18084/_gateway/health" \
+            --public-health-url "https://test.example.test" \
+            >"$TEST_ROOT/unrelated-run.out" 2>&1; then
+    echo "unrelated active workflow run unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "is not a successful completed run" "$TEST_ROOT/unrelated-run.out"
+
+if GH_REPO="ryfineZ/Niffler" \
+    GITHUB_ACTIONS=true \
+    GITHUB_RUN_ID="123456" \
+    GITHUB_SHA="$TARGET_COMMIT" \
+    GITHUB_WORKFLOW="Build App Image" \
+    GITHUB_REF_NAME="main" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "deploy@example.test" \
+            --remote-dir "/opt/niffler-test" \
+            --run-id "123456" \
+            --test-deployment \
+            --source-health-url "http://127.0.0.1:18084/_gateway/health" \
+            --public-health-url "https://test.example.test" \
+            >"$TEST_ROOT/non-test-branch.out" 2>&1; then
+    echo "active workflow run outside test unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "is not a successful completed run" "$TEST_ROOT/non-test-branch.out"
 
 if bash "$DEPLOY_SCRIPT" \
     --host "deploy@example.test" \
