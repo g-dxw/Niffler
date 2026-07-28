@@ -1,6 +1,9 @@
 name: Build App Image
 
 on:
+  push:
+    branches:
+      - test
   workflow_dispatch:
 
 permissions:
@@ -9,7 +12,7 @@ permissions:
 
 concurrency:
   group: app-image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_name != 'test' }}
 
 jobs:
   release_checks:
@@ -21,6 +24,7 @@ jobs:
       - name: Check deployment scripts
         run: |
           bash -n scripts/check-deploy-ancestry.sh
+          bash -n scripts/check-promotion-source.sh
           bash -n scripts/deploy-ci-artifact.sh
           bash -n scripts/fixed-production-deployer.sh
           bash -n scripts/actions-production-ssh-command.sh
@@ -28,12 +32,16 @@ jobs:
           bash -n scripts/install-actions-production-access.sh
           bash -n scripts/verify-ssh-host-key.sh
           bash -n scripts/tests/test-deploy-ancestry.sh
+          bash -n scripts/tests/test-promotion-source.sh
+          bash -n scripts/tests/test-app-image-workflow.sh
           bash -n scripts/tests/test-fixed-production-deployer.sh
           bash -n scripts/tests/test-actions-production-access.sh
           bash -n scripts/tests/test-deploy-ci-restricted.sh
           bash -n scripts/tests/test-production-workflow.sh
           bash -n scripts/tests/test-verify-ssh-host-key.sh
           bash scripts/tests/test-deploy-ancestry.sh
+          bash scripts/tests/test-promotion-source.sh
+          bash scripts/tests/test-app-image-workflow.sh
           bash scripts/tests/test-fixed-production-deployer.sh
           bash scripts/tests/test-actions-production-access.sh
           bash scripts/tests/test-deploy-ci-restricted.sh
@@ -147,8 +155,36 @@ jobs:
     needs: image
     if: github.ref_name == 'test'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: test
+      url: ${{ vars.MYLINGWEAVE_PUBLIC_URL }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Validate test deployment configuration
+        env:
+          SSH_HOST: ${{ secrets.MYLINGWEAVE_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.MYLINGWEAVE_SSH_KEY }}
+          SSH_HOST_FINGERPRINT: ${{ secrets.MYLINGWEAVE_SSH_HOST_FINGERPRINT }}
+          SSH_USER: ${{ vars.MYLINGWEAVE_USER }}
+          REMOTE_DIR: ${{ vars.MYLINGWEAVE_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          for value_name in SSH_HOST SSH_PRIVATE_KEY SSH_HOST_FINGERPRINT SSH_USER REMOTE_DIR; do
+            if [[ -z "${!value_name}" ]]; then
+              echo "${value_name} is required for the test environment" >&2
+              exit 1
+            fi
+          done
+          if [[ ! "${SSH_USER}" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+            echo "MYLINGWEAVE_USER is invalid" >&2
+            exit 1
+          fi
+          if [[ "${REMOTE_DIR}" != /* ]]; then
+            echo "MYLINGWEAVE_REMOTE_DIR must be an absolute path" >&2
+            exit 1
+          fi
 
       - name: Setup SSH
         env:
@@ -202,6 +238,6 @@ jobs:
           APP_IMAGE: niffler-app:${{ github.sha }}
         run: |
           scripts/deploy-ci-artifact.sh \
-            --host "${{ secrets.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
-            --remote-dir "${{ secrets.MYLINGWEAVE_REMOTE_DIR }}" \
+            --host "${{ vars.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
+            --remote-dir "${{ vars.MYLINGWEAVE_REMOTE_DIR }}" \
             --run-id "${{ github.run_id }}"

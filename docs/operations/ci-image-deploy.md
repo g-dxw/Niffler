@@ -21,7 +21,8 @@
 
 ## 行为变化
 
-- 主应用镜像构建不再跟随 `main` 推送自动执行，需要在 GitHub Actions 手动触发 `Build App Image`。
+- `test` 更新后自动运行 `Build App Image` 并部署测试环境；生产镜像仍只为准确的
+  `main` 提交手动触发，生产不会因 `main` 推送自动上线。
 - 当前线上只使用 Linux amd64，因此 `Build App Image` 只构建 amd64 的 `aether-gateway`。
 - `Build App Image` 只产出 `niffler-app-linux-amd64` 镜像文件，不再推送 GHCR 镜像，避免重复构建和上传。
 - `Build App Image` 使用 Node 22 运行时的官方 GitHub Actions，避免 CI 运行时升级影响生产镜像产物。
@@ -49,6 +50,59 @@
 - `--allow-latest-for-local` 只允许本地验证或临时排查使用，不能作为生产发布命令。
 - 所有合并请求都运行 Rust、前端和发布工具检查，`main` 只接受这三组检查通过的
   合并请求。
+
+## 测试到生产的晋级链
+
+```text
+g-dxw 功能分支
+       |
+       v
+PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验收
+       |                                                       |
+       +---------------------- PR ------------------------------+
+                               |
+                               v
+                     ryfineZ/Niffler:main
+                               |
+                    手动构建准确 main 镜像
+                               |
+                    production 环境双人审批
+                               |
+                               v
+                            生产环境
+```
+
+- `ryfineZ/Niffler` 是唯一发布源；个人 fork 只用于开发分支和发起合并请求。
+- 常规修改只能先进入受保护 `test`，由 `test` 推送自动构建准确提交镜像并部署测试环境。
+- 同一时间的 `test` 发布按提交顺序排队，不能取消正在执行的远端部署，避免 SSH 中断让
+  测试环境停在半更新状态。
+- 测试验收后，由上游 `test` 向 `main` 发起晋级合并请求。
+- `Promotion policy` 检查拒绝普通功能分支直接进入 `main`，也拒绝 fork 中名为
+  `test` 的分支冒充上游集成分支。该检查使用 `pull_request_target`，只检出并执行
+  `main` 基线中的守卫脚本，不执行合并请求提供的脚本，也不授予写权限。
+- 紧急修复使用 `hotfix/*`。同一修复必须先通过合并请求进入 `test` 并完成测试部署，
+  随后才允许向 `main` 发起生产修复合并请求；守卫会核对两条合并请求的准确 head SHA，
+  合并测试后追加的未测试提交不能直接进入 `main`。
+- `main` 合并后仍按受保护生产流程手动构建、手动触发并由另一名维护者批准，不自动上线。
+
+### 一次性 GitHub 管理员配置
+
+仓库所有者完成以下设置后，再创建长期 `test` 分支：
+
+1. 创建 `test` Environment，不要求人工审批，只允许 `test` 分支部署。
+2. 在 `test` Environment 中配置 Secret：`MYLINGWEAVE_HOST`、
+   `MYLINGWEAVE_SSH_KEY`、`MYLINGWEAVE_SSH_HOST_FINGERPRINT`。
+3. 配置 Variable：`MYLINGWEAVE_USER`、`MYLINGWEAVE_REMOTE_DIR`、
+   `MYLINGWEAVE_PUBLIC_URL`。
+4. 创建保护 `test` 的 Ruleset：禁止删除和强制推送，要求合并请求、至少一名他人批准、
+   解决全部对话，并严格要求 `check`、`Frontend`、`Release tooling` 三项检查。
+5. 在现有 `main` Ruleset 中增加必过检查 `Promotion policy`，并增加 required deployment
+   `test`，确保 PR 的准确 head SHA 已成功部署到测试环境。
+6. 在 `production` Environment 的 required reviewers 中同时加入 `ryfineZ` 和 `g-dxw`，
+   保留禁止发起人自审和禁止管理员绕过。
+
+首次落地顺序为：合并本次流水线修改到 `main`，完成上述管理员配置，从最新 `main`
+创建 `test`，手动运行一次 `Build App Image` 验证测试部署，然后开始使用常规晋级链。
 
 ## 主线保护
 
