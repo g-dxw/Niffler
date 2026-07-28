@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up niffler-test PostgreSQL
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/niffler-test-backup
