@@ -135,7 +135,19 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
    数据。不要删除或改写 `.niffler-test-environment` 标记文件；工作流会在首次部署前检查它，
    以防错误地把测试部署指向生产目录。首次 Actions 部署会自行启动 PostgreSQL、Redis 和
    `app`；不需要预先手工拉取或启动应用镜像。
-4. `niffler-test-deploy` 可以操作这个专用测试 Compose 项目和 Docker，因此该账号只能用于
+4. 在创建 `test` 分支前，必须让测试主机的 HTTPS 反向代理监听公网 `80` 和 `443`，并将
+   `niffler-test.123.253.224.101.sslip.io` 转发到 `127.0.0.1:8084`。例如使用 Caddy：
+
+   ```caddyfile
+   niffler-test.123.253.224.101.sslip.io {
+       reverse_proxy 127.0.0.1:8084
+   }
+   ```
+
+   安装或修改后先执行 `caddy validate --config /etc/caddy/Caddyfile` 和
+   `systemctl reload caddy`。证书签发和反向代理必须可用；否则部署器的 HTTPS 公网健康检查
+   会拒绝本次部署。
+5. `niffler-test-deploy` 可以操作这个专用测试 Compose 项目和 Docker，因此该账号只能用于
    独立测试主机，不能复用于生产主机。虽然普通文件权限会阻止它直接改写 root 所有的
    `/opt/niffler-test/bin/deploy-test`，Docker 组本身等同于主机管理员权限；因此该固定
    部署器是防止日常误改的运行约束，不是针对测试密钥泄露的安全边界。先验证公钥认证和
@@ -145,9 +157,10 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
    ssh -i ~/Workspace/Projects/vps_nodes/niffler-test-deploy \
      niffler-test-deploy@123.253.224.101 \
      'docker compose version && test -w /opt/niffler-test/.release'
+   curl -fsS https://niffler-test.123.253.224.101.sslip.io/_gateway/health
    ```
 
-5. 独立保存以下信息，交给仓库管理员配置：
+6. 独立保存以下信息，交给仓库管理员配置：
    - 主机：`123.253.224.101`（SSH 端口为默认的 `22`，Secret 中不要附加端口）
    - 用户：`niffler-test-deploy`
    - 目录：`/opt/niffler-test`
