@@ -18,6 +18,7 @@ grep -Fq 'REMOTE_DIR: ${{ vars.MYLINGWEAVE_REMOTE_DIR }}' "$WORKFLOW"
 grep -Fq 'SOURCE_HEALTH_URL: ${{ vars.MYLINGWEAVE_SOURCE_HEALTH_URL }}' "$WORKFLOW"
 grep -Fq -- '--run-id "${{ github.run_id }}"' "$WORKFLOW"
 grep -Fq -- '--test-deployment' "$WORKFLOW"
+grep -Fq -- '--restricted-actions' "$WORKFLOW"
 grep -Fq -- '--source-health-url "${SOURCE_HEALTH_URL}"' "$WORKFLOW"
 grep -Fq -- '--public-health-url "${{ vars.MYLINGWEAVE_PUBLIC_URL }}"' "$WORKFLOW"
 

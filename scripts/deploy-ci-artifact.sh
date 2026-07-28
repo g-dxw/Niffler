@@ -164,8 +164,8 @@ if [ "$RESTRICTED_ACTIONS" = true ] && [ "$ALLOW_ROLLBACK" = true ]; then
     exit 1
 fi
 if [ "$TEST_DEPLOYMENT" = true ]; then
-    if [ "$RESTRICTED_ACTIONS" = true ] || [ "$ALLOW_ROLLBACK" = true ]; then
-        echo "Test deployment does not support restricted production mode or rollback overrides."
+    if [ "$ALLOW_ROLLBACK" = true ]; then
+        echo "Test deployment does not support rollback overrides."
         exit 1
     fi
     if [[ "$PUBLIC_HEALTH_URL" != https://* ]]; then
@@ -364,7 +364,7 @@ if [ "$RESTRICTED_ACTIONS" = true ]; then
     else
         LOCAL_IMAGE_SHA256="$(shasum -a 256 "$IMAGE_TAR" | awk '{print $1}')"
     fi
-    echo ">>> Uploading image tar through the restricted production protocol..."
+    echo ">>> Uploading image tar through the restricted deployment protocol..."
     UPLOAD_RESULT="$(
         # TARGET_COMMIT is a validated lowercase 40-character SHA.
         # shellcheck disable=SC2029
@@ -375,7 +375,7 @@ if [ "$RESTRICTED_ACTIONS" = true ]; then
         echo "Uploaded artifact SHA-256 does not match the local artifact." >&2
         exit 1
     fi
-    echo ">>> Handing the verified artifact to the restricted production deployer..."
+    echo ">>> Handing the verified artifact to the restricted deployer..."
     # TARGET_COMMIT is a validated lowercase 40-character SHA.
     # shellcheck disable=SC2029
     ssh "${SSH_OPTIONS[@]}" "$DEPLOY_HOST" deploy "$TARGET_COMMIT"

@@ -63,16 +63,34 @@ cat > "$FAKE_BIN/ssh" <<'FAKE_SSH'
 #!/bin/bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_SSH_LOG"
-if [[ "$*" == *"/opt/niffler-test/bin/deploy-test"* ]]; then
-    exit 0
-fi
-printf '%s\n' "$FAKE_CURRENT_COMMIT"
+case "$*" in
+    *" status")
+        printf '%s\n' "$FAKE_CURRENT_COMMIT"
+        ;;
+    *" upload $FAKE_TARGET_COMMIT")
+        upload_file="$FAKE_UPLOAD_FILE"
+        dd of="$upload_file" 2>/dev/null
+        if command -v sha256sum >/dev/null 2>&1; then
+            upload_hash="$(sha256sum "$upload_file" | awk '{print $1}')"
+        else
+            upload_hash="$(shasum -a 256 "$upload_file" | awk '{print $1}')"
+        fi
+        printf 'uploaded_sha256=%s\n' "$upload_hash"
+        ;;
+    *" deploy $FAKE_TARGET_COMMIT")
+        ;;
+    *)
+        echo "unexpected ssh command: $*" >&2
+        exit 1
+        ;;
+esac
 FAKE_SSH
 
 cat > "$FAKE_BIN/scp" <<'FAKE_SCP'
 #!/bin/bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_SCP_LOG"
+exit 99
 FAKE_SCP
 
 chmod +x "$FAKE_BIN/git" "$FAKE_BIN/gh" "$FAKE_BIN/ssh" "$FAKE_BIN/scp"
@@ -84,6 +102,7 @@ export FAKE_TARGET_COMMIT="$TARGET_COMMIT"
 export FAKE_CURRENT_COMMIT="$CURRENT_COMMIT"
 export FAKE_SSH_LOG="$SSH_LOG"
 export FAKE_SCP_LOG="$SCP_LOG"
+export FAKE_UPLOAD_FILE="$TEST_ROOT/uploaded.tar"
 
 GH_REPO="ryfineZ/Niffler" \
     bash "$DEPLOY_SCRIPT" \
@@ -91,19 +110,15 @@ GH_REPO="ryfineZ/Niffler" \
     --remote-dir "/opt/niffler-test" \
     --run-id "123456" \
     --test-deployment \
+    --restricted-actions \
     --source-health-url "http://127.0.0.1:18084/_gateway/health" \
     --public-health-url "https://test.example.test/"
 
-grep -Fq -- "/opt/niffler-test/bin/deploy-test" "$SSH_LOG"
-grep -Fq -- "RELEASE_ROOT=/opt/niffler-test/.release" "$SSH_LOG"
-grep -Fq -- "--required-branch test" "$SSH_LOG"
-grep -Fq -- "--migration-context-service app" "$SSH_LOG"
-grep -Fq -- "--bootstrap-migration-context" "$SSH_LOG"
-grep -Fq -- "--allow-non-ancestor-current" "$SSH_LOG"
-grep -Fq -- "--service app" "$SSH_LOG"
-grep -Fq -- "--source-health-url http://127.0.0.1:18084/_gateway/health" "$SSH_LOG"
-grep -Fq -- "--public-health-url https://test.example.test/_gateway/health" "$SSH_LOG"
-grep -Fq -- "deploy@example.test:/tmp/niffler-app-linux-amd64.tar" "$SCP_LOG"
+grep -Fq -- "deploy@example.test status" "$SSH_LOG"
+grep -Fq -- "deploy@example.test upload $TARGET_COMMIT" "$SSH_LOG"
+grep -Fq -- "deploy@example.test deploy $TARGET_COMMIT" "$SSH_LOG"
+test "$(cat "$FAKE_UPLOAD_FILE")" = "test-image"
+test ! -s "$SCP_LOG"
 
 if bash "$DEPLOY_SCRIPT" \
     --host "deploy@example.test" \

@@ -30,12 +30,16 @@ jobs:
           bash -n scripts/actions-production-ssh-command.sh
           bash -n scripts/actions-production-deploy.sh
           bash -n scripts/install-actions-production-access.sh
+          bash -n scripts/actions-test-ssh-command.sh
+          bash -n scripts/actions-test-deploy.sh
+          bash -n scripts/install-actions-test-access.sh
           bash -n scripts/verify-ssh-host-key.sh
           bash -n scripts/tests/test-deploy-ancestry.sh
           bash -n scripts/tests/test-promotion-source.sh
           bash -n scripts/tests/test-app-image-workflow.sh
           bash -n scripts/tests/test-fixed-production-deployer.sh
           bash -n scripts/tests/test-actions-production-access.sh
+          bash -n scripts/tests/test-actions-test-access.sh
           bash -n scripts/tests/test-deploy-ci-restricted.sh
           bash -n scripts/tests/test-test-deploy-ci.sh
           bash -n scripts/tests/test-production-workflow.sh
@@ -45,6 +49,7 @@ jobs:
           bash scripts/tests/test-app-image-workflow.sh
           bash scripts/tests/test-fixed-production-deployer.sh
           bash scripts/tests/test-actions-production-access.sh
+          bash scripts/tests/test-actions-test-access.sh
           bash scripts/tests/test-deploy-ci-restricted.sh
           bash scripts/tests/test-test-deploy-ci.sh
           bash scripts/tests/test-production-workflow.sh
@@ -250,5 +255,6 @@ jobs:
             --remote-dir "${{ vars.MYLINGWEAVE_REMOTE_DIR }}" \
             --run-id "${{ github.run_id }}" \
             --test-deployment \
+            --restricted-actions \
             --source-health-url "${SOURCE_HEALTH_URL}" \
             --public-health-url "${{ vars.MYLINGWEAVE_PUBLIC_URL }}"
