@@ -51,8 +51,8 @@ case "${1:-}" in
                 exit 0
                 ;;
             ps)
-                if [ "${2:-}" = "-q" ] && [ "${3:-}" = "frontdoor" ]; then
-                    printf 'frontdoor-container\n'
+                if [ "${2:-}" = "-q" ]; then
+                    printf '%s-container\n' "${3:-unknown}"
                 fi
                 exit 0
                 ;;
@@ -73,7 +73,7 @@ case "${1:-}" in
         exit 0
         ;;
     inspect)
-        if [ "${2:-}" = "frontdoor-container" ]; then
+        if [[ "${2:-}" == *-container ]]; then
             printf 'AETHER_DATABASE_DRIVER=postgres\n'
             printf 'AETHER_DATABASE_URL=postgres://example.invalid/aether\n'
             exit 0
@@ -138,7 +138,7 @@ run_test_deployer() {
         --remote-dir "$REMOTE_DIR" \
         --service app \
         --required-branch test \
-        --skip-postgres-migration-check \
+        --migration-context-service app \
         --allow-non-ancestor-current \
         --source-health-url "http://source.test/health" \
         --public-health-url "https://public.test/health"
@@ -176,7 +176,7 @@ if run_deployer "$TARGET_COMMIT" >"$TEST_ROOT/missing-migration.out" 2>&1; then
     echo "missing-migration deployment unexpectedly succeeded" >&2
     exit 1
 fi
-assert_contains "$TEST_ROOT/missing-migration.out" "incompatible with the active production PostgreSQL migration history"
+assert_contains "$TEST_ROOT/missing-migration.out" "incompatible with the active PostgreSQL migration history"
 assert_not_contains "$DOCKER_LOG" "compose up"
 test "$(cat "$REMOTE_DIR/.niffler-deployed-commit")" = "$CURRENT_COMMIT"
 
@@ -208,8 +208,10 @@ reset_fixture
 export FAKE_CURL_FAIL=false
 run_test_deployer "$TARGET_COMMIT" >"$TEST_ROOT/test-success.out" 2>&1
 assert_contains "$TEST_ROOT/test-success.out" "Deployment verified for origin/test"
-assert_not_contains "$DOCKER_LOG" "ps -q frontdoor"
-assert_not_contains "$DOCKER_LOG" "--check-postgres-migration-compatibility"
+assert_contains "$DOCKER_LOG" "compose ps -q app"
+assert_contains "$DOCKER_LOG" "inspect app-container --format"
+assert_contains "$DOCKER_LOG" "--network container:app-container"
+assert_contains "$DOCKER_LOG" "--check-postgres-migration-compatibility"
 assert_contains "$DOCKER_LOG" "compose up"
 
 echo "fixed production deployer tests passed"

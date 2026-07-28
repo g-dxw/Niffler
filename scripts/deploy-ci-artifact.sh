@@ -385,7 +385,7 @@ else
     if [ "$TEST_DEPLOYMENT" = true ]; then
         REMOTE_DEPLOY_ARGS+=(
             --required-branch test
-            --skip-postgres-migration-check
+            --migration-context-service app
             --allow-non-ancestor-current
             --source-health-url http://127.0.0.1:18084/_gateway/health
             --public-health-url "$PUBLIC_HEALTH_URL/_gateway/health"

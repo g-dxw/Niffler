@@ -14,8 +14,8 @@ PUBLIC_HEALTH_URL="https://niffler.org/_gateway/health"
 SOURCE_HEALTH_URL="http://127.0.0.1:8084/_gateway/health"
 HEALTH_TIMEOUT_SECONDS=180
 ALLOW_ROLLBACK=false
-CHECK_POSTGRES_MIGRATIONS=true
 ENFORCE_CURRENT_ANCESTRY=true
+MIGRATION_CONTEXT_SERVICE="frontdoor"
 SERVICES=()
 
 usage() {
@@ -29,8 +29,8 @@ Options:
   --service <name>              Compose service to recreate; repeat as needed
   --state-file <name>           Deployed commit state file name
   --required-branch <branch>    Exact remote branch the target must match, default main
-  --skip-postgres-migration-check
-                                Skip the production PostgreSQL compatibility preflight
+  --migration-context-service <name>
+                                Compose service whose network and environment reach PostgreSQL
   --allow-non-ancestor-current Allow replacing an older test lineage while still requiring
                                 the exact current remote branch commit
   --public-health-url <url>     Public health endpoint
@@ -90,9 +90,10 @@ while [ $# -gt 0 ]; do
             REQUIRED_BRANCH="$2"
             shift 2
             ;;
-        --skip-postgres-migration-check)
-            CHECK_POSTGRES_MIGRATIONS=false
-            shift
+        --migration-context-service)
+            require_option_value "$1" "${2:-}"
+            MIGRATION_CONTEXT_SERVICE="$2"
+            shift 2
             ;;
         --allow-non-ancestor-current)
             ENFORCE_CURRENT_ANCESTRY=false
@@ -151,6 +152,9 @@ for service in "${SERVICES[@]}"; do
         die "invalid compose service name: $service"
     fi
 done
+if [[ ! "$MIGRATION_CONTEXT_SERVICE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+    die "invalid migration context service name"
+fi
 if [[ "$REMOTE_DIR" != /* ]] || [ "$REMOTE_DIR" = "/" ]; then
     die "remote directory must be an explicit absolute application directory"
 fi
@@ -289,23 +293,21 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$REMOTE_DIR"
-if [ "$CHECK_POSTGRES_MIGRATIONS" = true ]; then
-    FRONTDOOR_CONTAINER="$("${DC[@]}" ps -q frontdoor)"
-    if [ -z "$FRONTDOOR_CONTAINER" ]; then
-        die "frontdoor container is not running; cannot read the active production database environment"
-    fi
-    CURRENT_ENV_FILE="$TMP_DIR/frontdoor.env"
-    docker inspect "$FRONTDOOR_CONTAINER" \
-        --format '{{range .Config.Env}}{{println .}}{{end}}' > "$CURRENT_ENV_FILE"
-    chmod 0600 "$CURRENT_ENV_FILE"
-    if ! docker run --rm \
-        --network "container:$FRONTDOOR_CONTAINER" \
-        --env-file "$CURRENT_ENV_FILE" \
-        --entrypoint /usr/local/bin/aether-gateway \
-        "$TARGET_IMAGE" \
-        --check-postgres-migration-compatibility; then
-        die "target image is incompatible with the active production PostgreSQL migration history"
-    fi
+MIGRATION_CONTEXT_CONTAINER="$("${DC[@]}" ps -q "$MIGRATION_CONTEXT_SERVICE")"
+if [ -z "$MIGRATION_CONTEXT_CONTAINER" ]; then
+    die "$MIGRATION_CONTEXT_SERVICE container is not running; cannot read the active PostgreSQL environment"
+fi
+CURRENT_ENV_FILE="$TMP_DIR/$MIGRATION_CONTEXT_SERVICE.env"
+docker inspect "$MIGRATION_CONTEXT_CONTAINER" \
+    --format '{{range .Config.Env}}{{println .}}{{end}}' > "$CURRENT_ENV_FILE"
+chmod 0600 "$CURRENT_ENV_FILE"
+if ! docker run --rm \
+    --network "container:$MIGRATION_CONTEXT_CONTAINER" \
+    --env-file "$CURRENT_ENV_FILE" \
+    --entrypoint /usr/local/bin/aether-gateway \
+    "$TARGET_IMAGE" \
+    --check-postgres-migration-compatibility; then
+    die "target image is incompatible with the active PostgreSQL migration history"
 fi
 
 ENV_PATH="$REMOTE_DIR/.env"

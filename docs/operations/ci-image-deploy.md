@@ -77,9 +77,9 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
 - 同一时间的 `test` 发布按提交顺序排队，不能取消正在执行的远端部署，避免 SSH 中断让
   测试环境停在半更新状态。
 - 测试发布只接受当前上游 `test` 的准确提交，并调用服务器上 root 所有、不可由待部署
-  分支替换的 `/opt/niffler-test/bin/deploy-test`。测试部署跳过生产专用的 PostgreSQL
-  兼容检查，但仍验证镜像提交标签、Compose 健康状态、源站健康地址和公开健康地址，
-  失败时恢复旧镜像。
+  分支替换的 `/opt/niffler-test/bin/deploy-test`。测试环境使用独立 PostgreSQL；部署前
+  从测试 `app` 容器读取实际数据库环境并执行迁移兼容检查，同时验证镜像提交标签、
+  Compose 健康状态、源站健康地址和公开健康地址，失败时恢复旧镜像。
 - 测试验收后，由上游 `test` 向 `main` 发起晋级合并请求。
 - `Promotion policy` 检查拒绝普通功能分支直接进入 `main`，也拒绝 fork 中名为
   `test` 的分支冒充上游集成分支。该检查使用 `pull_request_target`，只检出并执行
@@ -91,28 +91,33 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
 
 ### 一次性测试服务器准备
 
-这部分由能够管理 `mylingweave` 的维护者完成，不需要 GitHub 仓库管理员权限：
+这部分由能够管理 `test01` 的维护者完成，不需要 GitHub 仓库管理员权限：
 
 1. 使用独立的 Actions Ed25519 密钥，不得复用个人或 root 登录私钥；公钥只授权给
-   测试部署账号 `deploy`，私钥仅交给 GitHub `test` Environment。
+   测试部署账号 `ops`，私钥仅交给 GitHub `test` Environment。本机 SSH 别名
+   `test01` 使用的专用密钥为 `~/.ssh/opsbot_test_ed25519`。
 2. 合并本次流水线修改后，从受信任的 `main` 安装测试固定部署器：
 
    ```bash
-   scp scripts/fixed-production-deployer.sh mylingweave:/tmp/deploy-test
-   ssh mylingweave \
-     'install -d -o root -g deploy -m 2750 /opt/niffler-test/bin &&
-      install -o root -g root -m 0755 /tmp/deploy-test /opt/niffler-test/bin/deploy-test'
+   scp scripts/fixed-production-deployer.sh test01:/tmp/deploy-test
+   ssh test01 \
+     'sudo install -d -o root -g ops -m 2750 /opt/niffler-test/bin &&
+      sudo install -o root -g root -m 0755 /tmp/deploy-test /opt/niffler-test/bin/deploy-test'
    ```
 
-3. 确认 `deploy` 能读取测试 Compose 配置、更新 `/opt/niffler-test/.env`、访问 Docker，
+3. 确认 `ops` 能读取测试 Compose 配置、更新 `/opt/niffler-test/.env`、访问 Docker，
    但不能修改 `/opt/niffler-test/bin/deploy-test`。
-4. 独立保存以下已核对信息，交给仓库管理员配置：
-   - 主机：`167.254.241.191`
-   - 用户：`deploy`
+4. 测试 Compose 使用 PostgreSQL，并确保 `app` 容器环境中存在正确的
+   `AETHER_DATABASE_DRIVER=postgres` 和测试库 `AETHER_DATABASE_URL`；测试数据库必须与
+   生产数据库完全隔离。启用自动部署前先完成一次服务器初始化部署，确保测试 PostgreSQL
+   和现有 `app` 容器健康，固定部署器才能从当前容器读取准确的数据库环境做迁移预检。
+5. 独立保存以下信息，交给仓库管理员配置：
+   - 主机：`123.253.224.101`（SSH 端口为默认的 `22`，Secret 中不要附加端口）
+   - 用户：`ops`
    - 目录：`/opt/niffler-test`
-   - 公网地址：`https://niffler-test.167.254.241.191.sslip.io`
+   - 计划公网地址：`https://niffler-test.123.253.224.101.sslip.io`
    - ED25519 主机指纹：
-     `SHA256:qk3Hrm8LFMa45+dXwS+XTS47kjmKneZhPpplkd37srk`
+     `SHA256:jyUey+3oSoZHEdiApa8gKRRlKDyLsDorjCPPRAIaILw`
 
 ### 一次性 GitHub 管理员配置
 
@@ -120,15 +125,15 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
 
 1. 创建 `test` Environment，不要求人工审批，只允许 `test` 分支部署。
 2. 在 `test` Environment 中配置 Secret：
-   - `MYLINGWEAVE_HOST` = `167.254.241.191`
+   - `MYLINGWEAVE_HOST` = `123.253.224.101`
    - `MYLINGWEAVE_SSH_KEY` = 独立 Actions Ed25519 私钥的完整内容
    - `MYLINGWEAVE_SSH_HOST_FINGERPRINT` =
-     `SHA256:qk3Hrm8LFMa45+dXwS+XTS47kjmKneZhPpplkd37srk`
+     `SHA256:jyUey+3oSoZHEdiApa8gKRRlKDyLsDorjCPPRAIaILw`
 3. 在同一个 Environment 中配置 Variable：
-   - `MYLINGWEAVE_USER` = `deploy`
+   - `MYLINGWEAVE_USER` = `ops`
    - `MYLINGWEAVE_REMOTE_DIR` = `/opt/niffler-test`
    - `MYLINGWEAVE_PUBLIC_URL` =
-     `https://niffler-test.167.254.241.191.sslip.io`
+     `https://niffler-test.123.253.224.101.sslip.io`
 4. 创建保护 `test` 的 Ruleset：禁止删除和强制推送，要求合并请求、至少一名他人批准、
    解决全部对话，并严格要求 `check`、`Frontend`、`Release tooling` 三项检查。
 5. 在现有 `main` Ruleset 中增加必过检查 `Promotion policy`，并增加 required deployment

@@ -96,7 +96,7 @@ GH_REPO="ryfineZ/Niffler" \
 grep -Fq -- "/opt/niffler-test/bin/deploy-test" "$SSH_LOG"
 grep -Fq -- "RELEASE_ROOT=/opt/niffler-test/.release" "$SSH_LOG"
 grep -Fq -- "--required-branch test" "$SSH_LOG"
-grep -Fq -- "--skip-postgres-migration-check" "$SSH_LOG"
+grep -Fq -- "--migration-context-service app" "$SSH_LOG"
 grep -Fq -- "--allow-non-ancestor-current" "$SSH_LOG"
 grep -Fq -- "--service app" "$SSH_LOG"
 grep -Fq -- "--source-health-url http://127.0.0.1:18084/_gateway/health" "$SSH_LOG"
