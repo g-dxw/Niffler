@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: app-image-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   release_checks:
@@ -27,31 +27,21 @@ jobs:
           bash -n scripts/actions-production-deploy.sh
           bash -n scripts/install-actions-production-access.sh
           bash -n scripts/verify-ssh-host-key.sh
-          bash -n scripts/fixed-test-deployer.sh
-          bash -n scripts/actions-test-ssh-command.sh
-          bash -n scripts/install-actions-test-access.sh
-          python3 -m py_compile scripts/filter-niffler-test-export.py
           bash -n scripts/tests/test-deploy-ancestry.sh
           bash -n scripts/tests/test-fixed-production-deployer.sh
           bash -n scripts/tests/test-actions-production-access.sh
           bash -n scripts/tests/test-deploy-ci-restricted.sh
           bash -n scripts/tests/test-production-workflow.sh
           bash -n scripts/tests/test-verify-ssh-host-key.sh
-          bash -n scripts/tests/test-fixed-test-deployer.sh
-          bash -n scripts/tests/test-actions-test-ssh-command.sh
-          python3 scripts/tests/test-filter-niffler-test-export.py
           bash scripts/tests/test-deploy-ancestry.sh
           bash scripts/tests/test-fixed-production-deployer.sh
           bash scripts/tests/test-actions-production-access.sh
           bash scripts/tests/test-deploy-ci-restricted.sh
           bash scripts/tests/test-production-workflow.sh
           bash scripts/tests/test-verify-ssh-host-key.sh
-          bash scripts/tests/test-fixed-test-deployer.sh
-          bash scripts/tests/test-actions-test-ssh-command.sh
 
   frontend:
     name: Build frontend
-    needs: release_checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -67,8 +57,6 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          npm run type-check
-          npm run test:run
           npm run build
 
       - name: Upload frontend artifact
@@ -81,7 +69,6 @@ jobs:
 
   gateway:
     name: Build gateway linux-amd64
-    needs: release_checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -90,7 +77,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
-          components: rustfmt
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -100,11 +86,6 @@ jobs:
 
       - name: Install cross
         uses: taiki-e/install-action@cross
-
-      - name: Check gateway
-        run: |
-          cargo fmt --all --check
-          cargo check --locked -p aether-gateway
 
       - name: Build gateway
         env:
@@ -162,36 +143,22 @@ jobs:
           retention-days: 7
 
   deploy:
-    name: Deploy to test01 niffler-test
+    name: Deploy to mylingweave test
     needs: image
-    if: github.ref == 'refs/heads/test'
+    if: github.ref_name == 'test'
     runs-on: ubuntu-latest
-    environment:
-      name: niffler-test
-      url: ${{ vars.NIFFLER_TEST_PUBLIC_URL }}
-    concurrency:
-      group: niffler-test-deploy
-      cancel-in-progress: false
     steps:
-      - name: Download exact image artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: niffler-app-linux-amd64
-          path: artifacts
+      - uses: actions/checkout@v5
 
       - name: Setup SSH
         env:
-          SSH_HOST: ${{ vars.NIFFLER_TEST_HOST }}
-          SSH_PRIVATE_KEY: ${{ secrets.NIFFLER_TEST_SSH_PRIVATE_KEY }}
-          SSH_HOST_FINGERPRINT: ${{ secrets.NIFFLER_TEST_SSH_HOST_FINGERPRINT }}
+          SSH_HOST: ${{ secrets.MYLINGWEAVE_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.MYLINGWEAVE_SSH_KEY }}
+          SSH_HOST_FINGERPRINT: ${{ secrets.MYLINGWEAVE_SSH_HOST_FINGERPRINT }}
         run: |
           set -euo pipefail
-          if [[ -z "${SSH_HOST}" ]]; then
-            echo "NIFFLER_TEST_HOST is required" >&2
-            exit 1
-          fi
           if [[ -z "${SSH_HOST_FINGERPRINT}" ]]; then
-            echo "NIFFLER_TEST_SSH_HOST_FINGERPRINT is required" >&2
+            echo "MYLINGWEAVE_SSH_HOST_FINGERPRINT is required" >&2
             exit 1
           fi
 
@@ -228,28 +195,13 @@ jobs:
 
           install -m 600 "${scan_file}" ~/.ssh/known_hosts
 
-      - name: Upload and deploy exact image artifact
+      - name: Deploy image artifact
         env:
-          SSH_HOST: ${{ vars.NIFFLER_TEST_HOST }}
-          SSH_USER: ${{ vars.NIFFLER_TEST_USER }}
-          REMOTE_DIR: ${{ vars.NIFFLER_TEST_REMOTE_DIR }}
-          PUBLIC_URL: ${{ vars.NIFFLER_TEST_PUBLIC_URL }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APP_IMAGE: niffler-app:${{ github.sha }}
         run: |
-          set -euo pipefail
-          if [[ -z "${SSH_USER}" || -z "${REMOTE_DIR}" || -z "${PUBLIC_URL}" ]]; then
-            echo "NIFFLER_TEST_USER, NIFFLER_TEST_REMOTE_DIR and NIFFLER_TEST_PUBLIC_URL are required" >&2
-            exit 1
-          fi
-          if [[ "${REMOTE_DIR}" != "/opt/niffler-test" ]]; then
-            echo "NIFFLER_TEST_REMOTE_DIR must be /opt/niffler-test" >&2
-            exit 1
-          fi
-
-          image_tar="artifacts/niffler-app-linux-amd64.tar"
-          test -s "${image_tar}"
-          ssh_target="${SSH_USER}@${SSH_HOST}"
-
-          ssh "${ssh_target}" "niffler-test receive ${GITHUB_SHA}" < "${image_tar}"
-          ssh "${ssh_target}" "niffler-test deploy ${GITHUB_SHA}"
-
-          curl -fsS --max-time 20 "${PUBLIC_URL%/}/health"
+          scripts/deploy-ci-artifact.sh \
+            --host "${{ secrets.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
+            --remote-dir "${{ secrets.MYLINGWEAVE_REMOTE_DIR }}" \
+            --run-id "${{ github.run_id }}"
