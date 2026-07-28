@@ -225,18 +225,38 @@ fi
 
 RUN_METADATA="$(gh run view "$RUN_ID" \
     --repo "$GH_REPO" \
-    --json headSha,conclusion,workflowName \
-    --jq '[.headSha, .conclusion, .workflowName] | @tsv')"
-IFS=$'\t' read -r TARGET_COMMIT RUN_CONCLUSION RUN_WORKFLOW_NAME <<< "$RUN_METADATA"
+    --json headSha,status,conclusion,workflowName \
+    --jq '[.headSha, .status, (.conclusion // "__pending__"), .workflowName] | @tsv')"
+IFS=$'\t' read -r TARGET_COMMIT RUN_STATUS RUN_CONCLUSION RUN_WORKFLOW_NAME <<< "$RUN_METADATA"
 
-if [ -z "$TARGET_COMMIT" ] || [ "$RUN_CONCLUSION" != "success" ]; then
-    echo "Workflow run $RUN_ID is not a successful completed run."
+if [ -z "$TARGET_COMMIT" ]; then
+    echo "Workflow run $RUN_ID did not provide a target commit."
     exit 1
 fi
 
 if [ "$RUN_WORKFLOW_NAME" != "$WORKFLOW_NAME" ]; then
     echo "Workflow run $RUN_ID belongs to '$RUN_WORKFLOW_NAME', expected '$WORKFLOW_NAME'."
     exit 1
+fi
+
+if [ "$RUN_CONCLUSION" != "success" ]; then
+    CURRENT_TEST_RUN=false
+    if [ "$TEST_DEPLOYMENT" = true ] \
+        && [ "${GITHUB_ACTIONS:-}" = "true" ] \
+        && [ "${GITHUB_RUN_ID:-}" = "$RUN_ID" ] \
+        && [ "${GITHUB_SHA:-}" = "$TARGET_COMMIT" ] \
+        && [ "${GITHUB_WORKFLOW:-}" = "$WORKFLOW_NAME" ] \
+        && [ "${GITHUB_REF_NAME:-}" = "test" ] \
+        && [ "$RUN_STATUS" = "in_progress" ] \
+        && [ "$RUN_CONCLUSION" = "__pending__" ]; then
+        CURRENT_TEST_RUN=true
+    fi
+
+    if [ "$CURRENT_TEST_RUN" != true ]; then
+        echo "Workflow run $RUN_ID is not a successful completed run."
+        exit 1
+    fi
+    echo ">>> Using the artifact produced by the current test workflow run."
 fi
 
 if [ ! -x "$ANCESTRY_CHECK_SCRIPT" ]; then
