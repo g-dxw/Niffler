@@ -1,0 +1,100 @@
+name: niffler-test
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE}
+    container_name: niffler-test-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aether}
+      POSTGRES_USER: ${POSTGRES_USER:-aether}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  redis:
+    image: ${REDIS_IMAGE}
+    container_name: niffler-test-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - sh
+      - -ec
+      - exec redis-server --appendonly yes --appendfsync everysec --save 60 1000 --requirepass "$${REDIS_PASSWORD}"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  app:
+    image: ${APP_IMAGE}
+    container_name: niffler-test
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Shanghai
+      APP_PORT: "8084"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aether}:${DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-aether}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      AETHER_DATABASE_DRIVER: postgres
+      AETHER_DATABASE_URL: postgresql://${POSTGRES_USER:-aether}:${DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-aether}
+      AETHER_GATEWAY_DATA_POSTGRES_URL: postgresql://${POSTGRES_USER:-aether}:${DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-aether}
+      AETHER_GATEWAY_DATA_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      AETHER_RUNTIME_BACKEND: redis
+      AETHER_RUNTIME_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      AETHER_GATEWAY_DEPLOYMENT_TOPOLOGY: single-node
+      AETHER_GATEWAY_NODE_ROLE: all
+      AETHER_GATEWAY_AUTO_PREPARE_DATABASE: "true"
+      AETHER_LOG_DESTINATION: stdout
+      AETHER_LOG_FORMAT: pretty
+      AETHER_PUBLIC_BASE_URL: ${PUBLIC_URL}
+      AETHER_GATEWAY_MAX_IN_FLIGHT_REQUESTS: "32"
+      AETHER_MAX_REQUEST_BODY_MB: "16"
+      RUST_LOG: aether_gateway=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18084:8084"
+    healthcheck:
+      test: ["CMD", "aether-gateway", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    mem_limit: 1536m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  redis_data:
