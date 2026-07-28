@@ -130,23 +130,19 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
      scripts/fixed-production-deployer.sh /opt/niffler-test/bin/deploy-test
    ```
 
-3. 测试 `.env` 至少应明确设置 `COMPOSE_PROJECT_NAME=niffler_test`、`APP_PORT=8084` 和
+3. 测试 `.env` 至少应明确设置 `COMPOSE_PROJECT_NAME=niffler_test` 和
    `APP_IMAGE=niffler-app:latest`，并让 `postgres`、`redis` 和 `app` 使用完全隔离的测试
-   数据。不要删除或改写 `.niffler-test-environment` 标记文件；工作流会在首次部署前检查它，
-   以防错误地把测试部署指向生产目录。首次 Actions 部署会自行启动 PostgreSQL、Redis 和
-   `app`；不需要预先手工拉取或启动应用镜像。
-4. 在创建 `test` 分支前，必须让测试主机的 HTTPS 反向代理监听公网 `80` 和 `443`，并将
-   `niffler-test.123.253.224.101.sslip.io` 转发到 `127.0.0.1:8084`。例如使用 Caddy：
-
-   ```caddyfile
-   niffler-test.123.253.224.101.sslip.io {
-       reverse_proxy 127.0.0.1:8084
-   }
-   ```
-
-   安装或修改后先执行 `caddy validate --config /etc/caddy/Caddyfile` 和
-   `systemctl reload caddy`。证书签发和反向代理必须可用；否则部署器的 HTTPS 公网健康检查
-   会拒绝本次部署。
+   数据。`APP_PORT` 必须与该主机 HTTPS 反向代理的本地上游端口相同；当前测试主机已经由
+   Nginx 对外提供 `https://niffler-test.123.253.224.101.sslip.io`，原部署约定为
+   `APP_PORT=18084`。恢复管理员访问后，先用 `nginx -T` 核实实际 upstream，再同步设置
+   `.env` 的 `APP_PORT` 和 GitHub Variable `MYLINGWEAVE_SOURCE_HEALTH_URL`。不要删除或
+   改写 `.niffler-test-environment` 标记文件；工作流会在首次部署前检查它，以防错误地把
+   测试部署指向生产目录。首次 Actions 部署会自行启动 PostgreSQL、Redis 和 `app`；不需要
+   预先手工拉取或启动应用镜像。
+4. 在创建 `test` 分支前，必须验证 HTTPS 反向代理持续监听公网 `80` 和 `443`，并将
+   `niffler-test.123.253.224.101.sslip.io` 转发到与 `APP_PORT` 相同的本地地址。当前主机
+   已检测到 Nginx 返回该域名的健康检查 200，不能在未核对现有配置前再额外安装或替换为
+   Caddy。证书签发和反向代理必须可用；否则部署器的 HTTPS 公网健康检查会拒绝本次部署。
 5. `niffler-test-deploy` 可以操作这个专用测试 Compose 项目和 Docker，因此该账号只能用于
    独立测试主机，不能复用于生产主机。虽然普通文件权限会阻止它直接改写 root 所有的
    `/opt/niffler-test/bin/deploy-test`，Docker 组本身等同于主机管理员权限；因此该固定
@@ -164,7 +160,8 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
    - 主机：`123.253.224.101`（SSH 端口为默认的 `22`，Secret 中不要附加端口）
    - 用户：`niffler-test-deploy`
    - 目录：`/opt/niffler-test`
-   - 源站健康地址：`http://127.0.0.1:8084/_gateway/health`
+   - 源站健康地址：`http://127.0.0.1:18084/_gateway/health`（恢复管理员访问后以 Nginx
+     实际 upstream 为准）
    - 计划公网地址：`https://niffler-test.123.253.224.101.sslip.io`
    - ED25519 主机指纹：
      `SHA256:jyUey+3oSoZHEdiApa8gKRRlKDyLsDorjCPPRAIaILw`
@@ -183,7 +180,7 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
    - `MYLINGWEAVE_USER` = `niffler-test-deploy`
    - `MYLINGWEAVE_REMOTE_DIR` = `/opt/niffler-test`
    - `MYLINGWEAVE_SOURCE_HEALTH_URL` =
-     `http://127.0.0.1:8084/_gateway/health`
+     `http://127.0.0.1:18084/_gateway/health`
    - `MYLINGWEAVE_PUBLIC_URL` =
      `https://niffler-test.123.253.224.101.sslip.io`
 4. 创建保护 `test` 的 Ruleset：禁止删除和强制推送，要求合并请求、至少一名他人批准、
