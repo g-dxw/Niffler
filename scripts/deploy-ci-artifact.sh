@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_NAME="${WORKFLOW_NAME:-Build App Image}"
+WORKFLOW_FILE="${WORKFLOW_FILE:-.github/workflows/app-image.yml}"
 GH_REPO="${GH_REPO:-ryfineZ/Niffler}"
 BRANCH="${BRANCH:-main}"
 GIT_REMOTE="${GIT_REMOTE:-origin}"
@@ -226,7 +227,7 @@ fi
 RUN_METADATA="$(gh run view "$RUN_ID" \
     --repo "$GH_REPO" \
     --json headSha,status,conclusion,workflowName \
-    --jq '[.headSha, .status, (.conclusion // "__pending__"), .workflowName] | @tsv')"
+    --jq '[.headSha, .status, (.conclusion // "__pending__"), (if (.workflowName // "") == "" then "__missing__" else .workflowName end)] | @tsv')"
 IFS=$'\t' read -r TARGET_COMMIT RUN_STATUS RUN_CONCLUSION RUN_WORKFLOW_NAME <<< "$RUN_METADATA"
 
 if [ -z "$TARGET_COMMIT" ]; then
@@ -234,24 +235,36 @@ if [ -z "$TARGET_COMMIT" ]; then
     exit 1
 fi
 
-if [ "$RUN_WORKFLOW_NAME" != "$WORKFLOW_NAME" ]; then
-    echo "Workflow run $RUN_ID belongs to '$RUN_WORKFLOW_NAME', expected '$WORKFLOW_NAME'."
-    exit 1
+CURRENT_TEST_RUN=false
+EXPECTED_TEST_WORKFLOW_REF="$GH_REPO/$WORKFLOW_FILE@refs/heads/test"
+if [ "$TEST_DEPLOYMENT" = true ] \
+    && [ "${GITHUB_ACTIONS:-}" = "true" ] \
+    && [ "${GITHUB_RUN_ID:-}" = "$RUN_ID" ] \
+    && [ "${GITHUB_SHA:-}" = "$TARGET_COMMIT" ] \
+    && [ "${GITHUB_WORKFLOW:-}" = "$WORKFLOW_NAME" ] \
+    && [ "${GITHUB_WORKFLOW_REF:-}" = "$EXPECTED_TEST_WORKFLOW_REF" ] \
+    && [ "${GITHUB_REF_NAME:-}" = "test" ] \
+    && [ "$RUN_STATUS" = "in_progress" ] \
+    && [ "$RUN_CONCLUSION" = "__pending__" ]; then
+    CURRENT_TEST_RUN=true
 fi
 
-if [ "$RUN_CONCLUSION" != "success" ]; then
-    CURRENT_TEST_RUN=false
-    if [ "$TEST_DEPLOYMENT" = true ] \
-        && [ "${GITHUB_ACTIONS:-}" = "true" ] \
-        && [ "${GITHUB_RUN_ID:-}" = "$RUN_ID" ] \
-        && [ "${GITHUB_SHA:-}" = "$TARGET_COMMIT" ] \
-        && [ "${GITHUB_WORKFLOW:-}" = "$WORKFLOW_NAME" ] \
-        && [ "${GITHUB_REF_NAME:-}" = "test" ] \
-        && [ "$RUN_STATUS" = "in_progress" ] \
-        && [ "$RUN_CONCLUSION" = "__pending__" ]; then
-        CURRENT_TEST_RUN=true
-    fi
+case "$RUN_WORKFLOW_NAME" in
+    "$WORKFLOW_NAME")
+        ;;
+    __missing__)
+        if [ "$CURRENT_TEST_RUN" != true ]; then
+            echo "Workflow run $RUN_ID did not provide a workflow name."
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Workflow run $RUN_ID belongs to '$RUN_WORKFLOW_NAME', expected '$WORKFLOW_NAME'."
+        exit 1
+        ;;
+esac
 
+if [ "$RUN_CONCLUSION" != "success" ]; then
     if [ "$CURRENT_TEST_RUN" != true ]; then
         echo "Workflow run $RUN_ID is not a successful completed run."
         exit 1
