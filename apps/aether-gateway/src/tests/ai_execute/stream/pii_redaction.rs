@@ -385,10 +385,23 @@ async fn ai_execute_stream_pii_redaction_round_trip() {
     assert!(!provider_body_text.contains("stream.user@example.com"));
     assert!(provider_body_text.contains("<AETHER:EMAIL:"));
 
-    let stored_candidates = request_candidate_repository
-        .list_by_request_id("trace-ai-execute-stream-pii-redaction")
-        .await
-        .expect("request candidate trace should read");
+    let stored_candidates = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let stored_candidates = request_candidate_repository
+                .list_by_request_id("trace-ai-execute-stream-pii-redaction")
+                .await
+                .expect("request candidate trace should read");
+            if stored_candidates
+                .first()
+                .is_some_and(|candidate| candidate.status == RequestCandidateStatus::Success)
+            {
+                break stored_candidates;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("request candidate should be marked success");
     assert_eq!(stored_candidates.len(), 1);
     assert_eq!(stored_candidates[0].status, RequestCandidateStatus::Success);
 
