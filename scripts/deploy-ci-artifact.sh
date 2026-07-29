@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_NAME="${WORKFLOW_NAME:-Build App Image}"
+WORKFLOW_FILE="${WORKFLOW_FILE:-.github/workflows/app-image.yml}"
 GH_REPO="${GH_REPO:-ryfineZ/Niffler}"
 BRANCH="${BRANCH:-main}"
 GIT_REMOTE="${GIT_REMOTE:-origin}"
@@ -18,6 +19,10 @@ SSH_OPTS="${SSH_OPTS:-}"
 DEPLOY_STATE_FILE="${DEPLOY_STATE_FILE:-.niffler-deployed-commit}"
 ANCESTRY_CHECK_SCRIPT="$SCRIPT_DIR/check-deploy-ancestry.sh"
 FIXED_DEPLOYER_PATH="/opt/niffler-release/bin/deploy-production"
+TEST_DEPLOYMENT=false
+PUBLIC_HEALTH_URL=""
+SOURCE_HEALTH_URL=""
+ARTIFACT_FILE=""
 
 DEPLOY_HOST=""
 REMOTE_DIR="/opt/niffler-app"
@@ -39,6 +44,12 @@ Options:
   --allow-latest-for-local Allow latest successful run selection. Only for local verification or temporary diagnostics.
   --allow-rollback         Explicitly deploy a commit that does not contain main or the current production commit.
   --restricted-actions     Use the fixed production SSH protocol. Rollback is not available.
+  --test-deployment        Deploy the exact current test branch commit with the test policy.
+  --artifact-file <path>   Use an artifact downloaded by the current trusted test workflow.
+  --public-health-url <url>
+                           Public test base URL used for post-deploy health verification.
+  --source-health-url <url>
+                           Local test health URL used for post-deploy verification.
   -h, --help               Show help
 
 Environment:
@@ -99,6 +110,25 @@ while [ $# -gt 0 ]; do
             RESTRICTED_ACTIONS=true
             shift
             ;;
+        --test-deployment)
+            TEST_DEPLOYMENT=true
+            shift
+            ;;
+        --artifact-file)
+            require_option_value "$1" "${2:-}"
+            ARTIFACT_FILE="${2:-}"
+            shift 2
+            ;;
+        --public-health-url)
+            require_option_value "$1" "${2:-}"
+            PUBLIC_HEALTH_URL="${2%/}"
+            shift 2
+            ;;
+        --source-health-url)
+            require_option_value "$1" "${2:-}"
+            SOURCE_HEALTH_URL="${2%/}"
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -117,7 +147,10 @@ if [ -z "$DEPLOY_HOST" ]; then
     exit 1
 fi
 
-REQUIRED_COMMANDS=(gh ssh)
+REQUIRED_COMMANDS=(ssh)
+if [ -z "$ARTIFACT_FILE" ]; then
+    REQUIRED_COMMANDS+=(gh)
+fi
 if [ "$RESTRICTED_ACTIONS" != true ]; then
     REQUIRED_COMMANDS+=(scp)
 fi
@@ -127,67 +160,144 @@ for command_name in "${REQUIRED_COMMANDS[@]}"; do
         exit 1
     fi
 done
-read -r -a SSH_OPTIONS <<< "$SSH_OPTS"
+SSH_OPTIONS=(-o BatchMode=yes)
+if [ -n "$SSH_OPTS" ]; then
+    read -r -a EXTRA_SSH_OPTIONS <<< "$SSH_OPTS"
+    SSH_OPTIONS+=("${EXTRA_SSH_OPTIONS[@]}")
+fi
 
 if [ -n "$RUN_ID" ] && [ -n "$COMMIT_REF" ]; then
     echo "Use only one of --run-id or --commit"
+    exit 1
+fi
+if [ -n "$ARTIFACT_FILE" ] \
+    && { [ -n "$RUN_ID" ] || [ -n "$COMMIT_REF" ] || [ "$ALLOW_LATEST_FOR_LOCAL" = true ]; }; then
+    echo "Use --artifact-file without --run-id, --commit, or --allow-latest-for-local."
     exit 1
 fi
 if [ "$RESTRICTED_ACTIONS" = true ] && [ "$ALLOW_ROLLBACK" = true ]; then
     echo "The restricted Actions protocol does not allow --allow-rollback."
     exit 1
 fi
+if [ "$TEST_DEPLOYMENT" = true ]; then
+    if [ "$RESTRICTED_ACTIONS" = true ] || [ "$ALLOW_ROLLBACK" = true ]; then
+        echo "Test deployment does not support restricted production mode or rollback overrides."
+        exit 1
+    fi
+    if [[ "$PUBLIC_HEALTH_URL" != https://* ]]; then
+        echo "Test deployment requires an https --public-health-url."
+        exit 1
+    fi
+    if [[ ! "$SOURCE_HEALTH_URL" =~ ^http://127\.0\.0\.1:[1-9][0-9]{0,4}/_gateway/health$ ]]; then
+        echo "Test deployment requires a local --source-health-url ending in /_gateway/health."
+        exit 1
+    fi
+    if [ "$REMOTE_DIR" != "/opt/niffler-test" ]; then
+        echo "Test deployment requires --remote-dir /opt/niffler-test."
+        exit 1
+    fi
+    BRANCH="test"
+    REQUIRED_BASE_BRANCH="test"
+    APP_SERVICES="app"
+    FIXED_DEPLOYER_PATH="$REMOTE_DIR/bin/deploy-test"
+fi
 
-if [ -n "$COMMIT_REF" ]; then
-    RUN_ID="$(gh run list \
-        --repo "$GH_REPO" \
-        --workflow "$WORKFLOW_NAME" \
-        --commit "$COMMIT_REF" \
-        --status success \
-        --limit 1 \
-        --json databaseId \
-        --jq '.[0].databaseId // ""')"
+TARGET_COMMIT=""
+if [ -n "$ARTIFACT_FILE" ]; then
+    if [ "$TEST_DEPLOYMENT" != true ]; then
+        echo "--artifact-file is only available with --test-deployment."
+        exit 1
+    fi
+    if [[ "$ARTIFACT_FILE" != /* ]]; then
+        echo "--artifact-file requires an absolute path."
+        exit 1
+    fi
+    EXPECTED_TEST_WORKFLOW_REF="$GH_REPO/$WORKFLOW_FILE@refs/heads/test"
+    if [ "${GITHUB_ACTIONS:-}" != "true" ] \
+        || [ "${GITHUB_REPOSITORY:-}" != "$GH_REPO" ] \
+        || [ "${GITHUB_WORKFLOW:-}" != "$WORKFLOW_NAME" ] \
+        || [ "${GITHUB_WORKFLOW_REF:-}" != "$EXPECTED_TEST_WORKFLOW_REF" ] \
+        || [ "${GITHUB_REF:-}" != "refs/heads/test" ] \
+        || [ "${GITHUB_REF_NAME:-}" != "test" ] \
+        || [[ ! "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ ]] \
+        || [[ ! "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "--artifact-file requires the trusted Build App Image workflow context on test."
+        exit 1
+    fi
+    if [ ! -f "$ARTIFACT_FILE" ] || [ ! -s "$ARTIFACT_FILE" ]; then
+        echo "Test deployment artifact is missing or empty: $ARTIFACT_FILE"
+        exit 1
+    fi
+    TARGET_COMMIT="$GITHUB_SHA"
+    echo ">>> Using the image artifact downloaded by the current test workflow."
+else
+    if [ -n "$COMMIT_REF" ]; then
+        RUN_ID="$(gh run list \
+            --repo "$GH_REPO" \
+            --workflow "$WORKFLOW_NAME" \
+            --commit "$COMMIT_REF" \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // ""')"
+        if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "No successful $WORKFLOW_NAME workflow run found for commit $COMMIT_REF"
+            echo "Confirm the CI image workflow has completed successfully, or deploy with --run-id."
+            exit 1
+        fi
+    fi
+
+    if [ -z "$RUN_ID" ]; then
+        if [ "$ALLOW_LATEST_FOR_LOCAL" != true ]; then
+            if [ "$TEST_DEPLOYMENT" = true ]; then
+                echo "Test deployment requires --artifact-file, --run-id, or --commit."
+            else
+                echo "Production deployment requires --run-id or --commit."
+                echo "Use --allow-latest-for-local only for local verification or temporary diagnostics."
+            fi
+            exit 1
+        fi
+        RUN_ID="$(gh run list \
+            --repo "$GH_REPO" \
+            --workflow "$WORKFLOW_NAME" \
+            --branch "$BRANCH" \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')"
+    fi
+
     if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-        echo "No successful $WORKFLOW_NAME workflow run found for commit $COMMIT_REF"
-        echo "Confirm the CI image workflow has completed successfully, or deploy with --run-id."
+        echo "No successful workflow run found for $WORKFLOW_NAME on $BRANCH"
         exit 1
     fi
-fi
 
-if [ -z "$RUN_ID" ]; then
-    if [ "$ALLOW_LATEST_FOR_LOCAL" != true ]; then
-        echo "Production deployment requires --run-id or --commit."
-        echo "Use --allow-latest-for-local only for local verification or temporary diagnostics."
-        exit 1
-    fi
-    RUN_ID="$(gh run list \
+    RUN_METADATA="$(gh run view "$RUN_ID" \
         --repo "$GH_REPO" \
-        --workflow "$WORKFLOW_NAME" \
-        --branch "$BRANCH" \
-        --status success \
-        --limit 1 \
-        --json databaseId \
-        --jq '.[0].databaseId')"
+        --json headSha,status,conclusion,workflowName \
+        --jq '[.headSha, .status, (.conclusion // "__missing__"), (if (.workflowName // "") == "" then "__missing__" else .workflowName end)] | @tsv')"
+    IFS=$'\t' read -r TARGET_COMMIT RUN_STATUS RUN_CONCLUSION RUN_WORKFLOW_NAME <<< "$RUN_METADATA"
+
+    if [ -z "$TARGET_COMMIT" ]; then
+        echo "Workflow run $RUN_ID did not provide a target commit."
+        exit 1
+    fi
+    if [ "$RUN_WORKFLOW_NAME" = "__missing__" ]; then
+        echo "Workflow run $RUN_ID did not provide a workflow name."
+        exit 1
+    fi
+    if [ "$RUN_WORKFLOW_NAME" != "$WORKFLOW_NAME" ]; then
+        echo "Workflow run $RUN_ID belongs to '$RUN_WORKFLOW_NAME', expected '$WORKFLOW_NAME'."
+        exit 1
+    fi
+    if [ "$RUN_STATUS" != "completed" ] || [ "$RUN_CONCLUSION" != "success" ]; then
+        echo "Workflow run $RUN_ID is not a successful completed run."
+        exit 1
+    fi
 fi
 
-if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-    echo "No successful workflow run found for $WORKFLOW_NAME on $BRANCH"
-    exit 1
-fi
-
-RUN_METADATA="$(gh run view "$RUN_ID" \
-    --repo "$GH_REPO" \
-    --json headSha,conclusion,workflowName \
-    --jq '[.headSha, .conclusion, .workflowName] | @tsv')"
-IFS=$'\t' read -r TARGET_COMMIT RUN_CONCLUSION RUN_WORKFLOW_NAME <<< "$RUN_METADATA"
-
-if [ -z "$TARGET_COMMIT" ] || [ "$RUN_CONCLUSION" != "success" ]; then
-    echo "Workflow run $RUN_ID is not a successful completed run."
-    exit 1
-fi
-
-if [ "$RUN_WORKFLOW_NAME" != "$WORKFLOW_NAME" ]; then
-    echo "Workflow run $RUN_ID belongs to '$RUN_WORKFLOW_NAME', expected '$WORKFLOW_NAME'."
+if [[ ! "$TARGET_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Target commit must be a lowercase 40-character SHA."
     exit 1
 fi
 
@@ -284,7 +394,7 @@ ANCESTRY_ARGS=(
     --target "$TARGET_COMMIT"
     --required-base "$REQUIRED_BASE_COMMIT"
 )
-if [ -n "$CURRENT_DEPLOYED_COMMIT" ]; then
+if [ -n "$CURRENT_DEPLOYED_COMMIT" ] && [ "$TEST_DEPLOYMENT" != true ]; then
     ANCESTRY_ARGS+=(--current "$CURRENT_DEPLOYED_COMMIT")
 fi
 if [ "$ALLOW_ROLLBACK" = true ]; then
@@ -294,20 +404,24 @@ fi
 "$ANCESTRY_CHECK_SCRIPT" "${ANCESTRY_ARGS[@]}"
 echo ">>> Release commit verified: $TARGET_COMMIT"
 
-TMP_DIR="$(mktemp -d)"
-cleanup() {
-    rm -rf "$TMP_DIR"
-}
-trap cleanup EXIT
+if [ -n "$ARTIFACT_FILE" ]; then
+    IMAGE_TAR="$ARTIFACT_FILE"
+else
+    TMP_DIR="$(mktemp -d)"
+    cleanup() {
+        rm -rf "$TMP_DIR"
+    }
+    trap cleanup EXIT
 
-echo ">>> Downloading CI image artifact from run $RUN_ID..."
-gh run download "$RUN_ID" --repo "$GH_REPO" --name "$ARTIFACT_NAME" --dir "$TMP_DIR"
+    echo ">>> Downloading CI image artifact from run $RUN_ID..."
+    gh run download "$RUN_ID" --repo "$GH_REPO" --name "$ARTIFACT_NAME" --dir "$TMP_DIR"
 
-IMAGE_TAR="$TMP_DIR/niffler-app-linux-amd64.tar"
-if [ ! -f "$IMAGE_TAR" ]; then
-    echo "Artifact did not contain expected file: niffler-app-linux-amd64.tar"
-    find "$TMP_DIR" -maxdepth 2 -type f -print
-    exit 1
+    IMAGE_TAR="$TMP_DIR/niffler-app-linux-amd64.tar"
+    if [ ! -f "$IMAGE_TAR" ] || [ ! -s "$IMAGE_TAR" ]; then
+        echo "Artifact did not contain a non-empty niffler-app-linux-amd64.tar"
+        find "$TMP_DIR" -maxdepth 2 -type f -print
+        exit 1
+    fi
 fi
 
 if [ "$RESTRICTED_ACTIONS" = true ]; then
@@ -349,9 +463,24 @@ else
     if [ "$ALLOW_ROLLBACK" = true ]; then
         REMOTE_DEPLOY_ARGS+=(--allow-rollback)
     fi
+    REMOTE_COMMAND=("$FIXED_DEPLOYER_PATH" "${REMOTE_DEPLOY_ARGS[@]}")
+    if [ "$TEST_DEPLOYMENT" = true ]; then
+        REMOTE_DEPLOY_ARGS+=(
+            --required-branch test
+            --migration-context-service app
+            --bootstrap-migration-context
+            --allow-non-ancestor-current
+            --source-health-url "$SOURCE_HEALTH_URL"
+            --public-health-url "$PUBLIC_HEALTH_URL/_gateway/health"
+        )
+        REMOTE_COMMAND=(
+            env "RELEASE_ROOT=$REMOTE_DIR/.release"
+            "$FIXED_DEPLOYER_PATH" "${REMOTE_DEPLOY_ARGS[@]}"
+        )
+    fi
 
     ssh "${SSH_OPTIONS[@]}" "$DEPLOY_HOST" bash -s -- \
-        "$FIXED_DEPLOYER_PATH" "${REMOTE_DEPLOY_ARGS[@]}" <<'REMOTE_SCRIPT'
+        "${REMOTE_COMMAND[@]}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 exec "$@"
 REMOTE_SCRIPT
