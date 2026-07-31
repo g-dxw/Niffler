@@ -7,6 +7,7 @@ use crate::handlers::admin::provider::shared::support::{
     admin_provider_pool_quota_probe_active_members_key, AdminProviderPoolConfig,
     AdminProviderPoolUnschedulableRule,
 };
+use crate::orchestration::is_retryable_openai_transient_processing_error;
 use aether_runtime_state::RuntimeState;
 use aether_scheduler_core::is_claude_code_client_restriction_error_message;
 use regex::Regex;
@@ -472,6 +473,20 @@ pub(crate) async fn record_admin_provider_pool_error(
             key_id,
             "forbidden_403",
             pool_config.rate_limit_cooldown_seconds.max(300),
+        )
+        .await;
+        return;
+    }
+
+    if error_body.is_some_and(|error_body| {
+        is_retryable_openai_transient_processing_error(status_code, error_body)
+    }) {
+        set_pool_cooldown(
+            runtime,
+            provider_id,
+            key_id,
+            "openai_transient_capacity",
+            pool_config.overload_cooldown_seconds.max(1),
         )
         .await;
         return;
@@ -1228,6 +1243,51 @@ mod tests {
             .cooldown_reason_by_key
             .contains_key("key-client-400"));
         assert!(!runtime.cooldown_ttl_by_key.contains_key("key-client-400"));
+    }
+
+    #[tokio::test]
+    async fn error_feedback_cools_down_openai_capacity_bad_request() {
+        let Some(redis) = start_managed_redis_or_skip().await else {
+            return;
+        };
+        let app = build_runner_app(redis.redis_url(), "pool_runtime_openai_capacity_400").await;
+        let runtime = app.runtime_state.as_ref();
+        let pool_config = sample_pool_config();
+        let key_ids = vec!["key-capacity-400".to_string()];
+
+        record_admin_provider_pool_error(
+            runtime,
+            "provider-1",
+            "key-capacity-400",
+            &pool_config,
+            400,
+            Some(
+                r#"{"error":{"message":"Selected model is at capacity. Please try a different model."}}"#,
+            ),
+            None,
+        )
+        .await;
+
+        let runtime = read_admin_provider_pool_runtime_state(
+            runtime,
+            "provider-1",
+            &key_ids,
+            &pool_config,
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            runtime
+                .cooldown_reason_by_key
+                .get("key-capacity-400")
+                .map(String::as_str),
+            Some("openai_transient_capacity")
+        );
+        assert!(runtime
+            .cooldown_ttl_by_key
+            .get("key-capacity-400")
+            .is_some_and(|ttl| *ttl <= 30 && *ttl >= 25));
     }
 
     #[tokio::test]

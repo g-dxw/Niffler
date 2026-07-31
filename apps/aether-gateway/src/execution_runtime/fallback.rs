@@ -2,6 +2,7 @@ use aether_contracts::{ExecutionPlan, ExecutionResult};
 use serde_json::Value;
 
 use crate::client_session_affinity::CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD;
+use crate::execution_runtime::submission::has_nested_error;
 use crate::orchestration::{
     resolve_local_failover_analysis_for_attempt, LocalFailoverAnalysis,
     LocalFailoverClassification, LocalFailoverDecision,
@@ -197,7 +198,7 @@ pub(crate) fn should_fallback_to_control_sync(
         return true;
     };
 
-    body_json.get("error").is_some()
+    has_nested_error(body_json)
 }
 
 pub(crate) fn should_finalize_sync_response(report_kind: Option<&str>) -> bool {
@@ -209,7 +210,7 @@ pub(crate) fn resolve_core_sync_error_finalize_report_kind(
     result: &ExecutionResult,
     body_json: Option<&serde_json::Value>,
 ) -> Option<String> {
-    let has_embedded_error = body_json.is_some_and(|value| value.get("error").is_some());
+    let has_embedded_error = body_json.is_some_and(has_nested_error);
     if result.status_code < 400 && !has_embedded_error {
         return None;
     }
@@ -539,6 +540,44 @@ mod tests {
         ));
         assert_eq!(
             resolve_core_sync_error_finalize_report_kind("openai_chat_sync", &result, None),
+            Some("openai_chat_sync_finalize".to_string())
+        );
+    }
+
+    #[test]
+    fn sync_failover_marks_codex_top_level_errors() {
+        let result = ExecutionResult {
+            request_id: "req-1".to_string(),
+            candidate_id: None,
+            status_code: 200,
+            headers: Default::default(),
+            body: None,
+            telemetry: None,
+            error: None,
+        };
+        let body_json = serde_json::json!({
+            "code": -32603,
+            "message": "Internal error",
+            "data": {
+                "details": "Your input exceeds the context window of this model.",
+                "category": "internal"
+            }
+        });
+
+        assert!(should_fallback_to_control_sync(
+            "openai_chat_sync",
+            &result,
+            Some(&body_json),
+            false,
+            false,
+            false,
+        ));
+        assert_eq!(
+            resolve_core_sync_error_finalize_report_kind(
+                "openai_chat_sync",
+                &result,
+                Some(&body_json),
+            ),
             Some("openai_chat_sync_finalize".to_string())
         );
     }

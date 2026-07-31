@@ -410,17 +410,39 @@ fn parse_provider_error(
 }
 
 fn parse_openai_error(payload: &Value) -> Option<(String, Option<String>, LocalCoreSyncErrorKind)> {
-    let error = payload.get("error")?.as_object()?;
-    let message = error.get("message").and_then(Value::as_str)?.to_string();
-    let code = error
-        .get("code")
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned);
-    let kind = match error
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-    {
+    let body = payload.as_object()?;
+    let error = body.get("error").and_then(Value::as_object);
+    let data = body.get("data").and_then(Value::as_object);
+    let is_codex_top_level_error = body.get("code").is_some()
+        && body
+            .get("message")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+        && data.is_some_and(|value| {
+            value
+                .get("details")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty())
+                || value
+                    .get("category")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty())
+        });
+    if error.is_none() && !is_codex_top_level_error {
+        return None;
+    }
+
+    let message = first_non_empty_openai_error_text(
+        &[data, error, Some(body)],
+        &["details", "message", "detail", "reason"],
+    )?;
+    let code = first_non_empty_openai_error_text(&[error, Some(body)], &["code"])
+        .filter(|value| !value.is_empty());
+    let raw_type = first_non_empty_openai_error_text(
+        &[error, data, Some(body)],
+        &["type", "__type", "category"],
+    );
+    let kind = match raw_type.as_deref().unwrap_or_default() {
         "invalid_request_error" => LocalCoreSyncErrorKind::InvalidRequest,
         "authentication_error" => LocalCoreSyncErrorKind::Authentication,
         "permission_error" => LocalCoreSyncErrorKind::PermissionDenied,
@@ -428,9 +450,63 @@ fn parse_openai_error(payload: &Value) -> Option<(String, Option<String>, LocalC
         "rate_limit_error" => LocalCoreSyncErrorKind::RateLimit,
         "context_length_exceeded" => LocalCoreSyncErrorKind::ContextLengthExceeded,
         "overloaded_error" => LocalCoreSyncErrorKind::Overloaded,
-        _ => LocalCoreSyncErrorKind::ServerError,
+        _ => classify_openai_error_kind(message.as_str()),
     };
     Some((message, code, kind))
+}
+
+fn first_non_empty_openai_error_text(
+    objects: &[Option<&serde_json::Map<String, Value>>],
+    keys: &[&str],
+) -> Option<String> {
+    for key in keys {
+        for object in objects.iter().flatten() {
+            let Some(value) = object.get(*key) else {
+                continue;
+            };
+            match value {
+                Value::String(value) if !value.trim().is_empty() => {
+                    return Some(value.trim().to_string());
+                }
+                Value::Number(value) => return Some(value.to_string()),
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+fn classify_openai_error_kind(message: &str) -> LocalCoreSyncErrorKind {
+    let message = message.to_ascii_lowercase();
+    if message.contains("rate_limit")
+        || message.contains("rate limited")
+        || message.contains("resource_exhausted")
+        || message.contains("throttl")
+    {
+        return LocalCoreSyncErrorKind::RateLimit;
+    }
+    if message.contains("contextlength")
+        || message.contains("contentlengthexceeded")
+        || message.contains("context window")
+        || message.contains("context length")
+        || message.contains("max_tokens")
+        || (message.contains("context") && message.contains("token"))
+    {
+        return LocalCoreSyncErrorKind::ContextLengthExceeded;
+    }
+    if message.contains("unauth") || message.contains("authentication") {
+        return LocalCoreSyncErrorKind::Authentication;
+    }
+    if message.contains("permission") || message.contains("forbidden") {
+        return LocalCoreSyncErrorKind::PermissionDenied;
+    }
+    if message.contains("not_found") || message.contains("not found") {
+        return LocalCoreSyncErrorKind::NotFound;
+    }
+    if message.contains("overload") || message.contains("unavailable") {
+        return LocalCoreSyncErrorKind::Overloaded;
+    }
+    LocalCoreSyncErrorKind::ServerError
 }
 
 fn parse_claude_error(payload: &Value) -> Option<(String, Option<String>, LocalCoreSyncErrorKind)> {
@@ -540,6 +616,20 @@ mod tests {
                 "\"message\":\"quota exceeded\"",
                 "\"type\":\"rate_limit_error\"",
                 "\"code\":\"429\"",
+            ),
+            (
+                "openai:responses",
+                data_line(json!({
+                    "code": -32603,
+                    "message": "Internal error",
+                    "data": {
+                        "details": "Your input exceeds the context window of this model.",
+                        "category": "internal",
+                    }
+                })),
+                "\"message\":\"Your input exceeds the context window of this model.\"",
+                "\"type\":\"context_length_exceeded\"",
+                "\"code\":\"-32603\"",
             ),
         ];
 

@@ -22,8 +22,8 @@ use crate::orchestration::{
     apply_local_execution_effect, resolve_local_failover_analysis_for_attempt,
     trace_upstream_response_body, with_upstream_response_report_context,
     LocalAdaptiveRateLimitEffect, LocalAttemptFailureEffect, LocalExecutionEffect,
-    LocalExecutionEffectContext, LocalHealthFailureEffect, LocalOAuthInvalidationEffect,
-    LocalPoolErrorEffect,
+    LocalExecutionEffectContext, LocalFailoverAnalysis, LocalHealthFailureEffect,
+    LocalOAuthInvalidationEffect, LocalPoolErrorEffect,
 };
 use crate::request_candidate_runtime::record_report_request_candidate_status;
 use crate::usage::submit_sync_report;
@@ -168,21 +168,36 @@ fn stream_failure_body_field<'a>(
     payload: &'a GatewaySyncReportRequest,
     field: &str,
 ) -> Option<&'a str> {
-    payload
-        .body_json
-        .as_ref()
-        .and_then(|body_json| body_json.get("error"))
-        .and_then(|value| value.get(field))
-        .and_then(Value::as_str)
+    let body_object = payload.body_json.as_ref()?.as_object()?;
+    let error_object = body_object.get("error").and_then(Value::as_object);
+    let data_object = body_object.get("data").and_then(Value::as_object);
+    let fields = match field {
+        "message" => &["details", "message", "detail", "reason"][..],
+        "type" => &["type", "category"][..],
+        _ => std::slice::from_ref(&field),
+    };
+    for field in fields {
+        for object in [error_object, data_object, Some(body_object)]
+            .into_iter()
+            .flatten()
+        {
+            if let Some(value) = object.get(*field).and_then(Value::as_str) {
+                if !value.trim().is_empty() {
+                    return Some(value);
+                }
+            }
+        }
+    }
+    None
 }
 
-async fn record_stream_sync_failure(
+pub(super) async fn record_stream_sync_failure(
     state: &AppState,
     plan: &ExecutionPlan,
     report_context: Option<&Value>,
     payload: &GatewaySyncReportRequest,
     started_at_unix_ms: Option<u64>,
-) {
+) -> LocalFailoverAnalysis {
     let error_type = stream_failure_body_field(payload, "type").unwrap_or("internal");
     let error_message = stream_failure_body_field(payload, "message").unwrap_or_default();
     let error_body = payload
@@ -296,6 +311,7 @@ async fn record_stream_sync_failure(
         },
     )
     .await;
+    failure_analysis
 }
 
 #[allow(clippy::too_many_arguments)] // internal helper for prefetch error handling
@@ -322,7 +338,9 @@ pub(super) async fn handle_prefetch_stream_failure(
         buffered_body,
         failure,
     );
-    record_stream_sync_failure(state, plan, payload.report_context.as_ref(), &payload, None).await;
+    let _ =
+        record_stream_sync_failure(state, plan, payload.report_context.as_ref(), &payload, None)
+            .await;
 
     let response =
         submit_local_core_error_or_sync_finalize(state, trace_id, decision, payload).await?;
@@ -360,7 +378,7 @@ pub(super) async fn submit_midstream_stream_failure(
         buffered_body,
         failure,
     );
-    record_stream_sync_failure(
+    let _ = record_stream_sync_failure(
         state,
         plan,
         payload.report_context.as_ref(),

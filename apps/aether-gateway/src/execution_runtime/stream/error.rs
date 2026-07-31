@@ -11,7 +11,7 @@ use tracing::warn;
 use crate::execution_runtime::ndjson::decode_stream_frame_ndjson;
 use crate::execution_runtime::submission::{has_nested_error, strip_utf8_bom_and_ws};
 use crate::GatewayError;
-use crate::{MAX_ERROR_BODY_BYTES, MAX_STREAM_PREFETCH_FRAMES};
+use crate::MAX_ERROR_BODY_BYTES;
 
 #[derive(Debug)]
 pub(super) enum StreamPrefetchInspection {
@@ -151,9 +151,13 @@ pub(super) fn inspect_prefetched_stream_body(
         }
     }
 
+    if let Some(inspection) = inspect_prefetched_sse_body(body) {
+        return inspection;
+    }
+
     let text = String::from_utf8_lossy(body);
     let mut saw_meaningful_line = false;
-    for line in text.lines().take(MAX_STREAM_PREFETCH_FRAMES) {
+    for line in text.lines() {
         let line = line.trim_matches('\r').trim();
         if line.is_empty() || line.starts_with(':') || line.starts_with("event:") {
             continue;
@@ -189,6 +193,86 @@ pub(super) fn inspect_prefetched_stream_body(
     } else {
         StreamPrefetchInspection::NeedMore
     }
+}
+
+fn inspect_prefetched_sse_body(body: &[u8]) -> Option<StreamPrefetchInspection> {
+    let text = String::from_utf8_lossy(body);
+    let mut current_event: Option<String> = None;
+    let mut data_lines = Vec::new();
+    let mut saw_sse_line = false;
+
+    for raw_line in text.split_inclusive('\n') {
+        if !raw_line.ends_with('\n') {
+            break;
+        }
+        let line = raw_line.trim_end_matches(&['\r', '\n'][..]).trim();
+
+        if let Some(event_name) = line.strip_prefix("event:").map(str::trim) {
+            saw_sse_line = true;
+            current_event = Some(event_name.to_string());
+            continue;
+        }
+        if let Some(data) = line.strip_prefix("data:").map(str::trim) {
+            saw_sse_line = true;
+            data_lines.push(data.to_string());
+            continue;
+        }
+        if line.starts_with(':') {
+            saw_sse_line = true;
+            continue;
+        }
+        if !line.is_empty() {
+            continue;
+        }
+        if data_lines.is_empty() {
+            current_event = None;
+            continue;
+        }
+
+        let data = data_lines.join("\n");
+        data_lines.clear();
+        if data == "[DONE]" {
+            return Some(StreamPrefetchInspection::NonError);
+        }
+        let Ok(event_json) = serde_json::from_str::<Value>(&data) else {
+            return Some(StreamPrefetchInspection::NonError);
+        };
+        let event_name = current_event.take();
+        let event_type = event_json
+            .get("type")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .or(event_name)
+            .unwrap_or_default();
+
+        if event_type == "response.failed" {
+            let error = event_json
+                .pointer("/response/error")
+                .or_else(|| event_json.get("error"))
+                .cloned()
+                .unwrap_or_else(|| {
+                    json!({
+                        "type": "upstream_error",
+                        "message": "OpenAI upstream response failed"
+                    })
+                });
+            return Some(StreamPrefetchInspection::EmbeddedError(json!({
+                "error": error
+            })));
+        }
+        if matches!(
+            event_type.as_str(),
+            "response.created" | "response.in_progress"
+        ) {
+            continue;
+        }
+        if has_nested_error(&event_json) {
+            return Some(StreamPrefetchInspection::EmbeddedError(event_json));
+        }
+        return Some(StreamPrefetchInspection::NonError);
+    }
+
+    saw_sse_line.then_some(StreamPrefetchInspection::NeedMore)
 }
 
 pub(super) async fn collect_error_body<R>(
@@ -241,4 +325,84 @@ where
         return Ok(Some(frame));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use serde_json::json;
+
+    use super::{inspect_prefetched_stream_body, StreamPrefetchInspection};
+
+    fn sse_headers() -> BTreeMap<String, String> {
+        BTreeMap::from([("content-type".to_string(), "text/event-stream".to_string())])
+    }
+
+    #[test]
+    fn openai_responses_preamble_needs_more_data() {
+        let body = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n"
+        );
+
+        assert!(matches!(
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes()),
+            StreamPrefetchInspection::NeedMore
+        ));
+    }
+
+    #[test]
+    fn openai_responses_failed_event_becomes_embedded_error() {
+        let body = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n",
+            "event: response.failed\n",
+            "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Selected model is at capacity. Please try a different model.\"}}}\n\n"
+        );
+
+        let StreamPrefetchInspection::EmbeddedError(error) =
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes())
+        else {
+            panic!("response.failed should be detected as an embedded error");
+        };
+        assert_eq!(
+            error,
+            json!({
+                "error": {
+                    "code": "server_is_overloaded",
+                    "message": "Selected model is at capacity. Please try a different model."
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn openai_responses_visible_output_ends_prefetch() {
+        let body = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"
+        );
+
+        assert!(matches!(
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes()),
+            StreamPrefetchInspection::NonError
+        ));
+    }
+
+    #[test]
+    fn sse_event_name_does_not_leak_into_the_next_event() {
+        let body = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\"}\n\n",
+            "data: {\"response\":{\"status\":\"in_progress\"}}\n\n"
+        );
+
+        assert!(matches!(
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes()),
+            StreamPrefetchInspection::NonError
+        ));
+    }
 }

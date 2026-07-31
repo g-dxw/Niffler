@@ -24,8 +24,8 @@ pub(crate) use self::attempt::{
     LocalExecutionCandidateMetadata, SCHEDULER_AFFINITY_EPOCH_REPORT_FIELD,
 };
 pub(crate) use self::classifier::{
-    classify_local_failover, local_failover_error_message, LocalFailoverClassification,
-    LocalFailoverInput,
+    classify_local_failover, is_retryable_openai_transient_processing_error,
+    local_failover_error_message, LocalFailoverClassification, LocalFailoverInput,
 };
 pub(crate) use self::effects::{
     apply_local_execution_effect, LocalAdaptiveRateLimitEffect, LocalAdaptiveSuccessEffect,
