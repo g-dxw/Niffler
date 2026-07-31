@@ -25,11 +25,14 @@
   `main` 提交手动触发，生产不会因 `main` 推送自动上线。
 - 当前线上只使用 Linux amd64，因此 `Build App Image` 只构建 amd64 的 `aether-gateway`。
 - `Build App Image` 只产出 `niffler-app-linux-amd64` 镜像文件，不再推送 GHCR 镜像，避免重复构建和上传。
+- `test` 部署任务通过 `actions/download-artifact` 直接取得同一 Workflow 生成的镜像，
+  不查询尚未完成的当前 Run 元数据；生产发布仍按 Run ID 或提交号下载已完成的成功产物。
 - `Build App Image` 使用 Node 22 运行时的官方 GitHub Actions，避免 CI 运行时升级影响生产镜像产物。
 - `Build App Image` 在封装镜像前运行发布脚本语法检查和提交继承规则测试；检查失败时不生成生产镜像。
 - `deploy.sh` 不再使用 `Dockerfile.app.local`，也不再计算代码哈希。
 - `deploy.sh` 只执行镜像拉取和 `docker compose up -d --no-build`。
-- `scripts/deploy-ci-artifact.sh` 只负责从 CI 下载准确镜像并上传；生产变更由服务器固定部署器执行。
+- `scripts/deploy-ci-artifact.sh` 负责校验并上传准确的 CI 镜像；test 使用 Workflow 已下载的
+  本地产物，生产按已完成 Run 下载。实际服务变更仍由服务器固定部署器执行。
 - 生产执行 `scripts/deploy-ci-artifact.sh` 必须显式传入 `--run-id` 或 `--commit`，不能默认部署“最新成功产物”。
 - 使用 `--commit` 时，脚本会按提交号查找对应的成功 `Build App Image` 工作流；如果没有找到成功产物，脚本必须停止，不能退回到默认分支的最新产物。
 - 脚本会读取 CI 运行对应的准确提交，确认工作流名称和结果，并从 GitHub 同步最新 `main`。

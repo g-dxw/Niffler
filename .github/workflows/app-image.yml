@@ -193,6 +193,12 @@ jobs:
             exit 1
           fi
 
+      - name: Download test image artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: niffler-app-linux-amd64
+          path: ${{ runner.temp }}/niffler-app-artifact
+
       - name: Setup SSH
         env:
           SSH_HOST: ${{ secrets.MYLINGWEAVE_HOST }}
@@ -240,7 +246,6 @@ jobs:
 
       - name: Deploy image artifact
         env:
-          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           APP_IMAGE: niffler-app:${{ github.sha }}
           SOURCE_HEALTH_URL: ${{ vars.MYLINGWEAVE_SOURCE_HEALTH_URL }}
@@ -248,7 +253,7 @@ jobs:
           scripts/deploy-ci-artifact.sh \
             --host "${{ vars.MYLINGWEAVE_USER }}@${{ secrets.MYLINGWEAVE_HOST }}" \
             --remote-dir "${{ vars.MYLINGWEAVE_REMOTE_DIR }}" \
-            --run-id "${{ github.run_id }}" \
+            --artifact-file "${RUNNER_TEMP}/niffler-app-artifact/niffler-app-linux-amd64.tar" \
             --test-deployment \
             --source-health-url "${SOURCE_HEALTH_URL}" \
             --public-health-url "${{ vars.MYLINGWEAVE_PUBLIC_URL }}"

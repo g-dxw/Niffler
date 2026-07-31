@@ -41,7 +41,11 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "123456"
         ;;
     "run view")
-        printf '%s\t%s\t%s\n' "$FAKE_TARGET_COMMIT" "success" "Build App Image"
+        printf '%s\t%s\t%s\t%s\n' \
+            "${FAKE_RUN_TARGET_COMMIT:-$FAKE_TARGET_COMMIT}" \
+            "${FAKE_RUN_STATUS:-completed}" \
+            "${FAKE_RUN_CONCLUSION:-success}" \
+            "${FAKE_RUN_WORKFLOW_NAME:-Build App Image}"
         ;;
     "run download")
         download_dir=""
@@ -120,6 +124,68 @@ grep -Fq -- "niffler-deploy@example.test upload $TARGET_COMMIT" "$SSH_LOG"
 grep -Fq -- "niffler-deploy@example.test deploy $TARGET_COMMIT" "$SSH_LOG"
 test "$(cat "$FAKE_UPLOAD_FILE")" = "verified-image"
 test ! -s "$SCP_LOG"
+
+if GH_REPO="ryfineZ/Niffler" \
+    SSH_OPTS="-p 22889 -o BatchMode=yes" \
+    FAKE_RUN_STATUS="in_progress" \
+    FAKE_RUN_CONCLUSION="__missing__" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "niffler-deploy@example.test" \
+            --commit "$TARGET_COMMIT" \
+            --restricted-actions >"$TEST_ROOT/in-progress-run.out" 2>&1; then
+    echo "in-progress production artifact run unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "is not a successful completed run" "$TEST_ROOT/in-progress-run.out"
+
+if GH_REPO="ryfineZ/Niffler" \
+    SSH_OPTS="-p 22889 -o BatchMode=yes" \
+    FAKE_RUN_STATUS="completed" \
+    FAKE_RUN_CONCLUSION="failure" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "niffler-deploy@example.test" \
+            --commit "$TARGET_COMMIT" \
+            --restricted-actions >"$TEST_ROOT/failed-run.out" 2>&1; then
+    echo "failed production artifact run unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "is not a successful completed run" "$TEST_ROOT/failed-run.out"
+
+if GH_REPO="ryfineZ/Niffler" \
+    SSH_OPTS="-p 22889 -o BatchMode=yes" \
+    FAKE_RUN_WORKFLOW_NAME="__missing__" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "niffler-deploy@example.test" \
+            --commit "$TARGET_COMMIT" \
+            --restricted-actions >"$TEST_ROOT/missing-workflow.out" 2>&1; then
+    echo "production run without a workflow name unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "did not provide a workflow name" "$TEST_ROOT/missing-workflow.out"
+
+if GH_REPO="ryfineZ/Niffler" \
+    SSH_OPTS="-p 22889 -o BatchMode=yes" \
+    FAKE_RUN_WORKFLOW_NAME="Unexpected Workflow" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "niffler-deploy@example.test" \
+            --commit "$TARGET_COMMIT" \
+            --restricted-actions >"$TEST_ROOT/wrong-workflow.out" 2>&1; then
+    echo "incorrect production workflow unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "belongs to 'Unexpected Workflow'" "$TEST_ROOT/wrong-workflow.out"
+
+if GH_REPO="ryfineZ/Niffler" \
+    SSH_OPTS="-p 22889 -o BatchMode=yes" \
+    FAKE_RUN_TARGET_COMMIT="not-a-commit" \
+        bash "$DEPLOY_SCRIPT" \
+            --host "niffler-deploy@example.test" \
+            --commit "$TARGET_COMMIT" \
+            --restricted-actions >"$TEST_ROOT/invalid-target.out" 2>&1; then
+    echo "invalid target commit unexpectedly succeeded" >&2
+    exit 1
+fi
+grep -Fq "Target commit must be a lowercase 40-character SHA" "$TEST_ROOT/invalid-target.out"
 
 if GH_REPO="ryfineZ/Niffler" \
     SSH_OPTS="-p 22889 -o BatchMode=yes" \

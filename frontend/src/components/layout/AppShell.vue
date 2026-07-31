@@ -28,7 +28,7 @@
         v-if="mobileSidebarOpen"
         type="button"
         class="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] lg:hidden"
-      :aria-label="t('appShell.closeSidebar')"
+        :aria-label="t('appShell.closeSidebar')"
         @click="emit('close-mobile-sidebar')"
       />
 
@@ -47,6 +47,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   showNotice?: boolean
