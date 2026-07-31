@@ -2590,14 +2590,40 @@ async fn execute_stream_from_frame_stream(
     drop(private_stream_normalizer);
     drop(local_stream_rewriter);
 
+    let mut initial_stream_telemetry = prefetched_telemetry;
+    if !prefetched_body.is_empty()
+        && initial_stream_telemetry
+            .as_ref()
+            .and_then(|telemetry| telemetry.ttfb_ms)
+            .is_none()
+    {
+        let first_byte_elapsed_ms = stream_started_at
+            .elapsed()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        let provider_prefetched_bytes =
+            u64::try_from(provider_prefetched_body.len()).unwrap_or(u64::MAX);
+        if let Some(telemetry) = initial_stream_telemetry.as_mut() {
+            telemetry.ttfb_ms = Some(first_byte_elapsed_ms);
+            telemetry.elapsed_ms = telemetry.elapsed_ms.or(Some(first_byte_elapsed_ms));
+            telemetry.upstream_bytes = telemetry.upstream_bytes.or(Some(provider_prefetched_bytes));
+        } else {
+            initial_stream_telemetry = Some(ExecutionTelemetry {
+                ttfb_ms: Some(first_byte_elapsed_ms),
+                elapsed_ms: Some(first_byte_elapsed_ms),
+                upstream_bytes: Some(provider_prefetched_bytes),
+            });
+        }
+    }
+
     state.usage_runtime.record_stream_started(
         state.data.as_ref(),
         &lifecycle_seed,
         status_code,
-        prefetched_telemetry.as_ref(),
+        initial_stream_telemetry.as_ref(),
     );
     if let Some(snapshot) = request_candidate_status_snapshot {
-        let latency_ms = prefetched_telemetry
+        let latency_ms = initial_stream_telemetry
             .as_ref()
             .and_then(|telemetry| telemetry.elapsed_ms);
         submit_local_request_candidate_status_snapshot(
@@ -2632,7 +2658,7 @@ async fn execute_stream_from_frame_stream(
     let prefetched_body_for_report = prefetched_body;
     let prefetched_chunks_for_body = prefetched_chunks;
     let sync_json_stream_bridge_active_for_report = sync_json_stream_bridge_active;
-    let initial_telemetry = prefetched_telemetry;
+    let initial_telemetry = initial_stream_telemetry;
     let initial_reached_eof = reached_eof;
     let direct_stream_finalize_kind_owned = direct_stream_finalize_kind;
     let candidate_started_unix_secs_for_report = candidate_started_unix_secs;
