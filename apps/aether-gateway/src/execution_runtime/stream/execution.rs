@@ -48,7 +48,8 @@ use super::error::{
 mod execution_failures;
 use self::execution_failures::{
     build_stream_failure_from_execution_error, build_stream_failure_report,
-    handle_prefetch_stream_failure, submit_midstream_stream_failure, StreamFailureReport,
+    handle_prefetch_stream_failure, record_stream_sync_failure, submit_midstream_stream_failure,
+    StreamFailureReport,
 };
 use crate::ai_serving::api::{
     maybe_bridge_standard_sync_json_to_stream, maybe_build_provider_private_stream_normalizer,
@@ -76,8 +77,8 @@ use crate::execution_runtime::oauth_retry::refresh_oauth_plan_auth_for_retry;
 #[cfg(test)]
 use crate::execution_runtime::remote_compat::post_stream_plan_to_remote_execution_runtime;
 use crate::execution_runtime::submission::{
-    resolve_core_error_background_report_kind, strip_utf8_bom_and_ws,
-    submit_local_core_error_or_sync_finalize,
+    resolve_core_error_background_report_kind, resolve_local_sync_error_status_code,
+    strip_utf8_bom_and_ws, submit_local_core_error_or_sync_finalize,
 };
 use crate::execution_runtime::transport::{
     execute_stream_plan_via_local_tunnel, record_manual_proxy_request_failure,
@@ -1714,7 +1715,10 @@ fn should_skip_direct_finalize_prefetch(
         .unwrap_or_default()
         .to_ascii_lowercase();
     if content_type.contains("text/event-stream") {
-        return true;
+        return !provider_api_format
+            .trim()
+            .to_ascii_lowercase()
+            .starts_with("openai:responses");
     }
 
     if has_private_stream_normalizer || has_local_stream_rewriter {
@@ -2188,6 +2192,15 @@ async fn execute_stream_from_frame_stream(
         headers.insert("content-type".to_string(), "text/event-stream".to_string());
     }
     let upstream_content_type = upstream_headers.get("content-type").map(String::as_str);
+    let prefetch_openai_responses_sse = upstream_content_type.is_some_and(|content_type| {
+        content_type
+            .to_ascii_lowercase()
+            .contains("text/event-stream")
+    }) && plan
+        .provider_api_format
+        .trim()
+        .to_ascii_lowercase()
+        .starts_with("openai:responses");
     let skip_direct_finalize_prefetch = should_skip_direct_finalize_prefetch(
         direct_stream_finalize_kind.as_deref(),
         upstream_content_type,
@@ -2197,7 +2210,8 @@ async fn execute_stream_from_frame_stream(
         local_stream_rewriter.is_some(),
     );
     let limit_direct_finalize_prefetch =
-        should_limit_direct_finalize_prefetch(plan_kind, local_stream_rewriter.is_some());
+        should_limit_direct_finalize_prefetch(plan_kind, local_stream_rewriter.is_some())
+            || prefetch_openai_responses_sse;
     let mut prefetched_chunks: Vec<Bytes> = Vec::new();
     let mut provider_prefetched_body = Vec::new();
     let mut prefetched_body = Vec::new();
@@ -2350,22 +2364,46 @@ async fn execute_stream_from_frame_stream(
                                 provider_prefetched_body_bytes = provider_prefetched_body.len(),
                                 "gateway detected embedded error while prefetching execution runtime stream"
                             );
+                            let effective_status_code =
+                                resolve_local_sync_error_status_code(status_code, &body_json);
                             let payload = build_stream_sync_payload(
                                 trace_id,
                                 report_kind.clone(),
                                 report_context,
-                                status_code,
+                                effective_status_code,
                                 headers,
                                 Some(body_json),
                                 None,
                                 prefetched_telemetry,
                             );
-                            record_sync_terminal_usage(
+                            let failure_analysis = record_stream_sync_failure(
                                 state,
                                 &plan,
                                 payload.report_context.as_ref(),
                                 &payload,
-                            );
+                                Some(candidate_started_unix_secs),
+                            )
+                            .await;
+                            if matches!(
+                                failure_analysis.decision,
+                                LocalFailoverDecision::RetryNextCandidate
+                            ) {
+                                warn!(
+                                    event_name = "local_stream_candidate_retry_scheduled",
+                                    log_type = "event",
+                                    trace_id = %trace_id,
+                                    request_id = %request_id_for_log,
+                                    upstream_status_code = status_code,
+                                    effective_status_code,
+                                    provider_name,
+                                    endpoint_id = %plan.endpoint_id,
+                                    key_id = %plan.key_id,
+                                    model_name,
+                                    candidate_index = candidate_index.as_str(),
+                                    "gateway retrying next candidate after embedded upstream error"
+                                );
+                                return Ok(None);
+                            }
                             let response = submit_local_core_error_or_sync_finalize(
                                 state, trace_id, decision, payload,
                             )
@@ -2552,14 +2590,40 @@ async fn execute_stream_from_frame_stream(
     drop(private_stream_normalizer);
     drop(local_stream_rewriter);
 
+    let mut initial_stream_telemetry = prefetched_telemetry;
+    if !prefetched_body.is_empty()
+        && initial_stream_telemetry
+            .as_ref()
+            .and_then(|telemetry| telemetry.ttfb_ms)
+            .is_none()
+    {
+        let first_byte_elapsed_ms = stream_started_at
+            .elapsed()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        let provider_prefetched_bytes =
+            u64::try_from(provider_prefetched_body.len()).unwrap_or(u64::MAX);
+        if let Some(telemetry) = initial_stream_telemetry.as_mut() {
+            telemetry.ttfb_ms = Some(first_byte_elapsed_ms);
+            telemetry.elapsed_ms = telemetry.elapsed_ms.or(Some(first_byte_elapsed_ms));
+            telemetry.upstream_bytes = telemetry.upstream_bytes.or(Some(provider_prefetched_bytes));
+        } else {
+            initial_stream_telemetry = Some(ExecutionTelemetry {
+                ttfb_ms: Some(first_byte_elapsed_ms),
+                elapsed_ms: Some(first_byte_elapsed_ms),
+                upstream_bytes: Some(provider_prefetched_bytes),
+            });
+        }
+    }
+
     state.usage_runtime.record_stream_started(
         state.data.as_ref(),
         &lifecycle_seed,
         status_code,
-        prefetched_telemetry.as_ref(),
+        initial_stream_telemetry.as_ref(),
     );
     if let Some(snapshot) = request_candidate_status_snapshot {
-        let latency_ms = prefetched_telemetry
+        let latency_ms = initial_stream_telemetry
             .as_ref()
             .and_then(|telemetry| telemetry.elapsed_ms);
         submit_local_request_candidate_status_snapshot(
@@ -2594,7 +2658,7 @@ async fn execute_stream_from_frame_stream(
     let prefetched_body_for_report = prefetched_body;
     let prefetched_chunks_for_body = prefetched_chunks;
     let sync_json_stream_bridge_active_for_report = sync_json_stream_bridge_active;
-    let initial_telemetry = prefetched_telemetry;
+    let initial_telemetry = initial_stream_telemetry;
     let initial_reached_eof = reached_eof;
     let direct_stream_finalize_kind_owned = direct_stream_finalize_kind;
     let candidate_started_unix_secs_for_report = candidate_started_unix_secs;
@@ -2606,7 +2670,8 @@ async fn execute_stream_from_frame_stream(
     let openai_image_stream_total_timeout_ms =
         resolve_openai_image_stream_total_timeout_ms(plan_kind, &plan);
     let plan_for_report = plan;
-    let emit_passthrough_sse_terminal_error = skip_direct_finalize_prefetch
+    let emit_passthrough_sse_terminal_error = (skip_direct_finalize_prefetch
+        || prefetch_openai_responses_sse)
         && response_headers_indicate_sse(&upstream_headers)
         && !is_openai_image_stream_for_report;
     let body_capture_policy = match UsageRuntimeAccess::body_capture_policy(state.data.as_ref())
@@ -4571,6 +4636,18 @@ event: response.completed
     }
 
     #[test]
+    fn keeps_prefetch_for_openai_responses_event_streams() {
+        assert!(!should_skip_direct_finalize_prefetch(
+            Some("openai_responses_stream_finalize"),
+            Some("text/event-stream"),
+            "openai:responses",
+            "openai:responses",
+            false,
+            false,
+        ));
+    }
+
+    #[test]
     fn skips_prefetch_for_same_format_passthrough_streams_without_content_type() {
         assert!(should_skip_direct_finalize_prefetch(
             Some("claude_cli_sync_finalize"),
@@ -4604,6 +4681,82 @@ event: response.completed
             false,
             true,
         ));
+    }
+
+    #[tokio::test]
+    async fn openai_responses_capacity_failure_retries_before_client_output() {
+        let state = AppState::new().expect("app state should build");
+        let plan = ExecutionPlan {
+            request_id: "req-openai-capacity-failover".into(),
+            candidate_id: Some("cand-openai-capacity-failover".into()),
+            provider_name: Some("codex-pro".into()),
+            provider_id: "prov-capacity".into(),
+            endpoint_id: "ep-capacity".into(),
+            key_id: "key-capacity".into(),
+            method: "POST".into(),
+            url: "https://chatgpt.com/backend-api/codex/responses".into(),
+            headers: BTreeMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("accept".into(), "text/event-stream".into()),
+            ]),
+            content_type: Some("application/json".into()),
+            content_encoding: None,
+            body: RequestBody::from_json(json!({
+                "model": "gpt-5.4",
+                "input": "hello",
+                "stream": true
+            })),
+            stream: true,
+            client_api_format: "openai:responses".into(),
+            provider_api_format: "openai:responses".into(),
+            model_name: Some("gpt-5.4".into()),
+            proxy: None,
+            transport_profile: None,
+            timeouts: None,
+        };
+        let frame_stream = stream! {
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":200,\"headers\":{\"content-type\":\"text/event-stream\"}}}\n",
+            ));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"event: response.created\\ndata: {\\\"type\\\":\\\"response.created\\\",\\\"response\\\":{\\\"status\\\":\\\"in_progress\\\"}}\\n\\n\"}}\n",
+            ));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"event: response.failed\\ndata: {\\\"type\\\":\\\"response.failed\\\",\\\"response\\\":{\\\"status\\\":\\\"failed\\\",\\\"error\\\":{\\\"code\\\":\\\"server_is_overloaded\\\",\\\"message\\\":\\\"Selected model is at capacity. Please try a different model.\\\"}}}\\n\\n\"}}\n",
+            ));
+        }
+        .boxed();
+
+        let response = execute_stream_from_frame_stream(
+            &state,
+            plan,
+            "trace-openai-capacity-failover",
+            &test_decision(),
+            "openai_responses_stream",
+            Some("openai_responses_stream_success".to_string()),
+            Some(json!({
+                "request_id": "req-openai-capacity-failover",
+                "candidate_id": "cand-openai-capacity-failover",
+                "candidate_index": 0,
+                "retry_index": 0,
+                "provider_api_format": "openai:responses",
+                "client_api_format": "openai:responses",
+                "local_failover_policy": {
+                    "stop_status_codes": [400, 503]
+                }
+            })),
+            crate::clock::current_unix_ms(),
+            Instant::now(),
+            frame_stream,
+            None,
+        )
+        .await
+        .expect("execution should succeed");
+
+        assert!(
+            response.is_none(),
+            "capacity failure should try the next account"
+        );
     }
 
     #[test]

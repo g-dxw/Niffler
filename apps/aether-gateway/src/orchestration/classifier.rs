@@ -56,6 +56,19 @@ pub(crate) fn classify_local_failover(
     policy: &LocalFailoverPolicy,
     input: LocalFailoverInput<'_>,
 ) -> LocalFailoverClassification {
+    if input
+        .response_text
+        .is_some_and(response_text_is_context_window_error)
+    {
+        return LocalFailoverClassification::StopErrorPattern;
+    }
+
+    if input.response_text.is_some_and(|response_text| {
+        is_retryable_openai_transient_processing_error(input.status_code, response_text)
+    }) {
+        return LocalFailoverClassification::RetryUpstreamFailure;
+    }
+
     if policy.stop_status_codes.contains(&input.status_code) {
         return LocalFailoverClassification::StopStatusCode;
     }
@@ -119,6 +132,45 @@ fn response_text_is_non_retryable_user_request_error(response_text: &str) -> boo
     let lower = response_text.to_ascii_lowercase();
     lower.contains("image dimensions exceed max allowed size")
         || lower.contains("max allowed size for many-image requests")
+}
+
+fn response_text_is_context_window_error(response_text: &str) -> bool {
+    let lower = response_text.to_ascii_lowercase();
+    if lower.contains("context_too_large") || lower.contains("context_length_exceeded") {
+        return true;
+    }
+    if lower.contains("maximum context length") || lower.contains("max context length") {
+        return true;
+    }
+
+    let has_exceeded =
+        lower.contains("exceed") || lower.contains("too large") || lower.contains("too long");
+    (lower.contains("context window") && has_exceeded)
+        || (lower.contains("context length") && has_exceeded)
+        || (lower.contains("token limit") && lower.contains("context") && has_exceeded)
+}
+
+pub(crate) fn is_retryable_openai_transient_processing_error(
+    status_code: u16,
+    response_text: &str,
+) -> bool {
+    if !matches!(status_code, 400 | 503) {
+        return false;
+    }
+
+    let lower = response_text.to_ascii_lowercase();
+    if lower.contains("server_is_overloaded") || lower.contains("slow_down") {
+        return true;
+    }
+    if status_code != 400 {
+        return false;
+    }
+
+    lower.contains("selected model is at capacity")
+        || lower.contains("an error occurred while processing your request")
+        || (lower.contains("you can retry your request")
+            && lower.contains("help.openai.com")
+            && lower.contains("request id"))
 }
 
 fn parse_local_error_response(response_text: Option<&str>) -> ParsedLocalErrorResponse {
@@ -234,6 +286,43 @@ mod tests {
             classify_local_failover(&policy, LocalFailoverInput::new(503, None)),
             LocalFailoverClassification::StopStatusCode
         );
+    }
+
+    #[test]
+    fn classifier_retries_openai_capacity_error_before_explicit_stop() {
+        let policy = LocalFailoverPolicy {
+            stop_status_codes: [400].into_iter().collect(),
+            ..LocalFailoverPolicy::default()
+        };
+
+        assert_eq!(
+            classify_local_failover(
+                &policy,
+                LocalFailoverInput::new(
+                    400,
+                    Some(
+                        "{\"error\":{\"message\":\"Selected model is at capacity. Please try a different model.\"}}"
+                    )
+                )
+            ),
+            LocalFailoverClassification::RetryUpstreamFailure
+        );
+    }
+
+    #[test]
+    fn classifier_retries_openai_overload_codes() {
+        for response_text in [
+            "{\"error\":{\"code\":\"server_is_overloaded\"}}",
+            "{\"error\":{\"code\":\"slow_down\"}}",
+        ] {
+            assert_eq!(
+                classify_local_failover(
+                    &LocalFailoverPolicy::default(),
+                    LocalFailoverInput::new(503, Some(response_text))
+                ),
+                LocalFailoverClassification::RetryUpstreamFailure
+            );
+        }
     }
 
     #[test]
@@ -353,6 +442,38 @@ mod tests {
                 LocalFailoverClassification::StopErrorPattern
             );
         }
+    }
+
+    #[test]
+    fn classifier_stops_context_window_errors_without_retrying_other_accounts() {
+        assert_eq!(
+            classify_local_failover(
+                &LocalFailoverPolicy::default(),
+                LocalFailoverInput::new(
+                    400,
+                    Some(
+                        "{\"code\":-32603,\"message\":\"Internal error\",\"data\":{\"details\":\"Your input exceeds the context window of this model.\"}}"
+                    )
+                )
+            ),
+            LocalFailoverClassification::StopErrorPattern
+        );
+    }
+
+    #[test]
+    fn classifier_prioritizes_context_window_errors_over_retryable_processing_text() {
+        assert_eq!(
+            classify_local_failover(
+                &LocalFailoverPolicy::default(),
+                LocalFailoverInput::new(
+                    400,
+                    Some(
+                        "{\"error\":{\"message\":\"An error occurred while processing your request because the input exceeds the context window. You can retry your request.\"}}"
+                    )
+                )
+            ),
+            LocalFailoverClassification::StopErrorPattern
+        );
     }
 
     #[test]

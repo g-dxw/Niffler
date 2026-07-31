@@ -270,7 +270,7 @@ pub(crate) fn build_best_effort_local_core_error_body(
     if client_api_format.is_empty() {
         return Ok(None);
     }
-    if client_api_format == provider_api_format {
+    if client_api_format == provider_api_format && body_json.get("error").is_some() {
         return Ok(Some(body_json.clone()));
     }
 
@@ -398,7 +398,10 @@ pub(crate) fn resolve_core_success_background_report_kind(report_kind: &str) -> 
     core_success_background_report_kind(report_kind).map(ToOwned::to_owned)
 }
 
-fn resolve_local_sync_error_status_code(status_code: u16, body_json: &serde_json::Value) -> u16 {
+pub(crate) fn resolve_local_sync_error_status_code(
+    status_code: u16,
+    body_json: &serde_json::Value,
+) -> u16 {
     if (400..600).contains(&status_code) {
         return status_code;
     }
@@ -421,11 +424,14 @@ fn resolve_local_sync_error_status_code(status_code: u16, body_json: &serde_json
         }
     }
 
-    let raw_type = first_non_empty_error_text(error_object, body_object, &["type", "__type"]);
+    let raw_type =
+        first_non_empty_error_text(error_object, body_object, &["type", "__type", "category"]);
     let message = first_non_empty_error_text(
         error_object,
         body_object,
-        &["message", "detail", "reason", "status", "type", "__type"],
+        &[
+            "details", "message", "detail", "reason", "status", "type", "__type",
+        ],
     )
     .unwrap_or_else(|| "HTTP 400".to_string());
     let kind = classify_local_sync_error_kind(
@@ -451,11 +457,14 @@ fn extract_local_sync_error_details(
     let message = first_non_empty_error_text(
         error_object,
         body_object,
-        &["message", "detail", "reason", "status", "type", "__type"],
+        &[
+            "details", "message", "detail", "reason", "status", "type", "__type",
+        ],
     )
     .unwrap_or_else(|| format!("HTTP {resolved_status_code}"));
     let code = first_non_empty_error_text(error_object, body_object, &["code", "status"]);
-    let raw_type = first_non_empty_error_text(error_object, body_object, &["type", "__type"]);
+    let raw_type =
+        first_non_empty_error_text(error_object, body_object, &["type", "__type", "category"]);
     let raw_status = first_non_empty_error_text(error_object, body_object, &["status"]);
     let kind = classify_local_sync_error_kind(
         resolved_status_code,
@@ -477,8 +486,14 @@ fn first_non_empty_error_text(
     body_object: Option<&serde_json::Map<String, serde_json::Value>>,
     keys: &[&str],
 ) -> Option<String> {
-    for object in [error_object, body_object].into_iter().flatten() {
-        for key in keys {
+    let data_object = body_object
+        .and_then(|object| object.get("data"))
+        .and_then(serde_json::Value::as_object);
+    for key in keys {
+        for object in [error_object, data_object, body_object]
+            .into_iter()
+            .flatten()
+        {
             let Some(value) = object.get(*key) else {
                 continue;
             };
@@ -511,6 +526,12 @@ fn classify_local_sync_error_kind(
         }
     }
 
+    if fingerprint.contains("selected model is at capacity")
+        || fingerprint.contains("server_is_overloaded")
+        || fingerprint.contains("slow_down")
+    {
+        return LocalCoreSyncErrorKind::Overloaded;
+    }
     if status_code == 429
         || fingerprint.contains("rate_limit")
         || fingerprint.contains("rate limited")
@@ -596,6 +617,23 @@ pub(crate) fn has_nested_error(value: &serde_json::Value) -> bool {
         return false;
     };
 
+    if error_object_detected(object) {
+        return true;
+    }
+
+    object
+        .get("chunks")
+        .and_then(|value| value.as_array())
+        .is_some_and(|chunks| {
+            chunks.iter().any(|chunk| {
+                chunk
+                    .as_object()
+                    .is_some_and(|chunk_object| error_object_detected(chunk_object))
+            })
+        })
+}
+
+fn error_object_detected(object: &serde_json::Map<String, serde_json::Value>) -> bool {
     if object.get("error").is_some_and(|error| !error.is_null()) {
         return true;
     }
@@ -607,22 +645,24 @@ pub(crate) fn has_nested_error(value: &serde_json::Value) -> bool {
         return true;
     }
 
-    object
-        .get("chunks")
-        .and_then(|value| value.as_array())
-        .is_some_and(|chunks| {
-            chunks.iter().any(|chunk| {
-                chunk.as_object().is_some_and(|chunk_object| {
-                    chunk_object
-                        .get("error")
-                        .is_some_and(|error| !error.is_null())
-                        || chunk_object
-                            .get("type")
-                            .and_then(|value| value.as_str())
-                            .is_some_and(|value| value == "error")
-                })
+    object.get("code").is_some_and(|value| {
+        value.is_number() || value.as_str().is_some_and(|value| !value.trim().is_empty())
+    }) && object
+        .get("message")
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty())
+        && object
+            .get("data")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|data| {
+                data.get("details")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|value| !value.trim().is_empty())
+                    || data
+                        .get("category")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|value| !value.trim().is_empty())
             })
-        })
 }
 
 pub(crate) async fn submit_local_core_error_or_sync_finalize(
@@ -687,7 +727,7 @@ mod tests {
 
     use super::{
         maybe_build_local_core_error_response, normalize_openai_image_sync_failure_payload,
-        submit_local_core_error_or_sync_finalize,
+        resolve_local_sync_error_status_code, submit_local_core_error_or_sync_finalize,
     };
     use crate::control::GatewayControlDecision;
     use crate::usage::GatewaySyncReportRequest;
@@ -769,6 +809,33 @@ mod tests {
         assert_eq!(
             payload.headers.get("content-type").map(String::as_str),
             Some("application/json")
+        );
+    }
+
+    #[test]
+    fn infers_service_unavailable_for_openai_capacity_error() {
+        assert_eq!(
+            resolve_local_sync_error_status_code(
+                200,
+                &json!({
+                    "error": {
+                        "message": "Selected model is at capacity. Please try a different model."
+                    }
+                })
+            ),
+            503
+        );
+        assert_eq!(
+            resolve_local_sync_error_status_code(
+                200,
+                &json!({
+                    "error": {
+                        "code": "slow_down",
+                        "message": "Please retry shortly."
+                    }
+                })
+            ),
+            503
         );
     }
 

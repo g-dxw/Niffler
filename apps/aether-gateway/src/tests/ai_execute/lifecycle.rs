@@ -389,7 +389,7 @@ async fn gateway_stops_execution_runtime_stream_when_client_disconnects() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn gateway_returns_error_body_when_prefetch_detects_embedded_stream_error() {
+async fn gateway_converts_codex_top_level_context_error_detected_during_stream_prefetch() {
     let public_hits = Arc::new(Mutex::new(0usize));
     let public_hits_clone = Arc::clone(&public_hits);
 
@@ -409,10 +409,10 @@ async fn gateway_returns_error_body_when_prefetch_detects_embedded_stream_error(
         any(|_request: Request| async move {
             let body_stream = async_stream::stream! {
                 yield Ok::<Bytes, Infallible>(Bytes::from_static(
-                    b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":200,\"headers\":{\"content-type\":\"text/event-stream\"}}}\n"
+                    b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":200,\"headers\":{\"content-type\":\"application/json\"}}}\n"
                 ));
                 yield Ok::<Bytes, Infallible>(Bytes::from_static(
-                    b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"data: {\\\"error\\\":{\\\"message\\\":\\\"slow down\\\",\\\"type\\\":\\\"rate_limit_error\\\",\\\"code\\\":\\\"rate_limit\\\"}}\\n\\n\"}}\n"
+                    b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"data: {\\\"code\\\":-32603,\\\"message\\\":\\\"Internal error\\\",\\\"data\\\":{\\\"details\\\":\\\"Your input exceeds the context window of this model.\\\",\\\"category\\\":\\\"internal\\\"}}\\n\\n\"}}\n"
                 ));
             };
             let mut response = Response::builder()
@@ -476,17 +476,17 @@ async fn gateway_returns_error_body_when_prefetch_detects_embedded_stream_error(
         .await
         .expect("request should succeed");
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
         response
             .headers()
             .get(http::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok()),
-        Some("text/event-stream")
+        Some("application/json")
     );
     let body_text = response.text().await.expect("response body should read");
-    assert!(body_text.contains("\"rate_limit_error\""));
-    assert!(body_text.contains("\"slow down\""));
+    assert!(body_text.contains("\"context_length_exceeded\""));
+    assert!(body_text.contains("Your input exceeds the context window of this model."));
     assert_eq!(*public_hits.lock().expect("mutex should lock"), 0);
 
     gateway_handle.abort();

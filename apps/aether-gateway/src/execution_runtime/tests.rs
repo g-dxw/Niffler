@@ -13,7 +13,7 @@ use crate::ai_serving::api::{
 use crate::execution_runtime::submission::{
     build_best_effort_local_core_error_body, has_nested_error,
     resolve_core_error_background_report_kind, resolve_core_success_background_report_kind,
-    resolve_local_core_error_response_body_json,
+    resolve_local_core_error_response_body_json, resolve_local_sync_error_status_code,
 };
 use crate::execution_runtime::{
     resolve_local_sync_error_background_report_kind,
@@ -265,6 +265,64 @@ fn has_nested_error_ignores_null_error_fields() {
         "status": "failed",
         "error": {"message": "quota reached"}
     })));
+    assert!(has_nested_error(&json!({
+        "code": -32603,
+        "message": "Internal error",
+        "data": {
+            "details": "Your input exceeds the context window of this model.",
+            "category": "internal"
+        }
+    })));
+}
+
+#[test]
+fn converts_codex_top_level_context_window_error_to_openai_error() {
+    let body_json = json!({
+        "code": -32603,
+        "message": "Internal error",
+        "data": {
+            "details": "Your input exceeds the context window of this model. Please adjust your input and try again.",
+            "category": "internal"
+        }
+    });
+    let payload = core_finalize_payload(
+        "openai_chat_sync_finalize",
+        "openai:chat",
+        "openai:responses",
+        200,
+        body_json.clone(),
+    );
+
+    assert_eq!(resolve_local_sync_error_status_code(200, &body_json), 400);
+
+    let converted = build_best_effort_local_core_error_body(&payload, &body_json)
+        .expect("conversion should not error")
+        .expect("conversion should produce a client error body");
+
+    assert_eq!(
+        converted,
+        json!({
+            "error": {
+                "message": "Your input exceeds the context window of this model. Please adjust your input and try again.",
+                "type": "context_length_exceeded",
+                "code": "-32603"
+            }
+        })
+    );
+}
+
+#[test]
+fn classifies_codex_top_level_overload_as_service_unavailable() {
+    let body_json = json!({
+        "code": -32003,
+        "message": "Quota exceeded: Our servers are currently overloaded. Please try again later.",
+        "data": {
+            "details": "Our servers are currently overloaded. Please try again later.",
+            "category": "quota"
+        }
+    });
+
+    assert_eq!(resolve_local_sync_error_status_code(200, &body_json), 503);
 }
 
 #[test]
