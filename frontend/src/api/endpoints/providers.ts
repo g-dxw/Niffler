@@ -252,6 +252,7 @@ export interface TestModelFailoverRequest {
   mode: 'global' | 'direct' | 'pool'
   model_name: string
   failover_models?: string[]
+  api_key_id?: string
   api_format?: string
   endpoint_id?: string
   message?: string

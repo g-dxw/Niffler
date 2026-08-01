@@ -6,6 +6,7 @@ use aether_crypto::{
 };
 use aether_data::repository::provider_catalog::InMemoryProviderCatalogReadRepository;
 use aether_data_contracts::repository::provider_catalog::ProviderCatalogReadRepository;
+use aether_runtime_state::{MemoryRuntimeStateConfig, RuntimeState};
 use axum::body::Body;
 use axum::routing::any;
 use axum::{extract::Request, Json, Router};
@@ -21,6 +22,7 @@ use crate::constants::{
     TRUSTED_ADMIN_USER_ROLE_HEADER,
 };
 use crate::data::GatewayDataState;
+use crate::provider_pool_demand::acquire_provider_pool_in_flight_guard;
 
 #[tokio::test]
 async fn gateway_handles_admin_provider_keys_locally_with_trusted_admin_principal() {
@@ -77,11 +79,22 @@ async fn gateway_handles_admin_provider_keys_locally_with_trusted_admin_principa
         vec![],
         vec![key_a, key_b],
     ));
+    let runtime_state = Arc::new(RuntimeState::memory(MemoryRuntimeStateConfig::default()));
+    let in_flight_guard = acquire_provider_pool_in_flight_guard(
+        runtime_state.clone(),
+        "provider-openai",
+        "admin-provider-keys-concurrency-test",
+        Some("candidate-1"),
+        "key-openai-a",
+    )
+    .await
+    .expect("in-flight guard should be acquired");
 
     let (upstream_url, upstream_handle) = start_server(upstream).await;
     let gateway = build_router_with_state(
         AppState::new()
             .expect("gateway should build")
+            .with_runtime_state(runtime_state)
             .with_data_state_for_tests(GatewayDataState::with_provider_catalog_reader_for_tests(
                 provider_catalog_repository,
             )),
@@ -111,9 +124,12 @@ async fn gateway_handles_admin_provider_keys_locally_with_trusted_admin_principa
     assert_eq!(items[0]["error_count"], 3);
     assert_eq!(items[0]["note"], "primary key");
     assert_eq!(items[0]["api_key_masked"], "sk-test-a***");
+    assert_eq!(items[0]["current_concurrency"], 1);
     assert_eq!(items[1]["id"], "key-openai-b");
+    assert_eq!(items[1]["current_concurrency"], 0);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
+    in_flight_guard.release().await;
     gateway_handle.abort();
     upstream_handle.abort();
 }

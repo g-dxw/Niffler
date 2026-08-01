@@ -771,6 +771,7 @@ fn provider_query_resolve_standard_test_upstream_is_stream(
     endpoint_config: Option<&Value>,
     provider_type: &str,
     provider_api_format: &str,
+    client_is_stream: bool,
 ) -> bool {
     let hard_requires_streaming = crate::ai_serving::force_upstream_streaming_for_provider(
         provider_type,
@@ -778,7 +779,7 @@ fn provider_query_resolve_standard_test_upstream_is_stream(
     );
     crate::ai_serving::resolve_upstream_is_stream_from_endpoint_config(
         endpoint_config,
-        false,
+        client_is_stream,
         hard_requires_streaming,
     )
 }
@@ -2628,10 +2629,11 @@ async fn provider_query_execute_standard_test_candidate(
     }
 
     let incoming_request_headers = provider_query_extract_request_headers(payload);
-    let mut request_body = original_request_body.clone();
-    if let Some(object) = request_body.as_object_mut() {
-        object.insert("stream".to_string(), Value::Bool(false));
-    }
+    let request_body = original_request_body.clone();
+    let client_is_stream = request_body
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let request_model =
         provider_query_request_body_model(&request_body, &candidate.effective_model);
 
@@ -2639,6 +2641,7 @@ async fn provider_query_execute_standard_test_candidate(
         transport.endpoint.config.as_ref(),
         transport.provider.provider_type.as_str(),
         provider_api_format,
+        client_is_stream,
     );
     let require_body_stream_field = provider_query_request_requires_body_stream_field(
         &request_body,

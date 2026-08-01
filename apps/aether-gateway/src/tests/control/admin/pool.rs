@@ -10,6 +10,7 @@ use aether_data_contracts::repository::pool_scores::{
 };
 use aether_data_contracts::repository::provider_catalog::ProviderCatalogReadRepository;
 use aether_data_contracts::repository::usage::StoredRequestUsageAudit;
+use aether_runtime_state::{MemoryRuntimeStateConfig, RuntimeState};
 use axum::body::{to_bytes, Body, Bytes};
 use axum::routing::{any, get, post};
 use axum::{extract::Request, Router};
@@ -28,6 +29,7 @@ use crate::constants::{
 };
 use crate::control::resolve_public_request_context;
 use crate::data::GatewayDataState;
+use crate::provider_pool_demand::acquire_provider_pool_in_flight_guard;
 
 fn trusted_admin_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
@@ -806,11 +808,22 @@ async fn gateway_handles_admin_pool_list_keys_locally_with_trusted_admin_princip
             updated_at: 1_700_000_050,
         },
     ]));
+    let runtime_state = Arc::new(RuntimeState::memory(MemoryRuntimeStateConfig::default()));
+    let in_flight_guard = acquire_provider_pool_in_flight_guard(
+        runtime_state.clone(),
+        "provider-openai",
+        "request-concurrency-test",
+        Some("candidate-concurrency-test"),
+        "key-openai-a",
+    )
+    .await
+    .expect("in-flight guard should be acquired");
 
     let (upstream_url, upstream_handle) = start_server(upstream).await;
     let gateway = build_router_with_state(
         AppState::new()
             .expect("gateway should build")
+            .with_runtime_state(runtime_state)
             .with_data_state_for_tests(
                 GatewayDataState::with_provider_catalog_reader_for_tests(
                     provider_catalog_repository,
@@ -844,8 +857,10 @@ async fn gateway_handles_admin_pool_list_keys_locally_with_trusted_admin_princip
     assert_eq!(keys[0]["pool_score"]["scope_kind"], json!("account"));
     assert_eq!(keys[0]["pool_score"]["scope_id"], serde_json::Value::Null);
     assert_eq!(keys[0]["scheduling_status"], json!("available"));
+    assert_eq!(keys[0]["current_concurrency"], json!(1));
     assert_eq!(keys[1]["key_name"], json!("beta"));
     assert_eq!(keys[1]["scheduling_reason"], json!("available"));
+    assert_eq!(keys[1]["current_concurrency"], json!(0));
 
     let page_two_response = reqwest::Client::new()
         .get(format!(
@@ -916,6 +931,7 @@ async fn gateway_handles_admin_pool_list_keys_locally_with_trusted_admin_princip
     assert_eq!(inactive_keys[0]["key_name"], json!("gamma"));
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
 
+    in_flight_guard.release().await;
     gateway_handle.abort();
     upstream_handle.abort();
 }

@@ -147,6 +147,17 @@ export function buildExactModelMappingTestRequest(
   }
 }
 
+export function modelTestSupportsStreamOption(apiFormat?: string | null): boolean {
+  return [
+    'openai:chat',
+    'openai:responses',
+    'openai:responses:compact',
+    'openai:image',
+    'claude:messages',
+    'gemini:generate_content',
+  ].includes(normalizeApiFormatAlias(apiFormat ?? ''))
+}
+
 export function buildDefaultModelTestRequestBody(
   modelName: string,
   apiFormat?: string | null,
@@ -201,6 +212,30 @@ export function buildDefaultModelTestRequestBody(
         type: 'image_generation',
       },
       stream: true,
+    }, null, 2)
+  }
+
+  if (normalizedApiFormat === 'openai:responses' || normalizedApiFormat === 'openai:responses:compact') {
+    return JSON.stringify({
+      model: modelName,
+      input: DEFAULT_MODEL_TEST_MESSAGE,
+      max_output_tokens: 30,
+      stream: true,
+    }, null, 2)
+  }
+
+  if (normalizedApiFormat === 'gemini:generate_content') {
+    return JSON.stringify({
+      model: modelName,
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: DEFAULT_MODEL_TEST_MESSAGE }],
+        },
+      ],
+      generationConfig: {
+        maxOutputTokens: 30,
+      },
     }, null, 2)
   }
 

@@ -445,6 +445,23 @@
                         >
                           {{ getKeySchedulingLabel(key) }}
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="h-7 w-7 text-primary"
+                          :disabled="!key.is_active || loadingProviderModels || loadingProviderKeys"
+                          :title="'测试账号'"
+                          @click.stop="handleTestAccount(key)"
+                        >
+                          <Play class="w-3.5 h-3.5" />
+                        </Button>
+                        <Badge
+                          variant="outline"
+                          class="text-[10px] px-1.5 py-0 shrink-0 tabular-nums"
+                          :title="keyConcurrencyTitle(key)"
+                        >
+                          {{ formatKeyConcurrency(key) }}
+                        </Badge>
                         <!-- 健康度 -->
                         <div
                           v-if="key.health_score !== undefined"
@@ -969,6 +986,7 @@
               <!-- 模型查看 -->
               <ModelsTab
                 v-if="provider"
+                ref="modelsTabRef"
                 :key="`models-${provider.id}`"
                 :provider="provider"
                 :models="providerModels"
@@ -1122,7 +1140,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Plus,
@@ -1142,6 +1160,7 @@ import {
   ShieldX,
   Globe,
   GitBranch,
+  Play,
 } from 'lucide-vue-next'
 import { parseApiError } from '@/utils/errorParser'
 import { useEscapeKey } from '@/composables/useEscapeKey'
@@ -1307,6 +1326,8 @@ const editingModel = ref<Model | null>(null)
 const batchAssignDialogOpen = ref(false)
 const upstreamModelsDialogOpen = ref(false)
 const modelMappingTabRef = ref<InstanceType<typeof ModelMappingTab> | null>(null)
+const modelsTabRef = ref<InstanceType<typeof ModelsTab> | null>(null)
+let concurrencyRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 密钥列表拖拽排序状态
 const keyDragState = ref({
@@ -1553,6 +1574,7 @@ watch(
       // 仅在抽屉刚打开时启动倒计时
       if (newOpen && !oldOpen) {
         startCountdownTimer()
+        startConcurrencyRefresh()
       }
       void endpointsPromise.then(() => autoRefreshQuotaInBackground())
     } else if (!newOpen && oldOpen) {
@@ -1564,6 +1586,7 @@ watch(
 
       // 停止倒计时定时器
       stopCountdownTimer()
+      stopConcurrencyRefresh()
       // 重置所有状态
       loading.value = false
       provider.value = null
@@ -1779,6 +1802,22 @@ async function copyFullKey(key: EndpointAPIKey) {
 
 function getProviderAccountDisplayName(key: EndpointAPIKey): string {
   return getAccountDisplayName(key, t('providerDetail.unnamedAccount'))
+}
+
+function formatKeyConcurrency(key: EndpointAPIKey): string {
+  const current = Math.max(0, key.current_concurrency ?? 0)
+  const limit = key.concurrent_limit ?? 0
+  return limit > 0 ? `${current}/${limit}` : String(current)
+}
+
+function keyConcurrencyTitle(key: EndpointAPIKey): string {
+  return key.concurrent_limit && key.concurrent_limit > 0
+    ? `当前并发请求数：${formatKeyConcurrency(key)}`
+    : '当前并发请求数（不限制上限）'
+}
+
+function handleTestAccount(key: EndpointAPIKey) {
+  modelsTabRef.value?.openAccountTest(key.id)
 }
 
 async function copyProviderAccountDisplay(key: EndpointAPIKey): Promise<void> {
@@ -3783,11 +3822,14 @@ async function loadProvider() {
   }
 }
 
-async function loadProviderKeysPage(page = currentKeyPage.value) {
+async function loadProviderKeysPage(
+  page = currentKeyPage.value,
+  options: { silent?: boolean } = {},
+) {
   if (!props.providerId) return
   const providerId = props.providerId
   const requestId = ++keysLoadRequestId
-  loadingProviderKeys.value = true
+  if (!options.silent) loadingProviderKeys.value = true
 
   try {
     const result = await getProviderKeysPage(providerId, {
@@ -3798,7 +3840,7 @@ async function loadProviderKeysPage(page = currentKeyPage.value) {
 
     const nextTotalPages = Math.max(1, Math.ceil(result.total / result.page_size))
     if (result.keys.length === 0 && result.total > 0 && result.page > nextTotalPages) {
-      await loadProviderKeysPage(nextTotalPages)
+      await loadProviderKeysPage(nextTotalPages, options)
       return
     }
 
@@ -3809,16 +3851,38 @@ async function loadProviderKeysPage(page = currentKeyPage.value) {
     syncCurrentSelections(endpoints.value, result.keys)
   } catch (err: unknown) {
     if (requestId !== keysLoadRequestId || props.providerId !== providerId) return
-    providerKeys.value = []
-    providerKeysTotal.value = 0
-    syncCurrentSelections(endpoints.value, [])
-    showError(parseApiError(err, t('providerDetailExtra.loadKeysFailed')), t('providerDetail.error'))
+    if (!options.silent) {
+      providerKeys.value = []
+      providerKeysTotal.value = 0
+      syncCurrentSelections(endpoints.value, [])
+      showError(parseApiError(err, t('providerDetailExtra.loadKeysFailed')), t('providerDetail.error'))
+    }
   } finally {
-    if (requestId === keysLoadRequestId) {
+    if (requestId === keysLoadRequestId && !options.silent) {
       loadingProviderKeys.value = false
     }
   }
 }
+
+function startConcurrencyRefresh() {
+  if (concurrencyRefreshTimer) return
+  concurrencyRefreshTimer = setInterval(() => {
+    // 交互式加载优先，避免静默刷新抢占请求序号后让加载状态无法结束。
+    if (props.open && props.providerId && !loadingProviderKeys.value) {
+      void loadProviderKeysPage(currentKeyPage.value, { silent: true })
+    }
+  }, 3000)
+}
+
+function stopConcurrencyRefresh() {
+  if (!concurrencyRefreshTimer) return
+  clearInterval(concurrencyRefreshTimer)
+  concurrencyRefreshTimer = null
+}
+
+onUnmounted(() => {
+  stopConcurrencyRefresh()
+})
 
 // 加载端点列表
 async function loadEndpoints() {

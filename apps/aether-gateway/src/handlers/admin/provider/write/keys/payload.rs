@@ -1,6 +1,7 @@
 use crate::handlers::admin::niffler_legacy_projection::project_provider_key_with_niffler_account;
 use crate::handlers::admin::request::AdminAppState;
 use crate::provider_key_auth::provider_key_effective_api_formats;
+use crate::provider_pool_demand::provider_pool_live_in_flight_by_key;
 use aether_data_contracts::repository::niffler_core::NifflerUpstreamAccountListQuery;
 use aether_data_contracts::repository::provider_catalog::{
     ProviderCatalogKeyListOrder, ProviderCatalogKeyListQuery,
@@ -45,6 +46,9 @@ async fn build_admin_provider_key_items_payload(
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
     let keys = key_page.items;
+    let key_ids = keys.iter().map(|key| key.id.clone()).collect::<Vec<_>>();
+    let current_concurrency_by_key =
+        provider_pool_live_in_flight_by_key(state.runtime_state(), &provider.id, &key_ids).await;
     let niffler_accounts_by_id = state
         .list_niffler_upstream_accounts(&NifflerUpstreamAccountListQuery {
             upstream_service_id: Some(provider.id.clone()),
@@ -73,6 +77,15 @@ async fn build_admin_provider_key_items_payload(
             &api_formats,
             now_unix_secs,
         );
+        if let Some(object) = payload.as_object_mut() {
+            object.insert(
+                "current_concurrency".to_string(),
+                json!(current_concurrency_by_key
+                    .get(&key.id)
+                    .copied()
+                    .unwrap_or(0)),
+            );
+        }
         if let Some(account) = niffler_accounts_by_id.get(&key.id) {
             project_provider_key_with_niffler_account(&mut payload, account, now_unix_secs);
         }

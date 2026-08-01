@@ -10,6 +10,7 @@ use super::{
 };
 use crate::ai_serving::{provider_key_pool_score_id, provider_key_pool_score_scope};
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
+use crate::provider_pool_demand::provider_pool_live_in_flight_by_key;
 use crate::GatewayError;
 use aether_admin::provider::pool as admin_provider_pool_pure;
 use aether_data_contracts::repository::pool_scores::{
@@ -535,7 +536,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
     let endpoints = state
         .list_provider_catalog_endpoints_by_provider_ids(std::slice::from_ref(&provider.id))
         .await?;
-    let runtime = match pool_config.as_ref() {
+    let mut runtime = match pool_config.as_ref() {
         Some(pool_config) if !key_ids.is_empty() => {
             read_admin_provider_pool_runtime_state(
                 state.runtime_state(),
@@ -548,6 +549,11 @@ pub(super) async fn build_admin_pool_list_keys_response(
         }
         _ => AdminProviderPoolRuntimeState::default(),
     };
+    if pool_config.is_none() {
+        runtime.in_flight_by_key =
+            provider_pool_live_in_flight_by_key(state.runtime_state(), &provider.id, &key_ids)
+                .await;
+    }
     let window_usage_requests = keys
         .iter()
         .flat_map(|key| {
