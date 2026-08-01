@@ -244,6 +244,27 @@ fn provider_query_standard_test_uses_client_stream_for_auto_policy() {
 }
 
 #[test]
+fn provider_query_gemini_test_body_uses_native_contents_without_stream() {
+    assert_eq!(
+        provider_query_standard_test_client_api_format("gemini:generate_content"),
+        "gemini:generate_content"
+    );
+
+    let body = provider_query_build_test_request_body_for_api_format(
+        &json!({}),
+        "gemini-2.5-pro",
+        "/api/admin/provider-query/test-model",
+        "gemini:generate_content",
+    );
+
+    assert_eq!(
+        body["contents"][0]["parts"][0]["text"],
+        json!(DEFAULT_PROVIDER_QUERY_TEST_MESSAGE)
+    );
+    assert!(body.get("stream").is_none());
+}
+
+#[test]
 fn provider_query_standard_test_reenforces_upstream_stream_body_field() {
     let endpoint_config = json!({"upstream_stream_policy": "force_stream"});
     let mut body = json!({"model": "gpt-5", "input": "hello", "stream": false});
