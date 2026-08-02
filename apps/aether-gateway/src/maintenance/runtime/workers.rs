@@ -14,9 +14,9 @@ use super::{
     run_content_moderation_evidence_cleanup_once, run_db_maintenance_once,
     run_gemini_file_mapping_cleanup_once, run_niffler_billing_reservation_expiry_once,
     run_niffler_stability_observation_once, run_pending_cleanup_once, run_pool_monitor_once,
-    run_provider_checkin_once, run_proxy_node_metrics_cleanup_once,
-    run_proxy_node_stale_cleanup_once, run_proxy_upgrade_rollout_once,
-    run_request_candidate_cleanup_once, run_stats_aggregation_once,
+    run_provider_checkin_once, run_provider_usage_projection_maintenance_once,
+    run_proxy_node_metrics_cleanup_once, run_proxy_node_stale_cleanup_once,
+    run_proxy_upgrade_rollout_once, run_request_candidate_cleanup_once, run_stats_aggregation_once,
     run_stats_hourly_aggregation_once, run_usage_cleanup_once, run_usage_counter_flush_once,
     run_wallet_daily_usage_aggregation_once, AUDIT_LOG_CLEANUP_INTERVAL,
     CONTENT_MODERATION_EVIDENCE_CLEANUP_INTERVAL, GEMINI_FILE_MAPPING_CLEANUP_INTERVAL,
@@ -193,6 +193,22 @@ pub(crate) fn spawn_usage_counter_flush_worker(
         let mut last_delta_cleanup = tokio::time::Instant::now();
 
         loop {
+            match run_provider_usage_projection_maintenance_once(&data, 100).await {
+                Ok(summary) if summary.failed_repair_keys > 0 => {
+                    warn!(
+                        event_name = "provider_usage_projection_repair_failed",
+                        log_type = "ops",
+                        failed_repair_keys = summary.failed_repair_keys,
+                        repaired_keys = summary.repaired_keys,
+                        "provider usage projection repair failed; retry has been delayed"
+                    );
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    log_maintenance_worker_failure("provider_usage_projection", "tick", &err);
+                }
+            }
+
             let mut batches = 0_usize;
             while batches < USAGE_COUNTER_FLUSH_CATCH_UP_BURST_LIMIT {
                 match run_usage_counter_flush_once(&data, USAGE_COUNTER_FLUSH_BATCH_SIZE).await {

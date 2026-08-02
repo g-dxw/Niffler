@@ -563,26 +563,7 @@ pub(super) async fn build_admin_pool_list_keys_response(
     let window_usage_summaries = state
         .summarize_usage_by_provider_api_key_windows(&window_usage_requests)
         .await?;
-    let available_window_identities = window_usage_summaries
-        .iter()
-        .map(|summary| {
-            (
-                summary.provider_api_key_id.clone(),
-                pool_payloads::admin_pool_codex_window_usage_summary_identity(summary),
-            )
-        })
-        .collect::<BTreeSet<_>>();
-    let missing_window_usage_requests = window_usage_requests
-        .iter()
-        .filter(|request| {
-            !available_window_identities.contains(&(
-                request.provider_api_key_id.clone(),
-                pool_payloads::admin_pool_codex_window_usage_identity(request),
-            ))
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    schedule_admin_pool_codex_window_usage_initialization(state, missing_window_usage_requests);
+    schedule_admin_pool_codex_window_usage_initialization(state, window_usage_requests);
     let mut window_usage_by_key =
         BTreeMap::<String, BTreeMap<String, StoredProviderApiKeyWindowUsageSummary>>::new();
     for summary in window_usage_summaries {

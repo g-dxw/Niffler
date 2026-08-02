@@ -35,10 +35,6 @@ parsed_windows AS (
       CASE
         WHEN BTRIM(COALESCE(window_item ->> 'window_seconds', '')) ~ '^[0-9]+$'
          AND length(BTRIM(window_item ->> 'window_seconds')) <= 19
-         AND (
-           length(BTRIM(window_item ->> 'window_seconds')) < 19
-           OR BTRIM(window_item ->> 'window_seconds') <= '9223372036854775807'
-         )
         THEN CAST(window_item ->> 'window_seconds' AS BIGINT)
         ELSE NULL
       END,
@@ -59,7 +55,7 @@ parsed_windows AS (
     ) AS window_seconds
   FROM window_items
 ),
-valid_windows AS (
+natural_windows AS (
   SELECT DISTINCT
     window_code,
     window_scope,
@@ -72,6 +68,40 @@ valid_windows AS (
     AND window_seconds IS NOT NULL
     AND window_seconds > 0
     AND reset_at >= window_seconds
+),
+valid_windows AS (
+  SELECT
+    natural_windows.*,
+    GREATEST(
+      natural_windows.window_start_unix_secs,
+      COALESCE(resets.usage_reset_at_unix_secs, natural_windows.window_start_unix_secs)
+    ) AS usage_start_unix_secs
+  FROM natural_windows
+  LEFT JOIN provider_api_key_window_usage_resets AS resets
+    ON resets.provider_api_key_id = $1
+   AND resets.window_scope = natural_windows.window_scope
+   AND resets.window_start_unix_secs = natural_windows.window_start_unix_secs
+   AND resets.window_end_unix_secs = natural_windows.window_end_unix_secs
+),
+expected_windows AS (
+  SELECT
+    valid_windows.window_code,
+    valid_windows.window_scope,
+    valid_windows.window_start_unix_secs,
+    valid_windows.window_end_unix_secs,
+    COALESCE(SUM(contributions.window_request_count), 0)::BIGINT AS request_count,
+    COALESCE(SUM(contributions.window_total_tokens), 0)::BIGINT AS total_tokens,
+    COALESCE(SUM(contributions.window_total_cost_usd), 0)::NUMERIC(20,8) AS total_cost_usd
+  FROM valid_windows
+  LEFT JOIN provider_api_key_usage_contributions AS contributions
+    ON contributions.provider_api_key_id = $1
+   AND contributions.usage_created_at_unix_secs >= valid_windows.usage_start_unix_secs
+   AND contributions.usage_created_at_unix_secs < valid_windows.window_end_unix_secs
+  GROUP BY
+    valid_windows.window_code,
+    valid_windows.window_scope,
+    valid_windows.window_start_unix_secs,
+    valid_windows.window_end_unix_secs
 )
 SELECT
   EXISTS (SELECT 1 FROM target)
@@ -86,15 +116,18 @@ SELECT
     )
     OR EXISTS (
       SELECT 1
-      FROM valid_windows
+      FROM expected_windows
       LEFT JOIN provider_api_key_window_usage_counters AS counters
         ON counters.provider_api_key_id = $1
-       AND counters.window_scope = valid_windows.window_scope
-       AND counters.window_code = valid_windows.window_code
-       AND counters.window_start_unix_secs = valid_windows.window_start_unix_secs
-       AND counters.window_end_unix_secs = valid_windows.window_end_unix_secs
+       AND counters.window_scope = expected_windows.window_scope
+       AND counters.window_code = expected_windows.window_code
+       AND counters.window_start_unix_secs = expected_windows.window_start_unix_secs
+       AND counters.window_end_unix_secs = expected_windows.window_end_unix_secs
       WHERE counters.provider_api_key_id IS NULL
          OR counters.rebuilt_at IS NULL
+         OR counters.request_count <> expected_windows.request_count
+         OR counters.total_tokens <> expected_windows.total_tokens
+         OR counters.total_cost_usd <> expected_windows.total_cost_usd
     )
     OR (
       EXISTS (SELECT 1 FROM valid_windows)

@@ -259,38 +259,19 @@ fn usage_sql_stores_provider_key_window_usage_outside_status_snapshot() {
     );
     assert!(
         super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("usage_facts.billing_status = 'settled'")
+            .contains("LEFT JOIN provider_api_key_usage_contributions AS contributions")
     );
     assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("LEFT JOIN usage_settlement_snapshots AS settlement")
+        !super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("FROM usage_billing_facts")
     );
     assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("settlement.settlement_snapshot ->> 'base_cost_usd'")
-    );
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}'")
-    );
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("raw_usage.request_metadata ->> 'sales_multiplier'")
-    );
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains(
-        "raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}'"
-    ));
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("/ provider_cost_inputs.sales_multiplier")
-    );
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+        !super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
             .contains("INSERT INTO provider_api_key_window_usage_applications")
     );
     assert!(
         super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("delta.kind = 'provider_api_key_window'")
+            .contains("kind = 'provider_api_key_window'")
     );
     assert!(!super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains("jsonb_set"));
     assert!(!super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains("'{usage}'"));
@@ -356,7 +337,10 @@ fn usage_sql_moves_shared_counter_updates_behind_outbox() {
     assert!(super::MARK_USAGE_COUNTER_DELTAS_PROCESSED_SQL.contains("processed_at = NOW()"));
     assert!(super::TRY_LOCK_USAGE_COUNTER_FLUSH_SQL.contains("pg_try_advisory_xact_lock"));
     assert!(source.contains("enqueue_api_key_usage_delta_in_tx("));
-    assert!(source.contains("enqueue_provider_api_key_usage_delta_in_tx("));
+    assert!(
+        source.contains("provider_contribution::sync_provider_api_key_usage_contribution_in_tx(")
+    );
+    assert!(source.contains("insert_usage_counter_delta_with_id_in_tx("));
     assert!(source.contains("enqueue_model_usage_delta_in_tx("));
     assert!(source.contains("apply_provider_api_key_main_usage_delta_in_tx("));
     assert!(source.contains("apply_provider_api_key_codex_window_usage_deltas_in_tx("));

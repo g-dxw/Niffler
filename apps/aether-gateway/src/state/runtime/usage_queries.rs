@@ -24,7 +24,7 @@ impl AppState {
         provider_api_key_id: &str,
     ) -> Result<bool, GatewayError> {
         self.data
-            .ensure_provider_api_key_codex_window_usage_stats(provider_api_key_id)
+            .enqueue_provider_api_key_usage_projection_repair(provider_api_key_id, false, true)
             .await
             .map_err(|err| GatewayError::Internal(err.to_string()))
     }

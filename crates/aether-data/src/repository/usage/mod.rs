@@ -358,20 +358,21 @@ macro_rules! impl_materialized_usage_read_repository {
 
 mod memory;
 mod mysql;
-mod postgres;
+pub(crate) mod postgres;
 mod sqlite;
 
 #[allow(unused_imports)]
 pub(crate) use aether_data_contracts::repository::usage::{
     usage_request_metadata_client_family, ApiKeyLastUsedDelta, ManagementTokenCounterDelta,
-    PendingUsageCleanupSummary, ProviderApiKeyWindowUsageRequest, ProxyNodeCounterDelta,
-    StoredProviderApiKeyUsageSummary, StoredProviderApiKeyWindowUsageSummary,
-    StoredProviderUsageSummary, StoredProviderUsageWindow, StoredRequestUsageAudit,
-    StoredUsageAuditAggregation, StoredUsageAuditSummary, StoredUsageBreakdownSummaryRow,
-    StoredUsageCacheAffinityHitSummary, StoredUsageCacheAffinityIntervalRow,
-    StoredUsageCacheHitSummary, StoredUsageCostSavingsSummary, StoredUsageDailySummary,
-    StoredUsageDashboardDailyBreakdownRow, StoredUsageDashboardProviderCount,
-    StoredUsageDashboardSummary, StoredUsageErrorDistributionRow, StoredUsageLeaderboardSummary,
+    PendingUsageCleanupSummary, ProviderApiKeyUsageProjectionMaintenanceSummary,
+    ProviderApiKeyWindowUsageRequest, ProxyNodeCounterDelta, StoredProviderApiKeyUsageSummary,
+    StoredProviderApiKeyWindowUsageSummary, StoredProviderUsageSummary, StoredProviderUsageWindow,
+    StoredRequestUsageAudit, StoredUsageAuditAggregation, StoredUsageAuditSummary,
+    StoredUsageBreakdownSummaryRow, StoredUsageCacheAffinityHitSummary,
+    StoredUsageCacheAffinityIntervalRow, StoredUsageCacheHitSummary, StoredUsageCostSavingsSummary,
+    StoredUsageDailySummary, StoredUsageDashboardDailyBreakdownRow,
+    StoredUsageDashboardProviderCount, StoredUsageDashboardSummary,
+    StoredUsageErrorDistributionRow, StoredUsageLeaderboardSummary,
     StoredUsagePerformancePercentilesRow, StoredUsageProviderPerformance,
     StoredUsageProviderPerformanceProviderRow, StoredUsageProviderPerformanceSummary,
     StoredUsageProviderPerformanceTimelineRow, StoredUsageSettledCostSummary,

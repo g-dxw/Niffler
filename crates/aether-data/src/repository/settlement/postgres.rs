@@ -13,6 +13,7 @@ use crate::repository::billing::quota::{
     quota_base_amount, quota_debit_amount, usage_quota_grants_from_entitlement,
     StoredUsageQuotaWindow, UsageQuotaGrant, QUOTA_SCOPE_FIVE_HOUR,
 };
+use crate::repository::usage::postgres::provider_contribution::sync_provider_api_key_usage_contribution_for_request_in_tx;
 use crate::DataLayerError;
 
 const FIND_USAGE_FOR_SETTLEMENT_SQL: &str = r#"
@@ -213,6 +214,23 @@ where
         .await
         .map_postgres_err()?;
     Ok(())
+}
+
+async fn finalize_usage_billing_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    settlement: &StoredUsageSettlement,
+    final_billing_status: &str,
+    finalized_at: i64,
+) -> Result<(), DataLayerError> {
+    sync_usage_settlement_snapshot(&mut **tx, settlement).await?;
+    sqlx::query(FINALIZE_USAGE_BILLING_SQL)
+        .bind(&settlement.request_id)
+        .bind(final_billing_status)
+        .bind(finalized_at)
+        .execute(&mut **tx)
+        .await
+        .map_postgres_err()?;
+    sync_provider_api_key_usage_contribution_for_request_in_tx(tx, &settlement.request_id).await
 }
 
 async fn enqueue_provider_monthly_usage_delta<'e, E>(
@@ -549,6 +567,11 @@ impl SettlementWriteRepository for SqlxSettlementRepository {
                         current_billing_status.as_str(),
                         "settled" | "void" | "insufficient_quota"
                     ) {
+                        sync_provider_api_key_usage_contribution_for_request_in_tx(
+                            tx,
+                            &input.request_id,
+                        )
+                        .await?;
                         return settlement_from_row(&usage_row).map(Some);
                     }
 
@@ -720,14 +743,13 @@ LIMIT 1
                             input.total_cost_usd
                         };
                         if final_billing_status != "settled" {
-                            sync_usage_settlement_snapshot(&mut **tx, &settlement).await?;
-                            sqlx::query(FINALIZE_USAGE_BILLING_SQL)
-                                .bind(&input.request_id)
-                                .bind(&final_billing_status)
-                                .bind(finalized_at)
-                                .execute(&mut **tx)
-                                .await
-                                .map_postgres_err()?;
+                            finalize_usage_billing_in_tx(
+                                tx,
+                                &settlement,
+                                &final_billing_status,
+                                finalized_at,
+                            )
+                            .await?;
                             return Ok(Some(settlement));
                         }
 
@@ -788,14 +810,13 @@ WHERE id = $1
                         }
 
                         if final_billing_status != "settled" {
-                            sync_usage_settlement_snapshot(&mut **tx, &settlement).await?;
-                            sqlx::query(FINALIZE_USAGE_BILLING_SQL)
-                                .bind(&input.request_id)
-                                .bind(&final_billing_status)
-                                .bind(finalized_at)
-                                .execute(&mut **tx)
-                                .await
-                                .map_postgres_err()?;
+                            finalize_usage_billing_in_tx(
+                                tx,
+                                &settlement,
+                                &final_billing_status,
+                                finalized_at,
+                            )
+                            .await?;
                             return Ok(Some(settlement));
                         }
 
@@ -814,14 +835,13 @@ WHERE id = $1
                         }
                     }
 
-                    sync_usage_settlement_snapshot(&mut **tx, &settlement).await?;
-                    sqlx::query(FINALIZE_USAGE_BILLING_SQL)
-                        .bind(&input.request_id)
-                        .bind(&final_billing_status)
-                        .bind(finalized_at)
-                        .execute(&mut **tx)
-                        .await
-                        .map_postgres_err()?;
+                    finalize_usage_billing_in_tx(
+                        tx,
+                        &settlement,
+                        &final_billing_status,
+                        finalized_at,
+                    )
+                    .await?;
 
                     Ok(Some(settlement))
                 })
@@ -869,6 +889,15 @@ mod tests {
         assert!(super::ENQUEUE_PROVIDER_MONTHLY_USAGE_DELTA_SQL.contains("usage_counter_deltas"));
         assert!(super::ENQUEUE_PROVIDER_MONTHLY_USAGE_DELTA_SQL.contains("'provider_monthly'"));
         assert!(!source.contains("UPDATE providers\nSET\n  monthly_used_usd"));
+    }
+
+    #[test]
+    fn settlement_sql_syncs_provider_usage_after_finalizing_billing() {
+        let source = include_str!("postgres.rs");
+        assert!(source.contains("finalize_usage_billing_in_tx("));
+        assert!(source.contains("sync_provider_api_key_usage_contribution_for_request_in_tx"));
+        assert!(source.contains("sync_usage_settlement_snapshot"));
+        assert!(source.contains("FINALIZE_USAGE_BILLING_SQL"));
     }
 
     #[test]
