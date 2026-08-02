@@ -535,4 +535,20 @@ export default {
   modelMappingValidation: { empty: '规则不能为空', tooLong: '规则过长（最大 {count} 个字符）', dangerous: '规则包含潜在危险的正则构造', syntax: '正则表达式语法错误：{message}' },
   providerAuthFeedback: { serviceAccount: '服务账号', mixed: '混合' },
   errorParserFeedback: { refreshTokenReused: 'Token 刷新失败：refresh_token 已被使用并轮换，请重新登录授权', refreshTokenInvalid: 'Token 刷新失败：refresh_token 无效、已过期或已撤销，请重新登录授权', refreshTokenPrefix: 'Token 刷新失败', quotaExceeded: '配额已用尽或超出限制' },
+  streamFailoverUi: {
+    title: '实际输出前自动换号',
+    description: '仅在容量或限流错误发生于实际输出前时切换账号；开始输出后保持当前账号。',
+    maxRetries: '失败后换号次数（不含首次）',
+    maxWaitSeconds: '最长等待（秒）',
+    maxBufferKilobytes: '暂存上限（KB）',
+    cooldownSeconds: '模型暂停（秒）',
+    saved: '输出前自动换号设置已保存',
+    saveFailed: '保存输出前自动换号设置失败',
+    validation: {
+      maxRetries: '失败后换号次数必须是 0 到 999 的整数',
+      maxWaitSeconds: '最长等待必须在 0.25 到 30 秒之间',
+      maxBufferKilobytes: '暂存上限必须是 16 到 1024 KB 的整数',
+      cooldownSeconds: '模型暂停时间必须是 1 到 1920 秒的整数',
+    },
+  },
 }

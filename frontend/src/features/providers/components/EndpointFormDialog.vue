@@ -186,6 +186,17 @@
                 </div>
               </div>
 
+              <EndpointStreamFailoverSettings
+                v-if="isOpenAiResponsesEndpoint(endpoint)"
+                :model-value="getStreamFailoverState(endpoint)"
+                :saving="savingEndpointId === endpoint.id"
+                :changed="hasStreamFailoverChanges(endpoint)"
+                :validation-message="getStreamFailoverValidationMessage(endpoint)"
+                @update:model-value="(value) => updateStreamFailoverState(endpoint.id, value)"
+                @save="saveStreamFailover(endpoint)"
+                @reset="resetStreamFailover(endpoint)"
+              />
+
               <!-- 请求/响应规则（请求头、请求体和响应头规则） -->
               <Collapsible v-model:open="endpointRulesExpanded[endpoint.id]">
                 <div class="flex items-center gap-2">
@@ -1031,8 +1042,18 @@ import { parseApiError } from '@/utils/errorParser'
 import { log } from '@/utils/logger'
 import AlertDialog from '@/components/common/AlertDialog.vue'
 import EndpointConditionEditor from './EndpointConditionEditor.vue'
+import EndpointStreamFailoverSettings from './EndpointStreamFailoverSettings.vue'
 import ProxyNodeSelect from './ProxyNodeSelect.vue'
 import { getDefaultEndpointPath, normalizeEndpointApiFormat } from './endpoint-default-paths'
+import {
+  buildEndpointStreamFailoverUpdate,
+  endpointStreamFailoverStateChanged,
+  initEndpointStreamFailoverState,
+  isOpenAiResponsesStreamFailoverEndpoint,
+  validateEndpointStreamFailoverState,
+  type EndpointStreamFailoverState,
+  type EndpointStreamFailoverValidationError,
+} from './endpoint-stream-failover'
 import { useProxyNodesStore } from '@/stores/proxy-nodes'
 import {
   createEndpoint,
@@ -1056,8 +1077,6 @@ import {
   type EditableConditionNode,
   validateEditableCondition,
 } from './endpoint-rule-condition'
-
-const { t } = useI18n()
 
 // 编辑用的规则类型（统一的可编辑结构）
 interface EditableRule {
@@ -1093,6 +1112,7 @@ interface EndpointEditState {
   url: string
   path: string
   upstreamStreamPolicy: string
+  streamFailover: EndpointStreamFailoverState
   rules: EditableRule[]
   responseRules: EditableRule[]
   bodyRules: EditableBodyRule[]
@@ -1117,6 +1137,8 @@ const emit = defineEmits<{
   'endpointCreated': []
   'endpointUpdated': []
 }>()
+
+const { t } = useI18n()
 
 // 计算端点级格式转换是否应该被禁用
 const isEndpointFormatConversionDisabled = computed(() => {
@@ -2029,9 +2051,78 @@ function initEndpointEditState(endpoint: ProviderEndpoint): EndpointEditState {
     url: endpoint.base_url,
     path: endpoint.custom_path || '',
     upstreamStreamPolicy: getEndpointUpstreamStreamPolicy(endpoint),
+    streamFailover: initEndpointStreamFailoverState(endpoint),
     rules,
     responseRules,
     bodyRules,
+  }
+}
+
+function isOpenAiResponsesEndpoint(endpoint: ProviderEndpoint): boolean {
+  return isOpenAiResponsesStreamFailoverEndpoint(endpoint.api_format)
+}
+
+function getStreamFailoverState(endpoint: ProviderEndpoint): EndpointStreamFailoverState {
+  return endpointEditStates.value[endpoint.id]?.streamFailover
+    ?? initEndpointStreamFailoverState(endpoint)
+}
+
+function updateStreamFailoverState(
+  endpointId: string,
+  value: EndpointStreamFailoverState,
+) {
+  const state = ensureEndpointEditState(endpointId)
+  if (state) state.streamFailover = { ...value }
+}
+
+function hasStreamFailoverChanges(endpoint: ProviderEndpoint): boolean {
+  const state = endpointEditStates.value[endpoint.id]
+  return state
+    ? endpointStreamFailoverStateChanged(endpoint, state.streamFailover)
+    : false
+}
+
+function streamFailoverValidationMessage(
+  error: EndpointStreamFailoverValidationError,
+): string {
+  return t(`streamFailoverUi.validation.${error}`)
+}
+
+function getStreamFailoverValidationMessage(endpoint: ProviderEndpoint): string | null {
+  const state = endpointEditStates.value[endpoint.id]
+  if (!state) return null
+  const validationError = validateEndpointStreamFailoverState(state.streamFailover)
+  return validationError ? streamFailoverValidationMessage(validationError) : null
+}
+
+function resetStreamFailover(endpoint: ProviderEndpoint) {
+  const state = ensureEndpointEditState(endpoint.id)
+  if (state) state.streamFailover = initEndpointStreamFailoverState(endpoint)
+}
+
+async function saveStreamFailover(endpoint: ProviderEndpoint) {
+  const state = ensureEndpointEditState(endpoint.id)
+  if (!state) return
+  const validationError = validateEndpointStreamFailoverState(state.streamFailover)
+  if (validationError) {
+    showError(streamFailoverValidationMessage(validationError))
+    return
+  }
+
+  savingEndpointId.value = endpoint.id
+  try {
+    const updated = await updateEndpoint(
+      endpoint.id,
+      buildEndpointStreamFailoverUpdate(endpoint, state.streamFailover),
+    )
+    Object.assign(endpoint, updated)
+    state.streamFailover = initEndpointStreamFailoverState(updated)
+    success(t('streamFailoverUi.saved'))
+    emit('endpointUpdated')
+  } catch (error: unknown) {
+    showError(parseApiError(error, t('streamFailoverUi.saveFailed')), t('endpointForm.error'))
+  } finally {
+    savingEndpointId.value = null
   }
 }
 

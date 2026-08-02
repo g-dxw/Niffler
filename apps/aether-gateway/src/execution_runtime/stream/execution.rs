@@ -93,16 +93,19 @@ use crate::execution_runtime::{
     should_retry_next_local_candidate_stream, LocalFailoverDecision,
 };
 use crate::execution_runtime::{MAX_STREAM_PREFETCH_BYTES, MAX_STREAM_PREFETCH_FRAMES};
+use crate::handlers::shared::provider_pool::record_admin_provider_pool_model_cooldown;
 use crate::log_ids::short_request_id;
 use crate::niffler_error_return::{
     build_niffler_upstream_error_context, rewrite_niffler_upstream_error_response,
 };
 use crate::orchestration::{
-    apply_local_execution_effect, build_local_error_flow_metadata, trace_upstream_response_body,
-    with_error_flow_report_context, with_upstream_response_report_context,
-    LocalAdaptiveRateLimitEffect, LocalAdaptiveSuccessEffect, LocalAttemptFailureEffect,
-    LocalExecutionEffect, LocalExecutionEffectContext, LocalHealthFailureEffect,
-    LocalHealthSuccessEffect, LocalOAuthInvalidationEffect, LocalPoolErrorEffect,
+    apply_local_execution_effect, build_local_error_flow_metadata,
+    is_retryable_openai_transient_processing_error, resolve_local_stream_failover_policy,
+    trace_upstream_response_body, with_error_flow_report_context,
+    with_upstream_response_report_context, LocalAdaptiveRateLimitEffect,
+    LocalAdaptiveSuccessEffect, LocalAttemptFailureEffect, LocalExecutionEffect,
+    LocalExecutionEffectContext, LocalHealthFailureEffect, LocalHealthSuccessEffect,
+    LocalOAuthInvalidationEffect, LocalPoolErrorEffect,
 };
 use crate::provider_pool_demand::{
     acquire_provider_pool_in_flight_guard, ProviderPoolInFlightGuard,
@@ -124,6 +127,22 @@ const STREAM_IDLE_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const STREAM_IDLE_LOG_INTERVAL_MS: u64 = 60_000;
 const REWRITTEN_STREAM_PREFETCH_TIMEOUT: Duration = Duration::from_millis(750);
 const OPENAI_IMAGE_STREAM_DEFAULT_TOTAL_TIMEOUT_MS: u64 = 900_000;
+const STREAM_FAILOVER_EXECUTION_FRAME_MAX_BYTES: usize = 2 * 1024 * 1024;
+const DEFAULT_EXECUTION_FRAME_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+fn execution_frame_max_bytes(stream_failover_enabled: bool, provider_api_format: &str) -> usize {
+    if stream_failover_enabled && crate::ai_serving::is_openai_responses_format(provider_api_format)
+    {
+        STREAM_FAILOVER_EXECUTION_FRAME_MAX_BYTES
+    } else {
+        DEFAULT_EXECUTION_FRAME_MAX_BYTES
+    }
+}
+
+fn extend_bounded(buffer: &mut Vec<u8>, bytes: &[u8], max_bytes: usize) {
+    let remaining = max_bytes.saturating_sub(buffer.len());
+    buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+}
 
 fn record_sync_terminal_usage(
     state: &AppState,
@@ -1802,8 +1821,14 @@ async fn execute_stream_from_frame_stream(
         .and_then(|context| context.candidate_index)
         .map(|value| value.to_string())
         .unwrap_or_else(|| "-".to_string());
+    let stream_failover_policy =
+        resolve_local_stream_failover_policy(state, &plan, report_context.as_ref()).await;
+    let frame_max_bytes = execution_frame_max_bytes(
+        stream_failover_policy.enabled,
+        plan.provider_api_format.as_str(),
+    );
     let reader = StreamReader::new(frame_stream);
-    let mut lines = FramedRead::new(reader, LinesCodec::new());
+    let mut lines = FramedRead::new(reader, LinesCodec::new_with_max_length(frame_max_bytes));
 
     let first_frame = read_next_frame(&mut lines).await?.ok_or_else(|| {
         GatewayError::Internal("execution runtime stream ended before headers frame".to_string())
@@ -2192,15 +2217,29 @@ async fn execute_stream_from_frame_stream(
         headers.insert("content-type".to_string(), "text/event-stream".to_string());
     }
     let upstream_content_type = upstream_headers.get("content-type").map(String::as_str);
-    let prefetch_openai_responses_sse = upstream_content_type.is_some_and(|content_type| {
-        content_type
-            .to_ascii_lowercase()
-            .contains("text/event-stream")
-    }) && plan
-        .provider_api_format
-        .trim()
-        .to_ascii_lowercase()
-        .starts_with("openai:responses");
+    let prefetch_openai_responses_sse = stream_failover_policy.enabled
+        && upstream_content_type.is_some_and(|content_type| {
+            content_type
+                .to_ascii_lowercase()
+                .contains("text/event-stream")
+        })
+        && crate::ai_serving::is_openai_responses_format(plan.provider_api_format.as_str());
+    if prefetch_openai_responses_sse {
+        debug!(
+            event_name = "stream_failover_prefetch_started",
+            log_type = "event",
+            trace_id = %trace_id,
+            request_id = %request_id_for_log,
+            provider_name,
+            endpoint_id = %plan.endpoint_id,
+            key_id = %plan.key_id,
+            model_name,
+            max_wait_ms = stream_failover_policy.max_wait_ms,
+            max_buffer_bytes = stream_failover_policy.max_buffer_bytes,
+            cooldown_seconds = stream_failover_policy.cooldown_seconds,
+            "gateway started OpenAI Responses pre-output failover"
+        );
+    }
     let skip_direct_finalize_prefetch = should_skip_direct_finalize_prefetch(
         direct_stream_finalize_kind.as_deref(),
         upstream_content_type,
@@ -2208,7 +2247,7 @@ async fn execute_stream_from_frame_stream(
         plan.client_api_format.as_str(),
         private_stream_normalizer.is_some(),
         local_stream_rewriter.is_some(),
-    );
+    ) && !prefetch_openai_responses_sse;
     let limit_direct_finalize_prefetch =
         should_limit_direct_finalize_prefetch(plan_kind, local_stream_rewriter.is_some())
             || prefetch_openai_responses_sse;
@@ -2219,6 +2258,9 @@ async fn execute_stream_from_frame_stream(
     let mut prefetched_telemetry: Option<ExecutionTelemetry> = None;
     let mut reached_eof = false;
     let mut sync_json_stream_bridge_active = false;
+    let mut prefetch_committed_output = false;
+    let stream_failover_deadline = prefetch_openai_responses_sse
+        .then(|| Instant::now() + Duration::from_millis(stream_failover_policy.max_wait_ms));
     if skip_direct_finalize_prefetch {
         debug!(
             event_name = "execution_runtime_stream_prefetch_skipped",
@@ -2242,10 +2284,57 @@ async fn execute_stream_from_frame_stream(
         .as_ref()
         .filter(|_| !skip_direct_finalize_prefetch)
     {
-        while prefetched_chunks.len() < MAX_STREAM_PREFETCH_FRAMES
-            && prefetched_inspection_body.len() < MAX_STREAM_PREFETCH_BYTES
-        {
-            let next_frame_result = if limit_direct_finalize_prefetch {
+        while if prefetch_openai_responses_sse {
+            prefetched_inspection_body.len() < stream_failover_policy.max_buffer_bytes
+        } else {
+            prefetched_chunks.len() < MAX_STREAM_PREFETCH_FRAMES
+                && prefetched_inspection_body.len() < MAX_STREAM_PREFETCH_BYTES
+        } {
+            let next_frame_result = if let Some(deadline) = stream_failover_deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    debug!(
+                        event_name = "stream_failover_prefetch_committed",
+                        log_type = "event",
+                        trace_id = %trace_id,
+                        request_id = %request_id_for_log,
+                        provider_name,
+                        endpoint_id = %plan.endpoint_id,
+                        key_id = %plan.key_id,
+                        model_name,
+                        reason = "max_wait_reached",
+                        max_wait_ms = stream_failover_policy.max_wait_ms,
+                        buffered_bytes = prefetched_inspection_body.len(),
+                        "gateway committed the OpenAI Responses stream after the configured wait"
+                    );
+                    break;
+                }
+                match tokio::time::timeout(
+                    remaining,
+                    next_stream_frame(&mut buffered_frames, &mut lines),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        debug!(
+                            event_name = "stream_failover_prefetch_committed",
+                            log_type = "event",
+                            trace_id = %trace_id,
+                            request_id = %request_id_for_log,
+                            provider_name,
+                            endpoint_id = %plan.endpoint_id,
+                            key_id = %plan.key_id,
+                            model_name,
+                            reason = "max_wait_reached",
+                            max_wait_ms = stream_failover_policy.max_wait_ms,
+                            buffered_bytes = prefetched_inspection_body.len(),
+                            "gateway committed the OpenAI Responses stream after the configured wait"
+                        );
+                        break;
+                    }
+                }
+            } else if limit_direct_finalize_prefetch {
                 match tokio::time::timeout(
                     REWRITTEN_STREAM_PREFETCH_TIMEOUT,
                     next_stream_frame(&mut buffered_frames, &mut lines),
@@ -2339,8 +2428,21 @@ async fn execute_stream_from_frame_stream(
                         continue;
                     }
 
-                    provider_prefetched_body.extend_from_slice(&chunk);
-                    prefetched_inspection_body.extend_from_slice(&chunk);
+                    if prefetch_openai_responses_sse {
+                        extend_bounded(
+                            &mut provider_prefetched_body,
+                            &chunk,
+                            stream_failover_policy.max_buffer_bytes,
+                        );
+                        extend_bounded(
+                            &mut prefetched_inspection_body,
+                            &chunk,
+                            stream_failover_policy.max_buffer_bytes,
+                        );
+                    } else {
+                        provider_prefetched_body.extend_from_slice(&chunk);
+                        prefetched_inspection_body.extend_from_slice(&chunk);
+                    }
 
                     let inspection = inspect_prefetched_stream_body(
                         &upstream_headers,
@@ -2364,6 +2466,83 @@ async fn execute_stream_from_frame_stream(
                                 provider_prefetched_body_bytes = provider_prefetched_body.len(),
                                 "gateway detected embedded error while prefetching execution runtime stream"
                             );
+                            if prefetch_openai_responses_sse {
+                                let effective_status_code =
+                                    resolve_local_sync_error_status_code(status_code, &body_json);
+                                let error_body = serde_json::to_string(&body_json).ok();
+                                let retryable_stream_error =
+                                    error_body.as_deref().is_some_and(|body| {
+                                        is_retryable_openai_transient_processing_error(
+                                            effective_status_code,
+                                            body,
+                                        )
+                                    });
+                                let should_pause_model =
+                                    effective_status_code == 503 && retryable_stream_error;
+                                let payload = build_stream_sync_payload(
+                                    trace_id,
+                                    report_kind.clone(),
+                                    report_context,
+                                    effective_status_code,
+                                    headers,
+                                    Some(body_json),
+                                    None,
+                                    prefetched_telemetry,
+                                );
+                                let failure_analysis = record_stream_sync_failure(
+                                    state,
+                                    &plan,
+                                    payload.report_context.as_ref(),
+                                    &payload,
+                                    Some(candidate_started_unix_secs),
+                                )
+                                .await;
+                                if should_pause_model {
+                                    if let Some(provider_model_name) = plan.model_name.as_deref() {
+                                        record_admin_provider_pool_model_cooldown(
+                                            state.runtime_state.as_ref(),
+                                            &plan.provider_id,
+                                            &plan.key_id,
+                                            provider_model_name,
+                                            "openai_transient_model_capacity",
+                                            stream_failover_policy.cooldown_seconds,
+                                        )
+                                        .await;
+                                    }
+                                }
+                                if retryable_stream_error
+                                    && matches!(
+                                        failure_analysis.decision,
+                                        LocalFailoverDecision::RetryNextCandidate
+                                    )
+                                {
+                                    warn!(
+                                        event_name = "stream_failover_retry_scheduled",
+                                        log_type = "event",
+                                        trace_id = %trace_id,
+                                        request_id = %request_id_for_log,
+                                        upstream_status_code = status_code,
+                                        effective_status_code,
+                                        provider_name,
+                                        endpoint_id = %plan.endpoint_id,
+                                        key_id = %plan.key_id,
+                                        model_name,
+                                        candidate_index = candidate_index.as_str(),
+                                        buffered_bytes = prefetched_inspection_body.len(),
+                                        "gateway scheduled another account before client output"
+                                    );
+                                    return Ok(None);
+                                }
+                                let response = submit_local_core_error_or_sync_finalize(
+                                    state, trace_id, decision, payload,
+                                )
+                                .await?;
+                                return Ok(Some(attach_control_metadata_headers(
+                                    response,
+                                    Some(request_id),
+                                    candidate_id,
+                                )?));
+                            }
                             let effective_status_code =
                                 resolve_local_sync_error_status_code(status_code, &body_json);
                             let payload = build_stream_sync_payload(
@@ -2542,6 +2721,22 @@ async fn execute_stream_from_frame_stream(
                     }
 
                     if matches!(inspection, StreamPrefetchInspection::NonError) {
+                        prefetch_committed_output = true;
+                        if prefetch_openai_responses_sse {
+                            debug!(
+                                event_name = "stream_failover_prefetch_committed",
+                                log_type = "event",
+                                trace_id = %trace_id,
+                                request_id = %request_id_for_log,
+                                provider_name,
+                                endpoint_id = %plan.endpoint_id,
+                                key_id = %plan.key_id,
+                                model_name,
+                                reason = "protocol_commit_event",
+                                buffered_bytes = prefetched_inspection_body.len(),
+                                "gateway committed the OpenAI Responses stream at a protocol event boundary"
+                            );
+                        }
                         break;
                     }
                 }
@@ -2585,6 +2780,41 @@ async fn execute_stream_from_frame_stream(
                 }
                 StreamFramePayload::Headers { .. } => {}
             }
+        }
+        if prefetch_openai_responses_sse
+            && !prefetch_committed_output
+            && !reached_eof
+            && prefetched_inspection_body.len() >= stream_failover_policy.max_buffer_bytes
+        {
+            debug!(
+                event_name = "stream_failover_prefetch_committed",
+                log_type = "event",
+                trace_id = %trace_id,
+                request_id = %request_id_for_log,
+                provider_name,
+                endpoint_id = %plan.endpoint_id,
+                key_id = %plan.key_id,
+                model_name,
+                reason = "max_buffer_reached",
+                max_buffer_bytes = stream_failover_policy.max_buffer_bytes,
+                buffered_bytes = prefetched_inspection_body.len(),
+                "gateway committed the OpenAI Responses stream after the buffer limit"
+            );
+        }
+        if prefetch_openai_responses_sse && reached_eof && !prefetch_committed_output {
+            debug!(
+                event_name = "stream_failover_prefetch_committed",
+                log_type = "event",
+                trace_id = %trace_id,
+                request_id = %request_id_for_log,
+                provider_name,
+                endpoint_id = %plan.endpoint_id,
+                key_id = %plan.key_id,
+                model_name,
+                reason = "upstream_eof",
+                buffered_bytes = prefetched_inspection_body.len(),
+                "gateway committed the OpenAI Responses stream after upstream EOF"
+            );
         }
     }
     drop(private_stream_normalizer);
@@ -3821,6 +4051,7 @@ mod tests {
     use super::{
         build_sse_body_stream, encode_openai_responses_failed_event,
         execute_execution_runtime_stream, execute_stream_from_frame_stream,
+        execution_frame_max_bytes, extend_bounded,
         maybe_apply_kiro_prompt_cache_usage_to_stream_summary, merge_stream_terminal_summary,
         should_limit_direct_finalize_prefetch, should_probe_success_failover_before_stream,
         should_skip_direct_finalize_prefetch, OpenAiResponsesImageTerminalTracker,
@@ -3831,6 +4062,31 @@ mod tests {
     use crate::tunnel::{tunnel_protocol, TunnelProxyConn};
     use crate::AppState;
 
+    #[test]
+    fn stream_failover_execution_frames_have_a_stricter_hard_limit() {
+        assert_eq!(
+            execution_frame_max_bytes(true, "openai:responses"),
+            2 * 1024 * 1024
+        );
+        assert_eq!(
+            execution_frame_max_bytes(false, "openai:responses"),
+            64 * 1024 * 1024
+        );
+        assert_eq!(
+            execution_frame_max_bytes(true, "openai:chat"),
+            64 * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn bounded_prefetch_buffer_never_exceeds_configured_limit() {
+        let mut buffer = b"1234".to_vec();
+        extend_bounded(&mut buffer, b"567890", 7);
+        assert_eq!(buffer, b"1234567");
+        extend_bounded(&mut buffer, b"ignored", 7);
+        assert_eq!(buffer, b"1234567");
+    }
+
     fn test_decision() -> GatewayControlDecision {
         GatewayControlDecision::synthetic(
             "/v1/chat/completions",
@@ -3840,6 +4096,55 @@ mod tests {
             Some("openai:chat".to_string()),
         )
         .with_execution_runtime_candidate(true)
+    }
+
+    fn openai_responses_stream_failover_test_plan(request_id: &str) -> ExecutionPlan {
+        ExecutionPlan {
+            request_id: request_id.into(),
+            candidate_id: Some(format!("cand-{request_id}")),
+            provider_name: Some("codex-pro".into()),
+            provider_id: "prov-capacity".into(),
+            endpoint_id: "ep-capacity".into(),
+            key_id: "key-capacity".into(),
+            method: "POST".into(),
+            url: "https://chatgpt.com/backend-api/codex/responses".into(),
+            headers: BTreeMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("accept".into(), "text/event-stream".into()),
+            ]),
+            content_type: Some("application/json".into()),
+            content_encoding: None,
+            body: RequestBody::from_json(json!({
+                "model": "gpt-5.6-sol",
+                "input": "hello",
+                "stream": true
+            })),
+            stream: true,
+            client_api_format: "openai:responses".into(),
+            provider_api_format: "openai:responses".into(),
+            model_name: Some("gpt-5.6-sol".into()),
+            proxy: None,
+            transport_profile: None,
+            timeouts: None,
+        }
+    }
+
+    fn openai_responses_stream_failover_test_context(request_id: &str) -> Value {
+        json!({
+            "request_id": request_id,
+            "candidate_id": format!("cand-{request_id}"),
+            "candidate_index": 0,
+            "retry_index": 0,
+            "provider_api_format": "openai:responses",
+            "client_api_format": "openai:responses",
+            "local_failover_policy": {},
+            "stream_failover_policy": {
+                "enabled": true,
+                "max_wait_ms": 5000,
+                "max_buffer_bytes": 65536,
+                "cooldown_seconds": 30
+            }
+        })
     }
 
     #[tokio::test]
@@ -4786,6 +5091,142 @@ event: response.completed
             "openai_chat_stream",
             false
         ));
+    }
+
+    #[tokio::test]
+    async fn openai_responses_capacity_failure_retries_after_more_than_five_lifecycle_frames() {
+        let state = AppState::new().expect("app state should build");
+        let plan = openai_responses_stream_failover_test_plan("req-openai-capacity-failover");
+        let frame_stream = stream! {
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":200,\"headers\":{\"content-type\":\"text/event-stream\"}}}\n",
+            ));
+            for _ in 0..8 {
+                yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                    b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"event: response.in_progress\\ndata: {\\\"type\\\":\\\"response.in_progress\\\",\\\"response\\\":{\\\"status\\\":\\\"in_progress\\\"}}\\n\\n\"}}\n",
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"event: response.failed\\ndata: {\\\"type\\\":\\\"response.failed\\\",\\\"response\\\":{\\\"status\\\":\\\"failed\\\",\\\"error\\\":{\\\"code\\\":\\\"server_is_overloaded\\\",\\\"message\\\":\\\"Selected model is at capacity. Please try a different model.\\\"}}}\\n\\n\"}}\n",
+            ));
+        }
+        .boxed();
+
+        let response = execute_stream_from_frame_stream(
+            &state,
+            plan,
+            "trace-openai-capacity-failover",
+            &test_decision(),
+            "openai_responses_stream",
+            Some("openai_responses_stream_success".to_string()),
+            Some(openai_responses_stream_failover_test_context(
+                "req-openai-capacity-failover",
+            )),
+            crate::clock::current_unix_ms(),
+            Instant::now(),
+            frame_stream,
+            None,
+        )
+        .await
+        .expect("execution should succeed");
+
+        assert!(
+            response.is_none(),
+            "capacity failure should try another account"
+        );
+        let cooldown_reason = crate::handlers::shared::provider_pool::read_admin_provider_pool_key_model_cooldown_reason(
+            state.runtime_state.as_ref(),
+            "prov-capacity",
+            "key-capacity",
+            "gpt-5.6-sol",
+        )
+        .await
+        .expect("model cooldown should be readable");
+        assert_eq!(
+            cooldown_reason.as_deref(),
+            Some("openai_transient_model_capacity")
+        );
+    }
+
+    #[tokio::test]
+    async fn openai_responses_invalid_request_does_not_switch_accounts() {
+        let state = AppState::new().expect("app state should build");
+        let frame_stream = stream! {
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":200,\"headers\":{\"content-type\":\"text/event-stream\"}}}\n",
+            ));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"event: response.failed\\ndata: {\\\"type\\\":\\\"response.failed\\\",\\\"response\\\":{\\\"status\\\":\\\"failed\\\",\\\"error\\\":{\\\"code\\\":\\\"invalid_request_error\\\",\\\"message\\\":\\\"Unknown parameter.\\\"}}}\\n\\n\"}}\n",
+            ));
+        }
+        .boxed();
+
+        let response = execute_stream_from_frame_stream(
+            &state,
+            openai_responses_stream_failover_test_plan("req-openai-invalid-request"),
+            "trace-openai-invalid-request",
+            &test_decision(),
+            "openai_responses_stream",
+            Some("openai_responses_stream_success".to_string()),
+            Some(openai_responses_stream_failover_test_context(
+                "req-openai-invalid-request",
+            )),
+            crate::clock::current_unix_ms(),
+            Instant::now(),
+            frame_stream,
+            None,
+        )
+        .await
+        .expect("execution should return the request error");
+
+        assert!(response.is_some(), "invalid input must not switch accounts");
+    }
+
+    #[tokio::test]
+    async fn openai_responses_failure_after_output_keeps_the_current_stream() {
+        let state = AppState::new().expect("app state should build");
+        let frame_stream = stream! {
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":200,\"headers\":{\"content-type\":\"text/event-stream\"}}}\n",
+            ));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"event: response.output_text.delta\\ndata: {\\\"type\\\":\\\"response.output_text.delta\\\",\\\"delta\\\":\\\"hello\\\"}\\n\\n\"}}\n",
+            ));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"data\",\"payload\":{\"kind\":\"data\",\"text\":\"event: response.failed\\ndata: {\\\"type\\\":\\\"response.failed\\\",\\\"response\\\":{\\\"error\\\":{\\\"code\\\":\\\"server_is_overloaded\\\"}}}\\n\\n\"}}\n",
+            ));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"eof\",\"payload\":{\"kind\":\"eof\"}}\n",
+            ));
+        }
+        .boxed();
+
+        let response = execute_stream_from_frame_stream(
+            &state,
+            openai_responses_stream_failover_test_plan("req-openai-output-then-failure"),
+            "trace-openai-output-then-failure",
+            &test_decision(),
+            "openai_responses_stream",
+            Some("openai_responses_stream_success".to_string()),
+            Some(openai_responses_stream_failover_test_context(
+                "req-openai-output-then-failure",
+            )),
+            crate::clock::current_unix_ms(),
+            Instant::now(),
+            frame_stream,
+            None,
+        )
+        .await
+        .expect("execution should keep the committed stream")
+        .expect("committed output must return a client response");
+        let body = to_bytes(response.into_body(), 16 * 1024)
+            .await
+            .expect("response body should be readable");
+        let body = String::from_utf8_lossy(&body);
+
+        assert!(body.contains("hello"));
+        assert!(body.contains("response.failed"));
     }
 
     #[tokio::test]

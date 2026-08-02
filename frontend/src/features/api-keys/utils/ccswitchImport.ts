@@ -32,12 +32,23 @@ export function buildCcSwitchUsageScript(model?: string): string {
       headers: { "Authorization": "Bearer {{apiKey}}" }
     },
     extractor: function(response) {
-      const remaining = response?.remaining ?? response?.quota?.remaining ?? response?.balance;
+      const isValid = response?.is_active ?? response?.isValid ?? true;
+      if (response?.unlimited === true) {
+        return {
+          isValid,
+          extra: "无限额"
+        };
+      }
+      const remaining = response?.wallet_balance ?? response?.remaining ?? response?.quota?.remaining ?? response?.balance;
+      const packageBalance = response?.package_balance;
       const unit = response?.unit ?? response?.quota?.unit ?? "USD";
       return {
-        isValid: response?.is_active ?? response?.isValid ?? true,
+        isValid,
         remaining,
-        unit
+        unit,
+        extra: typeof packageBalance === "number" && packageBalance > 0
+          ? "套餐额度 " + packageBalance.toFixed(2) + " " + unit
+          : undefined
       };
     }
   })`

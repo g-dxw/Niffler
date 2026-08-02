@@ -198,6 +198,9 @@ captured_requests/
 cpa_json/
 tmp/
 
+# Local generated reports (may contain real user billing data)
+/outputs/
+
 # macOS
 .DS_Store
 **/.DS_Store
