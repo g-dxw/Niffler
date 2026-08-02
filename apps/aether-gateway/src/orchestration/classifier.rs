@@ -154,20 +154,26 @@ pub(crate) fn is_retryable_openai_transient_processing_error(
     status_code: u16,
     response_text: &str,
 ) -> bool {
+    let lower = response_text.to_ascii_lowercase();
+    if status_code == 429 {
+        return lower.contains("rate_limit_exceeded")
+            || lower.contains("rate_limit")
+            || lower.contains("rate limited");
+    }
     if !matches!(status_code, 400 | 503) {
         return false;
     }
-
-    let lower = response_text.to_ascii_lowercase();
-    if lower.contains("server_is_overloaded") || lower.contains("slow_down") {
+    if lower.contains("server_is_overloaded")
+        || lower.contains("slow_down")
+        || lower.contains("selected model is at capacity")
+    {
         return true;
     }
     if status_code != 400 {
         return false;
     }
 
-    lower.contains("selected model is at capacity")
-        || lower.contains("an error occurred while processing your request")
+    lower.contains("an error occurred while processing your request")
         || (lower.contains("you can retry your request")
             && lower.contains("help.openai.com")
             && lower.contains("request id"))
@@ -272,8 +278,64 @@ fn local_failover_regex_rule_matches(
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{classify_local_failover, LocalFailoverClassification, LocalFailoverInput};
+    use super::{
+        classify_local_failover, is_retryable_openai_transient_processing_error,
+        LocalFailoverClassification, LocalFailoverInput,
+    };
     use crate::orchestration::{LocalFailoverPolicy, LocalFailoverRegexRule};
+
+    #[test]
+    fn classifier_retries_openai_capacity_before_explicit_stop_status() {
+        let policy = LocalFailoverPolicy {
+            stop_status_codes: [400].into_iter().collect(),
+            ..LocalFailoverPolicy::default()
+        };
+
+        assert_eq!(
+            classify_local_failover(
+                &policy,
+                LocalFailoverInput::new(
+                    400,
+                    Some(
+                        "{\"error\":{\"message\":\"Selected model is at capacity. Please try a different model.\"}}"
+                    )
+                )
+            ),
+            LocalFailoverClassification::RetryUpstreamFailure
+        );
+    }
+
+    #[test]
+    fn classifier_stops_context_error_before_transient_processing_match() {
+        assert_eq!(
+            classify_local_failover(
+                &LocalFailoverPolicy::default(),
+                LocalFailoverInput::new(
+                    400,
+                    Some(
+                        "{\"error\":{\"message\":\"An error occurred while processing your request because the input exceeds the context window. You can retry your request.\"}}"
+                    )
+                )
+            ),
+            LocalFailoverClassification::StopErrorPattern
+        );
+    }
+
+    #[test]
+    fn openai_stream_retry_allowlist_excludes_invalid_requests() {
+        assert!(is_retryable_openai_transient_processing_error(
+            503,
+            "{\"error\":{\"code\":\"server_is_overloaded\"}}"
+        ));
+        assert!(is_retryable_openai_transient_processing_error(
+            429,
+            "{\"error\":{\"code\":\"rate_limit_exceeded\"}}"
+        ));
+        assert!(!is_retryable_openai_transient_processing_error(
+            400,
+            "{\"error\":{\"code\":\"invalid_request_error\",\"message\":\"unknown parameter\"}}"
+        ));
+    }
 
     #[test]
     fn classifier_honors_explicit_stop_before_default_retryable_status() {

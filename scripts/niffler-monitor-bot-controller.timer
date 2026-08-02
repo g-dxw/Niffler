@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll Niffler Telegram monitor commands
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=10s
+RandomizedDelaySec=2s
+Unit=niffler-monitor-bot-controller.service
+
+[Install]
+WantedBy=timers.target

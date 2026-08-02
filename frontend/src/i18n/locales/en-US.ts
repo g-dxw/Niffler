@@ -535,4 +535,20 @@ export default {
   modelMappingValidation: { empty: 'The rule cannot be empty', tooLong: 'The rule is too long (maximum {count} characters)', dangerous: 'The rule contains a potentially dangerous regular-expression construct', syntax: 'Regular-expression syntax error: {message}' },
   providerAuthFeedback: { serviceAccount: 'Service account', mixed: 'Mixed' },
   errorParserFeedback: { refreshTokenReused: 'Token refresh failed: refresh_token was already used and rotated. Please authorize again.', refreshTokenInvalid: 'Token refresh failed: refresh_token is invalid, expired, or revoked. Please authorize again.', refreshTokenPrefix: 'Token refresh failed', quotaExceeded: 'Quota is exhausted or the limit was exceeded' },
+  streamFailoverUi: {
+    title: 'Switch accounts before output',
+    description: 'Switch accounts only when a capacity or rate-limit error occurs before actual output; keep the current account after output starts.',
+    maxRetries: 'Account switches (after first)',
+    maxWaitSeconds: 'Maximum wait (seconds)',
+    maxBufferKilobytes: 'Buffer limit (KB)',
+    cooldownSeconds: 'Model pause (seconds)',
+    saved: 'Pre-output account switching settings saved',
+    saveFailed: 'Failed to save pre-output account switching settings',
+    validation: {
+      maxRetries: 'Account switches must be an integer from 0 to 999',
+      maxWaitSeconds: 'Maximum wait must be between 0.25 and 30 seconds',
+      maxBufferKilobytes: 'Buffer limit must be an integer from 16 to 1024 KB',
+      cooldownSeconds: 'Model pause must be an integer from 1 to 1920 seconds',
+    },
+  },
 }

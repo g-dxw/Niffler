@@ -260,6 +260,9 @@ fn tier_value(tier: &Value, key: &str, default: f64) -> f64 {
 }
 
 fn tier_value_with_fallback(tier: &Value, key: &str, default_multiplier: f64) -> f64 {
+    if tier.get(key).is_some_and(Value::is_null) {
+        return 0.0;
+    }
     if let Some(value) = tier.get(key).and_then(Value::as_f64) {
         return value;
     }
@@ -296,6 +299,31 @@ fn build_tier_entries(
             Value::Object(value)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_tier_entries, tier_value_with_fallback};
+    use serde_json::json;
+
+    #[test]
+    fn explicit_null_cache_creation_price_disables_fallback() {
+        let tier = json!({
+            "up_to": 272000,
+            "input_price_per_1m": 5.0,
+            "cache_creation_price_per_1m": null
+        });
+
+        assert_eq!(
+            tier_value_with_fallback(&tier, "cache_creation_price_per_1m", 1.25),
+            0.0
+        );
+        assert_eq!(
+            build_tier_entries(&[tier], "cache_creation_price_per_1m", Some(1.25), false,)[0]
+                ["value"],
+            json!(0.0)
+        );
+    }
 }
 
 pub(crate) fn explicit_image_output_price_entries(

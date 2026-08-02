@@ -85,12 +85,14 @@ async fn handle_ccswitch_usage(
         .get("total_available_balance")
         .cloned()
         .unwrap_or_else(|| json!(null));
-    let remaining = if let Some(value) = total_available_balance.as_f64() {
-        json!(value)
-    } else if let Some(value) = auth_context.balance_remaining {
-        json!(value)
+    let unlimited = wallet_payload
+        .get("unlimited")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let remaining = if unlimited {
+        Value::Null
     } else {
-        json!(wallet_balance + package_balance)
+        json!(wallet_balance)
     };
 
     build_auth_json_response(
@@ -104,10 +106,7 @@ async fn handle_ccswitch_usage(
             "wallet_balance": wallet_balance,
             "package_balance": package_balance,
             "total_available_balance": total_available_balance,
-            "unlimited": wallet_payload
-                .get("unlimited")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
+            "unlimited": unlimited,
             "daily_quota": wallet_payload.get("daily_quota").cloned().unwrap_or_else(|| json!(null)),
             "deduction_order": wallet_payload
                 .get("deduction_order")

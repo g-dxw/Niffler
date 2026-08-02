@@ -125,7 +125,7 @@ async fn gateway_handles_ccswitch_usage_without_touching_last_used() {
     assert_eq!(payload["wallet_balance"], 15.5);
     assert_eq!(payload["package_balance"], 6.0);
     assert_eq!(payload["total_available_balance"], 21.5);
-    assert_eq!(payload["remaining"], 21.5);
+    assert_eq!(payload["remaining"], 15.5);
     assert_eq!(payload["api_key"]["id"], "api-key-ccswitch-usage");
     assert_eq!(payload["api_key"]["name"], "default");
     assert_eq!(auth_repository.touch_count("api-key-ccswitch-usage"), 0);
@@ -212,8 +212,9 @@ async fn gateway_handles_ccswitch_user_balance_with_api_key_without_proxying_ups
     assert_eq!(payload["wallet_balance"], 15.5);
     assert_eq!(payload["package_balance"], 6.0);
     assert_eq!(payload["total_available_balance"], 21.5);
-    assert_eq!(payload["remaining"], 21.5);
-    assert_eq!(payload["balance"], 21.5);
+    assert_eq!(payload["remaining"], 15.5);
+    assert_eq!(payload["balance"], 15.5);
+    assert_eq!(payload["quota"]["remaining"], 15.5);
     assert_eq!(payload["api_key"]["id"], "api-key-ccswitch-balance");
     assert_eq!(payload["api_key"]["name"], "default");
     assert_eq!(auth_repository.touch_count("api-key-ccswitch-balance"), 0);
@@ -231,8 +232,8 @@ async fn gateway_handles_ccswitch_user_balance_with_api_key_without_proxying_ups
     let payload: serde_json::Value = response.json().await.expect("json body should parse");
     assert_eq!(payload["is_active"], true);
     assert_eq!(payload["isValid"], true);
-    assert_eq!(payload["remaining"], 21.5);
-    assert_eq!(payload["balance"], 21.5);
+    assert_eq!(payload["remaining"], 15.5);
+    assert_eq!(payload["balance"], 15.5);
     assert_eq!(payload["api_key"]["id"], "api-key-ccswitch-balance");
     assert_eq!(auth_repository.touch_count("api-key-ccswitch-balance"), 0);
     assert_eq!(*upstream_hits.lock().expect("mutex should lock"), 0);
@@ -242,7 +243,7 @@ async fn gateway_handles_ccswitch_user_balance_with_api_key_without_proxying_ups
 }
 
 #[tokio::test]
-async fn gateway_reports_ccswitch_user_balance_as_number_for_unlimited_wallet() {
+async fn gateway_reports_ccswitch_user_balance_as_unlimited_without_numeric_remaining() {
     let auth_repository = Arc::new(InMemoryAuthApiKeySnapshotRepository::seed(vec![(
         Some(hash_api_key("sk-ccswitch-unlimited-balance")),
         unrestricted_models_snapshot(
@@ -307,9 +308,9 @@ async fn gateway_reports_ccswitch_user_balance_as_number_for_unlimited_wallet() 
     assert_eq!(payload["wallet_balance"], 15.5);
     assert_eq!(payload["package_balance"], 0.0);
     assert!(payload["total_available_balance"].is_null());
-    assert_eq!(payload["remaining"], 15.5);
-    assert_eq!(payload["balance"], 15.5);
-    assert_eq!(payload["quota"]["remaining"], 15.5);
+    assert!(payload["remaining"].is_null());
+    assert!(payload["balance"].is_null());
+    assert!(payload["quota"]["remaining"].is_null());
     assert_eq!(
         auth_repository.touch_count("api-key-ccswitch-unlimited-balance"),
         0

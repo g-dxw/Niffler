@@ -1,6 +1,7 @@
 use super::keys::{
     pool_cooldown_index_key, pool_cooldown_key, pool_cost_key, pool_latency_key, pool_lru_key,
-    pool_sticky_key, pool_stream_timeout_key,
+    pool_model_cooldown_index_key, pool_model_cooldown_key, pool_sticky_key,
+    pool_stream_timeout_key,
 };
 use crate::handlers::admin::provider::pool::config::admin_provider_pool_cache_affinity_enabled;
 use crate::handlers::admin::provider::shared::support::{
@@ -13,7 +14,7 @@ use aether_scheduler_core::is_claude_code_client_restriction_error_message;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::warn;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 const MAX_POOL_COOLDOWN_SECONDS: u64 = 32 * 60;
@@ -317,6 +318,76 @@ async fn set_pool_cooldown(
     spawn_remove_pool_active_probe_member(runtime, provider_id, key_id);
 }
 
+pub(crate) async fn record_admin_provider_pool_model_cooldown(
+    runtime: &RuntimeState,
+    provider_id: &str,
+    key_id: &str,
+    model_name: &str,
+    reason: &str,
+    ttl_seconds: u64,
+) {
+    let model_name = model_name.trim();
+    if model_name.is_empty() || ttl_seconds == 0 {
+        return;
+    }
+    let model_cooldown_key = pool_model_cooldown_key(provider_id, key_id, model_name);
+    let model_cooldown_index_key = pool_model_cooldown_index_key(provider_id, key_id);
+    let ttl_seconds = ttl_seconds.min(MAX_POOL_COOLDOWN_SECONDS);
+    if let Err(err) = runtime
+        .kv_set(
+            &model_cooldown_key,
+            reason.to_string(),
+            Some(std::time::Duration::from_secs(ttl_seconds)),
+        )
+        .await
+    {
+        warn!(
+            event_name = "pool_model_cooldown_set_failed",
+            log_type = "ops",
+            provider_id,
+            key_id,
+            model_name,
+            ttl_seconds,
+            error = ?err,
+            "gateway failed to pause a provider account for one model"
+        );
+        return;
+    }
+    if let Err(err) = runtime
+        .set_add(&model_cooldown_index_key, &model_cooldown_key)
+        .await
+    {
+        let _ = runtime.kv_delete(&model_cooldown_key).await;
+        warn!(
+            event_name = "pool_model_cooldown_index_failed",
+            log_type = "ops",
+            provider_id,
+            key_id,
+            model_name,
+            ttl_seconds,
+            error = ?err,
+            "gateway discarded an unindexed model cooldown"
+        );
+        return;
+    }
+    let _ = runtime
+        .key_expire(
+            &model_cooldown_index_key,
+            std::time::Duration::from_secs(ttl_seconds.saturating_add(60)),
+        )
+        .await;
+    info!(
+        event_name = "pool_model_cooldown_set",
+        log_type = "event",
+        provider_id,
+        key_id,
+        model_name,
+        reason,
+        ttl_seconds,
+        "gateway paused a provider account for one model"
+    );
+}
+
 fn spawn_remove_pool_active_probe_member(runtime: &RuntimeState, provider_id: &str, key_id: &str) {
     let runtime = runtime.clone();
     let provider_id = provider_id.to_string();
@@ -478,9 +549,11 @@ pub(crate) async fn record_admin_provider_pool_error(
         return;
     }
 
-    if error_body.is_some_and(|error_body| {
-        is_retryable_openai_transient_processing_error(status_code, error_body)
-    }) {
+    if status_code != 429
+        && error_body.is_some_and(|error_body| {
+            is_retryable_openai_transient_processing_error(status_code, error_body)
+        })
+    {
         set_pool_cooldown(
             runtime,
             provider_id,

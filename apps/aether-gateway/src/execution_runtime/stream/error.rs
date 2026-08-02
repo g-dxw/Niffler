@@ -260,15 +260,27 @@ fn inspect_prefetched_sse_body(body: &[u8]) -> Option<StreamPrefetchInspection> 
                 "error": error
             })));
         }
+        if event_type == "error" {
+            let error = event_json
+                .get("error")
+                .cloned()
+                .unwrap_or_else(|| event_json.clone());
+            return Some(StreamPrefetchInspection::EmbeddedError(json!({
+                "error": error
+            })));
+        }
         if matches!(
             event_type.as_str(),
-            "response.created" | "response.in_progress"
+            "response.created" | "response.queued" | "response.in_progress"
         ) {
             continue;
         }
         if has_nested_error(&event_json) {
             return Some(StreamPrefetchInspection::EmbeddedError(event_json));
         }
+
+        // Any other complete Responses event is observable output. Once it is sent,
+        // this request must stay on the current account and may no longer fail over.
         return Some(StreamPrefetchInspection::NonError);
     }
 
@@ -353,6 +365,22 @@ mod tests {
     }
 
     #[test]
+    fn lifecycle_events_do_not_commit_client_output() {
+        let mut body = String::new();
+        for _ in 0..8 {
+            body.push_str(concat!(
+                "event: response.in_progress\n",
+                "data: {\"type\":\"response.in_progress\",\"response\":{\"status\":\"in_progress\"}}\n\n"
+            ));
+        }
+
+        assert!(matches!(
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes()),
+            StreamPrefetchInspection::NeedMore
+        ));
+    }
+
+    #[test]
     fn openai_responses_failed_event_becomes_embedded_error() {
         let body = concat!(
             "event: response.created\n",
@@ -378,17 +406,34 @@ mod tests {
     }
 
     #[test]
-    fn openai_responses_visible_output_ends_prefetch() {
+    fn response_failed_after_queued_event_is_an_embedded_error() {
         let body = concat!(
             "event: response.created\n",
-            "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n",
-            "event: response.output_text.delta\n",
-            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"
+            "data: {\"type\":\"response.created\"}\n\n",
+            "event: response.queued\n",
+            "data: {\"type\":\"response.queued\",\"response\":{\"status\":\"queued\"}}\n\n",
+            "event: response.failed\n",
+            "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_is_overloaded\"}}}\n\n"
+        );
+
+        let StreamPrefetchInspection::EmbeddedError(body) =
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes())
+        else {
+            panic!("response.queued must not commit client output");
+        };
+        assert_eq!(body["error"]["code"], "server_is_overloaded");
+    }
+
+    #[test]
+    fn incomplete_response_failed_event_waits_for_the_event_boundary() {
+        let body = concat!(
+            "event: response.failed\n",
+            "data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_is_overloaded\"}}}"
         );
 
         assert!(matches!(
             inspect_prefetched_stream_body(&sse_headers(), body.as_bytes()),
-            StreamPrefetchInspection::NonError
+            StreamPrefetchInspection::NeedMore
         ));
     }
 
@@ -398,6 +443,36 @@ mod tests {
             "event: response.created\n",
             "data: {\"type\":\"response.created\"}\n\n",
             "data: {\"response\":{\"status\":\"in_progress\"}}\n\n"
+        );
+
+        assert!(matches!(
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes()),
+            StreamPrefetchInspection::NonError
+        ));
+    }
+
+    #[test]
+    fn top_level_error_event_is_an_embedded_error() {
+        let body = concat!(
+            "event: error\n",
+            "data: {\"type\":\"error\",\"code\":\"server_is_overloaded\",\"message\":\"retry\"}\n\n"
+        );
+
+        let StreamPrefetchInspection::EmbeddedError(body) =
+            inspect_prefetched_stream_body(&sse_headers(), body.as_bytes())
+        else {
+            panic!("top-level error should be detected");
+        };
+        assert_eq!(body["error"]["code"], "server_is_overloaded");
+    }
+
+    #[test]
+    fn openai_responses_visible_output_ends_prefetch() {
+        let body = concat!(
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"
         );
 
         assert!(matches!(

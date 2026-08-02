@@ -12,10 +12,11 @@ pub(crate) use self::mutations::{
 pub(crate) use self::reads::{
     read_admin_provider_pool_cooldown_count, read_admin_provider_pool_cooldown_counts,
     read_admin_provider_pool_cooldown_key_ids, read_admin_provider_pool_key_cooldown_reason,
-    read_admin_provider_pool_runtime_state,
+    read_admin_provider_pool_key_model_cooldown_reason, read_admin_provider_pool_runtime_state,
 };
 pub(crate) use self::status::build_admin_provider_pool_status_payload;
 pub(crate) use self::writes::{
     admin_provider_pool_key_hard_error_reason, record_admin_provider_pool_error,
-    record_admin_provider_pool_stream_timeout, record_admin_provider_pool_success,
+    record_admin_provider_pool_model_cooldown, record_admin_provider_pool_stream_timeout,
+    record_admin_provider_pool_success,
 };

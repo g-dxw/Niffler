@@ -3,7 +3,8 @@ pub(crate) use super::super::admin::provider::pool::config::{
 };
 pub(crate) use super::super::admin::provider::pool::runtime::{
     admin_provider_pool_key_hard_error_reason, read_admin_provider_pool_key_cooldown_reason,
-    read_admin_provider_pool_runtime_state, record_admin_provider_pool_error,
+    read_admin_provider_pool_key_model_cooldown_reason, read_admin_provider_pool_runtime_state,
+    record_admin_provider_pool_error, record_admin_provider_pool_model_cooldown,
     record_admin_provider_pool_stream_timeout, record_admin_provider_pool_success,
     release_admin_provider_pool_key_lease,
 };

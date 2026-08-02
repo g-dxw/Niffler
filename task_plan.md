@@ -1,5 +1,411 @@
 # Task Plan: 当前任务记录
 
+## 全部本地改动提交与生产同步（2026-08-03）
+
+### Goal
+
+整理当前工作区全部改动，完成安全检查和相关验证后提交到远端 `main`，使用准确提交对应的 CI 镜像部署生产，并确认本地、远端和生产运行版本一致。
+
+### Phases
+
+- [x] Release Phase 1：确认改动范围、远端基准、仓库可见性及敏感文件风险
+- [x] Release Phase 2：在远端最新 `main` 基础上整理全部应提交内容并完成验证
+- [ ] Release Phase 3：按约定式提交创建提交并推送受保护远端流程
+- [ ] Release Phase 4：等待 CI 镜像构建并部署生产
+- [ ] Release Phase 5：核对本地、远端、生产镜像、迁移和服务健康状态
+
+### Safety Boundary
+
+- 用户已明确授权提交当前全部本地改动、推送和生产部署。
+- 不提交密钥、凭证、真实用户敏感报告、依赖目录或临时文件；发现此类内容时改为忽略并保留本地副本。
+- 不使用强制推送、硬重置或绕过测试、分支保护和生产审批。
+- 生产只部署远端 `main` 的准确提交及其 CI 镜像，不在服务器直接编译或修改代码。
+
+### Current Phase
+
+远端最新版三方合并、回归修复和发布前验证均已完成，正在复核最终差异并创建约定式提交。
+
+### Active Skills
+
+- `planning-with-files`
+- `commit-conventional`
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 新文件敏感模式扫描将多行文件列表作为一个参数传给 `rg`，zsh 报文件名过长 | 第一次扫描未跟踪文件 | 改用 NUL 分隔的 `git ls-files -z` 与 `xargs -0`；已跟踪差异扫描正常且未发现匹配，未暂存或提交任何文件 |
+| 将本地脏文件整文件复制到远端基准后，差异显示会回退远端已上线内容，例如生产部署文档出现 161 行删除 | 第一次隔离整理 | 弃用该隔离副本；新建远端基准并使用本地 HEAD 作为三方合并基础，只叠加本地改动，不整文件覆盖远端内容 |
+| 第二次隔离仓库克隆超过工具首次等待时间，后续脚本尚未保存工作目录；一次验证因此落回原工作区 | 第二次隔离整理 | 进程仍在正常下载且没有修改原工作区；停止依赖会话变量，改用已确认的绝对临时路径并等待现有克隆完成，不重复启动克隆 |
+| 第二次网络克隆持续两分钟没有产生提交对象 | 第二次隔离整理后续 | 终止仅属于临时目录的挂起克隆；从第一个完整隔离仓库创建 detached 干净工作树，并从本地对象库读取三方合并基础，避免再次访问网络 |
+| 三方应用本地差异时 51 个已跟踪文件中 4 个存在重叠冲突 | 远端基准合并 | 逐段合并远端已上线的有限预读逻辑与本地事件驱动故障切换；迁移测试保留远端 Provider 迁移并增加 GPT-5 迁移，不采用整文件一方覆盖 |
+| 本机未安装 `shellcheck` | 发布前脚本静态检查 | 已完成全部新增 Shell 脚本的 `bash -n` 语法检查，并继续运行仓库内脚本测试；不伪称执行过 ShellCheck |
+| 三方合并后网关全量测试有 2 项 429 暂停理由断言失败 | 2942 项网关测试首次执行 | 流式换号允许 429 重试，但账号池写入必须继续按现有限流规则处理；限制容量暂停分支不接管 429，保留原有限流规则优先级后重测 |
+| 两项 Linux 监控脚本测试在 macOS 直接运行失败 | 首次运维脚本测试 | 脚本明确依赖 GNU `stat` 且生产监控要求 root；改在 `hd0526` 隔离临时目录运行，使用测试自带的假容器、假磁盘和假通知程序，两项均通过且临时目录已清理 |
+| 第一次复制监控测试文件到远端临时目录时漏写主机前缀 | Linux 隔离测试首次传输 | `scp` 在本地找不到临时目录，未触碰生产配置；临时目录由退出钩子清理，补齐 `hd0526:` 后复测通过 |
+| 本机 Docker 命令存在但 Docker 服务未启动 | 尝试本地 Linux 容器测试 | 未启动额外常驻服务；改用生产主机隔离临时目录完成同一组测试 |
+
+## 远端与生产版本核对（2026-08-03）
+
+### Goal
+
+核实 Provider 计费统计后续修改、CCSwitch 余额兼容和 GPT-5 价格调整是否已经进入远端提交及生产环境，区分本地状态误报、远端已合并内容和生产实际运行内容。
+
+### Phases
+
+- [x] Audit Phase 1：逐文件比较本地内容与远端所有现有分支
+- [x] Audit Phase 2：确认生产部署提交号、镜像版本和运行实例
+- [x] Audit Phase 3：逐项核对生产代码、数据库迁移及接口行为
+- [x] Audit Phase 4：汇总结论和需要保留或清理的本地改动
+
+### Safety Boundary
+
+- 只读核对远端、生产主机、容器和数据库迁移状态。
+- 不修改生产配置，不重启服务，不执行数据库写入或部署。
+- 以生产实际运行的镜像和数据库为准，不根据本地 `git status` 推断上线状态。
+
+### Current Phase
+
+已完成：Provider 统计功能已随远端 `main` 部署；CCSwitch 基础兼容已部署但本地第二次口径调整未部署；GPT-5 价格数据已在生产生效，但对应迁移和计费空值修复尚未进入远端代码。
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 查询发布脚本时使用了不存在文件的 shell 通配符，zsh 在执行 `rg` 前终止命令 | 首次读取生产发布状态说明 | 改为先列出实际脚本文件，再对明确路径检索；未修改任何文件或生产状态 |
+
+## OpenAI Responses 输出前自动换号（2026-08-02）
+
+### Goal
+
+仅对 Niffler 服务端的 Codex Pro 号池 `openai:responses` 端点增加协议事件驱动的两阶段发送：实际输出前遇到可重试错误时自动更换账号，实际输出后禁止拼接响应；配套账号与模型级暂停、监控和一键关闭，不修改用户本地 Codex。
+
+### Phases
+
+- [x] Stream Failover Phase 1：核对现有配置、流处理、调度反馈和管理界面，补充设计记录
+- [x] Stream Failover Phase 2：实现端点级配置契约、默认值和运行时解析
+- [x] Stream Failover Phase 3：实现协议事件驱动的输出提交边界、换号和账号模型级暂停
+- [x] Stream Failover Phase 4：在现有端点编辑表单增加紧凑配置入口与交互校验
+- [x] Stream Failover Phase 5：补充后端、前端和异常路径测试
+- [x] Stream Failover Phase 6：运行相关验证、UI 审查和差异复核
+
+### Safety Boundary
+
+- 不修改或重启生产服务，不直接写生产数据库。
+- 不回退或混入工作区已有的计费、监控等未提交改动。
+- 新逻辑默认关闭，只能在 `openai:responses` 端点显式开启，并保留一键关闭。
+- 只有尚未向客户端发送实际输出时才允许换号；已经输出文本或工具调用后禁止拼接另一条响应。
+- 不做灰度发布；上线前必须完成直接相关测试，并确保关闭配置即可恢复原逻辑。
+
+### Current Phase
+
+已完成：端点级输出前自动换号、账号模型级暂停、管理界面、文档和异常路径测试均已实现并通过最终验证；未部署、未重启服务、未修改生产配置。
+
+### Active Skills
+
+- `planning-with-files`
+- `using-ui-polish`
+- `openai-docs`
+- `ui-review`
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 只读数据库查询首次远程 shell 引号不匹配 | 第一次账号池核查 | 改用明确的远程 `psql -c` 双层引号后成功，未发生写入 |
+| 首次更新任务记录时标题匹配错误 | 配置层验证完成后 | 读取文件实际标题并重新应用补丁，代码和测试未受影响 |
+| 核心流处理首次格式化发现 `while if` 少一个右花括号 | SSE 预读循环首次编译 | 补齐分隔符后重新格式化并编译，5 项事件解析测试全部通过 |
+| 首次整库测试发现两项旧失败分类断言和一项架构边界失败 | 2922 项网关库测试 | 将参数错误限制在本功能的临时错误允许列表内，保留既有通用重试语义；格式判断改走 `ai_serving` 根入口，三项定向测试和整库复测通过 |
+| 直接运行 `rustfmt` 使用默认 Rust 2015 版本 | 最终格式检查 | 显式指定项目使用的 Rust 2021 版本后检查通过，代码未因失败命令发生语义变化 |
+| Cargo 共享依赖缓存被另一项本地任务长时间占用 | 最终后端复测 | 停止本轮等待命令，使用独立锁文件并以离线方式只读复用已有依赖缓存，未中断或修改另一项任务 |
+| 整个旧端点弹窗触发既有 UI 密度检查，目标代码规范检查提示宏顺序 | UI 最终审查 | 将新配置区提取为独立组件并调整 `useI18n` 位置；目标 ESLint 和 UI 静态、运行时检查最终通过 |
+
+## 提供商测试、单账号测试与账号并发（2026-08-01）
+
+### Goal
+
+增加账号级实时并发显示和单账号请求测试；参考 sub2api 将提供商测试改为协议模板优先，支持多种现有请求协议和图片生成，并保留高级 JSON 排错能力。
+
+### Phases
+
+- [x] Test Phase 1：核对 Niffler 现有测试、账号列表和 sub2api 参考实现
+- [x] Test Phase 2：记录接口、运行时和前端交互设计
+- [x] Test Phase 3：实现账号级并发聚合和单账号后端测试
+- [x] Test Phase 4：实现账号列表入口与协议模板优先测试弹窗
+- [x] Test Phase 5：补充测试并运行针对性验证
+
+### Safety Boundary
+
+- 不回退工作区已有的其他未提交改动。
+- 不改变正常业务请求的调度与失败切换行为。
+- Redis 并发读取失败时仅显示为 0，不阻断账号列表和请求测试。
+- 单账号测试必须在后端再次校验账号属于当前提供商且支持所选端点。
+
+### Current Phase
+
+已完成：账号级并发显示、单账号测试和协议模板优先测试均已实现并通过针对性验证。
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 前端目标测试首次无法解析 `vue-i18n` | 本地 `node_modules` 缺少已声明依赖 | 按 `package-lock.json` 执行 `npm ci --ignore-scripts` 后重新运行，59 项测试全部通过 |
+
+## GitHub 测试环境与晋级流水线配置（2026-07-28）
+
+### Goal
+
+完成 PR #14 对应的 GitHub 管理员配置、测试服务器受限部署账号、`test` 分支保护和首次测试部署验证，并在条件满足后补全 `main` 晋级规则。
+
+### Current Phase
+
+Environment Phase 5：等待首次测试部署验证
+
+### Phases
+
+- [x] Environment Phase 1：核对 PR、GitHub 权限、现有 Environment 和 Ruleset
+- [x] Environment Phase 2：创建测试服务器专用账号、部署目录和专用密钥
+- [x] Environment Phase 3：创建 `test` Environment，配置 Secrets 和 Variables
+- [x] Environment Phase 4：修复并合并测试部署流水线，配置 `test` 分支保护规则
+- [ ] Environment Phase 5：执行首次测试环境部署和健康验证
+- [ ] Environment Phase 6：补全 `main` 晋级检查和 production reviewer，复核全部保护规则
+
+### Safety Boundary
+
+- 不使用 `ops`、个人 SSH 或 root 私钥执行测试部署。
+- 不在日志、PR、Issue 或回复中输出专用私钥。
+- 不修改或重启生产数据库、Redis 和生产应用。
+- 保留当前工作区全部既有未提交改动，不纳入本次 GitHub 配置任务。
+
+### Status
+
+in_progress
+
+### Next Action
+
+确认创建受保护的远程 `test` 分支，触发首次 GitHub Actions 测试部署；部署成功后再为
+`main` 增加 `Promotion policy` 与 required deployment `test`。
+
+---
+
+## 生产服务器 Telegram 监控（2026-07-28）
+
+### Goal
+
+监控两台生产服务器的磁盘、核心容器和网站健康接口，并通过 Telegram 发送异常与
+恢复通知。
+
+### Current Phase
+
+已完成：两台服务器监控、Telegram 测试、去重和恢复逻辑均已验证。
+
+### Phases
+
+- [x] Monitor Phase 1：核对两台服务器依赖、磁盘和健康基线
+- [x] Monitor Phase 2：更新生产监控运维文档
+- [x] Monitor Phase 3：实现脚本、service 和 timer
+- [x] Monitor Phase 4：部署 rn01 监控
+- [x] Monitor Phase 5：部署 hd0526 监控
+- [x] Monitor Phase 6：发送测试摘要并验证定时器、去重和生产健康
+
+### Safety Boundary
+
+- 监控只读取状态，不自动重启、删除文件或修改数据库。
+- 连续 3 次失败才通知容器和网站异常。
+- 相同状态不重复通知，恢复时单独通知。
+- Telegram 凭据权限必须为 `0600`。
+
+### Status
+
+completed
+
+## Telegram 数据库备份失败通知（2026-07-28）
+
+### Goal
+
+让 `rn01` 的 PostgreSQL 自动备份失败时，通过私人 Telegram Bot 消息主动通知。
+
+### Current Phase
+
+已完成：Telegram 测试消息和 systemd 失败触发关系均已验证。
+
+### Phases
+
+- [x] Alert Phase 1：验证 Bot Token 并取得私人 Chat ID
+- [x] Alert Phase 2：新增通知脚本、systemd 服务和运维记录
+- [x] Alert Phase 3：部署并发送测试消息
+- [x] Alert Phase 4：验证失败触发关系、凭据权限和原备份任务
+
+### Safety Boundary
+
+- Token 和 Chat ID 只保存在权限为 `0600` 的凭据文件中。
+- 测试消息必须明确标注测试，不制造真实故障。
+- 不修改数据库数据，不故意让生产备份失败。
+- Telegram 失败不能覆盖备份任务原始状态和 systemd 日志。
+
+### Status
+
+completed
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 本机连接 Telegram API 被重置 | 首次验证 Bot Token | 改由 `rn01` 调用 Telegram API，Token 和 Chat ID 验证成功 |
+| systemd 首次预检查找不到正式路径中的通知脚本 | 安装前验证 unit 文件 | 当时没有替换现有 unit；先安装脚本，再次验证 unit 后通过 |
+
+## 生产网络与数据库连接加固（2026-07-28）
+
+### Goal
+
+关闭 `hd0526:8084` 公网访问，让 Niffler 改用非超级用户 PostgreSQL 账号，并强制
+`hd0526` 到 `rn01` 的数据库连接使用 TLS。
+
+### Current Phase
+
+已完成：公网端口、数据库账号、TLS 和备份兼容性验证均已通过。
+
+### Phases
+
+- [x] Security Phase 1：核对端口、防火墙、数据库账号、TLS 和通知条件
+- [x] Security Phase 2：关闭 `hd0526:8084` 公网访问并验证
+- [x] Security Phase 3：创建非超级用户数据库账号并转移业务对象所有权
+- [x] Security Phase 4：启用 PostgreSQL TLS 并切换应用连接
+- [x] Security Phase 5：执行完整健康、权限、加密和备份验证
+
+### Safety Boundary
+
+- 每项生产变更前保存权限为 `0600` 的回退文件。
+- 不删除 `postgres` 账号，不修改业务表结构或业务数据。
+- 前一项验证失败时立即回退，不继续执行后续变更。
+- 没有外部接收地址时，不伪造备份通知已接入。
+
+### Status
+
+completed
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| PostgreSQL 拒绝先单独修改表自带序列的所有者 | 首次所有权转移事务 | 整个事务已回滚；调整为先修改表，再处理仍由 postgres 拥有的独立序列 |
+| Docker Compose 没有因 `.env` 内容变化自动重建容器 | 首次切换应用数据库账号 | 使用 `--force-recreate` 明确重建 frontdoor 和 background，随后数据库会话用户正确 |
+| TLS 文件预检查发现访问规则未安装且目录不可遍历 | PostgreSQL 重启前检查 | 停止执行且未重启数据库；重新安装文件、修正目录权限并用 PostgreSQL UID 实测可读后继续 |
+
+## rn01 首次数据库备份与恢复验证（2026-07-28）
+
+### Goal
+
+为生产 PostgreSQL 创建首份可恢复的异地备份，将备份保存到私有 Cloudflare R2，
+并在隔离的 PostgreSQL 15 环境中完成真实恢复验证。
+
+### Current Phase
+
+已完成：首份备份恢复验证、自动备份部署及真实运行检查均已通过。
+
+### Phases
+
+- [x] Backup Phase 1：检查 rn01 磁盘、数据库体积、活动事务和本机恢复容量
+- [x] Backup Phase 2：补充备份与恢复运维文档
+- [x] Backup Phase 3：生成完整备份、校验并上传 R2
+- [x] Backup Phase 4：从 R2 下载并在隔离数据库中恢复验证
+- [x] Backup Phase 5：配置自动备份、保留策略和本机失败状态记录
+
+### Safety Boundary
+
+- 使用 PostgreSQL 在线一致性导出，不停止、不重启生产数据库。
+- 不在生产数据库中创建恢复测试库，恢复只在本机隔离容器执行。
+- 备份文件上传成功并通过恢复验证前，不删除任何生产数据。
+- R2 凭据只允许访问 `niffler-db-backups`，不得写入代码仓库或命令输出。
+
+### Status
+
+completed
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 最大关系查询的制表符转义被远程 shell 破坏 | 首次只读容量检查 | 改用 Base64 传递 SQL；查询成功，生产数据库未发生修改 |
+| `pg_dump` 不支持误带的 `-X` 参数 | 首次完整导出 | 命令在读取数据前停止，只生成0字节临时文件；删除临时文件并移除该参数后重试 |
+| 本机进度检查误用 zsh 保留变量 `path` | 查看慢速复制进度 | 该条只读检查未执行；改用 `file_path`，正在运行的复制未受影响 |
+| 首次删除本机临时片段使用了错误的 `/usr/bin/unlink` | 清理已停止的慢速复制 | 文件当时未删除；改用实际路径 `/bin/unlink` 并确认片段已不存在 |
+| macOS `date` 不支持 Linux 的 `-Is` 参数 | 记录 R2 下载时间 | 仅时间字段为空，下载、大小和哈希校验成功；后续使用跨平台时间格式 |
+| 本机已有 PostgreSQL 15.17 镜像 | 首次创建隔离恢复容器 | 删除尚未写入数据的临时容器和卷，下载与生产一致的 PostgreSQL 15.18 后重新恢复 |
+| rclone 首次上传自动备份时收到一次 R2 HTTP 501 | 自动任务真实运行检查 | rclone 第二次尝试成功；随后从 R2 独立核对对象大小和校验文件，结果一致 |
+
+## 数据库磁盘事故止血与恢复（2026-07-27）
+
+### Goal
+
+先停止完整请求正文继续写入 PostgreSQL，保持 Niffler 登录和核心接口可用；在用户
+确认历史正文取舍后释放数据库磁盘，并补充防止再次发生的代码与监控改动。
+
+### Current Phase
+
+Recovery Phase 4：修复无对象存储时的无上限数据库回退、清理漏跑和队列毒消息问题。
+
+### Phases
+
+- [x] Recovery Phase 1：将生产正文记录切换为 `basic` 并验证服务与配置
+- [x] Recovery Phase 2：盘点可安全回收空间，明确历史正文保留或删除方案
+- [x] Recovery Phase 3：按用户确认执行数据库空间回收并验证 PostgreSQL
+- [ ] Recovery Phase 4：修复无对象存储时的无上限回退和清理任务漏跑问题
+- [ ] Recovery Phase 5：测试、发布并复查磁盘告警与健康检查
+
+### Safety Boundary
+
+- 第一阶段不删除业务数据，只修改可逆的正文记录级别。
+- 删除 `usage_body_blobs` 前必须获得用户对历史请求/响应原文丢失的明确确认。
+- 不直接删除 PostgreSQL 数据文件或 Docker 数据卷。
+
+### Status
+
+in_progress
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 切换 `request_record_level=basic` 时 PostgreSQL 再次处于 recovery mode，事务未开始 | 用单事务锁定并更新一条系统配置 | 确认没有部分更新；先检查数据库再次恢复的原因和磁盘状态，再执行止血 |
+| PostgreSQL 恢复后首次连接使用了不存在的 `niffler` 数据库名 | 执行单行配置更新 | 查询容器实际 `POSTGRES_DB=aether` 后重新执行；错误发生在建立连接前，没有修改任何数据 |
+| 清理审计表旧行版本时，默认并行 `VACUUM ANALYZE` 超出容器 64 MiB 共享内存 | 对 `usage_http_audits` 执行普通清理 | 改用单进程、16 MiB 维护内存重新执行，清理和统计刷新成功 |
+
+## 线上登录卡顿诊断（2026-07-27）
+
+### Goal
+
+定位 `niffler.org` 页面和登录流程卡顿的具体环节，区分前端资源、Cloudflare、
+网关、认证接口、数据库及服务器资源问题；本轮只诊断，不修改代码或生产配置。
+
+### Current Phase
+
+已完成：根因、时间线、当前恢复状态和后续处理顺序均已确认。
+
+### Phases
+
+- [x] Performance Phase 1：测量首页、静态资源、健康接口和登录相关接口的各阶段耗时
+- [x] Performance Phase 2：检查登录前端调用链、后端认证实现、超时和数据库查询
+- [x] Performance Phase 3：检查生产容器资源、近期日志、数据库连接和慢请求记录
+- [x] Performance Phase 4：交叉验证根因、影响范围和发生时间，给出处理建议
+
+### Constraints
+
+- 不使用或索取用户密码，不执行真实账户登录。
+- 不修改生产代码、配置、数据库或运行状态。
+- 结论必须同时有线上测量、日志或代码证据支持。
+
+### Status
+
+complete
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| 并行探针命令因包含临时文件 `rm -f` 被安全策略拒绝，命令未执行 | 同时抓取公开接口和登录探针响应体 | 不创建临时文件，改为让 `curl` 直接输出响应体和耗时 |
+| 重启后聚合查询的远程 shell 引号解析失败，查询未执行 | 一次性查询正文表大小、行数和生产设置 | 接口与数据库未受影响；改为 Base64 传递只读 SQL，避免多层引号 |
+
 ## GitHub 受保护生产发布与双人审核（2026-07-27）
 
 ### Goal
@@ -278,3 +684,34 @@ Phase 1
 | `ui_workflow.py` 第一次运行缺少 `--platform`、`--surface`、`--goal` | 调用脚本时只传了 mode/path | 已按脚本要求补齐平台、界面类型、目标、代码路径和审查档位重新运行 |
 | `npm --prefix frontend run test:run` 首次失败，`localStorage.clear/getItem is not a function` | Node 25 提供了不完整的实验性 `globalThis.localStorage`，jsdom 没覆盖 | 新增 Vitest setup，在测试环境缺少标准 Storage 方法时安装内存版 Storage |
 | 新增 SQLite 钱包搜索回归测试首次编译失败，缺少查询结构体导入 | 测试模块 import 没包含新增查询类型 | 补充 `AdminWalletLedgerQuery` 和 `AdminWalletRefundRequestListQuery` 导入后测试通过 |
+# Telegram 监控通知与 Bot 设置（2026-07-28）
+
+## Goal
+
+将生产监控和数据库备份通知改成普通用户能理解的中文，并为授权管理员提供安全的
+Telegram 查询和阈值设置命令。
+
+## Phases
+
+- [x] 核对当前监控配置、Bot 更新状态和跨服务器安全条件
+- [x] 更新通知与 Bot 命令设计文档
+- [x] 重构备份和生产监控通知文案
+- [x] 实现 Telegram 命令控制器与参数校验
+- [x] 建立 `rn01` 到 `hd0526` 的受限设置同步
+- [x] 部署并验证命令、文案、权限和监控兼容性
+
+## Verification
+
+- 两台服务器监控服务执行成功，应用、数据库、Redis 和公开健康接口均正常。
+- `rn01` 负责唯一 Bot 轮询，命令菜单已注册，旧更新已通过偏移量跳过。
+- 受限 SSH 可读取 `hd0526` 监控状态和设置，任意额外命令被拒绝。
+- 监控和设置隔离测试全部通过。
+
+## Decisions
+
+- 命令接收器只部署在 `rn01`，避免同一 Bot 更新被两台服务器竞争读取。
+- 默认同时修改两台服务器，命令末尾可指定 `rn01` 或 `hd0526`。
+- `rn01` 到 `hd0526` 使用只能操作监控整数设置的受限 SSH 用户，不使用 root 密钥。
+- 日常消息只显示业务含义；技术详情继续保留在日志和状态文件中。
+
+---

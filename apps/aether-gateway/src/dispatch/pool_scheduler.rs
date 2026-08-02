@@ -21,7 +21,7 @@ use aether_pool_core::{
 };
 use aether_provider_pool::ProviderPoolService;
 use aether_routing_core::{RankingOverlay, ResolvedRoutingPolicy};
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::ai_serving::{
     candidate_auth_channel_skip_reason, candidate_common_transport_skip_reason,
@@ -37,7 +37,8 @@ use crate::handlers::shared::provider_pool::{
 };
 use crate::handlers::shared::provider_pool::{
     admin_provider_pool_quota_probe_active_members_key,
-    read_admin_provider_pool_key_cooldown_reason, AdminProviderPoolConfig,
+    read_admin_provider_pool_key_cooldown_reason,
+    read_admin_provider_pool_key_model_cooldown_reason, AdminProviderPoolConfig,
     AdminProviderPoolRuntimeState,
 };
 use crate::handlers::shared::{parse_catalog_auth_config_json, provider_key_health_summary};
@@ -807,9 +808,9 @@ impl<'a> PoolKeyCursor<'a> {
                         extra_data: None,
                     });
                 self.spawn_active_probe_member_eviction_and_replenish(candidate);
-                true
+                return true;
             }
-            Ok(None) => false,
+            Ok(None) => {}
             Err(err) => {
                 warn!(
                     event_name = "pool_key_cooldown_check_failed",
@@ -820,6 +821,61 @@ impl<'a> PoolKeyCursor<'a> {
                     key_id = %candidate.candidate.key_id,
                     error = ?err,
                     "gateway pool scheduler failed to read pool key cooldown; scheduling key"
+                );
+                return false;
+            }
+        }
+
+        let model_name = candidate.candidate.selected_provider_model_name.trim();
+        if model_name.is_empty() {
+            return false;
+        }
+        match read_admin_provider_pool_key_model_cooldown_reason(
+            self.state.app().runtime_state.as_ref(),
+            candidate.candidate.provider_id.as_str(),
+            candidate.candidate.key_id.as_str(),
+            model_name,
+        )
+        .await
+        {
+            Ok(Some(reason)) => {
+                self.record_skip_reason("pool_model_cooldown");
+                self.skipped_candidates
+                    .push(SkippedLocalExecutionCandidate {
+                        candidate: candidate.candidate.clone(),
+                        skip_reason: "pool_model_cooldown",
+                        transport: Some(candidate.transport.clone()),
+                        ranking: candidate.ranking.clone(),
+                        extra_data: Some(serde_json::json!({
+                            "model_name": model_name,
+                            "reason": reason,
+                        })),
+                    });
+                info!(
+                    event_name = "pool_model_cooldown_skipped",
+                    log_type = "event",
+                    provider_id = %candidate.candidate.provider_id,
+                    endpoint_id = %candidate.candidate.endpoint_id,
+                    model_id = %candidate.candidate.model_id,
+                    key_id = %candidate.candidate.key_id,
+                    model_name,
+                    reason,
+                    "gateway skipped a provider account paused for this model"
+                );
+                true
+            }
+            Ok(None) => false,
+            Err(err) => {
+                warn!(
+                    event_name = "pool_model_cooldown_check_failed",
+                    log_type = "event",
+                    provider_id = %candidate.candidate.provider_id,
+                    endpoint_id = %candidate.candidate.endpoint_id,
+                    model_id = %candidate.candidate.model_id,
+                    key_id = %candidate.candidate.key_id,
+                    model_name,
+                    error = ?err,
+                    "gateway failed to read account-model pause state; scheduling key"
                 );
                 false
             }
@@ -1573,7 +1629,8 @@ mod tests {
     };
     use crate::data::GatewayDataState;
     use crate::handlers::shared::provider_pool::{
-        record_admin_provider_pool_error, AdminProviderPoolRuntimeState,
+        record_admin_provider_pool_error, record_admin_provider_pool_model_cooldown,
+        AdminProviderPoolRuntimeState,
     };
     use crate::orchestration::LocalExecutionCandidateMetadata;
     use crate::{AppState, LocalExecutionRuntimeMissDiagnostic};
@@ -2771,6 +2828,87 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![("key-b", "pool_cooldown")]
         );
+    }
+
+    #[tokio::test]
+    async fn pool_key_cursor_skips_only_the_paused_account_model_pair() {
+        let app = AppState::new().expect("state should build");
+        let provider_config = Some(json!({ "pool_advanced": { "lru_enabled": true } }));
+        let group = sample_eligible_candidate(
+            "provider-pool",
+            "endpoint-1",
+            "pool-group",
+            10,
+            provider_config.clone(),
+        );
+        let mut cursor = PoolKeyCursor::new(
+            PlannerAppState::new(&app),
+            group.clone(),
+            None,
+            Some("gpt-5"),
+            None,
+        );
+        cursor.queued_candidates = VecDeque::from([
+            sample_eligible_candidate(
+                "provider-pool",
+                "endpoint-1",
+                "key-a",
+                10,
+                provider_config.clone(),
+            ),
+            sample_eligible_candidate(
+                "provider-pool",
+                "endpoint-1",
+                "key-b",
+                10,
+                provider_config.clone(),
+            ),
+            sample_eligible_candidate(
+                "provider-pool",
+                "endpoint-1",
+                "key-c",
+                10,
+                provider_config.clone(),
+            ),
+        ]);
+
+        let first = cursor.next_key().await.expect("first key should schedule");
+        assert_eq!(first.candidate.key_id, "key-a");
+        record_admin_provider_pool_model_cooldown(
+            app.runtime_state.as_ref(),
+            "provider-pool",
+            "key-b",
+            "gpt-5",
+            "capacity",
+            30,
+        )
+        .await;
+
+        let second = cursor
+            .next_key()
+            .await
+            .expect("paused account-model pair should be skipped");
+        assert_eq!(second.candidate.key_id, "key-c");
+        assert_eq!(
+            cursor
+                .take_skipped_candidates()
+                .iter()
+                .map(|item| (item.candidate.key_id.as_str(), item.skip_reason))
+                .collect::<Vec<_>>(),
+            vec![("key-b", "pool_model_cooldown")]
+        );
+
+        let mut other_model =
+            sample_eligible_candidate("provider-pool", "endpoint-1", "key-b", 10, provider_config);
+        other_model.candidate.selected_provider_model_name = "gpt-5.6-terra".to_string();
+        let mut other_model_cursor =
+            PoolKeyCursor::new(PlannerAppState::new(&app), group, None, None, None);
+        other_model_cursor.queued_candidates = VecDeque::from([other_model]);
+        let scheduled = other_model_cursor
+            .next_key()
+            .await
+            .expect("the same account should remain usable for another model");
+        assert_eq!(scheduled.candidate.key_id, "key-b");
     }
 
     #[tokio::test]

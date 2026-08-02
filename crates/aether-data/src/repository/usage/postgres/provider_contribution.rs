@@ -266,11 +266,12 @@ async fn upsert_contribution_in_tx(
 ) -> Result<(), DataLayerError> {
     let empty = ProviderApiKeyUsageContribution::default();
     let contribution = contribution.unwrap_or(&empty);
-    let key_id = if contribution.key_id.trim().is_empty() {
-        None
-    } else {
-        Some(contribution.key_id.as_str())
-    };
+    let key_id = contribution
+        .key_id
+        .trim()
+        .is_empty()
+        .then_some(None)
+        .unwrap_or(Some(contribution.key_id.as_str()));
 
     sqlx::query(UPSERT_CONTRIBUTION_SQL)
         .bind(request_id)
