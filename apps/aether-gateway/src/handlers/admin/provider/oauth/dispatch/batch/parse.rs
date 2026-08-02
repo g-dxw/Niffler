@@ -9,8 +9,10 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -79,6 +81,18 @@ fn coerce_admin_provider_oauth_import_str(value: Option<&serde_json::Value>) -> 
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn sub2api_oauth_email_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"(?i)^[A-Z0-9._%+-]{1,64}@[A-Z0-9.-]{1,253}\.[A-Z]{2,63}$")
+            .expect("sub2api email regex should compile")
+    })
+}
+
+fn sub2api_oauth_email_from_account_name(account_name: Option<String>) -> Option<String> {
+    account_name.filter(|value| sub2api_oauth_email_regex().is_match(value))
 }
 
 fn admin_provider_oauth_import_expiry_value(value: Option<&serde_json::Value>) -> Option<u64> {
@@ -510,6 +524,12 @@ fn extract_sub2api_oauth_import_entry(
         );
     };
 
+    let account_name_email =
+        sub2api_oauth_email_from_account_name(sub2api_oauth_import_string(account, &["name"]));
+    let email = entry.email.clone().or(account_name_email);
+    if entry.email.is_none() {
+        entry.email = email.clone();
+    }
     let workspace_name = sub2api_oauth_import_string(
         credentials,
         &[
@@ -524,7 +544,7 @@ fn extract_sub2api_oauth_import_entry(
         entry.account_name = workspace_name.clone();
     }
     entry.key_name = sub2api_oauth_key_name(
-        entry.email.as_deref(),
+        email.as_deref(),
         entry.user_id.as_deref(),
         entry.account_id.as_deref(),
         workspace_name.as_deref(),
@@ -877,6 +897,49 @@ mod tests {
     }
 
     #[test]
+    fn parses_sub2api_account_name_as_email_when_credentials_email_is_missing() {
+        let entries = parse_admin_provider_oauth_batch_import_entries(
+            "codex",
+            &json!({
+                "type": "sub2api-data",
+                "version": 1,
+                "exported_at": "2026-07-31T05:55:38Z",
+                "proxies": [],
+                "accounts": [{
+                    "name": "straw.mana_8o@icloud.com",
+                    "platform": "openai",
+                    "type": "oauth",
+                    "credentials": {
+                        "access_token": "sub2api-access-token",
+                        "chatgpt_account_id": "workspace-from-sub2api",
+                        "plan_type": "team"
+                    }
+                }]
+            })
+            .to_string(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].access_token.as_deref(),
+            Some("sub2api-access-token")
+        );
+        assert_eq!(
+            entries[0].email.as_deref(),
+            Some("straw.mana_8o@icloud.com")
+        );
+        assert_eq!(
+            entries[0].account_id.as_deref(),
+            Some("workspace-from-sub2api")
+        );
+        assert_eq!(
+            entries[0].key_name.as_deref(),
+            Some("straw.mana_8o@icloud.com · workspace-from-sub2api")
+        );
+        assert_eq!(entries[0].validation_error, None);
+    }
+
+    #[test]
     fn keeps_invalid_sub2api_accounts_as_failed_entries_without_token_data() {
         let entries = parse_admin_provider_oauth_batch_import_entries(
             "codex",
@@ -960,6 +1023,7 @@ mod tests {
                 "exported_at": "2026-07-14T10:36:05Z",
                 "proxies": [],
                 "accounts": [{
+                    "name": "friendly account",
                     "platform": "openai",
                     "type": "oauth",
                     "credentials": {

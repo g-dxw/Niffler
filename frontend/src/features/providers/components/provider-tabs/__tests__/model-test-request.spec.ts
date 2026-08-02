@@ -10,6 +10,7 @@ import {
   isModelTestableEndpoint,
   isModelTestableApiFormat,
   listModelTestMappedModelOptions,
+  modelTestSupportsStreamOption,
   normalizeModelTestMappedModelSelection,
   selectPreferredModelTestEndpoint,
   setModelTestRequestBodyModel,
@@ -91,6 +92,34 @@ describe('buildDefaultModelTestRequestBody', () => {
     ])
     expect(body.tool_choice).toEqual({ type: 'image_generation' })
     expect(body.messages).toBeUndefined()
+  })
+
+  it('uses the compact Responses payload template', () => {
+    const body = JSON.parse(buildDefaultModelTestRequestBody('gpt-5.1-codex', 'openai:responses:compact'))
+
+    expect(body).toEqual({
+      model: 'gpt-5.1-codex',
+      input: 'Hello! This is a test message.',
+      max_output_tokens: 30,
+      stream: true,
+    })
+  })
+
+  it('uses the Gemini generateContent payload template', () => {
+    const body = JSON.parse(buildDefaultModelTestRequestBody('gemini-2.5-pro', 'gemini:generate_content'))
+
+    expect(body).toEqual({
+      model: 'gemini-2.5-pro',
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: 'Hello! This is a test message.' }],
+        },
+      ],
+      generationConfig: {
+        maxOutputTokens: 30,
+      },
+    })
   })
 
   it('lists endpoint-scoped provider model mappings in test selection order', () => {
@@ -249,6 +278,30 @@ describe('isModelTestableApiFormat', () => {
     'jina:rerank',
   ])('allows synchronous model-test endpoint formats: %s', (apiFormat) => {
     expect(isModelTestableApiFormat(apiFormat)).toBe(true)
+  })
+})
+
+describe('modelTestSupportsStreamOption', () => {
+  it.each([
+    'openai:chat',
+    'openai:responses',
+    'openai:responses:compact',
+    'openai:image',
+    'claude:messages',
+    'gemini:generate_content',
+  ])('shows the stream option for %s', (apiFormat) => {
+    expect(modelTestSupportsStreamOption(apiFormat)).toBe(true)
+  })
+
+  it.each([
+    'openai:embedding',
+    'gemini:embedding',
+    'jina:embedding',
+    'doubao:embedding',
+    'openai:rerank',
+    'jina:rerank',
+  ])('hides the stream option for synchronous %s tests', (apiFormat) => {
+    expect(modelTestSupportsStreamOption(apiFormat)).toBe(false)
   })
 })
 

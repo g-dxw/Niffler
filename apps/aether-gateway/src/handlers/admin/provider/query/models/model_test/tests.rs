@@ -199,27 +199,69 @@ fn provider_query_standard_test_resolves_codex_responses_upstream_streaming() {
         None,
         "codex",
         "openai:responses",
+        false,
     ));
     assert!(provider_query_resolve_standard_test_upstream_is_stream(
         Some(&json!({"upstream_stream_policy": "force_non_stream"})),
         "codex",
         "openai:responses",
+        false,
     ));
     assert!(!provider_query_resolve_standard_test_upstream_is_stream(
         None,
         "codex",
         "openai:responses:compact",
+        false,
     ));
     assert!(!provider_query_resolve_standard_test_upstream_is_stream(
         None,
         "custom",
         "openai:responses",
+        false,
     ));
     assert!(provider_query_resolve_standard_test_upstream_is_stream(
         Some(&json!({"upstream_stream_policy": "force_stream"})),
         "custom",
         "openai:responses",
+        false,
     ));
+}
+
+#[test]
+fn provider_query_standard_test_uses_client_stream_for_auto_policy() {
+    assert!(!provider_query_resolve_standard_test_upstream_is_stream(
+        None,
+        "custom",
+        "openai:chat",
+        false,
+    ));
+    assert!(provider_query_resolve_standard_test_upstream_is_stream(
+        None,
+        "custom",
+        "openai:chat",
+        true,
+    ));
+}
+
+#[test]
+fn provider_query_gemini_test_body_uses_native_contents_without_stream() {
+    assert_eq!(
+        provider_query_standard_test_client_api_format("gemini:generate_content"),
+        "gemini:generate_content"
+    );
+
+    let body = provider_query_build_test_request_body_for_api_format(
+        &json!({}),
+        "gemini-2.5-pro",
+        "/api/admin/provider-query/test-model",
+        "gemini:generate_content",
+    );
+
+    assert_eq!(
+        body["contents"][0]["parts"][0]["text"],
+        json!(DEFAULT_PROVIDER_QUERY_TEST_MESSAGE)
+    );
+    assert!(body.get("stream").is_none());
 }
 
 #[test]
@@ -230,6 +272,7 @@ fn provider_query_standard_test_reenforces_upstream_stream_body_field() {
         Some(&endpoint_config),
         "codex",
         "openai:responses",
+        false,
     );
     let require_body_stream_field =
         provider_query_request_requires_body_stream_field(&body, Some(&endpoint_config));

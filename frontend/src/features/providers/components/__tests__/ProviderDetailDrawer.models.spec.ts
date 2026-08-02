@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, reactive, type App } from '@/test/vue'
+import { createApp, defineComponent, h, nextTick, reactive, useAttrs, type App } from '@/test/vue'
 import ProviderDetailDrawer from '@/features/providers/components/ProviderDetailDrawer.vue'
 
 const endpointMocks = vi.hoisted(() => ({
@@ -8,6 +8,7 @@ const endpointMocks = vi.hoisted(() => ({
   getProviderModels: vi.fn(),
   getProviderMappingPreview: vi.fn(),
   getProviderKeysPage: vi.fn(),
+  openAccountTest: vi.fn(),
   sortApiFormats: vi.fn((formats: string[]) => formats),
 }))
 
@@ -40,7 +41,8 @@ vi.mock('@/components/ui/button.vue', () => ({
   default: defineComponent({
     name: 'ButtonStub',
     setup(_, { slots }) {
-      return () => h('button', slots.default?.())
+      const attrs = useAttrs()
+      return () => h('button', attrs, slots.default?.())
     },
   }),
 }))
@@ -91,7 +93,8 @@ vi.mock('@/features/providers/components', () => {
       models: { type: Array, default: () => [] },
       loading: Boolean,
     },
-    setup(props) {
+    setup(props, { expose }) {
+      expose({ openAccountTest: endpointMocks.openAccountTest })
       return () => h('div', {
         'data-testid': 'models-tab',
         'data-provider-id': (props.provider as { id: string }).id,
@@ -237,6 +240,7 @@ vi.mock('lucide-vue-next', async () => {
     ShieldX: Icon,
     Globe: Icon,
     GitBranch: Icon,
+    Play: Icon,
   }
 })
 
@@ -348,5 +352,47 @@ describe('ProviderDetailDrawer models state', () => {
     modelsTab = document.body.querySelector<HTMLElement>('[data-testid="models-tab"]')
     expect(modelsTab?.dataset.providerId).toBe('provider-b')
     expect(modelsTab?.dataset.models).toBe('')
+  })
+
+  it('routes the account test button to the shared ModelsTab test dialog', async () => {
+    endpointMocks.getProviderEndpoints.mockResolvedValue([{
+      id: 'endpoint-a',
+      provider_id: 'provider-a',
+      provider_name: 'Provider A',
+      api_format: 'openai:chat',
+      base_url: 'https://example.com',
+      is_active: true,
+    }])
+    endpointMocks.getProviderKeysPage.mockResolvedValue({
+      keys: [{
+        id: 'provider-key-a',
+        provider_id: 'provider-a',
+        name: 'Account A',
+        api_key_masked: 'sk-***',
+        auth_type: 'api_key',
+        api_formats: ['openai:chat'],
+        internal_priority: 1,
+        is_active: true,
+      }],
+      total: 1,
+      page: 1,
+      page_size: 3,
+    })
+
+    mountDrawer({
+      providerId: 'provider-a',
+      open: true,
+      initialProvider: createProvider('provider-a'),
+    })
+    await settle()
+    await settle()
+
+    const button = [...document.querySelectorAll('button')]
+      .find(item => item.getAttribute('title') === '测试账号')
+    expect(button).toBeTruthy()
+    button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+
+    expect(endpointMocks.openAccountTest).toHaveBeenCalledWith('provider-key-a')
   })
 })

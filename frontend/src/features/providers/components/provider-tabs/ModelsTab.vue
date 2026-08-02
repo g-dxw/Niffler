@@ -227,9 +227,11 @@
     :result="modelTest.testResult.value"
     :mode="modelTest.testMode.value"
     :provider-type="provider.provider_type"
+    :model-options="testModelOptions"
+    :selected-model-value="pendingTestModel?.id || null"
     :selecting-model-name="pendingTestModel ? (pendingTestModel.global_model_display_name || pendingTestModel.provider_model_name) : null"
     :requested-model-name="pendingRequestedModelName"
-    :endpoints="activeEndpoints"
+    :endpoints="testEndpoints"
     :selected-endpoint="selectedTestEndpoint"
     :testing="modelTest.testing.value"
     :trace="modelTest.testTrace.value"
@@ -248,6 +250,7 @@
     @back="handleTestDialogBack"
     @start="handleStartPendingTest"
     @select-endpoint="handleSelectTestEndpoint"
+    @select-model="handleSelectTestModel"
     @select-model-mapping="handleSelectModelMapping"
     @update:request-headers-draft="testRequestHeadersDraft = $event"
     @update:request-body-draft="testRequestBodyDraft = $event"
@@ -285,6 +288,7 @@ import {
   parseModelTestRequestHeadersDraft,
   parseModelTestRequestBodyDraft,
   selectPreferredModelTestEndpoint,
+  modelTestKeySupportsEndpoint,
   syncModelTestRequestBodyDraft,
 } from './model-test-request'
 
@@ -321,6 +325,7 @@ const testRequestHeadersResetValue = ref('')
 const testRequestBodyDraft = ref('')
 const testRequestBodyResetValue = ref('')
 const selectedTestMappedModelName = ref<string | null>(null)
+const accountTestKeyId = ref<string | null>(null)
 const isPoolManagedProvider = computed(() => Boolean(props.provider.pool_advanced))
 const activeEndpoints = computed(() => (props.endpoints ?? [])
   .filter(endpoint => {
@@ -332,6 +337,16 @@ const activeEndpoints = computed(() => (props.endpoints ?? [])
     }
     return isModelTestableEndpoint(endpoint, props.providerKeys ?? [], props.provider.provider_type)
   }))
+const testEndpoints = computed(() => {
+  if (!accountTestKeyId.value) return activeEndpoints.value
+  const key = (props.providerKeys ?? []).find(item => item.id === accountTestKeyId.value)
+  if (!key) return []
+  return activeEndpoints.value.filter(endpoint => modelTestKeySupportsEndpoint(
+    key,
+    endpoint,
+    props.provider.provider_type,
+  ))
+})
 const parsedTestRequestHeaders = computed(() => parseModelTestRequestHeadersDraft(testRequestHeadersDraft.value))
 const testRequestHeadersError = computed(() => parsedTestRequestHeaders.value.error)
 const parsedTestRequestBody = computed(() => parseModelTestRequestBodyDraft(testRequestBodyDraft.value))
@@ -363,6 +378,12 @@ const sortedModels = computed(() => {
     return nameA.localeCompare(nameB)
   })
 })
+const testModelOptions = computed(() => sortedModels.value
+  .filter(model => model.is_active !== false)
+  .map(model => ({
+    value: model.id,
+    label: model.global_model_display_name || model.provider_model_name,
+  })))
 
 // ===== 模型列表智能分页 =====
 const modelsListRef = ref<HTMLElement | null>(null)
@@ -529,6 +550,7 @@ function handleTestDialogClose() {
   testRequestHeadersResetValue.value = ''
   testRequestBodyDraft.value = ''
   testRequestBodyResetValue.value = ''
+  accountTestKeyId.value = null
 }
 
 function handleTestDialogBack() {
@@ -538,7 +560,7 @@ function handleTestDialogBack() {
 }
 
 function handleSelectTestEndpoint(endpointId: string) {
-  const endpoint = activeEndpoints.value.find(item => item.id === endpointId)
+  const endpoint = testEndpoints.value.find(item => item.id === endpointId)
   if (!endpoint) return
   selectedTestEndpoint.value = endpoint
   syncSelectedTestModelMapping()
@@ -553,11 +575,25 @@ function handleSelectModelMapping(modelName: string) {
   syncTestRequestBodyModel()
 }
 
+function handleSelectTestModel(modelId: string) {
+  const model = sortedModels.value.find(item => item.id === modelId)
+  if (!model) return
+  pendingTestModel.value = model
+  selectedTestMappedModelName.value = null
+  selectedTestEndpoint.value = selectPreferredModelTestEndpoint(model, testEndpoints.value)
+  testRequestBodyResetValue.value = buildDefaultModelTestRequestBody(
+    getModelTestRequestedModelName(model),
+    selectedTestEndpoint.value?.api_format,
+    model,
+  )
+  testRequestBodyDraft.value = testRequestBodyResetValue.value
+}
+
 async function handleStartPendingTest() {
   if (modelTest.testing.value) return
   if (!pendingTestModel.value) return
 
-  const endpoint = selectedTestEndpoint.value || activeEndpoints.value[0]
+  const endpoint = selectedTestEndpoint.value || testEndpoints.value[0]
   if (!endpoint) {
     showError(t('providerModelsTab.selectTestEndpoint'))
     return
@@ -580,22 +616,58 @@ async function handleStartPendingTest() {
   const modelName = model.global_model_name || model.provider_model_name
   const endpointPrefix = `[${formatApiFormat(endpoint.api_format)}] `
   await modelTest.startTest({
-    mode: isPoolManagedProvider.value ? 'pool' : 'global',
+    mode: accountTestKeyId.value ? 'direct' : (isPoolManagedProvider.value ? 'pool' : 'global'),
     modelName,
     displayLabel: `${endpointPrefix}${modelName}`,
     apiFormat: endpoint.api_format,
     endpointId: endpoint.id,
     endpointBaseUrl: endpoint.base_url,
+    apiKeyId: accountTestKeyId.value ?? undefined,
     applyModelMapping: Boolean(mappedTestModelName.value),
     mappedModelName: mappedTestModelName.value ?? undefined,
     requestHeaders,
     requestBody,
     onError: () => {
-      if (activeEndpoints.value.length > 1) {
+      if (!accountTestKeyId.value && testEndpoints.value.length > 1) {
         return true
       }
     },
   })
+}
+
+function openAccountTest(keyId: string) {
+  if (modelTest.testing.value) return
+  const key = (props.providerKeys ?? []).find(item => item.id === keyId)
+  if (!key) {
+    showError('该账号没有可测试的协议端点')
+    return
+  }
+
+  const model = sortedModels.value.find(item => item.is_active !== false)
+  if (!model) {
+    showError('暂无可测试的模型')
+    return
+  }
+
+  accountTestKeyId.value = keyId
+  if (testEndpoints.value.length === 0) {
+    accountTestKeyId.value = null
+    showError('该账号没有可测试的协议端点')
+    return
+  }
+  pendingTestModel.value = model
+  selectedTestEndpoint.value = selectPreferredModelTestEndpoint(model, testEndpoints.value)
+  selectedTestMappedModelName.value = null
+  testRequestHeadersResetValue.value = buildDefaultModelTestRequestHeaders()
+  testRequestHeadersDraft.value = testRequestHeadersResetValue.value
+  testRequestBodyResetValue.value = buildDefaultModelTestRequestBody(
+    getModelTestRequestedModelName(model),
+    selectedTestEndpoint.value?.api_format,
+    model,
+  )
+  testRequestBodyDraft.value = testRequestBodyResetValue.value
+  modelTest.testResult.value = null
+  modelTest.dialogOpen.value = true
 }
 
 async function testModelConnection(model: Model) {
@@ -607,6 +679,7 @@ async function testModelConnection(model: Model) {
   }
 
   pendingTestModel.value = model
+  accountTestKeyId.value = null
   selectedTestEndpoint.value = selectPreferredModelTestEndpoint(model, activeEndpoints.value)
   const requestedModelName = getModelTestRequestedModelName(model)
   selectedTestMappedModelName.value = null
@@ -682,6 +755,7 @@ watch(
 
 // 暴露给父组件
 defineExpose({
-  reload: refresh
+  reload: refresh,
+  openAccountTest,
 })
 </script>

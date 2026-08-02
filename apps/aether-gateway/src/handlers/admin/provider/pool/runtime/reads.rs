@@ -10,7 +10,8 @@ use crate::handlers::admin::provider::shared::support::{
 };
 use crate::maintenance::PoolQuotaProbeWorkerConfig;
 use crate::provider_pool_demand::{
-    provider_pool_burst_pending, read_provider_pool_demand_snapshot,
+    provider_pool_burst_pending, provider_pool_live_in_flight_by_key,
+    read_provider_pool_demand_snapshot,
 };
 use aether_runtime_state::{DataLayerError, RuntimeState};
 use futures_util::future::join_all;
@@ -139,6 +140,8 @@ pub(crate) async fn read_admin_provider_pool_runtime_state(
     .await;
     state.provider_in_flight = demand_snapshot.in_flight;
     state.provider_ema_in_flight = demand_snapshot.ema_in_flight;
+    state.in_flight_by_key =
+        provider_pool_live_in_flight_by_key(runtime, provider_id, key_ids).await;
     state.provider_desired_hot = if pool_config.probing_enabled {
         demand_snapshot.desired_hot
     } else {

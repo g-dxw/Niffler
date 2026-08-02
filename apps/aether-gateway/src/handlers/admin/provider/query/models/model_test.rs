@@ -589,6 +589,16 @@ fn provider_query_build_test_request_body_for_api_format(
             "temperature": 0.7,
             "stream": true,
         }),
+        "gemini:generate_content" => json!({
+            "model": model,
+            "contents": [{
+                "role": "user",
+                "parts": [{ "text": message }]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 30,
+            },
+        }),
         _ => json!({
             "model": model,
             "messages": [{
@@ -631,6 +641,12 @@ fn provider_query_insert_default_test_conversation(
             object.insert(
                 "messages".to_string(),
                 json!([{ "role": "user", "content": message }]),
+            );
+        }
+        "gemini:generate_content" => {
+            object.insert(
+                "contents".to_string(),
+                json!([{ "role": "user", "parts": [{ "text": message }] }]),
             );
         }
         _ => {
@@ -726,6 +742,7 @@ fn provider_query_request_body_has_conversation_for_api_format(
                 .unwrap_or(false)
                 || value_has_non_empty_text(body.get("system"))
         }
+        "gemini:generate_content" => value_has_non_empty_text(body.get("contents")),
         _ => provider_query_request_body_has_conversation(body),
     }
 }
@@ -771,6 +788,7 @@ fn provider_query_resolve_standard_test_upstream_is_stream(
     endpoint_config: Option<&Value>,
     provider_type: &str,
     provider_api_format: &str,
+    client_is_stream: bool,
 ) -> bool {
     let hard_requires_streaming = crate::ai_serving::force_upstream_streaming_for_provider(
         provider_type,
@@ -778,7 +796,7 @@ fn provider_query_resolve_standard_test_upstream_is_stream(
     );
     crate::ai_serving::resolve_upstream_is_stream_from_endpoint_config(
         endpoint_config,
-        false,
+        client_is_stream,
         hard_requires_streaming,
     )
 }
@@ -2628,10 +2646,11 @@ async fn provider_query_execute_standard_test_candidate(
     }
 
     let incoming_request_headers = provider_query_extract_request_headers(payload);
-    let mut request_body = original_request_body.clone();
-    if let Some(object) = request_body.as_object_mut() {
-        object.insert("stream".to_string(), Value::Bool(false));
-    }
+    let request_body = original_request_body.clone();
+    let client_is_stream = request_body
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let request_model =
         provider_query_request_body_model(&request_body, &candidate.effective_model);
 
@@ -2639,6 +2658,7 @@ async fn provider_query_execute_standard_test_candidate(
         transport.endpoint.config.as_ref(),
         transport.provider.provider_type.as_str(),
         provider_api_format,
+        client_is_stream,
     );
     let require_body_stream_field = provider_query_request_requires_body_stream_field(
         &request_body,
@@ -2671,7 +2691,7 @@ async fn provider_query_execute_standard_test_candidate(
             }
             provider_request_body
         }
-        "claude:messages" | "gemini:generate_content" => {
+        "claude:messages" => {
             let Some(mut provider_request_body) =
                 crate::ai_serving::build_cross_format_openai_chat_request_body(
                     &request_body,
@@ -2696,6 +2716,29 @@ async fn provider_query_execute_standard_test_candidate(
                     format!("Provider request body rules rejected {provider_api_format}"),
                 ));
             }
+            provider_request_body
+        }
+        "gemini:generate_content" => {
+            let Some(provider_request_body) =
+                crate::ai_serving::build_standard_request_body_with_model_directives_and_request_headers(
+                    &request_body,
+                    client_api_format,
+                    request_model,
+                    transport.provider.provider_type.as_str(),
+                    normalized_provider_api_format.as_str(),
+                    route_path,
+                    upstream_is_stream,
+                    transport.endpoint.body_rules.as_ref(),
+                    Some(candidate.key.id.as_str()),
+                    Some(&incoming_request_headers),
+                    false,
+                )
+            else {
+                return Ok(provider_query_skipped_execution_outcome(
+                    request_body.clone(),
+                    format!("Provider request body could not be built for {provider_api_format}"),
+                ));
+            };
             provider_request_body
         }
         "openai:responses" | "openai:responses:compact" => {

@@ -40,10 +40,6 @@ parsed_windows AS (
       CASE
         WHEN BTRIM(COALESCE(window_item ->> 'window_seconds', '')) ~ '^[0-9]+$'
          AND length(BTRIM(window_item ->> 'window_seconds')) <= 19
-         AND (
-           length(BTRIM(window_item ->> 'window_seconds')) < 19
-           OR BTRIM(window_item ->> 'window_seconds') <= '9223372036854775807'
-         )
         THEN CAST(window_item ->> 'window_seconds' AS BIGINT)
         ELSE NULL
       END,
@@ -100,83 +96,14 @@ aggregated AS (
     valid_windows.window_code,
     valid_windows.window_start_unix_secs,
     valid_windows.window_end_unix_secs,
-    COUNT(usage_facts.id) FILTER (
-      WHERE usage_facts.billing_status = 'settled'
-    )::BIGINT AS request_count,
-    COALESCE(SUM(GREATEST(COALESCE(usage_facts.total_tokens, 0), 0)::BIGINT) FILTER (
-      WHERE usage_facts.billing_status = 'settled'
-    ), 0)::BIGINT AS total_tokens,
-    CAST(COALESCE(SUM(provider_cost.base_cost_usd) FILTER (
-      WHERE usage_facts.billing_status = 'settled'
-    ), 0) AS DOUBLE PRECISION) AS total_cost_usd
+    COALESCE(SUM(contributions.window_request_count), 0)::BIGINT AS request_count,
+    COALESCE(SUM(contributions.window_total_tokens), 0)::BIGINT AS total_tokens,
+    COALESCE(SUM(contributions.window_total_cost_usd), 0)::NUMERIC(20,8) AS total_cost_usd
   FROM valid_windows
-  LEFT JOIN usage_billing_facts AS usage_facts
-    ON usage_facts.provider_api_key_id = valid_windows.id
-   AND usage_facts.created_at >= to_timestamp(valid_windows.usage_start_unix_secs::DOUBLE PRECISION)
-   AND usage_facts.created_at < to_timestamp(valid_windows.window_end_unix_secs::DOUBLE PRECISION)
-  LEFT JOIN public."usage" AS raw_usage
-    ON raw_usage.request_id = usage_facts.request_id
-  LEFT JOIN usage_settlement_snapshots AS settlement
-    ON settlement.request_id = usage_facts.request_id
-  LEFT JOIN LATERAL (
-    SELECT
-      COALESCE(
-        CASE
-          WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'base_cost_usd', ''))
-               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
-          THEN CAST(raw_usage.request_metadata ->> 'base_cost_usd' AS DOUBLE PRECISION)
-          ELSE NULL
-        END,
-        CASE
-          WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}', ''))
-               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
-          THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}' AS DOUBLE PRECISION)
-          ELSE NULL
-        END,
-        CASE
-          WHEN BTRIM(COALESCE(settlement.settlement_snapshot ->> 'base_cost_usd', ''))
-               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
-          THEN CAST(settlement.settlement_snapshot ->> 'base_cost_usd' AS DOUBLE PRECISION)
-          ELSE NULL
-        END
-      ) AS direct_base_cost_usd,
-      COALESCE(
-        CASE
-          WHEN BTRIM(COALESCE(raw_usage.request_metadata ->> 'sales_multiplier', ''))
-               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
-          THEN CAST(raw_usage.request_metadata ->> 'sales_multiplier' AS DOUBLE PRECISION)
-          ELSE NULL
-        END,
-        CASE
-          WHEN BTRIM(COALESCE(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}', ''))
-               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
-          THEN CAST(raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}' AS DOUBLE PRECISION)
-          ELSE NULL
-        END,
-        CASE
-          WHEN BTRIM(COALESCE(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier', ''))
-               ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
-          THEN CAST(settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier' AS DOUBLE PRECISION)
-          ELSE NULL
-        END
-      ) AS sales_multiplier
-  ) AS provider_cost_inputs ON TRUE
-  LEFT JOIN LATERAL (
-    SELECT GREATEST(
-      COALESCE(
-        provider_cost_inputs.direct_base_cost_usd,
-        CASE
-          WHEN provider_cost_inputs.sales_multiplier > 0
-          THEN CAST(usage_facts.total_cost_usd AS DOUBLE PRECISION)
-            / provider_cost_inputs.sales_multiplier
-          ELSE NULL
-        END,
-        CAST(usage_facts.total_cost_usd AS DOUBLE PRECISION),
-        0
-      ),
-      0
-    ) AS base_cost_usd
-  ) AS provider_cost ON TRUE
+  LEFT JOIN provider_api_key_usage_contributions AS contributions
+    ON contributions.provider_api_key_id = valid_windows.id
+   AND contributions.usage_created_at_unix_secs >= valid_windows.usage_start_unix_secs
+   AND contributions.usage_created_at_unix_secs < valid_windows.window_end_unix_secs
   GROUP BY
     valid_windows.id,
     valid_windows.window_scope,
@@ -203,9 +130,9 @@ upserted_counters AS (
     window_code,
     window_start_unix_secs,
     window_end_unix_secs,
-    COALESCE(request_count, 0),
-    COALESCE(total_tokens, 0),
-    GREATEST(CAST(COALESCE(total_cost_usd, 0) AS NUMERIC), 0),
+    request_count,
+    total_tokens,
+    total_cost_usd,
     NOW(),
     NOW()
   FROM aggregated
@@ -237,60 +164,16 @@ deleted_stale_counters AS (
     )
   RETURNING counters.provider_api_key_id
 ),
-pending_deltas AS (
-  SELECT
-    delta.id AS delta_id,
-    delta.target_id AS provider_api_key_id,
-    COALESCE(delta.usage_created_at_unix_secs, 0) AS usage_created_at_unix_secs
-  FROM usage_counter_deltas AS delta
-  WHERE delta.kind = 'provider_api_key_window'
-    AND delta.target_id = $1
-    AND delta.processed_at IS NULL
-),
-inserted_applications AS (
-  INSERT INTO provider_api_key_window_usage_applications (
-    delta_id,
-    provider_api_key_id,
-    window_scope,
-    window_code,
-    window_start_unix_secs,
-    window_end_unix_secs
-  )
-  SELECT
-    pending_deltas.delta_id,
-    pending_deltas.provider_api_key_id,
-    valid_windows.window_scope,
-    valid_windows.window_code,
-    valid_windows.window_start_unix_secs,
-    valid_windows.window_end_unix_secs
-  FROM pending_deltas
-  JOIN valid_windows
-    ON valid_windows.id = pending_deltas.provider_api_key_id
-   AND pending_deltas.usage_created_at_unix_secs >= valid_windows.usage_start_unix_secs
-   AND pending_deltas.usage_created_at_unix_secs < valid_windows.window_end_unix_secs
-  ON CONFLICT DO NOTHING
-  RETURNING delta_id
-),
 completed_deltas AS (
-  UPDATE usage_counter_deltas AS delta
+  UPDATE usage_counter_deltas
   SET processed_at = NOW()
-  FROM pending_deltas
-  WHERE delta.id = pending_deltas.delta_id
-    AND EXISTS (
-      SELECT 1
-      FROM valid_windows
-      WHERE valid_windows.id = pending_deltas.provider_api_key_id
-    )
-    AND NOT EXISTS (
-      SELECT 1
-      FROM valid_windows
-      WHERE valid_windows.id = pending_deltas.provider_api_key_id
-        AND pending_deltas.usage_created_at_unix_secs >= valid_windows.window_end_unix_secs
-    )
-  RETURNING delta.id
+  WHERE kind = 'provider_api_key_window'
+    AND target_id = $1
+    AND processed_at IS NULL
+  RETURNING id
 )
 SELECT
   (SELECT COUNT(*)::BIGINT FROM upserted_counters) AS rebuilt_windows,
   (SELECT COUNT(*)::BIGINT FROM deleted_stale_counters) AS deleted_stale_windows,
-  (SELECT COUNT(*)::BIGINT FROM inserted_applications) AS recorded_applications,
+  0::BIGINT AS recorded_applications,
   (SELECT COUNT(*)::BIGINT FROM completed_deltas) AS completed_deltas

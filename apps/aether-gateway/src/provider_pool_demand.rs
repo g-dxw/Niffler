@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -223,6 +224,43 @@ pub(crate) async fn provider_pool_live_in_flight_count(
     runtime.score_len(&key).await.unwrap_or(0)
 }
 
+pub(crate) async fn provider_pool_live_in_flight_by_key(
+    runtime: &RuntimeState,
+    provider_id: &str,
+    key_ids: &[String],
+) -> BTreeMap<String, usize> {
+    let provider_id = provider_id.trim();
+    if provider_id.is_empty() || key_ids.is_empty() {
+        return BTreeMap::new();
+    }
+
+    let key = in_flight_tokens_key(provider_id);
+    let now_ms = current_unix_ms() as f64;
+    if let Err(err) = runtime.score_remove_by_score(&key, now_ms).await {
+        debug!(
+            provider_id,
+            error = ?err,
+            "gateway provider pool demand: failed to prune expired in-flight tokens by key"
+        );
+    }
+
+    let tracked_keys = key_ids.iter().cloned().collect::<BTreeSet<_>>();
+    let members = runtime
+        .score_range_by_min(&key, now_ms)
+        .await
+        .unwrap_or_default();
+    let mut counts = BTreeMap::new();
+    for member in members {
+        let Some(key_id) = member.rsplit(':').nth(1) else {
+            continue;
+        };
+        if tracked_keys.contains(key_id) {
+            *counts.entry(key_id.to_string()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 pub(crate) async fn provider_pool_burst_pending(runtime: &RuntimeState, provider_id: &str) -> bool {
     let provider_id = provider_id.trim();
     if provider_id.is_empty() {
@@ -376,6 +414,16 @@ mod tests {
             provider_pool_live_in_flight_count(runtime.as_ref(), "provider-1").await,
             1
         );
+        assert_eq!(
+            provider_pool_live_in_flight_by_key(
+                runtime.as_ref(),
+                "provider-1",
+                &["key-1".to_string(), "key-2".to_string()],
+            )
+            .await
+            .get("key-1"),
+            Some(&1)
+        );
 
         guard.release().await;
 
@@ -383,6 +431,56 @@ mod tests {
             provider_pool_live_in_flight_count(runtime.as_ref(), "provider-1").await,
             0
         );
+    }
+
+    #[tokio::test]
+    async fn in_flight_by_key_ignores_other_providers_and_untracked_keys() {
+        let runtime = Arc::new(RuntimeState::memory(MemoryRuntimeStateConfig::default()));
+        let first = acquire_provider_pool_in_flight_guard(
+            runtime.clone(),
+            "provider-1",
+            "request-1",
+            Some("candidate-1"),
+            "key-1",
+        )
+        .await
+        .expect("first guard");
+        let second = acquire_provider_pool_in_flight_guard(
+            runtime.clone(),
+            "provider-1",
+            "request-2",
+            Some("candidate-2"),
+            "key-2",
+        )
+        .await
+        .expect("second guard");
+        let other_provider = acquire_provider_pool_in_flight_guard(
+            runtime.clone(),
+            "provider-2",
+            "request-3",
+            Some("candidate-3"),
+            "key-1",
+        )
+        .await
+        .expect("other provider guard");
+
+        let counts = provider_pool_live_in_flight_by_key(
+            runtime.as_ref(),
+            "provider-1",
+            &[
+                "key-1".to_string(),
+                "key-2".to_string(),
+                "key-3".to_string(),
+            ],
+        )
+        .await;
+        assert_eq!(counts.get("key-1"), Some(&1));
+        assert_eq!(counts.get("key-2"), Some(&1));
+        assert_eq!(counts.get("key-3"), None);
+
+        first.release().await;
+        second.release().await;
+        other_provider.release().await;
     }
 
     #[tokio::test]

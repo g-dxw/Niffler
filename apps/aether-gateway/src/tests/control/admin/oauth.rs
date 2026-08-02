@@ -2051,12 +2051,11 @@ async fn gateway_batch_imports_sub2api_codex_export_with_workspace_names() {
                 }
             },
             {
-                "name": "also-ignored",
+                "name": "second@example.com",
                 "platform": "openai",
                 "type": "oauth",
                 "credentials": {
                     "access_token": "sub2api-pat-2",
-                    "email": "second@example.com",
                     "chatgpt_account_id": "workspace-1",
                     "chatgpt_user_id": "user-2",
                     "plan_type": "team"
@@ -2109,6 +2108,7 @@ async fn gateway_batch_imports_sub2api_codex_export_with_workspace_names() {
     assert!(names.contains("second@example.com · workspace-1"));
     assert!(!names.iter().any(|name| name.starts_with("codex_")));
 
+    let mut emails = std::collections::HashSet::new();
     for persisted in reloaded {
         let decrypted_auth_config = decrypt_python_fernet_ciphertext(
             DEVELOPMENT_ENCRYPTION_KEY,
@@ -2124,7 +2124,15 @@ async fn gateway_batch_imports_sub2api_codex_export_with_workspace_names() {
         assert_eq!(auth_config["access_token_import_temporary"], true);
         assert_eq!(auth_config["account_id"], "workspace-1");
         assert_eq!(auth_config["plan_type"], "team");
+        emails.insert(
+            auth_config["email"]
+                .as_str()
+                .expect("persisted auth config should keep email")
+                .to_string(),
+        );
     }
+    assert!(emails.contains("first@example.com"));
+    assert!(emails.contains("second@example.com"));
 
     gateway_handle.abort();
 }

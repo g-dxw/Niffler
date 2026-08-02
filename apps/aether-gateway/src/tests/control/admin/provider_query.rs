@@ -817,7 +817,7 @@ async fn gateway_handles_admin_provider_query_test_model_locally_with_trusted_ad
             assert_eq!(plan.key_id, "key-openai-primary");
             assert_eq!(plan.provider_api_format, "openai:chat");
             assert_eq!(plan.model_name.as_deref(), Some("gpt-4.1"));
-            assert!(!plan.stream);
+            assert!(plan.stream);
             assert_eq!(
                 plan.headers.get("content-type").map(String::as_str),
                 Some("application/json")
@@ -832,6 +832,13 @@ async fn gateway_handles_admin_provider_query_test_model_locally_with_trusted_ad
                     .as_ref()
                     .and_then(|body| body.get("model")),
                 Some(&json!("gpt-4.1"))
+            );
+            assert_eq!(
+                plan.body
+                    .json_body
+                    .as_ref()
+                    .and_then(|body| body.get("stream")),
+                Some(&json!(true))
             );
             Json(json!({
                 "request_id": plan.request_id,

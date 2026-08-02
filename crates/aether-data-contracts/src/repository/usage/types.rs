@@ -1853,6 +1853,24 @@ pub trait UsageWriteRepository: Send + Sync {
 
     async fn rebuild_provider_api_key_usage_stats(&self) -> Result<u64, crate::DataLayerError>;
 
+    async fn enqueue_provider_api_key_usage_projection_repair(
+        &self,
+        provider_api_key_id: &str,
+        repair_main: bool,
+        repair_window: bool,
+    ) -> Result<bool, crate::DataLayerError> {
+        let _ = (provider_api_key_id, repair_main, repair_window);
+        Ok(false)
+    }
+
+    async fn run_provider_api_key_usage_projection_maintenance(
+        &self,
+        batch_size: usize,
+    ) -> Result<ProviderApiKeyUsageProjectionMaintenanceSummary, crate::DataLayerError> {
+        let _ = batch_size;
+        Ok(ProviderApiKeyUsageProjectionMaintenanceSummary::default())
+    }
+
     async fn ensure_provider_api_key_codex_window_usage_stats(
         &self,
         provider_api_key_id: &str,
@@ -1974,6 +1992,14 @@ pub struct UsageCounterHealthSnapshot {
     pub oldest_pending_created_at_unix_secs: Option<u64>,
     pub latest_processed_at_unix_secs: Option<u64>,
     pub pending_by_kind: std::collections::BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ProviderApiKeyUsageProjectionMaintenanceSummary {
+    pub backfill_requests: usize,
+    pub completed_backfill_keys: usize,
+    pub repaired_keys: usize,
+    pub failed_repair_keys: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

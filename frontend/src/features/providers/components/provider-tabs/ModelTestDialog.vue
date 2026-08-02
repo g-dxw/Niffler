@@ -26,12 +26,39 @@
       class="space-y-4"
     >
       <div
+        v-if="modelOptions.length > 1"
+        class="space-y-2"
+      >
+        <div class="text-sm font-medium text-foreground">
+          {{ t('modelTest.selectModel', '选择模型') }}
+        </div>
+        <Select
+          :model-value="selectedModelValue || undefined"
+          @update:model-value="emit('selectModel', $event)"
+        >
+          <SelectTrigger class="w-full">
+            <SelectValue :placeholder="t('modelTest.selectModel', '选择模型')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="option in modelOptions"
+              :key="option.value"
+              :value="option.value"
+              :text-value="option.label"
+            >
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div
         v-if="endpoints.length > 0"
         class="space-y-2"
       >
         <div class="grid min-h-8 w-full items-center gap-2 sm:h-8 sm:grid-cols-2">
           <div class="text-sm font-medium text-foreground">
-            {{ t('modelTest.selectEndpoint') }}
+            {{ t('modelTest.requestProtocol', '请求协议') }}
           </div>
           <div
             v-if="modelMappingAvailable"
@@ -99,7 +126,94 @@
         </div>
       </div>
 
-      <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
+      <div class="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4">
+        <div class="space-y-2">
+          <div class="text-sm font-medium text-foreground">
+            {{ isImageTest ? t('modelTest.imagePrompt', '图片提示词') : t('modelTest.prompt', '测试提示词') }}
+          </div>
+          <Textarea
+            :model-value="structuredPrompt"
+            class="min-h-[104px] bg-background"
+            :placeholder="isImageTest ? t('modelTest.imagePromptPlaceholder', '描述要生成的图片内容') : t('modelTest.promptPlaceholder', '输入一段简单内容，确认上游能正常返回结果')"
+            @update:model-value="updateStructuredPrompt"
+          />
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div
+            v-if="supportsStreamOption"
+            class="flex min-h-10 items-center justify-between rounded-md border border-border/60 bg-background px-3 py-2"
+          >
+            <span class="text-xs font-medium">{{ t('modelTest.stream', '流式请求') }}</span>
+            <Switch
+              :model-value="structuredStream"
+              @update:model-value="updateStructuredStream"
+            />
+          </div>
+          <div
+            v-if="isImageTest"
+            class="space-y-1.5"
+          >
+            <div class="text-xs font-medium">{{ t('modelTest.imageSize', '图片尺寸') }}</div>
+            <Input
+              :model-value="structuredImageSize"
+              placeholder="1024x1024"
+              @update:model-value="updateStructuredImageSize"
+            />
+          </div>
+          <div
+            v-if="isOpenAiImageTest"
+            class="space-y-1.5"
+          >
+            <div class="text-xs font-medium">{{ t('modelTest.imageCountLabel', '图片数量') }}</div>
+            <Input
+              :model-value="String(structuredImageCount)"
+              type="number"
+              min="1"
+              max="4"
+              @update:model-value="updateStructuredImageCount"
+            />
+          </div>
+          <div
+            v-if="isImageTest"
+            class="space-y-1.5"
+          >
+            <div class="text-xs font-medium">{{ t('modelTest.imageFormat', '输出格式') }}</div>
+            <Select
+              :model-value="structuredImageFormat"
+              @update:model-value="updateStructuredImageFormat"
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="png">PNG</SelectItem>
+                <SelectItem value="jpeg">JPEG</SelectItem>
+                <SelectItem value="webp">WebP</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
+        <div>
+          <div class="text-sm font-medium">{{ t('modelTest.advancedEdit', '高级编辑') }}</div>
+          <div class="text-[11px] text-muted-foreground">{{ t('modelTest.advancedHint', '需要自定义请求头或请求体时再展开。') }}</div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          @click="showAdvancedEditors = !showAdvancedEditors"
+        >
+          {{ showAdvancedEditors ? t('modelTest.hideAdvanced', '收起 JSON') : t('modelTest.showAdvanced', '展开 JSON') }}
+        </Button>
+      </div>
+
+      <div
+        v-if="showAdvancedEditors"
+        class="grid gap-4 lg:grid-cols-2 lg:items-start"
+      >
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-3">
             <div class="text-sm font-medium">
@@ -793,6 +907,7 @@ import {
   Badge,
   Card,
   Dialog,
+  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -800,10 +915,11 @@ import {
   SelectValue,
   Tabs,
   TabsContent,
+  Switch,
 } from '@/components/ui'
 import Button from '@/components/ui/button.vue'
 import Textarea from '@/components/ui/textarea.vue'
-import { formatApiFormat } from '@/api/endpoints/types/api-format'
+import { formatApiFormat, normalizeApiFormatAlias } from '@/api/endpoints/types/api-format'
 import type { TestAttemptDetail, TestCandidateSummary, TestModelFailoverResponse } from '@/api/endpoints/providers'
 import type { CandidateRecord, RequestTrace } from '@/api/requestTrace'
 import JsonContent from '@/features/usage/components/RequestDetailDrawer/JsonContent.vue'
@@ -813,6 +929,7 @@ import {
   extractModelTestImagePreviews,
   extractModelTestResponsePreview,
   formatModelTestDiagnostic,
+  modelTestSupportsStreamOption,
 } from './model-test-request'
 import type { ModelTestImagePreview } from './model-test-request'
 
@@ -832,11 +949,18 @@ type TestModelMappingOption = {
   priority?: number
 }
 
+type TestModelOption = {
+  value: string
+  label: string
+}
+
 const props = defineProps<{
   open: boolean
   result: TestModelFailoverResponse | null
   mode?: 'global' | 'direct' | 'pool'
   providerType?: string | null
+  modelOptions?: TestModelOption[]
+  selectedModelValue?: string | null
   selectingModelName?: string | null
   requestedModelName?: string | null
   endpoints?: TestEndpointOption[]
@@ -861,12 +985,15 @@ const emit = defineEmits<{
   back: []
   start: []
   selectEndpoint: [endpointId: string]
+  selectModel: [modelId: string]
   selectModelMapping: [modelName: string]
   'update:requestHeadersDraft': [value: string]
   'update:requestBodyDraft': [value: string]
 }>()
 
 const endpoints = computed(() => props.endpoints ?? [])
+const modelOptions = computed(() => props.modelOptions ?? [])
+const selectedModelValue = computed(() => props.selectedModelValue?.trim() || '')
 const modelMappingOptions = computed(() => props.modelMappingOptions ?? [])
 const modelMappingAvailable = computed(
   () => props.modelMappingAvailable === true && modelMappingOptions.value.length > 0,
@@ -878,6 +1005,68 @@ const selectedModelMappingValue = computed(() => (
 ))
 const requestHeadersDraft = computed(() => props.requestHeadersDraft ?? '')
 const requestBodyDraft = computed(() => props.requestBodyDraft ?? '')
+const selectedApiFormat = computed(() => normalizeApiFormatAlias(props.selectedEndpoint?.api_format ?? ''))
+const parsedStructuredBody = computed<Record<string, unknown> | null>(() => {
+  try {
+    const parsed = JSON.parse(requestBodyDraft.value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+})
+const isOpenAiImageTest = computed(() => selectedApiFormat.value === 'openai:image')
+const supportsStreamOption = computed(() => modelTestSupportsStreamOption(selectedApiFormat.value))
+const isResponsesImageTest = computed(() => (
+  selectedApiFormat.value === 'openai:responses'
+  && Array.isArray(parsedStructuredBody.value?.tools)
+  && (parsedStructuredBody.value?.tools as unknown[]).some((tool) => (
+    tool && typeof tool === 'object' && (tool as Record<string, unknown>).type === 'image_generation'
+  ))
+))
+const isImageTest = computed(() => isOpenAiImageTest.value || isResponsesImageTest.value)
+const structuredPrompt = computed(() => {
+  const body = parsedStructuredBody.value
+  if (!body) return ''
+  const directPrompt = body.prompt ?? body.input ?? body.query
+  if (typeof directPrompt === 'string') return directPrompt
+  if (Array.isArray(body.messages)) {
+    const content = (body.messages[0] as Record<string, unknown> | undefined)?.content
+    if (typeof content === 'string') return content
+  }
+  if (Array.isArray(body.contents)) {
+    const parts = (body.contents[0] as Record<string, unknown> | undefined)?.parts
+    const text = Array.isArray(parts)
+      ? (parts[0] as Record<string, unknown> | undefined)?.text
+      : null
+    if (typeof text === 'string') return text
+  }
+  return ''
+})
+const structuredStream = computed(() => parsedStructuredBody.value?.stream === true)
+const structuredImageSize = computed(() => {
+  const body = parsedStructuredBody.value
+  if (typeof body?.size === 'string' && body.size.trim()) return body.size
+  const tools = Array.isArray(body?.tools) ? body.tools : []
+  const tool = tools.find((item) => (
+    item && typeof item === 'object' && (item as Record<string, unknown>).type === 'image_generation'
+  )) as Record<string, unknown> | undefined
+  return typeof tool?.size === 'string' && tool.size.trim() ? tool.size : '1024x1024'
+})
+const structuredImageCount = computed(() => {
+  const count = parsedStructuredBody.value?.n
+  return typeof count === 'number' && Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1
+})
+const structuredImageFormat = computed(() => {
+  const body = parsedStructuredBody.value
+  if (typeof body?.output_format === 'string' && body.output_format.trim()) return body.output_format
+  const tools = Array.isArray(body?.tools) ? body.tools : []
+  const tool = tools.find((item) => (
+    item && typeof item === 'object' && (item as Record<string, unknown>).type === 'image_generation'
+  )) as Record<string, unknown> | undefined
+  return typeof tool?.output_format === 'string' && tool.output_format.trim() ? tool.output_format : 'png'
+})
 const traceCandidates = computed(() => props.trace?.candidates ?? [])
 const showSetup = computed(() => props.open && !props.testing && !props.result)
 const showResult = computed(() => !!props.result)
@@ -888,6 +1077,85 @@ const showAttemptDiagnostics = computed(() => (
 ))
 const { isDark } = useDarkMode()
 const { copyToClipboard } = useClipboard()
+const showAdvancedEditors = ref(false)
+
+function updateStructuredBody(mutator: (body: Record<string, unknown>) => void) {
+  const body = parsedStructuredBody.value
+  if (!body) return
+  const next = JSON.parse(JSON.stringify(body)) as Record<string, unknown>
+  mutator(next)
+  emit('update:requestBodyDraft', JSON.stringify(next, null, 2))
+}
+
+function updateStructuredPrompt(value: string) {
+  updateStructuredBody((body) => {
+    if (isOpenAiImageTest.value) {
+      body.prompt = value
+      return
+    }
+    if (selectedApiFormat.value.endsWith(':embedding')) {
+      body.input = value
+      return
+    }
+    if (selectedApiFormat.value.endsWith(':rerank')) {
+      body.query = value
+      return
+    }
+    if (selectedApiFormat.value.includes(':responses')) {
+      body.input = value
+      return
+    }
+    if (Array.isArray(body.contents)) {
+      const contents = body.contents as Array<Record<string, unknown>>
+      const first = contents[0] ?? { role: 'user', parts: [] }
+      const parts = Array.isArray(first.parts) ? first.parts as Array<Record<string, unknown>> : []
+      first.parts = [{ ...(parts[0] ?? {}), text: value }]
+      contents[0] = first
+      body.contents = contents
+      return
+    }
+    const messages = Array.isArray(body.messages) ? body.messages as Array<Record<string, unknown>> : []
+    const first = messages[0] ?? { role: 'user' }
+    first.content = value
+    body.messages = [first]
+  })
+}
+
+function updateStructuredStream(value: boolean) {
+  updateStructuredBody((body) => {
+    body.stream = value
+  })
+}
+
+function updateStructuredImageSize(value: string | number) {
+  const normalized = String(value)
+  updateStructuredBody((body) => {
+    if (isOpenAiImageTest.value) body.size = normalized
+    if (Array.isArray(body.tools)) {
+      body.tools = (body.tools as Array<Record<string, unknown>>).map(tool => (
+        tool.type === 'image_generation' ? { ...tool, size: normalized } : tool
+      ))
+    }
+  })
+}
+
+function updateStructuredImageCount(value: string | number) {
+  const count = Math.min(4, Math.max(1, Number.parseInt(String(value), 10) || 1))
+  updateStructuredBody((body) => {
+    body.n = count
+  })
+}
+
+function updateStructuredImageFormat(value: string) {
+  updateStructuredBody((body) => {
+    if (isOpenAiImageTest.value) body.output_format = value
+    if (Array.isArray(body.tools)) {
+      body.tools = (body.tools as Array<Record<string, unknown>>).map(tool => (
+        tool.type === 'image_generation' ? { ...tool, output_format: value } : tool
+      ))
+    }
+  })
+}
 
 function handleModelMappingValueChange(value: string) {
   emit(
@@ -945,6 +1213,10 @@ watch(() => props.result, () => {
   inspectionCopiedStates.value = {}
   const defaultAttempt = inspectableAttempts.value[0] ?? resultAttempts.value[0] ?? null
   selectedInspectionKey.value = defaultAttempt ? inspectionKey(defaultAttempt) : null
+})
+
+watch(() => props.open, (open) => {
+  if (open) showAdvancedEditors.value = false
 })
 
 const shouldCollapseAttempts = computed(() => resultAttempts.value.length > 20)

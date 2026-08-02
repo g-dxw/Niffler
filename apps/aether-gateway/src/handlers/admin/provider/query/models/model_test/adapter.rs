@@ -34,6 +34,8 @@ pub(super) fn provider_query_standard_test_client_api_format(
         "openai:embedding"
     } else if crate::ai_serving::is_rerank_api_format(&normalized_api_format) {
         "openai:rerank"
+    } else if normalized_api_format == "gemini:generate_content" {
+        "gemini:generate_content"
     } else {
         "openai:chat"
     }

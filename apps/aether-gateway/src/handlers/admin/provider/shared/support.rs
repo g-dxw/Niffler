@@ -67,6 +67,7 @@ pub(crate) struct AdminProviderPoolRuntimeState {
     pub(crate) active_probe_member_ids: BTreeSet<String>,
     pub(crate) provider_in_flight: usize,
     pub(crate) provider_ema_in_flight: f64,
+    pub(crate) in_flight_by_key: BTreeMap<String, usize>,
     pub(crate) provider_desired_hot: usize,
     pub(crate) provider_burst_pending: bool,
     pub(crate) cooldown_reason_by_key: BTreeMap<String, String>,

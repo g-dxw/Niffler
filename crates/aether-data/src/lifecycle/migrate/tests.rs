@@ -8,7 +8,7 @@ use sqlx::{migrate::AppliedMigration, query, query_scalar, Connection, PgConnect
 
 use super::{
     all_up_migrations, pending_migrations_from_applied, prepare_database_for_startup,
-    POSTGRES_MIGRATOR,
+    run_migrations, POSTGRES_MIGRATOR,
 };
 use crate::lifecycle::bootstrap::postgres::{
     snapshot_migrations as empty_database_snapshot_migrations, EMPTY_DATABASE_SNAPSHOT_SQL,
@@ -105,7 +105,7 @@ impl ManagedPostgresServer {
             .arg("-c")
             .arg("max_connections=8")
             .arg("-c")
-            .arg("dynamic_shared_memory_type=none")
+            .arg("dynamic_shared_memory_type=mmap")
             .arg("-c")
             .arg("autovacuum=off")
             .stdout(Stdio::from(stdout))
@@ -229,6 +229,22 @@ SELECT EXISTS (
     .bind(column_name)
     .fetch_one(pool)
     .await
+}
+
+async fn sync_provider_contributions(
+    pool: &PgPool,
+    request_ids: &[&str],
+) -> Result<(), crate::DataLayerError> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(crate::DataLayerError::postgres)?;
+    for request_id in request_ids {
+        crate::repository::usage::postgres::provider_contribution::
+            sync_provider_api_key_usage_contribution_for_request_in_tx(&mut tx, request_id)
+            .await?;
+    }
+    tx.commit().await.map_err(crate::DataLayerError::postgres)
 }
 
 #[test]
@@ -538,6 +554,41 @@ fn provider_api_key_window_usage_migration_defines_required_tables_and_queue_kin
 }
 
 #[test]
+fn provider_api_key_usage_contribution_migration_defines_fact_and_revision_table() {
+    let migration = POSTGRES_MIGRATOR
+        .iter()
+        .find(|migration| migration.version == 20260801190000)
+        .expect("provider usage contribution migration should be embedded");
+
+    assert!(migration
+        .sql
+        .contains("provider_api_key_usage_contributions"));
+    assert!(migration.sql.contains("revision bigint NOT NULL DEFAULT 0"));
+    assert!(migration
+        .sql
+        .contains("provider_api_key_usage_contribution_backfill_state"));
+    assert!(migration
+        .sql
+        .contains("provider_api_key_usage_contribution_backfills"));
+    assert!(migration
+        .sql
+        .contains("provider_api_key_usage_projection_repairs"));
+    assert!(migration
+        .sql
+        .contains("ON CONFLICT (provider_api_key_id) DO NOTHING"));
+    assert!(!migration.sql.contains("LOCK TABLE public.\"usage\""));
+    assert!(!migration.sql.contains("FROM public.usage_billing_facts"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL
+        .contains("CREATE TABLE IF NOT EXISTS public.provider_api_key_usage_contributions"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("ix_provider_api_key_usage_contributions_key"));
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("provider_api_key_usage_contributions_key_fkey"));
+    assert!(
+        EMPTY_DATABASE_SNAPSHOT_SQL.contains("provider_api_key_usage_contribution_backfill_state")
+    );
+    assert!(EMPTY_DATABASE_SNAPSHOT_SQL.contains("provider_api_key_usage_projection_repairs"));
+}
+
+#[test]
 fn provider_api_key_window_usage_index_migrations_are_concurrent_and_single_statement() {
     let create_migration = POSTGRES_MIGRATOR
         .iter()
@@ -633,9 +684,9 @@ async fn provider_api_key_window_usage_sql_handles_refresh_and_zero_cost_rebuild
     let pool = PgPool::connect(server.database_url())
         .await
         .expect("pool should connect");
-    prepare_database_for_startup(&pool)
+    run_migrations(&pool)
         .await
-        .expect("clean database bootstrap should succeed");
+        .expect("clean database migrations should succeed");
 
     query(
         r#"
@@ -965,6 +1016,12 @@ INSERT INTO public.usage (
     .execute(&pool)
     .await
     .expect("zero cost usage should insert");
+    sync_provider_contributions(
+        &pool,
+        &["request-zero-cost-window", "request-multiplier-window"],
+    )
+    .await
+    .expect("window rebuild contributions should sync");
     query(include_str!(
         "../../repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql"
     ))
@@ -1175,6 +1232,15 @@ INSERT INTO public.usage (
     .execute(&pool)
     .await
     .expect("increment-first usage should insert");
+    sync_provider_contributions(
+        &pool,
+        &[
+            "request-increment-first-history",
+            "request-increment-first-current",
+        ],
+    )
+    .await
+    .expect("increment-first contributions should sync");
     query(
         r#"
 INSERT INTO public.usage_counter_deltas (
@@ -1255,6 +1321,694 @@ WHERE provider_api_key_id = 'provider-key-increment-first'
     assert_eq!(increment_first_rebuilt.get::<i64, _>("total_tokens"), 40);
     assert_eq!(increment_first_rebuilt.get::<f64, _>("total_cost_usd"), 1.0);
     assert!(increment_first_rebuilt.get::<bool, _>("rebuilt"));
+}
+
+#[tokio::test]
+async fn provider_usage_contribution_transitions_from_pending_to_settled_once() {
+    let Some(server) = ManagedPostgresServer::try_start()
+        .await
+        .expect("postgres provider contribution test should start or skip")
+    else {
+        return;
+    };
+    let pool = PgPool::connect(server.database_url())
+        .await
+        .expect("pool should connect");
+    run_migrations(&pool)
+        .await
+        .expect("clean database migrations should succeed");
+
+    query(
+        r#"
+INSERT INTO public.providers (id, name, provider_type)
+VALUES ('provider-contribution-test', 'Contribution test', 'codex')
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider should insert");
+    query(
+        r#"
+INSERT INTO public.provider_api_keys (
+  id,
+  name,
+  provider_id,
+  total_tokens,
+  total_cost_usd,
+  status_snapshot
+) VALUES (
+  'provider-key-contribution-test',
+  'Contribution key',
+  'provider-contribution-test',
+  0,
+  0,
+  '{"quota":{"windows":[{"code":"weekly","scope":"account","window_seconds":1000,"reset_at":2000}]}}'::jsonb
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider key should insert");
+    query(
+        r#"
+INSERT INTO public.usage (
+  id,
+  request_id,
+  provider_name,
+  model,
+  provider_id,
+  provider_api_key_id,
+  input_tokens,
+  output_tokens,
+  total_tokens,
+  total_cost_usd,
+  response_time_ms,
+  request_metadata,
+  status,
+  billing_status,
+  created_at
+) VALUES (
+  'usage-contribution-test',
+  'request-contribution-test',
+  'Contribution test',
+  'gpt-test',
+  'provider-contribution-test',
+  'provider-key-contribution-test',
+  40,
+  60,
+  100,
+  0.25,
+  25,
+  '{"base_cost_usd":0.25}'::jsonb,
+  'completed',
+  'pending',
+  to_timestamp(1500)
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("pending usage should insert");
+
+    let mut tx = pool
+        .begin()
+        .await
+        .expect("pending transaction should begin");
+    crate::repository::usage::postgres::provider_contribution::
+        sync_provider_api_key_usage_contribution_for_request_in_tx(
+            &mut tx,
+            "request-contribution-test",
+        )
+        .await
+        .expect("pending contribution should sync");
+    tx.commit()
+        .await
+        .expect("pending contribution should commit");
+
+    let pending_contribution = query(
+        r#"
+SELECT provider_api_key_id, request_count, total_tokens,
+       CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd,
+       window_request_count, window_total_tokens,
+       CAST(window_total_cost_usd AS DOUBLE PRECISION) AS window_total_cost_usd,
+       revision
+FROM public.provider_api_key_usage_contributions
+WHERE request_id = 'request-contribution-test'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("pending contribution should read");
+    assert_eq!(
+        pending_contribution.get::<String, _>("provider_api_key_id"),
+        "provider-key-contribution-test"
+    );
+    assert_eq!(pending_contribution.get::<i64, _>("request_count"), 1);
+    assert_eq!(pending_contribution.get::<i64, _>("total_tokens"), 100);
+    assert_eq!(pending_contribution.get::<f64, _>("total_cost_usd"), 0.0);
+    assert_eq!(
+        pending_contribution.get::<i64, _>("window_request_count"),
+        0
+    );
+    assert_eq!(pending_contribution.get::<i64, _>("revision"), 1);
+
+    query(
+        r#"
+UPDATE public.usage
+SET billing_status = 'settled'
+WHERE request_id = 'request-contribution-test'
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("usage should settle");
+
+    let mut tx = pool
+        .begin()
+        .await
+        .expect("settlement transaction should begin");
+    crate::repository::usage::postgres::provider_contribution::
+        sync_provider_api_key_usage_contribution_for_request_in_tx(
+            &mut tx,
+            "request-contribution-test",
+        )
+        .await
+        .expect("settled contribution should sync");
+    crate::repository::usage::postgres::provider_contribution::
+        sync_provider_api_key_usage_contribution_for_request_in_tx(
+            &mut tx,
+            "request-contribution-test",
+        )
+        .await
+        .expect("repeated settled contribution should be idempotent");
+    tx.commit()
+        .await
+        .expect("settled contribution should commit");
+
+    let settled_contribution = query(
+        r#"
+SELECT CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd,
+       window_request_count, window_total_tokens,
+       CAST(window_total_cost_usd AS DOUBLE PRECISION) AS window_total_cost_usd,
+       revision
+FROM public.provider_api_key_usage_contributions
+WHERE request_id = 'request-contribution-test'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("settled contribution should read");
+    assert_eq!(settled_contribution.get::<f64, _>("total_cost_usd"), 0.25);
+    assert_eq!(
+        settled_contribution.get::<i64, _>("window_request_count"),
+        1
+    );
+    assert_eq!(
+        settled_contribution.get::<i64, _>("window_total_tokens"),
+        100
+    );
+    assert_eq!(
+        settled_contribution.get::<f64, _>("window_total_cost_usd"),
+        0.25
+    );
+    assert_eq!(settled_contribution.get::<i64, _>("revision"), 2);
+
+    let main_delta = query(
+        r#"
+SELECT COUNT(*)::BIGINT AS rows,
+       COALESCE(SUM(request_count_delta), 0)::BIGINT AS requests,
+       COALESCE(SUM(total_tokens_delta), 0)::BIGINT AS tokens,
+       COALESCE(SUM(total_cost_usd_delta), 0)::DOUBLE PRECISION AS cost
+FROM public.usage_counter_deltas
+WHERE request_id = 'request-contribution-test'
+  AND kind = 'provider_api_key'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("main provider deltas should read");
+    assert_eq!(main_delta.get::<i64, _>("rows"), 2);
+    assert_eq!(main_delta.get::<i64, _>("requests"), 1);
+    assert_eq!(main_delta.get::<i64, _>("tokens"), 100);
+    assert_eq!(main_delta.get::<f64, _>("cost"), 0.25);
+
+    let window_delta = query(
+        r#"
+SELECT COUNT(*)::BIGINT AS rows,
+       COALESCE(SUM(window_request_count_delta), 0)::BIGINT AS requests,
+       COALESCE(SUM(window_total_tokens_delta), 0)::BIGINT AS tokens,
+       COALESCE(SUM(window_total_cost_usd_delta), 0)::DOUBLE PRECISION AS cost
+FROM public.usage_counter_deltas
+WHERE request_id = 'request-contribution-test'
+  AND kind = 'provider_api_key_window'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("window provider deltas should read");
+    assert_eq!(window_delta.get::<i64, _>("rows"), 1);
+    assert_eq!(window_delta.get::<i64, _>("requests"), 1);
+    assert_eq!(window_delta.get::<i64, _>("tokens"), 100);
+    assert_eq!(window_delta.get::<f64, _>("cost"), 0.25);
+
+    query(
+        r#"
+INSERT INTO public.provider_api_key_window_usage_counters (
+  provider_api_key_id,
+  window_scope,
+  window_code,
+  window_start_unix_secs,
+  window_end_unix_secs,
+  request_count,
+  total_tokens,
+  total_cost_usd,
+  rebuilt_at
+) VALUES (
+  'provider-key-contribution-test',
+  'account',
+  'weekly',
+  1000,
+  2000,
+  0,
+  0,
+  0,
+  NOW()
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("zero window projection should insert");
+    let missing: bool = query_scalar(include_str!(
+        "../../repository/usage/postgres/queries/provider_api_key_codex_window_usage_missing_sql.sql"
+    ))
+    .bind("provider-key-contribution-test")
+    .fetch_one(&pool)
+    .await
+    .expect("window drift should read");
+    assert!(missing);
+
+    query(include_str!(
+        "../../repository/usage/postgres/queries/rebuild_provider_api_key_codex_window_usage_for_key_sql.sql"
+    ))
+    .bind("provider-key-contribution-test")
+    .execute(&pool)
+    .await
+    .expect("drifted zero window should rebuild");
+    let rebuilt_window = query(
+        r#"
+SELECT request_count, total_tokens,
+       CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd,
+       rebuilt_at IS NOT NULL AS rebuilt
+FROM public.provider_api_key_window_usage_counters
+WHERE provider_api_key_id = 'provider-key-contribution-test'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("rebuilt window should read");
+    assert_eq!(rebuilt_window.get::<i64, _>("request_count"), 1);
+    assert_eq!(rebuilt_window.get::<i64, _>("total_tokens"), 100);
+    assert_eq!(rebuilt_window.get::<f64, _>("total_cost_usd"), 0.25);
+    assert!(rebuilt_window.get::<bool, _>("rebuilt"));
+
+    let missing_after_rebuild: bool = query_scalar(include_str!(
+        "../../repository/usage/postgres/queries/provider_api_key_codex_window_usage_missing_sql.sql"
+    ))
+    .bind("provider-key-contribution-test")
+    .fetch_one(&pool)
+    .await
+    .expect("rebuilt window drift should read");
+    assert!(!missing_after_rebuild);
+}
+
+#[tokio::test]
+async fn provider_usage_contribution_migration_repairs_legacy_projection_without_replaying_queue() {
+    let Some(server) = ManagedPostgresServer::try_start()
+        .await
+        .expect("postgres provider contribution migration test should start or skip")
+    else {
+        return;
+    };
+    let pool = PgPool::connect(server.database_url())
+        .await
+        .expect("pool should connect");
+    run_migrations(&pool)
+        .await
+        .expect("clean database migrations should succeed");
+
+    query(
+        r#"
+INSERT INTO public.providers (id, name, provider_type)
+VALUES ('provider-migration-repair', 'Migration repair', 'codex')
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider should insert");
+    query(
+        r#"
+INSERT INTO public.provider_api_keys (
+  id,
+  name,
+  provider_id,
+  request_count,
+  success_count,
+  error_count,
+  total_tokens,
+  total_cost_usd,
+  total_response_time_ms
+) VALUES (
+  'provider-key-migration-repair',
+  'Migration repair key',
+  'provider-migration-repair',
+  80,
+  70,
+  10,
+  8000,
+  0,
+  9000
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider key should insert");
+    query(
+        r#"
+INSERT INTO public.usage (
+  id,
+  request_id,
+  provider_name,
+  model,
+  provider_id,
+  provider_api_key_id,
+  input_tokens,
+  output_tokens,
+  total_tokens,
+  total_cost_usd,
+  response_time_ms,
+  request_metadata,
+  status,
+  status_code,
+  billing_status,
+  created_at
+) VALUES (
+  'usage-migration-repair',
+  'request-migration-repair',
+  'Migration repair',
+  'gpt-test',
+  'provider-migration-repair',
+  'provider-key-migration-repair',
+  40,
+  60,
+  100,
+  2,
+  25,
+  '{"base_cost_usd":0.25}'::jsonb,
+  'completed',
+  200,
+  'settled',
+  to_timestamp(1500)
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("settled usage should insert");
+    query(
+        r#"
+INSERT INTO public.usage_counter_deltas (
+  id,
+  request_id,
+  kind,
+  target_id,
+  request_count_delta,
+  success_count_delta,
+  total_tokens_delta
+) VALUES (
+  'legacy-provider-delta',
+  'request-migration-repair',
+  'provider_api_key',
+  'provider-key-migration-repair',
+  1,
+  1,
+  100
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("legacy provider delta should insert");
+    query("TRUNCATE TABLE public.provider_api_key_usage_contributions")
+        .execute(&pool)
+        .await
+        .expect("provider contribution fixture should reset");
+
+    let migration = POSTGRES_MIGRATOR
+        .iter()
+        .find(|migration| migration.version == 20260801190000)
+        .expect("provider usage contribution migration should be embedded");
+    sqlx::raw_sql(migration.sql.as_ref())
+        .execute(&pool)
+        .await
+        .expect("provider contribution migration should rerun for backfill fixture");
+
+    let repository = crate::repository::usage::postgres::SqlxUsageReadRepository::new(pool.clone());
+    let first_maintenance = repository
+        .run_provider_api_key_usage_projection_maintenance(1)
+        .await
+        .expect("provider contribution backfill should run");
+    assert_eq!(first_maintenance.backfill_requests, 1);
+    assert_eq!(first_maintenance.completed_backfill_keys, 0);
+
+    let maintenance = repository
+        .run_provider_api_key_usage_projection_maintenance(1)
+        .await
+        .expect("provider contribution backfill should finish");
+    assert_eq!(maintenance.backfill_requests, 0);
+    assert_eq!(maintenance.completed_backfill_keys, 1);
+
+    let contribution = query(
+        r#"
+SELECT request_count, success_count, total_tokens,
+       CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd,
+       window_request_count, window_total_tokens,
+       CAST(window_total_cost_usd AS DOUBLE PRECISION) AS window_total_cost_usd
+FROM public.provider_api_key_usage_contributions
+WHERE request_id = 'request-migration-repair'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("repaired contribution should read");
+    assert_eq!(contribution.get::<i64, _>("request_count"), 1);
+    assert_eq!(contribution.get::<i64, _>("success_count"), 1);
+    assert_eq!(contribution.get::<i64, _>("total_tokens"), 100);
+    assert_eq!(contribution.get::<f64, _>("total_cost_usd"), 0.25);
+    assert_eq!(contribution.get::<i64, _>("window_request_count"), 1);
+    assert_eq!(contribution.get::<i64, _>("window_total_tokens"), 100);
+    assert_eq!(contribution.get::<f64, _>("window_total_cost_usd"), 0.25);
+
+    let provider_key = query(
+        r#"
+SELECT request_count, success_count, error_count, total_tokens,
+       CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd,
+       total_response_time_ms
+FROM public.provider_api_keys
+WHERE id = 'provider-key-migration-repair'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("repaired provider key should read");
+    assert_eq!(provider_key.get::<i64, _>("request_count"), 1);
+    assert_eq!(provider_key.get::<i64, _>("success_count"), 1);
+    assert_eq!(provider_key.get::<i64, _>("error_count"), 0);
+    assert_eq!(provider_key.get::<i64, _>("total_tokens"), 100);
+    assert_eq!(provider_key.get::<f64, _>("total_cost_usd"), 0.25);
+    assert_eq!(provider_key.get::<i64, _>("total_response_time_ms"), 25);
+
+    let legacy_delta_processed: bool = query_scalar(
+        r#"
+SELECT processed_at IS NOT NULL
+FROM public.usage_counter_deltas
+WHERE id = 'legacy-provider-delta'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("legacy provider delta should read");
+    assert!(legacy_delta_processed);
+
+    query(
+        r#"
+INSERT INTO public.usage (
+  id,
+  request_id,
+  provider_name,
+  model,
+  provider_id,
+  provider_api_key_id,
+  input_tokens,
+  output_tokens,
+  total_tokens,
+  total_cost_usd,
+  response_time_ms,
+  request_metadata,
+  status,
+  status_code,
+  billing_status,
+  created_at
+) VALUES (
+  'usage-migration-repair-concurrent',
+  'request-migration-repair-concurrent',
+  'Migration repair',
+  'gpt-test',
+  'provider-migration-repair',
+  'provider-key-migration-repair',
+  80,
+  120,
+  200,
+  0.5,
+  30,
+  '{"settlement_snapshot":{"base_cost_usd":0.5}}'::jsonb,
+  'completed',
+  200,
+  'settled',
+  to_timestamp(1600)
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("concurrent usage should insert");
+    sync_provider_contributions(&pool, &["request-migration-repair-concurrent"])
+        .await
+        .expect("concurrent contribution should sync");
+    query(
+        r#"
+UPDATE public.provider_api_keys
+SET request_count = 0,
+    success_count = 0,
+    error_count = 0,
+    total_tokens = 0,
+    total_cost_usd = 0,
+    total_response_time_ms = 0
+WHERE id = 'provider-key-migration-repair'
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider projection should reset for concurrency test");
+
+    let (rebuild_result, flush_result) = tokio::join!(
+        repository.rebuild_provider_api_key_usage_stats(),
+        repository.flush_usage_counter_deltas(100)
+    );
+    rebuild_result.expect("concurrent provider rebuild should succeed");
+    flush_result.expect("concurrent provider delta flush should succeed");
+
+    let concurrent_projection = query(
+        r#"
+SELECT request_count, success_count, total_tokens,
+       CAST(total_cost_usd AS DOUBLE PRECISION) AS total_cost_usd,
+       total_response_time_ms
+FROM public.provider_api_keys
+WHERE id = 'provider-key-migration-repair'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("concurrent provider projection should read");
+    assert_eq!(concurrent_projection.get::<i64, _>("request_count"), 2);
+    assert_eq!(concurrent_projection.get::<i64, _>("success_count"), 2);
+    assert_eq!(concurrent_projection.get::<i64, _>("total_tokens"), 300);
+    assert_eq!(concurrent_projection.get::<f64, _>("total_cost_usd"), 0.75);
+    assert_eq!(
+        concurrent_projection.get::<i64, _>("total_response_time_ms"),
+        55
+    );
+}
+
+#[tokio::test]
+async fn provider_usage_projection_repair_records_delayed_retry_after_failure() {
+    let Some(server) = ManagedPostgresServer::try_start()
+        .await
+        .expect("postgres provider projection retry test should start or skip")
+    else {
+        return;
+    };
+    let pool = PgPool::connect(server.database_url())
+        .await
+        .expect("pool should connect");
+    run_migrations(&pool)
+        .await
+        .expect("clean database migrations should succeed");
+
+    query(
+        r#"
+INSERT INTO public.providers (id, name, provider_type)
+VALUES ('provider-retry-test', 'Retry test', 'codex')
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider should insert");
+    query(
+        r#"
+INSERT INTO public.provider_api_keys (
+  id,
+  name,
+  provider_id,
+  status_snapshot
+) VALUES (
+  'provider-key-retry-test',
+  'Retry key',
+  'provider-retry-test',
+  '{"quota":{"windows":[]}}'::jsonb
+)
+"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("provider key should insert");
+
+    let repository = crate::repository::usage::postgres::SqlxUsageReadRepository::new(pool.clone());
+    let initial = repository
+        .run_provider_api_key_usage_projection_maintenance(1)
+        .await
+        .expect("empty retry key should finish historical maintenance");
+    assert_eq!(initial.completed_backfill_keys, 1);
+
+    query(
+        r#"
+UPDATE public.provider_api_keys
+SET status_snapshot = $1
+WHERE id = 'provider-key-retry-test'
+"#,
+    )
+    .bind(serde_json::json!({
+        "quota": {
+            "windows": [
+                {
+                    "code": "weekly",
+                    "scope": "account",
+                    "window_minutes": "9999999999999999",
+                    "reset_at": 2_000
+                }
+            ]
+        }
+    }))
+    .execute(&pool)
+    .await
+    .expect("invalid retry window should update");
+    repository
+        .enqueue_provider_api_key_usage_projection_repair("provider-key-retry-test", false, true)
+        .await
+        .expect("retry repair should enqueue");
+
+    let summary = repository
+        .run_provider_api_key_usage_projection_maintenance(1)
+        .await
+        .expect("failed repair should be recorded");
+    assert_eq!(summary.failed_repair_keys, 1);
+
+    let retry = query(
+        r#"
+SELECT attempts, last_error, available_at > NOW() AS delayed
+FROM public.provider_api_key_usage_projection_repairs
+WHERE provider_api_key_id = 'provider-key-retry-test'
+"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("failed repair should remain queued");
+    assert_eq!(retry.get::<i32, _>("attempts"), 1);
+    assert!(retry
+        .get::<Option<String>, _>("last_error")
+        .is_some_and(|value| !value.trim().is_empty()));
+    assert!(retry.get::<bool, _>("delayed"));
 }
 
 #[test]
@@ -1389,6 +2143,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260620090000,
             20260622100000,
             20260723120000,
+            20260801190000,
         ]
     );
     assert_eq!(
@@ -1426,6 +2181,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260620090000,
             20260622100000,
             20260723120000,
+            20260801190000,
         ]
     );
 }
@@ -1979,6 +2735,7 @@ fn pending_migrations_from_applied_skips_versions_already_applied() {
             20260723121000,
             20260723122000,
             20260725100000,
+            20260801190000,
         ]
     );
 }
@@ -2020,6 +2777,7 @@ fn pending_migrations_from_applied_after_empty_database_snapshot_stamp_returns_p
             20260723121000,
             20260723122000,
             20260725100000,
+            20260801190000,
         ],
         "empty database snapshot-stamped databases should run only post-snapshot incrementals on first startup"
     );
@@ -2320,9 +3078,18 @@ async fn prepare_database_for_startup_bootstraps_clean_database() {
         .await
         .expect("clean database bootstrap should succeed");
 
-    assert!(
-        pending.is_empty(),
-        "fresh databases should not report pending migrations after startup preparation"
+    let snapshot_applied = empty_database_snapshot_migrations(&POSTGRES_MIGRATOR)
+        .expect("baseline migrations should resolve")
+        .into_iter()
+        .map(|migration| AppliedMigration {
+            version: migration.version,
+            checksum: migration.checksum.clone(),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pending,
+        pending_migrations_from_applied(&snapshot_applied),
+        "startup preparation should report post-snapshot migrations for the migration runner"
     );
     assert!(table_exists(&pool, "users")
         .await
@@ -2345,16 +3112,25 @@ async fn prepare_database_for_startup_bootstraps_clean_database() {
         "fresh database snapshot should include public.userrole.audit_admin"
     );
 
+    run_migrations(&pool)
+        .await
+        .expect("post-snapshot migrations should succeed");
+    let pending_after_migration = prepare_database_for_startup(&pool)
+        .await
+        .expect("migrated database startup preparation should succeed");
+    assert!(
+        pending_after_migration.is_empty(),
+        "fresh databases should have no pending migrations after the migration runner completes"
+    );
+    assert!(table_exists(&pool, "provider_api_key_usage_contributions")
+        .await
+        .expect("provider contribution table lookup should succeed"));
+
     let applied_count: i64 = query_scalar("SELECT COUNT(*)::BIGINT FROM public._sqlx_migrations")
         .fetch_one(&pool)
         .await
         .expect("migration count query should succeed");
-    assert_eq!(
-        applied_count,
-        empty_database_snapshot_migrations(&POSTGRES_MIGRATOR)
-            .expect("baseline migrations should resolve")
-            .len() as i64
-    );
+    assert_eq!(applied_count, all_up_migrations().len() as i64);
 }
 
 #[tokio::test]
@@ -2378,9 +3154,18 @@ async fn prepare_database_for_startup_bootstraps_when_only_unrelated_public_tabl
         .await
         .expect("startup preparation should tolerate unrelated public tables");
 
-    assert!(
-        pending.is_empty(),
-        "unrelated public tables should not block baseline bootstrap on first startup"
+    let snapshot_applied = empty_database_snapshot_migrations(&POSTGRES_MIGRATOR)
+        .expect("baseline migrations should resolve")
+        .into_iter()
+        .map(|migration| AppliedMigration {
+            version: migration.version,
+            checksum: migration.checksum.clone(),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pending,
+        pending_migrations_from_applied(&snapshot_applied),
+        "unrelated public tables should not block snapshot bootstrap or pending migration reporting"
     );
     assert!(table_exists(&pool, "vendor_bootstrap_marker")
         .await
@@ -2388,4 +3173,12 @@ async fn prepare_database_for_startup_bootstraps_when_only_unrelated_public_tabl
     assert!(table_exists(&pool, "oauth_providers")
         .await
         .expect("oauth_providers lookup should succeed"));
+
+    run_migrations(&pool)
+        .await
+        .expect("post-snapshot migrations should succeed");
+    let pending_after_migration = prepare_database_for_startup(&pool)
+        .await
+        .expect("migrated database startup preparation should succeed");
+    assert!(pending_after_migration.is_empty());
 }
