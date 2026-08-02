@@ -187,6 +187,38 @@ CREATE INDEX IF NOT EXISTS ix_provider_api_key_window_usage_applications_key ON 
 ALTER TABLE ONLY public.provider_api_key_window_usage_applications ADD CONSTRAINT provider_api_key_window_usage_applications_delta_fkey FOREIGN KEY (delta_id) REFERENCES public.usage_counter_deltas(id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.provider_api_key_window_usage_applications ADD CONSTRAINT provider_api_key_window_usage_applications_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
 
+CREATE TABLE IF NOT EXISTS public.provider_api_key_usage_contributions (
+    request_id character varying(128) NOT NULL,
+    provider_api_key_id character varying(64),
+    request_count bigint DEFAULT 0 NOT NULL,
+    success_count bigint DEFAULT 0 NOT NULL,
+    error_count bigint DEFAULT 0 NOT NULL,
+    total_tokens bigint DEFAULT 0 NOT NULL,
+    total_cost_usd numeric DEFAULT 0 NOT NULL,
+    total_response_time_ms bigint DEFAULT 0 NOT NULL,
+    last_used_at_unix_secs bigint,
+    usage_created_at_unix_secs bigint,
+    window_request_count bigint DEFAULT 0 NOT NULL,
+    window_total_tokens bigint DEFAULT 0 NOT NULL,
+    window_total_cost_usd numeric DEFAULT 0 NOT NULL,
+    revision bigint DEFAULT 0 NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.provider_api_key_usage_contributions ADD CONSTRAINT provider_api_key_usage_contributions_pkey PRIMARY KEY (request_id);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_usage_contributions_key ON public.provider_api_key_usage_contributions USING btree (provider_api_key_id, usage_created_at_unix_secs);
+ALTER TABLE ONLY public.provider_api_key_usage_contributions ADD CONSTRAINT provider_api_key_usage_contributions_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_usage_contribution_backfill_state (
+    id integer DEFAULT 1 NOT NULL,
+    high_water_created_at timestamp with time zone,
+    initialized_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    updated_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.provider_api_key_usage_contribution_backfill_state ADD CONSTRAINT provider_api_key_usage_contribution_backfill_state_pkey PRIMARY KEY (id);
+
 CREATE TABLE IF NOT EXISTS public.usage_settlement_snapshots (
     request_id character varying(128) NOT NULL,
     billing_status character varying(64) NOT NULL,
@@ -206,6 +238,34 @@ CREATE TABLE IF NOT EXISTS public.usage_settlement_snapshots (
 ALTER TABLE ONLY public.usage_settlement_snapshots ADD CONSTRAINT usage_settlement_snapshots_pkey PRIMARY KEY (request_id);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_billing_status_idx ON public.usage_settlement_snapshots USING btree (billing_status);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_wallet_id_idx ON public.usage_settlement_snapshots USING btree (wallet_id);
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_usage_contribution_backfills (
+    provider_api_key_id character varying(64) NOT NULL,
+    high_water_created_at timestamp with time zone,
+    cursor_created_at timestamp with time zone,
+    cursor_request_id character varying(128),
+    status character varying(16) DEFAULT 'pending' NOT NULL,
+    backfilled_at timestamp with time zone,
+    updated_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.provider_api_key_usage_contribution_backfills ADD CONSTRAINT provider_api_key_usage_contribution_backfills_pkey PRIMARY KEY (provider_api_key_id);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_usage_contribution_backfills_ready ON public.provider_api_key_usage_contribution_backfills USING btree (status, updated_at);
+ALTER TABLE ONLY public.provider_api_key_usage_contribution_backfills ADD CONSTRAINT provider_api_key_usage_contribution_backfills_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
+
+CREATE TABLE IF NOT EXISTS public.provider_api_key_usage_projection_repairs (
+    provider_api_key_id character varying(64) NOT NULL,
+    main_requested boolean DEFAULT false NOT NULL,
+    window_requested boolean DEFAULT false NOT NULL,
+    available_at timestamp with time zone NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    last_error text,
+    updated_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY public.provider_api_key_usage_projection_repairs ADD CONSTRAINT provider_api_key_usage_projection_repairs_pkey PRIMARY KEY (provider_api_key_id);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_usage_projection_repairs_ready ON public.provider_api_key_usage_projection_repairs USING btree (available_at, updated_at);
+ALTER TABLE ONLY public.provider_api_key_usage_projection_repairs ADD CONSTRAINT provider_api_key_usage_projection_repairs_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES public.provider_api_keys(id) ON DELETE CASCADE;
 
 CREATE TABLE IF NOT EXISTS public.content_moderation_evidence (
     id character varying(128) NOT NULL,

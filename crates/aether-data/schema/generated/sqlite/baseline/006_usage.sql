@@ -180,6 +180,34 @@ CREATE TABLE IF NOT EXISTS provider_api_key_window_usage_applications (
 );
 CREATE INDEX IF NOT EXISTS ix_provider_api_key_window_usage_applications_key ON provider_api_key_window_usage_applications (provider_api_key_id, window_code, window_end_unix_secs);
 
+CREATE TABLE IF NOT EXISTS provider_api_key_usage_contributions (
+    request_id TEXT PRIMARY KEY NOT NULL,
+    provider_api_key_id TEXT,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd REAL NOT NULL DEFAULT 0,
+    total_response_time_ms INTEGER NOT NULL DEFAULT 0,
+    last_used_at_unix_secs INTEGER,
+    usage_created_at_unix_secs INTEGER,
+    window_request_count INTEGER NOT NULL DEFAULT 0,
+    window_total_tokens INTEGER NOT NULL DEFAULT 0,
+    window_total_cost_usd REAL NOT NULL DEFAULT 0,
+    revision INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    CONSTRAINT provider_api_key_usage_contributions_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES provider_api_keys (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_usage_contributions_key ON provider_api_key_usage_contributions (provider_api_key_id, usage_created_at_unix_secs);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_usage_contribution_backfill_state (
+    id INTEGER PRIMARY KEY NOT NULL DEFAULT 1,
+    high_water_created_at INTEGER,
+    initialized_at INTEGER,
+    completed_at INTEGER,
+    updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (
     request_id TEXT PRIMARY KEY NOT NULL,
     billing_status TEXT NOT NULL,
@@ -197,6 +225,30 @@ CREATE TABLE IF NOT EXISTS usage_settlement_snapshots (
 );
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_billing_status_idx ON usage_settlement_snapshots (billing_status);
 CREATE INDEX IF NOT EXISTS usage_settlement_snapshots_wallet_id_idx ON usage_settlement_snapshots (wallet_id);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_usage_contribution_backfills (
+    provider_api_key_id TEXT PRIMARY KEY NOT NULL,
+    high_water_created_at INTEGER,
+    cursor_created_at INTEGER,
+    cursor_request_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    backfilled_at INTEGER,
+    updated_at INTEGER NOT NULL,
+    CONSTRAINT provider_api_key_usage_contribution_backfills_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES provider_api_keys (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_usage_contribution_backfills_ready ON provider_api_key_usage_contribution_backfills (status, updated_at);
+
+CREATE TABLE IF NOT EXISTS provider_api_key_usage_projection_repairs (
+    provider_api_key_id TEXT PRIMARY KEY NOT NULL,
+    main_requested INTEGER NOT NULL DEFAULT 0,
+    window_requested INTEGER NOT NULL DEFAULT 0,
+    available_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    updated_at INTEGER NOT NULL,
+    CONSTRAINT provider_api_key_usage_projection_repairs_key_fkey FOREIGN KEY (provider_api_key_id) REFERENCES provider_api_keys (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_provider_api_key_usage_projection_repairs_ready ON provider_api_key_usage_projection_repairs (available_at, updated_at);
 
 CREATE TABLE IF NOT EXISTS content_moderation_evidence (
     id TEXT PRIMARY KEY NOT NULL,

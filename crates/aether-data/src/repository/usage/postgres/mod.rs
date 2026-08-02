@@ -41,9 +41,9 @@ use uuid::Uuid;
 
 use super::{
     api_key_usage_contribution, incoming_usage_can_recover_terminal_failure,
-    model_usage_contribution, provider_api_key_usage_contribution,
-    strip_deprecated_usage_display_fields, ApiKeyUsageDelta, ModelUsageDelta,
-    PendingUsageCleanupSummary, ProviderApiKeyUsageDelta, ProviderApiKeyWindowUsageRequest,
+    model_usage_contribution, strip_deprecated_usage_display_fields, ApiKeyUsageDelta,
+    ModelUsageDelta, PendingUsageCleanupSummary, ProviderApiKeyUsageDelta,
+    ProviderApiKeyUsageProjectionMaintenanceSummary, ProviderApiKeyWindowUsageRequest,
     StoredProviderApiKeyUsageSummary, StoredProviderApiKeyWindowUsageSummary,
     StoredProviderUsageSummary, StoredRequestUsageAudit, StoredUsageDailySummary,
     UpsertUsageRecord, UsageAuditListQuery, UsageCounterFlushSummary, UsageCounterHealthSnapshot,
@@ -56,6 +56,7 @@ use crate::{
 };
 
 pub mod cleanup;
+pub(crate) mod provider_contribution;
 
 // Legacy inline body columns on public.usage are deprecated. Keep the threshold at zero so
 // newly captured bodies always spill to usage_body_blobs and resolve through usage_http_audits.
@@ -1429,6 +1430,7 @@ INSERT INTO usage_counter_deltas (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
   NOW(), NOW()
 )
+ON CONFLICT (id) DO NOTHING
 "#;
 
 const CLAIM_USAGE_COUNTER_DELTAS_SQL: &str = r#"
@@ -1568,6 +1570,35 @@ const RESET_PROVIDER_API_KEY_USAGE_STATS_SQL: &str =
 
 const REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL: &str =
     include_str!("queries/rebuild_provider_api_key_usage_stats_sql.sql");
+const REBUILD_PROVIDER_API_KEY_USAGE_FOR_KEY_SQL: &str = r#"
+WITH aggregated AS (
+  SELECT
+    COALESCE(SUM(request_count), 0)::BIGINT AS request_count,
+    COALESCE(SUM(success_count), 0)::BIGINT AS success_count,
+    COALESCE(SUM(error_count), 0)::BIGINT AS error_count,
+    COALESCE(SUM(total_tokens), 0)::BIGINT AS total_tokens,
+    COALESCE(SUM(total_cost_usd), 0)::NUMERIC(20,8) AS total_cost_usd,
+    COALESCE(SUM(total_response_time_ms), 0)::BIGINT AS total_response_time_ms,
+    MAX(last_used_at_unix_secs) AS last_used_at_unix_secs
+  FROM provider_api_key_usage_contributions
+  WHERE provider_api_key_id = $1
+)
+UPDATE provider_api_keys AS keys
+SET
+  request_count = aggregated.request_count,
+  success_count = aggregated.success_count,
+  error_count = aggregated.error_count,
+  total_tokens = aggregated.total_tokens,
+  total_cost_usd = aggregated.total_cost_usd,
+  total_response_time_ms = aggregated.total_response_time_ms,
+  last_used_at = CASE
+    WHEN aggregated.last_used_at_unix_secs IS NULL THEN NULL
+    ELSE TO_TIMESTAMP(aggregated.last_used_at_unix_secs::DOUBLE PRECISION)
+  END,
+  updated_at = NOW()
+FROM aggregated
+WHERE keys.id = $1
+"#;
 
 const LIST_USAGE_AUDITS_PREFIX: &str = include_str!("queries/list_usage_audits_prefix.sql");
 const USAGE_RESERVED_PROVIDER_LABELS_FILTER_SQL: &str = " AND BTRIM(COALESCE(\"usage\".provider_name, '')) <> '' AND lower(BTRIM(COALESCE(\"usage\".provider_name, ''))) NOT IN ('unknown', 'unknow', 'pending')";
@@ -8556,47 +8587,10 @@ ORDER BY "usage".user_id ASC
                         }
                     }
 
-                    let before_provider_contribution = previous_usage
-                        .as_ref()
-                        .and_then(provider_api_key_usage_contribution);
-                    let after_provider_contribution = provider_api_key_usage_contribution(&stored);
-                    match (
-                        before_provider_contribution.as_ref(),
-                        after_provider_contribution.as_ref(),
-                    ) {
-                        (Some(before), Some(after)) if before.key_id == after.key_id => {
-                            let delta = ProviderApiKeyUsageDelta::between(before, after);
-                            enqueue_provider_api_key_usage_delta_in_tx(
-                                tx,
-                                &usage.request_id,
-                                before.key_id.as_str(),
-                                &delta,
-                            )
-                            .await?;
-                        }
-                        _ => {
-                            if let Some(before) = before_provider_contribution.as_ref() {
-                                let delta = ProviderApiKeyUsageDelta::removal(before);
-                                enqueue_provider_api_key_usage_delta_in_tx(
-                                    tx,
-                                    &usage.request_id,
-                                    before.key_id.as_str(),
-                                    &delta,
-                                )
-                                .await?;
-                            }
-                            if let Some(after) = after_provider_contribution.as_ref() {
-                                let delta = ProviderApiKeyUsageDelta::addition(after);
-                                enqueue_provider_api_key_usage_delta_in_tx(
-                                    tx,
-                                    &usage.request_id,
-                                    after.key_id.as_str(),
-                                    &delta,
-                                )
-                                .await?;
-                            }
-                        }
-                    }
+                    provider_contribution::sync_provider_api_key_usage_contribution_in_tx(
+                        tx, &stored,
+                    )
+                    .await?;
                     Ok((stored, previous_object_keys))
                 })
                     as BoxFuture<'_, Result<(StoredRequestUsageAudit, Vec<String>), DataLayerError>>
@@ -8990,6 +8984,12 @@ ORDER BY "usage".user_id ASC
                         .execute(&mut *tx)
                         .await
                         .map_postgres_err()?;
+                    provider_contribution::
+                        sync_provider_api_key_usage_contribution_for_request_in_tx(
+                            &mut tx,
+                            &row.request_id,
+                        )
+                        .await?;
                     summary.recovered += 1;
                     continue;
                 }
@@ -9017,6 +9017,11 @@ ORDER BY "usage".user_id ASC
                     .execute(&mut *tx)
                     .await
                     .map_postgres_err()?;
+                provider_contribution::sync_provider_api_key_usage_contribution_for_request_in_tx(
+                    &mut tx,
+                    &row.request_id,
+                )
+                .await?;
                 summary.failed += 1;
             }
 
@@ -9091,6 +9096,11 @@ ORDER BY "usage".user_id ASC
         self.tx_runner
             .run_read_write(|tx| {
                 Box::pin(async move {
+                    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+                        .execute(&mut **tx)
+                        .await
+                        .map_postgres_err()?;
+                    lock_usage_counter_flush_in_tx(tx).await?;
                     sqlx::query(RESET_PROVIDER_API_KEY_USAGE_STATS_SQL)
                         .execute(&mut **tx)
                         .await
@@ -9100,37 +9110,87 @@ ORDER BY "usage".user_id ASC
                         .await
                         .map_postgres_err()?
                         .rows_affected();
+                    sqlx::query(
+                        "UPDATE usage_counter_deltas
+                         SET processed_at = NOW()
+                         WHERE kind = $1 AND processed_at IS NULL",
+                    )
+                    .bind(USAGE_COUNTER_KIND_PROVIDER_API_KEY)
+                    .execute(&mut **tx)
+                    .await
+                    .map_postgres_err()?;
                     Ok(rows_affected)
                 }) as BoxFuture<'_, Result<u64, DataLayerError>>
             })
             .await
     }
 
+    pub async fn enqueue_provider_api_key_usage_projection_repair(
+        &self,
+        provider_api_key_id: &str,
+        repair_main: bool,
+        repair_window: bool,
+    ) -> Result<bool, DataLayerError> {
+        let provider_api_key_id = provider_api_key_id.trim();
+        if provider_api_key_id.is_empty() || (!repair_main && !repair_window) {
+            return Ok(false);
+        }
+        let rows_affected = sqlx::query(
+            r#"
+INSERT INTO provider_api_key_usage_projection_repairs (
+  provider_api_key_id,
+  main_requested,
+  window_requested,
+  available_at,
+  updated_at
+) VALUES ($1, $2, $3, NOW(), NOW())
+ON CONFLICT (provider_api_key_id)
+DO UPDATE SET
+  main_requested = provider_api_key_usage_projection_repairs.main_requested OR EXCLUDED.main_requested,
+  window_requested = provider_api_key_usage_projection_repairs.window_requested OR EXCLUDED.window_requested,
+  available_at = LEAST(provider_api_key_usage_projection_repairs.available_at, EXCLUDED.available_at),
+  last_error = NULL,
+  updated_at = NOW()
+"#,
+        )
+        .bind(provider_api_key_id)
+        .bind(repair_main)
+        .bind(repair_window)
+        .execute(&self.pool)
+        .await
+        .map_postgres_err()?
+        .rows_affected();
+        Ok(rows_affected > 0)
+    }
+
+    pub async fn run_provider_api_key_usage_projection_maintenance(
+        &self,
+        batch_size: usize,
+    ) -> Result<ProviderApiKeyUsageProjectionMaintenanceSummary, DataLayerError> {
+        if batch_size == 0 {
+            return Ok(ProviderApiKeyUsageProjectionMaintenanceSummary::default());
+        }
+        let batch_size = i64::try_from(batch_size).map_err(|_| {
+            DataLayerError::InvalidInput("provider usage maintenance batch is too large".into())
+        })?;
+        let (backfill_requests, completed_backfill_keys) =
+            run_provider_api_key_usage_contribution_backfill_once(&self.pool, batch_size).await?;
+        let (repaired_keys, failed_repair_keys) =
+            run_provider_api_key_usage_projection_repairs_once(&self.pool, batch_size).await?;
+        Ok(ProviderApiKeyUsageProjectionMaintenanceSummary {
+            backfill_requests,
+            completed_backfill_keys,
+            repaired_keys,
+            failed_repair_keys,
+        })
+    }
+
     pub async fn ensure_provider_api_key_codex_window_usage_stats(
         &self,
         provider_api_key_id: &str,
     ) -> Result<bool, DataLayerError> {
-        let provider_api_key_id = provider_api_key_id.trim();
-        if provider_api_key_id.is_empty() {
-            return Ok(false);
-        }
-
-        for _ in 0..3 {
-            match rebuild_provider_api_key_codex_window_usage_for_key_once(
-                &self.pool,
-                provider_api_key_id,
-            )
+        self.enqueue_provider_api_key_usage_projection_repair(provider_api_key_id, false, true)
             .await
-            {
-                Ok(rebuilt) => return Ok(rebuilt),
-                Err(error) if is_postgres_serialization_failure(&error) => continue,
-                Err(error) => return Err(postgres_error(error)),
-            }
-        }
-
-        Err(DataLayerError::TimedOut(format!(
-            "provider api key window usage rebuild was retried too many times: {provider_api_key_id}"
-        )))
     }
 
     pub async fn reset_provider_api_key_codex_window_usage_stats(
@@ -9417,6 +9477,28 @@ impl UsageWriteRepository for SqlxUsageReadRepository {
         Self::rebuild_provider_api_key_usage_stats(self).await
     }
 
+    async fn enqueue_provider_api_key_usage_projection_repair(
+        &self,
+        provider_api_key_id: &str,
+        repair_main: bool,
+        repair_window: bool,
+    ) -> Result<bool, DataLayerError> {
+        Self::enqueue_provider_api_key_usage_projection_repair(
+            self,
+            provider_api_key_id,
+            repair_main,
+            repair_window,
+        )
+        .await
+    }
+
+    async fn run_provider_api_key_usage_projection_maintenance(
+        &self,
+        batch_size: usize,
+    ) -> Result<ProviderApiKeyUsageProjectionMaintenanceSummary, DataLayerError> {
+        Self::run_provider_api_key_usage_projection_maintenance(self, batch_size).await
+    }
+
     async fn ensure_provider_api_key_codex_window_usage_stats(
         &self,
         provider_api_key_id: &str,
@@ -9529,7 +9611,7 @@ fn stale_pending_error_message(status: &str, timeout_minutes: u64) -> String {
     format!("请求超时: 状态 '{status}' 超过 {timeout_minutes} 分钟未完成")
 }
 
-async fn find_usage_by_request_id_in_tx(
+pub(crate) async fn find_usage_by_request_id_in_tx(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     request_id: &str,
 ) -> Result<Option<StoredRequestUsageAudit>, DataLayerError> {
@@ -9846,82 +9928,6 @@ async fn enqueue_model_usage_delta_in_tx(
     .await
 }
 
-async fn enqueue_provider_api_key_usage_delta_in_tx(
-    tx: &mut sqlx::Transaction<'_, Postgres>,
-    request_id: &str,
-    key_id: &str,
-    delta: &ProviderApiKeyUsageDelta,
-) -> Result<(), DataLayerError> {
-    if key_id.trim().is_empty() || delta.is_noop() {
-        return Ok(());
-    }
-    let total_cost_usd_delta = if delta.total_cost_usd.is_finite() {
-        delta.total_cost_usd
-    } else {
-        0.0
-    };
-    insert_usage_counter_delta_in_tx(
-        tx,
-        UsageCounterDeltaInsert {
-            request_id,
-            kind: USAGE_COUNTER_KIND_PROVIDER_API_KEY,
-            target_id: key_id,
-            request_count_delta: delta.request_count,
-            total_requests_delta: 0,
-            success_count_delta: delta.success_count,
-            error_count_delta: delta.error_count,
-            dns_failures_delta: 0,
-            stream_errors_delta: 0,
-            total_tokens_delta: delta.total_tokens,
-            total_cost_usd_delta,
-            total_response_time_ms_delta: delta.total_response_time_ms,
-            window_request_count_delta: 0,
-            window_total_tokens_delta: 0,
-            window_total_cost_usd_delta: 0.0,
-            last_used_at_unix_secs: None,
-            last_used_ip: None,
-            candidate_last_used_at_unix_secs: delta.candidate_last_used_at_unix_secs,
-            removed_last_used_at_unix_secs: delta.removed_last_used_at_unix_secs,
-            usage_created_at_unix_secs: None,
-        },
-    )
-    .await?;
-
-    if delta.window_request_count == 0
-        && delta.window_total_tokens == 0
-        && delta.window_total_cost_usd == 0.0
-    {
-        return Ok(());
-    }
-
-    insert_usage_counter_delta_in_tx(
-        tx,
-        UsageCounterDeltaInsert {
-            request_id,
-            kind: USAGE_COUNTER_KIND_PROVIDER_API_KEY_WINDOW,
-            target_id: key_id,
-            request_count_delta: 0,
-            total_requests_delta: 0,
-            success_count_delta: 0,
-            error_count_delta: 0,
-            dns_failures_delta: 0,
-            stream_errors_delta: 0,
-            total_tokens_delta: 0,
-            total_cost_usd_delta: 0.0,
-            total_response_time_ms_delta: 0,
-            window_request_count_delta: delta.window_request_count,
-            window_total_tokens_delta: delta.window_total_tokens,
-            window_total_cost_usd_delta: delta.window_total_cost_usd,
-            last_used_at_unix_secs: None,
-            last_used_ip: None,
-            candidate_last_used_at_unix_secs: None,
-            removed_last_used_at_unix_secs: None,
-            usage_created_at_unix_secs: delta.usage_created_at_unix_secs,
-        },
-    )
-    .await
-}
-
 struct UsageCounterDeltaInsert<'a> {
     request_id: &'a str,
     kind: &'a str,
@@ -9949,6 +9955,14 @@ async fn insert_usage_counter_delta_in_tx(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     input: UsageCounterDeltaInsert<'_>,
 ) -> Result<(), DataLayerError> {
+    insert_usage_counter_delta_with_id_in_tx(tx, Uuid::new_v4().to_string(), input).await
+}
+
+async fn insert_usage_counter_delta_with_id_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    id: String,
+    input: UsageCounterDeltaInsert<'_>,
+) -> Result<(), DataLayerError> {
     let request_id = input.request_id.trim();
     let target_id = input.target_id.trim();
     if request_id.is_empty() || target_id.is_empty() {
@@ -9972,7 +9986,7 @@ async fn insert_usage_counter_delta_in_tx(
     )?;
 
     sqlx::query(INSERT_USAGE_COUNTER_DELTA_SQL)
-        .bind(Uuid::new_v4().to_string())
+        .bind(id)
         .bind(request_id)
         .bind(input.kind)
         .bind(target_id)
@@ -10025,6 +10039,16 @@ async fn try_lock_usage_counter_flush_in_tx(
         .map_postgres_err()
 }
 
+async fn lock_usage_counter_flush_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+) -> Result<(), DataLayerError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('usage_counter_flush')::BIGINT)")
+        .execute(&mut **tx)
+        .await
+        .map_postgres_err()?;
+    Ok(())
+}
+
 async fn defer_usage_counter_deltas_in_tx(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     ids: &[String],
@@ -10040,49 +10064,365 @@ async fn defer_usage_counter_deltas_in_tx(
     Ok(())
 }
 
+#[derive(Debug)]
+struct ProviderUsageBackfillState {
+    provider_api_key_id: String,
+    high_water_created_at: DateTime<Utc>,
+    cursor_created_at: Option<DateTime<Utc>>,
+    cursor_request_id: Option<String>,
+}
+
+#[derive(Debug)]
+struct ProviderUsageBackfillCandidate {
+    request_id: String,
+    created_at: DateTime<Utc>,
+}
+
+async fn run_provider_api_key_usage_contribution_backfill_once(
+    pool: &PgPool,
+    batch_size: i64,
+) -> Result<(usize, usize), DataLayerError> {
+    let mut tx = pool.begin().await.map_postgres_err()?;
+    sqlx::query(
+        r#"
+UPDATE provider_api_key_usage_contribution_backfill_state
+SET
+  high_water_created_at = COALESCE(high_water_created_at, clock_timestamp()),
+  initialized_at = COALESCE(initialized_at, clock_timestamp()),
+  updated_at = NOW()
+WHERE id = 1
+"#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_postgres_err()?;
+    sqlx::query(
+        r#"
+INSERT INTO provider_api_key_usage_contribution_backfills (
+  provider_api_key_id,
+  high_water_created_at
+)
+SELECT keys.id, state.high_water_created_at
+FROM provider_api_keys AS keys
+CROSS JOIN provider_api_key_usage_contribution_backfill_state AS state
+WHERE state.id = 1
+  AND state.high_water_created_at IS NOT NULL
+ON CONFLICT (provider_api_key_id) DO NOTHING
+"#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_postgres_err()?;
+
+    let state_row = sqlx::query(
+        r#"
+SELECT
+  provider_api_key_id,
+  high_water_created_at,
+  cursor_created_at,
+  cursor_request_id
+FROM provider_api_key_usage_contribution_backfills
+WHERE status IN ('pending', 'running')
+  AND high_water_created_at IS NOT NULL
+ORDER BY updated_at ASC, provider_api_key_id ASC
+LIMIT 1
+FOR UPDATE SKIP LOCKED
+"#,
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_postgres_err()?;
+    let Some(state_row) = state_row else {
+        sqlx::query(
+            r#"
+UPDATE provider_api_key_usage_contribution_backfill_state AS state
+SET completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
+WHERE state.id = 1
+  AND NOT EXISTS (
+    SELECT 1
+    FROM provider_api_key_usage_contribution_backfills
+    WHERE status <> 'completed'
+  )
+"#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_postgres_err()?;
+        tx.commit().await.map_postgres_err()?;
+        return Ok((0, 0));
+    };
+    let state = ProviderUsageBackfillState {
+        provider_api_key_id: state_row
+            .try_get("provider_api_key_id")
+            .map_postgres_err()?,
+        high_water_created_at: state_row
+            .try_get("high_water_created_at")
+            .map_postgres_err()?,
+        cursor_created_at: state_row.try_get("cursor_created_at").map_postgres_err()?,
+        cursor_request_id: state_row.try_get("cursor_request_id").map_postgres_err()?,
+    };
+    sqlx::query(
+        "UPDATE provider_api_key_usage_contribution_backfills
+         SET status = 'running', updated_at = NOW()
+         WHERE provider_api_key_id = $1",
+    )
+    .bind(&state.provider_api_key_id)
+    .execute(&mut *tx)
+    .await
+    .map_postgres_err()?;
+
+    let candidate_rows = sqlx::query(
+        r#"
+SELECT request_id, created_at
+FROM usage
+WHERE provider_api_key_id = $1
+  AND created_at < $2
+  AND (
+    $3::TIMESTAMPTZ IS NULL
+    OR created_at > $3
+    OR (
+      created_at = $3
+      AND request_id > COALESCE($4, '')
+    )
+  )
+ORDER BY created_at ASC, request_id ASC
+LIMIT $5
+"#,
+    )
+    .bind(&state.provider_api_key_id)
+    .bind(state.high_water_created_at)
+    .bind(state.cursor_created_at)
+    .bind(state.cursor_request_id.as_deref())
+    .bind(batch_size)
+    .fetch_all(&mut *tx)
+    .await
+    .map_postgres_err()?;
+    let candidates = candidate_rows
+        .iter()
+        .map(|row| {
+            Ok(ProviderUsageBackfillCandidate {
+                request_id: row.try_get("request_id").map_postgres_err()?,
+                created_at: row.try_get("created_at").map_postgres_err()?,
+            })
+        })
+        .collect::<Result<Vec<_>, DataLayerError>>()?;
+
+    for candidate in &candidates {
+        provider_contribution::backfill_provider_api_key_usage_contribution_for_request_in_tx(
+            &mut tx,
+            &candidate.request_id,
+        )
+        .await?;
+    }
+
+    let completed = candidates.len() < usize::try_from(batch_size).unwrap_or(usize::MAX);
+    if let Some(last) = candidates.last() {
+        sqlx::query(
+            r#"
+UPDATE provider_api_key_usage_contribution_backfills
+SET
+  cursor_created_at = $2,
+  cursor_request_id = $3,
+  updated_at = NOW()
+WHERE provider_api_key_id = $1
+"#,
+        )
+        .bind(&state.provider_api_key_id)
+        .bind(last.created_at)
+        .bind(&last.request_id)
+        .execute(&mut *tx)
+        .await
+        .map_postgres_err()?;
+    }
+
+    let completed_keys = if completed {
+        lock_usage_counter_flush_in_tx(&mut tx).await?;
+        provider_contribution::lock_provider_api_key_usage_projection_keys_in_tx(
+            &mut tx,
+            std::iter::once(state.provider_api_key_id.as_str()),
+        )
+        .await?;
+        rebuild_provider_api_key_usage_projection_for_key_in_tx(
+            &mut tx,
+            &state.provider_api_key_id,
+            true,
+        )
+        .await?;
+        sqlx::query(
+            r#"
+UPDATE provider_api_key_usage_contribution_backfills
+SET status = 'completed', backfilled_at = NOW(), updated_at = NOW()
+WHERE provider_api_key_id = $1
+"#,
+        )
+        .bind(&state.provider_api_key_id)
+        .execute(&mut *tx)
+        .await
+        .map_postgres_err()?;
+        1
+    } else {
+        0
+    };
+    tx.commit().await.map_postgres_err()?;
+    Ok((candidates.len(), completed_keys))
+}
+
+async fn rebuild_provider_api_key_usage_projection_for_key_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    provider_api_key_id: &str,
+    rebuild_window: bool,
+) -> Result<(), DataLayerError> {
+    sqlx::query(
+        "UPDATE usage_counter_deltas
+         SET processed_at = NOW()
+         WHERE kind = $1 AND target_id = $2 AND processed_at IS NULL",
+    )
+    .bind(USAGE_COUNTER_KIND_PROVIDER_API_KEY)
+    .bind(provider_api_key_id)
+    .execute(&mut **tx)
+    .await
+    .map_postgres_err()?;
+    sqlx::query(REBUILD_PROVIDER_API_KEY_USAGE_FOR_KEY_SQL)
+        .bind(provider_api_key_id)
+        .execute(&mut **tx)
+        .await
+        .map_postgres_err()?;
+    if rebuild_window {
+        sqlx::query(REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL)
+            .bind(provider_api_key_id)
+            .execute(&mut **tx)
+            .await
+            .map_postgres_err()?;
+    }
+    Ok(())
+}
+
+async fn run_provider_api_key_usage_projection_repairs_once(
+    pool: &PgPool,
+    batch_size: i64,
+) -> Result<(usize, usize), DataLayerError> {
+    let repair_limit = batch_size.clamp(1, 4);
+    let mut repaired = 0_usize;
+    let mut failed = 0_usize;
+    for _ in 0..repair_limit {
+        let mut tx = pool.begin().await.map_postgres_err()?;
+        let repair_row = sqlx::query(
+            r#"
+SELECT provider_api_key_id, main_requested, window_requested, updated_at
+FROM provider_api_key_usage_projection_repairs
+WHERE available_at <= NOW()
+ORDER BY available_at ASC, updated_at ASC, provider_api_key_id ASC
+LIMIT 1
+FOR UPDATE SKIP LOCKED
+"#,
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_postgres_err()?;
+        let Some(repair_row) = repair_row else {
+            tx.commit().await.map_postgres_err()?;
+            break;
+        };
+        let provider_api_key_id = repair_row
+            .try_get::<String, _>("provider_api_key_id")
+            .map_postgres_err()?;
+        let repair_main = repair_row
+            .try_get::<bool, _>("main_requested")
+            .map_postgres_err()?;
+        let repair_window = repair_row
+            .try_get::<bool, _>("window_requested")
+            .map_postgres_err()?;
+        let requested_at = repair_row
+            .try_get::<DateTime<Utc>, _>("updated_at")
+            .map_postgres_err()?;
+
+        let repair_result = async {
+            lock_usage_counter_flush_in_tx(&mut tx).await?;
+            provider_contribution::lock_provider_api_key_usage_projection_keys_in_tx(
+                &mut tx,
+                std::iter::once(provider_api_key_id.as_str()),
+            )
+            .await?;
+            if repair_main {
+                rebuild_provider_api_key_usage_projection_for_key_in_tx(
+                    &mut tx,
+                    &provider_api_key_id,
+                    false,
+                )
+                .await?;
+            }
+            if repair_window {
+                let missing =
+                    sqlx::query_scalar::<_, bool>(PROVIDER_API_KEY_CODEX_WINDOW_USAGE_MISSING_SQL)
+                        .bind(&provider_api_key_id)
+                        .fetch_one(&mut *tx)
+                        .await
+                        .map_postgres_err()?;
+                if missing {
+                    sqlx::query(REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL)
+                        .bind(&provider_api_key_id)
+                        .execute(&mut *tx)
+                        .await
+                        .map_postgres_err()?;
+                }
+            }
+            sqlx::query(
+                r#"
+DELETE FROM provider_api_key_usage_projection_repairs
+WHERE provider_api_key_id = $1
+  AND updated_at = $2
+"#,
+            )
+            .bind(&provider_api_key_id)
+            .bind(requested_at)
+            .execute(&mut *tx)
+            .await
+            .map_postgres_err()?;
+            Ok::<(), DataLayerError>(())
+        }
+        .await;
+
+        match repair_result {
+            Ok(()) => {
+                tx.commit().await.map_postgres_err()?;
+                repaired = repaired.saturating_add(1);
+            }
+            Err(error) => {
+                tx.rollback().await.map_postgres_err()?;
+                let error_message = error.to_string();
+                sqlx::query(
+                    r#"
+UPDATE provider_api_key_usage_projection_repairs
+SET
+  attempts = attempts + 1,
+  last_error = LEFT($2, 4000),
+  available_at = NOW() + make_interval(
+    secs => LEAST(300, CAST(POWER(2, LEAST(attempts, 8)) AS INTEGER))
+  ),
+  updated_at = NOW()
+WHERE provider_api_key_id = $1
+  AND updated_at = $3
+"#,
+                )
+                .bind(&provider_api_key_id)
+                .bind(error_message)
+                .bind(requested_at)
+                .execute(pool)
+                .await
+                .map_postgres_err()?;
+                failed = failed.saturating_add(1);
+            }
+        }
+    }
+    Ok((repaired, failed))
+}
+
 fn is_postgres_serialization_failure(error: &sqlx::Error) -> bool {
     matches!(
         error,
         sqlx::Error::Database(database_error)
             if database_error.code().as_deref() == Some("40001")
     )
-}
-
-async fn rebuild_provider_api_key_codex_window_usage_for_key_once(
-    pool: &PgPool,
-    provider_api_key_id: &str,
-) -> Result<bool, sqlx::Error> {
-    let missing = sqlx::query_scalar::<_, bool>(PROVIDER_API_KEY_CODEX_WINDOW_USAGE_MISSING_SQL)
-        .bind(provider_api_key_id)
-        .fetch_one(pool)
-        .await?;
-    if !missing {
-        return Ok(false);
-    }
-
-    let mut tx = pool.begin().await?;
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtext('usage_counter_flush')::BIGINT)")
-        .execute(&mut *tx)
-        .await?;
-
-    let missing = sqlx::query_scalar::<_, bool>(PROVIDER_API_KEY_CODEX_WINDOW_USAGE_MISSING_SQL)
-        .bind(provider_api_key_id)
-        .fetch_one(&mut *tx)
-        .await?;
-    if !missing {
-        tx.commit().await?;
-        return Ok(false);
-    }
-
-    sqlx::query(REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL)
-        .bind(provider_api_key_id)
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
-    Ok(true)
 }
 
 async fn reset_provider_api_key_codex_window_usage_once(
@@ -10128,6 +10468,12 @@ async fn reset_provider_api_key_codex_window_usage_once(
     sqlx::query("SELECT pg_advisory_xact_lock(hashtext('usage_counter_flush')::BIGINT)")
         .execute(&mut *tx)
         .await?;
+    provider_contribution::lock_provider_api_key_usage_projection_keys_in_tx(
+        &mut tx,
+        key_ids.iter().map(String::as_str),
+    )
+    .await
+    .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
 
     let reset_windows = sqlx::query_scalar::<_, i64>(RESET_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_SQL)
         .bind(&provider_api_key_ids)

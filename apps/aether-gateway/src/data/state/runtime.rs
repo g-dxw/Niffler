@@ -1058,6 +1058,43 @@ impl GatewayDataState {
         }
     }
 
+    pub(crate) async fn enqueue_provider_api_key_usage_projection_repair(
+        &self,
+        provider_api_key_id: &str,
+        repair_main: bool,
+        repair_window: bool,
+    ) -> Result<bool, DataLayerError> {
+        match &self.usage_writer {
+            Some(repository) => {
+                repository
+                    .enqueue_provider_api_key_usage_projection_repair(
+                        provider_api_key_id,
+                        repair_main,
+                        repair_window,
+                    )
+                    .await
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub(crate) async fn run_provider_api_key_usage_projection_maintenance(
+        &self,
+        batch_size: usize,
+    ) -> Result<
+        aether_data_contracts::repository::usage::ProviderApiKeyUsageProjectionMaintenanceSummary,
+        DataLayerError,
+    > {
+        match &self.usage_writer {
+            Some(repository) => {
+                repository
+                    .run_provider_api_key_usage_projection_maintenance(batch_size)
+                    .await
+            }
+            None => Ok(Default::default()),
+        }
+    }
+
     pub(crate) async fn ensure_provider_api_key_codex_window_usage_stats(
         &self,
         provider_api_key_id: &str,

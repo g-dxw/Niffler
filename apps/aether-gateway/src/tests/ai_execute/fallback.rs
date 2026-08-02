@@ -146,32 +146,31 @@ async fn gateway_rate_limits_unauthenticated_ai_requests_by_ip() {
     let (gateway_url, gateway_handle) = start_server(gateway).await;
     let client = reqwest::Client::new();
 
-    for index in 0..10 {
+    let mut service_unavailable_count = 0;
+    let response = loop {
         let response = client
             .post(format!("{gateway_url}/v1/videos"))
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(
                 TRACE_ID_HEADER,
-                format!("trace-unauth-ai-rate-limit-{index}"),
+                format!("trace-unauth-ai-rate-limit-{service_unavailable_count}"),
             )
             .body("{\"model\":\"sora-2\"}")
             .send()
             .await
             .expect("request should complete");
 
+        if response.status() == StatusCode::TOO_MANY_REQUESTS {
+            break response;
+        }
+
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    }
+        service_unavailable_count += 1;
+        // The fixed one-minute window can roll over while requests are in flight.
+        assert!(service_unavailable_count <= 20);
+    };
 
-    let response = client
-        .post(format!("{gateway_url}/v1/videos"))
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .header(TRACE_ID_HEADER, "trace-unauth-ai-rate-limit-blocked")
-        .body("{\"model\":\"sora-2\"}")
-        .send()
-        .await
-        .expect("request should complete");
-
-    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!((10..=20).contains(&service_unavailable_count));
     assert_eq!(
         response
             .headers()

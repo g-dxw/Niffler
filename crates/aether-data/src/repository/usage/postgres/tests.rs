@@ -259,38 +259,19 @@ fn usage_sql_stores_provider_key_window_usage_outside_status_snapshot() {
     );
     assert!(
         super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("usage_facts.billing_status = 'settled'")
+            .contains("LEFT JOIN provider_api_key_usage_contributions AS contributions")
     );
     assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("LEFT JOIN usage_settlement_snapshots AS settlement")
+        !super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+            .contains("FROM usage_billing_facts")
     );
     assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("settlement.settlement_snapshot ->> 'base_cost_usd'")
-    );
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}'")
-    );
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("raw_usage.request_metadata ->> 'sales_multiplier'")
-    );
-    assert!(super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains(
-        "raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}'"
-    ));
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("/ provider_cost_inputs.sales_multiplier")
-    );
-    assert!(
-        super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
+        !super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
             .contains("INSERT INTO provider_api_key_window_usage_applications")
     );
     assert!(
         super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL
-            .contains("delta.kind = 'provider_api_key_window'")
+            .contains("kind = 'provider_api_key_window'")
     );
     assert!(!super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains("jsonb_set"));
     assert!(!super::REBUILD_PROVIDER_API_KEY_CODEX_WINDOW_USAGE_FOR_KEY_SQL.contains("'{usage}'"));
@@ -356,7 +337,10 @@ fn usage_sql_moves_shared_counter_updates_behind_outbox() {
     assert!(super::MARK_USAGE_COUNTER_DELTAS_PROCESSED_SQL.contains("processed_at = NOW()"));
     assert!(super::TRY_LOCK_USAGE_COUNTER_FLUSH_SQL.contains("pg_try_advisory_xact_lock"));
     assert!(source.contains("enqueue_api_key_usage_delta_in_tx("));
-    assert!(source.contains("enqueue_provider_api_key_usage_delta_in_tx("));
+    assert!(
+        source.contains("provider_contribution::sync_provider_api_key_usage_contribution_in_tx(")
+    );
+    assert!(source.contains("insert_usage_counter_delta_with_id_in_tx("));
     assert!(source.contains("enqueue_model_usage_delta_in_tx("));
     assert!(source.contains("apply_provider_api_key_main_usage_delta_in_tx("));
     assert!(source.contains("apply_provider_api_key_codex_window_usage_deltas_in_tx("));
@@ -397,36 +381,27 @@ fn usage_sql_rebuild_matches_online_api_key_usage_semantics() {
 
 #[test]
 fn usage_sql_rebuild_matches_online_provider_key_usage_semantics() {
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL.contains("COUNT(*)::BIGINT"));
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("NULLIF(BTRIM(error_message), '') IS NULL"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL.contains("COALESCE("));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL.contains("total_tokens,"));
+        .contains("FROM public.provider_api_key_usage_contributions"));
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)"));
+        .contains("COALESCE(SUM(request_count), 0)::BIGINT AS request_count"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("COALESCE(SUM(success_count), 0)::BIGINT AS success_count"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("COALESCE(SUM(error_count), 0)::BIGINT AS error_count"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("COALESCE(SUM(total_tokens), 0)::BIGINT AS total_tokens"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("COALESCE(SUM(total_cost_usd), 0)::NUMERIC(20,8) AS total_cost_usd"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("COALESCE(SUM(total_response_time_ms), 0)::BIGINT AS total_response_time_ms"));
+    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
+        .contains("MAX(last_used_at_unix_secs) AS last_used_at_unix_secs"));
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
         .contains("AND BTRIM(provider_api_key_id) <> ''"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("AND status NOT IN ('pending', 'streaming')"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("LEFT JOIN usage_settlement_snapshots AS settlement"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("LEFT JOIN \"usage\" AS raw_usage"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("raw_usage.request_metadata ->> 'base_cost_usd'"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("settlement.settlement_snapshot ->> 'base_cost_usd'"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("raw_usage.request_metadata #>> '{settlement_snapshot,base_cost_usd}'"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("raw_usage.request_metadata ->> 'sales_multiplier'"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL.contains(
-        "raw_usage.request_metadata #>> '{settlement_snapshot,pricing_snapshot,sales_multiplier}'"
-    ));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("settlement.settlement_snapshot -> 'pricing_snapshot' ->> 'sales_multiplier'"));
-    assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("\"usage\".billing_status = 'settled'"));
+    assert!(
+        super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL.contains("GROUP BY provider_api_key_id")
+    );
 }
 
 #[test]
@@ -618,14 +593,15 @@ fn usage_sql_summarize_usage_totals_by_user_ids_supports_user_summary_aggregates
 }
 
 #[test]
-fn usage_sql_raw_aggregates_use_canonical_billing_facts() {
+fn usage_sql_raw_aggregates_use_canonical_sources() {
     let source = include_str!("mod.rs");
     assert!(source.contains("FROM usage_billing_facts AS \"usage\""));
     assert!(
         super::REBUILD_API_KEY_USAGE_STATS_SQL.contains("FROM usage_billing_facts AS \"usage\"")
     );
     assert!(super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL
-        .contains("FROM usage_billing_facts AS \"usage\""));
+        .contains("FROM public.provider_api_key_usage_contributions"));
+    assert!(!super::REBUILD_PROVIDER_API_KEY_USAGE_STATS_SQL.contains("FROM usage_billing_facts"));
     assert!(super::SUMMARIZE_TOTAL_TOKENS_BY_API_KEY_IDS_SQL
         .contains("FROM usage_billing_facts AS \"usage\""));
     assert!(super::SUMMARIZE_USAGE_TOTALS_BY_USER_IDS_SQL

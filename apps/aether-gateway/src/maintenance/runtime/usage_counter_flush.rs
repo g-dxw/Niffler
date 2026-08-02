@@ -19,3 +19,14 @@ pub(crate) async fn cleanup_processed_usage_counter_deltas_once(
     data.cleanup_processed_usage_counter_deltas(cutoff, batch_size)
         .await
 }
+
+pub(crate) async fn run_provider_usage_projection_maintenance_once(
+    data: &GatewayDataState,
+    batch_size: usize,
+) -> Result<
+    aether_data_contracts::repository::usage::ProviderApiKeyUsageProjectionMaintenanceSummary,
+    DataLayerError,
+> {
+    data.run_provider_api_key_usage_projection_maintenance(batch_size)
+        .await
+}
