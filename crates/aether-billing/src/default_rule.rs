@@ -301,31 +301,6 @@ fn build_tier_entries(
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{build_tier_entries, tier_value_with_fallback};
-    use serde_json::json;
-
-    #[test]
-    fn explicit_null_cache_creation_price_disables_fallback() {
-        let tier = json!({
-            "up_to": 272000,
-            "input_price_per_1m": 5.0,
-            "cache_creation_price_per_1m": null
-        });
-
-        assert_eq!(
-            tier_value_with_fallback(&tier, "cache_creation_price_per_1m", 1.25),
-            0.0
-        );
-        assert_eq!(
-            build_tier_entries(&[tier], "cache_creation_price_per_1m", Some(1.25), false,)[0]
-                ["value"],
-            json!(0.0)
-        );
-    }
-}
-
 pub(crate) fn explicit_image_output_price_entries(
     pricing_config: Option<&Value>,
 ) -> Option<BTreeMap<String, Value>> {
@@ -522,4 +497,29 @@ fn matches_quality_key(value: &str) -> bool {
         normalize_image_quality(value).as_str(),
         "low" | "medium" | "high"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_tier_entries, tier_value_with_fallback};
+    use serde_json::json;
+
+    #[test]
+    fn explicit_null_cache_creation_price_disables_fallback() {
+        let tier = json!({
+            "up_to": 272000,
+            "input_price_per_1m": 5.0,
+            "cache_creation_price_per_1m": null
+        });
+
+        assert_eq!(
+            tier_value_with_fallback(&tier, "cache_creation_price_per_1m", 1.25),
+            0.0
+        );
+        assert_eq!(
+            build_tier_entries(&[tier], "cache_creation_price_per_1m", Some(1.25), false,)[0]
+                ["value"],
+            json!(0.0)
+        );
+    }
 }
