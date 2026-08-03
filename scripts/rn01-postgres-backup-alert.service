@@ -1,0 +1,15 @@
+[Unit]
+Description=Send Niffler PostgreSQL backup failure alert to Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/niffler-postgres-backup-alert failure
+User=root
+Group=root
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+NoNewPrivileges=true
+TimeoutStartSec=1m

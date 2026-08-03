@@ -79,6 +79,11 @@ describe('ccswitchImport', () => {
   it('builds usage script that reads remaining balance and key validity', () => {
     const usageScript = buildCcSwitchUsageScript()
 
+    expect(usageScript).toContain('response?.unlimited === true')
+    expect(usageScript).toContain('extra: "无限额"')
+    expect(usageScript).toContain('response?.wallet_balance')
+    expect(usageScript).toContain('response?.package_balance')
+    expect(usageScript).toContain('"套餐额度 " + packageBalance.toFixed(2)')
     expect(usageScript).toContain('response?.remaining')
     expect(usageScript).toContain('response?.quota?.remaining')
     expect(usageScript).toContain('response?.is_active')

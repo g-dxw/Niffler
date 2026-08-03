@@ -4,7 +4,7 @@
 
 生产发布不再在服务器上编译 Rust、构建前端或执行 `docker build`。应用镜像由 GitHub Actions 构建，发布时服务器只负责加载镜像并重启容器。
 
-生产发布必须保证待上线提交就是受保护 `main` 的准确提交，并且包含当前线上提交，防止从落后的功能分支发布时静默删除已经上线的功能。
+生产发布必须保证待上线提交就是受保护 `main` 的准确提交，并且包含当前线上提交，防止从落后的功能分支发布时静默删除已经上线的功能。生产环境不再要求人工审批。
 
 是否允许上线、迁移是否兼容、容器是否健康以及失败后是否回退，都由生产主机
 `/opt/niffler-release/bin/deploy-production` 的固定部署器判断。固定部署器位于应用
@@ -224,7 +224,7 @@ PR -> ryfineZ/Niffler:test -> Build App Image -> test Environment -> 测试验�
 
 ### 目标与非目标
 
-GitHub `production` 环境负责保护专用 SSH 凭证，并在人工审核后调用服务器已有的
+GitHub `production` 环境负责保护专用 SSH 凭证，并在工作流校验通过后调用服务器已有的
 固定部署器。它不替代固定部署器的主线、迁移、健康和回退判断。
 
 本阶段不执行以下操作：
@@ -241,15 +241,13 @@ GitHub `production` 环境负责保护专用 SSH 凭证，并在人工审核后�
 `production` 环境必须同时满足：
 
 - 只允许 `main` 分支部署；
-- required reviewers 同时包含仓库所有者和第二名维护者；
-- 禁止发起人批准自己的部署；
-- 禁止管理员绕过环境保护；
+- 不配置 required reviewers，不要求人工批准部署；
 - SSH 私钥、主机地址和主机密钥指纹保存为环境 Secret；
 - SSH 用户和端口保存为环境 Variable；
 - 生产 Job 只声明 `contents: read` 和 `actions: read`；
 - 生产 Job 使用的第三方 Action 固定到经过核对的完整提交 SHA。
 
-环境 Secret 只在 required reviewer 批准后提供给 Runner。工作流仍必须显式检查
+环境 Secret 会在生产 Job 启动时提供给 Runner。工作流仍必须显式检查
 `github.ref == 'refs/heads/main'`，不能只依赖环境名称。
 
 ### 服务器最小权限边界

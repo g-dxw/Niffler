@@ -232,6 +232,10 @@ impl<'a> AdminAppState<'a> {
         let (normalized_api_format, api_family, endpoint_kind) =
             admin_endpoint_signature_parts(&payload.api_format)
                 .ok_or_else(|| format!("无效的 api_format: {}", payload.api_format))?;
+        crate::orchestration::validate_endpoint_stream_failover_config(
+            normalized_api_format,
+            payload.config.as_ref(),
+        )?;
         let base_url = normalize_admin_base_url(&payload.base_url)?;
 
         let existing_endpoints = self
@@ -370,6 +374,10 @@ impl<'a> AdminAppState<'a> {
             provider,
             existing_endpoint,
             &mut updated,
+        )?;
+        crate::orchestration::validate_endpoint_stream_failover_config(
+            &updated.api_format,
+            updated.config.as_ref(),
         )?;
         updated.updated_at_unix_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

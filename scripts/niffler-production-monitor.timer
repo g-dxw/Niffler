@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Niffler production node every minute
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=1m
+RandomizedDelaySec=15s
+Persistent=true
+Unit=niffler-production-monitor.service
+
+[Install]
+WantedBy=timers.target

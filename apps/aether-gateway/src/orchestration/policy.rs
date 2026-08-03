@@ -7,6 +7,39 @@ use tracing::debug;
 use crate::provider_transport::GatewayProviderTransportSnapshot;
 use crate::AppState;
 
+const DEFAULT_STREAM_FAILOVER_MAX_WAIT_MS: u64 = 5_000;
+const MIN_STREAM_FAILOVER_MAX_WAIT_MS: u64 = 250;
+const MAX_STREAM_FAILOVER_MAX_WAIT_MS: u64 = 30_000;
+const DEFAULT_STREAM_FAILOVER_MAX_BUFFER_BYTES: usize = 65_536;
+const MIN_STREAM_FAILOVER_MAX_BUFFER_BYTES: u64 = 16_384;
+const MAX_STREAM_FAILOVER_MAX_BUFFER_BYTES: u64 = 1_048_576;
+const DEFAULT_STREAM_FAILOVER_COOLDOWN_SECONDS: u64 = 30;
+const MIN_STREAM_FAILOVER_COOLDOWN_SECONDS: u64 = 1;
+const MAX_STREAM_FAILOVER_COOLDOWN_SECONDS: u64 = 1_920;
+const DEFAULT_STREAM_FAILOVER_MAX_ACCOUNT_SWITCHES: u64 = 2;
+const MAX_STREAM_FAILOVER_MAX_ACCOUNT_SWITCHES: u64 = 999;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LocalStreamFailoverPolicy {
+    pub(crate) enabled: bool,
+    pub(crate) max_account_switches: u64,
+    pub(crate) max_wait_ms: u64,
+    pub(crate) max_buffer_bytes: usize,
+    pub(crate) cooldown_seconds: u64,
+}
+
+impl Default for LocalStreamFailoverPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_account_switches: DEFAULT_STREAM_FAILOVER_MAX_ACCOUNT_SWITCHES,
+            max_wait_ms: DEFAULT_STREAM_FAILOVER_MAX_WAIT_MS,
+            max_buffer_bytes: DEFAULT_STREAM_FAILOVER_MAX_BUFFER_BYTES,
+            cooldown_seconds: DEFAULT_STREAM_FAILOVER_COOLDOWN_SECONDS,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LocalFailoverPolicy {
     pub(crate) max_retries: Option<u64>,
@@ -70,6 +103,25 @@ pub(crate) async fn resolve_local_failover_policy(
         "gateway loaded local failover policy from transport snapshot"
     );
     policy
+}
+
+pub(crate) async fn resolve_local_stream_failover_policy(
+    state: &AppState,
+    plan: &ExecutionPlan,
+    report_context: Option<&serde_json::Value>,
+) -> LocalStreamFailoverPolicy {
+    if let Some(policy) = local_stream_failover_policy_from_report_context(report_context) {
+        return policy;
+    }
+
+    let transport = match state
+        .read_provider_transport_snapshot(&plan.provider_id, &plan.endpoint_id, &plan.key_id)
+        .await
+    {
+        Ok(Some(transport)) => transport,
+        Ok(None) | Err(_) => return LocalStreamFailoverPolicy::default(),
+    };
+    local_stream_failover_policy_from_transport(&transport)
 }
 
 pub(crate) fn local_failover_policy_from_transport(
@@ -168,6 +220,125 @@ pub(crate) fn local_failover_policy_from_report_context(
     })
 }
 
+pub(crate) fn local_stream_failover_policy_from_transport(
+    transport: &GatewayProviderTransportSnapshot,
+) -> LocalStreamFailoverPolicy {
+    if !crate::ai_serving::is_openai_responses_format(&transport.endpoint.api_format) {
+        return LocalStreamFailoverPolicy::default();
+    }
+
+    let Some(config) = transport
+        .endpoint
+        .config
+        .as_ref()
+        .and_then(Value::as_object)
+        .and_then(|config| config.get("stream_failover"))
+        .and_then(Value::as_object)
+    else {
+        return LocalStreamFailoverPolicy::default();
+    };
+
+    let mode_is_supported = config
+        .get("mode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .map(|value| value.eq_ignore_ascii_case("before_output"))
+        .unwrap_or(true);
+    let max_wait_ms = config
+        .get("max_wait_ms")
+        .and_then(parse_u64_value)
+        .unwrap_or(DEFAULT_STREAM_FAILOVER_MAX_WAIT_MS)
+        .clamp(
+            MIN_STREAM_FAILOVER_MAX_WAIT_MS,
+            MAX_STREAM_FAILOVER_MAX_WAIT_MS,
+        );
+    let max_buffer_bytes = config
+        .get("max_buffer_bytes")
+        .and_then(parse_u64_value)
+        .unwrap_or(DEFAULT_STREAM_FAILOVER_MAX_BUFFER_BYTES as u64)
+        .clamp(
+            MIN_STREAM_FAILOVER_MAX_BUFFER_BYTES,
+            MAX_STREAM_FAILOVER_MAX_BUFFER_BYTES,
+        ) as usize;
+    let cooldown_seconds = config
+        .get("cooldown_seconds")
+        .and_then(parse_u64_value)
+        .unwrap_or(DEFAULT_STREAM_FAILOVER_COOLDOWN_SECONDS)
+        .clamp(
+            MIN_STREAM_FAILOVER_COOLDOWN_SECONDS,
+            MAX_STREAM_FAILOVER_COOLDOWN_SECONDS,
+        );
+    let max_account_switches = transport
+        .endpoint
+        .max_retries
+        .and_then(|value| u64::try_from(value).ok())
+        .or_else(|| {
+            transport
+                .provider
+                .max_retries
+                .and_then(|value| u64::try_from(value).ok())
+        })
+        .unwrap_or(DEFAULT_STREAM_FAILOVER_MAX_ACCOUNT_SWITCHES)
+        .min(MAX_STREAM_FAILOVER_MAX_ACCOUNT_SWITCHES);
+
+    LocalStreamFailoverPolicy {
+        enabled: config
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            && mode_is_supported,
+        max_account_switches,
+        max_wait_ms,
+        max_buffer_bytes,
+        cooldown_seconds,
+    }
+}
+
+pub(crate) fn local_stream_failover_policy_from_report_context(
+    report_context: Option<&Value>,
+) -> Option<LocalStreamFailoverPolicy> {
+    let object = report_context
+        .and_then(Value::as_object)?
+        .get("stream_failover_policy")?
+        .as_object()?;
+
+    Some(LocalStreamFailoverPolicy {
+        enabled: object
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        max_account_switches: object
+            .get("max_account_switches")
+            .and_then(parse_u64_value)
+            .unwrap_or(DEFAULT_STREAM_FAILOVER_MAX_ACCOUNT_SWITCHES)
+            .min(MAX_STREAM_FAILOVER_MAX_ACCOUNT_SWITCHES),
+        max_wait_ms: object
+            .get("max_wait_ms")
+            .and_then(parse_u64_value)
+            .unwrap_or(DEFAULT_STREAM_FAILOVER_MAX_WAIT_MS)
+            .clamp(
+                MIN_STREAM_FAILOVER_MAX_WAIT_MS,
+                MAX_STREAM_FAILOVER_MAX_WAIT_MS,
+            ),
+        max_buffer_bytes: object
+            .get("max_buffer_bytes")
+            .and_then(parse_u64_value)
+            .unwrap_or(DEFAULT_STREAM_FAILOVER_MAX_BUFFER_BYTES as u64)
+            .clamp(
+                MIN_STREAM_FAILOVER_MAX_BUFFER_BYTES,
+                MAX_STREAM_FAILOVER_MAX_BUFFER_BYTES,
+            ) as usize,
+        cooldown_seconds: object
+            .get("cooldown_seconds")
+            .and_then(parse_u64_value)
+            .unwrap_or(DEFAULT_STREAM_FAILOVER_COOLDOWN_SECONDS)
+            .clamp(
+                MIN_STREAM_FAILOVER_COOLDOWN_SECONDS,
+                MAX_STREAM_FAILOVER_COOLDOWN_SECONDS,
+            ),
+    })
+}
+
 pub(crate) fn append_local_failover_policy_to_value(
     value: Value,
     transport: &GatewayProviderTransportSnapshot,
@@ -179,7 +350,87 @@ pub(crate) fn append_local_failover_policy_to_value(
         "local_failover_policy".to_string(),
         local_failover_policy_to_value(&local_failover_policy_from_transport(transport)),
     );
+    object.insert(
+        "stream_failover_policy".to_string(),
+        local_stream_failover_policy_to_value(&local_stream_failover_policy_from_transport(
+            transport,
+        )),
+    );
     Value::Object(object)
+}
+
+pub(crate) fn validate_endpoint_stream_failover_config(
+    api_format: &str,
+    endpoint_config: Option<&Value>,
+) -> Result<(), String> {
+    let Some(stream_failover) = endpoint_config
+        .and_then(Value::as_object)
+        .and_then(|config| config.get("stream_failover"))
+    else {
+        return Ok(());
+    };
+    if stream_failover.is_null() {
+        return Ok(());
+    }
+    if !crate::ai_serving::is_openai_responses_format(api_format) {
+        return Err("stream_failover 仅适用于 openai:responses 端点".to_string());
+    }
+    let Some(object) = stream_failover.as_object() else {
+        return Err("stream_failover 必须是对象或 null".to_string());
+    };
+
+    if object
+        .get("enabled")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err("stream_failover.enabled 必须是布尔值".to_string());
+    }
+    if object.get("mode").is_some_and(|value| {
+        !value
+            .as_str()
+            .is_some_and(|mode| mode.trim().eq_ignore_ascii_case("before_output"))
+    }) {
+        return Err("stream_failover.mode 只支持 before_output".to_string());
+    }
+    validate_stream_failover_integer(
+        object,
+        "max_wait_ms",
+        MIN_STREAM_FAILOVER_MAX_WAIT_MS,
+        MAX_STREAM_FAILOVER_MAX_WAIT_MS,
+    )?;
+    validate_stream_failover_integer(
+        object,
+        "max_buffer_bytes",
+        MIN_STREAM_FAILOVER_MAX_BUFFER_BYTES,
+        MAX_STREAM_FAILOVER_MAX_BUFFER_BYTES,
+    )?;
+    validate_stream_failover_integer(
+        object,
+        "cooldown_seconds",
+        MIN_STREAM_FAILOVER_COOLDOWN_SECONDS,
+        MAX_STREAM_FAILOVER_COOLDOWN_SECONDS,
+    )?;
+    Ok(())
+}
+
+fn validate_stream_failover_integer(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+    min: u64,
+    max: u64,
+) -> Result<(), String> {
+    let Some(value) = object.get(field) else {
+        return Ok(());
+    };
+    let Some(value) = parse_u64_value(value) else {
+        return Err(format!("stream_failover.{field} 必须是整数"));
+    };
+    if !(min..=max).contains(&value) {
+        return Err(format!(
+            "stream_failover.{field} 必须在 {min} 到 {max} 之间"
+        ));
+    }
+    Ok(())
 }
 
 fn parse_status_code_list(value: &Value) -> BTreeSet<u16> {
@@ -198,6 +449,16 @@ fn local_failover_policy_to_value(policy: &LocalFailoverPolicy) -> Value {
         "continue_status_codes": policy.continue_status_codes.iter().copied().collect::<Vec<_>>(),
         "success_failover_patterns": policy.success_failover_patterns.iter().map(local_failover_regex_rule_to_value).collect::<Vec<_>>(),
         "error_stop_patterns": policy.error_stop_patterns.iter().map(local_failover_regex_rule_to_value).collect::<Vec<_>>(),
+    })
+}
+
+fn local_stream_failover_policy_to_value(policy: &LocalStreamFailoverPolicy) -> Value {
+    json!({
+        "enabled": policy.enabled,
+        "max_account_switches": policy.max_account_switches,
+        "max_wait_ms": policy.max_wait_ms,
+        "max_buffer_bytes": policy.max_buffer_bytes,
+        "cooldown_seconds": policy.cooldown_seconds,
     })
 }
 
@@ -264,7 +525,9 @@ mod tests {
 
     use super::{
         append_local_failover_policy_to_value, local_failover_policy_from_report_context,
-        local_failover_policy_from_transport, LocalFailoverPolicy, LocalFailoverRegexRule,
+        local_failover_policy_from_transport, local_stream_failover_policy_from_report_context,
+        local_stream_failover_policy_from_transport, validate_endpoint_stream_failover_config,
+        LocalFailoverPolicy, LocalFailoverRegexRule, LocalStreamFailoverPolicy,
     };
     use crate::provider_transport::snapshot::{
         GatewayProviderTransportEndpoint, GatewayProviderTransportKey,
@@ -378,5 +641,112 @@ mod tests {
         let policy = local_failover_policy_from_transport(&transport);
 
         assert!(policy.stop_status_codes.contains(&400));
+    }
+
+    #[test]
+    fn openai_responses_stream_failover_policy_round_trips_through_report_context() {
+        let mut transport = sample_transport(None, Some(2), None);
+        transport.endpoint.api_format = "openai:responses".to_string();
+        transport.endpoint.config = Some(json!({
+            "stream_failover": {
+                "enabled": true,
+                "mode": "before_output",
+                "max_wait_ms": 7_500,
+                "max_buffer_bytes": 131_072,
+                "cooldown_seconds": 45
+            }
+        }));
+
+        let report_context =
+            append_local_failover_policy_to_value(json!({"request_id": "req-1"}), &transport);
+        let expected = LocalStreamFailoverPolicy {
+            enabled: true,
+            max_account_switches: 2,
+            max_wait_ms: 7_500,
+            max_buffer_bytes: 131_072,
+            cooldown_seconds: 45,
+        };
+
+        assert_eq!(
+            local_stream_failover_policy_from_transport(&transport),
+            expected
+        );
+        assert_eq!(
+            local_stream_failover_policy_from_report_context(Some(&report_context)),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn stream_failover_is_disabled_for_non_responses_endpoints() {
+        let mut transport = sample_transport(None, None, None);
+        transport.endpoint.config = Some(json!({
+            "stream_failover": {"enabled": true}
+        }));
+
+        assert_eq!(
+            local_stream_failover_policy_from_transport(&transport),
+            LocalStreamFailoverPolicy::default()
+        );
+        assert_eq!(
+            validate_endpoint_stream_failover_config(
+                &transport.endpoint.api_format,
+                transport.endpoint.config.as_ref(),
+            ),
+            Err("stream_failover 仅适用于 openai:responses 端点".to_string())
+        );
+    }
+
+    #[test]
+    fn stream_failover_config_rejects_invalid_ranges_and_mode() {
+        assert_eq!(
+            validate_endpoint_stream_failover_config(
+                "openai:responses",
+                Some(&json!({
+                    "stream_failover": {
+                        "enabled": true,
+                        "mode": "after_output"
+                    }
+                })),
+            ),
+            Err("stream_failover.mode 只支持 before_output".to_string())
+        );
+        assert_eq!(
+            validate_endpoint_stream_failover_config(
+                "openai:responses",
+                Some(&json!({
+                    "stream_failover": {
+                        "enabled": true,
+                        "max_wait_ms": 100
+                    }
+                })),
+            ),
+            Err("stream_failover.max_wait_ms 必须在 250 到 30000 之间".to_string())
+        );
+    }
+
+    #[test]
+    fn imported_stream_failover_config_is_defensively_clamped() {
+        let mut transport = sample_transport(None, None, None);
+        transport.endpoint.api_format = "openai:responses".to_string();
+        transport.endpoint.config = Some(json!({
+            "stream_failover": {
+                "enabled": true,
+                "max_wait_ms": 1,
+                "max_buffer_bytes": 9_999_999,
+                "cooldown_seconds": 0
+            }
+        }));
+
+        assert_eq!(
+            local_stream_failover_policy_from_transport(&transport),
+            LocalStreamFailoverPolicy {
+                enabled: true,
+                max_account_switches: 2,
+                max_wait_ms: 250,
+                max_buffer_bytes: 1_048_576,
+                cooldown_seconds: 1,
+            }
+        );
     }
 }

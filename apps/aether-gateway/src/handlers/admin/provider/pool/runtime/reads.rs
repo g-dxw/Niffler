@@ -1,7 +1,7 @@
 use super::keys::{
     parse_pool_cost_member, parse_pool_latency_member, pool_cooldown_index_key, pool_cooldown_key,
-    pool_cooldown_keys, pool_cost_keys, pool_latency_keys, pool_lru_key, pool_sticky_key,
-    pool_sticky_pattern,
+    pool_cooldown_keys, pool_cost_keys, pool_latency_keys, pool_lru_key, pool_model_cooldown_key,
+    pool_sticky_key, pool_sticky_pattern,
 };
 use crate::handlers::admin::provider::pool::config::admin_provider_pool_cache_affinity_enabled;
 use crate::handlers::admin::provider::shared::support::{
@@ -266,5 +266,16 @@ pub(crate) async fn read_admin_provider_pool_key_cooldown_reason(
 ) -> Result<Option<String>, DataLayerError> {
     runtime
         .kv_get(&pool_cooldown_key(provider_id, key_id))
+        .await
+}
+
+pub(crate) async fn read_admin_provider_pool_key_model_cooldown_reason(
+    runtime: &RuntimeState,
+    provider_id: &str,
+    key_id: &str,
+    model_name: &str,
+) -> Result<Option<String>, DataLayerError> {
+    runtime
+        .kv_get(&pool_model_cooldown_key(provider_id, key_id, model_name))
         .await
 }

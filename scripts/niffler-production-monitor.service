@@ -1,0 +1,21 @@
+[Unit]
+Description=Monitor Niffler production node and notify Telegram
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/niffler-monitor/service.env
+ExecStart=/usr/local/sbin/niffler-production-monitor run
+User=root
+Group=root
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+NoNewPrivileges=true
+StateDirectory=niffler-monitor
+StateDirectoryMode=0700
+RuntimeDirectory=niffler-monitor
+RuntimeDirectoryMode=0700
+ReadWritePaths=/var/lib/niffler-monitor /run/niffler-monitor -/var/lib/niffler-monitor-control
+TimeoutStartSec=1m
