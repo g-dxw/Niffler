@@ -282,6 +282,7 @@ mod tests {
     #[test]
     fn resolves_model_policy_and_matching_rule() {
         let config = RoutingGroupConfig {
+            managed_instructions: None,
             allowed_models: vec!["gpt-*".to_string()],
             default_policy: RoutingDefaultPolicy::default(),
             model_policies: vec![RoutingModelPolicy {

@@ -50,6 +50,7 @@ mod hooks;
 mod image_capabilities;
 mod log_ids;
 mod maintenance;
+mod managed_instructions;
 pub(crate) mod middleware;
 mod model_fetch;
 mod niffler_billing_reservation;

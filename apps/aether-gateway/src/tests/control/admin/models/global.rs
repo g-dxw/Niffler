@@ -1118,7 +1118,11 @@ async fn gateway_creates_admin_global_model_locally_with_trusted_admin_principal
                 }]
             },
             "supported_capabilities": ["streaming", "vision", "embedding"],
-            "config": {"streaming": true, "api_formats": ["openai:embedding"], "model_type": "embedding"}
+            "config": {
+                "streaming": true,
+                "api_formats": ["openai:embedding"],
+                "model_type": "embedding"
+            }
         }))
         .send()
         .await
