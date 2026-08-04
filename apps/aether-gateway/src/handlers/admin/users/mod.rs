@@ -35,8 +35,14 @@ use self::groups::{
     build_admin_create_user_group_response, build_admin_delete_user_group_response,
     build_admin_delete_user_group_with_replacement_response,
     build_admin_list_user_group_members_response, build_admin_list_user_groups_response,
+    build_admin_managed_instruction_profiles_response,
     build_admin_replace_user_group_members_response, build_admin_set_default_user_group_response,
     build_admin_update_user_group_response,
+};
+pub(crate) use self::groups::{
+    normalize_group_visibility as normalize_admin_user_group_visibility,
+    normalize_model_sales_multipliers as normalize_admin_model_sales_multipliers,
+    normalize_sales_multiplier as normalize_admin_sales_multiplier,
 };
 use self::lifecycle::{
     build_admin_create_user_response, build_admin_delete_user_response,

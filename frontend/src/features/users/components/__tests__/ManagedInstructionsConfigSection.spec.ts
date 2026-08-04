@@ -4,8 +4,10 @@ import { createApp, nextTick, type App } from '@/test/vue'
 
 const getManagedInstructionProfiles = vi.hoisted(() => vi.fn())
 
-vi.mock('@/api/routing-profiles', () => ({
-  getManagedInstructionProfiles,
+vi.mock('@/api/users', () => ({
+  usersApi: {
+    getManagedInstructionProfiles,
+  },
 }))
 
 vi.mock('@/components/ui', async () => {

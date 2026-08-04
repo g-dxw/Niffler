@@ -8,7 +8,6 @@ import {
   getModelScheduling,
   modelSchedulingRuleId,
   normalizeRoutingGroupConfig,
-  setManagedInstructionsConfig,
   setDefaultPoolPriorityOverrides,
   setDefaultProviderPriorityOverrides,
   upsertModelSchedulingRule,
@@ -25,38 +24,6 @@ describe('routingPolicy', () => {
     expect(config.default_policy.priority_mode).toBe('provider')
     expect(config.default_policy.scheduling_mode).toBe('cache_affinity')
     expect(config.allowed_models).toEqual(['gpt-5'])
-  })
-
-  it('preserves managed instruction configuration on the whole routing group', () => {
-    const config = normalizeRoutingGroupConfig({
-      allowed_models: ['gpt-5'],
-      managed_instructions: {
-        enabled: false,
-        profile_id: 'removed_profile_v1',
-        merge_mode: 'if_missing',
-      },
-    })
-
-    expect(config.managed_instructions).toEqual({
-      enabled: false,
-      profile_id: 'removed_profile_v1',
-      merge_mode: 'if_missing',
-    })
-  })
-
-  it('updates the group profile without changing routing rules', () => {
-    const config = upsertModelPolicy(
-      createEmptyRoutingGroupConfig(),
-      createEmptyModelPolicy('gpt-5')
-    )
-    const next = setManagedInstructionsConfig(config, {
-      enabled: true,
-      profile_id: 'security_research_v1',
-      merge_mode: 'prepend',
-    })
-
-    expect(next.managed_instructions?.profile_id).toBe('security_research_v1')
-    expect(next.model_policies).toEqual(config.model_policies)
   })
 
   it('upserts model policies by model name', () => {

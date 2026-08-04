@@ -503,6 +503,7 @@ pub struct StoredUserGroup {
     pub concurrent_limit_mode: String,
     pub sales_multiplier: f64,
     pub model_sales_multipliers: Option<Value>,
+    pub managed_instructions: Option<Value>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -528,6 +529,7 @@ impl StoredUserGroup {
         concurrent_limit_mode: String,
         sales_multiplier: f64,
         model_sales_multipliers: Option<Value>,
+        managed_instructions: Option<Value>,
         created_at: Option<DateTime<Utc>>,
         updated_at: Option<DateTime<Utc>>,
     ) -> Result<Self, crate::DataLayerError> {
@@ -592,6 +594,7 @@ impl StoredUserGroup {
                 model_sales_multipliers,
                 "user_groups.model_sales_multipliers",
             )?,
+            managed_instructions,
             created_at,
             updated_at,
         })
@@ -637,6 +640,7 @@ pub struct UpsertUserGroupRecord {
     pub concurrent_limit_mode: String,
     pub sales_multiplier: f64,
     pub model_sales_multipliers: Option<Value>,
+    pub managed_instructions: Option<Value>,
 }
 
 impl UpsertUserGroupRecord {

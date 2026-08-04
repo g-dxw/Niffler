@@ -1855,6 +1855,7 @@ impl GatewayDataState {
             snapshot.api_key_group_visibility = Some(group.visibility.clone());
             snapshot.api_key_group_sales_multiplier = group.sales_multiplier;
             snapshot.api_key_group_model_sales_multipliers = group.model_sales_multipliers.clone();
+            snapshot.api_key_group_managed_instructions = group.managed_instructions.clone();
             apply_effective_user_group_policies_to_snapshot(&mut snapshot, &[group]);
             return Ok(Some(snapshot));
         }
@@ -2223,6 +2224,7 @@ mod tests {
         InMemoryUserReadRepository, StoredUserAuthRecord, StoredUserGroup, UpsertUserGroupRecord,
         UserReadRepository,
     };
+    use serde_json::json;
 
     use crate::data::GatewayDataState;
 
@@ -2298,6 +2300,7 @@ mod tests {
             priority,
             sales_multiplier: 1.0,
             model_sales_multipliers: None,
+            managed_instructions: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -2560,6 +2563,7 @@ mod tests {
                 priority: 10,
                 sales_multiplier: 1.0,
                 model_sales_multipliers: None,
+                managed_instructions: None,
                 allowed_providers: Some(vec!["openai".to_string()]),
                 allowed_providers_mode: "specific".to_string(),
                 allowed_api_formats: Some(vec!["openai:chat".to_string()]),
@@ -2609,6 +2613,11 @@ mod tests {
                 priority: 10,
                 sales_multiplier: 1.0,
                 model_sales_multipliers: None,
+                managed_instructions: Some(json!({
+                    "enabled": true,
+                    "profile_id": "security_research_v1",
+                    "merge_mode": "prepend"
+                })),
                 allowed_providers: Some(vec!["anthropic".to_string()]),
                 allowed_providers_mode: "specific".to_string(),
                 allowed_api_formats: Some(vec!["claude:messages".to_string()]),
@@ -2660,6 +2669,10 @@ mod tests {
         );
         assert_eq!(resolved.user_rate_limit, Some(30));
         assert_eq!(resolved.user_concurrent_limit, Some(2));
+        assert_eq!(
+            resolved.api_key_group_managed_instructions,
+            group.managed_instructions
+        );
     }
 
     #[tokio::test]

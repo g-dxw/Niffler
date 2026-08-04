@@ -48,9 +48,7 @@ impl ManagedInstructionsMergeMode {
         match value {
             "prepend" => Ok(Self::Prepend),
             "if_missing" => Ok(Self::IfMissing),
-            _ => Err(format!(
-                "config_json.{MANAGED_INSTRUCTIONS_CONFIG_FIELD}.merge_mode 只支持 prepend 或 if_missing"
-            )),
+            _ => Err("managed_instructions.merge_mode 只支持 prepend 或 if_missing".to_string()),
         }
     }
 }
@@ -82,8 +80,7 @@ pub(crate) struct ResolvedManagedInstructionsConfig {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ManagedInstructionsBindingSnapshot {
-    pub(crate) routing_group_id: Option<String>,
-    pub(crate) routing_group_version: Option<i64>,
+    pub(crate) user_group_id: Option<String>,
     pub(crate) managed_instructions_config_value: Option<Value>,
     pub(crate) config: Option<ResolvedManagedInstructionsConfig>,
 }
@@ -140,54 +137,36 @@ pub(crate) fn managed_instructions_profile(
 }
 
 pub(crate) fn parse_managed_instructions_config(
-    routing_group_config: Option<&Value>,
+    managed_instructions: Option<&Value>,
 ) -> Result<Option<ManagedInstructionsConfig>, String> {
-    let Some(routing_group_config) = routing_group_config else {
-        return Ok(None);
-    };
-    let Some(config_object) = routing_group_config.as_object() else {
-        return Err("config_json 必须是 JSON 对象".to_string());
-    };
-    let Some(value) = config_object.get(MANAGED_INSTRUCTIONS_CONFIG_FIELD) else {
+    let Some(value) = managed_instructions else {
         return Ok(None);
     };
     if value.is_null() {
         return Ok(None);
     }
     let Some(value) = value.as_object() else {
-        return Err(format!(
-            "config_json.{MANAGED_INSTRUCTIONS_CONFIG_FIELD} 必须是 JSON 对象"
-        ));
+        return Err("managed_instructions 必须是 JSON 对象".to_string());
     };
     let enabled = value
         .get("enabled")
         .and_then(Value::as_bool)
-        .ok_or_else(|| {
-            format!("config_json.{MANAGED_INSTRUCTIONS_CONFIG_FIELD}.enabled 必须是布尔值")
-        })?;
+        .ok_or_else(|| "managed_instructions.enabled 必须是布尔值".to_string())?;
     let profile_id = value
         .get("profile_id")
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            format!("config_json.{MANAGED_INSTRUCTIONS_CONFIG_FIELD}.profile_id 必须是非空字符串")
-        })?;
+        .ok_or_else(|| "managed_instructions.profile_id 必须是非空字符串".to_string())?;
     if profile_id.trim().is_empty() {
-        return Err(format!(
-            "config_json.{MANAGED_INSTRUCTIONS_CONFIG_FIELD}.profile_id 必须是非空字符串"
-        ));
+        return Err("managed_instructions.profile_id 必须是非空字符串".to_string());
     }
     if profile_id != profile_id.trim() {
-        return Err(format!(
-            "config_json.{MANAGED_INSTRUCTIONS_CONFIG_FIELD}.profile_id 不能包含首尾空格"
-        ));
+        return Err("managed_instructions.profile_id 不能包含首尾空格".to_string());
     }
     let profile_id = profile_id.to_string();
     let merge_mode = value
         .get("merge_mode")
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            format!("config_json.{MANAGED_INSTRUCTIONS_CONFIG_FIELD}.merge_mode 必须是字符串")
-        })
+        .ok_or_else(|| "managed_instructions.merge_mode 必须是字符串".to_string())
         .and_then(ManagedInstructionsMergeMode::parse)?;
     managed_instructions_profile(&profile_id)?;
     Ok(Some(ManagedInstructionsConfig {
@@ -198,9 +177,9 @@ pub(crate) fn parse_managed_instructions_config(
 }
 
 pub(crate) fn resolve_managed_instructions_config(
-    routing_group_config: Option<&Value>,
+    managed_instructions: Option<&Value>,
 ) -> Result<Option<ResolvedManagedInstructionsConfig>, String> {
-    let Some(config) = parse_managed_instructions_config(routing_group_config)? else {
+    let Some(config) = parse_managed_instructions_config(managed_instructions)? else {
         return Ok(None);
     };
     let profile = managed_instructions_profile(&config.profile_id)?;
@@ -212,15 +191,14 @@ pub(crate) fn resolve_managed_instructions_config(
 }
 
 pub(crate) fn validate_managed_instructions_config(
-    routing_group_config: Option<&Value>,
+    managed_instructions: Option<&Value>,
 ) -> Result<(), String> {
-    parse_managed_instructions_config(routing_group_config).map(|_| ())
+    parse_managed_instructions_config(managed_instructions).map(|_| ())
 }
 
-pub(crate) fn record_managed_instructions_routing_group(
+pub(crate) fn record_managed_instructions_user_group(
     decision: &mut AiExecutionDecision,
-    routing_group_id: &str,
-    routing_group_version: i64,
+    user_group_id: &str,
 ) -> Result<(), GatewayError> {
     let metadata = decision
         .report_context
@@ -234,12 +212,8 @@ pub(crate) fn record_managed_instructions_routing_group(
             )
         })?;
     metadata.insert(
-        "routing_group_id".to_string(),
-        Value::String(routing_group_id.to_string()),
-    );
-    metadata.insert(
-        "routing_group_version".to_string(),
-        Value::Number(routing_group_version.into()),
+        "user_group_id".to_string(),
+        Value::String(user_group_id.to_string()),
     );
     Ok(())
 }
@@ -850,11 +824,9 @@ mod tests {
     #[test]
     fn parser_accepts_supported_configuration_and_rejects_unknown_profile() {
         let config = json!({
-            "managed_instructions": {
-                "enabled": true,
-                "profile_id": "security_research_v1",
-                "merge_mode": "prepend"
-            }
+            "enabled": true,
+            "profile_id": "security_research_v1",
+            "merge_mode": "prepend"
         });
         let parsed = parse_managed_instructions_config(Some(&config))
             .expect("valid config")
@@ -864,11 +836,9 @@ mod tests {
         assert_eq!(parsed.merge_mode, ManagedInstructionsMergeMode::Prepend);
 
         let unknown = json!({
-            "managed_instructions": {
-                "enabled": true,
-                "profile_id": "unknown_v1",
-                "merge_mode": "prepend"
-            }
+            "enabled": true,
+            "profile_id": "unknown_v1",
+            "merge_mode": "prepend"
         });
         assert!(parse_managed_instructions_config(Some(&unknown))
             .expect_err("unknown profile should fail")
@@ -876,11 +846,9 @@ mod tests {
 
         for profile_id in [" security_research_v1", "security_research_v1 "] {
             let padded = json!({
-                "managed_instructions": {
-                    "enabled": false,
-                    "profile_id": profile_id,
-                    "merge_mode": "prepend"
-                }
+                "enabled": false,
+                "profile_id": profile_id,
+                "merge_mode": "prepend"
             });
             assert!(parse_managed_instructions_config(Some(&padded))
                 .expect_err("padded profile id should fail")
@@ -895,11 +863,9 @@ mod tests {
             "weapons_engineering_v1",
         ] {
             let removed = json!({
-                "managed_instructions": {
-                    "enabled": true,
-                    "profile_id": removed_profile,
-                    "merge_mode": "prepend"
-                }
+                "enabled": true,
+                "profile_id": removed_profile,
+                "merge_mode": "prepend"
             });
             assert!(parse_managed_instructions_config(Some(&removed)).is_err());
         }

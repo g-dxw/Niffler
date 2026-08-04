@@ -8,6 +8,7 @@ use super::{
     build_admin_list_user_api_keys_response, build_admin_list_user_billing_entitlements_response,
     build_admin_list_user_group_members_response, build_admin_list_user_groups_response,
     build_admin_list_user_sessions_response, build_admin_list_users_response,
+    build_admin_managed_instruction_profiles_response,
     build_admin_replace_user_group_members_response, build_admin_resolve_user_selection_response,
     build_admin_reveal_user_api_key_response, build_admin_set_default_user_group_response,
     build_admin_toggle_user_api_key_lock_response, build_admin_update_user_api_key_response,
@@ -24,6 +25,12 @@ fn is_admin_users_route(request_context: &AdminRequestContext<'_>) -> bool {
     ((request_context.method() == http::Method::GET
         || request_context.method() == http::Method::POST)
         && matches!(path, "/api/admin/user-groups" | "/api/admin/user-groups/"))
+        || (request_context.method() == http::Method::GET
+            && matches!(
+                path,
+                "/api/admin/user-groups/managed-instruction-profiles"
+                    | "/api/admin/user-groups/managed-instruction-profiles/"
+            ))
         || (request_context.method() == http::Method::PUT
             && matches!(
                 path,
@@ -129,6 +136,9 @@ pub(super) async fn maybe_build_local_admin_users_routes_response(
     }
 
     match decision.route_kind.as_deref() {
+        Some("list_user_group_managed_instruction_profiles") => {
+            Ok(Some(build_admin_managed_instruction_profiles_response()?))
+        }
         Some("list_user_groups") => Ok(Some(build_admin_list_user_groups_response(state).await?)),
         Some("create_user_group") => Ok(Some(
             build_admin_create_user_group_response(state, request_body).await?,

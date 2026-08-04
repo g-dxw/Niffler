@@ -984,6 +984,7 @@ mod tests {
             priority: 0,
             sales_multiplier: 1.0,
             model_sales_multipliers: None,
+            managed_instructions: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,

@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS user_groups (
     `concurrent_limit_mode` VARCHAR(32) NOT NULL DEFAULT 'inherit',
     `sales_multiplier` DOUBLE NOT NULL DEFAULT 1,
     `model_sales_multipliers` JSON,
+    `managed_instructions` JSON,
     `created_at` BIGINT NOT NULL,
     `updated_at` BIGINT NOT NULL,
     PRIMARY KEY (`id`),

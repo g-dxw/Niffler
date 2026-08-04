@@ -4435,6 +4435,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .expect("user group should be valid")
     }

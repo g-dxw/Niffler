@@ -3,16 +3,16 @@
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0 space-y-1">
         <h3 class="text-sm font-medium">
-          {{ t('routingProfiles.managedInstructions') }}
+          {{ t('userGroupManagedInstructions.title') }}
         </h3>
         <p class="text-xs text-muted-foreground">
-          {{ t('routingProfiles.managedInstructionsHint') }}
+          {{ t('userGroupManagedInstructions.hint') }}
         </p>
       </div>
       <Switch
         :model-value="enabled"
         :disabled="loading || (!profiles.length && !enabled)"
-        :aria-label="t('routingProfiles.managedInstructions')"
+        :aria-label="t('userGroupManagedInstructions.title')"
         @update:model-value="setEnabled"
       />
     </div>
@@ -48,7 +48,7 @@
     <template v-else>
       <div class="grid grid-cols-2 gap-3">
         <div class="space-y-1.5">
-          <Label class="text-xs">{{ t('routingProfiles.managedProfile') }}</Label>
+          <Label class="text-xs">{{ t('userGroupManagedInstructions.profile') }}</Label>
           <Select
             data-testid="managed-profile-select"
             :model-value="profileId"
@@ -56,7 +56,7 @@
             @update:model-value="setProfileId"
           >
             <SelectTrigger class="h-9 rounded-lg px-3 shadow-none">
-              <SelectValue :placeholder="t('routingProfiles.managedProfilePlaceholder')" />
+              <SelectValue :placeholder="t('userGroupManagedInstructions.profilePlaceholder')" />
             </SelectTrigger>
             <SelectContent :searchable="false">
               <SelectItem
@@ -71,7 +71,7 @@
         </div>
 
         <div class="space-y-1.5">
-          <Label class="text-xs">{{ t('routingProfiles.managedMergeMode') }}</Label>
+          <Label class="text-xs">{{ t('userGroupManagedInstructions.mergeMode') }}</Label>
           <Select
             :model-value="mergeMode"
             :disabled="!enabled"
@@ -82,10 +82,10 @@
             </SelectTrigger>
             <SelectContent :searchable="false">
               <SelectItem value="prepend">
-                {{ t('routingProfiles.managedMergePrepend') }}
+                {{ t('userGroupManagedInstructions.mergePrepend') }}
               </SelectItem>
               <SelectItem value="if_missing">
-                {{ t('routingProfiles.managedMergeIfMissing') }}
+                {{ t('userGroupManagedInstructions.mergeIfMissing') }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -97,7 +97,7 @@
         data-testid="managed-instructions-unconfigured"
         class="text-xs text-muted-foreground"
       >
-        {{ t('routingProfiles.managedNotConfigured') }}
+        {{ t('userGroupManagedInstructions.notConfigured') }}
       </p>
 
       <p
@@ -124,7 +124,7 @@
             {{ selectedProfile.domain_version }}
           </Badge>
           <span class="text-muted-foreground">
-            {{ enabled ? mergeModeDescription : t('routingProfiles.managedDisabled') }}
+            {{ enabled ? mergeModeDescription : t('userGroupManagedInstructions.disabled') }}
           </span>
         </div>
         <p class="break-all font-mono text-[11px] text-muted-foreground">
@@ -132,15 +132,15 @@
         </p>
         <div class="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <span class="rounded-md bg-background px-2 py-1 text-foreground">
-            {{ t('routingProfiles.managedOrderManaged') }}
+            {{ t('userGroupManagedInstructions.orderManaged') }}
           </span>
           <span aria-hidden="true">→</span>
           <span class="rounded-md bg-background px-2 py-1 text-foreground">
-            {{ t('routingProfiles.managedOrderClient') }}
+            {{ t('userGroupManagedInstructions.orderClient') }}
           </span>
           <span aria-hidden="true">→</span>
           <span class="rounded-md bg-background px-2 py-1 text-foreground">
-            {{ t('routingProfiles.managedOrderImage') }}
+            {{ t('userGroupManagedInstructions.orderImage') }}
           </span>
         </div>
       </div>
@@ -164,13 +164,11 @@ import {
   Switch,
 } from '@/components/ui'
 import {
-  getManagedInstructionProfiles,
   type ManagedInstructionsProfile,
-} from '@/api/routing-profiles'
-import type {
-  ManagedInstructionsConfig,
-  ManagedInstructionsMergeMode,
-} from '@/features/routing/utils/routingPolicy'
+  type ManagedInstructionsConfig,
+  type ManagedInstructionsMergeMode,
+  usersApi,
+} from '@/api/users'
 import { parseApiError } from '@/utils/errorParser'
 
 const props = defineProps<{
@@ -196,12 +194,12 @@ const selectedProfile = computed(
 )
 const configurationError = computed(() => {
   if (!props.modelValue?.profile_id || selectedProfile.value || profiles.value.length === 0) return ''
-  return t('routingProfiles.managedUnknownProfile', { profile: profileId.value })
+  return t('userGroupManagedInstructions.unknownProfile', { profile: profileId.value })
 })
 const mergeModeDescription = computed(() => (
   mergeMode.value === 'if_missing'
-    ? t('routingProfiles.managedIfMissingSummary')
-    : t('routingProfiles.managedPrependSummary')
+    ? t('userGroupManagedInstructions.ifMissingSummary')
+    : t('userGroupManagedInstructions.prependSummary')
 ))
 
 function emitConfig(patch: Partial<ManagedInstructionsConfig>) {
@@ -241,13 +239,13 @@ async function loadProfiles() {
   loading.value = true
   loadError.value = ''
   try {
-    const response = await getManagedInstructionProfiles()
+    const response = await usersApi.getManagedInstructionProfiles()
     profiles.value = response.profiles
   } catch (error) {
     profiles.value = []
     loadError.value = parseApiError(
       error,
-      t('routingProfiles.managedProfilesLoadFailed')
+      t('userGroupManagedInstructions.loadFailed')
     )
   } finally {
     loading.value = false

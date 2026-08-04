@@ -20,8 +20,8 @@ use crate::client_session_affinity::{
 use crate::clock::current_unix_secs;
 use crate::managed_instructions::{
     apply_managed_instructions_to_decision, has_applied_managed_instructions_state,
-    record_managed_instructions_routing_group, resolve_managed_instructions_config,
-    ManagedInstructionsBindingSnapshot, MANAGED_INSTRUCTIONS_CONFIG_FIELD,
+    record_managed_instructions_user_group, resolve_managed_instructions_config,
+    ManagedInstructionsBindingSnapshot,
 };
 use crate::routing::{
     apply_routing_mutation_plan, build_routing_trace_seed, resolve_gateway_routing_policy,
@@ -158,76 +158,44 @@ pub(crate) async fn apply_final_provider_request_policies_to_decision(
     let snapshot = input
         .managed_instructions_snapshot
         .get_or_try_init(|| async {
-            let routing_context = input.routing_context.as_ref();
-            let config = routing_context
-                .map(|context| {
-                    resolve_managed_instructions_config(Some(&context.group_config_json))
-                        .map_err(GatewayError::Internal)
-                })
-                .transpose()?
-                .flatten();
+            let managed_instructions = input
+                .auth_snapshot
+                .api_key_group_managed_instructions
+                .as_ref();
+            let config = resolve_managed_instructions_config(managed_instructions)
+                .map_err(GatewayError::Internal)?;
             Ok::<ManagedInstructionsBindingSnapshot, GatewayError>(
                 ManagedInstructionsBindingSnapshot {
-                    routing_group_id: routing_context.and_then(|context| context.group_id.clone()),
-                    routing_group_version: routing_context
-                        .and_then(|context| context.group_version),
-                    managed_instructions_config_value: managed_instructions_config_value(
-                        routing_context,
-                    )
-                    .cloned(),
+                    user_group_id: input.auth_snapshot.api_key_group_id.clone(),
+                    managed_instructions_config_value: managed_instructions.cloned(),
                     config,
                 },
             )
         })
         .await?;
-    let current_routing_group_id = input
-        .routing_context
-        .as_ref()
-        .and_then(|context| context.group_id.as_ref());
-    let current_routing_group_version = input
-        .routing_context
-        .as_ref()
-        .and_then(|context| context.group_version);
-    let current_managed_instructions_config_value =
-        managed_instructions_config_value(input.routing_context.as_ref());
-    if snapshot.routing_group_id.as_ref() != current_routing_group_id
-        || snapshot.routing_group_version != current_routing_group_version
+    let current_user_group_id = input.auth_snapshot.api_key_group_id.as_ref();
+    let current_managed_instructions_config_value = input
+        .auth_snapshot
+        .api_key_group_managed_instructions
+        .as_ref();
+    if snapshot.user_group_id.as_ref() != current_user_group_id
         || snapshot.managed_instructions_config_value.as_ref()
             != current_managed_instructions_config_value
     {
         return Err(GatewayError::Internal(format!(
-            "同一请求的路由分组或受管理提示词配置发生变化：原分组 {:?} v{:?}，当前分组 {:?} v{:?}",
-            snapshot.routing_group_id,
-            snapshot.routing_group_version,
-            current_routing_group_id,
-            current_routing_group_version,
+            "同一请求的用户分组或受管理提示词配置发生变化：原分组 {:?}，当前分组 {:?}",
+            snapshot.user_group_id, current_user_group_id,
         )));
     }
     if let Some(config) = snapshot.config.as_ref() {
-        let routing_group_id = snapshot
-            .routing_group_id
+        let user_group_id = snapshot
+            .user_group_id
             .as_deref()
-            .ok_or_else(|| GatewayError::Internal("受管理提示词配置缺少路由分组 ID".to_string()))?;
-        let routing_group_version = snapshot.routing_group_version.ok_or_else(|| {
-            GatewayError::Internal("受管理提示词配置缺少路由分组版本".to_string())
-        })?;
+            .ok_or_else(|| GatewayError::Internal("受管理提示词配置缺少用户分组 ID".to_string()))?;
         apply_managed_instructions_to_decision(decision, config)?;
-        record_managed_instructions_routing_group(
-            decision,
-            routing_group_id,
-            routing_group_version,
-        )?;
+        record_managed_instructions_user_group(decision, user_group_id)?;
     }
     Ok(())
-}
-
-fn managed_instructions_config_value(
-    routing_context: Option<&LocalRoutingRequestContext>,
-) -> Option<&Value> {
-    routing_context
-        .and_then(|context| context.group_config_json.as_object())
-        .and_then(|config| config.get(MANAGED_INSTRUCTIONS_CONFIG_FIELD))
-        .filter(|value| !value.is_null())
 }
 
 struct GatewayAuthenticatedDecisionInputPort<'a> {
@@ -750,6 +718,7 @@ mod tests {
             api_key_group_visibility: None,
             api_key_group_sales_multiplier: 1.0,
             api_key_group_model_sales_multipliers: None,
+            api_key_group_managed_instructions: None,
             api_key_is_active: true,
             api_key_is_locked: false,
             api_key_is_standalone: false,
@@ -812,6 +781,20 @@ mod tests {
             }),
             managed_instructions_snapshot: Arc::new(tokio::sync::OnceCell::new()),
         }
+    }
+
+    fn set_managed_instructions(
+        input: &mut LocalRequestedModelDecisionInput,
+        user_group_id: &str,
+        profile_id: &str,
+        enabled: bool,
+    ) {
+        input.auth_snapshot.api_key_group_id = Some(user_group_id.to_string());
+        input.auth_snapshot.api_key_group_managed_instructions = Some(json!({
+            "enabled": enabled,
+            "profile_id": profile_id,
+            "merge_mode": "prepend"
+        }));
     }
 
     fn sample_decision() -> AiExecutionDecision {
@@ -959,8 +942,7 @@ mod tests {
         input
             .managed_instructions_snapshot
             .set(ManagedInstructionsBindingSnapshot {
-                routing_group_id: Some("group-1".to_string()),
-                routing_group_version: Some(3),
+                user_group_id: Some("user-group-1".to_string()),
                 managed_instructions_config_value: None,
                 config: None,
             })
@@ -970,14 +952,13 @@ mod tests {
             cloned
                 .managed_instructions_snapshot
                 .get()
-                .and_then(|snapshot| snapshot.routing_group_id.as_deref()),
-            Some("group-1")
+                .and_then(|snapshot| snapshot.user_group_id.as_deref()),
+            Some("user-group-1")
         );
         assert!(cloned
             .managed_instructions_snapshot
             .set(ManagedInstructionsBindingSnapshot {
-                routing_group_id: Some("group-2".to_string()),
-                routing_group_version: Some(4),
+                user_group_id: Some("user-group-2".to_string()),
                 managed_instructions_config_value: None,
                 config: None,
             })
@@ -985,18 +966,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn final_provider_request_policy_applies_group_config_to_all_formats_and_rejects_group_switch(
+    async fn final_provider_request_policy_applies_user_group_config_and_ignores_routing_group_switch(
     ) {
         let mut input = sample_decision_input();
-        input
-            .routing_context
-            .as_mut()
-            .expect("sample input should include routing context")
-            .group_config_json["managed_instructions"] = json!({
-            "enabled": true,
-            "profile_id": "security_research_v1",
-            "merge_mode": "prepend"
-        });
+        set_managed_instructions(
+            &mut input,
+            "user-group-security",
+            "security_research_v1",
+            true,
+        );
 
         let mut responses_decision = sample_decision();
         responses_decision.provider_api_format = Some("openai:responses".to_string());
@@ -1008,7 +986,7 @@ mod tests {
         }));
         apply_final_provider_request_policies_to_decision(&input, &mut responses_decision)
             .await
-            .expect("group profile should apply to Responses");
+            .expect("user group profile should apply to Responses");
         let responses_instructions = responses_decision.provider_request_body.as_ref().unwrap()
             ["instructions"]
             .as_str()
@@ -1026,13 +1004,8 @@ mod tests {
         );
         assert_eq!(
             responses_decision.report_context.as_ref().unwrap()["managed_instructions"]
-                ["routing_group_id"],
-            json!("group-1")
-        );
-        assert_eq!(
-            responses_decision.report_context.as_ref().unwrap()["managed_instructions"]
-                ["routing_group_version"],
-            json!(3)
+                ["user_group_id"],
+            json!("user-group-security")
         );
 
         let mut chat_decision = sample_decision();
@@ -1043,7 +1016,7 @@ mod tests {
         }));
         apply_final_provider_request_policies_to_decision(&input, &mut chat_decision)
             .await
-            .expect("group profile should apply to Chat");
+            .expect("user group profile should apply to Chat");
         assert_eq!(
             chat_decision.provider_request_body.as_ref().unwrap()["messages"][0]["role"],
             json!("system")
@@ -1072,7 +1045,7 @@ mod tests {
         }));
         apply_final_provider_request_policies_to_decision(&input, &mut claude_decision)
             .await
-            .expect("group profile should apply to Claude");
+            .expect("user group profile should apply to Claude");
         assert_eq!(
             claude_decision.provider_request_body.as_ref().unwrap()["system"][0]["type"],
             json!("text")
@@ -1091,12 +1064,12 @@ mod tests {
             input
                 .managed_instructions_snapshot
                 .get()
-                .and_then(|snapshot| snapshot.routing_group_id.as_deref()),
-            Some("group-1")
+                .and_then(|snapshot| snapshot.user_group_id.as_deref()),
+            Some("user-group-security")
         );
 
-        let mut switched_input = input.clone();
-        let switched_context = switched_input
+        let mut switched_routing_input = input.clone();
+        let switched_context = switched_routing_input
             .routing_context
             .as_mut()
             .expect("sample input should include routing context");
@@ -1108,13 +1081,31 @@ mod tests {
             "messages": [],
             "metadata": {}
         }));
-        let error = apply_final_provider_request_policies_to_decision(
-            &switched_input,
+        apply_final_provider_request_policies_to_decision(
+            &switched_routing_input,
             &mut switched_decision,
         )
         .await
-        .expect_err("routing group switch should fail");
-        assert!(matches!(error, GatewayError::Internal(message) if message.contains("group-2")));
+        .expect("routing group switch must not change the managed profile");
+        assert_eq!(
+            switched_decision.report_context.as_ref().unwrap()["managed_instructions"]
+                ["user_group_id"],
+            json!("user-group-security")
+        );
+
+        let mut switched_user_group_input = input.clone();
+        switched_user_group_input.auth_snapshot.api_key_group_id =
+            Some("user-group-adult".to_string());
+        let mut conflicting_decision = sample_decision();
+        let error = apply_final_provider_request_policies_to_decision(
+            &switched_user_group_input,
+            &mut conflicting_decision,
+        )
+        .await
+        .expect_err("user group switch inside one request should fail");
+        assert!(
+            matches!(error, GatewayError::Internal(message) if message.contains("user-group-adult"))
+        );
     }
 
     #[tokio::test]
@@ -1131,15 +1122,12 @@ mod tests {
                 }]
             }]),
         );
-        input
-            .routing_context
-            .as_mut()
-            .expect("sample input should include routing context")
-            .group_config_json["managed_instructions"] = json!({
-            "enabled": true,
-            "profile_id": "security_research_v1",
-            "merge_mode": "prepend"
-        });
+        set_managed_instructions(
+            &mut input,
+            "user-group-security",
+            "security_research_v1",
+            true,
+        );
         let mut decision = sample_decision();
         decision.provider_api_format = Some("openai:responses".to_string());
 
@@ -1160,17 +1148,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn final_provider_request_policy_rejects_config_change_at_same_group_version() {
+    async fn final_provider_request_policy_rejects_user_group_config_change() {
         let mut input = sample_decision_input();
-        input
-            .routing_context
-            .as_mut()
-            .expect("sample input should include routing context")
-            .group_config_json["managed_instructions"] = json!({
-            "enabled": true,
-            "profile_id": "security_research_v1",
-            "merge_mode": "prepend"
-        });
+        set_managed_instructions(
+            &mut input,
+            "user-group-security",
+            "security_research_v1",
+            true,
+        );
         let mut first_decision = sample_decision();
         first_decision.provider_api_format = Some("openai:responses".to_string());
         apply_final_provider_request_policies_to_decision(&input, &mut first_decision)
@@ -1179,14 +1164,12 @@ mod tests {
 
         let mut changed_input = input.clone();
         changed_input
-            .routing_context
-            .as_mut()
-            .expect("sample input should include routing context")
-            .group_config_json["managed_instructions"] = json!({
+            .auth_snapshot
+            .api_key_group_managed_instructions = Some(json!({
             "enabled": true,
             "profile_id": "adult_fiction_v1",
             "merge_mode": "prepend"
-        });
+        }));
         let mut changed_decision = sample_decision();
         changed_decision.provider_api_format = Some("openai:responses".to_string());
         let error = apply_final_provider_request_policies_to_decision(
@@ -1194,23 +1177,65 @@ mod tests {
             &mut changed_decision,
         )
         .await
-        .expect_err("same group version with different configuration should fail");
+        .expect_err("same user group with different configuration should fail");
 
         assert!(matches!(error, GatewayError::Internal(message) if message.contains("配置")));
     }
 
     #[tokio::test]
-    async fn final_provider_request_policy_records_group_source_when_profile_is_disabled() {
+    async fn separate_requests_use_their_api_key_user_group_profile() {
+        let mut security_input = sample_decision_input();
+        set_managed_instructions(
+            &mut security_input,
+            "user-group-security",
+            "security_research_v1",
+            true,
+        );
+        let mut adult_input = sample_decision_input();
+        set_managed_instructions(
+            &mut adult_input,
+            "user-group-adult",
+            "adult_fiction_v1",
+            true,
+        );
+        let mut security_decision = sample_decision();
+        security_decision.provider_request_body = Some(json!({
+            "model": "gpt-5",
+            "messages": [{"role": "user", "content": "security"}],
+            "metadata": {}
+        }));
+        let mut adult_decision = sample_decision();
+        adult_decision.provider_request_body = Some(json!({
+            "model": "gpt-5",
+            "messages": [{"role": "user", "content": "adult"}],
+            "metadata": {}
+        }));
+
+        apply_final_provider_request_policies_to_decision(&security_input, &mut security_decision)
+            .await
+            .expect("security user group should apply");
+        apply_final_provider_request_policies_to_decision(&adult_input, &mut adult_decision)
+            .await
+            .expect("adult user group should apply");
+
+        let security_system = security_decision.provider_request_body.as_ref().unwrap()["messages"]
+            [0]["content"]
+            .as_str()
+            .expect("security system message");
+        let adult_system = adult_decision.provider_request_body.as_ref().unwrap()["messages"][0]
+            ["content"]
+            .as_str()
+            .expect("adult system message");
+        assert!(security_system.contains("Operator-provided security scope:"));
+        assert!(!security_system.contains("Creative-writing scope:"));
+        assert!(adult_system.contains("Creative-writing scope:"));
+        assert!(!adult_system.contains("Operator-provided security scope:"));
+    }
+
+    #[tokio::test]
+    async fn final_provider_request_policy_records_user_group_when_profile_is_disabled() {
         let mut input = sample_decision_input();
-        input
-            .routing_context
-            .as_mut()
-            .expect("sample input should include routing context")
-            .group_config_json["managed_instructions"] = json!({
-            "enabled": false,
-            "profile_id": "adult_fiction_v1",
-            "merge_mode": "prepend"
-        });
+        set_managed_instructions(&mut input, "user-group-adult", "adult_fiction_v1", false);
         let mut decision = sample_decision();
         decision.provider_request_body = Some(json!({
             "model": "gpt-5",
@@ -1230,8 +1255,7 @@ mod tests {
         assert_eq!(metadata["applied"], json!(false));
         assert_eq!(metadata["deduplicated"], json!(false));
         assert_eq!(metadata["reason"], json!("disabled"));
-        assert_eq!(metadata["routing_group_id"], json!("group-1"));
-        assert_eq!(metadata["routing_group_version"], json!(3));
+        assert_eq!(metadata["user_group_id"], json!("user-group-adult"));
     }
 
     #[test]

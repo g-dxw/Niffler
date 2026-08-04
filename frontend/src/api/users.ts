@@ -7,6 +7,29 @@ export type UserRole = 'admin' | 'audit_admin' | 'user'
 export type ListPolicyMode = 'inherit' | 'unrestricted' | 'specific' | 'deny_all'
 export type RateLimitPolicyMode = 'inherit' | 'system' | 'custom'
 export type FeatureSettings = Record<string, unknown>
+export type ManagedInstructionsMergeMode = 'prepend' | 'if_missing'
+
+export interface ManagedInstructionsConfig {
+  enabled: boolean
+  profile_id: string
+  merge_mode: ManagedInstructionsMergeMode
+}
+
+export interface ManagedInstructionsProfile {
+  profile_id: string
+  display_name: string
+  description: string
+  core_version: string
+  domain_version?: string | null
+  profile_sha256: string
+}
+
+export interface ManagedInstructionsProfilesResponse {
+  profiles: ManagedInstructionsProfile[]
+  merge_modes: ManagedInstructionsMergeMode[]
+  supported_provider_api_formats: string[]
+  composition_order: string[]
+}
 
 export interface UserGroupSummary {
   id: string
@@ -169,6 +192,7 @@ export interface UserGroup {
   visibility?: 'public' | 'internal'
   sales_multiplier?: number
   model_sales_multipliers?: Record<string, number> | null
+  managed_instructions?: ManagedInstructionsConfig | null
   allowed_providers?: string[] | null
   allowed_providers_mode: ListPolicyMode
   allowed_api_formats?: string[] | null
@@ -196,6 +220,7 @@ export interface UpsertUserGroupRequest {
   visibility?: 'public' | 'internal'
   sales_multiplier?: number
   model_sales_multipliers?: Record<string, number> | null
+  managed_instructions?: ManagedInstructionsConfig | null
   allowed_providers?: string[] | null
   allowed_providers_mode?: ListPolicyMode
   allowed_api_formats?: string[] | null
@@ -393,6 +418,13 @@ export const usersApi = {
 
   async listUserGroups(): Promise<ListUserGroupsResponse> {
     const response = await apiClient.get<ListUserGroupsResponse>('/api/admin/user-groups')
+    return response.data
+  },
+
+  async getManagedInstructionProfiles(): Promise<ManagedInstructionsProfilesResponse> {
+    const response = await apiClient.get<ManagedInstructionsProfilesResponse>(
+      '/api/admin/user-groups/managed-instruction-profiles'
+    )
     return response.data
   },
 

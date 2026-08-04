@@ -161,6 +161,11 @@
               </div>
             </div>
 
+            <ManagedInstructionsConfigSection
+              :model-value="form.managed_instructions"
+              @update:model-value="(value) => form.managed_instructions = value"
+            />
+
             <div class="space-y-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <Label class="text-sm font-medium">{{ t('userGroups.modelMultiplier') }}</Label>
@@ -553,8 +558,10 @@ import { isApiError } from '@/types/api-error'
 import { parseNumberInput } from '@/utils/form'
 import { cn } from '@/lib/utils'
 import { useUserAccessControlOptions } from '@/features/users/composables/useUserAccessControlOptions'
+import ManagedInstructionsConfigSection from './ManagedInstructionsConfigSection.vue'
 import type {
   ListPolicyMode,
+  ManagedInstructionsConfig,
   RateLimitPolicyMode,
   UpsertUserGroupRequest,
   User,
@@ -565,13 +572,14 @@ const props = defineProps<{
   open: boolean
   users: User[]
 }>()
-const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
   changed: []
   inspectApiKeyGroup: [groupId: string]
 }>()
+
+const { t } = useI18n()
 
 const usersStore = useUsersStore()
 const { success, error, warning } = useToast()
@@ -603,6 +611,7 @@ const form = ref({
   name: '',
   visibility: 'public' as 'public' | 'internal',
   sales_multiplier: 1,
+  managed_instructions: null as ManagedInstructionsConfig | null,
   allowed_providers_mode: 'unrestricted' as ListPolicyMode,
   allowed_api_formats_mode: 'unrestricted' as ListPolicyMode,
   allowed_models_mode: 'unrestricted' as ListPolicyMode,
@@ -806,6 +815,9 @@ async function selectGroup(groupId: string): Promise<void> {
     name: group.name,
     visibility: group.visibility === 'internal' ? 'internal' : 'public',
     sales_multiplier: group.sales_multiplier ?? 1,
+    managed_instructions: group.managed_instructions
+      ? { ...group.managed_instructions }
+      : null,
     allowed_providers_mode: normalizeListMode(group.allowed_providers_mode),
     allowed_api_formats_mode: normalizeListMode(group.allowed_api_formats_mode),
     allowed_models_mode: normalizeListMode(group.allowed_models_mode),
@@ -842,6 +854,7 @@ function startCreate(): void {
     name: '',
     visibility: 'public',
     sales_multiplier: 1,
+    managed_instructions: null,
     allowed_providers_mode: 'unrestricted',
     allowed_api_formats_mode: 'unrestricted',
     allowed_models_mode: 'unrestricted',
@@ -898,6 +911,9 @@ function buildPayload(): UpsertUserGroupRequest {
     visibility: form.value.visibility,
     sales_multiplier: form.value.sales_multiplier,
     model_sales_multipliers: parseModelSalesMultipliers(),
+    managed_instructions: form.value.managed_instructions
+      ? { ...form.value.managed_instructions }
+      : null,
     allowed_providers_mode: form.value.allowed_providers_mode,
     allowed_api_formats_mode: form.value.allowed_api_formats_mode,
     allowed_models_mode: form.value.allowed_models_mode,

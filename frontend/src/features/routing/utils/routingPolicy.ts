@@ -1,14 +1,6 @@
 export type RoutingPriorityMode = 'provider' | 'global_key'
 export type RoutingSchedulingMode = 'fixed_order' | 'cache_affinity' | 'load_balance'
 export type RoutingRulePhase = 'client_request' | 'provider_request'
-export type ManagedInstructionsMergeMode = 'prepend' | 'if_missing'
-
-export interface ManagedInstructionsConfig {
-  enabled: boolean
-  profile_id: string
-  merge_mode: ManagedInstructionsMergeMode
-}
-
 export interface RoutingDefaultPolicy {
   priority_mode: RoutingPriorityMode
   scheduling_mode: RoutingSchedulingMode
@@ -58,7 +50,6 @@ export interface RoutingSetSchedulingAction {
 }
 
 export interface RoutingGroupConfig {
-  managed_instructions?: ManagedInstructionsConfig | null
   allowed_models: string[]
   default_policy: RoutingDefaultPolicy
   model_policies: RoutingModelPolicy[]
@@ -97,9 +88,6 @@ export function normalizeRoutingGroupConfig(value: Partial<RoutingGroupConfig> |
   const base = createEmptyRoutingGroupConfig()
 
   return {
-    managed_instructions: value?.managed_instructions
-      ? { ...value.managed_instructions }
-      : undefined,
     allowed_models: Array.isArray(value?.allowed_models) ? [...value.allowed_models] : base.allowed_models,
     default_policy: {
       ...base.default_policy,
@@ -119,15 +107,6 @@ export function normalizeRoutingGroupConfig(value: Partial<RoutingGroupConfig> |
       : base.model_policies,
     rules: Array.isArray(value?.rules) ? value.rules.map(rule => ({ ...rule })) : base.rules,
   }
-}
-
-export function setManagedInstructionsConfig(
-  config: RoutingGroupConfig,
-  value: ManagedInstructionsConfig,
-): RoutingGroupConfig {
-  const next = normalizeRoutingGroupConfig(config)
-  next.managed_instructions = { ...value }
-  return next
 }
 
 export function upsertModelPolicy(config: RoutingGroupConfig, policy: RoutingModelPolicy): RoutingGroupConfig {

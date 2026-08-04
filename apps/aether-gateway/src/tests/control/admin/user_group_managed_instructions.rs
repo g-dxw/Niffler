@@ -8,13 +8,13 @@ use crate::constants::{
 };
 
 #[tokio::test]
-async fn gateway_returns_managed_instruction_profile_registry_from_routing_admin() {
+async fn gateway_returns_managed_instruction_profile_registry_from_user_groups_admin() {
     let gateway = build_router_with_state(AppState::new().expect("gateway should build"));
     let (gateway_url, gateway_handle) = start_server(gateway).await;
 
     let response = reqwest::Client::new()
         .get(format!(
-            "{gateway_url}/api/admin/routing/managed-instruction-profiles"
+            "{gateway_url}/api/admin/user-groups/managed-instruction-profiles"
         ))
         .header(GATEWAY_HEADER, "rust-phase3b")
         .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")

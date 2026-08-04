@@ -32,6 +32,7 @@ SELECT
   user_groups.visibility AS api_key_group_visibility,
   COALESCE(user_groups.sales_multiplier, 1) AS api_key_group_sales_multiplier,
   user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers,
+  user_groups.managed_instructions AS api_key_group_managed_instructions,
   api_keys.is_active AS api_key_is_active,
   api_keys.is_locked AS api_key_is_locked,
   api_keys.is_standalone AS api_key_is_standalone,
@@ -1015,7 +1016,12 @@ fn map_auth_api_key_snapshot_row(
             row.try_get("api_key_allowed_models").map_sql_err()?,
             "api_keys.allowed_models",
         )?,
-    )?;
+    )?
+    .with_group_managed_instructions(optional_json_from_string(
+        row.try_get("api_key_group_managed_instructions")
+            .map_sql_err()?,
+        "user_groups.managed_instructions",
+    )?);
     Ok(snapshot.with_user_rate_limit(row.try_get("user_rate_limit").map_sql_err()?))
 }
 

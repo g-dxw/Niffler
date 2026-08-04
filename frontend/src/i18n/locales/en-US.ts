@@ -551,4 +551,5 @@ export default {
       cooldownSeconds: 'Model pause must be an integer from 1 to 1920 seconds',
     },
   },
+  userGroupManagedInstructions: { title: 'Managed instructions', hint: 'New requests use this profile when the API key belongs to this user group.', profile: 'Profile', profilePlaceholder: 'Select a profile', mergeMode: 'Merge mode', mergePrepend: 'Always prepend', mergeIfMissing: 'Only when client instructions are missing', notConfigured: 'Not configured', disabled: 'Disabled; upstream requests are unchanged', prependSummary: 'Added to every request', ifMissingSummary: 'Added only when client instructions are absent', orderManaged: 'Managed instructions', orderClient: 'Client instructions', orderImage: 'Image rules', loadFailed: 'Failed to load instruction profiles', unknownProfile: 'Profile {profile} no longer exists. Select another profile.' },
 }
