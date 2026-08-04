@@ -91,7 +91,6 @@ pub(crate) async fn build_admin_global_model_update_record(
     } else {
         existing.config.clone()
     };
-
     UpdateAdminGlobalModelRecord::new(
         existing.id.clone(),
         display_name,

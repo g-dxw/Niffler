@@ -64,6 +64,10 @@ pub(crate) use aether_ai_formats::api::{
     OPENAI_VIDEO_CONTENT_PLAN_KIND, OPENAI_VIDEO_DELETE_SYNC_PLAN_KIND,
     OPENAI_VIDEO_REMIX_SYNC_PLAN_KIND,
 };
+pub(crate) use aether_ai_formats::formats::openai::responses::codex::{
+    codex_image_generation_bridge_text, codex_openai_responses_has_image_generation_tool,
+    split_codex_image_generation_bridge_suffix,
+};
 pub(crate) use aether_ai_formats::protocol::stream::CanonicalUsage as StreamingCanonicalUsage;
 
 pub(crate) fn parse_direct_request_body(

@@ -5184,6 +5184,51 @@ event: response.completed
     }
 
     #[tokio::test]
+    async fn openai_responses_direct_http_invalid_request_does_not_switch_accounts() {
+        let state = AppState::new().expect("app state should build");
+        let error_frame = format!(
+            "{}\n",
+            json!({
+                "type": "data",
+                "payload": {
+                    "kind": "data",
+                    "text": "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Invalid 'input[67].id'. Expected an ID that begins with 'rs'.\"}}"
+                }
+            })
+        );
+        let frame_stream = stream! {
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"headers\",\"payload\":{\"kind\":\"headers\",\"status_code\":400,\"headers\":{\"content-type\":\"application/json\"}}}\n",
+            ));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from(error_frame));
+            yield Ok::<Bytes, std::io::Error>(Bytes::from_static(
+                b"{\"type\":\"eof\",\"payload\":{\"kind\":\"eof\"}}\n",
+            ));
+        }
+        .boxed();
+
+        let response = execute_stream_from_frame_stream(
+            &state,
+            openai_responses_stream_failover_test_plan("req-openai-direct-invalid-request"),
+            "trace-openai-direct-invalid-request",
+            &test_decision(),
+            "openai_responses_stream",
+            Some("openai_responses_stream_success".to_string()),
+            Some(openai_responses_stream_failover_test_context(
+                "req-openai-direct-invalid-request",
+            )),
+            crate::clock::current_unix_ms(),
+            Instant::now(),
+            frame_stream,
+            None,
+        )
+        .await
+        .expect("execution should return the request error");
+
+        assert!(response.is_some(), "invalid input must not switch accounts");
+    }
+
+    #[tokio::test]
     async fn openai_responses_failure_after_output_keeps_the_current_stream() {
         let state = AppState::new().expect("app state should build");
         let frame_stream = stream! {

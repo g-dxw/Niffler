@@ -3,7 +3,7 @@ use crate::ai_serving::planner::candidate_materialization::{
     mark_skipped_local_execution_candidate, mark_skipped_local_execution_candidate_with_extra_data,
     mark_skipped_local_execution_candidate_with_failure_diagnostic,
 };
-use crate::ai_serving::planner::decision_input::apply_provider_request_routing_policy_to_decision;
+use crate::ai_serving::planner::decision_input::apply_final_provider_request_policies_to_decision;
 use crate::ai_serving::planner::materialization_policy::{
     build_local_candidate_persistence_policy, LocalCandidatePersistencePolicyKind,
 };
@@ -201,7 +201,7 @@ pub(super) async fn maybe_build_local_standard_decision_payload_for_candidate(
         report_context: Some(report_context),
         auth_context: input.auth_context.clone(),
     });
-    apply_provider_request_routing_policy_to_decision(input, &mut decision)?;
+    apply_final_provider_request_policies_to_decision(input, &mut decision).await?;
     Ok(Some(decision))
 }
 
@@ -370,6 +370,7 @@ mod tests {
             routing_policy: None,
             routing_trace_seed: None,
             routing_context: None,
+            managed_instructions_snapshot: std::sync::Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 

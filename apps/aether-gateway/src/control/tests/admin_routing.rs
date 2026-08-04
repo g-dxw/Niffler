@@ -59,6 +59,30 @@ fn classifies_admin_routing_group_routes_as_admin_proxy_route() {
 }
 
 #[test]
+fn classifies_managed_instruction_profiles_as_routing_admin_route() {
+    let headers = headers(&[]);
+    let uri: Uri = "/api/admin/routing/managed-instruction-profiles"
+        .parse()
+        .expect("uri should parse");
+    let decision =
+        classify_control_route(&http::Method::GET, &uri, &headers).expect("route should classify");
+
+    assert_eq!(decision.route_class.as_deref(), Some("admin_proxy"));
+    assert_eq!(
+        decision.route_family.as_deref(),
+        Some("routing_profiles_manage")
+    );
+    assert_eq!(
+        decision.route_kind.as_deref(),
+        Some("managed_instruction_profiles")
+    );
+    assert_eq!(
+        decision.auth_endpoint_signature.as_deref(),
+        Some("admin:routing_profiles")
+    );
+}
+
+#[test]
 fn admin_routing_write_routes_buffer_request_body() {
     let headers = headers(&[]);
     let routes = [

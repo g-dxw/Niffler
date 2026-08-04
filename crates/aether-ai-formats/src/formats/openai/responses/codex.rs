@@ -25,7 +25,6 @@ pub const CODEX_OPENAI_IMAGE_DEFAULT_VARIATION_PROMPT: &str =
 const CODEX_IMAGE_TOOL_DEFAULT_SIZE: &str = "1024x1024";
 const CODEX_IMAGE_TOOL_DEFAULT_QUALITY: &str = "high";
 const CODEX_IMAGE_TOOL_DEFAULT_BACKGROUND: &str = "auto";
-const CODEX_IMAGE_GENERATION_BRIDGE_MARKER: &str = "<niffler-codex-image-generation>";
 const CODEX_IMAGE_GENERATION_BRIDGE_TEXT: &str = "<niffler-codex-image-generation>\nWhen the user's requested outcome is a raster image or image edit, you MUST call the OpenAI Responses native `image_generation` tool attached to this request. Infer that intent from the full semantic request, not from specific keywords. The local Codex client may not expose an `image_gen` namespace, but that does not mean image generation is unavailable. Never substitute a prompt, external URL, Markdown image, or an unsupported claim of completion for a successful tool result. Do not ask the user to switch clients solely because `image_gen` is absent.\n</niffler-codex-image-generation>";
 const OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str = "x-openai-internal-codex-responses-lite";
 const UUID_NAMESPACE_OID_BYTES: [u8; 16] = [
@@ -121,7 +120,7 @@ fn codex_openai_responses_model_references_image_generation(
         .map(ToOwned::to_owned)
 }
 
-fn codex_openai_responses_has_image_generation_tool(
+pub fn codex_openai_responses_has_image_generation_tool(
     body_object: &serde_json::Map<String, Value>,
 ) -> bool {
     body_object
@@ -245,17 +244,39 @@ fn apply_codex_image_generation_bridge_instructions(
         .get("instructions")
         .and_then(Value::as_str)
         .unwrap_or_default()
-        .trim_end()
         .to_string();
-    if existing.contains(CODEX_IMAGE_GENERATION_BRIDGE_MARKER) {
+    if split_codex_image_generation_bridge_suffix(&existing)
+        .1
+        .is_some()
+    {
         return;
     }
-    let instructions = if existing.trim().is_empty() {
+    let instructions = if existing.is_empty() {
         CODEX_IMAGE_GENERATION_BRIDGE_TEXT.to_string()
     } else {
         format!("{existing}\n\n{CODEX_IMAGE_GENERATION_BRIDGE_TEXT}")
     };
     body_object.insert("instructions".to_string(), json!(instructions));
+}
+
+pub fn split_codex_image_generation_bridge_suffix(
+    instructions: &str,
+) -> (&str, Option<&'static str>) {
+    if instructions == CODEX_IMAGE_GENERATION_BRIDGE_TEXT {
+        return ("", Some(CODEX_IMAGE_GENERATION_BRIDGE_TEXT));
+    }
+    let Some(prefix_with_separator) = instructions.strip_suffix(CODEX_IMAGE_GENERATION_BRIDGE_TEXT)
+    else {
+        return (instructions, None);
+    };
+    let Some(prefix) = prefix_with_separator.strip_suffix("\n\n") else {
+        return (instructions, None);
+    };
+    (prefix, Some(CODEX_IMAGE_GENERATION_BRIDGE_TEXT))
+}
+
+pub fn codex_image_generation_bridge_text() -> &'static str {
+    CODEX_IMAGE_GENERATION_BRIDGE_TEXT
 }
 
 fn remove_codex_responses_lite_metadata(body_object: &mut serde_json::Map<String, Value>) {
@@ -300,6 +321,29 @@ fn normalize_codex_replayed_image_generation_calls(
             continue;
         }
         item.retain(|key, _| matches!(key.as_str(), "type" | "id" | "status" | "result"));
+    }
+}
+
+fn normalize_codex_replayed_reasoning_item_ids(body_object: &mut serde_json::Map<String, Value>) {
+    let Some(input) = body_object.get_mut("input").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for item in input {
+        let Some(item) = item.as_object_mut() else {
+            continue;
+        };
+        if item.get("type").and_then(Value::as_str) != Some("reasoning") {
+            continue;
+        }
+        let Some(legacy_suffix) = item
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|id| id.strip_prefix("item_"))
+            .filter(|suffix| !suffix.is_empty())
+        else {
+            continue;
+        };
+        item.insert("id".to_string(), json!(format!("rs_{legacy_suffix}")));
     }
 }
 
@@ -841,6 +885,7 @@ pub fn apply_codex_openai_responses_special_body_edits_with_bridge_config(
     strip_codex_hosted_tool_names_for_backend(body_object);
     strip_codex_hosted_tool_choice_name_for_backend(body_object);
     normalize_codex_responses_string_input(body_object);
+    normalize_codex_replayed_reasoning_item_ids(body_object);
     normalize_codex_replayed_image_generation_calls(body_object);
     normalize_codex_responses_lite_metadata(body_object);
 
@@ -1007,11 +1052,13 @@ pub fn apply_codex_openai_responses_special_headers(
 #[cfg(test)]
 mod tests {
     use super::{
+        apply_codex_image_generation_bridge_instructions,
         apply_codex_openai_responses_chat_body_edits,
         apply_codex_openai_responses_special_body_edits,
         apply_codex_openai_responses_special_body_edits_with_bridge_model,
         apply_openai_responses_compact_special_body_edits,
-        codex_hosted_image_generation_tool_allowed, CODEX_OPENAI_IMAGE_INTERNAL_MODEL,
+        codex_hosted_image_generation_tool_allowed, split_codex_image_generation_bridge_suffix,
+        CODEX_IMAGE_GENERATION_BRIDGE_TEXT, CODEX_OPENAI_IMAGE_INTERNAL_MODEL,
     };
     use serde_json::json;
 
@@ -1106,6 +1153,82 @@ mod tests {
         );
 
         assert_eq!(provider_request_body["input"], json!([]));
+    }
+
+    #[test]
+    fn codex_responses_body_edits_normalize_legacy_reasoning_item_ids() {
+        let mut provider_request_body = json!({
+            "input": [
+                {
+                    "type": "reasoning",
+                    "id": "item_7bda3e00a09d6e4dc9d0abef",
+                    "summary": [],
+                    "encrypted_content": "encrypted"
+                },
+                {
+                    "type": "reasoning",
+                    "id": "rs_already_valid",
+                    "summary": [],
+                    "encrypted_content": "encrypted"
+                },
+                {
+                    "type": "message",
+                    "id": "item_message_id",
+                    "role": "user",
+                    "content": "hello"
+                }
+            ],
+            "model": "gpt-5.6-sol",
+            "stream": true
+        });
+
+        apply_codex_openai_responses_special_body_edits(
+            &mut provider_request_body,
+            "codex",
+            "openai:responses",
+            None,
+            None,
+        );
+
+        assert_eq!(
+            provider_request_body["input"][0]["id"],
+            json!("rs_7bda3e00a09d6e4dc9d0abef")
+        );
+        assert_eq!(
+            provider_request_body["input"][1]["id"],
+            json!("rs_already_valid")
+        );
+        assert_eq!(
+            provider_request_body["input"][2]["id"],
+            json!("item_message_id")
+        );
+    }
+
+    #[test]
+    fn non_codex_responses_body_edits_do_not_normalize_reasoning_item_ids() {
+        let mut provider_request_body = json!({
+            "input": [{
+                "type": "reasoning",
+                "id": "item_legacy",
+                "summary": [],
+                "encrypted_content": "encrypted"
+            }],
+            "model": "gpt-5.6-sol",
+            "stream": true
+        });
+
+        apply_codex_openai_responses_special_body_edits(
+            &mut provider_request_body,
+            "openai",
+            "openai:responses",
+            None,
+            None,
+        );
+
+        assert_eq!(
+            provider_request_body["input"][0]["id"],
+            json!("item_legacy")
+        );
     }
 
     #[test]
@@ -1585,5 +1708,32 @@ mod tests {
             provider_request_body["tool_choice"]["type"],
             json!("image_generation")
         );
+    }
+
+    #[test]
+    fn image_bridge_preserves_client_trailing_bytes_and_uses_exact_suffix_for_deduplication() {
+        let client_instructions = "client instructions \n ";
+        let mut provider_request_body = json!({
+            "tools": [{"type": "image_generation"}],
+            "instructions": client_instructions,
+        });
+        let body_object = provider_request_body.as_object_mut().expect("body object");
+
+        apply_codex_image_generation_bridge_instructions(body_object);
+
+        let instructions = body_object["instructions"]
+            .as_str()
+            .expect("instructions string")
+            .to_string();
+        assert_eq!(
+            instructions,
+            format!("{client_instructions}\n\n{CODEX_IMAGE_GENERATION_BRIDGE_TEXT}")
+        );
+        let (prefix, suffix) = split_codex_image_generation_bridge_suffix(&instructions);
+        assert_eq!(prefix, client_instructions);
+        assert_eq!(suffix, Some(CODEX_IMAGE_GENERATION_BRIDGE_TEXT));
+
+        apply_codex_image_generation_bridge_instructions(body_object);
+        assert_eq!(body_object["instructions"], json!(instructions));
     }
 }

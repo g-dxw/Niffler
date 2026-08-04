@@ -4,8 +4,8 @@ use serde_json::Value;
 use crate::client_session_affinity::CODEX_ENCRYPTED_CONTEXT_HANDOFF_REPORT_FIELD;
 use crate::execution_runtime::submission::has_nested_error;
 use crate::orchestration::{
-    resolve_local_failover_analysis_for_attempt, LocalFailoverAnalysis,
-    LocalFailoverClassification, LocalFailoverDecision,
+    is_retryable_openai_transient_processing_error, resolve_local_failover_analysis_for_attempt,
+    LocalFailoverAnalysis, LocalFailoverClassification, LocalFailoverDecision,
 };
 use crate::AppState;
 
@@ -60,6 +60,47 @@ fn stop_codex_encrypted_context_handoff_failover(
     None
 }
 
+fn response_text_is_invalid_request_error(response_text: &str) -> bool {
+    let Ok(body) = serde_json::from_str::<Value>(response_text) else {
+        return false;
+    };
+    let error = body.get("error").or_else(|| {
+        body.get("response")
+            .and_then(|response| response.get("error"))
+    });
+    error.is_some_and(|error| {
+        ["type", "code"].into_iter().any(|field| {
+            error
+                .get(field)
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.eq_ignore_ascii_case("invalid_request_error"))
+        })
+    })
+}
+
+fn stop_openai_responses_invalid_request_failover(
+    plan: &ExecutionPlan,
+    status_code: u16,
+    response_text: Option<&str>,
+) -> Option<LocalFailoverAnalysis> {
+    if status_code != 400
+        || !crate::ai_serving::is_openai_responses_family_format(&plan.provider_api_format)
+    {
+        return None;
+    }
+    let response_text = response_text?.trim();
+    if response_text.is_empty()
+        || is_retryable_openai_transient_processing_error(status_code, response_text)
+        || !response_text_is_invalid_request_error(response_text)
+    {
+        return None;
+    }
+    Some(LocalFailoverAnalysis {
+        classification: LocalFailoverClassification::StopErrorPattern,
+        decision: LocalFailoverDecision::StopLocalFailover,
+    })
+}
+
 pub(crate) async fn should_retry_next_local_candidate_sync(
     state: &AppState,
     plan: &ExecutionPlan,
@@ -101,6 +142,12 @@ pub(crate) async fn analyze_local_candidate_failover_sync(
 
     if let Some(analysis) =
         stop_codex_encrypted_context_handoff_failover(report_context, response_text)
+    {
+        return analysis;
+    }
+
+    if let Some(analysis) =
+        stop_openai_responses_invalid_request_failover(plan, result.status_code, response_text)
     {
         return analysis;
     }
@@ -290,6 +337,12 @@ pub(crate) async fn resolve_local_candidate_failover_analysis_stream(
 
     if let Some(analysis) =
         stop_codex_encrypted_context_handoff_failover(report_context, response_text)
+    {
+        return analysis;
+    }
+
+    if let Some(analysis) =
+        stop_openai_responses_invalid_request_failover(plan, status_code, response_text)
     {
         return analysis;
     }
@@ -716,6 +769,78 @@ mod tests {
                 Some(&local_report_context),
                 &result,
                 Some("{\"error\":{\"message\":\"invalid auth token\"}}"),
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_invalid_request_stops_sync_and_stream_failover_only_for_responses() {
+        let result = ExecutionResult {
+            request_id: "req-1".to_string(),
+            candidate_id: None,
+            status_code: 400,
+            headers: Default::default(),
+            body: None,
+            telemetry: None,
+            error: None,
+        };
+        let local_report_context = serde_json::json!({
+            "candidate_index": 0,
+            "retry_index": 0,
+        });
+        let error_body =
+            "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Unknown parameter\"}}";
+        let state = build_state_with_provider_config(None);
+        let chat_plan = sample_plan();
+
+        assert!(
+            should_retry_next_local_candidate_sync(
+                &state,
+                &chat_plan,
+                "openai_chat_sync",
+                Some(&local_report_context),
+                &result,
+                Some(error_body),
+            )
+            .await
+        );
+
+        let mut responses_plan = chat_plan;
+        responses_plan.client_api_format = "openai:responses".to_string();
+        responses_plan.provider_api_format = "openai:responses".to_string();
+        assert!(
+            should_stop_local_candidate_failover_sync(
+                &state,
+                &responses_plan,
+                "openai_responses_sync",
+                Some(&local_report_context),
+                &result,
+                Some(error_body),
+            )
+            .await
+        );
+        assert!(
+            should_stop_local_candidate_failover_stream(
+                &state,
+                &responses_plan,
+                "openai_responses_stream",
+                Some(&local_report_context),
+                400,
+                Some(error_body),
+            )
+            .await
+        );
+        assert!(
+            should_retry_next_local_candidate_stream(
+                &state,
+                &responses_plan,
+                "openai_responses_stream",
+                Some(&local_report_context),
+                400,
+                Some(
+                    "{\"error\":{\"type\":\"invalid_request_error\",\"code\":\"server_is_overloaded\",\"message\":\"Selected model is at capacity.\"}}"
+                ),
             )
             .await
         );

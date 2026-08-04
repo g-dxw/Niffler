@@ -179,6 +179,11 @@
             </div>
           </div>
 
+          <ManagedInstructionsConfigSection
+            :model-value="draft.config_json.managed_instructions ?? null"
+            @update:model-value="updateManagedInstructions"
+          />
+
           <section class="space-y-3 rounded-lg border border-border/60 p-4">
             <div>
               <h3 class="text-sm font-medium">
@@ -298,7 +303,7 @@
                 </div>
                 <Input
                   v-model="globalModelSearch"
-                :placeholder="t('routingProfiles.searchModel')"
+                  :placeholder="t('routingProfiles.searchModel')"
                 />
                 <div class="grid grid-cols-3 gap-1 rounded-lg bg-muted/40 p-1">
                   <button
@@ -577,13 +582,18 @@ import {
   removeGeneratedModelSchedulingRules,
   removeModelPolicy,
   removeModelSchedulingRule,
+  setManagedInstructionsConfig,
   upsertModelPolicy,
   upsertModelSchedulingRule,
   type RoutingGroupConfig,
+  type ManagedInstructionsConfig,
   type RoutingPriorityMode,
   type RoutingSchedulingMode,
 } from '@/features/routing/utils/routingPolicy'
-import { RoutingPriorityPolicyEditor } from '@/features/routing/components'
+import {
+  ManagedInstructionsConfigSection,
+  RoutingPriorityPolicyEditor,
+} from '@/features/routing/components'
 import {
   createRoutingGroup,
   deleteRoutingGroup,
@@ -755,6 +765,14 @@ function updateDraftConfig(value: RoutingGroupConfig): void {
   if (!draft.value) return
   draft.value.config_json = normalizeRoutingGroupConfig(value)
   syncSelectedPerModelPolicy()
+}
+
+function updateManagedInstructions(value: ManagedInstructionsConfig): void {
+  if (!draft.value) return
+  updateDraftConfig(setManagedInstructionsConfig(draft.value.config_json, value))
+  if (editingConfig.value) {
+    editingConfig.value = setManagedInstructionsConfig(editingConfig.value, value)
+  }
 }
 
 function resetEditingConfig(): void {

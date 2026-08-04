@@ -3484,6 +3484,60 @@ fn ai_serving_leaf_planner_owners_route_contract_specs_through_gateway_seams() {
 }
 
 #[test]
+fn ai_serving_applies_managed_instructions_at_every_final_provider_request_seam() {
+    let decision_input =
+        read_workspace_file("apps/aether-gateway/src/ai_serving/planner/decision_input.rs");
+    for pattern in [
+        "managed_instructions_snapshot:",
+        "Arc<tokio::sync::OnceCell<ManagedInstructionsBindingSnapshot>>",
+        "pub(crate) async fn apply_final_provider_request_policies_to_decision(",
+        "apply_provider_request_routing_policy_to_decision(input, decision)?;",
+        "resolve_managed_instructions_config(Some(&context.group_config_json))",
+        "routing_group_id:",
+        "routing_group_version:",
+        "apply_managed_instructions_to_decision(decision, config)?;",
+        "record_managed_instructions_routing_group(",
+    ] {
+        assert!(
+            decision_input.contains(pattern),
+            "shared decision input should preserve final managed-instruction step {pattern}"
+        );
+    }
+
+    for path in [
+        "apps/aether-gateway/src/ai_serving/planner/standard/openai/responses/decision/payload.rs",
+        "apps/aether-gateway/src/ai_serving/planner/standard/openai/chat/decision/payload.rs",
+        "apps/aether-gateway/src/ai_serving/planner/standard/family/payload.rs",
+        "apps/aether-gateway/src/ai_serving/planner/passthrough/provider/family/payload.rs",
+        "apps/aether-gateway/src/ai_serving/planner/specialized/files/decision.rs",
+        "apps/aether-gateway/src/ai_serving/planner/specialized/image/decision.rs",
+        "apps/aether-gateway/src/ai_serving/planner/specialized/video/decision.rs",
+    ] {
+        let source = read_workspace_file(path);
+        assert!(
+            source.contains("apply_final_provider_request_policies_to_decision("),
+            "{path} should apply provider routing before the final managed-instruction policy"
+        );
+        assert!(
+            !source.contains(
+                "apply_provider_request_routing_policy_to_decision(input, &mut decision)"
+            ),
+            "{path} should not bypass the final managed-instruction policy"
+        );
+    }
+
+    let managed_instructions =
+        read_workspace_file("apps/aether-gateway/src/managed_instructions.rs");
+    assert_eq!(
+        managed_instructions
+            .matches("fn build_embedded_text(")
+            .count(),
+        1,
+        "all provider formats should reuse one managed-instruction body builder"
+    );
+}
+
+#[test]
 fn ai_serving_m5_moves_contracts_and_route_logic_into_format_crate() {
     for path in [
         "crates/aether-ai-formats/src/contracts/actions.rs",
