@@ -1163,7 +1163,9 @@ function isBatchImport(text: string): boolean {
 function parseImportText(text: string): {
   refresh_token?: string
   access_token?: string
+  id_token?: string
   expires_at?: number
+  last_refresh?: string
   name?: string
   email?: string
   account_id?: string
@@ -1197,33 +1199,45 @@ function parseImportText(text: string): {
     const parsed: unknown = JSON.parse(trimmed)
     if (typeof parsed === 'object' && parsed !== null) {
       const obj = parsed as Record<string, unknown>
+      const nestedTokens = isRecord(obj.tokens) ? obj.tokens : null
+      const nestedMeta = isRecord(obj._meta) ? obj._meta : null
       const grokCookieImport = isGrokProvider.value
         ? parseGrokCookieImport(normalizeStringField(obj.cookie) ?? normalizeStringField(obj.cookieHeader) ?? '')
         : null
-      const refreshToken = obj.refresh_token
-      const refreshTokenCamel = obj.refreshToken
-      const accessToken = obj.access_token
-      const accessTokenCamel = obj.accessToken
       const grokSsoToken = isGrokProvider.value
         ? normalizeStringField(obj.sso_token) ?? normalizeStringField(obj.ssoToken) ?? normalizeStringField(obj.token) ?? grokCookieImport?.access_token
         : undefined
-      const normalizedRefreshToken = typeof refreshToken === 'string' && refreshToken.trim()
-        ? refreshToken.trim()
-        : (typeof refreshTokenCamel === 'string' && refreshTokenCamel.trim() ? refreshTokenCamel.trim() : undefined)
-      const normalizedAccessToken = typeof accessToken === 'string' && accessToken.trim()
-        ? accessToken.trim()
-        : (typeof accessTokenCamel === 'string' && accessTokenCamel.trim() ? accessTokenCamel.trim() : undefined)
+      const normalizedRefreshToken = normalizeStringField(obj.refresh_token)
+        ?? normalizeStringField(obj.refreshToken)
+        ?? normalizeStringField(nestedTokens?.refresh_token)
+      const normalizedAccessToken = normalizeStringField(obj.access_token)
+        ?? normalizeStringField(obj.accessToken)
+        ?? normalizeStringField(nestedTokens?.access_token)
       const importedAccessToken = normalizedAccessToken ?? grokSsoToken
       if (normalizedRefreshToken || importedAccessToken) {
         return {
           refresh_token: normalizedRefreshToken,
           access_token: importedAccessToken,
+          id_token: normalizeStringField(obj.id_token)
+            ?? normalizeStringField(obj.idToken)
+            ?? normalizeStringField(nestedTokens?.id_token),
           expires_at: normalizeNumberField(obj.expires_at) ?? normalizeNumberField(obj.expiresAt),
+          last_refresh: normalizeStringField(obj.last_refresh) ?? normalizeStringField(obj.lastRefresh),
           name: (typeof obj.name === 'string' ? obj.name : undefined) || (typeof obj.oauth_email === 'string' ? obj.oauth_email : undefined),
-          email: normalizeStringField(obj.email) ?? normalizeStringField(obj.oauth_email),
-          account_id: normalizeStringField(obj.account_id) ?? normalizeStringField(obj.accountId) ?? normalizeStringField(obj.chatgpt_account_id) ?? normalizeStringField(obj.chatgptAccountId),
+          email: normalizeStringField(obj.email)
+            ?? normalizeStringField(obj.oauth_email)
+            ?? normalizeStringField(nestedMeta?.email),
+          account_id: normalizeStringField(obj.account_id)
+            ?? normalizeStringField(obj.accountId)
+            ?? normalizeStringField(obj.chatgpt_account_id)
+            ?? normalizeStringField(obj.chatgptAccountId)
+            ?? normalizeStringField(nestedTokens?.account_id),
           account_user_id: normalizeStringField(obj.account_user_id) ?? normalizeStringField(obj.accountUserId) ?? normalizeStringField(obj.chatgpt_account_user_id) ?? normalizeStringField(obj.chatgptAccountUserId),
-          plan_type: normalizeStringField(obj.plan_type) ?? normalizeStringField(obj.planType) ?? normalizeStringField(obj.chatgpt_plan_type) ?? normalizeStringField(obj.chatgptPlanType),
+          plan_type: normalizeStringField(obj.plan_type)
+            ?? normalizeStringField(obj.planType)
+            ?? normalizeStringField(obj.chatgpt_plan_type)
+            ?? normalizeStringField(obj.chatgptPlanType)
+            ?? normalizeStringField(nestedMeta?.plan_type),
           pool_tier: isGrokProvider.value ? normalizeStringField(obj.pool_tier) ?? normalizeStringField(obj.poolTier) ?? normalizeStringField(obj.tier) : undefined,
           sso_rw_token: isGrokProvider.value ? normalizeStringField(obj.sso_rw_token) ?? normalizeStringField(obj.ssoRwToken) ?? grokCookieImport?.sso_rw_token : undefined,
           cf_cookies: isGrokProvider.value ? normalizeStringField(obj.cf_cookies) ?? normalizeStringField(obj.cfCookies) ?? grokCookieImport?.cf_cookies : undefined,
@@ -1315,6 +1329,10 @@ function parseCookieHeader(text: string): Map<string, string> {
 
 function normalizeStringField(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function normalizeNumberField(value: unknown): number | undefined {

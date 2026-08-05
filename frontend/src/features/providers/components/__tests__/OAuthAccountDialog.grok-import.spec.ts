@@ -511,6 +511,122 @@ describe('OAuthAccountDialog imports', () => {
     expect(endpointMocks.startBatchImportOAuthTask).not.toHaveBeenCalled()
   })
 
+  it('maps a nested ChatGPT auth JSON object into the single import payload', async () => {
+    const root = mountDialog('codex')
+    await settle()
+
+    getButton(root, '导入授权')?.click()
+    await settle()
+
+    const raw = JSON.stringify({
+      auth_mode: 'chatgpt',
+      openai_api_key: null,
+      tokens: {
+        id_token: 'nested-id-token',
+        access_token: 'nested-access-token',
+        refresh_token: 'nested-refresh-token',
+        account_id: 'nested-account-id',
+      },
+      last_refresh: '2026-08-05T12:34:56Z',
+      _meta: {
+        plan_type: 'pro',
+        email: 'nested@example.com',
+        imported_at: '2026-08-05T12:35:00Z',
+      },
+    })
+    const textarea = getImportTextarea(root)
+    textarea.value = raw
+    textarea.dispatchEvent(new Event('input'))
+    await settle()
+
+    getButtonExact(root, '导入')?.click()
+    await settle()
+
+    expect(endpointMocks.importProviderRefreshToken).toHaveBeenCalledWith(
+      'provider-1',
+      expect.objectContaining({
+        access_token: 'nested-access-token',
+        refresh_token: 'nested-refresh-token',
+        id_token: 'nested-id-token',
+        account_id: 'nested-account-id',
+        email: 'nested@example.com',
+        plan_type: 'pro',
+        last_refresh: '2026-08-05T12:34:56Z',
+      }),
+    )
+    expect(endpointMocks.startBatchImportOAuthTask).not.toHaveBeenCalled()
+  })
+
+  it('keeps top-level OAuth fields ahead of nested ChatGPT auth fields', async () => {
+    const root = mountDialog('codex')
+    await settle()
+
+    getButton(root, '导入授权')?.click()
+    await settle()
+
+    const textarea = getImportTextarea(root)
+    textarea.value = JSON.stringify({
+      access_token: 'top-level-access-token',
+      refresh_token: 'top-level-refresh-token',
+      account_id: 'top-level-account-id',
+      email: 'top-level@example.com',
+      plan_type: 'team',
+      tokens: {
+        access_token: 'nested-access-token',
+        refresh_token: 'nested-refresh-token',
+        account_id: 'nested-account-id',
+      },
+      _meta: {
+        email: 'nested@example.com',
+        plan_type: 'pro',
+      },
+    })
+    textarea.dispatchEvent(new Event('input'))
+    await settle()
+
+    getButtonExact(root, '导入')?.click()
+    await settle()
+
+    expect(endpointMocks.importProviderRefreshToken).toHaveBeenCalledWith(
+      'provider-1',
+      expect.objectContaining({
+        access_token: 'top-level-access-token',
+        refresh_token: 'top-level-refresh-token',
+        account_id: 'top-level-account-id',
+        email: 'top-level@example.com',
+        plan_type: 'team',
+      }),
+    )
+  })
+
+  it('rejects a nested ChatGPT auth object without an access or refresh token', async () => {
+    const root = mountDialog('codex')
+    await settle()
+
+    getButton(root, '导入授权')?.click()
+    await settle()
+
+    const textarea = getImportTextarea(root)
+    textarea.value = JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: {
+        id_token: 'nested-id-token-only',
+        account_id: 'nested-account-id',
+      },
+      _meta: {
+        email: 'nested@example.com',
+      },
+    })
+    textarea.dispatchEvent(new Event('input'))
+    await settle()
+
+    getButtonExact(root, '导入')?.click()
+    await settle()
+
+    expect(endpointMocks.importProviderRefreshToken).not.toHaveBeenCalled()
+    expect(endpointMocks.startBatchImportOAuthTask).not.toHaveBeenCalled()
+  })
+
   it('extracts Grok account fields from a pasted browser cookie header', async () => {
     const root = mountDialog('grok')
     await settle()
