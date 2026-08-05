@@ -13,10 +13,12 @@ use crate::handlers::admin::shared::{
 use crate::handlers::admin::system::shared::configs::apply_admin_system_config_update;
 use crate::handlers::admin::users::{
     hash_admin_user_api_key, normalize_admin_feature_settings, normalize_admin_list_policy_mode,
-    normalize_admin_rate_limit_policy_mode, normalize_admin_user_api_formats,
-    normalize_admin_user_string_list,
+    normalize_admin_model_sales_multipliers, normalize_admin_rate_limit_policy_mode,
+    normalize_admin_sales_multiplier, normalize_admin_user_api_formats,
+    normalize_admin_user_group_visibility, normalize_admin_user_string_list,
 };
 use crate::handlers::public::normalize_admin_base_url;
+use crate::managed_instructions::validate_managed_instructions_config;
 use crate::GatewayError;
 use aether_admin::provider::endpoints as admin_provider_endpoints_pure;
 use aether_admin::provider::models_write as admin_provider_models_write_pure;
@@ -730,6 +732,22 @@ fn build_imported_user_group_record(
     let rate_limit = imported_optional_i32(group.get("rate_limit"), "rate_limit")?;
     let concurrent_limit =
         imported_optional_i32(group.get("concurrent_limit"), "concurrent_limit")?;
+    let visibility = normalize_admin_user_group_visibility(
+        imported_optional_string(group.get("visibility"))?
+            .as_deref()
+            .unwrap_or("public"),
+    )?;
+    let sales_multiplier = normalize_admin_sales_multiplier(
+        imported_optional_f64(group.get("sales_multiplier"), "sales_multiplier")?.unwrap_or(1.0),
+    )?;
+    let model_sales_multipliers =
+        normalize_admin_model_sales_multipliers(imported_optional_json_object(
+            group.get("model_sales_multipliers"),
+            "model_sales_multipliers",
+        )?)?;
+    let managed_instructions =
+        imported_optional_json_object(group.get("managed_instructions"), "managed_instructions")?;
+    validate_managed_instructions_config(managed_instructions.as_ref())?;
     if concurrent_limit.is_some_and(|value| value < 0) {
         return Err(format!("{field_name}.concurrent_limit 必须是非负整数"));
     }
@@ -796,10 +814,11 @@ fn build_imported_user_group_record(
         aether_data::repository::users::UpsertUserGroupRecord {
             name,
             description,
-            visibility: "public".to_string(),
+            visibility,
             priority: 0,
-            sales_multiplier: 1.0,
-            model_sales_multipliers: None,
+            sales_multiplier,
+            model_sales_multipliers,
+            managed_instructions,
             allowed_providers,
             allowed_providers_mode,
             allowed_api_formats,
@@ -3104,11 +3123,11 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        imported_optional_bool, imported_optional_f64, imported_optional_i32,
-        imported_optional_u64, imported_rfc3339_to_unix_secs, imported_string_list_from_value,
-        normalize_import_endpoint_format, normalize_import_key_formats,
-        normalize_imported_wallet_target, validate_imported_system_users_export_version,
-        ImportedProviderKey,
+        build_imported_user_group_record, imported_optional_bool, imported_optional_f64,
+        imported_optional_i32, imported_optional_u64, imported_rfc3339_to_unix_secs,
+        imported_string_list_from_value, normalize_import_endpoint_format,
+        normalize_import_key_formats, normalize_imported_wallet_target,
+        validate_imported_system_users_export_version, ImportedProviderKey,
     };
 
     #[test]
@@ -3123,6 +3142,20 @@ mod tests {
             validate_imported_system_users_export_version(Some(&json!(null))).unwrap_err(),
             "version 必须是 x.y 字符串"
         );
+    }
+
+    #[test]
+    fn users_import_uses_legacy_defaults_for_missing_group_contract_fields() {
+        let group = json!({"name": "Legacy Group"});
+        let group = group.as_object().expect("group should be object");
+
+        let (_, _, record) =
+            build_imported_user_group_record(group, "user_groups[0]").expect("group should parse");
+
+        assert_eq!(record.visibility, "public");
+        assert_eq!(record.sales_multiplier, 1.0);
+        assert_eq!(record.model_sales_multipliers, None);
+        assert_eq!(record.managed_instructions, None);
     }
 
     #[test]

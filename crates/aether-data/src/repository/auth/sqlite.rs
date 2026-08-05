@@ -32,6 +32,7 @@ SELECT
   user_groups.visibility AS api_key_group_visibility,
   CAST(COALESCE(user_groups.sales_multiplier, 1) AS REAL) AS api_key_group_sales_multiplier,
   user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers,
+  user_groups.managed_instructions AS api_key_group_managed_instructions,
   api_keys.is_active AS api_key_is_active,
   api_keys.is_locked AS api_key_is_locked,
   api_keys.is_standalone AS api_key_is_standalone,
@@ -1012,7 +1013,12 @@ fn map_auth_api_key_snapshot_row(
             row.try_get("api_key_allowed_models").map_sql_err()?,
             "api_keys.allowed_models",
         )?,
-    )?;
+    )?
+    .with_group_managed_instructions(optional_json_from_string(
+        row.try_get("api_key_group_managed_instructions")
+            .map_sql_err()?,
+        "user_groups.managed_instructions",
+    )?);
     Ok(snapshot.with_user_rate_limit(row.try_get("user_rate_limit").map_sql_err()?))
 }
 
@@ -1112,6 +1118,14 @@ mod tests {
         assert_eq!(
             snapshot.api_key_allowed_models,
             Some(vec!["gpt-4.1".to_string()])
+        );
+        assert_eq!(
+            snapshot.api_key_group_managed_instructions,
+            Some(json!({
+                "enabled": true,
+                "profile_id": "security_research_v1",
+                "merge_mode": "prepend"
+            }))
         );
 
         let by_ids = repository
@@ -1349,20 +1363,33 @@ mod tests {
         seed_auth_user(pool).await;
         sqlx::query(
             r#"
+INSERT INTO user_groups (
+  id, name, normalized_name, visibility, managed_instructions, created_at, updated_at
+) VALUES (
+  'group-security', 'Security', 'security', 'public',
+  '{"enabled":true,"profile_id":"security_research_v1","merge_mode":"prepend"}', 1, 1
+)
+"#,
+        )
+        .execute(pool)
+        .await
+        .expect("user group should seed");
+        sqlx::query(
+            r#"
 INSERT INTO api_keys (
-  id, user_id, key_hash, key_encrypted, name, allowed_providers,
+  id, user_id, group_id, key_hash, key_encrypted, name, allowed_providers,
   allowed_api_formats, allowed_models, rate_limit, concurrent_limit,
   force_capabilities, is_active, expires_at, auto_delete_on_expiry,
   total_requests, total_tokens, total_cost_usd, last_used_at, created_at,
   updated_at, is_standalone
 ) VALUES
   (
-    'key-user', 'user-1', 'hash-user', 'enc-user', 'User Key', '["openai"]',
+    'key-user', 'user-1', 'group-security', 'hash-user', 'enc-user', 'User Key', '["openai"]',
     '["openai:chat"]', '["gpt-4.1"]', 30, 2, '{"cache":true}', 1, 200, 0,
     123, 456, 1.25, 10, 1, 2, 0
   ),
   (
-    'key-standalone', 'user-1', 'hash-standalone', 'enc-standalone', 'Standalone', NULL,
+    'key-standalone', 'user-1', NULL, 'hash-standalone', 'enc-standalone', 'Standalone', NULL,
     NULL, NULL, NULL, NULL, NULL, 1, NULL, 0, 0, 0, 0, NULL, 3, 4, 1
   )
 "#,

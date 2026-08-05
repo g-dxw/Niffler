@@ -23,6 +23,20 @@ pub(super) fn classify_admin_operations_family_route(
     } else if method == http::Method::GET
         && matches!(
             normalized_path,
+            "/api/admin/user-groups/managed-instruction-profiles"
+                | "/api/admin/user-groups/managed-instruction-profiles/"
+        )
+    {
+        Some(classified(
+            "admin_proxy",
+            "users_manage",
+            "list_user_group_managed_instruction_profiles",
+            "admin:users",
+            false,
+        ))
+    } else if method == http::Method::GET
+        && matches!(
+            normalized_path,
             "/api/admin/referral-rewards" | "/api/admin/referral-rewards/"
         )
     {

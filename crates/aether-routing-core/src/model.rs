@@ -69,8 +69,6 @@ pub struct RoutingRule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct RoutingGroupConfig {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub managed_instructions: Option<Value>,
     #[serde(default)]
     pub allowed_models: Vec<String>,
     #[serde(default)]

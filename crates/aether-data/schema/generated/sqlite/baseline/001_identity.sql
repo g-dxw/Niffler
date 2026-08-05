@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS user_groups (
     concurrent_limit_mode TEXT NOT NULL DEFAULT 'inherit',
     sales_multiplier REAL NOT NULL DEFAULT 1,
     model_sales_multipliers TEXT,
+    managed_instructions TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     UNIQUE (normalized_name)

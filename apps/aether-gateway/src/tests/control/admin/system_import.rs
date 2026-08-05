@@ -822,6 +822,14 @@ async fn gateway_imports_admin_system_users_locally_and_persists_data() {
                 "id": "source-group-1",
                 "name": "GPT Import",
                 "description": "Imported group",
+                "visibility": "internal",
+                "sales_multiplier": 0.75,
+                "model_sales_multipliers": {"gpt-5": 0.5},
+                "managed_instructions": {
+                    "enabled": true,
+                    "profile_id": "adult_fiction_v1",
+                    "merge_mode": "prepend"
+                },
                 "allowed_providers": ["openai"],
                 "allowed_providers_mode": "specific",
                 "allowed_api_formats": ["openai:chat"],
@@ -957,6 +965,20 @@ async fn gateway_imports_admin_system_users_locally_and_persists_data() {
         Some(vec!["gpt-5".to_string()])
     );
     assert_eq!(imported_groups[0].rate_limit, Some(44));
+    assert_eq!(imported_groups[0].visibility, "internal");
+    assert_eq!(imported_groups[0].sales_multiplier, 0.75);
+    assert_eq!(
+        imported_groups[0].model_sales_multipliers,
+        Some(json!({"gpt-5": 0.5}))
+    );
+    assert_eq!(
+        imported_groups[0].managed_instructions,
+        Some(json!({
+            "enabled": true,
+            "profile_id": "adult_fiction_v1",
+            "merge_mode": "prepend"
+        }))
+    );
 
     let user_wallet = state
         .find_wallet(WalletLookupKey::UserId(&imported_user.id))
@@ -1049,6 +1071,36 @@ async fn gateway_imports_admin_system_users_locally_and_persists_data() {
         chrono::DateTime::parse_from_rfc3339(standalone_wallet_updated_at)
             .expect("standalone wallet updated_at should parse")
             .timestamp() as u64
+    );
+
+    let export_response = reqwest::Client::new()
+        .get(format!("{gateway_url}/api/admin/system/users/export"))
+        .header(GATEWAY_HEADER, "rust-phase3b")
+        .header(TRUSTED_ADMIN_USER_ID_HEADER, "admin-user-123")
+        .header(TRUSTED_ADMIN_USER_ROLE_HEADER, "admin")
+        .header(TRUSTED_ADMIN_SESSION_ID_HEADER, "session-123")
+        .send()
+        .await
+        .expect("round-trip export should succeed");
+    assert_eq!(export_response.status(), StatusCode::OK);
+    let export_payload: Value = export_response
+        .json()
+        .await
+        .expect("round-trip export should be json");
+    let exported_group = &export_payload["user_groups"][0];
+    assert_eq!(exported_group["visibility"], "internal");
+    assert_eq!(exported_group["sales_multiplier"], json!(0.75));
+    assert_eq!(
+        exported_group["model_sales_multipliers"],
+        json!({"gpt-5": 0.5})
+    );
+    assert_eq!(
+        exported_group["managed_instructions"],
+        json!({
+            "enabled": true,
+            "profile_id": "adult_fiction_v1",
+            "merge_mode": "prepend"
+        })
     );
 
     gateway_handle.abort();

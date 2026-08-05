@@ -235,6 +235,9 @@ impl<'a> AdminAppState<'a> {
                     "id": group.id.clone(),
                     "name": group.name.clone(),
                     "description": group.description.clone(),
+                    "visibility": group.visibility.clone(),
+                    "sales_multiplier": group.sales_multiplier,
+                    "model_sales_multipliers": group.model_sales_multipliers.clone(),
                     "allowed_providers": group.allowed_providers.clone(),
                     "allowed_providers_mode": group.allowed_providers_mode.clone(),
                     "allowed_api_formats": group.allowed_api_formats.clone(),
@@ -245,6 +248,7 @@ impl<'a> AdminAppState<'a> {
                     "rate_limit_mode": group.rate_limit_mode.clone(),
                     "concurrent_limit": group.concurrent_limit,
                     "concurrent_limit_mode": group.concurrent_limit_mode.clone(),
+                    "managed_instructions": group.managed_instructions.clone(),
                 })
             })
             .collect::<Vec<_>>();

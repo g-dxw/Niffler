@@ -1,5 +1,59 @@
 # Task Plan: 当前任务记录
 
+## Niffler 受管理提示词按用户分组配置（2026-08-04）
+
+### Goal
+
+将受管理提示词的配置来源从调度分组改为用户分组。管理员分别为 CTF/渗透和成人用户分组选择配置；用户通过 API Key 当前绑定的用户分组切换配置；服务端只信任鉴权后读取到的 API Key 分组，不接受客户端请求头决定提示词配置。
+
+### Current Task State
+
+- `current_task`: 受管理提示词按用户分组配置
+- `current_phase`: User Group Managed Instructions Phase 5（验证完成）
+- `active_skills`: `planning-with-files`、`using-ui-polish`
+- `do_not_reinvoke_superpowers`: true
+- `next_step`: 汇报实现和使用方式；本轮不提交、不部署
+
+### Phases
+
+- [x] User Group Managed Instructions Phase 1：核对用户分组、API Key 分组切换和鉴权数据链路，先修正文档
+- [x] User Group Managed Instructions Phase 2：将配置校验、注册表接口和运行时读取迁移到用户分组
+- [x] User Group Managed Instructions Phase 3：将控制台入口迁移到用户分组编辑，保留用户现有 API Key 分组选择
+- [x] User Group Managed Instructions Phase 4：删除调度分组配置语义，补充可信分组选择、切换和隔离测试
+- [x] User Group Managed Instructions Phase 5：完成后端、前端、UI 和完整相关验证
+
+### Safety Boundary
+
+- 本轮不提交、推送或部署，除非用户再次明确要求。
+- 不修改线上用户分组、API Key、路由分组或生产数据。
+- 配置来源固定为鉴权后读取到的 API Key 用户分组；客户端请求头、请求正文和 XML 标记都不能决定配置。
+- 用户切换 API Key 分组后只影响后续请求；正在执行和历史请求不变。
+- 不新增第二套用户分组选择器，复用现有 API Key 创建与编辑流程。
+- `security_research_v1` 和 `adult_fiction_v1` 保持不变；`core_v1` 继续只作为内部共享正文。
+- 先更新外部需求文档和 Aether 架构说明，再修改业务代码。
+
+### Key Questions
+
+1. 用户分组当前是否有可扩展 JSON 配置；若没有，应增加字段还是独立关联表？
+2. 鉴权结果是否已经携带 API Key 的 `group_id`，能否在请求规划阶段一次读取用户分组配置？
+3. 用户修改 API Key 分组时，现有权限校验如何确保只能选择公开分组或已分配的内部分组？
+4. 用户分组管理页的创建、编辑、导入导出和删除流程需要在哪个统一入口校验配置？
+5. 线上已发布的调度分组配置字段应直接停止读取，还是需要清理兼容提示？
+
+### Errors Encountered
+
+| Error | Attempt | Resolution |
+|-------|---------|------------|
+| `gh` 未显式指定仓库时把当前目录识别成上游 `fawney19/Aether` | 上一轮生产发布首次查询 | 后续 GitHub 命令固定使用 `-R ryfineZ/Niffler`；生产发布已成功 |
+| 首次检索用户分组迁移时同时传入不存在的顶层 `migrations` 和 `apps/aether-gateway/migrations` | Phase 1 首次存储检索 | 已确认实际迁移目录为 `crates/aether-data/migrations/{postgres,mysql,sqlite}`；后续只使用真实路径 |
+| 独立请求切换配置测试直接复用了不含 `messages` 的示例 Chat 请求体，返回 400 | Phase 4 首次切换测试 | 为安全和成人两个独立请求显式设置合法的 Chat `messages` 数组后重跑 |
+| 前端 `npm run lint` 会固定检查并自动格式化整个目录，触发本任务外旧代码问题 | Phase 5 首次代码规范检查 | 根据执行前状态恢复 137 个无关文件，只保留本任务和原有改动；改用底层 ESLint 对目标文件做只读检查并通过 |
+| 恢复无关格式变化的首次脚本使用了 zsh 特殊变量名 `path`，导致循环内找不到 `git` | Phase 5 清理首次尝试 | 改用普通变量名 `file_path`，逐个恢复已确认的目标文件并复核工作区范围 |
+| 数据层全量测试的三处迁移清单没有包含新版本 `20260804120000` | Phase 5 首次 508 项回归 | 更新 PostgreSQL 待执行清单及 MySQL、SQLite 启用迁移清单；508 项复测全部通过 |
+| 网关全量测试中的既有视频轮询测试超过自身 500 毫秒上限 | Phase 5 的 2969 项回归 | 其余 2968 项通过；该项脱离全量负载后单独重跑通过，保留为既有时序风险 |
+
+---
+
 ## Niffler 受管理提示词配置（2026-08-03）
 
 ### Goal

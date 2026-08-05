@@ -295,6 +295,7 @@ fn memory_group_from_record(
         record.concurrent_limit_mode,
         record.sales_multiplier,
         record.model_sales_multipliers,
+        record.managed_instructions,
         Some(now),
         Some(now),
     )
@@ -322,6 +323,7 @@ fn memory_update_group_from_record(
     group.concurrent_limit_mode = record.concurrent_limit_mode;
     group.sales_multiplier = record.sales_multiplier;
     group.model_sales_multipliers = record.model_sales_multipliers;
+    group.managed_instructions = record.managed_instructions;
     group.updated_at = Some(chrono::Utc::now());
     StoredUserGroup::new(
         group.id,
@@ -342,6 +344,7 @@ fn memory_update_group_from_record(
         group.concurrent_limit_mode,
         group.sales_multiplier,
         group.model_sales_multipliers,
+        group.managed_instructions,
         group.created_at,
         group.updated_at,
     )

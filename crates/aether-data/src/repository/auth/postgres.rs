@@ -42,7 +42,8 @@ SELECT
   user_groups.name AS api_key_group_name,
   user_groups.visibility AS api_key_group_visibility,
   CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
-  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers,
+  user_groups.managed_instructions AS api_key_group_managed_instructions
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
 LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
@@ -78,7 +79,8 @@ SELECT
   user_groups.name AS api_key_group_name,
   user_groups.visibility AS api_key_group_visibility,
   CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
-  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers,
+  user_groups.managed_instructions AS api_key_group_managed_instructions
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
 LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
@@ -114,7 +116,8 @@ SELECT
   user_groups.name AS api_key_group_name,
   user_groups.visibility AS api_key_group_visibility,
   CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
-  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers,
+  user_groups.managed_instructions AS api_key_group_managed_instructions
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
 LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
@@ -150,7 +153,8 @@ SELECT
   user_groups.name AS api_key_group_name,
   user_groups.visibility AS api_key_group_visibility,
   CAST(user_groups.sales_multiplier AS DOUBLE PRECISION) AS api_key_group_sales_multiplier,
-  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers
+  user_groups.model_sales_multipliers AS api_key_group_model_sales_multipliers,
+  user_groups.managed_instructions AS api_key_group_managed_instructions
 FROM api_keys
 JOIN users ON users.id = api_keys.user_id
 LEFT JOIN user_groups ON user_groups.id = api_keys.group_id
@@ -1702,7 +1706,8 @@ fn map_auth_api_key_snapshot_row(
         row_get(row, "api_key_allowed_providers")?,
         row_get(row, "api_key_allowed_api_formats")?,
         row_get(row, "api_key_allowed_models")?,
-    )?;
+    )?
+    .with_group_managed_instructions(row_get(row, "api_key_group_managed_instructions")?);
     Ok(snapshot.with_user_rate_limit(row_get(row, "user_rate_limit")?))
 }
 

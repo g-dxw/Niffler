@@ -1196,6 +1196,7 @@ async fn public_model_group_catalog_applies_legacy_group_modes_strictly() {
                 priority: 0,
                 sales_multiplier: 1.0,
                 model_sales_multipliers: None,
+                managed_instructions: None,
                 allowed_providers: None,
                 allowed_providers_mode: "unrestricted".to_string(),
                 allowed_api_formats: None,
@@ -3005,6 +3006,7 @@ async fn gateway_handles_user_monitoring_rate_limit_status_locally_without_proxy
             priority: 0,
             sales_multiplier: 1.0,
             model_sales_multipliers: None,
+            managed_instructions: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -6833,6 +6835,7 @@ async fn gateway_handles_users_me_api_key_writes_locally_without_proxying_upstre
             priority: 0,
             sales_multiplier: 1.0,
             model_sales_multipliers: None,
+            managed_instructions: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -6847,6 +6850,33 @@ async fn gateway_handles_users_me_api_key_writes_locally_without_proxying_upstre
         .await
         .expect("default group should create")
         .expect("default group should exist");
+    let adult_group = user_repository
+        .create_user_group(UpsertUserGroupRecord {
+            name: "Adult".to_string(),
+            description: None,
+            visibility: "public".to_string(),
+            priority: 0,
+            sales_multiplier: 1.0,
+            model_sales_multipliers: None,
+            managed_instructions: Some(json!({
+                "enabled": true,
+                "profile_id": "adult_fiction_v1",
+                "merge_mode": "prepend"
+            })),
+            allowed_providers: None,
+            allowed_providers_mode: "unrestricted".to_string(),
+            allowed_api_formats: None,
+            allowed_api_formats_mode: "unrestricted".to_string(),
+            allowed_models: None,
+            allowed_models_mode: "unrestricted".to_string(),
+            rate_limit: None,
+            rate_limit_mode: "system".to_string(),
+            concurrent_limit: None,
+            concurrent_limit_mode: "inherit".to_string(),
+        })
+        .await
+        .expect("adult group should create")
+        .expect("adult group should exist");
     let provider_catalog_repository = Arc::new(InMemoryProviderCatalogReadRepository::seed(
         vec![sample_provider("provider-openai", "openai", 10)],
         vec![sample_endpoint(
@@ -6929,6 +6959,7 @@ async fn gateway_handles_users_me_api_key_writes_locally_without_proxying_upstre
         .header("user-agent", "AetherTest/1.0")
         .json(&json!({
             "name": "writer-key-renamed",
+            "group_id": adult_group.id,
             "rate_limit": 30,
             "concurrent_limit": 4,
             "feature_settings": {
@@ -6947,6 +6978,7 @@ async fn gateway_handles_users_me_api_key_writes_locally_without_proxying_upstre
         .await
         .expect("json body should parse");
     assert_eq!(update_payload["name"], "writer-key-renamed");
+    assert_eq!(update_payload["group_id"], adult_group.id);
     assert_eq!(update_payload["rate_limit"], 30);
     assert_eq!(update_payload["concurrent_limit"], 4);
     assert_eq!(
@@ -9956,6 +9988,7 @@ async fn gateway_filters_users_me_available_models_by_group_policy_and_hides_mod
             priority: 0,
             sales_multiplier: 1.0,
             model_sales_multipliers: None,
+            managed_instructions: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,
@@ -10057,6 +10090,7 @@ async fn gateway_returns_no_users_me_available_models_when_group_denies_all_mode
             priority: 0,
             sales_multiplier: 1.0,
             model_sales_multipliers: None,
+            managed_instructions: None,
             allowed_providers: None,
             allowed_providers_mode: "unrestricted".to_string(),
             allowed_api_formats: None,

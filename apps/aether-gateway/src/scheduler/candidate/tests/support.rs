@@ -126,6 +126,7 @@ pub(super) fn sample_auth_snapshot(api_key_id: &str) -> GatewayAuthApiKeySnapsho
         api_key_group_visibility: None,
         api_key_group_sales_multiplier: 1.0,
         api_key_group_model_sales_multipliers: None,
+        api_key_group_managed_instructions: None,
         api_key_is_active: true,
         api_key_is_locked: false,
         api_key_is_standalone: false,

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS public.user_groups (
     concurrent_limit_mode character varying(32) DEFAULT 'inherit' NOT NULL,
     sales_multiplier double precision DEFAULT 1 NOT NULL,
     model_sales_multipliers jsonb,
+    managed_instructions jsonb,
     created_at bigint NOT NULL,
     updated_at bigint NOT NULL
 );

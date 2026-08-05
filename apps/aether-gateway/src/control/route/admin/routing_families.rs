@@ -7,9 +7,7 @@ pub(super) fn classify_admin_routing_family_route(
     normalized_path_no_trailing: &str,
 ) -> Option<ClassifiedRoute> {
     let path = normalized_path_no_trailing;
-    if method == http::Method::GET && path == "/api/admin/routing/managed-instruction-profiles" {
-        Some(routing_route("managed_instruction_profiles"))
-    } else if method == http::Method::GET && path == "/api/admin/routing/groups" {
+    if method == http::Method::GET && path == "/api/admin/routing/groups" {
         Some(routing_route("list_groups"))
     } else if method == http::Method::POST && path == "/api/admin/routing/groups" {
         Some(routing_route("create_group"))

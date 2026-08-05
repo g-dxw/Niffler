@@ -20,6 +20,7 @@ pub struct StoredAuthApiKeySnapshot {
     pub api_key_group_visibility: Option<String>,
     pub api_key_group_sales_multiplier: f64,
     pub api_key_group_model_sales_multipliers: Option<serde_json::Value>,
+    pub api_key_group_managed_instructions: Option<serde_json::Value>,
     pub api_key_is_active: bool,
     pub api_key_is_locked: bool,
     pub api_key_is_standalone: bool,
@@ -153,6 +154,7 @@ impl StoredAuthApiKeySnapshot {
                 "user_groups.sales_multiplier",
             )?,
             api_key_group_model_sales_multipliers,
+            api_key_group_managed_instructions: None,
             api_key_is_active,
             api_key_is_locked,
             api_key_is_standalone,
@@ -204,6 +206,14 @@ impl StoredAuthApiKeySnapshot {
         self.user_rate_limit = user_rate_limit;
         self
     }
+
+    pub fn with_group_managed_instructions(
+        mut self,
+        managed_instructions: Option<serde_json::Value>,
+    ) -> Self {
+        self.api_key_group_managed_instructions = managed_instructions;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -227,6 +237,7 @@ pub struct ResolvedAuthApiKeySnapshot {
     pub api_key_group_visibility: Option<String>,
     pub api_key_group_sales_multiplier: f64,
     pub api_key_group_model_sales_multipliers: Option<serde_json::Value>,
+    pub api_key_group_managed_instructions: Option<serde_json::Value>,
     pub api_key_is_active: bool,
     pub api_key_is_locked: bool,
     pub api_key_is_standalone: bool,
@@ -262,6 +273,7 @@ impl ResolvedAuthApiKeySnapshot {
             api_key_group_visibility: snapshot.api_key_group_visibility,
             api_key_group_sales_multiplier: snapshot.api_key_group_sales_multiplier,
             api_key_group_model_sales_multipliers: snapshot.api_key_group_model_sales_multipliers,
+            api_key_group_managed_instructions: snapshot.api_key_group_managed_instructions,
             api_key_is_active: snapshot.api_key_is_active,
             api_key_is_locked: snapshot.api_key_is_locked,
             api_key_is_standalone: snapshot.api_key_is_standalone,

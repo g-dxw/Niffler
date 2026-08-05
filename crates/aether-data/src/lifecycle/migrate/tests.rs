@@ -2144,6 +2144,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260622100000,
             20260723120000,
             20260801190000,
+            20260804120000,
         ]
     );
     assert_eq!(
@@ -2182,6 +2183,7 @@ fn mysql_and_sqlite_migrations_include_enabled_incrementals() {
             20260622100000,
             20260723120000,
             20260801190000,
+            20260804120000,
         ]
     );
 }
@@ -2737,6 +2739,7 @@ fn pending_migrations_from_applied_skips_versions_already_applied() {
             20260725100000,
             20260731190000,
             20260801190000,
+            20260804120000,
         ]
     );
 }
@@ -2780,6 +2783,7 @@ fn pending_migrations_from_applied_after_empty_database_snapshot_stamp_returns_p
             20260725100000,
             20260731190000,
             20260801190000,
+            20260804120000,
         ],
         "empty database snapshot-stamped databases should run only post-snapshot incrementals on first startup"
     );

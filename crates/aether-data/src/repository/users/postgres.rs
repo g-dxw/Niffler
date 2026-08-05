@@ -613,6 +613,7 @@ SELECT
   concurrent_limit_mode,
   CAST(sales_multiplier AS DOUBLE PRECISION) AS sales_multiplier,
   model_sales_multipliers,
+  managed_instructions,
   created_at,
   updated_at
 FROM user_groups
@@ -753,9 +754,9 @@ INSERT INTO user_groups (
   allowed_models, allowed_models_mode,
   rate_limit, rate_limit_mode,
   concurrent_limit, concurrent_limit_mode,
-  sales_multiplier, model_sales_multipliers
+  sales_multiplier, model_sales_multipliers, managed_instructions
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7::json, $8, $9::json, $10, $11::json, $12, $13, $14, $15, $16, $17, $18::json)
+VALUES ($1, $2, $3, $4, $5, $6, $7::json, $8, $9::json, $10, $11::json, $12, $13, $14, $15, $16, $17, $18::json, $19::jsonb)
 "#,
         )
         .bind(&id)
@@ -776,6 +777,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7::json, $8, $9::json, $10, $11::json, $12, $13
         .bind(record.concurrent_limit_mode)
         .bind(record.sales_multiplier)
         .bind(record.model_sales_multipliers)
+        .bind(record.managed_instructions)
         .execute(&self.pool)
         .await;
         match result {
@@ -814,6 +816,7 @@ SET name = $2,
     concurrent_limit_mode = $16,
     sales_multiplier = $17,
     model_sales_multipliers = $18::json,
+    managed_instructions = $19::jsonb,
     updated_at = now()
 WHERE id = $1
 "#,
@@ -836,6 +839,7 @@ WHERE id = $1
         .bind(record.concurrent_limit_mode)
         .bind(record.sales_multiplier)
         .bind(record.model_sales_multipliers)
+        .bind(record.managed_instructions)
         .execute(&self.pool)
         .await;
         match result {
@@ -2342,6 +2346,7 @@ fn map_user_group_row(row: &sqlx::postgres::PgRow) -> Result<StoredUserGroup, Da
         row.try_get("concurrent_limit_mode").map_postgres_err()?,
         row.try_get("sales_multiplier").map_postgres_err()?,
         row.try_get("model_sales_multipliers").map_postgres_err()?,
+        row.try_get("managed_instructions").map_postgres_err()?,
         row.try_get("created_at").map_postgres_err()?,
         row.try_get("updated_at").map_postgres_err()?,
     )

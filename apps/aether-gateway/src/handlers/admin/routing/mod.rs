@@ -23,10 +23,6 @@ use uuid::Uuid;
 use crate::clock::current_unix_secs;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::{attach_admin_audit_response, query_param_value};
-use crate::managed_instructions::{
-    managed_instructions_profiles, validate_managed_instructions_config,
-    MANAGED_INSTRUCTIONS_SUPPORTED_FORMATS,
-};
 use crate::routing::{
     apply_routing_mutation_plan, build_routing_trace_seed, resolve_gateway_routing_policy,
     GatewayRoutingPolicyInput,
@@ -35,7 +31,6 @@ use crate::GatewayError;
 
 const ROUTING_GROUPS_ROOT: &str = "/api/admin/routing/groups";
 const ROUTING_BINDINGS_ROOT: &str = "/api/admin/routing/bindings";
-const MANAGED_INSTRUCTION_PROFILES_PATH: &str = "/api/admin/routing/managed-instruction-profiles";
 
 #[derive(Debug, Deserialize)]
 struct AdminRoutingGroupCreateRequest {
@@ -97,11 +92,6 @@ pub(crate) async fn maybe_build_local_admin_routing_response(
     if !request_context.path().starts_with("/api/admin/routing/") {
         return Ok(None);
     }
-    if request_context.method() == http::Method::GET
-        && normalized_admin_path(request_context.path()) == MANAGED_INSTRUCTION_PROFILES_PATH
-    {
-        return Ok(Some(build_managed_instruction_profiles_response()?));
-    }
     if !state.has_routing_group_data_reader() {
         return Ok(Some(data_unavailable_response()));
     }
@@ -114,28 +104,6 @@ pub(crate) async fn maybe_build_local_admin_routing_response(
         None
     };
     Ok(response)
-}
-
-fn build_managed_instruction_profiles_response() -> Result<Response<Body>, GatewayError> {
-    let profiles = managed_instructions_profiles().map_err(GatewayError::Internal)?;
-    Ok(Json(json!({
-        "profiles": profiles.iter().map(|profile| json!({
-            "profile_id": profile.profile_id,
-            "display_name": profile.display_name,
-            "description": profile.description,
-            "core_version": profile.core_version,
-            "domain_version": profile.domain_version,
-            "profile_sha256": profile.profile_sha256,
-        })).collect::<Vec<_>>(),
-        "merge_modes": ["prepend", "if_missing"],
-        "supported_provider_api_formats": MANAGED_INSTRUCTIONS_SUPPORTED_FORMATS,
-        "composition_order": [
-            "managed_instructions",
-            "client_instructions",
-            "image_generation_bridge"
-        ]
-    }))
-    .into_response())
 }
 
 async fn maybe_build_routing_groups_response(
@@ -558,8 +526,6 @@ fn validate_config_json(value: &Value) -> Result<(), GatewayError> {
     if !value.is_object() {
         return Err(bad_request_error("config_json must be a JSON object"));
     }
-    validate_managed_instructions_config(Some(value))
-        .map_err(|err| bad_request_error(format!("config_json is invalid: {err}")))?;
     let config = serde_json::from_value::<RoutingGroupConfig>(value.clone())
         .map_err(|err| bad_request_error(format!("config_json is invalid: {err}")))?;
     validate_routing_group_config(&config)
@@ -791,57 +757,4 @@ fn data_unavailable_response() -> Response<Body> {
         Json(json!({ "detail": "routing profile data backend is unavailable" })),
     )
         .into_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn assert_client_error_contains(error: GatewayError, expected: &str) {
-        match error {
-            GatewayError::Client { message, .. } => assert!(message.contains(expected)),
-            other => panic!("expected client error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn accepts_managed_instructions_in_routing_group_config() {
-        let config = json!({
-            "managed_instructions": {
-                "enabled": true,
-                "profile_id": "security_research_v1",
-                "merge_mode": "prepend"
-            }
-        });
-
-        validate_config_json(&config).expect("valid group configuration should pass");
-    }
-
-    #[test]
-    fn rejects_unknown_managed_instruction_profile_even_when_disabled() {
-        let config = json!({
-            "managed_instructions": {
-                "enabled": false,
-                "profile_id": "missing_v1",
-                "merge_mode": "prepend"
-            }
-        });
-
-        let error = validate_config_json(&config).expect_err("unknown profile should fail");
-        assert_client_error_contains(error, "missing_v1");
-    }
-
-    #[test]
-    fn rejects_padded_managed_instruction_profile_in_routing_group_config() {
-        let config = json!({
-            "managed_instructions": {
-                "enabled": false,
-                "profile_id": " security_research_v1 ",
-                "merge_mode": "prepend"
-            }
-        });
-
-        let error = validate_config_json(&config).expect_err("padded profile should fail");
-        assert_client_error_contains(error, "首尾空格");
-    }
 }

@@ -1,27 +1,9 @@
 import client from './client'
-import { dedupedRequest } from '@/utils/cache'
 import type { RoutingDecisionTrace } from '@/features/routing/utils/routingTrace'
 import type {
-  ManagedInstructionsMergeMode,
   RoutingGroupConfig,
   RoutingRulePhase,
 } from '@/features/routing/utils/routingPolicy'
-
-export interface ManagedInstructionsProfile {
-  profile_id: string
-  display_name: string
-  description: string
-  core_version: string
-  domain_version?: string | null
-  profile_sha256: string
-}
-
-export interface ManagedInstructionsProfilesResponse {
-  profiles: ManagedInstructionsProfile[]
-  merge_modes: ManagedInstructionsMergeMode[]
-  supported_provider_api_formats: string[]
-  composition_order: string[]
-}
 
 export type RoutingBindingSubjectType = 'user' | 'api_key' | 'user_group'
 
@@ -128,15 +110,6 @@ export interface RoutingDryRunResponse {
   mutated_body: unknown
   mutated_headers: Record<string, string>
   candidate_preview: unknown
-}
-
-export async function getManagedInstructionProfiles(): Promise<ManagedInstructionsProfilesResponse> {
-  return dedupedRequest('routing-profiles:managed-instruction-profiles', async () => {
-    const response = await client.get<ManagedInstructionsProfilesResponse>(
-      '/api/admin/routing/managed-instruction-profiles'
-    )
-    return response.data
-  })
 }
 
 export async function listRoutingGroups(): Promise<RoutingGroupListResponse> {

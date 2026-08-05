@@ -8,6 +8,10 @@ use crate::handlers::admin::niffler_legacy_freeze::maybe_freeze_migrated_legacy_
 use crate::handlers::admin::niffler_legacy_projection::product_plan_user_group_projection;
 use crate::handlers::admin::request::{AdminAppState, AdminRequestContext};
 use crate::handlers::admin::shared::attach_admin_audit_response;
+use crate::managed_instructions::{
+    managed_instructions_profiles, validate_managed_instructions_config,
+    MANAGED_INSTRUCTIONS_SUPPORTED_FORMATS,
+};
 use crate::GatewayError;
 use aether_data_contracts::repository::niffler_core::{
     NifflerProductPlanListQuery, NifflerProductPlanModelListQuery,
@@ -32,6 +36,8 @@ struct AdminUserGroupPayload {
     sales_multiplier: f64,
     #[serde(default)]
     model_sales_multipliers: Option<serde_json::Value>,
+    #[serde(default)]
+    managed_instructions: Option<serde_json::Value>,
     #[serde(default)]
     allowed_providers: Option<Vec<String>>,
     #[serde(default = "default_list_mode")]
@@ -72,6 +78,29 @@ struct AdminDefaultUserGroupPayload {
 }
 
 const DELETE_USER_GROUP_API_KEY_REFERENCE_LIMIT: usize = 5;
+
+pub(in super::super) fn build_admin_managed_instruction_profiles_response(
+) -> Result<Response<Body>, GatewayError> {
+    let profiles = managed_instructions_profiles().map_err(GatewayError::Internal)?;
+    Ok(Json(json!({
+        "profiles": profiles.iter().map(|profile| json!({
+            "profile_id": profile.profile_id,
+            "display_name": profile.display_name,
+            "description": profile.description,
+            "core_version": profile.core_version,
+            "domain_version": profile.domain_version,
+            "profile_sha256": profile.profile_sha256,
+        })).collect::<Vec<_>>(),
+        "merge_modes": ["prepend", "if_missing"],
+        "supported_provider_api_formats": MANAGED_INSTRUCTIONS_SUPPORTED_FORMATS,
+        "composition_order": [
+            "managed_instructions",
+            "client_instructions",
+            "image_generation_bridge"
+        ]
+    }))
+    .into_response())
+}
 
 pub(in super::super) async fn build_admin_list_user_groups_response(
     state: &AdminAppState<'_>,
@@ -529,6 +558,7 @@ fn parse_group_record(
     let sales_multiplier = normalize_sales_multiplier(payload.sales_multiplier)?;
     let model_sales_multipliers =
         normalize_model_sales_multipliers(payload.model_sales_multipliers)?;
+    validate_managed_instructions_config(payload.managed_instructions.as_ref())?;
     let allowed_providers =
         normalize_admin_user_string_list(payload.allowed_providers, "allowed_providers")?;
     let allowed_api_formats = normalize_admin_user_api_formats(payload.allowed_api_formats)?;
@@ -543,6 +573,7 @@ fn parse_group_record(
         visibility,
         sales_multiplier,
         model_sales_multipliers,
+        managed_instructions: payload.managed_instructions,
         priority: 0,
         allowed_providers,
         allowed_providers_mode: normalize_list_mode(&payload.allowed_providers_mode)?,
@@ -644,6 +675,7 @@ fn user_group_payload(
         "visibility": group.visibility,
         "sales_multiplier": group.sales_multiplier,
         "model_sales_multipliers": group.model_sales_multipliers,
+        "managed_instructions": group.managed_instructions,
         "allowed_providers": group.allowed_providers,
         "allowed_providers_mode": group.allowed_providers_mode,
         "allowed_api_formats": group.allowed_api_formats,
@@ -676,14 +708,14 @@ fn normalize_rate_mode(value: &str) -> Result<String, String> {
     }
 }
 
-fn normalize_group_visibility(value: &str) -> Result<String, String> {
+pub(crate) fn normalize_group_visibility(value: &str) -> Result<String, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "public" | "internal" => Ok(value.trim().to_ascii_lowercase()),
         _ => Err("分组可见性不合法".to_string()),
     }
 }
 
-fn normalize_sales_multiplier(value: f64) -> Result<f64, String> {
+pub(crate) fn normalize_sales_multiplier(value: f64) -> Result<f64, String> {
     if value.is_finite() && value >= 0.0 {
         Ok(value)
     } else {
@@ -691,7 +723,7 @@ fn normalize_sales_multiplier(value: f64) -> Result<f64, String> {
     }
 }
 
-fn normalize_model_sales_multipliers(
+pub(crate) fn normalize_model_sales_multipliers(
     value: Option<serde_json::Value>,
 ) -> Result<Option<serde_json::Value>, String> {
     let Some(value) = value else {
@@ -880,5 +912,53 @@ fn is_api_key_group_reference_delete_error(err: &GatewayError) -> bool {
     match err {
         GatewayError::Internal(message) => message.contains("api_keys_group_id_fkey"),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_group_payload_accepts_managed_instructions() {
+        let body = axum::body::Bytes::from(
+            serde_json::to_vec(&json!({
+                "name": "CTF 与渗透",
+                "managed_instructions": {
+                    "enabled": true,
+                    "profile_id": "security_research_v1",
+                    "merge_mode": "prepend"
+                }
+            }))
+            .expect("payload should serialize"),
+        );
+
+        let record = parse_group_record(Some(&body)).expect("profile should be valid");
+        assert_eq!(
+            record.managed_instructions,
+            Some(json!({
+                "enabled": true,
+                "profile_id": "security_research_v1",
+                "merge_mode": "prepend"
+            }))
+        );
+    }
+
+    #[test]
+    fn user_group_payload_rejects_unknown_managed_profile() {
+        let body = axum::body::Bytes::from(
+            serde_json::to_vec(&json!({
+                "name": "无效配置",
+                "managed_instructions": {
+                    "enabled": false,
+                    "profile_id": "missing_v1",
+                    "merge_mode": "prepend"
+                }
+            }))
+            .expect("payload should serialize"),
+        );
+
+        let error = parse_group_record(Some(&body)).expect_err("unknown profile should fail");
+        assert!(error.contains("missing_v1"));
     }
 }

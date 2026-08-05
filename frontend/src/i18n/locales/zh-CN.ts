@@ -551,4 +551,5 @@ export default {
       cooldownSeconds: '模型暂停时间必须是 1 到 1920 秒的整数',
     },
   },
+  userGroupManagedInstructions: { title: '受管理提示词', hint: 'API Key 选择这个用户分组后，后续请求使用这里设置的专业规则。', profile: '配置', profilePlaceholder: '选择配置', mergeMode: '加入方式', mergePrepend: '始终加入', mergeIfMissing: '客户端未提供时加入', notConfigured: '未配置', disabled: '已关闭，不修改上游请求', prependSummary: '每次请求都会加入', ifMissingSummary: '仅在客户端没有指令时加入', orderManaged: '受管理提示词', orderClient: '客户端指令', orderImage: '图片规则', loadFailed: '读取提示词配置失败', unknownProfile: '配置 {profile} 已不存在，请重新选择' },
 }

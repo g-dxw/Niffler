@@ -554,6 +554,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 api_key_group_visibility: None,
                 api_key_group_sales_multiplier: 1.0,
                 api_key_group_model_sales_multipliers: None,
+                api_key_group_managed_instructions: None,
                 api_key_is_active: record.is_active,
                 api_key_is_locked: false,
                 api_key_is_standalone: false,
@@ -689,6 +690,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 api_key_group_visibility: None,
                 api_key_group_sales_multiplier: 1.0,
                 api_key_group_model_sales_multipliers: None,
+                api_key_group_managed_instructions: None,
                 api_key_is_active: record.is_active,
                 api_key_is_locked: false,
                 api_key_is_standalone: true,
@@ -818,6 +820,7 @@ impl AuthApiKeyWriteRepository for InMemoryAuthApiKeySnapshotRepository {
                 snapshot.api_key_group_visibility = None;
                 snapshot.api_key_group_sales_multiplier = 1.0;
                 snapshot.api_key_group_model_sales_multipliers = None;
+                snapshot.api_key_group_managed_instructions = None;
             }
             if let Some(export) = index.export_by_api_key_id.get_mut(&record.api_key_id) {
                 export.group_id = Some(group_id);

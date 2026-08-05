@@ -155,6 +155,21 @@ fn classifies_admin_user_group_routes_as_admin_proxy_route() {
     assert_eq!(list.route_family.as_deref(), Some("users_manage"));
     assert_eq!(list.route_kind.as_deref(), Some("list_user_groups"));
 
+    let profiles_uri: Uri = "/api/admin/user-groups/managed-instruction-profiles"
+        .parse()
+        .expect("uri should parse");
+    let profiles = classify_control_route(&http::Method::GET, &profiles_uri, &headers)
+        .expect("route should classify");
+    assert_eq!(profiles.route_family.as_deref(), Some("users_manage"));
+    assert_eq!(
+        profiles.route_kind.as_deref(),
+        Some("list_user_group_managed_instruction_profiles")
+    );
+    assert_eq!(
+        profiles.auth_endpoint_signature.as_deref(),
+        Some("admin:users")
+    );
+
     let create_uri: Uri = "/api/admin/user-groups".parse().expect("uri should parse");
     let create = classify_control_route(&http::Method::POST, &create_uri, &headers)
         .expect("route should classify");

@@ -163,6 +163,7 @@ SELECT
   concurrent_limit_mode,
   sales_multiplier,
   model_sales_multipliers,
+  managed_instructions,
   created_at,
   updated_at
 FROM user_groups
@@ -440,9 +441,9 @@ INSERT INTO user_groups (
   allowed_api_formats, allowed_api_formats_mode,
   allowed_models, allowed_models_mode,
   rate_limit, rate_limit_mode, concurrent_limit, concurrent_limit_mode,
-  sales_multiplier, model_sales_multipliers, created_at, updated_at
+  sales_multiplier, model_sales_multipliers, managed_instructions, created_at, updated_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 "#,
         )
         .bind(&id)
@@ -469,6 +470,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         .bind(optional_json_string(
             record.model_sales_multipliers,
             "user_groups.model_sales_multipliers",
+        )?)
+        .bind(optional_json_string(
+            record.managed_instructions,
+            "user_groups.managed_instructions",
         )?)
         .bind(now)
         .bind(now)
@@ -511,6 +516,7 @@ SET name = ?,
     concurrent_limit_mode = ?,
     sales_multiplier = ?,
     model_sales_multipliers = ?,
+    managed_instructions = ?,
     updated_at = ?
 WHERE id = ?
 "#,
@@ -538,6 +544,10 @@ WHERE id = ?
         .bind(optional_json_string(
             record.model_sales_multipliers,
             "user_groups.model_sales_multipliers",
+        )?)
+        .bind(optional_json_string(
+            record.managed_instructions,
+            "user_groups.managed_instructions",
         )?)
         .bind(now)
         .bind(group_id)
@@ -2107,6 +2117,10 @@ fn map_user_group_row(row: &MySqlRow) -> Result<StoredUserGroup, DataLayerError>
         optional_json_from_string(
             row.try_get("model_sales_multipliers").map_sql_err()?,
             "user_groups.model_sales_multipliers",
+        )?,
+        optional_json_from_string(
+            row.try_get("managed_instructions").map_sql_err()?,
+            "user_groups.managed_instructions",
         )?,
         optional_datetime_from_unix_secs(row.try_get("created_at").map_sql_err()?),
         optional_datetime_from_unix_secs(row.try_get("updated_at").map_sql_err()?),

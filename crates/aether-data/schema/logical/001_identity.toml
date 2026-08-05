@@ -264,6 +264,11 @@ type = "json"
 nullable = true
 
 [[table.user_groups.columns]]
+name = "managed_instructions"
+type = "json"
+nullable = true
+
+[[table.user_groups.columns]]
 name = "created_at"
 type = "unix_seconds"
 

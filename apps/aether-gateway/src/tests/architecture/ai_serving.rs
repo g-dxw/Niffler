@@ -3492,11 +3492,10 @@ fn ai_serving_applies_managed_instructions_at_every_final_provider_request_seam(
         "Arc<tokio::sync::OnceCell<ManagedInstructionsBindingSnapshot>>",
         "pub(crate) async fn apply_final_provider_request_policies_to_decision(",
         "apply_provider_request_routing_policy_to_decision(input, decision)?;",
-        "resolve_managed_instructions_config(Some(&context.group_config_json))",
-        "routing_group_id:",
-        "routing_group_version:",
+        "api_key_group_managed_instructions",
+        "user_group_id:",
         "apply_managed_instructions_to_decision(decision, config)?;",
-        "record_managed_instructions_routing_group(",
+        "record_managed_instructions_user_group(",
     ] {
         assert!(
             decision_input.contains(pattern),

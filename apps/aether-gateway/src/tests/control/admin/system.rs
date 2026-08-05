@@ -671,10 +671,15 @@ async fn gateway_handles_admin_system_users_export_locally_with_trusted_admin_pr
         .create_user_group(UpsertUserGroupRecord {
             name: "Restricted GPT".to_string(),
             description: Some("GPT-only users".to_string()),
-            visibility: "public".to_string(),
+            visibility: "internal".to_string(),
             priority: 10,
-            sales_multiplier: 1.0,
-            model_sales_multipliers: None,
+            sales_multiplier: 0.75,
+            model_sales_multipliers: Some(json!({"gpt-5": 0.5})),
+            managed_instructions: Some(json!({
+                "enabled": true,
+                "profile_id": "adult_fiction_v1",
+                "merge_mode": "prepend"
+            })),
             allowed_providers: Some(vec!["openai".to_string()]),
             allowed_providers_mode: "specific".to_string(),
             allowed_api_formats: Some(vec!["openai:chat".to_string()]),
@@ -813,6 +818,20 @@ async fn gateway_handles_admin_system_users_export_locally_with_trusted_admin_pr
     assert!(payload["exported_at"].as_str().is_some());
     assert_eq!(payload["user_groups"][0]["name"], "Restricted GPT");
     assert!(payload["user_groups"][0].get("priority").is_none());
+    assert_eq!(payload["user_groups"][0]["visibility"], "internal");
+    assert_eq!(payload["user_groups"][0]["sales_multiplier"], json!(0.75));
+    assert_eq!(
+        payload["user_groups"][0]["model_sales_multipliers"],
+        json!({"gpt-5": 0.5})
+    );
+    assert_eq!(
+        payload["user_groups"][0]["managed_instructions"],
+        json!({
+            "enabled": true,
+            "profile_id": "adult_fiction_v1",
+            "merge_mode": "prepend"
+        })
+    );
     assert_eq!(
         payload["user_groups"][0]["allowed_models"],
         json!(["gpt-5"])

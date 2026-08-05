@@ -1656,6 +1656,7 @@ CREATE TABLE IF NOT EXISTS public.user_groups (
     concurrent_limit_mode text DEFAULT 'inherit'::text NOT NULL,
     sales_multiplier double precision DEFAULT '1'::double precision NOT NULL,
     model_sales_multipliers json,
+    managed_instructions jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
